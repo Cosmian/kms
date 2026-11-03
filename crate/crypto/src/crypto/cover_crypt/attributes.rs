@@ -202,3 +202,142 @@ pub fn rekey_edit_action_from_attributes(
             },
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmian_cover_crypt::{EncryptionHint, QualifiedAttribute};
+    use cosmian_kms_client_utils::cover_crypt_utils::{
+        CoverCryptEncryptionHint, CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
+    };
+
+    use super::{RekeyEditAction, rekey_edit_action_from_attributes};
+    use crate::{
+        crypto::cover_crypt::kmip_requests::build_rekey_keypair_request, error::CryptoError,
+    };
+
+    const VENDOR: &str = "cosmian";
+
+    fn hint(hint: EncryptionHint) -> CoverCryptEncryptionHint {
+        match hint {
+            EncryptionHint::Classic => CoverCryptEncryptionHint::Classic,
+            EncryptionHint::PostQuantum => CoverCryptEncryptionHint::PostQuantum,
+            EncryptionHint::Hybridized => CoverCryptEncryptionHint::Hybridized,
+        }
+    }
+
+    /// The client-side mirror (`cosmian_kms_client_utils`, usable from WASM) of each
+    /// server-side action. Exhaustive on purpose: a new `RekeyEditAction` variant doesn't
+    /// compile until the mirror gets it too.
+    fn mirror(action: &RekeyEditAction) -> CoverCryptRekeyAction {
+        let attr = |a: &QualifiedAttribute| a.to_string();
+        match action {
+            RekeyEditAction::RekeyAccessPolicy(ap) => {
+                CoverCryptRekeyAction::RekeyAccessPolicy(ap.clone())
+            }
+            RekeyEditAction::PruneAccessPolicy(ap) => {
+                CoverCryptRekeyAction::PruneAccessPolicy(ap.clone())
+            }
+            RekeyEditAction::DeleteAttribute(attrs) => {
+                CoverCryptRekeyAction::DeleteAttribute(attrs.iter().map(attr).collect())
+            }
+            RekeyEditAction::DisableAttribute(attrs) => {
+                CoverCryptRekeyAction::DisableAttribute(attrs.iter().map(attr).collect())
+            }
+            RekeyEditAction::AddAttribute(attrs) => CoverCryptRekeyAction::AddAttribute(
+                attrs
+                    .iter()
+                    .map(|(a, h, after)| (attr(a), hint(*h), after.clone()))
+                    .collect(),
+            ),
+            RekeyEditAction::RenameAttribute(attrs) => CoverCryptRekeyAction::RenameAttribute(
+                attrs
+                    .iter()
+                    .map(|(a, name)| (attr(a), name.clone()))
+                    .collect(),
+            ),
+            RekeyEditAction::AddAnarchy(dim, attrs) => CoverCryptRekeyAction::AddAnarchy(
+                dim.clone(),
+                attrs.iter().map(|(a, h)| (attr(a), hint(*h))).collect(),
+            ),
+            RekeyEditAction::AddHierarchy(dim, attrs) => CoverCryptRekeyAction::AddHierarchy(
+                dim.clone(),
+                attrs.iter().map(|(a, h)| (attr(a), hint(*h))).collect(),
+            ),
+        }
+    }
+
+    fn every_action() -> Vec<RekeyEditAction> {
+        let qa = |d: &str, n: &str| QualifiedAttribute::new(d, n);
+        vec![
+            RekeyEditAction::RekeyAccessPolicy("Department::HR && Security::Secret".to_owned()),
+            RekeyEditAction::PruneAccessPolicy("Department::HR".to_owned()),
+            RekeyEditAction::DeleteAttribute(vec![qa("Department", "HR"), qa("Security", "Low")]),
+            RekeyEditAction::DisableAttribute(vec![qa("Department", "HR")]),
+            RekeyEditAction::AddAttribute(vec![
+                (
+                    qa("Security", "Medium"),
+                    EncryptionHint::Classic,
+                    Some("Low".to_owned()),
+                ),
+                (qa("Department", "IT"), EncryptionHint::Hybridized, None),
+                (qa("Department", "Legal"), EncryptionHint::PostQuantum, None),
+            ]),
+            RekeyEditAction::RenameAttribute(vec![(qa("Department", "HR"), "People".to_owned())]),
+            RekeyEditAction::AddAnarchy(
+                "Country".to_owned(),
+                vec![
+                    (qa("Country", "France"), EncryptionHint::Classic),
+                    (qa("Country", "Germany"), EncryptionHint::Hybridized),
+                ],
+            ),
+            RekeyEditAction::AddHierarchy(
+                "Level".to_owned(),
+                vec![
+                    (qa("Level", "Low"), EncryptionHint::Classic),
+                    (qa("Level", "High"), EncryptionHint::Classic),
+                ],
+            ),
+        ]
+    }
+
+    /// The server-side request for `action`, and `action` itself, as JSON.
+    fn server_side(action: &RekeyEditAction) -> Result<(String, String), CryptoError> {
+        let request = build_rekey_keypair_request(VENDOR, "msk", action)?;
+        Ok((
+            serde_json::to_string(&request)?,
+            serde_json::to_string(action)?,
+        ))
+    }
+
+    /// The client-side request for `action`, and the action the server reads back from it,
+    /// as JSON.
+    fn client_side(action: &RekeyEditAction) -> Result<(String, String), CryptoError> {
+        let request = build_covercrypt_rekey_keypair_request(VENDOR, "msk", &mirror(action))
+            .map_err(|e| CryptoError::Default(e.to_string()))?;
+        let attributes = request
+            .private_key_attributes
+            .as_ref()
+            .ok_or_else(|| CryptoError::Default("no private key attributes".to_owned()))?;
+        let read_back = rekey_edit_action_from_attributes(VENDOR, attributes)?;
+        Ok((
+            serde_json::to_string(&request)?,
+            serde_json::to_string(&read_back)?,
+        ))
+    }
+
+    /// Every action built client-side (`build_covercrypt_rekey_keypair_request`, what the
+    /// WASM client exposes) is the very request the server-side builder makes, and the server
+    /// reads it back as the same action.
+    #[test]
+    fn client_rekey_actions_match_the_server_ones() {
+        for action in every_action() {
+            let expected = server_side(&action).map_err(|e| e.to_string());
+            assert_eq!(expected.as_ref().err(), None, "{action:?}");
+            assert_eq!(
+                client_side(&action).map_err(|e| e.to_string()),
+                expected,
+                "{action:?}"
+            );
+        }
+    }
+}
