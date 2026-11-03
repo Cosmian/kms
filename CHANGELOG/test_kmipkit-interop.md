@@ -17,4 +17,4 @@
 
 ## Testing
 
-- `mise run test:kmipkit` (non-FIPS, needs Docker): runs the live tests of the external [KMIPKit](https://github.com/NeverWe1come/KMIPKit) KMIP 2.1 client (pinned commit) against a local server over binary TTLV + mTLS (fast gate: `cosmian_kms_*` and `lifecycle::` tests; `--full` runs every family, ~35 min, local only). Wired into `test_all.yml` as `kmipkit` (non-FIPS only).
+- `mise run test:kmipkit -v non-fips` and `mise run test:kmipkit -v fips` (needs Docker): run the live tests of the external [KMIPKit](https://github.com/NeverWe1come/KMIPKit) KMIP 2.1 client (pinned commit) against a local server over binary TTLV + mTLS (fast gate: `cosmian_kms_*` and `lifecycle::` tests; `--full` runs every family, ~35 min, local only). Correct the pinned lifecycle fixtures' Sign/Verify usage bits (0x01/0x02, not WrapKey/UnwrapKey 0x10/0x20), including their Check requests. Wired into `test_all.yml` as `kmipkit` (non-FIPS only).

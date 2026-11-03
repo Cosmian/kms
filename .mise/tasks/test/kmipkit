@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="KMIPKit (Rust KMIP 2.1 client) live interop tests over binary TTLV + mTLS (non-FIPS only)"
+#MISE description="KMIPKit (Rust KMIP 2.1 client) live interop tests over binary TTLV + mTLS"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -20,11 +20,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
 
-if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
-  print_error "kmipkit tests require non-fips variant (got: ${usage_variant})"
-fi
-
-kms_init_env "non-fips" "${usage_link:-static}"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
 
 KMIPKIT_URL="https://github.com/NeverWe1come/KMIPKit.git"
@@ -63,12 +59,15 @@ git -C "${KMIPKIT_DIR}" remote add origin "${KMIPKIT_URL}"
 git -C "${KMIPKIT_DIR}" fetch -q --depth 1 origin "${KMIPKIT_SHA}"
 git -C "${KMIPKIT_DIR}" checkout -q FETCH_HEAD
 
+# The pinned lifecycle fixtures confuse Sign/Verify with WrapKey/UnwrapKey.
+git -C "${KMIPKIT_DIR}" apply --unidiff-zero "${REPO_ROOT}/.mise/scripts/kmipkit-usage-masks.patch"
+
 print_status "Generating mTLS PKI with KMIPKit's generator..."
 # Container files are root-owned with mode 600: chown them back to the caller.
 docker run --rm -v "${CERTS_DIR}:/output" -v "${KMIPKIT_DIR}/tests/integration/cosmian:/scripts:ro" \
   "${PKI_IMAGE}" sh -c "sh /scripts/generate-pki.sh && chown -R $(id -u):$(id -g) /output"
 
-print_status "Building KMS server (non-fips)..."
+print_status "Building KMS server (${VARIANT})..."
 kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
 HTTP_PORT=$(kms_pick_free_port)
