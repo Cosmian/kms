@@ -8,10 +8,11 @@ use std::ptr;
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
     asn1::Asn1OctetString,
+    bn::BigNum,
     nid::Nid,
     pkey::{PKeyRef, Private},
     sha::Sha1,
-    x509::{X509Crl, X509Extension, X509Ref},
+    x509::{X509Crl, X509Extension, X509Ref, extension::CrlNumber},
 };
 use time::OffsetDateTime;
 
@@ -467,42 +468,23 @@ fn aki_write_length(buf: &mut Vec<u8>, len: usize) -> Result<(), CryptoError> {
 
 /// Add CRL Number extension (RFC 5280 §5.2.3 — MUST, non-critical).
 #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
-unsafe fn add_crl_number_extension(
+fn add_crl_number_extension(
     crl: *mut openssl_sys::X509_CRL,
     crl_number: u64,
 ) -> Result<(), CryptoError> {
-    unsafe {
-        let bn = openssl_sys::BN_new();
-        if bn.is_null() {
-            return Err(CryptoError::Default("BN_new failed".to_owned()));
-        }
-        // BN_set_word sets the BIGNUM to a u64 value
-        if openssl_sys::BN_set_word(bn, crl_number) != 1 {
-            openssl_sys::BN_free(bn);
-            return Err(CryptoError::Default("BN_set_word failed".to_owned()));
-        }
-        let asn1_int = openssl_sys::BN_to_ASN1_INTEGER(bn, ptr::null_mut());
-        openssl_sys::BN_free(bn);
-        if asn1_int.is_null() {
-            return Err(CryptoError::Default(
-                "BN_to_ASN1_INTEGER (CRL Number) failed".to_owned(),
-            ));
-        }
-        let rc = openssl_sys::X509_CRL_add1_ext_i2d(
-            crl,
-            openssl_sys::NID_crl_number,
-            asn1_int.cast(),
-            0, // non-critical
-            0, // flags
-        );
-        openssl_sys::ASN1_INTEGER_free(asn1_int);
-        if rc != 1 {
-            return Err(CryptoError::Default(
-                "X509_CRL_add1_ext_i2d (CRL Number) failed".to_owned(),
-            ));
-        }
-        Ok(())
+    let bn = BigNum::from_slice(&crl_number.to_be_bytes())
+        .map_err(|e| CryptoError::Default(format!("CRL Number extension: {e}")))?;
+    let ext = CrlNumber::new(bn)
+        .and_then(CrlNumber::build)
+        .map_err(|e| CryptoError::Default(format!("CRL Number extension: {e}")))?;
+    // SAFETY: `crl` is a valid CRL owned by the caller; ext.as_ptr() is valid for this call.
+    let rc = unsafe { openssl_sys::X509_CRL_add_ext(crl, ext.as_ptr(), -1) };
+    if rc != 1 {
+        return Err(CryptoError::Default(
+            "X509_CRL_add_ext (CRL Number) failed".to_owned(),
+        ));
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -579,6 +561,19 @@ mod tests {
         let cert = builder.build();
 
         (cert, pkey)
+    }
+
+    #[test]
+    fn crl_number_extension_encodes_full_u64() {
+        let (cert, key) = create_test_ca();
+        let n = 0x0102_0304_0506_0708_u64;
+        let der = build_crl(&cert, &key, &[], n, 7)
+            .expect("build_crl")
+            .to_der()
+            .expect("to_der");
+        let (_, parsed) = x509_parser::parse_x509_crl(&der).expect("parse CRL");
+        let number = parsed.crl_number().expect("crl number");
+        assert_eq!(number.to_bytes_be(), n.to_be_bytes());
     }
 
     #[test]

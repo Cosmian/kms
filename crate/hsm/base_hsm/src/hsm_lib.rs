@@ -462,25 +462,13 @@ impl HsmLib {
     /// Get PKCS#11 info as raw bytes.
     ///
     /// This method calls `C_GetInfo` and returns the raw `CK_INFO` structure
-    /// serialized as bytes for KMIP PKCS#11 operations.
+    /// serialized in its native layout for KMIP PKCS#11 operations, with zeroed padding.
     pub fn get_info(&self) -> HResult<Vec<u8>> {
         use pkcs11_sys::CK_INFO;
         let mut info = CK_INFO::default();
         hsm_call!(self, "Failed getting HSM info", C_GetInfo, &raw mut info);
 
-        // Serialize CK_INFO struct to bytes
-        // SAFETY: CK_INFO is a repr(C) struct with fixed layout
-        #[expect(
-            unsafe_code,
-            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
-        )]
-        unsafe {
-            let bytes = std::slice::from_raw_parts(
-                (&raw const info).cast::<u8>(),
-                std::mem::size_of::<CK_INFO>(),
-            );
-            Ok(bytes.to_vec())
-        }
+        Ok(ck_info_bytes(&info))
     }
 
     /// Get PKCS#11 info as Info struct.
@@ -1160,5 +1148,77 @@ mod function_table_fallback_tests {
             )));
         }
         Ok(())
+    }
+}
+
+/// Serialize `CK_INFO` in its in-memory layout with padding bytes zeroed.
+fn ck_info_bytes(info: &pkcs11_sys::CK_INFO) -> Vec<u8> {
+    use std::mem::{offset_of, size_of};
+
+    use pkcs11_sys::CK_INFO;
+    let flags = info.flags; // copy out: CK_INFO is #[repr(C, packed)] on Windows
+    let fields: [(usize, &[u8]); 5] = [
+        (
+            offset_of!(CK_INFO, cryptokiVersion),
+            &[info.cryptokiVersion.major, info.cryptokiVersion.minor],
+        ),
+        (offset_of!(CK_INFO, manufacturerID), &info.manufacturerID),
+        (offset_of!(CK_INFO, flags), &flags.to_ne_bytes()),
+        (
+            offset_of!(CK_INFO, libraryDescription),
+            &info.libraryDescription,
+        ),
+        (
+            offset_of!(CK_INFO, libraryVersion),
+            &[info.libraryVersion.major, info.libraryVersion.minor],
+        ),
+    ];
+    let mut bytes = Vec::with_capacity(size_of::<CK_INFO>());
+    for (offset, field) in fields {
+        bytes.resize(offset, 0); // zero the padding before this field
+        bytes.extend_from_slice(field);
+    }
+    bytes.resize(size_of::<CK_INFO>(), 0); // trailing padding
+    bytes
+}
+
+#[cfg(test)]
+mod ck_info_bytes_tests {
+    use std::mem::{offset_of, size_of};
+
+    use pkcs11_sys::CK_INFO;
+
+    use super::ck_info_bytes;
+
+    #[test]
+    fn ck_info_bytes_layout_and_zero_padding() {
+        let mut info = CK_INFO::default();
+        info.cryptokiVersion.major = 3;
+        info.cryptokiVersion.minor = 0;
+        info.manufacturerID = [b'M'; 32];
+        info.flags = 0x0102_0304;
+        info.libraryDescription = [b'D'; 32];
+        info.libraryVersion.major = 1;
+        info.libraryVersion.minor = 2;
+
+        let bytes = ck_info_bytes(&info);
+        assert_eq!(bytes.len(), size_of::<CK_INFO>());
+
+        let flags = info.flags.to_ne_bytes();
+        let fields: [(usize, &[u8]); 5] = [
+            (offset_of!(CK_INFO, cryptokiVersion), &[3, 0]),
+            (offset_of!(CK_INFO, manufacturerID), &[b'M'; 32]),
+            (offset_of!(CK_INFO, flags), &flags),
+            (offset_of!(CK_INFO, libraryDescription), &[b'D'; 32]),
+            (offset_of!(CK_INFO, libraryVersion), &[1, 2]),
+        ];
+        let mut covered = vec![false; bytes.len()];
+        for (offset, field) in &fields {
+            assert_eq!(bytes.get(*offset..*offset + field.len()), Some(*field));
+            covered[*offset..*offset + field.len()].fill(true);
+        }
+        for (byte, is_field) in bytes.iter().zip(covered) {
+            assert!(is_field || *byte == 0, "padding byte not zeroed");
+        }
     }
 }
