@@ -12,3 +12,6 @@ pub(crate) mod wrapping;
 
 pub use kms::KMS;
 pub use otel_metrics::OtelMetrics;
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;
