@@ -116,6 +116,8 @@ To send a client-side encrypted email outside your organization, a user needs to
 The recipient then needs to reply to the message with their digital signature.
 Then the sender can choose to add CSE to email sent to the external recipient.
 
+Gmail CSE works only in Google Chrome or Microsoft Edge (Chromium); see [supported browsers](getting_started/index.md#user-experience).
+
 Encrypted emails will be automatically decrypted from Gmail interface.
 
 Learn more about [CSE user experience](https://support.google.com/a/answer/14311764?hl=en&ref_topic=10742486)

@@ -200,6 +200,15 @@ FOR CRYPTOGRAPHIC PROVIDER CosmianEKM;
 ALTER LOGIN [HOSTNAME\YourLogin] ADD CREDENTIAL Cosmian_EKM_Cred;
 ```
 
+!!! warning "The credential `IDENTITY` must match in three places"
+    The same value must be used for:
+
+    1. the `IDENTITY` of the SQL Server credential (`CREATE CREDENTIAL ... WITH IDENTITY`),
+    2. the `username` of the `[[kms.certificates]]` entry in `config.toml` on the SQL Server host,
+    3. the Common Name (CN) of the client mTLS certificate presented to the KMS.
+
+    If any of the three differ, authentication to the KMS fails.
+
 ---
 
 ## 9. Create keys
