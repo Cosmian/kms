@@ -1473,6 +1473,12 @@ fn test_query_response() {
     trace!("query_response_deserialized: {}", response_batch_item_);
     assert_eq!(response_batch_item, response_batch_item_);
 
+    // JSON TTLV round trip (the transport used by the ckms client)
+    let json = serde_json::to_string(&to_ttlv(&response_batch_item).unwrap()).unwrap();
+    let from_json: ResponseMessageBatchItem =
+        from_ttlv(serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
+    assert_eq!(response_batch_item, from_json);
+
     // binary wire round trip of the empty structure
     let bytes = masks.to_bytes(crate::ttlv::KmipFlavor::Kmip2).unwrap();
     let masks_from_bytes = TTLV::from_bytes(&bytes, crate::ttlv::KmipFlavor::Kmip2).unwrap();
