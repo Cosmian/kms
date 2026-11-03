@@ -20,7 +20,8 @@ use super::{
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, EncodingOption, EncryptionKeyInformation,
         KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        MacSignatureKeyInformation, ProfileName, RNGMode, RecommendedCurve, WrappingMethod,
+        MacSignatureKeyInformation, ProfileName, ProtectionStorageMasks, RNGMode, RecommendedCurve,
+        WrappingMethod,
     },
 };
 use crate::{
@@ -1771,6 +1772,35 @@ impl Display for ServerInformation {
             ));
         }
         write!(f, "{}", strings.join(", "))
+    }
+}
+
+/// KMIP 2.1 §7.33 Protection Storage Masks structure, as returned by Query
+/// (Table 283): the Protection Storage Mask values supported by the server.
+/// An empty structure means the server supports none.
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct SupportedProtectionStorageMasks {
+    /// Supported Protection Storage Mask values.
+    // shortcut: only the empty list is emitted by this server; non-empty Vec encoding is untested, verify before returning masks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_mask: Option<Vec<ProtectionStorageMasks>>,
+}
+
+impl Display for SupportedProtectionStorageMasks {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.protection_storage_mask {
+            Some(masks) if !masks.is_empty() => write!(
+                f,
+                "{}",
+                masks
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            _ => write!(f, "none"),
+        }
     }
 }
 

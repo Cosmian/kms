@@ -1,7 +1,7 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{DRBGAlgorithm, RNGAlgorithm},
     kmip_2_1::{
-        kmip_data_structures::{RNGParameters, ServerInformation},
+        kmip_data_structures::{RNGParameters, ServerInformation, SupportedProtectionStorageMasks},
         kmip_objects::ObjectType,
         kmip_operations::{Query, QueryResponse},
         kmip_types::{CryptographicAlgorithm, OperationEnumeration, QueryFunction},
@@ -122,11 +122,11 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
                         prediction_resistance: Some(false),
                     }]);
                 }
-                // KMIP 2.1 §6.1.40: nothing to return, so nothing is returned; no Protection
-                // Storage Mask is supported (requests carrying masks are rejected with
-                // Feature_Not_Supported).
+                // KMIP 2.1 Table 283: required when requested; empty because no mask is supported
+                // (requests carrying masks are rejected with Feature_Not_Supported).
                 QueryFunction::QueryStorageProtectionMasks => {
-                    response.protection_storage_masks = None;
+                    response.protection_storage_masks =
+                        Some(SupportedProtectionStorageMasks::default());
                 }
                 QueryFunction::QueryApplicationNamespaces
                 | QueryFunction::QueryExtensionList

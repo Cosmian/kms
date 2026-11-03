@@ -20,7 +20,7 @@ use crate::{
     },
     kmip_2_1::{
         kmip_attributes::{Attribute, Attributes},
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, SupportedProtectionStorageMasks},
         kmip_messages::{RequestMessageBatchItem, ResponseMessageBatchItem},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_operations::{
@@ -1416,7 +1416,6 @@ fn test_locate_with_empty_attributes() {
     assert_eq!(locate, locate_);
 }
 
-// TODO: implement the Query operation in 2.1 first
 #[test]
 fn test_query_response() {
     log_init(option_env!("RUST_LOG"));
@@ -1439,7 +1438,7 @@ fn test_query_response() {
             validation_information: None,
             capability_information: None,
             defaults_information: None,
-            protection_storage_masks: None,
+            protection_storage_masks: Some(SupportedProtectionStorageMasks::default()),
             rng_parameters: None,
             profiles_information: None,
         }))),
@@ -1453,10 +1452,31 @@ fn test_query_response() {
     let ttlv = to_ttlv(&response_batch_item).unwrap();
     trace!("batch item: {:#?}", ttlv);
 
-    let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
-    trace!("query_response_deserialized: {}", response_batch_item_);
+    // KMIP 2.1 Table 283: the requested masks are a Structure, empty when none is supported
+    let TTLValue::Structure(batch_item_children) = &ttlv.value else {
+        panic!("batch item is not a structure");
+    };
+    let payload = batch_item_children
+        .iter()
+        .find(|child| child.tag == "ResponsePayload")
+        .expect("missing ResponsePayload");
+    let TTLValue::Structure(payload_children) = &payload.value else {
+        panic!("ResponsePayload is not a structure");
+    };
+    let masks = payload_children
+        .iter()
+        .find(|child| child.tag == "ProtectionStorageMasks")
+        .expect("missing ProtectionStorageMasks");
+    assert_eq!(masks.value, TTLValue::Structure(vec![]));
 
+    let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv.clone()).unwrap();
+    trace!("query_response_deserialized: {}", response_batch_item_);
     assert_eq!(response_batch_item, response_batch_item_);
+
+    // binary wire round trip of the empty structure
+    let bytes = masks.to_bytes(crate::ttlv::KmipFlavor::Kmip2).unwrap();
+    let masks_from_bytes = TTLV::from_bytes(&bytes, crate::ttlv::KmipFlavor::Kmip2).unwrap();
+    assert_eq!(*masks, masks_from_bytes);
 }
 
 #[test]
