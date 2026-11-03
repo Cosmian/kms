@@ -57,7 +57,7 @@ key with an explicit error. To rotate the material behind an external key, creat
 external key (new CMK) in AWS KMS and destroy the old one once it is no longer in use.
 
 **Never** attempt to grant this responsibility to `AWS_XKS_SERVICE_USER` itself, or issue it
-a real credential (TLS cert, OIDC account, etc.) — the `reject_reserved_aws_xks_identity`
+a real credential (TLS cert, OIDC account, etc.) — the `reject_reserved_service_identity`
 guard exists specifically to keep that identity unreachable outside the SigV4-authenticated
 proxy path. Doing so would let any holder of that credential call `Encrypt`/`Decrypt` on
 every XKS key over plain KMIP/REST, bypassing AWS's SigV4 trust boundary entirely.

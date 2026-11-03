@@ -4,7 +4,8 @@
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
-use crate::{config::ProxyConfig, error::KmsError, result::KResult};
+use super::PromptResultExt;
+use crate::{config::ProxyConfig, result::KResult};
 
 pub fn configure_proxy() -> KResult<ProxyConfig> {
     let theme = ColorfulTheme::default();
@@ -13,7 +14,7 @@ pub fn configure_proxy() -> KResult<ProxyConfig> {
         .with_prompt("Configure an outbound proxy?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable {
         return Ok(ProxyConfig::default());
@@ -22,13 +23,13 @@ pub fn configure_proxy() -> KResult<ProxyConfig> {
     let proxy_url: String = Input::with_theme(&theme)
         .with_prompt("Proxy URL (e.g. https://proxy.example.com or socks5://192.168.1.1:9000)")
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let proxy_basic_auth_username: String = Input::with_theme(&theme)
         .with_prompt("Proxy Basic-Auth username (leave blank to skip)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let proxy_basic_auth_password: Option<String> = if proxy_basic_auth_username.trim().is_empty() {
         None
@@ -36,7 +37,7 @@ pub fn configure_proxy() -> KResult<ProxyConfig> {
         let pwd: String = dialoguer::Password::with_theme(&theme)
             .with_prompt("Proxy Basic-Auth password")
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         Some(pwd)
     };
 
@@ -44,13 +45,13 @@ pub fn configure_proxy() -> KResult<ProxyConfig> {
         .with_prompt("Custom Proxy-Authorization header value (leave blank to skip)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let proxy_exclusion_list_str: String = Input::with_theme(&theme)
         .with_prompt("No-proxy exclusion list (comma-separated hosts; leave blank to skip)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let proxy_exclusion_list: Option<Vec<String>> = if proxy_exclusion_list_str.trim().is_empty() {
         None
     } else {

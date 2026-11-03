@@ -5,8 +5,8 @@ use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,
     destroy_certificate::DestroyCertificateAction, encrypt_certificate::EncryptCertificateAction,
     export_certificate::ExportCertificateAction, generate_crl::GenerateCrlAction,
-    import_certificate::ImportCertificateAction, revoke_certificate::RevokeCertificateAction,
-    validate_certificate::ValidateCertificatesAction,
+    generate_csr::GenerateCsrAction, import_certificate::ImportCertificateAction,
+    revoke_certificate::RevokeCertificateAction, validate_certificate::ValidateCertificatesAction,
 };
 use crate::{
     actions::shared::{ActivateKeyAction, SetRotationPolicyAction},
@@ -19,6 +19,7 @@ pub(crate) mod destroy_certificate;
 pub(crate) mod encrypt_certificate;
 pub(crate) mod export_certificate;
 pub(crate) mod generate_crl;
+pub(crate) mod generate_csr;
 pub(crate) mod import_certificate;
 pub(crate) mod revoke_certificate;
 pub(crate) mod validate_certificate;
@@ -32,6 +33,7 @@ pub enum CertificatesCommands {
     Encrypt(EncryptCertificateAction),
     Export(ExportCertificateAction),
     GenerateCrl(GenerateCrlAction),
+    GenerateCsr(GenerateCsrAction),
     Import(ImportCertificateAction),
     Revoke(RevokeCertificateAction),
     Destroy(DestroyCertificateAction),
@@ -82,6 +84,7 @@ impl CertificatesCommands {
                 action.run(kms_rest_client).await?;
                 Ok(())
             }
+            Self::GenerateCsr(action) => action.run(kms_rest_client).await,
             Self::SetRotationPolicy(action) => action.run(kms_rest_client).await,
             Self::Validate(action) => {
                 action.run(kms_rest_client).await?;

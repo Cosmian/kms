@@ -24,6 +24,21 @@ test("renders LoginPage CERT primary button", () => {
     expect(container).toHaveTextContent(/Client certificate/i);
 });
 
+test("renders LoginPage AUTH_VERIFIER_SAML single sign-on button", () => {
+    const { container } = smokeRender(React.createElement(LoginPage, { auth: false, authMethods: ["AUTH_VERIFIER_SAML"] }));
+    expect(container.querySelector('[data-testid="saml-login-btn"]')).not.toBeNull();
+    expect(container).toHaveTextContent(/Single sign-on/i);
+    expect(container.querySelector('[data-testid="auth-verifier-login-form"]')).toBeNull();
+});
+
+test("SAML primary with username/password as the secondary option", () => {
+    const { container } = smokeRender(
+        React.createElement(LoginPage, { auth: false, authMethods: ["AUTH_VERIFIER_SAML", "AUTH_VERIFIER"] }),
+    );
+    expect(container.querySelector('[data-testid="saml-login-btn"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="login-secondary-btn"]')).toHaveTextContent(/Username & password/i);
+});
+
 test("single method has no secondary control", () => {
     const { container } = smokeRender(React.createElement(LoginPage, { auth: true, authMethods: ["JWT"] }));
     expect(container.querySelector('[data-testid="login-secondary-btn"]')).toBeNull();

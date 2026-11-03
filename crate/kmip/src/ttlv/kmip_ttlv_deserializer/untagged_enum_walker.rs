@@ -10,13 +10,13 @@ use crate::{
 
 /// The `UntaggedEnumWalker` is used to deserialize a struct as a map of property -> values
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_struct`
-pub(super) struct UntaggedEnumWalker<'a> {
-    de: &'a mut TtlvDeserializer,
+pub(super) struct UntaggedEnumWalker<'a, 't> {
+    de: &'a mut TtlvDeserializer<'t>,
     completed: bool,
 }
 
-impl<'a> UntaggedEnumWalker<'a> {
-    pub(super) const fn new(de: &'a mut TtlvDeserializer) -> Self {
+impl<'a, 't> UntaggedEnumWalker<'a, 't> {
+    pub(super) const fn new(de: &'a mut TtlvDeserializer<'t>) -> Self {
         UntaggedEnumWalker {
             de,
             completed: false,
@@ -24,7 +24,7 @@ impl<'a> UntaggedEnumWalker<'a> {
     }
 }
 
-impl<'a, 'de: 'a> MapAccess<'de> for UntaggedEnumWalker<'a> {
+impl<'de> MapAccess<'de> for UntaggedEnumWalker<'_, '_> {
     type Error = TtlvError;
 
     #[instrument(level = "trace", skip(self, seed))]

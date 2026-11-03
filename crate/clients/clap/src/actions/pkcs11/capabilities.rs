@@ -36,9 +36,7 @@
 //! see `crate/clients/pkcs11/module/src/core/object.rs`). Only the AES secret key
 //! is generated live via `C_GenerateKey`/`CKM_AES_KEY_GEN`.
 
-#![allow(unsafe_code, clippy::print_stdout)]
-
-use std::{env, ffi::c_void, mem::size_of, path::Path, ptr, sync::Mutex};
+use std::{ffi::c_void, mem::size_of, path::Path, ptr};
 
 use cosmian_kms_client::{
     KmsClient,
@@ -49,24 +47,135 @@ use cosmian_kms_client::{
     },
 };
 use libloading::Library;
-// A glob import is used (rather than an itemized list) because this module needs
-// the *entire* `CKM_*` mechanism universe (442 constants) and the full `CK_*`
-// function-pointer/struct surface for the exhaustive coverage report — see
-// `plan.md` (Decision 1) for why an itemized list is impractical here.
-#[allow(clippy::wildcard_imports)]
-use pkcs11_sys::*;
+use pkcs11_sys::{
+    CK_ATTRIBUTE, CK_BBOOL, CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_GCM_MESSAGE_PARAMS,
+    CK_GCM_PARAMS, CK_INFO, CK_KEY_TYPE, CK_MECHANISM, CK_MECHANISM_INFO, CK_MECHANISM_TYPE,
+    CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE,
+    CK_SESSION_INFO, CK_SLOT_ID, CK_SLOT_INFO, CK_TOKEN_INFO, CK_TRUE, CK_ULONG, CK_VOID_PTR,
+    CKA_CLASS, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE_LEN,
+    CKF_DONT_BLOCK, CKG_GENERATE_RANDOM, CKG_MGF1_SHA256, CKG_NO_GENERATE, CKK_AES, CKM_ACTI,
+    CKM_ACTI_KEY_GEN, CKM_AES_CBC, CKM_AES_CBC_ENCRYPT_DATA, CKM_AES_CBC_PAD, CKM_AES_CCM,
+    CKM_AES_CFB1, CKM_AES_CFB8, CKM_AES_CFB64, CKM_AES_CFB128, CKM_AES_CMAC, CKM_AES_CMAC_GENERAL,
+    CKM_AES_CTR, CKM_AES_CTS, CKM_AES_ECB, CKM_AES_ECB_ENCRYPT_DATA, CKM_AES_GCM, CKM_AES_GMAC,
+    CKM_AES_KEY_GEN, CKM_AES_KEY_WRAP, CKM_AES_KEY_WRAP_KWP, CKM_AES_KEY_WRAP_PAD,
+    CKM_AES_KEY_WRAP_PKCS7, CKM_AES_MAC, CKM_AES_MAC_GENERAL, CKM_AES_OFB, CKM_AES_XCBC_MAC,
+    CKM_AES_XCBC_MAC_96, CKM_AES_XTS, CKM_AES_XTS_KEY_GEN, CKM_ARIA_CBC, CKM_ARIA_CBC_ENCRYPT_DATA,
+    CKM_ARIA_CBC_PAD, CKM_ARIA_ECB, CKM_ARIA_ECB_ENCRYPT_DATA, CKM_ARIA_KEY_GEN, CKM_ARIA_MAC,
+    CKM_ARIA_MAC_GENERAL, CKM_BATON_CBC128, CKM_BATON_COUNTER, CKM_BATON_ECB96, CKM_BATON_ECB128,
+    CKM_BATON_KEY_GEN, CKM_BATON_SHUFFLE, CKM_BATON_WRAP, CKM_BLAKE2B_160, CKM_BLAKE2B_160_HMAC,
+    CKM_BLAKE2B_160_HMAC_GENERAL, CKM_BLAKE2B_160_KEY_DERIVE, CKM_BLAKE2B_160_KEY_GEN,
+    CKM_BLAKE2B_256, CKM_BLAKE2B_256_HMAC, CKM_BLAKE2B_256_HMAC_GENERAL,
+    CKM_BLAKE2B_256_KEY_DERIVE, CKM_BLAKE2B_256_KEY_GEN, CKM_BLAKE2B_384, CKM_BLAKE2B_384_HMAC,
+    CKM_BLAKE2B_384_HMAC_GENERAL, CKM_BLAKE2B_384_KEY_DERIVE, CKM_BLAKE2B_384_KEY_GEN,
+    CKM_BLAKE2B_512, CKM_BLAKE2B_512_HMAC, CKM_BLAKE2B_512_HMAC_GENERAL,
+    CKM_BLAKE2B_512_KEY_DERIVE, CKM_BLAKE2B_512_KEY_GEN, CKM_BLOWFISH_CBC, CKM_BLOWFISH_CBC_PAD,
+    CKM_BLOWFISH_KEY_GEN, CKM_CAMELLIA_CBC, CKM_CAMELLIA_CBC_ENCRYPT_DATA, CKM_CAMELLIA_CBC_PAD,
+    CKM_CAMELLIA_CTR, CKM_CAMELLIA_ECB, CKM_CAMELLIA_ECB_ENCRYPT_DATA, CKM_CAMELLIA_KEY_GEN,
+    CKM_CAMELLIA_MAC, CKM_CAMELLIA_MAC_GENERAL, CKM_CAST_CBC, CKM_CAST_CBC_PAD, CKM_CAST_ECB,
+    CKM_CAST_KEY_GEN, CKM_CAST_MAC, CKM_CAST_MAC_GENERAL, CKM_CAST3_CBC, CKM_CAST3_CBC_PAD,
+    CKM_CAST3_ECB, CKM_CAST3_KEY_GEN, CKM_CAST3_MAC, CKM_CAST3_MAC_GENERAL, CKM_CAST5_CBC,
+    CKM_CAST5_CBC_PAD, CKM_CAST5_ECB, CKM_CAST5_KEY_GEN, CKM_CAST5_MAC, CKM_CAST5_MAC_GENERAL,
+    CKM_CAST128_CBC, CKM_CAST128_CBC_PAD, CKM_CAST128_ECB, CKM_CAST128_KEY_GEN, CKM_CAST128_MAC,
+    CKM_CAST128_MAC_GENERAL, CKM_CDMF_CBC, CKM_CDMF_CBC_PAD, CKM_CDMF_ECB, CKM_CDMF_KEY_GEN,
+    CKM_CDMF_MAC, CKM_CDMF_MAC_GENERAL, CKM_CHACHA20, CKM_CHACHA20_KEY_GEN, CKM_CHACHA20_POLY1305,
+    CKM_CMS_SIG, CKM_CONCATENATE_BASE_AND_DATA, CKM_CONCATENATE_BASE_AND_KEY,
+    CKM_CONCATENATE_DATA_AND_BASE, CKM_DES_CBC, CKM_DES_CBC_ENCRYPT_DATA, CKM_DES_CBC_PAD,
+    CKM_DES_CFB8, CKM_DES_CFB64, CKM_DES_ECB, CKM_DES_ECB_ENCRYPT_DATA, CKM_DES_KEY_GEN,
+    CKM_DES_MAC, CKM_DES_MAC_GENERAL, CKM_DES_OFB8, CKM_DES_OFB64, CKM_DES2_KEY_GEN, CKM_DES3_CBC,
+    CKM_DES3_CBC_ENCRYPT_DATA, CKM_DES3_CBC_PAD, CKM_DES3_CMAC, CKM_DES3_CMAC_GENERAL,
+    CKM_DES3_ECB, CKM_DES3_ECB_ENCRYPT_DATA, CKM_DES3_KEY_GEN, CKM_DES3_MAC, CKM_DES3_MAC_GENERAL,
+    CKM_DH_PKCS_DERIVE, CKM_DH_PKCS_KEY_PAIR_GEN, CKM_DH_PKCS_PARAMETER_GEN, CKM_DSA,
+    CKM_DSA_FIPS_G_GEN, CKM_DSA_KEY_PAIR_GEN, CKM_DSA_PARAMETER_GEN,
+    CKM_DSA_PROBABILISTIC_PARAMETER_GEN, CKM_DSA_PROBABLISTIC_PARAMETER_GEN, CKM_DSA_SHA1,
+    CKM_DSA_SHA3_224, CKM_DSA_SHA3_256, CKM_DSA_SHA3_384, CKM_DSA_SHA3_512, CKM_DSA_SHA224,
+    CKM_DSA_SHA256, CKM_DSA_SHA384, CKM_DSA_SHA512, CKM_DSA_SHAWE_TAYLOR_PARAMETER_GEN,
+    CKM_EC_EDWARDS_KEY_PAIR_GEN, CKM_EC_KEY_PAIR_GEN, CKM_EC_KEY_PAIR_GEN_W_EXTRA_BITS,
+    CKM_EC_MONTGOMERY_KEY_PAIR_GEN, CKM_ECDH_AES_KEY_WRAP, CKM_ECDH1_COFACTOR_DERIVE,
+    CKM_ECDH1_DERIVE, CKM_ECDSA, CKM_ECDSA_KEY_PAIR_GEN, CKM_ECDSA_SHA1, CKM_ECDSA_SHA3_224,
+    CKM_ECDSA_SHA3_256, CKM_ECDSA_SHA3_384, CKM_ECDSA_SHA3_512, CKM_ECDSA_SHA224, CKM_ECDSA_SHA256,
+    CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_ECMQV_DERIVE, CKM_EDDSA, CKM_EXTRACT_KEY_FROM_KEY,
+    CKM_FASTHASH, CKM_FORTEZZA_TIMESTAMP, CKM_GENERIC_SECRET_KEY_GEN, CKM_GOST28147,
+    CKM_GOST28147_ECB, CKM_GOST28147_KEY_GEN, CKM_GOST28147_KEY_WRAP, CKM_GOST28147_MAC,
+    CKM_GOSTR3410, CKM_GOSTR3410_DERIVE, CKM_GOSTR3410_KEY_PAIR_GEN, CKM_GOSTR3410_KEY_WRAP,
+    CKM_GOSTR3410_WITH_GOSTR3411, CKM_GOSTR3411, CKM_GOSTR3411_HMAC, CKM_HKDF_DATA,
+    CKM_HKDF_DERIVE, CKM_HKDF_KEY_GEN, CKM_HOTP, CKM_HOTP_KEY_GEN, CKM_HSS, CKM_HSS_KEY_PAIR_GEN,
+    CKM_IDEA_CBC, CKM_IDEA_CBC_PAD, CKM_IDEA_ECB, CKM_IDEA_KEY_GEN, CKM_IDEA_MAC,
+    CKM_IDEA_MAC_GENERAL, CKM_IKE_PRF_DERIVE, CKM_IKE1_EXTENDED_DERIVE, CKM_IKE1_PRF_DERIVE,
+    CKM_IKE2_PRF_PLUS_DERIVE, CKM_JUNIPER_CBC128, CKM_JUNIPER_COUNTER, CKM_JUNIPER_ECB128,
+    CKM_JUNIPER_KEY_GEN, CKM_JUNIPER_SHUFFLE, CKM_JUNIPER_WRAP, CKM_KEA_DERIVE, CKM_KEA_KEY_DERIVE,
+    CKM_KEA_KEY_PAIR_GEN, CKM_KEY_WRAP_LYNKS, CKM_KEY_WRAP_SET_OAEP, CKM_KIP_DERIVE, CKM_KIP_MAC,
+    CKM_KIP_WRAP, CKM_MD2, CKM_MD2_HMAC, CKM_MD2_HMAC_GENERAL, CKM_MD2_KEY_DERIVATION,
+    CKM_MD2_RSA_PKCS, CKM_MD5, CKM_MD5_HMAC, CKM_MD5_HMAC_GENERAL, CKM_MD5_KEY_DERIVATION,
+    CKM_MD5_RSA_PKCS, CKM_NULL, CKM_PBA_SHA1_WITH_SHA1_HMAC, CKM_PBE_MD2_DES_CBC,
+    CKM_PBE_MD5_CAST_CBC, CKM_PBE_MD5_CAST3_CBC, CKM_PBE_MD5_CAST5_CBC, CKM_PBE_MD5_CAST128_CBC,
+    CKM_PBE_MD5_DES_CBC, CKM_PBE_SHA1_CAST5_CBC, CKM_PBE_SHA1_CAST128_CBC,
+    CKM_PBE_SHA1_DES2_EDE_CBC, CKM_PBE_SHA1_DES3_EDE_CBC, CKM_PBE_SHA1_RC2_40_CBC,
+    CKM_PBE_SHA1_RC2_128_CBC, CKM_PBE_SHA1_RC4_40, CKM_PBE_SHA1_RC4_128, CKM_PKCS5_PBKD2,
+    CKM_POLY1305, CKM_POLY1305_KEY_GEN, CKM_RC2_CBC, CKM_RC2_CBC_PAD, CKM_RC2_ECB, CKM_RC2_KEY_GEN,
+    CKM_RC2_MAC, CKM_RC2_MAC_GENERAL, CKM_RC4, CKM_RC4_KEY_GEN, CKM_RC5_CBC, CKM_RC5_CBC_PAD,
+    CKM_RC5_ECB, CKM_RC5_KEY_GEN, CKM_RC5_MAC, CKM_RC5_MAC_GENERAL, CKM_RIPEMD128,
+    CKM_RIPEMD128_HMAC, CKM_RIPEMD128_HMAC_GENERAL, CKM_RIPEMD128_RSA_PKCS, CKM_RIPEMD160,
+    CKM_RIPEMD160_HMAC, CKM_RIPEMD160_HMAC_GENERAL, CKM_RIPEMD160_RSA_PKCS, CKM_RSA_9796,
+    CKM_RSA_AES_KEY_WRAP, CKM_RSA_PKCS, CKM_RSA_PKCS_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP,
+    CKM_RSA_PKCS_OAEP_TPM_1_1, CKM_RSA_PKCS_PSS, CKM_RSA_PKCS_TPM_1_1, CKM_RSA_X_509,
+    CKM_RSA_X9_31, CKM_RSA_X9_31_KEY_PAIR_GEN, CKM_SALSA20, CKM_SALSA20_KEY_GEN,
+    CKM_SALSA20_POLY1305, CKM_SECURID, CKM_SECURID_KEY_GEN, CKM_SEED_CBC,
+    CKM_SEED_CBC_ENCRYPT_DATA, CKM_SEED_CBC_PAD, CKM_SEED_ECB, CKM_SEED_ECB_ENCRYPT_DATA,
+    CKM_SEED_KEY_GEN, CKM_SEED_MAC, CKM_SEED_MAC_GENERAL, CKM_SHA_1, CKM_SHA_1_HMAC,
+    CKM_SHA_1_HMAC_GENERAL, CKM_SHA_1_KEY_GEN, CKM_SHA1_KEY_DERIVATION, CKM_SHA1_RSA_PKCS,
+    CKM_SHA1_RSA_PKCS_PSS, CKM_SHA1_RSA_X9_31, CKM_SHA3_224, CKM_SHA3_224_HMAC,
+    CKM_SHA3_224_HMAC_GENERAL, CKM_SHA3_224_KEY_DERIVATION, CKM_SHA3_224_KEY_DERIVE,
+    CKM_SHA3_224_KEY_GEN, CKM_SHA3_224_RSA_PKCS, CKM_SHA3_224_RSA_PKCS_PSS, CKM_SHA3_256,
+    CKM_SHA3_256_HMAC, CKM_SHA3_256_HMAC_GENERAL, CKM_SHA3_256_KEY_DERIVATION,
+    CKM_SHA3_256_KEY_DERIVE, CKM_SHA3_256_KEY_GEN, CKM_SHA3_256_RSA_PKCS,
+    CKM_SHA3_256_RSA_PKCS_PSS, CKM_SHA3_384, CKM_SHA3_384_HMAC, CKM_SHA3_384_HMAC_GENERAL,
+    CKM_SHA3_384_KEY_DERIVATION, CKM_SHA3_384_KEY_DERIVE, CKM_SHA3_384_KEY_GEN,
+    CKM_SHA3_384_RSA_PKCS, CKM_SHA3_384_RSA_PKCS_PSS, CKM_SHA3_512, CKM_SHA3_512_HMAC,
+    CKM_SHA3_512_HMAC_GENERAL, CKM_SHA3_512_KEY_DERIVATION, CKM_SHA3_512_KEY_DERIVE,
+    CKM_SHA3_512_KEY_GEN, CKM_SHA3_512_RSA_PKCS, CKM_SHA3_512_RSA_PKCS_PSS, CKM_SHA224,
+    CKM_SHA224_HMAC, CKM_SHA224_HMAC_GENERAL, CKM_SHA224_KEY_DERIVATION, CKM_SHA224_KEY_GEN,
+    CKM_SHA224_RSA_PKCS, CKM_SHA224_RSA_PKCS_PSS, CKM_SHA256, CKM_SHA256_HMAC,
+    CKM_SHA256_HMAC_GENERAL, CKM_SHA256_KEY_DERIVATION, CKM_SHA256_KEY_GEN, CKM_SHA256_RSA_PKCS,
+    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_HMAC, CKM_SHA384_HMAC_GENERAL,
+    CKM_SHA384_KEY_DERIVATION, CKM_SHA384_KEY_GEN, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS,
+    CKM_SHA512, CKM_SHA512_224, CKM_SHA512_224_HMAC, CKM_SHA512_224_HMAC_GENERAL,
+    CKM_SHA512_224_KEY_DERIVATION, CKM_SHA512_224_KEY_GEN, CKM_SHA512_256, CKM_SHA512_256_HMAC,
+    CKM_SHA512_256_HMAC_GENERAL, CKM_SHA512_256_KEY_DERIVATION, CKM_SHA512_256_KEY_GEN,
+    CKM_SHA512_HMAC, CKM_SHA512_HMAC_GENERAL, CKM_SHA512_KEY_DERIVATION, CKM_SHA512_KEY_GEN,
+    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKM_SHA512_T, CKM_SHA512_T_HMAC,
+    CKM_SHA512_T_HMAC_GENERAL, CKM_SHA512_T_KEY_DERIVATION, CKM_SHA512_T_KEY_GEN,
+    CKM_SHAKE_128_KEY_DERIVATION, CKM_SHAKE_128_KEY_DERIVE, CKM_SHAKE_256_KEY_DERIVATION,
+    CKM_SHAKE_256_KEY_DERIVE, CKM_SKIPJACK_CBC64, CKM_SKIPJACK_CFB8, CKM_SKIPJACK_CFB16,
+    CKM_SKIPJACK_CFB32, CKM_SKIPJACK_CFB64, CKM_SKIPJACK_ECB64, CKM_SKIPJACK_KEY_GEN,
+    CKM_SKIPJACK_OFB64, CKM_SKIPJACK_PRIVATE_WRAP, CKM_SKIPJACK_RELAYX, CKM_SKIPJACK_WRAP,
+    CKM_SP800_108_COUNTER_KDF, CKM_SP800_108_DOUBLE_PIPELINE_KDF, CKM_SP800_108_FEEDBACK_KDF,
+    CKM_SSL3_KEY_AND_MAC_DERIVE, CKM_SSL3_MASTER_KEY_DERIVE, CKM_SSL3_MASTER_KEY_DERIVE_DH,
+    CKM_SSL3_MD5_MAC, CKM_SSL3_PRE_MASTER_KEY_GEN, CKM_SSL3_SHA1_MAC, CKM_TLS_KDF,
+    CKM_TLS_KEY_AND_MAC_DERIVE, CKM_TLS_MAC, CKM_TLS_MASTER_KEY_DERIVE,
+    CKM_TLS_MASTER_KEY_DERIVE_DH, CKM_TLS_PRE_MASTER_KEY_GEN, CKM_TLS_PRF, CKM_TLS10_MAC_CLIENT,
+    CKM_TLS10_MAC_SERVER, CKM_TLS12_KDF, CKM_TLS12_KEY_AND_MAC_DERIVE, CKM_TLS12_KEY_SAFE_DERIVE,
+    CKM_TLS12_MAC, CKM_TLS12_MASTER_KEY_DERIVE, CKM_TLS12_MASTER_KEY_DERIVE_DH, CKM_TWOFISH_CBC,
+    CKM_TWOFISH_CBC_PAD, CKM_TWOFISH_KEY_GEN, CKM_WTLS_CLIENT_KEY_AND_MAC_DERIVE,
+    CKM_WTLS_MASTER_KEY_DERIVE, CKM_WTLS_MASTER_KEY_DERIVE_DH_ECC, CKM_WTLS_PRE_MASTER_KEY_GEN,
+    CKM_WTLS_PRF, CKM_WTLS_SERVER_KEY_AND_MAC_DERIVE, CKM_X2RATCHET_DECRYPT, CKM_X2RATCHET_ENCRYPT,
+    CKM_X2RATCHET_INITIALIZE, CKM_X2RATCHET_RESPOND, CKM_X3DH_INITIALIZE, CKM_X3DH_RESPOND,
+    CKM_X9_42_DH_DERIVE, CKM_X9_42_DH_HYBRID_DERIVE, CKM_X9_42_DH_KEY_PAIR_GEN,
+    CKM_X9_42_DH_PARAMETER_GEN, CKM_X9_42_MQV_DERIVE, CKM_XEDDSA, CKM_XOR_BASE_AND_DATA, CKO_DATA,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
+    CKR_MECHANISM_INVALID, CKR_OK, CKU_USER,
+};
 
 use super::verify::{
     call_get_function_list, call_get_function_list_3_0, call_get_slot_list, call_login,
-    call_open_session, check_rv, ckr_name,
+    call_open_session, check_rv, ckr_name, set_ckms_conf,
 };
 use crate::{
-    actions::shared::utils::{destroy, revoke},
+    actions::{
+        console,
+        shared::utils::{destroy, revoke},
+    },
     error::{KmsCliError, result::KmsCliResult},
 };
-
-/// Thread-safe guard for the `CKMS_CONF` environment variable (mirrors `pkcs11_verify`).
-static CKMS_CONF_LOCK: Mutex<()> = Mutex::new(());
 
 /// Fallible `usize -> CK_ULONG` conversion (mirrors the `pkcs11_verify` convention of
 /// never using `as` for length/size conversions across the FFI boundary).
@@ -745,6 +854,7 @@ struct ProvisionedKeys {
 /// per-mechanism failures are never returned as an `Err`: they are recorded and
 /// printed as a ❌ row in the report, so this command always exits successfully
 /// once a session was established.
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 pub(crate) async fn run_capabilities(
     so_path: &Path,
     conf: Option<&Path>,
@@ -752,21 +862,19 @@ pub(crate) async fn run_capabilities(
     kms_rest_client: KmsClient,
     keep_keys: bool,
 ) -> KmsCliResult<()> {
-    println!("[capabilities] Provisioning KMS test keys...");
+    // Progress goes to stderr (like `ckms bench`); stdout carries only the report.
+    eprintln!("[capabilities] Provisioning KMS test keys...");
     let provisioned = provision_keys(&kms_rest_client).await?;
-    println!("[capabilities] KMS test keys provisioned.");
-    println!();
+    eprintln!("[capabilities] KMS test keys provisioned.");
+    eprintln!();
 
-    let guard = CKMS_CONF_LOCK
-        .lock()
-        .map_err(|_lock_err| KmsCliError::Default("CKMS_CONF_LOCK poisoned".to_owned()))?;
     if let Some(conf_path) = conf {
-        // SAFETY: protected by mutex to ensure exclusive access to environment variables.
-        unsafe { env::set_var("CKMS_CONF", conf_path) };
+        set_ckms_conf(conf_path)?;
     }
-    drop(guard);
 
-    println!("[load] Opening: {}", so_path.display());
+    eprintln!("[load] Opening: {}", so_path.display());
+    // SAFETY: loading runs the library's initializers; the caller explicitly names a
+    // PKCS#11 provider, whose initializers are trusted like any loaded Cryptoki module.
     let lib = unsafe { Library::new(so_path) }.map_err(|e| {
         KmsCliError::Default(format!(
             "FAIL [load]: cannot open '{}': {e}",
@@ -775,28 +883,30 @@ pub(crate) async fn run_capabilities(
     })?;
 
     let func_list_ptr = call_get_function_list(&lib)?;
+    // SAFETY: non-null (checked by `call_get_function_list`) pointer to the provider's
+    // static function table, valid while `lib` stays loaded (until this function returns).
     let func_list: &CK_FUNCTION_LIST = unsafe { &*func_list_ptr };
     // The v3.0 message-based signing functions (`C_MessageSignInit`/`C_SignMessage`/
     // `C_MessageSignFinal`) are not part of the legacy `CK_FUNCTION_LIST` returned by
     // `C_GetFunctionList` above; resolve the extended v3.0 table via `C_GetInterface`.
     let func_list_3_0_ptr = call_get_function_list_3_0(&lib)?;
+    // SAFETY: as above, checked non-null by `call_get_function_list_3_0`.
     let func_list_3_0: &CK_FUNCTION_LIST_3_0 = unsafe { &*func_list_3_0_ptr };
 
     let c_initialize = func_list.C_Initialize.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_Initialize]: not present in function list".to_owned())
     })?;
-    check_rv(
-        unsafe { c_initialize(ptr::null_mut::<c_void>()) },
-        "C_Initialize",
-    )?;
+    // SAFETY: `C_Initialize` accepts a null `pInitArgs` (no threading callbacks).
+    let rv = unsafe { c_initialize(ptr::null_mut::<c_void>()) };
+    check_rv(rv, "C_Initialize")?;
 
     let slot_id = call_get_slot_list(func_list)?;
     let session = call_open_session(func_list, slot_id)?;
     if let Some(tok) = token {
         call_login(func_list, session, tok)?;
     }
-    println!("[capabilities] PKCS#11 session opened on slot {slot_id}.");
-    println!();
+    eprintln!("[capabilities] PKCS#11 session opened on slot {slot_id}.");
+    eprintln!();
 
     // Locate the KMS-provisioned RSA/EC/Ed25519 objects on the PKCS#11 slot by
     // `CKA_ID` (the KMIP unique identifier).
@@ -830,21 +940,23 @@ pub(crate) async fn run_capabilities(
 
     // Best-effort teardown: never let a session-close failure hide the report.
     if let Some(c_close_session) = func_list.C_CloseSession {
+        // SAFETY: `session` is the open session handle returned by `C_OpenSession` above.
         let _ = unsafe { c_close_session(session) };
     }
     if let Some(c_finalize) = func_list.C_Finalize {
+        // SAFETY: `C_Finalize` requires a null `pReserved`.
         let _ = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
     }
 
     if keep_keys {
-        println!(
+        eprintln!(
             "[capabilities] --keep-keys set: leaving provisioned KMS objects in place \
              (tag: {CAPABILITIES_TAG})."
         );
     } else {
         cleanup_keys(&kms_rest_client, provisioned).await;
     }
-    println!();
+    eprintln!();
 
     // Mechanisms are advertised through the v2.40 `C_GetMechanismList` API;
     // v3 adds API functions, not a separate mechanism-list namespace.
@@ -853,13 +965,13 @@ pub(crate) async fn run_capabilities(
     let (v2_function_results, v3_function_results): (Vec<_>, Vec<_>) = function_results
         .into_iter()
         .partition(|result| is_pkcs11_v2_function(result.name));
-    print_section("PKCS#11 v2.40 API function coverage", &v2_function_results);
-    println!();
-    print_section("PKCS#11 v3.x API extension coverage", &v3_function_results);
-    println!();
-    print_section("PKCS#11 mechanism coverage", &all_mechanism_results);
-
-    Ok(())
+    let report = [
+        format_section("PKCS#11 v2.40 API function coverage", &v2_function_results),
+        format_section("PKCS#11 v3.x API extension coverage", &v3_function_results),
+        format_section("PKCS#11 mechanism coverage", &all_mechanism_results),
+    ]
+    .join("\n\n\n");
+    console::Stdout::new(&report).write()
 }
 
 // ---------------------------------------------------------------------------
@@ -919,34 +1031,24 @@ async fn provision_keys(kms_rest_client: &KmsClient) -> KmsCliResult<Provisioned
     )
     .await?;
 
-    // secp256k1, Ed25519, and Ed448 are not FIPS-approved; only attempt them in a
-    // `non-fips` build, where the server actually allows creating them.
-    if cfg!(feature = "non-fips") {
-        provision_ec_curve(
-            kms_rest_client,
-            "secp256k1",
-            RecommendedCurve::SECP256K1,
-            &mut provisioned,
-        )
-        .await?;
-        provision_ec_curve(
-            kms_rest_client,
-            "Ed25519",
-            RecommendedCurve::CURVEED25519,
-            &mut provisioned,
-        )
-        .await?;
-        provision_ec_curve(
-            kms_rest_client,
-            "Ed448",
-            RecommendedCurve::CURVEED448,
-            &mut provisioned,
-        )
-        .await?;
+    for &(label, curve) in NON_FIPS_CURVES {
+        provision_ec_curve(kms_rest_client, label, curve, &mut provisioned).await?;
     }
 
     Ok(provisioned)
 }
+
+/// secp256k1, Ed25519 and Ed448 are not FIPS-approved: they are only provisioned in a
+/// `non-fips` build, where the server actually allows creating them.
+#[cfg(feature = "non-fips")]
+const NON_FIPS_CURVES: &[(&str, RecommendedCurve)] = &[
+    ("secp256k1", RecommendedCurve::SECP256K1),
+    ("Ed25519", RecommendedCurve::CURVEED25519),
+    ("Ed448", RecommendedCurve::CURVEED448),
+];
+/// FIPS build: no non-FIPS curve is provisioned.
+#[cfg(not(feature = "non-fips"))]
+const NON_FIPS_CURVES: &[(&str, RecommendedCurve)] = &[];
 
 async fn provision_ec_curve(
     kms_rest_client: &KmsClient,
@@ -1002,11 +1104,11 @@ async fn cleanup_keys(kms_rest_client: &KmsClient, provisioned: ProvisionedKeys)
         )
         .await
         {
-            println!("[capabilities] WARN: failed to revoke key {private_key_id}: {e}");
+            eprintln!("[capabilities] WARN: failed to revoke key {private_key_id}: {e}");
         }
         // `destroy` cascades from the private key to its paired public key.
         if let Err(e) = destroy(kms_rest_client.clone(), &private_key_id, true, None).await {
-            println!("[capabilities] WARN: failed to clean up key {private_key_id}: {e}");
+            eprintln!("[capabilities] WARN: failed to clean up key {private_key_id}: {e}");
         }
     }
 }
@@ -1079,6 +1181,7 @@ fn find_key_pair(
 
 /// `C_FindObjectsInit`/`C_FindObjects`/`C_FindObjectsFinal` for a single object
 /// matching `class` and `CKA_ID == id`.
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn find_object_by_id(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1136,6 +1239,7 @@ const AES_GCM_IV_SIZE: usize = 12;
 
 /// `CKM_AES_KEY_GEN` (via `C_GenerateKey`) + `CKM_AES_CBC` / `CKM_AES_CBC_PAD` /
 /// `CKM_AES_GCM` round-trip encrypt/decrypt.
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn run_aes_checks(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1217,6 +1321,7 @@ fn run_aes_checks(
     }
 }
 
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn generate_aes_key(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1265,6 +1370,8 @@ fn generate_aes_key(
 
     let mut key_handle: CK_OBJECT_HANDLE = 0;
     let template_len = ck_ulong(template.len())?;
+    // SAFETY: `mechanism`, `template` (`template_len` entries, each `pValue` pointing to
+    // a live local of `ulValueLen` bytes) and `key_handle` all outlive the call.
     let rv = unsafe {
         c_generate_key(
             session,
@@ -1283,6 +1390,7 @@ fn generate_aes_key(
     Ok(key_handle)
 }
 
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn aes_round_trip(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1320,6 +1428,7 @@ fn aes_round_trip(
     let c_encrypt_init = func_list
         .C_EncryptInit
         .ok_or_else(|| "C_EncryptInit not present in function list".to_owned())?;
+    // SAFETY: `mechanism` and the IV/GCM parameters it points to are live locals.
     let rv = unsafe { c_encrypt_init(session, &raw mut mechanism, key_handle) };
     if rv != CKR_OK {
         return Err(format!(
@@ -1335,6 +1444,7 @@ fn aes_round_trip(
     let input_len = ck_ulong(input.len())?;
     let mut ciphertext = vec![0_u8; plaintext.len() + 32];
     let mut ciphertext_len = ck_ulong(ciphertext.len())?;
+    // SAFETY: `input` holds `input_len` bytes; `ciphertext` holds `ciphertext_len` bytes.
     let rv = unsafe {
         c_encrypt(
             session,
@@ -1366,6 +1476,7 @@ fn aes_round_trip(
     let c_decrypt_init = func_list
         .C_DecryptInit
         .ok_or_else(|| "C_DecryptInit not present in function list".to_owned())?;
+    // SAFETY: `mechanism` and the IV/GCM parameters it points to are live locals.
     let rv = unsafe { c_decrypt_init(session, &raw mut mechanism, key_handle) };
     if rv != CKR_OK {
         return Err(format!(
@@ -1380,6 +1491,7 @@ fn aes_round_trip(
     let ciphertext_len_ck = ck_ulong(ciphertext.len())?;
     let mut decrypted = vec![0_u8; ciphertext.len()];
     let mut decrypted_len = ck_ulong(decrypted.len())?;
+    // SAFETY: `ciphertext` holds `ciphertext_len_ck` bytes; `decrypted` holds `decrypted_len` bytes.
     let rv = unsafe {
         c_decrypt(
             session,
@@ -1554,6 +1666,7 @@ fn run_ecdsa_checks(
 /// `C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal` flow, for every
 /// provisioned `EdDSA` curve (Ed25519, Ed448) — both gated behind the `non-fips`
 /// feature, since neither curve is FIPS-approved.
+#[cfg(feature = "non-fips")]
 fn run_eddsa_checks(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -1565,19 +1678,6 @@ fn run_eddsa_checks(
         let one_shot_detail = format!("sign/verify (one-shot, {label})");
         let message_detail =
             format!("C_MessageSignInit/C_SignMessage/C_MessageSignFinal ({label})");
-
-        if !cfg!(feature = "non-fips") {
-            for detail in [one_shot_detail, message_detail] {
-                results.push(CheckResult {
-                    name: "CKM_EDDSA",
-                    detail,
-                    outcome: Outcome::Skip(format!(
-                        "{label} is not FIPS-approved; built without --features non-fips"
-                    )),
-                });
-            }
-            continue;
-        }
 
         let Some((sk, pk)) = handles
             .iter()
@@ -1620,7 +1720,33 @@ fn run_eddsa_checks(
     }
 }
 
+/// FIPS build: Ed25519/Ed448 are not FIPS-approved, so every `CKM_EDDSA` row is skipped.
+#[cfg(not(feature = "non-fips"))]
+fn run_eddsa_checks(
+    _func_list: &CK_FUNCTION_LIST,
+    _func_list_3_0: &CK_FUNCTION_LIST_3_0,
+    _slot_id: CK_SLOT_ID,
+    _handles: &[(&'static str, (CK_OBJECT_HANDLE, CK_OBJECT_HANDLE))],
+    results: &mut Vec<CheckResult>,
+) {
+    for label in ["Ed25519", "Ed448"] {
+        for detail in [
+            format!("sign/verify (one-shot, {label})"),
+            format!("C_MessageSignInit/C_SignMessage/C_MessageSignFinal ({label})"),
+        ] {
+            results.push(CheckResult {
+                name: "CKM_EDDSA",
+                detail,
+                outcome: Outcome::Skip(format!(
+                    "{label} is not FIPS-approved; built without --features non-fips"
+                )),
+            });
+        }
+    }
+}
+
 /// Generic `C_SignInit`/`C_Sign` + `C_VerifyInit`/`C_Verify` round trip.
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn sign_verify(
     func_list: &CK_FUNCTION_LIST,
     slot_id: CK_SLOT_ID,
@@ -1653,6 +1779,7 @@ fn sign_verify(
     result
 }
 
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn sign_verify_on_session(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1672,6 +1799,7 @@ fn sign_verify_on_session(
     let c_sign_init = func_list
         .C_SignInit
         .ok_or_else(|| "C_SignInit not present in function list".to_owned())?;
+    // SAFETY: `mechanism` is a live local; its optional parameter is caller-owned and live.
     let rv = unsafe { c_sign_init(session, &raw mut mechanism, private_key) };
     if rv != CKR_OK {
         return Err(format!("C_SignInit returned {} (0x{rv:08X})", ckr_name(rv)));
@@ -1684,6 +1812,7 @@ fn sign_verify_on_session(
     let input_len = ck_ulong(input.len())?;
     let mut signature = vec![0_u8; 1024];
     let mut signature_len = ck_ulong(signature.len())?;
+    // SAFETY: `input` holds `input_len` bytes; `signature` holds `signature_len` bytes.
     let rv = unsafe {
         c_sign(
             session,
@@ -1706,6 +1835,7 @@ fn sign_verify_on_session(
     let c_verify_init = func_list
         .C_VerifyInit
         .ok_or_else(|| "C_VerifyInit not present in function list".to_owned())?;
+    // SAFETY: `mechanism` is a live local; its optional parameter is caller-owned and live.
     let rv = unsafe { c_verify_init(session, &raw mut mechanism, public_key) };
     if rv != CKR_OK {
         return Err(format!(
@@ -1721,6 +1851,7 @@ fn sign_verify_on_session(
     let input_len = ck_ulong(input.len())?;
     let mut sig = signature;
     let sig_len = ck_ulong(sig.len())?;
+    // SAFETY: `input` holds `input_len` bytes; `sig` holds `sig_len` bytes; both only read.
     let rv = unsafe {
         c_verify(
             session,
@@ -1736,6 +1867,9 @@ fn sign_verify_on_session(
     Ok(())
 }
 
+/// v3.0 message-based `EdDSA` sign, then one-shot verify, on a dedicated session.
+#[cfg(feature = "non-fips")]
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn eddsa_message_sign_verify(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -1762,6 +1896,8 @@ fn eddsa_message_sign_verify(
     result
 }
 
+#[cfg(feature = "non-fips")]
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn eddsa_message_sign_verify_on_session(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -1775,10 +1911,11 @@ fn eddsa_message_sign_verify_on_session(
         pParameter: ptr::null_mut(),
         ulParameterLen: 0,
     };
-    let c_message_sign_init: CK_MECHANISM_PTR = &raw mut sign_mechanism;
+    let c_message_sign_init = &raw mut sign_mechanism;
     let init = func_list_3_0
         .C_MessageSignInit
         .ok_or_else(|| "C_MessageSignInit not present in function list".to_owned())?;
+    // SAFETY: `c_message_sign_init` points to the live local `sign_mechanism` (no parameter).
     let rv = unsafe { init(session, c_message_sign_init, private_key) };
     if rv != CKR_OK {
         return Err(format!(
@@ -1794,6 +1931,8 @@ fn eddsa_message_sign_verify_on_session(
     let input_len = ck_ulong(input.len())?;
     let mut signature = vec![0_u8; 128];
     let mut signature_len = ck_ulong(signature.len())?;
+    // SAFETY: null/0 parameter is allowed for `EdDSA`; `input` holds `input_len` bytes and
+    // `signature` holds `signature_len` bytes.
     let rv = unsafe {
         sign(
             session,
@@ -1835,6 +1974,7 @@ fn eddsa_message_sign_verify_on_session(
     let c_verify_init = func_list
         .C_VerifyInit
         .ok_or_else(|| "C_VerifyInit not present in function list".to_owned())?;
+    // SAFETY: `verify_mechanism` is a live local with no parameter.
     let rv = unsafe { c_verify_init(session, &raw mut verify_mechanism, public_key) };
     if rv != CKR_OK {
         return Err(format!(
@@ -1848,6 +1988,7 @@ fn eddsa_message_sign_verify_on_session(
     let mut verify_input = message.to_vec();
     let verify_input_len = ck_ulong(verify_input.len())?;
     let signature_len = ck_ulong(signature.len())?;
+    // SAFETY: `verify_input` and `signature` hold exactly their passed lengths; only read.
     let rv = unsafe {
         c_verify(
             session,
@@ -1878,6 +2019,7 @@ fn eddsa_message_sign_verify_on_session(
 /// in practice, but is reported as a genuine ❌ Fail rather than silently
 /// ignored if it ever does (e.g. after a future provider change adds a new
 /// mechanism this tool doesn't know how to exercise yet).
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn probe_mechanism_info(
     func_list: &CK_FUNCTION_LIST,
     slot_id: CK_SLOT_ID,
@@ -2008,6 +2150,7 @@ struct FunctionProbeCtx<'a> {
 /// without ever being invoked; `REUSED_FUNCTIONS` are reported `Pass`/`Fail`
 /// based on whether any deep mechanism check that used them succeeded; every
 /// other function gets a single, real, minimal-precondition shallow call.
+#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn run_function_coverage(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -2098,6 +2241,20 @@ fn push_probe(rows: &mut Vec<CheckResult>, name: &'static str, rv: CK_RV, expect
     });
 }
 
+/// Calls an optional `CK_FUNCTION_LIST(_3_0)` entry for a shallow probe; a null
+/// entry reports `CKR_FUNCTION_NOT_SUPPORTED`.
+macro_rules! probe_call {
+    ($entry:expr $(, $arg:expr)* $(,)?) => {
+        $entry.map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| {
+            // SAFETY: `c` is a non-null entry of the function table the loaded provider
+            // returned, typed with its `pkcs11-sys` prototype; each pointer argument is
+            // null (allowed for that parameter) or points to a live local at least as
+            // large as its paired length argument, valid for the whole call.
+            unsafe { c($($arg),*) }
+        })
+    };
+}
+
 /// Issues one real, minimal-precondition call to each of the 63 `C_*` functions
 /// that are neither excluded, reused, nor structurally `None`. Every call is
 /// spec-legal to issue (even if the provider ultimately rejects it for lack of
@@ -2105,6 +2262,7 @@ fn push_probe(rows: &mut Vec<CheckResult>, name: &'static str, rv: CK_RV, expect
 /// pointer/length pairs below are valid for the duration of the call" is
 /// required. Functions with a spec-mandated non-`CKR_OK` "working" response
 /// (`C_GetFunctionStatus`, `C_CancelFunction`) use an overridden `expected_ok`.
+#[expect(unsafe_code)] // FFI probes into the dlopen'ed PKCS#11 provider (#1166)
 fn shallow_probe_functions(
     ctx: &FunctionProbeCtx,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -2119,63 +2277,47 @@ fn shallow_probe_functions(
     // ---- Slot/token/session introspection ---------------------------------
     {
         let mut info = CK_INFO::default();
-        let rv = f
-            .C_GetInfo
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(&raw mut info) });
+        let rv = probe_call!(f.C_GetInfo, &raw mut info);
         push_probe(rows, "C_GetInfo", rv, CKR_OK);
     }
     {
         let mut info = CK_SLOT_INFO::default();
-        let rv = f
-            .C_GetSlotInfo
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(slot_id, &raw mut info)
-            });
+        let rv = probe_call!(f.C_GetSlotInfo, slot_id, &raw mut info);
         push_probe(rows, "C_GetSlotInfo", rv, CKR_OK);
     }
     {
         let mut info = CK_TOKEN_INFO::default();
-        let rv = f
-            .C_GetTokenInfo
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(slot_id, &raw mut info)
-            });
+        let rv = probe_call!(f.C_GetTokenInfo, slot_id, &raw mut info);
         push_probe(rows, "C_GetTokenInfo", rv, CKR_OK);
     }
     {
         let mut count: CK_ULONG = 0;
-        let rv = f
-            .C_GetMechanismList
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(slot_id, ptr::null_mut(), &raw mut count)
-            });
+        let rv = probe_call!(
+            f.C_GetMechanismList,
+            slot_id,
+            ptr::null_mut(),
+            &raw mut count
+        );
         push_probe(rows, "C_GetMechanismList", rv, CKR_OK);
     }
     {
         let mut info = CK_SESSION_INFO::default();
-        let rv = f
-            .C_GetSessionInfo
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut info)
-            });
+        let rv = probe_call!(f.C_GetSessionInfo, session, &raw mut info);
         push_probe(rows, "C_GetSessionInfo", rv, CKR_OK);
     }
     {
         let mut len: CK_ULONG = 0;
-        let rv = f
-            .C_GetOperationState
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, ptr::null_mut(), &raw mut len)
-            });
+        let rv = probe_call!(
+            f.C_GetOperationState,
+            session,
+            ptr::null_mut(),
+            &raw mut len
+        );
         push_probe(rows, "C_GetOperationState", rv, CKR_OK);
     }
     {
         let mut state = [0_u8; 1];
-        let rv = f
-            .C_SetOperationState
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, state.as_mut_ptr(), 1, 0, 0)
-            });
+        let rv = probe_call!(f.C_SetOperationState, session, state.as_mut_ptr(), 1, 0, 0);
         push_probe(rows, "C_SetOperationState", rv, CKR_OK);
     }
 
@@ -2200,16 +2342,13 @@ fn shallow_probe_functions(
             ];
             let template_len = ck_ulong(template.len())?;
             let mut handle: CK_OBJECT_HANDLE = 0;
-            let rv = f
-                .C_CreateObject
-                .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                    c(
-                        session,
-                        template.as_mut_ptr(),
-                        template_len,
-                        &raw mut handle,
-                    )
-                });
+            let rv = probe_call!(
+                f.C_CreateObject,
+                session,
+                template.as_mut_ptr(),
+                template_len,
+                &raw mut handle,
+            );
             push_probe(rows, "C_CreateObject", rv, CKR_OK);
             if rv == CKR_OK {
                 if let Some(c_destroy) = f.C_DestroyObject {
@@ -2229,20 +2368,19 @@ fn shallow_probe_functions(
     }
     {
         let mut copy: CK_OBJECT_HANDLE = 0;
-        let rv = f
-            .C_CopyObject
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, object, ptr::null_mut(), 0, &raw mut copy)
-            });
+        let rv = probe_call!(
+            f.C_CopyObject,
+            session,
+            object,
+            ptr::null_mut(),
+            0,
+            &raw mut copy
+        );
         push_probe(rows, "C_CopyObject", rv, CKR_OK);
     }
     {
         let mut size: CK_ULONG = 0;
-        let rv = f
-            .C_GetObjectSize
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, object, &raw mut size)
-            });
+        let rv = probe_call!(f.C_GetObjectSize, session, object, &raw mut size);
         push_probe(rows, "C_GetObjectSize", rv, CKR_OK);
     }
     {
@@ -2253,11 +2391,13 @@ fn shallow_probe_functions(
             pValue: (&raw mut class).cast::<c_void>(),
             ulValueLen: class_len,
         }];
-        let rv = f
-            .C_GetAttributeValue
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, object, template.as_mut_ptr(), 1)
-            });
+        let rv = probe_call!(
+            f.C_GetAttributeValue,
+            session,
+            object,
+            template.as_mut_ptr(),
+            1
+        );
         push_probe(rows, "C_GetAttributeValue", rv, CKR_OK);
     }
     {
@@ -2267,11 +2407,13 @@ fn shallow_probe_functions(
             pValue: label.as_ptr().cast_mut().cast::<c_void>(),
             ulValueLen: ck_ulong(label.len()).unwrap_or(0),
         }];
-        let rv = f
-            .C_SetAttributeValue
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, object, template.as_mut_ptr(), 1)
-            });
+        let rv = probe_call!(
+            f.C_SetAttributeValue,
+            session,
+            object,
+            template.as_mut_ptr(),
+            1
+        );
         push_probe(rows, "C_SetAttributeValue", rv, CKR_OK);
     }
 
@@ -2280,53 +2422,49 @@ fn shallow_probe_functions(
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_EncryptUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    part.as_mut_ptr(),
-                    16,
-                    part.as_mut_ptr(),
-                    &raw mut part_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_EncryptUpdate,
+            session,
+            part.as_mut_ptr(),
+            16,
+            part.as_mut_ptr(),
+            &raw mut part_len,
+        );
         push_probe(rows, "C_EncryptUpdate", rv, CKR_OK);
     }
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_EncryptFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, part.as_mut_ptr(), &raw mut part_len)
-            });
+        let rv = probe_call!(
+            f.C_EncryptFinal,
+            session,
+            part.as_mut_ptr(),
+            &raw mut part_len
+        );
         push_probe(rows, "C_EncryptFinal", rv, CKR_OK);
     }
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_DecryptUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    part.as_mut_ptr(),
-                    16,
-                    part.as_mut_ptr(),
-                    &raw mut part_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_DecryptUpdate,
+            session,
+            part.as_mut_ptr(),
+            16,
+            part.as_mut_ptr(),
+            &raw mut part_len,
+        );
         push_probe(rows, "C_DecryptUpdate", rv, CKR_OK);
     }
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_DecryptFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, part.as_mut_ptr(), &raw mut part_len)
-            });
+        let rv = probe_call!(
+            f.C_DecryptFinal,
+            session,
+            part.as_mut_ptr(),
+            &raw mut part_len
+        );
         push_probe(rows, "C_DecryptFinal", rv, CKR_OK);
     }
 
@@ -2337,78 +2475,54 @@ fn shallow_probe_functions(
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
-        let rv = f
-            .C_DigestInit
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut mechanism)
-            });
+        let rv = probe_call!(f.C_DigestInit, session, &raw mut mechanism);
         push_probe(rows, "C_DigestInit", rv, CKR_OK);
     }
     {
         let data = b"probe";
         let mut out = [0_u8; 64];
         let mut out_len = ck_ulong(out.len()).unwrap_or(0);
-        let rv = f.C_Digest.map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-            c(
-                session,
-                data.as_ptr().cast_mut(),
-                ck_ulong(data.len()).unwrap_or(0),
-                out.as_mut_ptr(),
-                &raw mut out_len,
-            )
-        });
+        let rv = probe_call!(
+            f.C_Digest,
+            session,
+            data.as_ptr().cast_mut(),
+            ck_ulong(data.len()).unwrap_or(0),
+            out.as_mut_ptr(),
+            &raw mut out_len,
+        );
         push_probe(rows, "C_Digest", rv, CKR_OK);
     }
     {
         let data = b"probe";
-        let rv = f
-            .C_DigestUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    data.as_ptr().cast_mut(),
-                    ck_ulong(data.len()).unwrap_or(0),
-                )
-            });
+        let rv = probe_call!(
+            f.C_DigestUpdate,
+            session,
+            data.as_ptr().cast_mut(),
+            ck_ulong(data.len()).unwrap_or(0),
+        );
         push_probe(rows, "C_DigestUpdate", rv, CKR_OK);
     }
     {
-        let rv = f
-            .C_DigestKey
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, object)
-            });
+        let rv = probe_call!(f.C_DigestKey, session, object);
         push_probe(rows, "C_DigestKey", rv, CKR_OK);
     }
     {
         let mut out = [0_u8; 64];
         let mut out_len = ck_ulong(out.len()).unwrap_or(0);
-        let rv = f
-            .C_DigestFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, out.as_mut_ptr(), &raw mut out_len)
-            });
+        let rv = probe_call!(f.C_DigestFinal, session, out.as_mut_ptr(), &raw mut out_len);
         push_probe(rows, "C_DigestFinal", rv, CKR_OK);
     }
 
     // ---- Sign/Verify streaming + recover family -----------------------------
     {
         let mut part = [0_u8; 16];
-        let rv = f
-            .C_SignUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, part.as_mut_ptr(), 16)
-            });
+        let rv = probe_call!(f.C_SignUpdate, session, part.as_mut_ptr(), 16);
         push_probe(rows, "C_SignUpdate", rv, CKR_OK);
     }
     {
         let mut out = [0_u8; 128];
         let mut out_len = ck_ulong(out.len()).unwrap_or(0);
-        let rv = f
-            .C_SignFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, out.as_mut_ptr(), &raw mut out_len)
-            });
+        let rv = probe_call!(f.C_SignFinal, session, out.as_mut_ptr(), &raw mut out_len);
         push_probe(rows, "C_SignFinal", rv, CKR_OK);
     }
     if let Some((sk, pk)) = ctx.rsa {
@@ -2417,27 +2531,20 @@ fn shallow_probe_functions(
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
-        let rv = f
-            .C_SignRecoverInit
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut mechanism, sk)
-            });
+        let rv = probe_call!(f.C_SignRecoverInit, session, &raw mut mechanism, sk);
         push_probe(rows, "C_SignRecoverInit", rv, CKR_OK);
 
         let data = [0x11_u8; 32];
         let mut out = [0_u8; 256];
         let mut out_len = ck_ulong(out.len()).unwrap_or(0);
-        let rv = f
-            .C_SignRecover
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    data.as_ptr().cast_mut(),
-                    ck_ulong(data.len()).unwrap_or(0),
-                    out.as_mut_ptr(),
-                    &raw mut out_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_SignRecover,
+            session,
+            data.as_ptr().cast_mut(),
+            ck_ulong(data.len()).unwrap_or(0),
+            out.as_mut_ptr(),
+            &raw mut out_len,
+        );
         push_probe(rows, "C_SignRecover", rv, CKR_OK);
 
         let mut mechanism = CK_MECHANISM {
@@ -2445,27 +2552,20 @@ fn shallow_probe_functions(
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
-        let rv = f
-            .C_VerifyRecoverInit
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut mechanism, pk)
-            });
+        let rv = probe_call!(f.C_VerifyRecoverInit, session, &raw mut mechanism, pk);
         push_probe(rows, "C_VerifyRecoverInit", rv, CKR_OK);
 
         let sig = [0x22_u8; 256];
         let mut out = [0_u8; 256];
         let mut out_len = ck_ulong(out.len()).unwrap_or(0);
-        let rv = f
-            .C_VerifyRecover
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    sig.as_ptr().cast_mut(),
-                    ck_ulong(sig.len()).unwrap_or(0),
-                    out.as_mut_ptr(),
-                    &raw mut out_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_VerifyRecover,
+            session,
+            sig.as_ptr().cast_mut(),
+            ck_ulong(sig.len()).unwrap_or(0),
+            out.as_mut_ptr(),
+            &raw mut out_len,
+        );
         push_probe(rows, "C_VerifyRecover", rv, CKR_OK);
     } else {
         for name in [
@@ -2485,20 +2585,12 @@ fn shallow_probe_functions(
     }
     {
         let mut part = [0_u8; 16];
-        let rv = f
-            .C_VerifyUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, part.as_mut_ptr(), 16)
-            });
+        let rv = probe_call!(f.C_VerifyUpdate, session, part.as_mut_ptr(), 16);
         push_probe(rows, "C_VerifyUpdate", rv, CKR_OK);
     }
     {
         let sig = [0_u8; 128];
-        let rv = f
-            .C_VerifyFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, sig.as_ptr().cast_mut(), 128)
-            });
+        let rv = probe_call!(f.C_VerifyFinal, session, sig.as_ptr().cast_mut(), 128);
         push_probe(rows, "C_VerifyFinal", rv, CKR_OK);
     }
 
@@ -2506,65 +2598,53 @@ fn shallow_probe_functions(
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_DigestEncryptUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    part.as_mut_ptr(),
-                    16,
-                    part.as_mut_ptr(),
-                    &raw mut part_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_DigestEncryptUpdate,
+            session,
+            part.as_mut_ptr(),
+            16,
+            part.as_mut_ptr(),
+            &raw mut part_len,
+        );
         push_probe(rows, "C_DigestEncryptUpdate", rv, CKR_OK);
     }
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_DecryptDigestUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    part.as_mut_ptr(),
-                    16,
-                    part.as_mut_ptr(),
-                    &raw mut part_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_DecryptDigestUpdate,
+            session,
+            part.as_mut_ptr(),
+            16,
+            part.as_mut_ptr(),
+            &raw mut part_len,
+        );
         push_probe(rows, "C_DecryptDigestUpdate", rv, CKR_OK);
     }
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_SignEncryptUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    part.as_mut_ptr(),
-                    16,
-                    part.as_mut_ptr(),
-                    &raw mut part_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_SignEncryptUpdate,
+            session,
+            part.as_mut_ptr(),
+            16,
+            part.as_mut_ptr(),
+            &raw mut part_len,
+        );
         push_probe(rows, "C_SignEncryptUpdate", rv, CKR_OK);
     }
     {
         let mut part = [0_u8; 16];
         let mut part_len = ck_ulong(part.len()).unwrap_or(0);
-        let rv = f
-            .C_DecryptVerifyUpdate
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    part.as_mut_ptr(),
-                    16,
-                    part.as_mut_ptr(),
-                    &raw mut part_len,
-                )
-            });
+        let rv = probe_call!(
+            f.C_DecryptVerifyUpdate,
+            session,
+            part.as_mut_ptr(),
+            16,
+            part.as_mut_ptr(),
+            &raw mut part_len,
+        );
         push_probe(rows, "C_DecryptVerifyUpdate", rv, CKR_OK);
     }
 
@@ -2577,20 +2657,17 @@ fn shallow_probe_functions(
         };
         let mut pk: CK_OBJECT_HANDLE = 0;
         let mut sk: CK_OBJECT_HANDLE = 0;
-        let rv = f
-            .C_GenerateKeyPair
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    &raw mut mechanism,
-                    ptr::null_mut(),
-                    0,
-                    ptr::null_mut(),
-                    0,
-                    &raw mut pk,
-                    &raw mut sk,
-                )
-            });
+        let rv = probe_call!(
+            f.C_GenerateKeyPair,
+            session,
+            &raw mut mechanism,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            0,
+            &raw mut pk,
+            &raw mut sk,
+        );
         push_probe(rows, "C_GenerateKeyPair", rv, CKR_OK);
     }
     {
@@ -2601,16 +2678,15 @@ fn shallow_probe_functions(
         };
         let mut wrapped = [0_u8; 256];
         let mut wrapped_len = ck_ulong(wrapped.len()).unwrap_or(0);
-        let rv = f.C_WrapKey.map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-            c(
-                session,
-                &raw mut mechanism,
-                object,
-                object,
-                wrapped.as_mut_ptr(),
-                &raw mut wrapped_len,
-            )
-        });
+        let rv = probe_call!(
+            f.C_WrapKey,
+            session,
+            &raw mut mechanism,
+            object,
+            object,
+            wrapped.as_mut_ptr(),
+            &raw mut wrapped_len,
+        );
         push_probe(rows, "C_WrapKey", rv, CKR_OK);
     }
     {
@@ -2621,20 +2697,17 @@ fn shallow_probe_functions(
         };
         let mut wrapped = [0_u8; 32];
         let mut handle: CK_OBJECT_HANDLE = 0;
-        let rv = f
-            .C_UnwrapKey
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    &raw mut mechanism,
-                    object,
-                    wrapped.as_mut_ptr(),
-                    ck_ulong(wrapped.len()).unwrap_or(0),
-                    ptr::null_mut(),
-                    0,
-                    &raw mut handle,
-                )
-            });
+        let rv = probe_call!(
+            f.C_UnwrapKey,
+            session,
+            &raw mut mechanism,
+            object,
+            wrapped.as_mut_ptr(),
+            ck_ulong(wrapped.len()).unwrap_or(0),
+            ptr::null_mut(),
+            0,
+            &raw mut handle,
+        );
         push_probe(rows, "C_UnwrapKey", rv, CKR_OK);
     }
     {
@@ -2644,66 +2717,53 @@ fn shallow_probe_functions(
             ulParameterLen: 0,
         };
         let mut handle: CK_OBJECT_HANDLE = 0;
-        let rv = f
-            .C_DeriveKey
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    &raw mut mechanism,
-                    object,
-                    ptr::null_mut(),
-                    0,
-                    &raw mut handle,
-                )
-            });
+        let rv = probe_call!(
+            f.C_DeriveKey,
+            session,
+            &raw mut mechanism,
+            object,
+            ptr::null_mut(),
+            0,
+            &raw mut handle,
+        );
         push_probe(rows, "C_DeriveKey", rv, CKR_OK);
     }
     {
         let seed = [0x42_u8; 16];
-        let rv = f
-            .C_SeedRandom
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    seed.as_ptr().cast_mut(),
-                    ck_ulong(seed.len()).unwrap_or(0),
-                )
-            });
+        let rv = probe_call!(
+            f.C_SeedRandom,
+            session,
+            seed.as_ptr().cast_mut(),
+            ck_ulong(seed.len()).unwrap_or(0),
+        );
         push_probe(rows, "C_SeedRandom", rv, CKR_OK);
     }
     {
         let mut random = [0_u8; 16];
-        let rv = f
-            .C_GenerateRandom
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, random.as_mut_ptr(), 16)
-            });
+        let rv = probe_call!(f.C_GenerateRandom, session, random.as_mut_ptr(), 16);
         push_probe(rows, "C_GenerateRandom", rv, CKR_OK);
     }
 
     // ---- Legacy parallel-function-manager stubs (spec-mandated to always
     // return `CKR_FUNCTION_NOT_PARALLEL`, never `CKR_OK`) ---------------------
     {
-        let rv = f
-            .C_GetFunctionStatus
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        let rv = probe_call!(f.C_GetFunctionStatus, session);
         push_probe(rows, "C_GetFunctionStatus", rv, CKR_FUNCTION_NOT_PARALLEL);
     }
     {
-        let rv = f
-            .C_CancelFunction
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        let rv = probe_call!(f.C_CancelFunction, session);
         push_probe(rows, "C_CancelFunction", rv, CKR_FUNCTION_NOT_PARALLEL);
     }
     {
         let mut event_slot: CK_SLOT_ID = 0;
         // Called with `CKF_DONT_BLOCK` (Decision 4): a spec-legal non-blocking
         // poll, never risking a hang.
-        let rv = f
-            .C_WaitForSlotEvent
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(CKF_DONT_BLOCK, &raw mut event_slot, ptr::null_mut())
-            });
+        let rv = probe_call!(
+            f.C_WaitForSlotEvent,
+            CKF_DONT_BLOCK,
+            &raw mut event_slot,
+            ptr::null_mut()
+        );
         push_probe(rows, "C_WaitForSlotEvent", rv, CKR_OK);
     }
     if token.is_some() {
@@ -2717,24 +2777,19 @@ fn shallow_probe_functions(
         });
     } else {
         let pin = b"0000";
-        let rv = func_list_3_0
-            .C_LoginUser
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    CKU_USER,
-                    pin.as_ptr().cast_mut(),
-                    ck_ulong(pin.len()).unwrap_or(0),
-                    ptr::null_mut(),
-                    0,
-                )
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_LoginUser,
+            session,
+            CKU_USER,
+            pin.as_ptr().cast_mut(),
+            ck_ulong(pin.len()).unwrap_or(0),
+            ptr::null_mut(),
+            0,
+        );
         push_probe(rows, "C_LoginUser", rv, CKR_OK);
     }
     {
-        let rv = func_list_3_0
-            .C_SessionCancel
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session, 0) });
+        let rv = probe_call!(func_list_3_0.C_SessionCancel, session, 0);
         push_probe(rows, "C_SessionCancel", rv, CKR_OK);
     }
 
@@ -2752,11 +2807,12 @@ fn shallow_probe_functions(
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
-        let rv = func_list_3_0
-            .C_MessageEncryptInit
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut mechanism, object)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_MessageEncryptInit,
+            session,
+            &raw mut mechanism,
+            object
+        );
         push_probe(rows, "C_MessageEncryptInit", rv, CKR_OK);
     }
     {
@@ -2768,54 +2824,48 @@ fn shallow_probe_functions(
             pTag: message_tag.as_mut_ptr(),
             ulTagBits: 128,
         };
-        let rv = func_list_3_0
-            .C_EncryptMessage
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    (&raw mut params).cast::<c_void>(),
-                    ck_ulong(size_of::<CK_GCM_MESSAGE_PARAMS>()).unwrap_or(0),
-                    ptr::null_mut(),
-                    0,
-                    message_plaintext.as_mut_ptr(),
-                    ck_ulong(message_plaintext.len()).unwrap_or(0),
-                    message_ciphertext.as_mut_ptr(),
-                    &raw mut message_ciphertext_len,
-                )
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_EncryptMessage,
+            session,
+            (&raw mut params).cast::<c_void>(),
+            ck_ulong(size_of::<CK_GCM_MESSAGE_PARAMS>()).unwrap_or(0),
+            ptr::null_mut(),
+            0,
+            message_plaintext.as_mut_ptr(),
+            ck_ulong(message_plaintext.len()).unwrap_or(0),
+            message_ciphertext.as_mut_ptr(),
+            &raw mut message_ciphertext_len,
+        );
         push_probe(rows, "C_EncryptMessage", rv, CKR_OK);
     }
     {
-        let rv = func_list_3_0
-            .C_MessageEncryptFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        let rv = probe_call!(func_list_3_0.C_MessageEncryptFinal, session);
         push_probe(rows, "C_MessageEncryptFinal", rv, CKR_OK);
     }
     {
         let mut pt = [0_u8; 16];
         let mut ct = [0_u8; 32];
         let mut ct_len = ck_ulong(ct.len()).unwrap_or(0);
-        let rv = func_list_3_0
-            .C_EncryptMessageBegin
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, ptr::null_mut(), 0, ptr::null_mut(), 0)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_EncryptMessageBegin,
+            session,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            0
+        );
         push_probe(rows, "C_EncryptMessageBegin", rv, CKR_OK);
-        let rv =
-            func_list_3_0
-                .C_EncryptMessageNext
-                .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                    c(
-                        session,
-                        ptr::null_mut(),
-                        0,
-                        pt.as_mut_ptr(),
-                        16,
-                        ct.as_mut_ptr(),
-                        &raw mut ct_len,
-                        0,
-                    )
-                });
+        let rv = probe_call!(
+            func_list_3_0.C_EncryptMessageNext,
+            session,
+            ptr::null_mut(),
+            0,
+            pt.as_mut_ptr(),
+            16,
+            ct.as_mut_ptr(),
+            &raw mut ct_len,
+            0,
+        );
         push_probe(rows, "C_EncryptMessageNext", rv, CKR_OK);
     }
     {
@@ -2824,11 +2874,12 @@ fn shallow_probe_functions(
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
-        let rv = func_list_3_0
-            .C_MessageDecryptInit
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut mechanism, object)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_MessageDecryptInit,
+            session,
+            &raw mut mechanism,
+            object
+        );
         push_probe(rows, "C_MessageDecryptInit", rv, CKR_OK);
     }
     {
@@ -2842,21 +2893,18 @@ fn shallow_probe_functions(
         };
         let mut plaintext = [0_u8; 16];
         let mut plaintext_len = ck_ulong(plaintext.len()).unwrap_or(0);
-        let rv = func_list_3_0
-            .C_DecryptMessage
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    (&raw mut params).cast::<c_void>(),
-                    ck_ulong(size_of::<CK_GCM_MESSAGE_PARAMS>()).unwrap_or(0),
-                    ptr::null_mut(),
-                    0,
-                    message_ciphertext.as_mut_ptr(),
-                    message_ciphertext_len,
-                    plaintext.as_mut_ptr(),
-                    &raw mut plaintext_len,
-                )
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_DecryptMessage,
+            session,
+            (&raw mut params).cast::<c_void>(),
+            ck_ulong(size_of::<CK_GCM_MESSAGE_PARAMS>()).unwrap_or(0),
+            ptr::null_mut(),
+            0,
+            message_ciphertext.as_mut_ptr(),
+            message_ciphertext_len,
+            plaintext.as_mut_ptr(),
+            &raw mut plaintext_len,
+        );
         let rv = if rv == CKR_OK
             && plaintext_len == ck_ulong(message_plaintext.len()).unwrap_or(0)
             && plaintext == message_plaintext
@@ -2868,61 +2916,56 @@ fn shallow_probe_functions(
         push_probe(rows, "C_DecryptMessage", rv, CKR_OK);
     }
     {
-        let rv = func_list_3_0
-            .C_MessageDecryptFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        let rv = probe_call!(func_list_3_0.C_MessageDecryptFinal, session);
         push_probe(rows, "C_MessageDecryptFinal", rv, CKR_OK);
     }
     {
         let mut ct = [0_u8; 16];
         let mut pt = [0_u8; 32];
         let mut pt_len = ck_ulong(pt.len()).unwrap_or(0);
-        let rv = func_list_3_0
-            .C_DecryptMessageBegin
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, ptr::null_mut(), 0, ptr::null_mut(), 0)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_DecryptMessageBegin,
+            session,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            0
+        );
         push_probe(rows, "C_DecryptMessageBegin", rv, CKR_OK);
-        let rv =
-            func_list_3_0
-                .C_DecryptMessageNext
-                .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                    c(
-                        session,
-                        ptr::null_mut(),
-                        0,
-                        ct.as_mut_ptr(),
-                        16,
-                        pt.as_mut_ptr(),
-                        &raw mut pt_len,
-                        0,
-                    )
-                });
+        let rv = probe_call!(
+            func_list_3_0.C_DecryptMessageNext,
+            session,
+            ptr::null_mut(),
+            0,
+            ct.as_mut_ptr(),
+            16,
+            pt.as_mut_ptr(),
+            &raw mut pt_len,
+            0,
+        );
         push_probe(rows, "C_DecryptMessageNext", rv, CKR_OK);
     }
     {
         let mut sig = [0_u8; 128];
         let mut sig_len = ck_ulong(sig.len()).unwrap_or(0);
-        let rv = func_list_3_0
-            .C_SignMessageBegin
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, ptr::null_mut(), 0)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_SignMessageBegin,
+            session,
+            ptr::null_mut(),
+            0
+        );
         push_probe(rows, "C_SignMessageBegin", rv, CKR_OK);
         let mut data = [0_u8; 16];
-        let rv = func_list_3_0
-            .C_SignMessageNext
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    ptr::null_mut(),
-                    0,
-                    data.as_mut_ptr(),
-                    16,
-                    sig.as_mut_ptr(),
-                    &raw mut sig_len,
-                )
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_SignMessageNext,
+            session,
+            ptr::null_mut(),
+            0,
+            data.as_mut_ptr(),
+            16,
+            sig.as_mut_ptr(),
+            &raw mut sig_len,
+        );
         push_probe(rows, "C_SignMessageNext", rv, CKR_OK);
     }
     {
@@ -2931,59 +2974,53 @@ fn shallow_probe_functions(
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
-        let rv = func_list_3_0
-            .C_MessageVerifyInit
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, &raw mut mechanism, object)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_MessageVerifyInit,
+            session,
+            &raw mut mechanism,
+            object
+        );
         push_probe(rows, "C_MessageVerifyInit", rv, CKR_OK);
     }
     {
         let mut data = [0_u8; 16];
         let mut sig = [0_u8; 128];
-        let rv = func_list_3_0
-            .C_VerifyMessage
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    ptr::null_mut(),
-                    0,
-                    data.as_mut_ptr(),
-                    16,
-                    sig.as_mut_ptr(),
-                    128,
-                )
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_VerifyMessage,
+            session,
+            ptr::null_mut(),
+            0,
+            data.as_mut_ptr(),
+            16,
+            sig.as_mut_ptr(),
+            128,
+        );
         push_probe(rows, "C_VerifyMessage", rv, CKR_OK);
     }
     {
-        let rv = func_list_3_0
-            .C_VerifyMessageBegin
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(session, ptr::null_mut(), 0)
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_VerifyMessageBegin,
+            session,
+            ptr::null_mut(),
+            0
+        );
         push_probe(rows, "C_VerifyMessageBegin", rv, CKR_OK);
         let mut data = [0_u8; 16];
         let mut sig = [0_u8; 128];
-        let rv = func_list_3_0
-            .C_VerifyMessageNext
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe {
-                c(
-                    session,
-                    ptr::null_mut(),
-                    0,
-                    data.as_mut_ptr(),
-                    16,
-                    sig.as_mut_ptr(),
-                    128,
-                )
-            });
+        let rv = probe_call!(
+            func_list_3_0.C_VerifyMessageNext,
+            session,
+            ptr::null_mut(),
+            0,
+            data.as_mut_ptr(),
+            16,
+            sig.as_mut_ptr(),
+            128,
+        );
         push_probe(rows, "C_VerifyMessageNext", rv, CKR_OK);
     }
     {
-        let rv = func_list_3_0
-            .C_MessageVerifyFinal
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        let rv = probe_call!(func_list_3_0.C_MessageVerifyFinal, session);
         push_probe(rows, "C_MessageVerifyFinal", rv, CKR_OK);
     }
 
@@ -2991,26 +3028,23 @@ fn shallow_probe_functions(
     // invalidate `session`/log the token out, so no other probe can safely
     // run afterward) -----------------------------------------------------------
     {
-        let rv = f
-            .C_Logout
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(session) });
+        let rv = probe_call!(f.C_Logout, session);
         push_probe(rows, "C_Logout", rv, CKR_OK);
     }
     {
-        let rv = f
-            .C_CloseAllSessions
-            .map_or(CKR_FUNCTION_NOT_SUPPORTED, |c| unsafe { c(slot_id) });
+        let rv = probe_call!(f.C_CloseAllSessions, slot_id);
         push_probe(rows, "C_CloseAllSessions", rv, CKR_OK);
     }
 }
 
-/// Prints one report section (either "PKCS#11 API function coverage" or "PKCS#11
-/// mechanism coverage"). Every row is always printed individually — the whole
-/// point of this report is to show exactly what is and is not supported, so
-/// nothing is collapsed or hidden.
-fn print_section(title: &str, results: &[CheckResult]) {
-    println!("{title}");
-    println!("{}", "=".repeat(title.chars().count()));
+/// Formats one report section (either "PKCS#11 API function coverage" or "PKCS#11
+/// mechanism coverage"), ending with its summary line. Every row is always listed
+/// individually — the whole point of this report is to show exactly what is and is
+/// not supported, so nothing is collapsed or hidden.
+fn format_section(title: &str, results: &[CheckResult]) -> String {
+    let mut lines = Vec::with_capacity(results.len() + 4);
+    lines.push(title.to_owned());
+    lines.push("=".repeat(title.chars().count()));
     let mut passed = 0;
     let mut failed = 0;
     let mut skipped = 0;
@@ -3039,15 +3073,18 @@ fn print_section(title: &str, results: &[CheckResult]) {
                 ("⬛".to_owned(), format!(" (excluded: {reason})"))
             }
         };
-        println!("{icon} {} — {}{detail}", result.name, result.detail);
+        lines.push(format!(
+            "{icon} {} — {}{detail}",
+            result.name, result.detail
+        ));
     }
-    println!();
-    println!(
+    lines.push(String::new());
+    lines.push(format!(
         "{passed} passed, {failed} failed, {skipped} skipped, {not_implemented} not \
          implemented, {excluded} excluded ({} total).",
         results.len()
-    );
-    println!();
+    ));
+    lines.join("\n")
 }
 
 #[cfg(test)]

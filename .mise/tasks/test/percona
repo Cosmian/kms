@@ -21,6 +21,8 @@ print_header "Running Percona tests (${VARIANT_NAME})"
 
 # CI sets KMS_PERCONA_URL; fall back to slot-aware port default
 export KMS_MYSQL_URL="${KMS_PERCONA_URL:-${KMS_MYSQL_URL:-mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT:-3307}/kms}}"
+# Probe the Percona port, not check_and_test_db's MySQL default (3306).
+: "${PERCONA_PORT:=${KMS_SLOT_PERCONA_PORT:-3307}}"
 
 check_and_test_db "Percona" "mysql" "PERCONA_HOST" "PERCONA_PORT"
 run_db_softhsm2_tests "mysql_softhsm2"

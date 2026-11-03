@@ -32,19 +32,21 @@ Use the helpers in `ui/tests/e2e/helpers.ts` to interact with portal-rendered dr
 
 ```tsx
 import { message, Alert } from 'antd'
+import { useTranslation } from 'react-i18next'
 
 // For transient feedback (toast)
+const { t } = useTranslation('actions')
 const [messageApi, contextHolder] = message.useMessage()
 
 const handleSubmit = async () => {
   try {
     const result = await callKmsOperation(/* ... */)
-    messageApi.success('Key created successfully')
+    messageApi.success(t('<feature>.success'))
     // Store the UID for display
     setCreatedKeyUid(result.uniqueIdentifier)
   } catch (error) {
     // Show user-friendly error — never expose internal server details
-    const userMessage = parseKmsError(error) ?? 'Operation failed. Check server logs.'
+    const userMessage = parseKmsError(error) ?? t('<feature>.error')
     messageApi.error(userMessage)
   }
 }
@@ -69,6 +71,8 @@ const handleSubmit = async () => {
   />
 )}
 ```
+
+All user-facing strings come from `t()` — see `i18n.instructions.md`.
 
 ## AI-Assisted Development Resources
 

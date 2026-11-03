@@ -39,6 +39,7 @@ pub(crate) async fn mac(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "POST /v1/crypto/mac kid={}", body.kid);
+    super::audit(&req, Some(&body.kid));
 
     let data_bytes = b64_decode("data", &body.data)?;
     let kmip_params = jose_to_kmip_params(body.alg, None)?;

@@ -164,7 +164,7 @@ fn test_parse_encrypt_ttlv_response() {
 
 #[wasm_bindgen_test]
 fn test_export_ttlv_request() {
-    let r = w::export_ttlv_request("kid", false, "JsonTtlv", None, None, None);
+    let r = w::export_ttlv_request("kid", false, "JsonTtlv", None, None);
     assert!(r.is_ok() || r.is_err());
 }
 

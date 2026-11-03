@@ -86,6 +86,20 @@ impl KmipBigInt {
         }
     }
 
+    /// Length of [`Self::to_signed_bytes_be`], computed without allocating.
+    ///
+    /// Mirrors `num_bigint_dig::BigInt::to_signed_bytes_be`: the magnitude bytes
+    /// (at least one), plus a sign byte when the top magnitude bit is set, except
+    /// for `-2^(8k-1)`, which fits in `k` bytes; then padded to a multiple of eight.
+    #[must_use]
+    pub fn encoded_len(&self) -> usize {
+        let bits = self.0.bits();
+        let negative_top_power_of_two =
+            self.0.sign() == Sign::Minus && self.0.trailing_zeros().is_some_and(|t| t + 1 == bits);
+        let sign_byte = bits > 0 && bits.is_multiple_of(8) && !negative_top_power_of_two;
+        (bits.div_ceil(8).max(1) + usize::from(sign_byte)).next_multiple_of(8)
+    }
+
     /// Creates a new `KmipBigInt` from complement notation raw bytes encoded in big endian.
     #[must_use]
     pub fn from_signed_bytes_be(bytes: &[u8]) -> Self {
@@ -207,6 +221,22 @@ mod tests {
 
     use crate::ttlv::kmip_big_int::KmipBigInt;
 
+    #[test]
+    fn encoded_len_matches_encoding() {
+        let two = BigInt::from(2);
+        let mut values: Vec<BigInt> = (-70_000..70_000).map(BigInt::from).collect();
+        for k in 0_u32..200 {
+            let p: BigInt = two.clone().pow(k);
+            for v in [&p - 1, p.clone(), &p + 1] {
+                values.push(-v.clone());
+                values.push(v);
+            }
+        }
+        for v in values {
+            let b = KmipBigInt::from(v);
+            assert_eq!(b.encoded_len(), b.to_signed_bytes_be().len(), "{b:?}");
+        }
+    }
     #[test]
     fn test_kmip_bib_int() {
         let values = [

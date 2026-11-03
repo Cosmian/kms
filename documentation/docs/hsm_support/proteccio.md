@@ -205,9 +205,10 @@ The `nethsm` client library links only against glibc (`libc.so.6`, `libdl.so.2`;
     non-FIPS image (`ghcr.io/cosmian/kms`) does not need `command`.
 
 !!! note
-    Validated on minikube against a live Proteccio (secure channel enabled) with the values below,
-    with the FIPS image (with `command`) and the non-FIPS image (without): HSM key creation, AES-GCM
-    encryption and decryption through the KMS pod.
+    Validated on minikube against a live Proteccio (secure channel enabled) with the values below: HSM key creation, AES-CBC encryption and decryption with the FIPS image (with `command`), and AES-GCM encryption and decryption with the non-FIPS image (without `command`).
+
+!!! warning "FIPS AES-GCM"
+    The tested Proteccio client does not return an HSM-generated GCM IV. The FIPS image rejects AES-GCM encryption rather than using a caller-generated IV; the Kubernetes test verifies this rejection. Its AES-CBC round trip checks deployment connectivity only, not authenticated application encryption.
 
 ### 1. Proteccio client image
 

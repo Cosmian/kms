@@ -94,8 +94,10 @@ Create a file `CHANGELOG/<your-branch-name-with-slashes-replaced-by-underscores>
 your change. For example, for branch `fix/my-bug` create `CHANGELOG/fix_my-bug.md`.
 
 Use one of these section headers: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`,
-`Security`. Group related entries under a sub-feature or component if applicable. See existing files in
-[CHANGELOG/](CHANGELOG/) for examples.
+`Security`. Group related entries under a sub-feature or component if applicable. The folder is emptied at each release
+(maintainers run `/kms-changelog consolidate <version>`), so for examples see the entry format in
+[`.github/skills/kms-changelog/SKILL.md`](.github/skills/kms-changelog/SKILL.md) or the released entries in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing to the UI
 
@@ -158,6 +160,11 @@ For React/TypeScript/WASM conventions, see
   (`cargo vet certify`). The `cargo-vet` CI job blocks the merge otherwise. Existing exemptions for build-time code
   (`-sys`, proc-macro, `build.rs` crates) are tagged `priority: build-time code` in `supply-chain/config.toml` and are
   the audit backlog.
+  Dependabot opens **security** PRs only for Cargo (version-update PRs are disabled in `.github/dependabot.yml`):
+  it cannot edit `supply-chain/`, so a maintainer must run `cargo vet check` (without `--locked`: it fetches imported
+  Mozilla/Google/… audits into `supply-chain/imports.lock`, which may already cover the bumped version), then add an
+  exemption for what is still reported (`cargo vet suggest` lists it) on the PR branch before merging. Routine bumps
+  are done by hand (`cargo update -p <crate> --precise <version>`).
 - **Python test dependencies** — edit the human-authored `.in` file next to the requirements (for example
   `.mise/scripts/test/requirements-jose.in`), then regenerate the hash-pinned lockfile with
   `pip-compile --generate-hashes --output-file=<name>.txt <name>.in` and commit both. Never hand-edit the `.txt`;

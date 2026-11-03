@@ -7,8 +7,8 @@ description: 'Classify Rust function parameters and the structs behind them to c
 
 Goal: make invalid or incomplete call states hard to represent — not merely shorten signatures.
 Companion to the "Refactor" step of the lint-suppression tree in
-[`rust.instructions.md`](../../instructions/rust.instructions.md): apply it before reaching for
-`#[allow(clippy::too_many_arguments)]`.
+[`rust.instructions.md`](../../instructions/rust.instructions.md): apply it instead of adding
+`#[allow(clippy::too_many_arguments)]` (forbidden on new code).
 
 ## Step 1 — Classify every parameter
 
@@ -58,9 +58,8 @@ Try in order; stop at the first that fits:
 4. **Operation input struct** — group values that exist for one call only, e.g. `struct RevokeInput { cascade: bool, ids_to_skip: HashSet<String> }`, separate from durable entity state.
 5. **Extend an existing collaborator** — the service layer is `KMS` (`crate/server/src/core/...`) plus the `ObjectsDb` / `PermissionsDb` / `Hsm` traits (`rust-patterns` Pattern 4). Add a method there; never wrap `KMS` in a second service type.
 6. **Keep explicit parameters** — values are independent, used by one small function, or bundling would hide a dependency.
-   Precedent (`crate/server_database/src/core/mod.rs:117`): `Database::instantiate` keeps 9 explicit params behind
-   `#[allow(clippy::too_many_arguments)]` with an inline reason (cache config params are additive; a builder would
-   over-engineer). Justify the same way — one line, inline.
+   Precedent (`crate/server_database/src/core/mod.rs:117`): `Database::instantiate` keeps 9 explicit params behind a
+   legacy `#[allow(clippy::too_many_arguments)]`. Do not copy it: on new code introduce a parameter struct (this skill's remedy) instead of adding the `#[allow]`.
 
 ## Before / after (illustrative)
 
@@ -84,4 +83,4 @@ fn inner(req: &Request) -> KResult<()> { /* req.tenant_id always present */ }
 - Add a field to a `crate/kmip` wire struct for internal bookkeeping — KMIP structs are spec-bound.
 - Turn a required value into `Option<T>` to avoid updating a constructor.
 - Mass-refactor the `kms`/`user` pair across `core/operations/*.rs` into a new wrapper struct — that spread is already deliberate (Step 3.5); only touch it where a concrete defect (Step 2) drives the change.
-- Suppress `clippy::too_many_arguments` with a bare `#[allow]`/`#[expect]` and no inline reason on new code — forbidden per `rust.instructions.md`.
+- Add `#[allow(clippy::too_many_arguments)]` / `#[expect]` on new code — forbidden per `rust.instructions.md`.

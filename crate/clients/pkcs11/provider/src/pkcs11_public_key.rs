@@ -39,7 +39,7 @@ impl Pkcs11PublicKey {
         // For EC keys, the algorithm OID in SPKI is id-ecPublicKey (1.2.840.10045.2.1)
         // and the curve OID lives in the parameters.
         // For all other key types (RSA, EdDSA, X25519, …) the algorithm OID is the identity.
-        let algorithm = if spki.algorithm.oid.to_string() == "1.2.840.10045.2.1" {
+        let algorithm = if KeyAlgorithm::is_ec_public_key_oid(&spki.algorithm.oid) {
             let params = spki.algorithm.parameters.as_ref().ok_or_else(|| {
                 ModuleError::BadArguments("EC SPKI is missing curve OID in parameters".to_owned())
             })?;

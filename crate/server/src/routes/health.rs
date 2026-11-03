@@ -17,7 +17,7 @@ enum HealthStatus {
 #[derive(Serialize, Debug)]
 struct DependencyHealth {
     #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
+    name: Option<&'static str>,
     status: HealthStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
@@ -82,12 +82,12 @@ async fn health_dependencies(kms: &Arc<KMS>) -> DependencyHealth {
 
     match db_check {
         Ok(()) => DependencyHealth {
-            name: Some(db_name.to_owned()),
+            name: Some(db_name),
             status: HealthStatus::Up,
             message: None,
         },
         Err(e) => DependencyHealth {
-            name: Some(db_name.to_owned()),
+            name: Some(db_name),
             status: HealthStatus::Down,
             message: Some(e),
         },

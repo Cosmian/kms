@@ -37,6 +37,7 @@ use actix_web::{
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
 use client_ip::{extract_client_ip, extract_operation};
+pub(crate) use client_ip::{forwarded_for, resolve_client_ip};
 use cosmian_kms_access::audit::{
     AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
 };
@@ -138,10 +139,9 @@ where
             Some(s) => s.clone(),
         };
 
-        let operation = extract_operation(req.path());
+        let default_operation = extract_operation(req.path()).to_owned();
         let client_ip = extract_client_ip(&req, &self.trusted_proxies);
         let failure_mode = self.failure_mode.clone();
-
         let start = Instant::now();
         let timestamp = audit_now();
         let svc = self.service.clone();
@@ -172,23 +172,22 @@ where
             // Batch path: fan out one draft per BatchItem, all sharing `req_ctx`.
             let batch_drafts: Option<Vec<AuditEventDraft>> = res
                 .request()
-                .extensions()
-                .get::<KmipBatchOperations>()
+                .extensions_mut()
+                .remove::<KmipBatchOperations>()
                 .map(|batch_ops| {
                     batch_ops
                         .0
-                        .iter()
+                        .into_iter()
                         .map(|ctx| {
                             let item_result = ctx
                                 .result
-                                .clone()
                                 .unwrap_or_else(|| missing_batch_item_result(status));
                             AuditEventDraft::build(
                                 &req_ctx,
                                 OperationAuditContext {
-                                    operation: ctx.operation.clone(),
-                                    object_uid: ctx.object_uid.clone(),
-                                    algorithm: ctx.algorithm.clone(),
+                                    operation: ctx.operation,
+                                    object_uid: ctx.object_uid,
+                                    algorithm: ctx.algorithm,
                                 },
                                 item_result,
                             )
@@ -211,23 +210,15 @@ where
             }
 
             // Single-op path
-            let final_operation = res
-                .request()
-                .extensions()
-                .get::<KmipOperationName>()
-                .map_or(operation, |k| k.0.clone());
-
-            let object_uid = res
-                .request()
-                .extensions()
-                .get::<KmipObjectUid>()
-                .map(|k| k.0.clone());
-
-            let algorithm = res
-                .request()
-                .extensions()
-                .get::<KmipAlgorithm>()
-                .map(|k| k.0.clone());
+            let (final_operation, object_uid, algorithm) = {
+                let mut ext = res.request().extensions_mut();
+                (
+                    ext.remove::<KmipOperationName>()
+                        .map_or(default_operation, |k| k.0),
+                    ext.remove::<KmipObjectUid>().map(|k| k.0),
+                    ext.remove::<KmipAlgorithm>().map(|k| k.0),
+                )
+            };
 
             let op_ctx = OperationAuditContext {
                 operation: final_operation,

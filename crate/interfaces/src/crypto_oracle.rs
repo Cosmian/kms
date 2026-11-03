@@ -65,6 +65,10 @@ pub struct MacKeyMetadata {
 pub enum CryptoAlgorithm {
     AesCbc,
     AesGcm,
+    /// NIST SP 800-38F KW (RFC 3394)
+    AesKeyWrap,
+    /// NIST SP 800-38F KWP (RFC 5649)
+    AesKeyWrapPad,
     RsaPkcsV15,
     RsaOaepSha256,
     RsaOaepSha1,
@@ -82,6 +86,8 @@ impl CryptoAlgorithm {
                         |block_cipher_mode| match block_cipher_mode {
                             BlockCipherMode::CBC => Ok(Some(Self::AesCbc)),
                             BlockCipherMode::GCM => Ok(Some(Self::AesGcm)),
+                            BlockCipherMode::NISTKeyWrap => Ok(Some(Self::AesKeyWrap)),
+                            BlockCipherMode::AESKeyWrapPadding => Ok(Some(Self::AesKeyWrapPad)),
                             bcm => Err(InterfaceError::Default(format!(
                                 "Block cipher mode: {bcm:?} not supported for AES",
                             ))),
@@ -105,6 +111,40 @@ impl CryptoAlgorithm {
                     "Cryptographic algorithm: {x:?} not supported",
                 ))),
             })
+    }
+
+    /// KMIP cryptographic parameters identifying this algorithm (inverse of [`Self::from_kmip`]).
+    #[must_use]
+    pub fn to_kmip(&self) -> CryptographicParameters {
+        let aes = |mode| CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(mode),
+            ..Default::default()
+        };
+        let rsa = |padding, hashing| CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(padding),
+            hashing_algorithm: hashing,
+            ..Default::default()
+        };
+        match self {
+            Self::AesCbc => aes(BlockCipherMode::CBC),
+            Self::AesGcm => aes(BlockCipherMode::GCM),
+            Self::AesKeyWrap => aes(BlockCipherMode::NISTKeyWrap),
+            Self::AesKeyWrapPad => aes(BlockCipherMode::AESKeyWrapPadding),
+            Self::RsaPkcsV15 => rsa(PaddingMethod::PKCS1v15, None),
+            Self::RsaOaepSha256 => rsa(PaddingMethod::OAEP, Some(HashingAlgorithm::SHA256)),
+            Self::RsaOaepSha1 => rsa(PaddingMethod::OAEP, Some(HashingAlgorithm::SHA1)),
+        }
+    }
+
+    /// Whether this is an RSA encryption algorithm.
+    #[must_use]
+    pub const fn is_rsa(&self) -> bool {
+        matches!(
+            self,
+            Self::RsaPkcsV15 | Self::RsaOaepSha256 | Self::RsaOaepSha1
+        )
     }
 
     /// Selects a default AES algorithm from the provided list of supported algorithms.
@@ -272,30 +312,11 @@ impl SigningAlgorithm {
             };
         }
 
-        // 2. cryptographic_algorithm alone (EdDSA — KMIP has no DigitalSignatureAlgorithm
-        // variant for Ed25519/Ed448; the algorithm is carried directly by
-        // CryptographicAlgorithm, and `EdDSA` never takes a separate hashing_algorithm or
-        // padding_method). Non-FIPS: mirrors the software `EdDSA` signing gating (issue #1157).
-        #[cfg(feature = "non-fips")]
+        // 2. cryptographic_algorithm alone (EdDSA)
+        if let Some(eddsa) =
+            Self::eddsa_from_algorithm(params.cryptographic_algorithm, input_is_digest)
         {
-            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed25519) {
-                if input_is_digest {
-                    return Err(InterfaceError::InvalidRequest(
-                        "Ed25519 does not support KMIP digested_data signing via CKM_EDDSA"
-                            .to_owned(),
-                    ));
-                }
-                return Ok(Self::Ed25519);
-            }
-            if params.cryptographic_algorithm == Some(CryptographicAlgorithm::Ed448) {
-                if input_is_digest {
-                    return Err(InterfaceError::InvalidRequest(
-                        "Ed448 does not support KMIP digested_data signing via CKM_EDDSA"
-                            .to_owned(),
-                    ));
-                }
-                return Ok(Self::Ed448);
-            }
+            return eddsa;
         }
 
         // Same up-front key-family guard as for an explicit `digital_signature_algorithm`
@@ -377,6 +398,38 @@ impl SigningAlgorithm {
         }
 
         Self::default_for_key(key_type, curve, input_is_digest, input_len)
+    }
+
+    /// `EdDSA` is selected by `cryptographic_algorithm` alone: KMIP has no
+    /// `DigitalSignatureAlgorithm` variant for Ed25519/Ed448, and `EdDSA` never takes a separate
+    /// hashing algorithm or padding method. Non-FIPS: mirrors the software `EdDSA` signing
+    /// gating (issue #1157).
+    #[cfg(feature = "non-fips")]
+    fn eddsa_from_algorithm(
+        algorithm: Option<CryptographicAlgorithm>,
+        input_is_digest: bool,
+    ) -> Option<Result<Self, InterfaceError>> {
+        let (name, eddsa) = match algorithm? {
+            CryptographicAlgorithm::Ed25519 => ("Ed25519", Self::Ed25519),
+            CryptographicAlgorithm::Ed448 => ("Ed448", Self::Ed448),
+            _ => return None,
+        };
+        Some(if input_is_digest {
+            Err(InterfaceError::InvalidRequest(format!(
+                "{name} does not support KMIP digested_data signing via CKM_EDDSA"
+            )))
+        } else {
+            Ok(eddsa)
+        })
+    }
+
+    /// `EdDSA` HSM signing is not available in FIPS builds.
+    #[cfg(not(feature = "non-fips"))]
+    const fn eddsa_from_algorithm(
+        _algorithm: Option<CryptographicAlgorithm>,
+        _input_is_digest: bool,
+    ) -> Option<Result<Self, InterfaceError>> {
+        None
     }
 
     fn default_for_key(
@@ -632,6 +685,8 @@ pub struct EncryptedContent {
     pub ciphertext: Vec<u8>,
     pub iv: Option<Vec<u8>>,
     pub tag: Option<Vec<u8>>,
+    /// Algorithm the oracle actually used; set by `CryptoOracle` implementations
+    pub cryptographic_algorithm: Option<CryptoAlgorithm>,
 }
 
 #[async_trait]
@@ -669,6 +724,14 @@ pub trait CryptoOracle: Send + Sync {
         cryptographic_algorithm: Option<CryptoAlgorithm>,
         authenticated_encryption_additional_data: Option<&[u8]>,
     ) -> InterfaceResult<Zeroizing<Vec<u8>>>;
+
+    /// Allow or forbid AES-KW/KWP through `C_WrapKey`/`C_UnwrapKey` on key `uid`
+    /// (`CKA_WRAP`/`CKA_UNWRAP` on HSMs).
+    async fn set_key_wrap(&self, _uid: &str, _enabled: bool) -> InterfaceResult<()> {
+        Err(InterfaceError::Default(
+            "setting key wrap attributes is not supported".to_owned(),
+        ))
+    }
 
     /// Get the key type
     /// On HSMs, this should be a single call to the HSM.
@@ -759,6 +822,22 @@ pub trait CryptoOracle: Send + Sync {
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn crypto_algorithm_to_kmip_round_trip() {
+        for a in [
+            CryptoAlgorithm::AesCbc,
+            CryptoAlgorithm::AesGcm,
+            CryptoAlgorithm::AesKeyWrap,
+            CryptoAlgorithm::AesKeyWrapPad,
+            CryptoAlgorithm::RsaPkcsV15,
+            CryptoAlgorithm::RsaOaepSha256,
+            CryptoAlgorithm::RsaOaepSha1,
+        ] {
+            let round_trip = CryptoAlgorithm::from_kmip(&a.to_kmip()).expect("from_kmip");
+            assert_eq!(round_trip, Some(a));
+        }
+    }
 
     fn params_with(
         digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,

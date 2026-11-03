@@ -237,14 +237,11 @@ pub(crate) async fn get_attributes(
     if req_attributes.is_empty() {
         // Standard attributes: include VendorExtension so vendor-defined attributes are returned by default.
         // Exclude only Tag::Tag to avoid injecting server-specific tagging unless explicitly requested.
-        let mut all_tags = Vec::new();
-        for tag in Tag::iter() {
-            if tag != Tag::Tag {
-                all_tags.push(tag);
-            }
-        }
-
-        req_attributes.extend(all_tags.iter().map(|t| AttributeReference::Standard(*t)));
+        req_attributes.extend(
+            Tag::iter()
+                .filter(|&t| t != Tag::Tag)
+                .map(AttributeReference::Standard),
+        );
     }
 
     // request selected attributes

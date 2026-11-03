@@ -1145,7 +1145,7 @@ pub fn create_secret_data_ttlv_request(
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+/// Builds the TTLV `Create` request for an `OpenPGP` key (`Ed25519` or `RSA`).
 #[wasm_bindgen]
 pub fn create_pgp_key_ttlv_request(
     key_id: Option<String>,
@@ -1179,7 +1179,7 @@ pub fn create_pgp_key_ttlv_request(
         user_id.as_deref(),
         PgpKeyCreateCommon {
             vendor_id,
-            tags: &tags,
+            tags,
             sensitive,
             wrap_key_id: wrap_key_id.as_ref(),
         },
@@ -1643,11 +1643,9 @@ pub fn export_ttlv_request(
     key_format: &str,
     wrap_key_id: Option<String>,
     wrapping_algorithm: Option<String>,
-    authentication_data: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let wrap_key_id = none_if_empty(wrap_key_id);
     let wrapping_algorithm = none_if_empty(wrapping_algorithm);
-    let authentication_data = none_if_empty(authentication_data);
     let key_format = ExportKeyFormat::from_str(key_format)
         .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
     let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
@@ -1665,7 +1663,6 @@ pub fn export_ttlv_request(
         key_format_type,
         encode_to_ttlv,
         wrapping_cryptographic_parameters,
-        authentication_data,
     );
     to_wasm_ttlv(&request)
 }
@@ -1681,7 +1678,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
         ExportKeyFormat::JsonTtlv => {
             let kmip_object = response.object;
             let mut ttlv = to_ttlv(&kmip_object).map_err(|e| JsValue::from(e.to_string()))?;
-            ttlv.tag = tag_from_object(&kmip_object);
+            ttlv.tag = tag_from_object(&kmip_object).into();
             let bytes = serde_json::to_vec::<TTLV>(&ttlv)
                 .map_err(|e| JsValue::from_str(&format!("{e}")))?;
             JsValue::from(Uint8Array::from(bytes.as_slice()))
@@ -2096,7 +2093,6 @@ pub fn export_certificate_ttlv_request(
         Some(key_format_type),
         false,
         None,
-        None,
     );
     to_wasm_ttlv(&request)
 }
@@ -2120,7 +2116,7 @@ pub fn parse_export_certificate_ttlv_response(
             let data = match output_format {
                 CertificateExportFormat::JsonTtlv => {
                     let mut ttlv = to_ttlv(&object).map_err(|e| JsValue::from(e.to_string()))?;
-                    ttlv.tag = tag_from_object(&object);
+                    ttlv.tag = tag_from_object(&object).into();
                     let bytes = serde_json::to_vec::<TTLV>(&ttlv)
                         .map_err(|e| JsValue::from_str(&format!("{e}")))?;
                     JsValue::from(Uint8Array::from(bytes.as_slice()))

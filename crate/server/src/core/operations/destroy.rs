@@ -34,16 +34,16 @@ use crate::{
 /// Destroy a KMIP Object
 pub(crate) async fn destroy_operation(
     kms: &KMS,
-    request: Destroy,
+    mut request: Destroy,
     user: &UserId,
 ) -> KResult<DestroyResponse> {
     trace!("{request}");
     // there must be an identifier
     let unique_identifier = request
         .unique_identifier
-        .as_ref()
+        .take()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let object_handle = ObjectHandle::try_from(unique_identifier)?;
+    let object_handle = ObjectHandle::try_from(&unique_identifier)?;
 
     // Issue #763: for HSM keys, validate the key type via a PKCS#11 roundtrip
     // before committing to destroy. This prevents accidentally destroying an AES
@@ -58,7 +58,7 @@ pub(crate) async fn destroy_operation(
     }
 
     recursively_destroy_object(
-        unique_identifier,
+        &unique_identifier,
         request.remove,
         request.cascade,
         kms,
@@ -67,9 +67,7 @@ pub(crate) async fn destroy_operation(
     )
     .await?;
 
-    Ok(DestroyResponse {
-        unique_identifier: unique_identifier.clone(),
-    })
+    Ok(DestroyResponse { unique_identifier })
 }
 
 /// This function is called recursively to destroy all the objects

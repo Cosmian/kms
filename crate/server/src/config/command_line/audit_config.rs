@@ -156,11 +156,11 @@ pub struct AuditConfig {
 
     /// Only set this if the KMS sits behind a reverse proxy or load balancer.
     ///
-    /// When set, the audit middleware trusts the `X-Forwarded-For` header only if
-    /// the direct TCP peer is one of the proxy addresses listed here, and records
-    /// the header's value as `client_ip` instead. This must be scoped to your
-    /// proxy's own address(es) — trusting it from any peer lets a remote attacker
-    /// forge `client_ip` in the audit trail.
+    /// When set, `X-Forwarded-For` is trusted only if the direct TCP peer is one of the
+    /// proxy addresses listed here; the client address is then the rightmost entry that is
+    /// not itself a listed proxy. It is recorded as the audit `client_ip` and keys the EST/SCEP
+    /// failed-authentication lockout. This must be scoped to your proxy's own address(es) —
+    /// trusting it from any peer lets a remote attacker forge `client_ip` in the audit trail.
     ///
     /// Format: comma-separated IP addresses or CIDR blocks, e.g.
     /// `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)

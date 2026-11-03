@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
@@ -27,90 +29,34 @@ pub(crate) async fn delete_attribute(
     // there must be an identifier
     let object_handle = from_request(request.unique_identifier.as_ref(), "Delete Attribute")?;
 
-    let mut owm = Box::pin(retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
         KmipOperation::DeleteAttribute,
         kms,
         user,
     ))
     .await?;
-    trace!("Retrieved object for: {}", owm.object());
+    let (id, mut object, mut attributes) = Arc::unwrap_or_clone(owm).into_parts();
+    trace!("Retrieved object for: {object}");
 
-    let mut attributes = owm.attributes().to_owned();
     // Snapshot the attribute set so the response can echo the attribute that was
     // actually removed: KMIP 1.4 §4.16 Table 205 requires the deleted `Attribute`
     // in the response payload (KMIP 2.1 §6.1.13 Table 203 requires only the UID).
     let attributes_before = attributes.clone();
-    // The attribute actually removed, echoed back in the response.
     let mut removed_attribute: Option<Attribute> = None;
 
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
         check_read_only(attribute.tag(), KmipOperation::DeleteAttribute)?;
-        match_delete_attribute! {
-            attribute, attributes,
+        with_common_simple_attributes! {
+            match_delete_attribute! { attribute, attributes, }
             simple {
                 ActivationDate => activation_date,
-                AlternativeName => alternative_name,
-                ApplicationSpecificInformation => application_specific_information,
-                ArchiveDate => archive_date,
-                AttributeIndex => attribute_index,
-                CertificateAttributes => certificate_attributes,
-                CertificateLength => certificate_length,
-                CertificateType => certificate_type,
-                Comment => comment,
-                CompromiseDate => compromise_date,
-                CompromiseOccurrenceDate => compromise_occurrence_date,
-                ContactInformation => contact_information,
-                Critical => critical,
-                CryptographicAlgorithm => cryptographic_algorithm,
-                CryptographicDomainParameters => cryptographic_domain_parameters,
-                CryptographicParameters => cryptographic_parameters,
-                CryptographicUsageMask => cryptographic_usage_mask,
-                DeactivationDate => deactivation_date,
                 Description => description,
-                DestroyDate => destroy_date,
-                Digest => digest,
-                DigitalSignatureAlgorithm => digital_signature_algorithm,
                 Extractable => extractable,
-                Fresh => fresh,
-                InitialDate => initial_date,
-                KeyFormatType => key_format_type,
-                KeyValueLocation => key_value_location,
-                KeyValuePresent => key_value_present,
-                LastChangeDate => last_change_date,
-                LeaseTime => lease_time,
                 NeverExtractable => never_extractable,
-                NistKeyType => nist_key_type,
-                ObjectGroup => object_group,
-                ObjectGroupMember => object_group_member,
-                ObjectType => object_type,
-                OpaqueDataType => opaque_data_type,
-                OriginalCreationDate => original_creation_date,
-                Pkcs12FriendlyName => pkcs_12_friendly_name,
-                ProcessStartDate => process_start_date,
-                ProtectStopDate => protect_stop_date,
-                ProtectionLevel => protection_level,
-                ProtectionPeriod => protection_period,
-                ProtectionStorageMasks => protection_storage_masks,
-                QuantumSafe => quantum_safe,
-                RandomNumberGenerator => random_number_generator,
-                RevocationReason => revocation_reason,
-                RotateAutomatic => rotate_automatic,
-                RotateDate => rotate_date,
-                RotateGeneration => rotate_generation,
-                RotateInterval => rotate_interval,
-                RotateLatest => rotate_latest,
-                RotateName => rotate_name,
-                RotateOffset => rotate_offset,
                 Sensitive => sensitive,
-                ShortUniqueIdentifier => short_unique_identifier,
                 State => state,
-                UniqueIdentifier => unique_identifier,
-                UsageLimits => usage_limits,
-                X509CertificateIdentifier => x_509_certificate_identifier,
-                X509CertificateIssuer => x_509_certificate_issuer,
-                X509CertificateSubject => x_509_certificate_subject,
             }
             custom {
                 Attribute::AlwaysSensitive(_) | Attribute::CryptographicLength(_) => {
@@ -121,9 +67,9 @@ pub(crate) async fn delete_attribute(
                     attributes.remove_link(requested_link.link_type);
                 }
                 Attribute::Name(name) => {
-                    attributes.name = attributes
-                        .name
-                        .map(|v| v.into_iter().filter(|n| n != &name).collect());
+                    if let Some(names) = &mut attributes.name {
+                        names.retain(|n| n != &name);
+                    }
                 }
                 Attribute::VendorAttribute(vendor_attribute) => {
                     attributes.remove_vendor_attribute(
@@ -134,7 +80,6 @@ pub(crate) async fn delete_attribute(
             }
         }
     }
-
     if let Some(attribute_references) = request.attribute_references {
         for attribute_reference in attribute_references {
             match attribute_reference {
@@ -232,18 +177,18 @@ pub(crate) async fn delete_attribute(
         }
     }
 
-    let tags = kms.database.retrieve_tags(owm.id()).await?;
+    let tags = kms.database.retrieve_tags(&id).await?;
 
-    if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
-        *object_attributes = attributes.clone();
+    if let Ok(object_attributes) = object.attributes_mut() {
+        object_attributes.clone_from(&attributes);
     }
 
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
+        .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
 
     Ok(DeleteAttributeResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(id),
         echoed_attribute: removed_attribute
             .or_else(|| deleted_attribute(&attributes_before, &attributes)),
     })
@@ -255,6 +200,7 @@ pub(crate) async fn delete_attribute(
 /// deleted attribute. Diffing the two attribute sets keeps this generic: no
 /// per-tag bookkeeping is needed and it stays correct as new attributes are added.
 fn deleted_attribute(before: &Attributes, after: &Attributes) -> Option<Attribute> {
+    // Only convert before into attributes list, check after field-by-field or contains
     let after_attributes: Vec<Attribute> = after.clone().into();
     Vec::<Attribute>::from(before.clone())
         .into_iter()

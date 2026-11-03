@@ -1,11 +1,6 @@
-#[allow(
-    clippy::disallowed_types,
-    reason = "CsRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
-)]
-use cosmian_crypto_core::CsRng;
 use cosmian_crypto_core::{
     Ecies, EciesSalsaSealBox, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
-    X25519PublicKey, reexport::rand_core::SeedableRng,
+    X25519PublicKey,
 };
 use cosmian_logger::trace;
 use openssl::pkey::{Id, PKey, Private, Public};
@@ -28,19 +23,13 @@ use crate::{
 ///
 /// `EciesSalsaSealBox::encrypt` requires an infallible `CryptoRngCore`, which `KmsRng` must not
 /// implement. The ephemeral-key and nonce stream is therefore drawn from a `CsRng` (`ChaCha12`)
-/// seeded with 256 bits taken from `rng`, so that all entropy is rooted in `KmsRng`.
+/// obtained from `KmsRng::seeded_csrng`, so that all entropy is rooted in `KmsRng`.
 pub(super) fn sealbox_encrypt(
     rng: &KmsRng,
     public_key: &PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, CryptoError> {
-    let mut seed = Zeroizing::new([0_u8; 32]);
-    rng.fill_bytes(&mut seed[..])?;
-    #[allow(
-        clippy::disallowed_types,
-        reason = "CsRng is only a seed-stretching PRG here; its 256-bit seed comes from KmsRng"
-    )]
-    let mut csrng = CsRng::from_seed(*seed);
+    let mut csrng = rng.seeded_csrng()?;
     let ciphertext = match public_key.id() {
         Id::ED25519 => {
             trace!("Ed25519");

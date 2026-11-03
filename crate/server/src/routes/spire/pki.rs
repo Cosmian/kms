@@ -319,7 +319,7 @@ pub(crate) async fn sign_intermediate(
     // Retrieve the signed certificate
     let cert_owm = kms
         .database
-        .retrieve_object(&cert_uid)
+        .retrieve_object_arc(&cert_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| {
@@ -371,7 +371,7 @@ pub(crate) async fn sign_intermediate(
 async fn authorize_ca_use(kms: &KMS, ca_sk_uid: &str, user: &UserId) -> SpireResult<()> {
     let ca_sk_owm = kms
         .database
-        .retrieve_object(ca_sk_uid)
+        .retrieve_object_arc(ca_sk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
@@ -389,19 +389,15 @@ async fn authorize_ca_use(kms: &KMS, ca_sk_uid: &str, user: &UserId) -> SpireRes
 
 /// Reject a CSR that requests its own `basicConstraints` extension.
 fn reject_csr_basic_constraints(csr_pem: &str) -> SpireResult<()> {
-    use x509_parser::{
-        pem::parse_x509_pem,
-        prelude::{FromDer, ParsedExtension, X509CertificationRequest},
-    };
+    use x509_parser::pem::parse_x509_pem;
+
+    use crate::core::operations::certify::template::csr_basic_constraints;
 
     let (_, pem) = parse_x509_pem(csr_pem.as_bytes())
         .map_err(|e| SpireApiError::BadRequest(format!("invalid CSR PEM: {e}")))?;
-    let (_, csr) = X509CertificationRequest::from_der(&pem.contents)
-        .map_err(|e| SpireApiError::BadRequest(format!("invalid CSR: {e}")))?;
-    let has_basic_constraints = csr.requested_extensions().is_some_and(|mut exts| {
-        exts.any(|ext| matches!(ext, ParsedExtension::BasicConstraints(_)))
-    });
-    if has_basic_constraints {
+    let basic_constraints = csr_basic_constraints(&pem.contents)
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
+    if basic_constraints.is_some() {
         return Err(SpireApiError::BadRequest(
             "CSR must not request basicConstraints; the server sets CA:TRUE, pathlen:0".to_owned(),
         ));
@@ -428,7 +424,7 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
     // Retrieve the CA private key to get the public key link
     let ca_sk_owm = kms
         .database
-        .retrieve_object(ca_sk_uid)
+        .retrieve_object_arc(ca_sk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
@@ -442,7 +438,7 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 
     let pk_owm = kms
         .database
-        .retrieve_object(&pk_uid)
+        .retrieve_object_arc(&pk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(no_ca_cert_error)?;
@@ -455,7 +451,7 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 
     let cert_owm = kms
         .database
-        .retrieve_object(&cert_uid)
+        .retrieve_object_arc(&cert_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(no_ca_cert_error)?;

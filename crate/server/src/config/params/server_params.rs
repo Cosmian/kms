@@ -2,7 +2,14 @@ use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, tim
 
 use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams,
+    reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+        kmip_2_1::{
+            kmip_objects::ObjectType,
+            kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        },
+    },
 };
 use cosmian_logger::{debug, warn};
 use ipnet::IpNet;
@@ -17,10 +24,14 @@ use crate::{
             proxy_params::ProxyParams,
         },
     },
+    core::operations::certify::template::CertTemplate,
     error::KmsError,
     result::{KResult, KResultHelper},
     routes::aws_xks::AwsXksParams,
 };
+
+/// Shortest accepted EST bootstrap password / SCEP challenge, in characters.
+const MIN_ENROLLMENT_SECRET_LEN: usize = 8;
 
 /// Resolved parameters for a single HSM instance, derived from either
 /// the CLI `--hsm-*` flags (single instance) or a TOML `[[hsm]]` entry.
@@ -140,6 +151,9 @@ pub struct ServerParams {
 
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
+
+    /// Wrapping parameters for `key_wrapping_key`; `None` = per-KEK default
+    pub key_wrapping_algorithm: Option<CryptographicParameters>,
 
     /// Specifies which KMIP object types should be automatically unwrapped when retrieved
     ///
@@ -319,6 +333,41 @@ pub struct ServerParams {
 
     /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
     pub ocsp_archive_cutoff_secs: u64,
+
+    // ── EST (RFC 7030) ────────────────────────────────────────────────────────────
+    /// Enable the EST endpoints under `/.well-known/est/`.
+    pub est_enabled: bool,
+
+    /// UID of the CA certificate that signs EST-enrolled certificates.
+    pub est_ca_uid: Option<String>,
+
+    /// Require TLS client-certificate authentication for `/simpleenroll`.
+    pub est_require_client_cert: bool,
+
+    /// HTTP Basic bootstrap username for `/simpleenroll`.
+    pub est_bootstrap_username: Option<String>,
+
+    /// HTTP Basic bootstrap password for `/simpleenroll`.
+    pub est_bootstrap_password: Option<String>,
+
+    /// Validated certificate template applied to EST enrollments.
+    pub est_template: Option<CertTemplate>,
+
+    // ── SCEP (RFC 8894) ───────────────────────────────────────────────────────────
+    /// Enable the SCEP endpoint at `/scep`.
+    pub scep_enabled: bool,
+
+    /// UID of the CA certificate that signs SCEP-enrolled certificates.
+    pub scep_ca_uid: Option<String>,
+
+    /// Shared challenge password for initial SCEP enrollments.
+    pub scep_challenge_password: Option<String>,
+
+    /// Accept `RenewalReq` without the challenge password.
+    pub scep_allow_renewal_without_challenge: bool,
+
+    /// Validated certificate template applied to SCEP enrollments.
+    pub scep_template: Option<CertTemplate>,
 }
 
 /// Resolved audit storage backend — one variant per backend, all values already
@@ -580,6 +629,118 @@ impl ServerParams {
         let audit_backend =
             Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
 
+        // EST / SCEP enrollment: resolve and validate the referenced certificate templates.
+        let resolve_template =
+            |cfg_key: &str, name: Option<&str>| -> KResult<Option<CertTemplate>> {
+                let Some(name) = name else {
+                    return Ok(None);
+                };
+                let mut template = conf.templates.get(name).cloned().ok_or_else(|| {
+                    KmsError::ServerError(format!(
+                        "{cfg_key} = \"{name}\" does not match any [templates.{name}] section"
+                    ))
+                })?;
+                name.clone_into(&mut template.name);
+                template
+                    .validate()
+                    .map_err(|e| KmsError::ServerError(format!("[templates.{name}]: {e}")))?;
+                Ok(Some(template))
+            };
+        let est_template = resolve_template("est_template", conf.est.est_template.as_deref())?;
+        let scep_template = resolve_template("scep_template", conf.scep.scep_template.as_deref())?;
+        // A shared enrollment secret is an online-guessable credential: refuse empty or very
+        // short ones (lockout and the optional rate limiter slow guessing down, they do not
+        // make a weak secret safe).
+        let is_weak = |secret: &Option<String>| {
+            secret
+                .as_deref()
+                .is_none_or(|s| s.trim().chars().count() < MIN_ENROLLMENT_SECRET_LEN)
+        };
+        let is_blank =
+            |secret: &Option<String>| secret.as_deref().is_none_or(|s| s.trim().is_empty());
+        if (conf.est.est_enabled || conf.scep.scep_enabled)
+            && conf.http.rate_limit_per_second.is_none()
+        {
+            warn!(
+                "SECURITY: EST/SCEP is enabled but rate_limit_per_second is not set. The \
+                 enrollment endpoints are reachable before authentication; set \
+                 rate_limit_per_second in the server configuration for production deployments \
+                 (failed authentications are also locked out per client address)."
+            );
+        }
+        if conf.est.est_enabled {
+            if conf.est.est_ca_uid.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_enabled = true requires est_ca_uid".to_owned(),
+                ));
+            }
+            if est_template.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_enabled = true requires est_template: a [templates.<name>] section that \
+                     sets subject_cn_regex (or allow_any_identity = true)"
+                        .to_owned(),
+                ));
+            }
+            if !conf.est.est_require_client_cert {
+                if is_blank(&conf.est.est_bootstrap_username)
+                    || is_weak(&conf.est.est_bootstrap_password)
+                {
+                    return Err(KmsError::ServerError(format!(
+                        "est_require_client_cert = false requires a non-empty \
+                         est_bootstrap_username and an est_bootstrap_password of at least \
+                         {MIN_ENROLLMENT_SECRET_LEN} characters"
+                    )));
+                }
+                if conf
+                    .est
+                    .est_bootstrap_username
+                    .as_deref()
+                    .is_some_and(|u| u.contains(':'))
+                {
+                    return Err(KmsError::ServerError(
+                        "est_bootstrap_username must not contain ':' (HTTP Basic)".to_owned(),
+                    ));
+                }
+                if !conf.tls.is_tls_enabled() {
+                    return Err(KmsError::ServerError(
+                        "est_require_client_cert = false (HTTP Basic bootstrap) requires TLS: the \
+                         credentials would travel in clear text (RFC 7030 §3.3)"
+                            .to_owned(),
+                    ));
+                }
+            } else if !conf.tls.is_tls_enabled() || conf.tls.clients_ca_cert_file.is_none() {
+                return Err(KmsError::ServerError(
+                    "est_require_client_cert = true requires TLS and clients_ca_cert_file"
+                        .to_owned(),
+                ));
+            }
+        }
+        if conf.scep.scep_enabled {
+            if conf.scep.scep_ca_uid.is_none() || is_weak(&conf.scep.scep_challenge_password) {
+                return Err(KmsError::ServerError(format!(
+                    "scep_enabled = true requires scep_ca_uid and a scep_challenge_password of \
+                     at least {MIN_ENROLLMENT_SECRET_LEN} characters"
+                )));
+            }
+            if scep_template.is_none() {
+                return Err(KmsError::ServerError(
+                    "scep_enabled = true requires scep_template: a [templates.<name>] section \
+                     that sets subject_cn_regex (or allow_any_identity = true)"
+                        .to_owned(),
+                ));
+            }
+            if !conf.tls.is_tls_enabled() {
+                // RFC 8894 does not require TLS (the CMS envelope protects the request) but
+                // GetCACert is then served without integrity protection, so a network attacker
+                // can substitute the CA, and the envelope is only AES-CBC without a MAC.
+                warn!(
+                    "SECURITY: SCEP is enabled without TLS. A network attacker can substitute \
+                     the CA certificate returned by GetCACert and observe or replay requests. \
+                     Enable TLS, or have devices verify the CA fingerprint out of band."
+                );
+            }
+        }
+
         let res = Self {
             identity_provider_configurations,
             jwt_svid_auth_enabled,
@@ -635,6 +796,10 @@ impl ServerParams {
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_instances,
+            key_wrapping_algorithm: parse_kek_wrapping_algorithm(
+                conf.key_encryption_key_wrapping_algorithm.as_deref(),
+                conf.key_encryption_key.is_some(),
+            )?,
             key_wrapping_key: conf.key_encryption_key,
             default_unwrap_types: parse_default_unwrap_types(conf.default_unwrap_type)?,
             otel_params: if conf.logging.otlp.is_some()
@@ -833,6 +998,17 @@ impl ServerParams {
             ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
             ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
             ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
+            est_enabled: conf.est.est_enabled,
+            est_ca_uid: conf.est.est_ca_uid,
+            est_require_client_cert: conf.est.est_require_client_cert,
+            est_bootstrap_username: conf.est.est_bootstrap_username,
+            est_bootstrap_password: conf.est.est_bootstrap_password,
+            est_template,
+            scep_enabled: conf.scep.scep_enabled,
+            scep_ca_uid: conf.scep.scep_ca_uid,
+            scep_challenge_password: conf.scep.scep_challenge_password,
+            scep_allow_renewal_without_challenge: conf.scep.scep_allow_renewal_without_challenge,
+            scep_template,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -859,6 +1035,22 @@ impl ServerParams {
                      Disable `force_default_username` or remove `crypto_officer_users`."
                         .to_owned(),
                 ));
+            }
+        }
+
+        // EST/SCEP issue certificates as the reserved enrollment service identity: no
+        // configured principal may share its name.
+        if res.est_enabled || res.scep_enabled {
+            let reserved = crate::routes::enrollment::ENROLLMENT_SERVICE_USER;
+            let is_reserved =
+                |name: &str| crate::middlewares::names_reserved_identity(name, reserved);
+            if is_reserved(&res.default_username)
+                || res.crypto_officer.users.iter().any(|u| is_reserved(u))
+            {
+                return Err(KmsError::ServerError(format!(
+                    "EST/SCEP is enabled: `default_username` and `crypto_officer_users` must not \
+                     use the reserved enrollment service identity `{reserved}`"
+                )));
             }
         }
 
@@ -973,6 +1165,42 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
             }
         })
         .transpose()
+}
+
+/// Parse `key_encryption_key_wrapping_algorithm` (TOML values bypass clap's `value_parser`).
+fn parse_kek_wrapping_algorithm(
+    value: Option<&str>,
+    has_kek: bool,
+) -> KResult<Option<CryptographicParameters>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if !has_kek {
+        return Err(KmsError::ServerError(
+            "key_encryption_key_wrapping_algorithm requires key_encryption_key".to_owned(),
+        ));
+    }
+    let aes = |mode| CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(mode),
+        ..Default::default()
+    };
+    Ok(Some(match value {
+        "aes-gcm" => aes(BlockCipherMode::GCM),
+        "aes-key-wrap" => aes(BlockCipherMode::NISTKeyWrap),
+        "aes-key-wrap-padding" => aes(BlockCipherMode::AESKeyWrapPadding),
+        "rsa-oaep" => CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        },
+        other => {
+            return Err(KmsError::ServerError(format!(
+                "invalid key_encryption_key_wrapping_algorithm: {other}"
+            )));
+        }
+    }))
 }
 
 /// `--jwt-svid-auth` is global: it makes EVERY `--jwt-auth-provider` issuer accept SPIFFE
@@ -1174,6 +1402,9 @@ impl fmt::Debug for ServerParams {
         if self.key_wrapping_key.is_some() {
             debug_struct.field("key_wrapping_key", &"[configured]");
         }
+        if let Some(a) = &self.key_wrapping_algorithm {
+            debug_struct.field("key_wrapping_algorithm", a);
+        }
 
         if let Some(ref proxy) = self.proxy_params {
             debug_struct.field("proxy_params", proxy);
@@ -1301,8 +1532,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        AuditBackendParams, ServerParams, ensure_svid_providers_have_audience,
-        normalized_pg_authority,
+        AuditBackendParams, BlockCipherMode, CryptographicAlgorithm, PaddingMethod, ServerParams,
+        ensure_svid_providers_have_audience, normalized_pg_authority, parse_kek_wrapping_algorithm,
     };
     use crate::{
         config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
@@ -1555,5 +1786,40 @@ mod tests {
             normalized_pg_authority("postgresql://u:p@host:5432/db_audit"),
             normalized_pg_authority("postgresql://u:p@host:5432/db_objects")
         );
+    }
+
+    #[test]
+    fn parse_kek_wrapping_algorithm_values() {
+        for (value, mode) in [
+            ("aes-gcm", BlockCipherMode::GCM),
+            ("aes-key-wrap", BlockCipherMode::NISTKeyWrap),
+            ("aes-key-wrap-padding", BlockCipherMode::AESKeyWrapPadding),
+        ] {
+            let p = parse_kek_wrapping_algorithm(Some(value), true)
+                .expect("a supported algorithm parses")
+                .expect("a configured algorithm yields parameters");
+            assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::AES));
+            assert_eq!(p.block_cipher_mode, Some(mode), "{value}");
+        }
+        let p = parse_kek_wrapping_algorithm(Some("rsa-oaep"), true)
+            .expect("rsa-oaep parses")
+            .expect("rsa-oaep yields parameters");
+        assert_eq!(p.cryptographic_algorithm, Some(CryptographicAlgorithm::RSA));
+        assert_eq!(p.padding_method, Some(PaddingMethod::OAEP));
+        assert!(
+            parse_kek_wrapping_algorithm(None, false)
+                .expect("an unset algorithm is valid")
+                .is_none()
+        );
+
+        let err = parse_kek_wrapping_algorithm(Some("aes-ctr"), true)
+            .expect_err("an unknown algorithm is rejected");
+        assert!(
+            err.to_string()
+                .contains("invalid key_encryption_key_wrapping_algorithm: aes-ctr")
+        );
+        let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false)
+            .expect_err("an algorithm without a KEK is rejected");
+        assert!(err.to_string().contains("requires key_encryption_key"));
     }
 }

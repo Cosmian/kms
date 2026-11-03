@@ -59,7 +59,7 @@ kms_build_server() {
     return 0
   fi
   require_cmd cargo "Cargo is required to build the KMS server."
-  cargo build -p cosmian_kms_server "${FEATURES_FLAG[@]}" "$@"
+  cargo build -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} "$@"
 }
 
 # Build the ckms CLI binary.
@@ -72,7 +72,7 @@ kms_build_cli() {
     return 0
   fi
   require_cmd cargo "Cargo is required to build the ckms CLI."
-  cargo build -p ckms "${FEATURES_FLAG[@]}" "$@"
+  cargo build -p ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} "$@"
 }
 
 # Build server + CLI + (optionally) PKCS#11 library.
@@ -90,5 +90,5 @@ kms_build_all() {
   if [ "${VARIANT:-fips}" = "non-fips" ]; then
     packages+=(-p cosmian_pkcs11)
   fi
-  cargo build "${packages[@]}" "${FEATURES_FLAG[@]}" "$@"
+  cargo build "${packages[@]}" ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} "$@"
 }

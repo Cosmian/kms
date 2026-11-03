@@ -1,20 +1,21 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            KmipOperation,
-            kmip_attributes::Attribute,
-            kmip_objects::ObjectType,
-            kmip_operations::{AddAttribute, AddAttributeResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+use std::sync::Arc;
+
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_objects::ObjectType,
+        kmip_operations::{AddAttribute, AddAttributeResponse},
+        kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    time_normalize,
 };
 use cosmian_logger::{debug, trace};
 
-use super::policy::{check_grant, check_read_only, check_rotate_name, read_only_error};
+use super::policy::{
+    check_grant, check_read_only, check_rotate_name, check_sql_rotate_name, read_only_error,
+};
 use crate::{
     core::{
         KMS,
@@ -40,30 +41,17 @@ pub(crate) async fn add_attribute(
     check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
     check_rotate_name(&request.new_attribute, "AddAttribute")?;
 
-    let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
+    let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
         KmipOperation::AddAttribute,
         kms,
         user,
     ))
     .await?;
+    let owm = Arc::unwrap_or_clone(owm);
     trace!("Retrieved object for: {}", owm.object());
 
-    // For SQL keys (non-HSM): rotate_name must equal the key's UID.
-    // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
-    if !ObjectHandle::from(owm.id()).is_hsm() {
-        if let Attribute::RotateName(name) = &request.new_attribute {
-            let key_uid = owm.id();
-            if name.as_str() != key_uid {
-                return Err(KmsError::InvalidRequest(format!(
-                    "AddAttribute: rotate_name ('{name}') must equal the key's UID \
-                     ('{key_uid}') — create the key with the keyset name as its ID"
-                )));
-            }
-        }
-    }
-
-    let mut attributes = owm.attributes_mut().clone();
+    check_sql_rotate_name(owm.id(), &request.new_attribute, "AddAttribute", "key")?;
 
     // Capture before the macro runs (which may partially move request.new_attribute).
     let is_adding_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
@@ -78,67 +66,13 @@ pub(crate) async fn add_attribute(
     )
     .await?;
 
+    let (id, mut object, mut attributes) = owm.into_parts();
     // Check if the attribute is allowed to be set
-    match_add_attribute! {
-        request.new_attribute, attributes,
+    with_common_simple_attributes! {
+        match_add_attribute! { request.new_attribute, attributes, }
         simple {
             ActivationDate => activation_date,
-            CryptographicAlgorithm => cryptographic_algorithm,
             CryptographicLength => cryptographic_length,
-            CryptographicParameters => cryptographic_parameters,
-            CryptographicDomainParameters => cryptographic_domain_parameters,
-            CryptographicUsageMask => cryptographic_usage_mask,
-            Digest => digest,
-            DeactivationDate => deactivation_date,
-            ObjectGroup => object_group,
-            ContactInformation => contact_information,
-            ObjectType => object_type,
-            UniqueIdentifier => unique_identifier,
-            X509CertificateSubject => x_509_certificate_subject,
-            X509CertificateIssuer => x_509_certificate_issuer,
-            AlternativeName => alternative_name,
-            ApplicationSpecificInformation => application_specific_information,
-            ArchiveDate => archive_date,
-            AttributeIndex => attribute_index,
-            CertificateAttributes => certificate_attributes,
-            CertificateType => certificate_type,
-            CertificateLength => certificate_length,
-            Comment => comment,
-            CompromiseDate => compromise_date,
-            CompromiseOccurrenceDate => compromise_occurrence_date,
-            Critical => critical,
-            DestroyDate => destroy_date,
-            DigitalSignatureAlgorithm => digital_signature_algorithm,
-            Fresh => fresh,
-            InitialDate => initial_date,
-            KeyFormatType => key_format_type,
-            KeyValueLocation => key_value_location,
-            KeyValuePresent => key_value_present,
-            LastChangeDate => last_change_date,
-            LeaseTime => lease_time,
-            NistKeyType => nist_key_type,
-            ObjectGroupMember => object_group_member,
-            OpaqueDataType => opaque_data_type,
-            OriginalCreationDate => original_creation_date,
-            Pkcs12FriendlyName => pkcs_12_friendly_name,
-            ProcessStartDate => process_start_date,
-            ProtectStopDate => protect_stop_date,
-            ProtectionLevel => protection_level,
-            ProtectionPeriod => protection_period,
-            ProtectionStorageMasks => protection_storage_masks,
-            QuantumSafe => quantum_safe,
-            RandomNumberGenerator => random_number_generator,
-            RevocationReason => revocation_reason,
-            RotateAutomatic => rotate_automatic,
-            RotateDate => rotate_date,
-            RotateGeneration => rotate_generation,
-            RotateInterval => rotate_interval,
-            RotateLatest => rotate_latest,
-            RotateName => rotate_name,
-            RotateOffset => rotate_offset,
-            ShortUniqueIdentifier => short_unique_identifier,
-            UsageLimits => usage_limits,
-            X509CertificateIdentifier => x_509_certificate_identifier,
         }
         custom {
             Attribute::Link(link) => {
@@ -195,7 +129,7 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.description = Some(description);
             }
-            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) => {
+            Attribute::AlwaysSensitive(_) | Attribute::NeverExtractable(_) | Attribute::State(_) => {
                 // Defensive: already refused by `check_read_only`.
                 return Err(read_only_error(KmipOperation::AddAttribute));
             }
@@ -219,13 +153,6 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.apply_extractable(extractable);
             }
-            Attribute::State(_state) => {
-                return Err(KmsError::InvalidRequest(
-                    "Attribute: State cannot be modified. Use Revoke and Destroy to change the \
-                     object state"
-                        .to_owned(),
-                ));
-            }
         }
     }
 
@@ -242,33 +169,33 @@ pub(crate) async fn add_attribute(
     // update the last change date
     attributes.last_change_date = Some(time_normalize()?);
 
-    let tags = kms.database.retrieve_tags(owm.id()).await?;
+    let tags = kms.database.retrieve_tags(&id).await?;
 
-    match owm.object().object_type() {
+    match object.object_type() {
         ObjectType::PublicKey
         | ObjectType::PrivateKey
         | ObjectType::SplitKey
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object_mut().attributes_mut()?;
-            *object_attributes = attributes.clone();
+            let object_attributes = object.attributes_mut()?;
+            object_attributes.clone_from(&attributes);
             debug!("Set Object Attribute: {}", object_attributes);
         }
         _ => {
             trace!(
                 "Attribute: Object type {:?} does not have attributes (nor key block)",
-                owm.object().object_type()
+                object.object_type()
             );
         }
     }
 
     debug!("Add Attribute: {}", attributes);
     kms.database
-        .update_object(owm.id(), owm.object(), &attributes, Some(&tags))
+        .update_object(&id, &object, &attributes, Some(&tags))
         .await?;
 
     Ok(AddAttributeResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(id),
     })
 }

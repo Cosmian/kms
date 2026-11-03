@@ -89,7 +89,11 @@ bench_build_binaries() {
     echo "Skipping build (KMS_SKIP_BUILD=1)"
   else
     echo "Building cosmian_kms server and ckms CLI (${build_mode})..."
-    cargo build -p cosmian_kms_server -p ckms \
+    # Two sequential builds: fat-LTO release links use ~9 GB each and OOM-kill rustc when run in parallel.
+    cargo build -p cosmian_kms_server \
+      "${cargo_args[@]}" \
+      ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+    cargo build -p ckms \
       "${cargo_args[@]}" \
       ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
   fi
@@ -327,6 +331,8 @@ _bench_cleanup() {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   }
+  # bnt runs as root, detached from this process group: kill it by name.
+  [ -n "${BENCH_C2P_SIMULATOR:-}" ] && { sudo killall -9 bnt 2>/dev/null || true; }
   local pid_file
   for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
     [ -f "${pid_file}" ] || continue
@@ -589,8 +595,20 @@ bench_prepare_hsm() {
         /etc/proteccio/proteccio.rc /etc/proteccio/proteccio.ini
       ;;
     crypt2pay)
-      BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
-      bash "${scripts_dir}/prepare_crypt2pay.sh"
+      if [ -n "${CRYPT2PAY_SIMULATOR:-}" ]; then
+        # Local simulator: never use the real HSM's VPN/PIN from ~/.cosmian/crypt2pay.sh.
+        unset OVPN_CONF CRYPT2PAY_HOST CRYPT2PAY_PORT
+        export CRYPT2PAY_PASSWORD=""
+        BENCH_HSM_SLOT=1
+        BENCH_C2P_SIMULATOR=1
+        local sim_dir
+        sim_dir="$(mktemp -d)"
+        (cd "${sim_dir}" && bash "${scripts_dir}/prepare_crypt2pay_simulator.sh")
+        rm -rf "${sim_dir}"
+      else
+        BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+        bash "${scripts_dir}/prepare_crypt2pay.sh"
+      fi
       ;;
     utimaco)
       # Starts the simulator and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG;
@@ -836,6 +854,7 @@ PYEOF
 #   --pkcs11 to plot_version_compare.py so the report describes the real
 #   dlopen()-based Cryptoki C API benchmark. May be combined with is_hsm=true
 #   for PKCS#11 operations delegated to HSM-resident keys.
+#   BENCH_DOCS_SUFFIX (env, optional): appended to docs_subdir, e.g. "_hr" or "2_ed25519".
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
@@ -844,7 +863,9 @@ PYEOF
 #         $CRITERION_HOME/reports/<version>/report.md   combined report
 bench_generate_report() {
   local port="$1"
-  local docs_subdir="${2:-ckms_bench}"
+  # BENCH_DOCS_SUFFIX keeps a rerun on another device of the same model (e.g. Luna 2) from
+  # replacing the first device's report: BENCH_DOCS_SUFFIX=2_ed25519 -> ..._luna2_ed25519.
+  local docs_subdir="${2:-ckms_bench}${BENCH_DOCS_SUFFIX:-}"
   local is_hsm="${3:-false}"
   local is_hsm_kek="${4:-false}"
   local is_pkcs11="${5:-false}"

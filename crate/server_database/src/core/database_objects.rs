@@ -62,7 +62,7 @@ impl Database {
     /// wall-clock duration and outcome (`"success"` / `"error"`).
     ///
     /// When no recorder is present the future is awaited directly with no overhead.
-    pub(super) async fn record<T, Fut>(&self, operation: &str, fut: Fut) -> DbResult<T>
+    pub(super) async fn record<T, Fut>(&self, operation: &'static str, fut: Fut) -> DbResult<T>
     where
         Fut: Future<Output = DbResult<T>>,
     {
@@ -236,25 +236,27 @@ impl Database {
     ///
     /// # Returns
     ///
-    /// * `DbResult<HashMap<String, ObjectWithMetadata>>` - A result containing a map of `uid`s to `ObjectWithMetadata`.
+    /// * `DbResult<HashMap<String, Arc<ObjectWithMetadata>>>` - A result containing a map of `uid`s to shared `ObjectWithMetadata`.
     pub async fn retrieve_objects(
         &self,
         object_handle: ObjectHandle<'_>,
-    ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
+    ) -> DbResult<HashMap<String, Arc<ObjectWithMetadata>>> {
         Box::pin(self.record("retrieve_objects", async move {
-            let uids = match object_handle {
-                ObjectHandle::Tags(json) => {
-                    let tags: HashSet<String> = serde_json::from_str(json)?;
-                    self.list_uids_for_tags(&tags).await?
+            if let ObjectHandle::Tags(json) = object_handle {
+                let tags: HashSet<String> = serde_json::from_str(json)?;
+                let uids = self.list_uids_for_tags(&tags).await?;
+                let mut results = HashMap::with_capacity(uids.len());
+                for uid in uids {
+                    if let Some(owm) = self.retrieve_object_arc(&uid).await? {
+                        results.insert(uid, owm);
+                    }
                 }
-                handle => HashSet::from([handle.as_str().to_owned()]),
-            };
-            let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
-            for uid in &uids {
-                let owm = self.retrieve_object(uid).await?;
-                if let Some(owm) = owm {
-                    results.insert(uid.to_owned(), owm);
-                }
+                return Ok(results);
+            }
+            let uid = object_handle.as_str();
+            let mut results = HashMap::with_capacity(1);
+            if let Some(owm) = self.retrieve_object_arc(uid).await? {
+                results.insert(uid.to_owned(), owm);
             }
             Ok(results)
         }))
@@ -282,48 +284,10 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        // Fast path: check in-memory cache first.
-        // Cross-node consistency is maintained via bounded revalidation: cache hits within
-        // DEFAULT_REVALIDATION_INTERVAL skip DB round-trips entirely, while entries older than
-        // the interval re-verify their lifecycle state against the database.
-        if let Some((cached_owm, needs_revalidation)) = self
-            .object_cache
-            .get_with_validation_status(
-                uid,
-                crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL,
-            )
-            .await
-        {
-            if !needs_revalidation {
-                return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
-            }
-            // Revalidate state and security-sensitive attributes against DB
-            let db = self.get_object_store(uid).await?;
-            if let Some((current_state, current_attrs)) = db.retrieve_state(uid).await? {
-                if cached_owm.state() == current_state
-                    && cached_owm.attributes().sensitive == current_attrs.sensitive
-                {
-                    self.object_cache.touch_validated(uid).await;
-                    return Ok(Some(std::sync::Arc::unwrap_or_clone(cached_owm)));
-                }
-            }
-            // Invalidate stale cache entry and fall through to full fetch
-            self.object_cache.invalidate(uid).await;
-        }
-        // Cache miss: fetch from the backing store and record the operation.
-        let result: Option<ObjectWithMetadata> = self
-            .record("retrieve", async move {
-                let db = self.get_object_store(uid).await?;
-                db.retrieve(uid).await.map_err(DbError::from)
-            })
-            .await?;
-        // Populate cache on successful retrieval.
-        if let Some(ref owm) = result {
-            self.object_cache
-                .insert(uid.to_owned(), owm.clone())
-                .await?;
-        }
-        Ok(result)
+        Ok(self
+            .retrieve_object_arc(uid)
+            .await?
+            .map(Arc::unwrap_or_clone))
     }
 
     /// Retrieve a cached object as `Arc<ObjectWithMetadata>` without deep-cloning.
@@ -576,75 +540,9 @@ impl Database {
         Ok(results)
     }
 
-    /// Find a certificate object by its X.509 serial number.
-    ///
-    /// Searches across all states so OCSP responses correctly distinguish
-    /// `good` (Active/PreActive), `revoked` (Compromised/Deactivated/Destroyed/DestroyedCompromised),
-    /// and `unknown` (not found).
-    ///
-    /// Returns `(uid, state, attributes)` for the first match or `None` if not found;
-    /// the attributes carry the revocation date and reason reported by OCSP.
-    pub async fn find_certificate_by_serial(
-        &self,
-        issuer_certificate_uid: &str,
-        serial_hex: &str,
-        vendor_id: &str,
-    ) -> DbResult<
-        Option<(
-            String,
-            cosmian_kmip::kmip_0::kmip_types::State,
-            cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
-        )>,
-    > {
-        use cosmian_kmip::kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_objects::ObjectType,
-            kmip_types::{LinkType, LinkedObjectIdentifier},
-        };
-
-        // Build search filter: certificate objects linked to the given issuer.
-        let mut search_attrs = Attributes {
-            object_type: Some(ObjectType::Certificate),
-            ..Attributes::default()
-        };
-        search_attrs.link = Some(vec![cosmian_kmip::kmip_2_1::kmip_types::Link {
-            link_type: LinkType::CertificateLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                issuer_certificate_uid.to_owned(),
-            ),
-        }]);
-
-        // Search every lifecycle state so OCSP can report accurate status.
-        for state in [
-            cosmian_kmip::kmip_0::kmip_types::State::Active,
-            cosmian_kmip::kmip_0::kmip_types::State::PreActive,
-            cosmian_kmip::kmip_0::kmip_types::State::Compromised,
-            cosmian_kmip::kmip_0::kmip_types::State::Deactivated,
-            cosmian_kmip::kmip_0::kmip_types::State::Destroyed,
-            cosmian_kmip::kmip_0::kmip_types::State::Destroyed_Compromised,
-        ] {
-            let candidates = self
-                .find_all(Some(&search_attrs), Some(state), vendor_id)
-                .await?;
-
-            for (uid, obj_state, attrs) in candidates {
-                if let Some(owm) = self.retrieve_object(&uid).await? {
-                    let found_serial = extract_serial_hex_from_object(owm.object());
-                    if let Some(s) = found_serial {
-                        if s.eq_ignore_ascii_case(serial_hex) {
-                            return Ok(Some((uid, obj_state, attrs)));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
     /// Find a certificate object by an exact match on its DER-encoded bytes.
     ///
-    /// Unlike [`Self::find_certificate_by_serial`], this does **not** require a known
+    /// It does **not** require a known
     /// issuer UID: it scans every certificate object across all lifecycle states and
     /// compares `certificate_value` byte-for-byte against `der_bytes`. This lets
     /// callers determine whether an *externally supplied* certificate (e.g. raw DER
@@ -680,7 +578,7 @@ impl Database {
                 .await?;
 
             for (uid, obj_state, _attrs) in candidates {
-                if let Some(owm) = self.retrieve_object(&uid).await? {
+                if let Some(owm) = self.retrieve_object_arc(&uid).await? {
                     if let cosmian_kmip::kmip_2_1::kmip_objects::Object::Certificate(cert) =
                         owm.object()
                     {
@@ -747,17 +645,17 @@ impl Database {
         name: &str,
         generation: Option<i32>,
         owner: &UserId,
-    ) -> DbResult<Vec<(String, Attributes)>> {
+    ) -> DbResult<crate::core::rotate_name_cache::RotateNameResults> {
         if let Some(cached) = self.rotate_name_cache.get(name, generation, owner).await {
             return Ok(cached);
         }
         let results = self
             .find_by_rotate_name_uncached(name, generation, owner)
             .await?;
-        self.rotate_name_cache
-            .insert(name, generation, owner, results.clone())
-            .await;
-        Ok(results)
+        Ok(self
+            .rotate_name_cache
+            .insert(name, generation, owner, results)
+            .await)
     }
 
     /// Same as [`Self::find_by_rotate_name`], but always queries the object stores,
@@ -777,6 +675,7 @@ impl Database {
                     .unwrap_or_default(),
             );
         }
+        drop(map);
         Ok(results)
     }
 
@@ -897,16 +796,16 @@ impl Database {
 ///
 /// The output **must** exactly match the hex string the OCSP crypto layer computes
 /// for the same certificate (`extract_serial_hex` in `cosmian_kms_crypto::openssl::ocsp`,
-/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or `find_certificate_by_serial`
-/// silently fails to match and OCSP incorrectly reports `unknown` for a real, issued
-/// certificate. `BN_bn2hex` strips whole leading zero *bytes* (already true of
+/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or the `_serial=` tag
+/// silently fails to match a real, issued certificate. `BN_bn2hex` strips whole leading
+/// zero *bytes* (already true of
 /// `to_bytes_be()`'s minimal big-endian output) but always prints both hex digits of
 /// the remaining most-significant byte — so a serial such as `0x0A…` renders as `"0A…"`,
 /// not `"A…"`. Do **not** strip leading zero *characters* here: about 1-in-16 randomly
 /// generated serial numbers have a leading nibble of `0`, and naively trimming all
 /// leading `'0'` characters (rather than only whole zero bytes) desynchronises this
 /// hex string from the OCSP layer's for exactly those certificates.
-fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
+pub(crate) fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
     const UPPER_HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
     let cert_bytes = match object {
@@ -918,6 +817,10 @@ fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
     // `to_bytes_be()` already yields the minimal big-endian representation (no leading
     // zero bytes), matching the canonical form OpenSSL's BIGNUM uses internally.
     let serial_bytes = parsed.serial.to_bytes_be();
+    // ...except for zero, which it yields as `[0]` while `BN_bn2hex` prints `"0"`.
+    if serial_bytes.iter().all(|byte| *byte == 0) {
+        return Some("0".to_owned());
+    }
     serial_bytes.iter().try_fold(
         String::with_capacity(serial_bytes.len().saturating_mul(2)),
         |mut output, byte| {
@@ -1157,9 +1060,9 @@ mod tests {
         impl DbMetricsRecorder for MockRecorder {
             fn record_operation(
                 &self,
-                operation: &str,
+                operation: &'static str,
                 backend: MainDbKind,
-                outcome: &str,
+                outcome: &'static str,
                 _duration_seconds: f64,
             ) {
                 self.calls.lock().expect("mutex poisoned").push((
@@ -1276,8 +1179,8 @@ mod tests {
     /// byte, so a serial number whose leading byte is e.g. `0x0A` must render as `"0A…"`,
     /// not `"A…"`. Naively trimming all leading `'0'` characters previously desynced
     /// this from the OCSP layer for ~1-in-16 randomly generated serial numbers, making
-    /// `find_certificate_by_serial` (and therefore OCSP) intermittently report a
-    /// perfectly valid, just-issued certificate as `unknown`.
+    /// the `_serial=` tag lookups intermittently miss a perfectly valid, just-issued
+    /// certificate.
     #[test]
     fn test_extract_serial_hex_preserves_leading_zero_nibble() {
         let der = cert_der_with_serial(&[0x0A, 0xBB, 0xCC, 0xDD, 0xEE]);
@@ -1290,6 +1193,28 @@ mod tests {
             hex, "0ABBCCDDEE",
             "leading zero nibble of the most-significant byte must be preserved"
         );
+    }
+
+    /// Zero and high-bit serials must match `BN_to_hex_str` (the form tagged at import/certify
+    /// time): `BN_bn2hex` prints zero as `"0"`, whole leading zero bytes are never printed.
+    #[test]
+    fn test_extract_serial_hex_matches_bn_hex_for_zero_and_high_bit() {
+        for serial in [&[0x00_u8][..], &[0x00, 0x00, 0x05], &[0x80, 0x01], &[0x0F]] {
+            let object = Object::Certificate(cosmian_kmip::kmip_2_1::kmip_objects::Certificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: cert_der_with_serial(serial),
+            });
+            let expected = openssl::bn::BigNum::from_slice(serial)
+                .expect("bn")
+                .to_hex_str()
+                .expect("hex")
+                .to_string();
+            assert_eq!(
+                extract_serial_hex_from_object(&object).expect("extract serial hex"),
+                expected,
+                "serial {serial:02X?}"
+            );
+        }
     }
 
     /// Sanity check: a serial with no leading zero nibble round-trips unchanged.

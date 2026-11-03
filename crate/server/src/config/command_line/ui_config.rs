@@ -145,15 +145,15 @@ pub struct OidcRuntimeConfig {
 /// proxy the browser's username/password (+ optional TOTP) login to the configured
 /// Auth Verifier server and validate the JWT it returns.
 ///
-/// `jwks_manager` is the *same* manager built for the bearer-token `AuthVerifier`
-/// middleware (see `prepare_kms_server`) — no second JWKS fetch is performed.
+/// `auth_verifier` is the *same* validator built for the bearer-token `AuthVerifier`
+/// middleware (see `prepare_kms_server`) — no second JWKS fetch, one session cache.
 #[derive(Clone, Debug)]
 pub struct AuthVerifierRuntimeConfig {
     /// The static Auth Verifier configuration (server URL, realm, TLS options).
     pub config: crate::config::AuthVerifierConfig,
     /// `Some` when the Auth Verifier server is configured; `None` otherwise, in which
     /// case `login_as` responds with an error indicating it is not configured.
-    pub jwks_manager: Option<Arc<crate::middlewares::JwksManager>>,
+    pub auth_verifier: Option<Arc<crate::middlewares::AuthVerifierValidator>>,
 }
 
 impl fmt::Debug for OidcConfig {

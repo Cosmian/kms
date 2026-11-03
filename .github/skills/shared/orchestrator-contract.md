@@ -106,7 +106,7 @@ Exception: `code-quality` runs Clippy third and reports Clippy findings first; i
 
 ## 4. Unified Report Schema
 
-Every orchestrator produces a report with this structure. Orchestrators that persist it write to `./review/` at the path named in their SKILL.md (`rust-review-all`: `./review/SUMMARY.md`; `kms-pr-review`: `./review/final.md`); the others output it inline.
+Every orchestrator produces a report with this structure. Orchestrators that persist it write to `./review-YYYY-MM-DD/` at the path named in their SKILL.md (`rust-review-all`: `./review-YYYY-MM-DD/SUMMARY.md`; `kms-pr-review`: `./review-YYYY-MM-DD/final.md`); the others output it inline.
 
 ```markdown
 # <Orchestrator> — <Scope> Report
@@ -156,7 +156,7 @@ Every orchestrator produces a report with this structure. Orchestrators that per
 
 ## 6. Sub-Agent Orchestration
 
-Orchestrators delegate phases to sub-agents with the harness's own sub-agent tool, and run a phase inline when the harness has none. The report schema (§4) and `review/*.md` paths are fixed regardless of harness.
+Orchestrators delegate phases to sub-agents with the harness's own sub-agent tool, and run a phase inline when the harness has none. The report schema (§4) and `review-YYYY-MM-DD/*.md` paths are fixed regardless of harness.
 
 | Harness | Sub-agent tool | Routing |
 |---|---|---|

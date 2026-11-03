@@ -24,56 +24,56 @@ fn test_get_attribute_list_1_0_does_not_advertise_fresh_attribute() {
     // the server logs (ProtocolVersion 1.0, MaximumResponseSize, TimeStamp,
     // Operation enumeration with empty name).
     let request_ttlv = TTLV {
-        tag: "RequestMessage".to_owned(),
+        tag: "RequestMessage".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "RequestHeader".to_owned(),
+                tag: "RequestHeader".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "ProtocolVersion".to_owned(),
+                        tag: "ProtocolVersion".into(),
                         value: TTLValue::Structure(vec![
                             TTLV {
-                                tag: "ProtocolVersionMajor".to_owned(),
+                                tag: "ProtocolVersionMajor".into(),
                                 value: TTLValue::Integer(1),
                             },
                             TTLV {
-                                tag: "ProtocolVersionMinor".to_owned(),
+                                tag: "ProtocolVersionMinor".into(),
                                 value: TTLValue::Integer(0),
                             },
                         ]),
                     },
                     TTLV {
-                        tag: "MaximumResponseSize".to_owned(),
+                        tag: "MaximumResponseSize".into(),
                         value: TTLValue::Integer(8192),
                     },
                     TTLV {
-                        tag: "TimeStamp".to_owned(),
+                        tag: "TimeStamp".into(),
                         value: TTLValue::DateTime(
                             time::OffsetDateTime::from_unix_timestamp(1_736_927_444).unwrap(),
                         ),
                     },
                     TTLV {
-                        tag: "BatchCount".to_owned(),
+                        tag: "BatchCount".into(),
                         value: TTLValue::Integer(1),
                     },
                 ]),
             },
             TTLV {
-                tag: "BatchItem".to_owned(),
+                tag: "BatchItem".into(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "Operation".to_owned(),
+                        tag: "Operation".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
                             // GetAttributeList
                             value: 0x0000_000C,
-                            name: String::new(),
+                            name: "".into(),
                         }),
                     },
                     TTLV {
-                        tag: "RequestPayload".to_owned(),
+                        tag: "RequestPayload".into(),
                         value: TTLValue::Structure(vec![
                             TTLV {
-                                tag: "UniqueIdentifier".to_owned(),
+                                tag: "UniqueIdentifier".into(),
                                 value: TTLValue::TextString(key_id),
                             },
                             // Per KMIP spec, GetAttributeList request payload includes
@@ -81,7 +81,7 @@ fn test_get_attribute_list_1_0_does_not_advertise_fresh_attribute() {
                             // response that complains about a missing AttributeName.
                             // Provide a minimal attribute name to keep the request valid.
                             TTLV {
-                                tag: "AttributeName".to_owned(),
+                                tag: "AttributeName".into(),
                                 value: TTLValue::TextString("ObjectType".to_owned()),
                             },
                         ]),

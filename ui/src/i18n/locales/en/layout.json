@@ -36,6 +36,7 @@
         "oidc": "OIDC",
         "certificate": "Client certificate",
         "authVerifier": "Username & password",
+        "saml": "Single sign-on (SSO)",
         "spiffe": "SPIFFE JWT-SVID",
         "spiffeGatewayNotice": "This server authenticates browser sessions with SPIFFE JWT-SVIDs. The session is established by the ingress gateway in front of the KMS; open the Web UI through that gateway.",
         "accessKms": "ACCESS KMS",

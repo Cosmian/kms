@@ -13,6 +13,9 @@ use std::{
 // AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
 #[cfg(target_os = "linux")]
 use aws_cloudhsm_pkcs11_loader::{AWS_CLOUDHSM_PKCS11_LIB, AwsCloudhsm};
+// Azure Cloud HSM's client SDK is Linux x86_64 only.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use azure_cloud_hsm_pkcs11_loader::{AZURE_CLOUD_HSM_PKCS11_LIB, AzureCloudHsm};
 use cosmian_kms_server_database::{
     CEREMONY_SECRET_LENGTH, CeremonyKeys, Database, DbMetricsRecorder,
     reexport::{
@@ -37,7 +40,7 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use softhsm2_pkcs11_loader::{SOFTHSM2_PKCS11_LIB, Softhsm2};
+use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
@@ -63,6 +66,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
+    routes::enrollment_guard::EnrollmentGuard,
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
@@ -125,6 +129,9 @@ pub struct KMS {
 
     /// Unified cryptographic RNG for all KMS operations.
     pub(crate) rng: Arc<KmsRng>,
+
+    /// Abuse controls (lockout, replay cache, concurrency cap) of the EST / SCEP endpoints.
+    pub(crate) enrollment_guard: EnrollmentGuard,
 }
 
 impl KMS {
@@ -200,7 +207,7 @@ impl KMS {
         // CeremonyKeys from its raw bytes. This takes precedence over ceremony_secret when set.
         if let Some(ref key_id) = server_params.ceremony_key_id {
             let owm = database
-                .retrieve_object(key_id)
+                .retrieve_object_arc(key_id)
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(
@@ -322,6 +329,7 @@ impl KMS {
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,
             rng,
+            enrollment_guard: EnrollmentGuard::default(),
         })
     }
 
@@ -543,6 +551,14 @@ impl KMS {
                 "AwsCloudhsm",
                 slot_passwords
             )),
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            "azure_cloud_hsm" => Ok(instantiate_hsm_with_env!(
+                AzureCloudHsm,
+                "AZURE_CLOUD_HSM_PKCS11_LIB",
+                AZURE_CLOUD_HSM_PKCS11_LIB,
+                "Azure Cloud HSM",
+                slot_passwords
+            )),
             #[cfg(target_os = "linux")]
             "gcp_cloud_hsm" => Ok(instantiate_hsm_with_env!(
                 GcpCloudHsm,
@@ -561,7 +577,7 @@ impl KMS {
             )),
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             "other" => Ok(instantiate_hsm_with_env!(
-                Softhsm2,
+                OtherHsm,
                 "OTHER_HSM_PKCS11_LIB",
                 OTHER_HSM_PKCS11_LIB,
                 "Other",
@@ -569,8 +585,8 @@ impl KMS {
             )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
-                 luna, proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, \
-                 softhsm2, utimaco, kryoptic, other"
+                 luna, proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, \
+                 gcp_cloud_hsm, softhsm2, utimaco, kryoptic, other"
             ),
         }
     }

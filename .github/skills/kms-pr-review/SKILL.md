@@ -29,7 +29,7 @@ Run as a sub-agent with cheap/fast routing (contract §6), or inline when the ha
 
 If `/kms-caveman` already ran this session on overlapping scope, feed its findings in instead of re-scanning.
 
-Run a domain skill only when the diff touches its area; skip it otherwise (token cost). They are report-only. Add their findings to `review/01-structural.md` as `S<n>` claims tagged with the source skill, so Phase 2 still disposes of each one. Phase 2 must give a confirmed finding from `/cryptography-review`, `/security-review`, or `/kmip-compliance` the disposition `needs-human`, never `confirmed`/`adjusted`, so no crypto, security, or KMIP change is auto-applied without a human:
+Run a domain skill only when the diff touches its area; skip it otherwise (token cost). They are report-only. Add their findings to `review-YYYY-MM-DD/01-structural.md` as `S<n>` claims tagged with the source skill, so Phase 2 still disposes of each one. Phase 2 must give a confirmed finding from `/cryptography-review`, `/security-review`, or `/kmip-compliance` the disposition `needs-human`, never `confirmed`/`adjusted`, so no crypto, security, or KMIP change is auto-applied without a human:
 
 | Diff touches | Run |
 |---|---|
@@ -39,30 +39,30 @@ Run a domain skill only when the diff touches its area; skip it otherwise (token
 
 In PR mode, also run `/kms-sync-rules` on the PR diff (report-only) and add each unmet rule as an `S<n>` claim. In self-review mode it already ran (`AGENTS.md` §5 step 4). Never run `/meta-security` here (an audit orchestrator, not a diff gate).
 
-Write `review/01-structural.md`. Each claim has an ID `S<n>`, file:line, evidence, and a recommended fix.
+Write `review-YYYY-MM-DD/01-structural.md`. Each claim has an ID `S<n>`, file:line, evidence, and a recommended fix.
 
 ## Step 3 — Phase 2: Semantic Verification
 
-Run as a sub-agent with reasoning routing (contract §6), or inline when the harness has no sub-agent tool. Inputs: `review/01-structural.md`, the live diff and source, `AGENTS.md`, and the applicable `.github/instructions/*.instructions.md`.
+Run as a sub-agent with reasoning routing (contract §6), or inline when the harness has no sub-agent tool. Inputs: `review-YYYY-MM-DD/01-structural.md`, the live diff and source, `AGENTS.md`, and the applicable `.github/instructions/*.instructions.md`.
 
 - Give every `S<n>` exactly one disposition: `confirmed`, `rejected` (with reason), `adjusted` (with corrected severity/line/fix), `[UNVERIFIED]`, or `needs-human`.
   Use `needs-human` when the fix needs a design decision, changes public API or behavior outside the task, or needs external access.
 - Add missed findings as `M<n>` with the same fields (correctness, concurrency, edge cases, cross-file impact, contract compliance).
-- Write `review/02-semantic.md` with the disposition table, the findings, and a **GO / NO-GO** verdict.
+- Write `review-YYYY-MM-DD/02-semantic.md` with the disposition table, the findings, and a **GO / NO-GO** verdict.
 
 If the disposition table is missing, the report is invalid: redo Step 3.
 
 ## Step 4 — Final report
 
-Write `review/final.md` using the Unified Report Schema (contract §4). It adds no new findings, links `review/01-structural.md` and `review/02-semantic.md`, and records `Cycle: <k>` (0 = first review).
+Write `review-YYYY-MM-DD/final.md` using the Unified Report Schema (contract §4). It adds no new findings, links `review-YYYY-MM-DD/01-structural.md` and `review-YYYY-MM-DD/02-semantic.md`, and records `Cycle: <k>` (0 = first review).
 
 ## Step 5 — Auto-fix loop (self-review mode only)
 
 1. Verdict GO and no `confirmed`/`adjusted` findings left unapplied → done.
 2. Apply the recommended fix of every `confirmed` and `adjusted` finding, at any severity. Never apply `rejected`, `[UNVERIFIED]`, or `needs-human` findings.
 3. Re-run `AGENTS.md` §5 step 4 (`/kms-sync-rules`) on the files the fixes touched and apply its rows (for example CLI doc regeneration). When Rust files changed, also re-run step 1 (targeted tests for the touched code) and step 3 (`cargo clippy-all`, `cargo fmt --all`). A newly failing test, warning, or unmet sync rule is a `confirmed` finding of the next cycle.
-4. Re-run Steps 1–4 with `Cycle: k+1`, overwriting the `review/*.md` files.
-5. Stop after **2 fix cycles**: the review at `Cycle: 2` is the last. If it is NO-GO, or any `needs-human`, `confirmed` or `adjusted` finding is still unapplied, stop, report those findings from `review/final.md` to the user, and do not start another cycle.
+4. Re-run Steps 1–4 with `Cycle: k+1`, overwriting the `review-YYYY-MM-DD/*.md` files.
+5. Stop after **2 fix cycles**: the review at `Cycle: 2` is the last. If it is NO-GO, or any `needs-human`, `confirmed` or `adjusted` finding is still unapplied, stop, report those findings from `review-YYYY-MM-DD/final.md` to the user, and do not start another cycle.
 
 ## Step 6 — Output rules
 

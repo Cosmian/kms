@@ -3,6 +3,7 @@ pub(crate) mod certify;
 mod certify_pqc;
 pub(crate) mod encrypt;
 mod export;
+mod generate_csr;
 pub(crate) mod import;
 pub(crate) mod validate;
 

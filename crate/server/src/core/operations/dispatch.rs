@@ -1,8 +1,9 @@
-use cosmian_kms_access::access::{CryptoOfficerConfig, Role};
+use std::str::FromStr;
+
+use cosmian_kms_access::access::{CryptoOfficerConfig, Role, RoleDecision};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_operations::DiscoverVersions,
     kmip_2_1::{
-        KmipOperation,
         kmip_operations::{
             Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, CreateSplitKey, Decrypt,
             DeleteAttribute, DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList,
@@ -10,6 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             Operation, Query, RNGRetrieve, RNGSeed, ReCertify, ReKey, ReKeyKeyPair, Register,
             Revoke, SetAttribute, Sign, SignatureVerify, Validate,
         },
+        kmip_types::OperationEnumeration,
     },
     ttlv::{TTLV, from_ttlv},
 };
@@ -78,24 +80,20 @@ macro_rules! op {
 ///
 /// ## Design
 ///
-/// This function enforces [`Role::allowed_operations()`] for all roles.
 /// Two enforcement layers work together:
 ///
-/// 1. **Dispatch-level (this function)**: blocks requests whose operation is not in the
-///    role's `allowed_operations()` set. This prevents, e.g., an `Operator` from calling
-///    `Get`/`Export` (key output is a Crypto Officer service per ISO/IEC 19790 §7.4).
+/// 1. **Dispatch-level (this function)**: applies [`Role::decide`], which is exhaustive over
+///    [`OperationEnumeration`], so no KMIP operation is allowed by omission. This refuses, e.g.,
+///    `RNGSeed` for an `Operator` and requires the Create right for object-creating operations.
 ///
 /// 2. **Handler-level ownership/grant checks** (`retrieve_object_for_operation`,
-///    `user_has_permission`): even if dispatch allows the operation (e.g., `Get` for a
-///    `CryptoOfficer`), the user must still own the object or hold an explicit per-object
-///    grant (unless `CryptoOfficer` is active, which grants ownership bypass).
-///
-/// Lifecycle operations without a [`KmipOperation`] mapping (`CreateKeyPair`, `Register`,
-/// `ReKeyKeyPair`, `CreateSplitKey`) are additionally blocked for `Operator` users unless
-/// they hold an explicit `Create` grant.
+///    `user_has_permission`): even if dispatch allows the operation (e.g., `Get`), the user
+///    must still own the object or hold an explicit per-object grant (unless `CryptoOfficer` is
+///    active, which grants ownership bypass).
 ///
 /// Users not listed in any role default to `Operator` when role enforcement is active
-/// (fail-secure per NIST SP 800-57 Part 2 Rev 1 §4.8).
+/// (fail-secure per NIST SP 800-57 Part 2 Rev 1 §4.8). Ceremony candidates may run
+/// [`CryptoOfficerConfig::is_ceremony_prerequisite`] operations before activation.
 ///
 /// # Errors
 /// Returns [`KmsError::Unauthorized`] when the user's role does not permit the requested
@@ -103,7 +101,7 @@ macro_rules! op {
 pub(crate) async fn check_role_permission(
     kms: &KMS,
     user: &str,
-    operation_tag: &str,
+    operation: OperationEnumeration,
     crypto_officer: &CryptoOfficerConfig,
 ) -> KResult<()> {
     // If no role lists are configured, skip role enforcement entirely.
@@ -121,7 +119,7 @@ pub(crate) async fn check_role_permission(
     // Full CO privileges (ownership bypass) still require ceremony completion.
     let is_ceremony_candidate = crypto_officer.require_ceremony
         && crypto_officer.users.iter().any(|u| u == user)
-        && KmipOperation::is_ceremony_prerequisite_tag(operation_tag);
+        && CryptoOfficerConfig::is_ceremony_prerequisite(operation);
 
     if is_ceremony_candidate {
         return Ok(());
@@ -150,67 +148,23 @@ pub(crate) async fn check_role_permission(
         }
     }
 
-    match effective_role {
-        Role::CryptoOfficer => {
-            // CryptoOfficer: enforce allowed_operations(). Ownership bypass is handled
-            // at handler level (retrieve_object_utils.rs / locate.rs).
-            if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
-                let allowed = Role::CryptoOfficer.allowed_operations();
-                if !allowed.contains(&kmip_op) {
-                    kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user}` (role: CryptoOfficer) is not authorized to perform \
-                         operation `{operation_tag}` (not in CryptoOfficer allowed operations)"
-                    )))
-                }
-                return Ok(());
-            }
-            // Lifecycle operations without a KmipOperation mapping
-            // (CreateKeyPair, Register, ReKeyKeyPair, CreateSplitKey, JoinSplitKey):
-            // route through enforce_create_permission, which handles default_username,
-            // CO-user membership, ceremony-candidate exemption, and explicit Create grants.
-            // COs always satisfy this gate (they are listed in crypto_officer.users),
-            // making this equivalent to an unconditional allow — but the explicit call
-            // ensures consistent audit and error paths instead of a silent fall-through.
-            if KmipOperation::is_restricted_lifecycle_tag(operation_tag)
-                || operation_tag == "JoinSplitKey"
-            {
-                return kms.enforce_create_permission(&UserId::from(user)).await;
-            }
+    match effective_role.decide(operation) {
+        RoleDecision::Allow => Ok(()),
+        RoleDecision::RequireCreatePermission => {
+            kms.enforce_create_permission(&UserId::from(user)).await
         }
-        Role::Operator => {
-            // Enforce allowed_operations() for Operator at dispatch.
-            if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
-                let allowed = Role::Operator.allowed_operations();
-                if !allowed.contains(&kmip_op) {
-                    // Lifecycle operations (Create, Import): delegate to enforce_create_permission
-                    // which correctly handles default_username, CO-user membership, and explicit grants.
-                    if matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
-                        return kms.enforce_create_permission(&UserId::from(user)).await;
-                    }
-                    // Per-object operations (Get, Export, Activate, Revoke, Destroy, etc.)
-                    // are not blocked at dispatch — they rely on handler-level ownership/grant checks.
-                    return Ok(());
-                }
-                return Ok(());
-            }
-
-            // Lifecycle operations without KmipOperation mapping (CreateKeyPair, Register,
-            // ReKeyKeyPair, CreateSplitKey): delegate to enforce_create_permission which
-            // handles default_username, CO-user membership, and explicit grants.
-            if KmipOperation::is_restricted_lifecycle_tag(operation_tag) {
-                return kms.enforce_create_permission(&UserId::from(user)).await;
-            }
-        }
+        RoleDecision::Deny => kms_bail!(KmsError::Unauthorized(format!(
+            "User `{user}` (role: {effective_role:?}) is not authorized to perform operation \
+             `{operation}`"
+        ))),
     }
-    Ok(())
 }
 
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Operation> {
-    let operation_tag = ttlv.tag.clone();
-
     if let Some(ref metrics) = kms.metrics {
         let start = std::time::Instant::now();
+        let operation_tag = ttlv.tag.clone();
         let result = Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await;
         let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(&operation_tag, user);
@@ -220,7 +174,21 @@ pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Op
         }
         result
     } else {
+        let operation_tag = ttlv.tag.clone();
         Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await
+    }
+}
+
+/// Parse the root TTLV tag into the KMIP operation it names.
+///
+/// # Errors
+/// [`KmsError::RouteNotFound`] when the tag is not a KMIP operation.
+fn parse_operation(tag: &str) -> KResult<OperationEnumeration> {
+    match tag {
+        // TTLV clients send both spellings; the enumeration variant is `MAC`.
+        "Mac" => Ok(OperationEnumeration::MAC),
+        tag => OperationEnumeration::from_str(tag)
+            .map_err(|_e| KmsError::RouteNotFound(format!("Operation: {tag}"))),
     }
 }
 
@@ -230,19 +198,24 @@ async fn dispatch_inner(
     user: &UserId,
     operation_tag: &str,
 ) -> KResult<Operation> {
+    use OperationEnumeration as Op;
+
+    // Parse the wire tag once: the role check, the algorithm policy and the dispatch table
+    // below all key on the KMIP operation enumeration.
+    let operation = parse_operation(operation_tag)?;
     // Enforce role-based access control before any other check.
-    check_role_permission(kms, user, operation_tag, &kms.params.crypto_officer).await?;
+    check_role_permission(kms, user, operation, &kms.params.crypto_officer).await?;
 
     // For operations where the request carries algorithm choices, validate them
     // before executing any cryptographic action.  Skip entirely when no policy
     // is configured — avoids a function call + match on every dispatch.
     if kms.params.kmip_policy.policy_id.is_some() {
-        enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+        enforce_kmip_algorithm_policy_for_operation(&kms.params, operation, &ttlv)?;
     }
 
-    Ok(match operation_tag {
-        "Activate" => op!(ttlv, kms, user, Activate, activate, ActivateResponse),
-        "AddAttribute" => op!(
+    Ok(match operation {
+        Op::Activate => op!(ttlv, kms, user, Activate, activate, ActivateResponse),
+        Op::AddAttribute => op!(
             ttlv,
             kms,
             user,
@@ -250,12 +223,12 @@ async fn dispatch_inner(
             add_attribute,
             AddAttributeResponse
         ),
-        "Certify" => op!(ttlv, kms, user, Certify, certify, CertifyResponse),
-        "Check" => {
+        Op::Certify => op!(ttlv, kms, user, Certify, certify, CertifyResponse),
+        Op::Check => {
             op!(fn ttlv, kms, user, Check, check, CheckResponse)
         }
-        "Create" => op!(ttlv, kms, user, Create, create, CreateResponse),
-        "CreateKeyPair" => {
+        Op::Create => op!(ttlv, kms, user, Create, create, CreateResponse),
+        Op::CreateKeyPair => {
             op!(
                 ttlv,
                 kms,
@@ -265,7 +238,7 @@ async fn dispatch_inner(
                 CreateKeyPairResponse
             )
         }
-        "CreateSplitKey" => {
+        Op::CreateSplitKey => {
             op!(
                 ttlv,
                 kms,
@@ -275,8 +248,8 @@ async fn dispatch_inner(
                 CreateSplitKeyResponse
             )
         }
-        "Decrypt" => op!(ttlv, kms, user, Decrypt, decrypt, DecryptResponse),
-        "DeleteAttribute" => {
+        Op::Decrypt => op!(ttlv, kms, user, Decrypt, decrypt, DecryptResponse),
+        Op::DeleteAttribute => {
             op!(
                 ttlv,
                 kms,
@@ -286,22 +259,22 @@ async fn dispatch_inner(
                 DeleteAttributeResponse
             )
         }
-        "DeriveKey" => op!(pin ttlv, kms, user, DeriveKey, derive_key, DeriveKeyResponse),
-        "Destroy" => op!(ttlv, kms, user, Destroy, destroy, DestroyResponse),
-        "DiscoverVersions" => {
+        Op::DeriveKey => op!(pin ttlv, kms, user, DeriveKey, derive_key, DeriveKeyResponse),
+        Op::Destroy => op!(ttlv, kms, user, Destroy, destroy, DestroyResponse),
+        Op::DiscoverVersions => {
             op!(infallible ttlv, kms, user, DiscoverVersions, discover_versions, DiscoverVersionsResponse)
         }
-        "Encrypt" => op!(ttlv, kms, user, Encrypt, encrypt, EncryptResponse),
-        "Export" => op!(boxed ttlv, kms, user, Export, export, ExportResponse),
-        "Get" => op!(ttlv, kms, user, Get, get, GetResponse),
-        "GetAttributeList" => {
+        Op::Encrypt => op!(ttlv, kms, user, Encrypt, encrypt, EncryptResponse),
+        Op::Export => op!(boxed ttlv, kms, user, Export, export, ExportResponse),
+        Op::Get => op!(ttlv, kms, user, Get, get, GetResponse),
+        Op::GetAttributeList => {
             op!(pin_fn ttlv, kms, user, GetAttributeList, get_attribute_list, GetAttributeListResponse)
         }
-        "GetAttributes" => {
+        Op::GetAttributes => {
             op!(boxed ttlv, kms, user, GetAttributes, get_attributes, GetAttributesResponse)
         }
-        "Hash" => op!(ttlv, kms, user, Hash, hash, HashResponse),
-        "RNGRetrieve" => op!(
+        Op::Hash => op!(ttlv, kms, user, Hash, hash, HashResponse),
+        Op::RNGRetrieve => op!(
             ttlv,
             kms,
             user,
@@ -309,9 +282,9 @@ async fn dispatch_inner(
             rng_retrieve,
             RNGRetrieveResponse
         ),
-        "RNGSeed" => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
-        "Import" => op!(ttlv, kms, user, Import, import, ImportResponse),
-        "JoinSplitKey" => {
+        Op::RNGSeed => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
+        Op::Import => op!(ttlv, kms, user, Import, import, ImportResponse),
+        Op::JoinSplitKey => {
             op!(
                 ttlv,
                 kms,
@@ -321,13 +294,13 @@ async fn dispatch_inner(
                 JoinSplitKeyResponse
             )
         }
-        "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
-        "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
-        "MACVerify" => {
+        Op::Locate => op!(ttlv, kms, user, Locate, locate, LocateResponse),
+        Op::MAC => op!(ttlv, kms, user, MAC, mac, MACResponse),
+        Op::MACVerify => {
             op!(pin_fn ttlv, kms, user, MACVerify, mac_verify, MACVerifyResponse)
         }
-        "Query" => op!(query ttlv, kms, Query, query_op, QueryResponse),
-        "ModifyAttribute" => {
+        Op::Query => op!(query ttlv, kms, Query, query_op, QueryResponse),
+        Op::ModifyAttribute => {
             op!(
                 ttlv,
                 kms,
@@ -337,8 +310,8 @@ async fn dispatch_inner(
                 ModifyAttributeResponse
             )
         }
-        "ReKey" => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
-        "ReKeyKeyPair" => {
+        Op::ReKey => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
+        Op::ReKeyKeyPair => {
             op!(
                 ttlv,
                 kms,
@@ -348,12 +321,12 @@ async fn dispatch_inner(
                 ReKeyKeyPairResponse
             )
         }
-        "ReCertify" => {
+        Op::ReCertify => {
             op!(ttlv, kms, user, ReCertify, recertify, ReCertifyResponse)
         }
-        "Register" => op!(ttlv, kms, user, Register, register, RegisterResponse),
-        "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
-        "SetAttribute" => op!(
+        Op::Register => op!(ttlv, kms, user, Register, register, RegisterResponse),
+        Op::Revoke => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
+        Op::SetAttribute => op!(
             ttlv,
             kms,
             user,
@@ -361,8 +334,8 @@ async fn dispatch_inner(
             set_attribute,
             SetAttributeResponse
         ),
-        "Sign" => op!(ttlv, kms, user, Sign, sign, SignResponse),
-        "SignatureVerify" => {
+        Op::Sign => op!(ttlv, kms, user, Sign, sign, SignResponse),
+        Op::SignatureVerify => {
             op!(
                 ttlv,
                 kms,
@@ -372,7 +345,35 @@ async fn dispatch_inner(
                 SignatureVerifyResponse
             )
         }
-        "Validate" => op!(ttlv, kms, user, Validate, validate, ValidateResponse),
-        x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
+        Op::Validate => op!(ttlv, kms, user, Validate, validate, ValidateResponse),
+        // KMIP operations this server does not implement.
+        _ => kms_bail!(KmsError::RouteNotFound(format!("Operation: {operation}"))),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_operation_accepts_both_mac_spellings_and_rejects_unknown_tags() {
+        assert!(matches!(
+            parse_operation("MAC"),
+            Ok(OperationEnumeration::MAC)
+        ));
+        assert!(matches!(
+            parse_operation("Mac"),
+            Ok(OperationEnumeration::MAC)
+        ));
+        assert!(matches!(
+            parse_operation("RNGSeed"),
+            Ok(OperationEnumeration::RNGSeed)
+        ));
+        for tag in ["", "mac", "NoSuchOperation"] {
+            assert!(
+                matches!(parse_operation(tag), Err(KmsError::RouteNotFound(_))),
+                "{tag:?}"
+            );
+        }
+    }
 }

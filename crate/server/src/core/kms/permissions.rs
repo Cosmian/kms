@@ -22,6 +22,37 @@ use crate::{
 };
 
 impl KMS {
+    /// Crypto Officer checks for granting or revoking the `Create` right on `*`.
+    /// Returns `None` when no Crypto Officer is configured (the `Create` change is then
+    /// ignored), otherwise the target user once `owner` is a Crypto Officer and the target
+    /// is not.
+    fn crypto_officer_create_target(
+        &self,
+        access: &Access,
+        owner: &UserId,
+    ) -> KResult<Option<UserId>> {
+        let co_users = &self.params.crypto_officer.users;
+        if co_users.is_empty() {
+            return Ok(None);
+        }
+        if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
+            kms_bail!(KmsError::Unauthorized(
+                "Only Crypto Officer users can grant/revoke create access right to a user."
+                    .to_owned()
+            ))
+        }
+        let user_id = &access.user_id;
+        if co_users.contains(user_id) {
+            kms_bail!(KmsError::Unauthorized(format!(
+                "User `{user_id}` is a Crypto Officer — create access right can't be granted or \
+                 revoked on their behalf."
+            )))
+        }
+        UserId::try_new(user_id.as_str())
+            .map(Some)
+            .map_err(KmsError::InvalidRequest)
+    }
+
     /// Grant access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
@@ -30,31 +61,14 @@ impl KMS {
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            let co_users = &self.params.crypto_officer.users;
-            if !co_users.is_empty() {
-                if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
-                    kms_bail!(KmsError::Unauthorized(
-                        "Only Crypto Officer users can grant/revoke create access right to a \
-                         user."
-                            .to_owned()
-                    ))
-                }
-                let user_id = &access.user_id;
-                if co_users.contains(user_id) {
-                    kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user_id}` is a Crypto Officer — create access right can't be \
-                         granted or revoked on their behalf."
-                    )))
-                }
-                let user_id_typed =
-                    UserId::try_new(user_id.as_str()).map_err(KmsError::InvalidRequest)?;
+            if let Some(user_id_typed) = self.crypto_officer_create_target(access, owner)? {
                 self.database
                     .grant_operations("*", &user_id_typed, HashSet::from([KmipOperation::Create]))
                     .await?;
 
                 // Record metrics for Create permission grant
-                if let Some(ref metrics) = self.metrics {
-                    metrics.record_permission_grant(user_id.as_str(), "Create");
+                if let Some(metrics) = &self.metrics {
+                    metrics.record_permission_grant(access.user_id.as_str(), "Create");
                 }
             }
         }
@@ -120,24 +134,7 @@ impl KMS {
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            let co_users = &self.params.crypto_officer.users;
-            if !co_users.is_empty() {
-                if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
-                    kms_bail!(KmsError::Unauthorized(
-                        "Only Crypto Officer users can grant/revoke create access right to a \
-                         user."
-                            .to_owned()
-                    ))
-                }
-                let user_id = &access.user_id;
-                if co_users.contains(user_id) {
-                    kms_bail!(KmsError::Unauthorized(format!(
-                        "User `{user_id}` is a Crypto Officer — create access right can't be \
-                         granted or revoked on their behalf."
-                    )))
-                }
-                let user_id_typed =
-                    UserId::try_new(user_id.as_str()).map_err(KmsError::InvalidRequest)?;
+            if let Some(user_id_typed) = self.crypto_officer_create_target(access, owner)? {
                 self.database
                     .remove_operations("*", &user_id_typed, HashSet::from([KmipOperation::Create]))
                     .await?;

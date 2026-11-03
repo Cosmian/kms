@@ -16,6 +16,7 @@ pub enum HsmModel {
     Smartcardhsm,
     Kryoptic,
     AwsCloudhsm,
+    AzureCloudHsm,
     GcpCloudHsm,
     Other,
 }
@@ -30,6 +31,7 @@ impl HsmModel {
         Self::Smartcardhsm,
         Self::Kryoptic,
         Self::AwsCloudhsm,
+        Self::AzureCloudHsm,
         Self::GcpCloudHsm,
         Self::Other,
     ];
@@ -45,6 +47,7 @@ impl HsmModel {
             Self::Smartcardhsm => "smartcardhsm",
             Self::Kryoptic => "kryoptic",
             Self::AwsCloudhsm => "aws_cloudhsm",
+            Self::AzureCloudHsm => "azure_cloud_hsm",
             Self::GcpCloudHsm => "gcp_cloud_hsm",
             Self::Other => "other",
         }
@@ -62,7 +65,8 @@ impl fmt::Display for HsmModel {
 pub struct HsmConfig {
     /// The HSM model.
     /// `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-    /// `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
+    /// `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+    /// are natively supported.
     /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
         verbatim_doc_comment,
@@ -75,6 +79,7 @@ pub struct HsmConfig {
             "softhsm2",
             "smartcardhsm",
             "aws_cloudhsm",
+            "azure_cloud_hsm",
             "gcp_cloud_hsm",
             "kryoptic",
             "other"

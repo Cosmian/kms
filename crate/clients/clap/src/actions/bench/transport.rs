@@ -28,6 +28,7 @@ use cosmian_kms_client::{
         },
         ttlv::{KmipFlavor, to_ttlv},
     },
+    http_client::Bytes,
     kmip_2_1::{kmip_messages::RequestMessageBatchItem, kmip_operations::Operation},
 };
 use criterion::BenchmarkId;
@@ -204,10 +205,10 @@ fn prepare_op(
     transport: Transport,
     client: &KmsClient,
     op: Operation,
-) -> (String, Vec<u8>, &'static str) {
+) -> (String, Bytes, &'static str) {
     (
         transport.url(client),
-        transport.serialize(&make_wire_request(op)),
+        transport.serialize(&make_wire_request(op)).into(),
         transport.content_type(),
     )
 }
@@ -217,10 +218,10 @@ fn prepare_message(
     transport: Transport,
     client: &KmsClient,
     msg: &RequestMessage,
-) -> (String, Vec<u8>, &'static str) {
+) -> (String, Bytes, &'static str) {
     (
         transport.url(client),
-        transport.serialize(msg),
+        transport.serialize(msg).into(),
         transport.content_type(),
     )
 }
@@ -228,7 +229,7 @@ fn prepare_message(
 /// Benchmark a single KMIP operation under a plain (unparameterized) label.
 ///
 /// The operation is serialized **once**; every criterion iteration then measures
-/// the cost of sending the identical body (cloned per iteration).
+/// the cost of sending the identical body (shared, refcount-cloned per iteration).
 pub(super) fn bench_op(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     client: &KmsClient,

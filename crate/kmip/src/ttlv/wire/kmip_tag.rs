@@ -3,7 +3,7 @@ use std::str::FromStr;
 use crate::{kmip_1_4, kmip_2_1, ttlv::TtlvError};
 
 /// This trait is used to define the KMIP 1.4 and KMIP 2.1 tags that can be used in TTLV serialization
-pub trait KmipTag: Copy + ToString + FromStr {
+pub trait KmipTag: Copy + ToString + FromStr + Into<&'static str> {
     /// Get a tag variant from a value
     fn from_u32(tag_value: u32) -> Result<Self, TtlvError>
     where
@@ -36,5 +36,23 @@ impl KmipTag for kmip_2_1::kmip_types::Tag {
     // This conversion is idiomatic for items marked with #[repr(u32)]
     fn to_u32(&self) -> u32 {
         *self as u32
+    }
+}
+#[cfg(test)]
+mod tests {
+    use strum::IntoEnumIterator;
+
+    use super::*;
+
+    #[test]
+    fn test_kmip_tag_into_static_str_matches_to_string() {
+        for tag in kmip_1_4::kmip_types::Tag::iter() {
+            let s_into: &'static str = tag.into();
+            assert_eq!(s_into, tag.to_string());
+        }
+        for tag in kmip_2_1::kmip_types::Tag::iter() {
+            let s_into: &'static str = tag.into();
+            assert_eq!(s_into, tag.to_string());
+        }
     }
 }

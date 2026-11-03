@@ -9,6 +9,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{
         KmipOperation,
+        extra::tagging::{SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX},
         kmip_attributes::Attributes,
         kmip_objects::{Object, ObjectType},
     },
@@ -39,7 +40,10 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::{AtomicScriptOutcome, ScriptOp},
@@ -343,6 +347,7 @@ impl RedisWithFindex {
         // O(N) scan runs at most once per database (a fresh database has no
         // objects, so this is a no-op that only writes the marker).
         redis_with_findex.backfill_wrapped_by_index().await?;
+        Box::pin(redis_with_findex.backfill_certificate_serial_tags()).await?;
 
         Ok(redis_with_findex)
     }
@@ -382,6 +387,84 @@ impl RedisWithFindex {
             .await
             .map_err(|e| {
                 DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
+            })?;
+        Ok(())
+    }
+
+    /// Add the `_serial=<HEX>` tag to certificates stored before that tag existed.
+    ///
+    /// Candidates come from the `_cert` Findex keyword. Updating the tags through the normal
+    /// atomic path re-indexes the Findex keywords. Gated by a completion marker so the scan runs
+    /// at most once per database; a failed update leaves the marker unset so the next boot retries.
+    pub(crate) async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let marker: Option<String> = redis::cmd("GET")
+            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to read serial tag backfill marker: {e}"))
+            })?;
+        if marker.as_deref() == Some("true") {
+            return Ok(());
+        }
+
+        let indexed_uids = self
+            .findex
+            .search(&Keyword::from(SYSTEM_TAG_CERTIFICATE.as_bytes()))
+            .await
+            .map_err(|e| db_error!(format!("Error searching certificate keyword: {e:?}")))?;
+        for uid in indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+        {
+            let Some(ciphertext) = self.objects_db.object_get_raw(&uid).await? else {
+                continue;
+            };
+            let db_object = match self.objects_db.decrypt_object(&uid, &ciphertext) {
+                Ok(db_object) => db_object,
+                Err(e) => {
+                    warn!(
+                        "serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}"
+                    );
+                    continue;
+                }
+            };
+            let mut tags = db_object.tags.clone().unwrap_or_default();
+            if tags
+                .iter()
+                .any(|tag| tag.starts_with(SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX))
+            {
+                continue;
+            }
+            let Some(tag) = certificate_serial_tag(&db_object.object) else {
+                continue;
+            };
+            tags.insert(tag);
+            match self
+                .run_atomic(
+                    None,
+                    &[AtomicOperation::UpdateObject((
+                        uid,
+                        db_object.object,
+                        db_object.attributes.unwrap_or_default(),
+                        Some(tags),
+                    ))],
+                )
+                .await
+            {
+                // ItemNotFound: deleted since the scan started
+                Ok(_) | Err(DbError::ItemNotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
+        redis::cmd("SET")
+            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+            .arg("true")
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to set serial tag backfill marker: {e}"))
             })?;
         Ok(())
     }
@@ -1643,9 +1726,7 @@ pub(crate) mod tests {
         extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
-    use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng, Secret, reexport::rand_core::SeedableRng,
-    };
+    use cosmian_kms_crypto::{crypto::KmsRng, reexport::cosmian_crypto_core::Secret};
     use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
     use uuid::Uuid;
 
@@ -1664,7 +1745,7 @@ pub(crate) mod tests {
     /// object does not carry must not be returned by `find`.
     pub(crate) async fn test_db_redis_stale_attribute_hit_is_filtered_out()
     -> crate::error::DbResult<()> {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
         let uid = Uuid::new_v4().to_string();
@@ -1718,7 +1799,7 @@ pub(crate) mod tests {
     /// e.g. from out-of-order post-commit index updates) must not be returned.
     pub(crate) async fn test_db_redis_stale_findex_hit_is_filtered_out()
     -> crate::error::DbResult<()> {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
         let uid = Uuid::new_v4().to_string();
@@ -1773,7 +1854,7 @@ pub(crate) mod tests {
     /// (tagged `old`) unfindable.
     pub(crate) async fn test_db_redis_interleaved_index_updates_keep_object_findable()
     -> crate::error::DbResult<()> {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
         let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
         let uid = Uuid::new_v4().to_string();

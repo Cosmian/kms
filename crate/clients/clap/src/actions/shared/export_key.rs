@@ -113,7 +113,8 @@ pub struct ExportSecretDataOrKeyAction {
     /// Wrapping algorithm to use when exporting the key
     /// The possible wrapping algorithms are
     ///  - using a symmetric KEK:
-    ///     - `nist-key-wrap` (default - a.k.a RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
+    ///     - `nist-key-wrap` (default - RFC 3394, `CKM_AES_KEY_WRAP`)
+    ///     - `aes-key-wrap-padding` (RFC 5649, `CKM_AES_KEY_WRAP_PAD`)
     ///     - `aes-gcm`
     ///  - using an RSA KEK:
     ///     - `rsa-oaep` (default - CKM-RSA-OAEP)
@@ -129,15 +130,6 @@ pub struct ExportSecretDataOrKeyAction {
         verbatim_doc_comment
     )]
     pub wrapping_algorithm: Option<WrappingAlgorithm>,
-
-    /// Authenticated encryption additional data
-    /// Only available for AES GCM wrapping
-    #[clap(
-        long = "authenticated-additional-data",
-        short = 'd',
-        default_value = None,
-    )]
-    pub authenticated_additional_data: Option<String>,
 }
 
 impl ExportSecretDataOrKeyAction {
@@ -163,7 +155,6 @@ impl ExportSecretDataOrKeyAction {
             key_format_type,
             encode_to_ttlv,
             wrapping_cryptographic_parameters,
-            authenticated_encryption_additional_data: self.authenticated_additional_data.clone(),
         };
 
         let (id, object, _) = export_object(&kms_rest_client, &id, export_params).await?;

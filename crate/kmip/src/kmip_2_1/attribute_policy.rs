@@ -14,38 +14,53 @@ pub enum AttributeEditPolicy {
 impl Tag {
     /// Edit restrictions for the four attribute-edit operations. Unlisted tags default
     /// to `Allowed`; new attributes still require policy review and object authorization.
-    ///
-    /// `AddAttribute` keeps its legacy rules: `State` stays `Allowed` here and the Add
-    /// handler rejects it later with an `InvalidRequest` error, not `Attribute_Read_Only`.
     #[must_use]
     pub const fn edit_policy(self, operation: KmipOperation) -> AttributeEditPolicy {
         use AttributeEditPolicy::{Allowed, RequiresGrant, ServerManaged};
-        use KmipOperation::{AddAttribute, DeleteAttribute, ModifyAttribute, SetAttribute};
+        use KmipOperation::{AddAttribute, DeleteAttribute};
 
         match (self, operation) {
-            // Sensitivity history is server-managed (KMIP 2.1 4.3 and 4.33).
+            // Read-only attributes (KMIP 2.1 §4 rule tables: modifiable by server No,
+            // modifiable by client No, deletable by client No) SHALL NOT be added
+            // (§6.1.2), set (§6.1.51), modified (§6.1.34) or deleted (§6.1.13).
             (
-                Self::AlwaysSensitive
-                | Self::NeverExtractable
-                | Self::RotateGeneration
-                | Self::RotateDate
-                | Self::RotateLatest,
-                _,
-            )
-            // Read-only metadata: KMIP 2.1 4.15, 4.21, 4.25; Set follows 6.1.51.
-            // Add retains legacy rules, including State's later handler rejection.
-            | (
-                Self::UniqueIdentifier
-                | Self::ObjectType
-                | Self::CryptographicLength
+                Self::ArchiveDate
+                | Self::CertificateAttributes
                 | Self::CertificateLength
+                | Self::CertificateType
+                | Self::CompromiseDate
+                | Self::CompromiseOccurrenceDate
+                | Self::CryptographicAlgorithm
+                | Self::CryptographicDomainParameters
+                | Self::CryptographicLength
+                | Self::DestroyDate
                 | Self::Digest
+                | Self::DigitalSignatureAlgorithm
                 | Self::InitialDate
+                | Self::KeyFormatType
+                | Self::KeyValuePresent
+                | Self::NISTKeyType
+                | Self::ObjectType
+                | Self::OpaqueDataType
+                | Self::OriginalCreationDate
+                | Self::ProtectionStorageMasks
+                | Self::RandomNumberGenerator
+                | Self::RotateDate
+                | Self::RotateGeneration
+                | Self::ShortUniqueIdentifier
+                | Self::UniqueIdentifier
+                | Self::X509CertificateIdentifier
+                | Self::X509CertificateIssuer
+                | Self::X509CertificateSubject
+                // Server-maintained, not modifiable by the client (§4.3, §4.24, §4.29,
+                // §4.33, §4.57); `RotateLatest` is the keyset head the server moves.
+                | Self::AlwaysSensitive
                 | Self::Fresh
                 | Self::LastChangeDate
-                | Self::OriginalCreationDate
+                | Self::NeverExtractable
+                | Self::RotateLatest
                 | Self::State,
-                SetAttribute | ModifyAttribute | DeleteAttribute,
+                _,
             )
             | (Self::RotateAutomatic, AddAttribute | DeleteAttribute)
             | (Self::Sensitive | Self::Extractable, DeleteAttribute) => ServerManaged,
@@ -78,7 +93,13 @@ mod tests {
 
         use crate::{
             kmip_0::kmip_types::State,
-            kmip_2_1::{kmip_objects::ObjectType, kmip_types::UniqueIdentifier},
+            kmip_2_1::{
+                kmip_objects::ObjectType,
+                kmip_types::{
+                    CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
+                    NistKeyType, UniqueIdentifier,
+                },
+            },
         };
 
         let now = OffsetDateTime::UNIX_EPOCH;
@@ -112,6 +133,24 @@ mod tests {
             (Attribute::State(State::Active), Tag::State),
             (Attribute::Sensitive(true), Tag::Sensitive),
             (Attribute::Extractable(true), Tag::Extractable),
+            (
+                Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+                Tag::CryptographicAlgorithm,
+            ),
+            (
+                Attribute::CryptographicDomainParameters(CryptographicDomainParameters::default()),
+                Tag::CryptographicDomainParameters,
+            ),
+            (
+                Attribute::KeyFormatType(KeyFormatType::Raw),
+                Tag::KeyFormatType,
+            ),
+            (Attribute::NistKeyType(NistKeyType::AESP1), Tag::NISTKeyType),
+            (Attribute::DestroyDate(now), Tag::DestroyDate),
+            (
+                Attribute::X509CertificateSubject("CN=x".to_owned()),
+                Tag::X509CertificateSubject,
+            ),
         ] {
             assert_eq!(attribute.tag(), Some(tag), "{attribute}");
         }
@@ -126,23 +165,31 @@ mod tests {
                 Tag::RotateGeneration,
                 Tag::RotateDate,
                 Tag::RotateLatest,
-            ],
-            [ServerManaged; 4],
-        ),
-        (
-            &[
                 Tag::UniqueIdentifier,
                 Tag::ObjectType,
+                Tag::CryptographicAlgorithm,
+                Tag::CryptographicDomainParameters,
                 Tag::CryptographicLength,
+                Tag::CertificateType,
                 Tag::CertificateLength,
+                Tag::DigitalSignatureAlgorithm,
                 Tag::Digest,
+                Tag::KeyFormatType,
+                Tag::NISTKeyType,
+                Tag::ShortUniqueIdentifier,
+                Tag::X509CertificateIdentifier,
+                Tag::X509CertificateIssuer,
+                Tag::X509CertificateSubject,
+                Tag::ArchiveDate,
+                Tag::CompromiseDate,
+                Tag::DestroyDate,
                 Tag::InitialDate,
                 Tag::Fresh,
                 Tag::LastChangeDate,
                 Tag::OriginalCreationDate,
                 Tag::State,
             ],
-            [Allowed, ServerManaged, ServerManaged, ServerManaged],
+            [ServerManaged; 4],
         ),
         (
             &[Tag::RotateAutomatic],
@@ -153,7 +200,14 @@ mod tests {
             [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
         ),
         (
-            &[Tag::Comment, Tag::Name, Tag::Link, Tag::LinkType],
+            &[
+                Tag::Comment,
+                Tag::Name,
+                Tag::Link,
+                Tag::LinkType,
+                Tag::CryptographicParameters,
+                Tag::CryptographicUsageMask,
+            ],
             [Allowed; 4],
         ),
     ];

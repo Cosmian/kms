@@ -1,4 +1,3 @@
-use cosmian_logger::trace;
 use serde::de::{self, DeserializeSeed, SeqAccess};
 use tracing::instrument;
 
@@ -8,8 +7,6 @@ use crate::ttlv::TtlvError;
 // The `ByteStringDeserializer` is used to deserialize a ByteString
 /// It is called by the main deserializer when receiving Visitor requests to `deserialize_seq`
 pub(super) struct ByteStringDeserializer<'a> {
-    // The tag of the array
-    tag: String,
     // all the elements of the containing struct
     byte_string: &'a [u8],
     // position in the ByteString
@@ -17,9 +14,8 @@ pub(super) struct ByteStringDeserializer<'a> {
 }
 
 impl<'a> ByteStringDeserializer<'a> {
-    pub(super) fn new(tag: &str, byte_string: &'a [u8]) -> Self {
+    pub(super) const fn new(byte_string: &'a [u8]) -> Self {
         ByteStringDeserializer {
-            tag: tag.to_owned(),
             byte_string,
             index: 0,
         }
@@ -326,21 +322,20 @@ impl<'a, 'de: 'a> de::Deserializer<'de> for &mut ByteStringDeserializer<'a> {
 impl<'a, 'de: 'a> SeqAccess<'de> for ByteStringDeserializer<'a> {
     type Error = TtlvError;
 
-    #[instrument(level = "trace", skip(self, seed))]
+    // Runs once per byte: no `trace!`/`#[instrument]` here, because
+    // `cosmian_logger::trace!` computes the caller name even when tracing is off.
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: DeserializeSeed<'de>,
     {
-        trace!(
-            "deserializing bytes string at tag: {}, of len: {}",
-            self.tag,
-            self.byte_string.len()
-        );
-
         if self.index >= self.byte_string.len() {
             return Ok(None);
         }
 
         seed.deserialize(&mut *self).map(Some)
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.byte_string.len().saturating_sub(self.index))
     }
 }

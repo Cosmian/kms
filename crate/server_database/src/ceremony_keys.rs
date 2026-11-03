@@ -93,7 +93,7 @@ impl CeremonyKeys {
         let nonce = {
             let mut nonce_bytes = [0_u8; Aes256Gcm::NONCE_LENGTH];
             KmsRng::new()
-                .fill_bytes(&mut nonce_bytes)
+                .fill_public_bytes(&mut nonce_bytes)
                 .map_err(|e| DbError::CryptographicError(format!("RNG failure: {e}")))?;
             Nonce::from(nonce_bytes)
         };

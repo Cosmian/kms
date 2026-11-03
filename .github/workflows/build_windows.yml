@@ -73,11 +73,11 @@ jobs:
           Get-ChildItem -Recurse "crate\server\ui_non_fips"
 
       - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: List vcpkg install
         shell: pwsh
         run: |
-          vcpkg install --triplet x64-windows-static
-          vcpkg integrate install
-
           # vcpkg manifest mode (vcpkg.json present) installs to vcpkg_installed/<triplet>
           # relative to the project root, not under VCPKG_INSTALLATION_ROOT\packages.
           $manifestDir = "vcpkg_installed\x64-windows-static"

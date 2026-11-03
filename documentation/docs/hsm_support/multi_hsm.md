@@ -69,7 +69,7 @@ hsm_password = ["anotherpass"]
 
 | Field | Description |
 |---|---|
-| `hsm_model` | HSM model: `luna`, `softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `aws_cloudhsm`, `kryoptic`, `other` |
+| `hsm_model` | HSM model: `luna`, `softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `aws_cloudhsm`, `azure_cloud_hsm`, `kryoptic`, `other` |
 | `hsm_admin` | List of KMS user identities that have admin rights on this HSM |
 | `hsm_slot` | PKCS#11 slot indices to open |
 | `hsm_password` | Login passwords for the corresponding slots (same order as `hsm_slot`) |
@@ -116,7 +116,7 @@ The same information is available in the **HSM Status** page of the Web UI
 
 HSM support is available on:
 
-- Linux x86\_64 — all models (`luna`, `softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `aws_cloudhsm`, `kryoptic`, `other`)
+- Linux x86\_64 — all models (`luna`, `softhsm2`, `utimaco`, `proteccio`, `crypt2pay`, `smartcardhsm`, `aws_cloudhsm`, `azure_cloud_hsm`, `kryoptic`, `other`)
 - Linux arm64 — `softhsm2`, `smartcardhsm`, `aws_cloudhsm`, `other`
 - macOS (arm64 / x86\_64) — `softhsm2`, `smartcardhsm`, and `kryoptic`
 
@@ -130,5 +130,6 @@ HSM support is available on:
 - [Utimaco setup](utimaco.md)
 - [Proteccio setup](proteccio.md)
 - [AWS CloudHSM setup](aws_cloudhsm.md)
+- [Azure Cloud HSM setup](azure_cloud_hsm.md)
 - [HSM operations](hsm_operations.md)
 - [Algorithm support by model](algorithm_support.md)

@@ -36,7 +36,11 @@ use super::{
     },
     b64_decode,
 };
-use crate::{core::KMS, middlewares::UserId, routes::jwks::JWKS_TAG};
+use crate::{
+    core::{KMS, ObjectHandle},
+    middlewares::UserId,
+    routes::jwks::JWKS_TAG,
+};
 
 /// `POST /v1/crypto/keys` — generate or import a JWK-style key.
 ///
@@ -56,38 +60,69 @@ pub(crate) async fn create_key(
         user = user.as_str(),
         "POST /v1/crypto/keys kty={}", body.kty
     );
+    super::audit(&req, body.kid.as_deref());
 
     // Validate algorithm ↔ key type consistency to prevent key confusion attacks.
     if let Some(alg) = body.alg.as_deref() {
         validate_alg_kty_consistency(alg, &body.kty)?;
     }
 
-    if body.is_import() {
-        return match body.kty.as_str() {
-            "oct" => import_symmetric_key(&kms, &user, &body).await.map(Json),
-            "EC" => import_ec_key(&kms, &user, &body).await.map(Json),
-            "RSA" => import_rsa_key(&kms, &user, &body).await.map(Json),
+    if let Some(kid) = body.kid.as_deref() {
+        if !body.is_import() {
+            return Err(CryptoApiError::BadRequest(
+                "Field 'kid' is only supported when importing a key (k, d, or RSA n/e).".to_owned(),
+            ));
+        }
+        if kid.is_empty() || ObjectHandle::from(kid).is_hsm() {
+            return Err(CryptoApiError::BadRequest(
+                "Field 'kid' must be non-empty and must not start with 'hsm::'.".to_owned(),
+            ));
+        }
+        // A private-key import also creates `{kid}_pk`; refuse up front when that uid is taken,
+        // otherwise the private key would be stored without its public key.
+        if body.d.is_some() {
+            let public_uid = format!("{kid}{SYSTEM_TAG_PUBLIC_KEY}");
+            if kms
+                .database
+                .retrieve_object(&public_uid)
+                .await
+                .map_err(|e| CryptoApiError::InternalError(e.to_string()))?
+                .is_some()
+            {
+                return Err(CryptoApiError::BadRequest(format!(
+                    "Cannot import '{kid}': the derived public key uid '{public_uid}' already exists."
+                )));
+            }
+        }
+    }
+
+    let created = if body.is_import() {
+        match body.kty.as_str() {
+            "oct" => import_symmetric_key(&kms, &user, &body).await,
+            "EC" => import_ec_key(&kms, &user, &body).await,
+            "RSA" => import_rsa_key(&kms, &user, &body).await,
             #[cfg(feature = "non-fips")]
-            "OKP" => import_okp_key(&kms, &user, &body).await.map(Json),
+            "OKP" => import_okp_key(&kms, &user, &body).await,
             other => Err(CryptoApiError::BadRequest(format!(
                 "Unsupported key type '{other}' for import."
             ))),
-        };
-    }
-
-    let alg_str = body.alg.as_deref().unwrap_or("");
-
-    match body.kty.as_str() {
-        "oct" => generate_symmetric_key(&kms, &user, &body).await.map(Json),
-        "EC" => generate_ec_key_pair(&kms, &user, &body).await.map(Json),
-        "RSA" => generate_rsa_key_pair(&kms, &user, &body).await.map(Json),
-        #[cfg(feature = "non-fips")]
-        "OKP" => generate_okp_key_pair(&kms, &user, &body).await.map(Json),
-        other => Err(CryptoApiError::BadRequest(format!(
-            "Unsupported key type '{other}'. Supported: oct, EC, RSA, OKP (non-FIPS). \
-             alg={alg_str}"
-        ))),
-    }
+        }
+    } else {
+        let alg_str = body.alg.as_deref().unwrap_or("");
+        match body.kty.as_str() {
+            "oct" => generate_symmetric_key(&kms, &user, &body).await,
+            "EC" => generate_ec_key_pair(&kms, &user, &body).await,
+            "RSA" => generate_rsa_key_pair(&kms, &user, &body).await,
+            #[cfg(feature = "non-fips")]
+            "OKP" => generate_okp_key_pair(&kms, &user, &body).await,
+            other => Err(CryptoApiError::BadRequest(format!(
+                "Unsupported key type '{other}'. Supported: oct, EC, RSA, OKP (non-FIPS). \
+                 alg={alg_str}"
+            ))),
+        }
+    }?;
+    super::audit(&req, Some(&created.kid));
+    Ok(Json(created))
 }
 
 /// `DELETE /v1/crypto/keys/{kid}` — destroy a key by its KMS unique identifier.
@@ -101,6 +136,7 @@ pub(crate) async fn delete_key(
     let kid = kid.into_inner();
 
     trace!(user = user.as_str(), "DELETE /v1/crypto/keys/{kid}");
+    super::audit(&req, Some(&kid));
 
     // Revoke the key first (KMIP lifecycle requires Deactivated state before Destroy)
     let revoke_req = Revoke {
@@ -269,6 +305,17 @@ async fn generate_ec_key_pair(
 
 // ─── Internal: RSA key pair generation ──────────────────────────────────────
 
+/// Usage mask of the public half of an RSA pair: encryption algs → `Encrypt | WrapKey`,
+/// anything else (signature algs or none) → `Verify`.
+fn rsa_public_usage_from_alg(alg: Option<&str>) -> CryptographicUsageMask {
+    match alg {
+        Some("RSA-OAEP" | "RSA-OAEP-256") => {
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey
+        }
+        _ => CryptographicUsageMask::Verify,
+    }
+}
+
 async fn generate_rsa_key_pair(
     kms: &Arc<KMS>,
     user: &UserId,
@@ -283,7 +330,7 @@ async fn generate_rsa_key_pair(
         )));
     }
 
-    let create_req = create_rsa_key_pair_request(
+    let mut create_req = create_rsa_key_pair_request(
         kms.vendor_id(),
         None, // auto-generate UID
         if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
@@ -296,6 +343,28 @@ async fn generate_rsa_key_pair(
         None,  // no wrapping key
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // The default masks (Unrestricted / FIPS RSA mask) allow both Verify and Encrypt on the
+    // public key, which makes the JWKS endpoint publish neither `use` nor `alg`.
+    // Private masks stay within FIPS_PRIVATE_RSA_MASK (no Verify/Encrypt on a private key).
+    let private_mask = if matches!(alg, Some("RSA-OAEP" | "RSA-OAEP-256")) {
+        CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey
+    } else {
+        CryptographicUsageMask::Sign
+    };
+    let public_mask = rsa_public_usage_from_alg(alg);
+    for (attrs, mask) in [
+        (create_req.private_key_attributes.as_mut(), private_mask),
+        (create_req.public_key_attributes.as_mut(), public_mask),
+        (
+            create_req.common_attributes.as_mut(),
+            private_mask | public_mask,
+        ),
+    ] {
+        if let Some(attrs) = attrs {
+            attrs.cryptographic_usage_mask = Some(mask);
+        }
+    }
 
     let resp = kms
         .create_key_pair(create_req, user)
@@ -501,7 +570,7 @@ async fn import_symmetric_key(
 
     let import_req = import_object_request(
         kms.vendor_id(),
-        None,
+        body.kid.clone(),
         object,
         Some(attributes),
         false,
@@ -532,6 +601,23 @@ async fn import_symmetric_key(
     })
 }
 
+/// Build a KMIP `PublicKey` object carrying an SPKI DER blob.
+fn spki_public_key_object(spki_der: Vec<u8>, attributes: Attributes) -> Object {
+    Object::PublicKey(PublicKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(spki_der)),
+                attributes: Some(attributes),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    })
+}
+
 // ─── Internal: derive and import the public key for an imported private key ──
 
 /// After importing a private key, derive its public key (SPKI DER), import it
@@ -545,7 +631,9 @@ async fn import_public_key_for_private(
     private_key_uid: &str,
     usage_mask: CryptographicUsageMask,
 ) -> Result<String, CryptoApiError> {
-    let pub_uid = format!("{private_key_uid}{SYSTEM_TAG_PUBLIC_KEY}");
+    let mut pub_uid = String::with_capacity(private_key_uid.len() + SYSTEM_TAG_PUBLIC_KEY.len());
+    pub_uid.push_str(private_key_uid);
+    pub_uid.push_str(SYSTEM_TAG_PUBLIC_KEY);
 
     let spki_der = pkey
         .public_key_to_der()
@@ -562,19 +650,7 @@ async fn import_public_key_for_private(
         LinkedObjectIdentifier::TextString(private_key_uid.to_owned()),
     );
 
-    let pub_object = Object::PublicKey(PublicKey {
-        key_block: KeyBlock {
-            key_format_type: KeyFormatType::PKCS8,
-            key_compression_type: None,
-            key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(spki_der)),
-                attributes: Some(pub_attributes.clone()),
-            }),
-            cryptographic_algorithm: None,
-            cryptographic_length: None,
-            key_wrapping_data: None,
-        },
-    });
+    let pub_object = spki_public_key_object(spki_der, pub_attributes.clone());
 
     let import_req = import_object_request(
         kms.vendor_id(),
@@ -741,7 +817,7 @@ async fn import_ec_key(
 
     let import_req = import_object_request(
         kms.vendor_id(),
-        None,
+        body.kid.clone(),
         object,
         Some(ec_attributes),
         false,
@@ -793,15 +869,12 @@ async fn import_rsa_key(
     user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
+    if body.d.is_none() {
+        return import_rsa_public_key(kms, user, body).await;
+    }
+    let (n_bn, e_bn) = rsa_public_components(body)?;
+
     // All RSA CRT components are required by OpenSSL
-    let n_str = body.n.as_deref().ok_or_else(|| {
-        CryptoApiError::BadRequest("Field 'n' (modulus) is required for RSA key import.".to_owned())
-    })?;
-    let e_str = body.e.as_deref().ok_or_else(|| {
-        CryptoApiError::BadRequest(
-            "Field 'e' (public exponent) is required for RSA key import.".to_owned(),
-        )
-    })?;
     let d_str = body.d.as_deref().ok_or_else(|| {
         CryptoApiError::BadRequest(
             "Field 'd' (private exponent) is required for RSA key import.".to_owned(),
@@ -835,11 +908,7 @@ async fn import_rsa_key(
 
     let alg = body.alg.as_deref();
 
-    // Decode all components
-    let n_bn = BigNum::from_slice(&b64_decode("n", n_str)?)
-        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'n': {e}")))?;
-    let e_bn = BigNum::from_slice(&b64_decode("e", e_str)?)
-        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'e': {e}")))?;
+    // Decode the private components
     let d_bn = BigNum::from_slice(&b64_decode("d", d_str)?)
         .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'd': {e}")))?;
     let p_bn = BigNum::from_slice(&b64_decode("p", p_str)?)
@@ -852,27 +921,6 @@ async fn import_rsa_key(
         .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'dq': {e}")))?;
     let qi_bn = BigNum::from_slice(&b64_decode("qi", qi_str)?)
         .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'qi': {e}")))?;
-
-    // Validate minimum key size
-    let key_bits = n_bn.num_bits();
-    if key_bits < 2048 {
-        return Err(CryptoApiError::BadRequest(format!(
-            "RSA key size must be at least 2048 bits (got {key_bits})."
-        )));
-    }
-
-    // Validate public exponent per FIPS 186-4 §B.3.1: e must be odd and ≥ 3.
-    // Common values: 3, 17, 65537. Values of 0, 1, or 2 are cryptographically broken.
-    if e_bn.num_bits() < 2 {
-        return Err(CryptoApiError::BadRequest(
-            "RSA public exponent 'e' must be at least 3 (got value < 3).".to_owned(),
-        ));
-    }
-    if !e_bn.is_odd() {
-        return Err(CryptoApiError::BadRequest(
-            "RSA public exponent 'e' must be odd.".to_owned(),
-        ));
-    }
 
     let rsa_key =
         Rsa::from_private_components(n_bn, e_bn, d_bn, p_bn, q_bn, dp_bn, dq_bn, qi_bn)
@@ -910,7 +958,7 @@ async fn import_rsa_key(
 
     let import_req = import_object_request(
         kms.vendor_id(),
-        None,
+        body.kid.clone(),
         object,
         Some(rsa_attributes),
         false,
@@ -927,7 +975,7 @@ async fn import_rsa_key(
     let kid = resp.unique_identifier.to_string();
 
     // Derive and import the public key alongside the private key
-    let pub_usage = CryptographicUsageMask::Verify;
+    let pub_usage = rsa_public_usage_from_alg(alg);
     let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
 
     let key_ops = alg.map_or_else(
@@ -940,6 +988,130 @@ async fn import_rsa_key(
         kid_public: Some(kid_public),
         kty: "RSA".to_owned(),
         alg: alg.map(ToOwned::to_owned),
+        crv: None,
+        key_ops,
+        x: None,
+        y: None,
+        n: None,
+        e: None,
+    })
+}
+
+/// Decode and validate the RSA public components (`n`, `e`) shared by the private and
+/// public-only import paths.
+fn rsa_public_components(body: &KeyCreateRequest) -> Result<(BigNum, BigNum), CryptoApiError> {
+    let n_str = body.n.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest("Field 'n' (modulus) is required for RSA key import.".to_owned())
+    })?;
+    let e_str = body.e.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'e' (public exponent) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let n_bn = BigNum::from_slice(&b64_decode("n", n_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'n': {e}")))?;
+    let e_bn = BigNum::from_slice(&b64_decode("e", e_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'e': {e}")))?;
+
+    // Validate minimum key size
+    let key_bits = n_bn.num_bits();
+    if key_bits < 2048 {
+        return Err(CryptoApiError::BadRequest(format!(
+            "RSA key size must be at least 2048 bits (got {key_bits})."
+        )));
+    }
+
+    // Validate public exponent per FIPS 186-4 §B.3.1: e must be odd and ≥ 3.
+    // Common values: 3, 17, 65537. Values of 0, 1, or 2 are cryptographically broken.
+    if e_bn.num_bits() < 2 {
+        return Err(CryptoApiError::BadRequest(
+            "RSA public exponent 'e' must be at least 3 (got value < 3).".to_owned(),
+        ));
+    }
+    if !e_bn.is_odd() {
+        return Err(CryptoApiError::BadRequest(
+            "RSA public exponent 'e' must be odd.".to_owned(),
+        ));
+    }
+    // An oversized `e` imports fine but makes every later RSA-OAEP wrap fail (FIPS 186-5: e < 2^256).
+    if e_bn.num_bits() > 256 {
+        return Err(CryptoApiError::BadRequest(
+            "RSA public exponent 'e' must be below 2^256 (FIPS 186-5).".to_owned(),
+        ));
+    }
+    Ok((n_bn, e_bn))
+}
+
+/// Import a public-only RSA key (`n` + `e`, no `d`) — e.g. a third party's encryption key.
+///
+/// The key is stored as a standalone `PublicKey` (no private-key link, no `jwks` tag: the
+/// KMS does not publish third-party keys). `key_ops` selects the usage mask.
+async fn import_rsa_public_key(
+    kms: &Arc<KMS>,
+    user: &UserId,
+    body: &KeyCreateRequest,
+) -> Result<KeyCreateResponse, CryptoApiError> {
+    let (n_bn, e_bn) = rsa_public_components(body)?;
+    let rsa_key = Rsa::from_public_components(n_bn, e_bn)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid RSA key components: {e}")))?;
+    let spki_der = PKey::from_rsa(rsa_key)
+        .and_then(|pkey| pkey.public_key_to_der())
+        .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let unsupported = |op: &str| {
+        CryptoApiError::BadRequest(format!(
+            "Unsupported key_ops value '{op}' for an RSA public key import. \
+             Supported: encrypt, wrapKey, verify."
+        ))
+    };
+    let (usage_mask, key_ops) = match body.key_ops.as_deref() {
+        None => (
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::Verify,
+            vec!["encrypt".to_owned(), "verify".to_owned()],
+        ),
+        Some([]) => return Err(unsupported("")),
+        Some(ops) => {
+            let mut mask = CryptographicUsageMask::empty();
+            for op in ops {
+                mask |= match op.as_str() {
+                    "encrypt" => CryptographicUsageMask::Encrypt,
+                    "wrapKey" => CryptographicUsageMask::WrapKey,
+                    "verify" => CryptographicUsageMask::Verify,
+                    other => return Err(unsupported(other)),
+                };
+            }
+            (mask, ops.to_vec())
+        }
+    };
+
+    let attributes = Attributes {
+        cryptographic_usage_mask: Some(usage_mask),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        ..Attributes::default()
+    };
+    let object = spki_public_key_object(spki_der, attributes.clone());
+
+    let import_req = import_object_request(
+        kms.vendor_id(),
+        body.kid.clone(),
+        object,
+        Some(attributes),
+        false,
+        false,
+        Vec::<&str>::new(),
+    )
+    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let resp = kms
+        .import(import_req, user)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    Ok(KeyCreateResponse {
+        kid: resp.unique_identifier.to_string(),
+        kid_public: None,
+        kty: "RSA".to_owned(),
+        alg: body.alg.clone(),
         crv: None,
         key_ops,
         x: None,
@@ -1036,7 +1208,7 @@ async fn import_okp_key(
 
     let import_req = import_object_request(
         kms.vendor_id(),
-        None,
+        body.kid.clone(),
         object,
         Some(okp_attributes),
         false,

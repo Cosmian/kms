@@ -103,16 +103,6 @@ pub struct Version {
     pub minor: u8,
 }
 
-pub fn random_label() -> String {
-    use rand::{RngExt, distr::Alphanumeric};
-    String::from("bumpkey ")
-        + &rand::rng()
-            .sample_iter(Alphanumeric)
-            .take(32)
-            .map(char::from)
-            .collect::<String>()
-}
-
 /// Generates `PartialEq`, `Eq`, `Hash`, and `Debug` impls for a given PKCS#11 dyn trait
 /// whose objects are identified by a `remote_id() -> &str` method. All five object-type
 /// traits (`Certificate`, `PrivateKey`, `PublicKey`, `SymmetricKey`, `DataObject`) share

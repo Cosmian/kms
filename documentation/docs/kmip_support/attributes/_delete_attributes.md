@@ -10,11 +10,16 @@ This operation can be applied to all [supported objects](../objects.md). One or 
 
 ### Read-only attributes
 
-The following attributes are **read-only** for `DeleteAttribute`. Any attempt returns an `Attribute_Read_Only` error
-before the object is touched:
+The following attributes are **read-only** for `DeleteAttribute` (KMIP 2.1 §6.1.13). Any attempt returns an
+`Attribute_Read_Only` error before the object is touched:
 
-- `UniqueIdentifier`, `ObjectType`, `CryptographicLength`, `CertificateLength`, `Digest`
-- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `Fresh`
+- `UniqueIdentifier`, `ObjectType`, `ShortUniqueIdentifier`, `KeyFormatType`, `KeyValuePresent`, `OpaqueDataType`
+- `CryptographicAlgorithm`, `CryptographicDomainParameters`, `CryptographicLength`, `DigitalSignatureAlgorithm`,
+  `NISTKeyType`, `Digest`, `RandomNumberGenerator`, `ProtectionStorageMasks`
+- `CertificateType`, `CertificateLength`, `CertificateAttributes`, `X509CertificateIdentifier`,
+  `X509CertificateSubject`, `X509CertificateIssuer`
+- `InitialDate`, `LastChangeDate`, `OriginalCreationDate`, `ArchiveDate`, `DestroyDate`, `CompromiseDate`,
+  `CompromiseOccurrenceDate`, `Fresh`
 - `State`
 - `Sensitive`, `Extractable`, `AlwaysSensitive`, `NeverExtractable`
 - `RotateAutomatic`, `RotateGeneration`, `RotateDate`, `RotateLatest`

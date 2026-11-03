@@ -10,8 +10,9 @@ use std::{
     thread,
 };
 
+use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
-    EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
+    CryptoAlgorithm, EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
 use libloading::Library;
@@ -37,7 +38,6 @@ use pkcs11_sys::{
     CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS,
     CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
-use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
 
 use crate::{
@@ -77,8 +77,8 @@ pub const TEST_RSA_OAEP_DIGEST: RsaOaepDigest = RsaOaepDigest::SHA256;
 
 fn generate_random_data<const T: usize>() -> HResult<[u8; T]> {
     let mut bytes = [0_u8; T];
-    SysRng
-        .try_fill_bytes(&mut bytes)
+    KmsRng::new()
+        .fill_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random data: {e}")))?;
     Ok(bytes)
 }
@@ -215,7 +215,7 @@ pub fn destroy_all(slot: &Arc<SlotManager>) -> HResult<()> {
 }
 
 /// `CKA_ID` prefix of every object created by these shared tests.
-const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
+pub const TEST_OBJECT_ID_PREFIX: &str = "kms-test-";
 
 /// A fresh, unique `CKA_ID` for an object created by these shared tests.
 fn test_object_id() -> String {
@@ -264,7 +264,7 @@ pub fn destroy_created_since<S: std::hash::BuildHasher>(
 
 #[allow(clippy::panic, clippy::unwrap_used)]
 pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
-    let supports_exportable_keys = slot.capabilities().supports_aes_sensitive_attribute;
+    let supports_exportable_keys = slot.capabilities().aes.supports_sensitive_attribute;
     log_init(None);
     let session = slot.open_session(true)?;
     if supports_exportable_keys {
@@ -316,16 +316,62 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
     );
     // it should not be exportable
     session.export_key(key_handle).unwrap_err();
-    // Without `CKA_SENSITIVE` support, `CKA_EXTRACTABLE` is left at the HSM default and cannot
-    // be asserted.
-    if supports_exportable_keys {
-        if let Some(extractable) = session.is_extractable(key_handle)? {
-            assert!(
-                !extractable,
-                "A sensitive AES key must have CKA_EXTRACTABLE=false"
-            );
-        }
+    // Sent explicitly even without `CKA_SENSITIVE` support, so it holds on every HSM.
+    if let Some(extractable) = session.is_extractable(key_handle)? {
+        assert!(
+            !extractable,
+            "A sensitive AES key must have CKA_EXTRACTABLE=false"
+        );
     }
+    Ok(())
+}
+
+/// Export an AES-256 key through RSA-OAEP and verify its bytes outside the HSM.
+pub fn export_aes_key_bytes(slot: &Arc<SlotManager>) -> HResult<()> {
+    let before = object_handles(slot)?;
+    let session = slot.open_session(true)?;
+    let data = b"export the real HSM key bytes";
+    let result = (|| -> HResult<_> {
+        let key_id = test_object_id();
+        let handle =
+            session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
+        let sk_id = test_object_id();
+        let pk_id = sk_id.clone() + "_pk";
+        let (sk, pk) = session.generate_rsa_key_pair(
+            sk_id.as_bytes(),
+            pk_id.as_bytes(),
+            RsaKeySize::Rsa3072,
+            true,
+            None,
+        )?;
+        let extractable = session.is_extractable(handle)?;
+        // CKA_EXTRACTABLE permits wrapping, not necessarily reading CKA_VALUE.
+        let wrapped = session.wrap_aes_key_with_rsa_oaep(pk, handle, RsaOaepDigest::SHA256)?;
+        let key_bytes = session.decrypt(sk, HsmEncryptionAlgorithm::RsaOaepSha256, &wrapped)?;
+        let encrypted = session.encrypt(handle, HsmEncryptionAlgorithm::AesGcm, data, None)?;
+        Ok((extractable, key_bytes, encrypted))
+    })();
+    // Remove only this test's AES and RSA keys, including on export/encryption failure.
+    destroy_created_since(slot, &before)?;
+    let (extractable, key_bytes, encrypted) = result?;
+    assert_eq!(extractable, Some(true), "CKA_EXTRACTABLE must be true");
+    assert_eq!(key_bytes.len(), 32, "AES-256 export must contain 32 bytes");
+    let iv = encrypted
+        .iv
+        .ok_or_else(|| HError::Default("HSM encryption returned no IV".to_owned()))?;
+    let tag = encrypted
+        .tag
+        .ok_or_else(|| HError::Default("HSM encryption returned no GCM tag".to_owned()))?;
+    let plaintext = openssl::symm::decrypt_aead(
+        openssl::symm::Cipher::aes_256_gcm(),
+        &key_bytes,
+        Some(&iv),
+        &[],
+        &encrypted.ciphertext,
+        &tag,
+    )
+    .map_err(|e| HError::Default(format!("Exported key cannot decrypt HSM ciphertext: {e}")))?;
+    assert_eq!(plaintext, data);
     Ok(())
 }
 
@@ -486,7 +532,7 @@ pub fn generate_ec_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
 
 pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<()> {
     log_init(None);
-    if !slot.capabilities().supports_rsa_oaep_key_wrap {
+    if !slot.capabilities().rsa.supports_oaep_key_wrap {
         info!("RSA-OAEP key wrap not supported by this HSM (capability), skipping");
         return Ok(());
     }
@@ -615,6 +661,43 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with AES GCM");
+    Ok(())
+}
+
+/// AES-KW and AES-KWP round-trip; on the `C_WrapKey` path, wrapping needs `CKA_WRAP`.
+pub fn aes_key_wrap(slot: &Arc<SlotManager>, slot_id: usize) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let key_id = test_object_id();
+    let sk = session.generate_aes_key(key_id.as_bytes(), AesKeySize::Aes256, false, None)?;
+    let data = [7_u8; 32];
+    for alg in [CryptoAlgorithm::AesKeyWrap, CryptoAlgorithm::AesKeyWrapPad] {
+        let m = match crate::base_hsm::aes_key_wrap_mechanism(slot, slot_id, &alg, false) {
+            Ok(m) => m,
+            Err(e) if matches!(alg, CryptoAlgorithm::AesKeyWrapPad) => {
+                info!("Skipping {alg:?}: {e}");
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        let wrapped = session.aes_key_wrap(sk, m, &data)?;
+        assert_eq!(wrapped.len(), 40, "{alg:?}");
+        let unwrapped = session.aes_key_unwrap(sk, m, &wrapped)?;
+        assert_eq!(unwrapped.as_slice(), data.as_slice(), "{alg:?}");
+        if !m.single_part {
+            session.set_wrap_attributes(sk, false)?;
+            assert!(
+                session.aes_key_wrap(sk, m, &data).is_err(),
+                "{alg:?} without CKA_WRAP"
+            );
+            session.set_wrap_attributes(sk, true)?;
+            assert_eq!(session.aes_key_wrap(sk, m, &data)?, wrapped, "{alg:?}");
+        }
+        info!(
+            "Successfully wrapped/unwrapped with {alg:?} (single part: {})",
+            m.single_part
+        );
+    }
     Ok(())
 }
 
@@ -1176,7 +1259,7 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
         };
 
         for (name, algorithm, ckm, digest_nid) in algorithms {
-            if slot.capabilities().enforces_ecdsa_digest_strength
+            if slot.capabilities().ec.enforces_ecdsa_digest_strength
                 && ((matches!(curve, EcCurve::P384 | EcCurve::P521)
                     && matches!(digest_nid, Nid::SHA256))
                     || (matches!(curve, EcCurve::P521) && matches!(digest_nid, Nid::SHA384)))

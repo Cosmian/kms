@@ -1,6 +1,6 @@
 mod aes_gcm;
 mod algorithm;
-mod cek_cache;
+pub(crate) mod cek_cache;
 mod models;
 pub(crate) mod tags;
 
@@ -34,6 +34,15 @@ pub(crate) use tags::{
 };
 pub(crate) use unwrap::unwrap_key as unwrap_key_handler;
 pub(crate) use verify::verify as verify_handler;
+
+/// Build the RFC 7515 §2 JWS Signing Input: `ASCII(protected_b64 + "." + payload_b64)`.
+fn jws_signing_input(protected_b64: &str, payload_b64: &str) -> Vec<u8> {
+    let mut signing_input = Vec::with_capacity(protected_b64.len() + 1 + payload_b64.len());
+    signing_input.extend_from_slice(protected_b64.as_bytes());
+    signing_input.push(b'.');
+    signing_input.extend_from_slice(payload_b64.as_bytes());
+    signing_input
+}
 
 /// Return the ECDSA coordinate byte-length for JOSE EC algorithms (None for non-EC algs).
 ///
@@ -200,4 +209,105 @@ pub(crate) fn ecdsa_p1363_to_der(p1363: &[u8]) -> Result<Vec<u8>, CryptoApiError
     der.extend_from_slice(s_stripped);
 
     Ok(der)
+}
+
+/// Deserialize a protected-header member as an optional string, treating any
+/// non-string JSON value like an absent member (same as `Value::as_str`).
+/// `Cow` so that strings containing JSON escapes still deserialize.
+pub(super) fn lenient_str<'de, D>(
+    deserializer: D,
+) -> Result<Option<std::borrow::Cow<'de, str>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum MaybeStr<'a> {
+        #[serde(borrow)]
+        Str(std::borrow::Cow<'a, str>),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(
+        match <MaybeStr as serde::Deserialize>::deserialize(deserializer)? {
+            MaybeStr::Str(s) => Some(s),
+            MaybeStr::Other(_) => None,
+        },
+    )
+}
+
+/// Reject protected headers that are not JSON objects (e.g. JSON arrays or primitives)
+/// before deserializing into typed structs whose fields would otherwise be mapped by position
+/// from a JSON array by serde.
+pub(super) fn ensure_json_object(json_bytes: &[u8]) -> Result<(), CryptoApiError> {
+    let first_non_ws = json_bytes
+        .iter()
+        .copied()
+        .find(|b| !b.is_ascii_whitespace());
+    if first_non_ws != Some(b'{') {
+        return Err(CryptoApiError::BadRequest(
+            "Protected header must be a JSON object".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// Name a `/v1/crypto` request in the audit log as `METHOD /route/pattern` and, when given,
+/// the key it acts on. Calling it again overwrites the previous values.
+pub(crate) fn audit(req: &actix_web::HttpRequest, kid: Option<&str>) {
+    use actix_web::HttpMessage as _;
+
+    use crate::middlewares::{KmipObjectUid, KmipOperationName};
+
+    let operation = req
+        .match_pattern()
+        .map(|pattern| format!("{} {pattern}", req.method()));
+    let mut extensions = req.extensions_mut();
+    if let Some(operation) = operation {
+        extensions.insert(KmipOperationName(operation));
+    }
+    if let Some(kid) = kid {
+        extensions.insert(KmipObjectUid(kid.to_owned()));
+    }
+}
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
+mod lenient_str_tests {
+    use std::borrow::Cow;
+
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct H<'a> {
+        #[serde(default, borrow, deserialize_with = "super::lenient_str")]
+        kid: Option<Cow<'a, str>>,
+    }
+
+    #[test]
+    fn escaped_string_is_kept_and_non_string_is_absent() {
+        let h: H = serde_json::from_str(r#"{"kid":"a\u0062\/c"}"#).unwrap();
+        assert_eq!(h.kid.as_deref(), Some("ab/c"));
+        let h: H = serde_json::from_str(r#"{"kid":42}"#).unwrap();
+        assert!(h.kid.is_none());
+        let h: H = serde_json::from_str(r"{}").unwrap();
+        assert!(h.kid.is_none());
+    }
+
+    #[test]
+    fn test_ensure_json_object_rejects_arrays_and_primitives() {
+        use super::ensure_json_object;
+
+        ensure_json_object(br#"{"kid":"k1"}"#).unwrap();
+        ensure_json_object(b"  \n\t {\"kid\":\"k1\"} ").unwrap();
+
+        for input in [
+            &b"[\"k1\",\"dir\",\"A256GCM\"]"[..],
+            b"\"just a string\"",
+            b"12345",
+            b"true",
+            b"",
+            b"   ",
+        ] {
+            ensure_json_object(input).unwrap_err();
+        }
+    }
 }

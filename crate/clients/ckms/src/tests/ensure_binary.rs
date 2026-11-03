@@ -28,17 +28,13 @@ impl Drop for BuildLockGuard {
     }
 }
 
-/// Waits until `marker_path` (indicating build completion) or `binary_path`
-/// exists and the lock file is released, polling at a short interval. Bails
-/// out after `timeout` so a stuck/crashed builder process cannot hang the
-/// waiting test forever.
+/// Waits until the builder process releases `lock_path` and `marker_path`
+/// vouches for `binary_path`, polling at a short interval. Bails out after
+/// `timeout` so a stuck/crashed builder process cannot hang the waiting test
+/// forever.
 fn wait_for_binary(binary_path: &Path, lock_path: &Path, marker_path: &Path, timeout: Duration) {
     let start = Instant::now();
-    while !marker_path.exists() {
-        // If the lock file disappeared and the binary exists, the builder finished.
-        if !lock_path.exists() && binary_path.exists() {
-            break;
-        }
+    while lock_path.exists() {
         assert!(
             start.elapsed() < timeout,
             "Timed out after {timeout:?} waiting for another test process to finish building \
@@ -47,12 +43,37 @@ fn wait_for_binary(binary_path: &Path, lock_path: &Path, marker_path: &Path, tim
         );
         thread::sleep(Duration::from_millis(100));
     }
-
     assert!(
-        binary_path.exists(),
-        "ckms binary was reported ready but does not exist at {}",
+        is_fresh(binary_path, marker_path),
+        "another test process finished building but the ckms binary at {} is not ready",
         binary_path.display()
     );
+}
+
+/// Modification time of `path` as a string, used to identify one exact build
+/// of the binary.
+fn mtime_stamp(path: &Path) -> Option<String> {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .map(|t| format!("{t:?}"))
+}
+
+/// The binary is usable when the marker was written by our own build of this
+/// variant (it stores the binary's mtime, so any later `cargo build` of the
+/// other variant invalidates it) and after the current test executable was
+/// compiled (so ckms source changes trigger a rebuild).
+fn is_fresh(binary_path: &Path, marker_path: &Path) -> bool {
+    let Some(stamp) = mtime_stamp(binary_path) else {
+        return false;
+    };
+    let marker_newer_than_test_exe = std::env::current_exe()
+        .and_then(fs::metadata)
+        .and_then(|m| m.modified())
+        .ok()
+        .zip(fs::metadata(marker_path).and_then(|m| m.modified()).ok())
+        .is_some_and(|(exe, marker)| marker >= exe);
+    marker_newer_than_test_exe && fs::read_to_string(marker_path).is_ok_and(|s| s == stamp)
 }
 
 #[allow(clippy::print_stdout)]
@@ -87,9 +108,9 @@ fn build_ckms_binary() {
         .join("target")
         .join(format!(".ckms-build-{profile}-{variant}.ready"));
 
-    // If the binary exists AND was built for the currently running test's variant,
-    // we can return immediately.
-    if binary_path.exists() && marker_path.exists() {
+    // Reuse the binary only if it is exactly the one our last build of this
+    // variant produced; a plain `cargo build` (FIPS) overwrites the same path.
+    if is_fresh(&binary_path, &marker_path) {
         return;
     }
 
@@ -127,7 +148,9 @@ fn build_ckms_binary() {
             drop(fs::remove_file(&marker_path));
             run_cargo_build(workspace_root, &binary_path);
             // Write marker to signal completion before dropping guard
-            drop(fs::write(&marker_path, b"ready"));
+            if let Some(stamp) = mtime_stamp(&binary_path) {
+                drop(fs::write(&marker_path, stamp));
+            }
         }
         Err(_) => {
             // Another process already holds the lock (or just finished and

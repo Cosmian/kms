@@ -74,7 +74,7 @@ git diff --stat         # every hunk explainable by the task
 ## Quick Rules
 
 - Prefer **generics** over `dyn Trait` unless the set of types is open at runtime.
-- Add `#[allow(clippy::...)]` only with an inline comment explaining why the lint cannot be satisfied.
+- Never add `#[allow(clippy::...)]` / `#[expect(...)]` on new code: fix the lint or restructure. See `rust.instructions.md` § Clippy and lint suppression.
 - Never remove a public function without checking all crates: `rg "fn_name" --type rust`.
 - Keep functions under 50 lines after refactoring. Extract helpers rather than growing functions.
 - Imports (`use` statements) always go at the top of the file — never inline inside function bodies.

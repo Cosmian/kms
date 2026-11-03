@@ -54,8 +54,21 @@ use pkcs11_sys::{
 
 use crate::error::{KmsCliError, result::KmsCliResult};
 
-// Thread-safe configuration for CKMS_CONF environment variable
+/// Serializes writes to the process-wide `CKMS_CONF` environment variable across the
+/// `ckms pkcs11` subcommands.
 static CKMS_CONF_LOCK: Mutex<()> = Mutex::new(());
+
+/// Points the provider at `conf` through `CKMS_CONF`; call it before the library is loaded.
+pub(super) fn set_ckms_conf(conf: &Path) -> KmsCliResult<()> {
+    let _guard = CKMS_CONF_LOCK
+        .lock()
+        .map_err(|_lock_err| KmsCliError::Default("CKMS_CONF_LOCK poisoned".to_owned()))?;
+    // SAFETY: `set_var` is only unsound when another thread reads or writes the
+    // environment concurrently; all writers in this crate go through this mutex and
+    // the provider reads `CKMS_CONF` only after its library is loaded.
+    unsafe { env::set_var("CKMS_CONF", conf) };
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -73,18 +86,14 @@ pub(crate) fn run_verify(
     // ── Step A: Determine which ckms.toml will be used ──────────────────────
     describe_config(so_path, conf);
 
-    // Set CKMS_CONF in a thread-safe manner using a mutex to coordinate access
-    // and prevent race conditions in multi-threaded Tokio runtime contexts.
-    let _guard = CKMS_CONF_LOCK
-        .lock()
-        .map_err(|_lock_err| KmsCliError::Default("CKMS_CONF_LOCK poisoned".to_owned()))?;
     if let Some(conf_path) = conf {
-        // Safety: protected by mutex to ensure exclusive access to environment variables
-        unsafe { env::set_var("CKMS_CONF", conf_path) };
+        set_ckms_conf(conf_path)?;
     }
 
     // ── Step B: Load the shared library ────────────────────────────────────
     println!("[load] Opening: {}", so_path.display());
+    // SAFETY: loading runs the library's initializers; the caller explicitly names a
+    // PKCS#11 provider, whose initializers are trusted like any loaded Cryptoki module.
     let lib = unsafe { Library::new(so_path) }.map_err(|e| {
         KmsCliError::Default(format!(
             "FAIL [load]: cannot open '{}': {e}\n  \
@@ -107,6 +116,8 @@ pub(crate) fn run_verify(
 
     // ── Step C: C_GetFunctionList ───────────────────────────────────────────
     let func_list_ptr = call_get_function_list(&lib)?;
+    // SAFETY: `call_get_function_list` returned a non-null pointer to the provider's
+    // static function table, valid while `lib` stays loaded (until this function returns).
     let func_list: &CK_FUNCTION_LIST = unsafe { &*func_list_ptr };
     println!("[C_GetFunctionList] OK: ckms.toml parsed");
     println!();
@@ -115,6 +126,7 @@ pub(crate) fn run_verify(
     let c_initialize = func_list.C_Initialize.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_Initialize]: not present in function list".to_owned())
     })?;
+    // SAFETY: `C_Initialize` accepts a null `pInitArgs` (no threading callbacks).
     let rv = unsafe { c_initialize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Initialize")?;
     println!("[C_Initialize] OK");
@@ -171,6 +183,7 @@ pub(crate) fn run_verify(
     let c_close_session = func_list.C_CloseSession.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_CloseSession]: not present in function list".to_owned())
     })?;
+    // SAFETY: `session` is the open session handle returned by `C_OpenSession` above.
     let rv = unsafe { c_close_session(session) };
     check_rv(rv, "C_CloseSession")?;
     println!("[C_CloseSession] OK");
@@ -179,6 +192,7 @@ pub(crate) fn run_verify(
     let c_finalize = func_list.C_Finalize.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_Finalize]: not present in function list".to_owned())
     })?;
+    // SAFETY: `C_Finalize` requires a null `pReserved`.
     let rv = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Finalize")?;
     println!("[C_Finalize] OK");
@@ -204,6 +218,7 @@ pub(crate) fn run_verify(
 type GetFunctionListFn = unsafe extern "C" fn(CK_FUNCTION_LIST_PTR_PTR) -> CK_RV;
 
 pub(crate) fn call_get_function_list(lib: &Library) -> KmsCliResult<*mut CK_FUNCTION_LIST> {
+    // SAFETY: `GetFunctionListFn` matches the PKCS#11 `C_GetFunctionList` prototype.
     let get_func_list: Symbol<GetFunctionListFn> = unsafe { lib.get(b"C_GetFunctionList\0") }
         .map_err(|e| {
             KmsCliError::Default(format!(
@@ -212,6 +227,7 @@ pub(crate) fn call_get_function_list(lib: &Library) -> KmsCliResult<*mut CK_FUNC
         })?;
 
     let mut func_list_ptr: *mut CK_FUNCTION_LIST = ptr::null_mut();
+    // SAFETY: `func_list_ptr` is a valid, writable out-parameter for the call.
     let rv = unsafe { get_func_list(&raw mut func_list_ptr) };
 
     if rv != CKR_OK {
@@ -240,6 +256,7 @@ pub(crate) fn call_get_slot_list(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<C
 
     let token_present: CK_BBOOL = CK_TRUE;
     let mut count: CK_ULONG = 0;
+    // SAFETY: a null `pSlotList` asks only for the count, written to the valid `count`.
     let rv = unsafe { c_get_slot_list(token_present, ptr::null_mut(), &raw mut count) };
     check_rv(rv, "C_GetSlotList (count)")?;
 
@@ -256,6 +273,7 @@ pub(crate) fn call_get_slot_list(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<C
     })?;
 
     let mut slots: Vec<CK_SLOT_ID> = vec![0; slot_count];
+    // SAFETY: `slots` holds exactly `count` entries, the capacity passed in `count`.
     let rv = unsafe { c_get_slot_list(token_present, slots.as_mut_ptr(), &raw mut count) };
     check_rv(rv, "C_GetSlotList (fill)")?;
 
@@ -275,6 +293,8 @@ pub(crate) fn call_open_session(
     let flags: CK_FLAGS = CKF_SERIAL_SESSION | CKF_RW_SESSION;
     let mut session: CK_SESSION_HANDLE = 0;
 
+    // SAFETY: null `pApplication` and `None` notify callback are allowed; `session` is a
+    // valid out-parameter.
     let rv = unsafe {
         c_open_session(
             slot_id,
@@ -312,6 +332,7 @@ pub(crate) fn call_login(
         ))
     })?;
 
+    // SAFETY: `token_bytes` is a live buffer of exactly `pin_len` bytes, only read by `C_Login`.
     let rv = unsafe { c_login(session, CKU_USER, token_bytes.as_ptr().cast_mut(), pin_len) };
 
     if rv != CKR_OK {
@@ -345,6 +366,7 @@ const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
 pub(crate) fn call_get_function_list_3_0(
     lib: &Library,
 ) -> KmsCliResult<*const pkcs11_sys::CK_FUNCTION_LIST_3_0> {
+    // SAFETY: `GetInterfaceFn` matches the PKCS#11 v3 `C_GetInterface` prototype.
     let get_interface: Symbol<GetInterfaceFn> =
         unsafe { lib.get(b"C_GetInterface\0") }.map_err(|e| {
             KmsCliError::Default(format!(
@@ -353,6 +375,7 @@ pub(crate) fn call_get_function_list_3_0(
         })?;
 
     let mut iface_ptr: CK_INTERFACE_PTR = ptr::null_mut();
+    // SAFETY: null name/version request the default interface; `iface_ptr` is a valid out-parameter.
     let rv = unsafe { get_interface(ptr::null_mut(), ptr::null_mut(), &raw mut iface_ptr, 0) };
     check_rv(rv, "C_GetInterface (default lookup)")?;
     if iface_ptr.is_null() {
@@ -380,12 +403,14 @@ pub(crate) fn call_get_function_list_3_0(
 /// the shared library, exactly like `C_GetFunctionList`, so a v3-only client that never calls
 /// `C_GetFunctionList` can still fully initialize and use this provider.
 fn call_verify_interfaces(lib: &Library) -> KmsCliResult<()> {
+    // SAFETY: `GetInterfaceListFn` matches the PKCS#11 v3 `C_GetInterfaceList` prototype.
     let get_interface_list: Symbol<GetInterfaceListFn> =
         unsafe { lib.get(b"C_GetInterfaceList\0") }.map_err(|e| {
             KmsCliError::Default(format!(
                 "FAIL [C_GetInterfaceList]: symbol not found in .so: {e}"
             ))
         })?;
+    // SAFETY: `GetInterfaceFn` matches the PKCS#11 v3 `C_GetInterface` prototype.
     let get_interface: Symbol<GetInterfaceFn> =
         unsafe { lib.get(b"C_GetInterface\0") }.map_err(|e| {
             KmsCliError::Default(format!(
@@ -395,6 +420,7 @@ fn call_verify_interfaces(lib: &Library) -> KmsCliResult<()> {
 
     // Two-call convention: first learn the count, then fill a caller-allocated buffer.
     let mut count: CK_ULONG = 0;
+    // SAFETY: a null `pInterfacesList` asks only for the count, written to the valid `count`.
     let rv = unsafe { get_interface_list(ptr::null_mut(), &raw mut count) };
     check_rv(rv, "C_GetInterfaceList (count)")?;
     if count == 0 {
@@ -416,6 +442,7 @@ fn call_verify_interfaces(lib: &Library) -> KmsCliResult<()> {
         };
         interface_count
     ];
+    // SAFETY: `interfaces` holds exactly `count` entries, the capacity passed in `count`.
     let rv = unsafe { get_interface_list(interfaces.as_mut_ptr(), &raw mut count) };
     check_rv(rv, "C_GetInterfaceList (fill)")?;
 
@@ -442,6 +469,7 @@ fn call_verify_interfaces(lib: &Library) -> KmsCliResult<()> {
 
     // Default lookup: both name and version null must succeed and return the same interface.
     let mut iface_ptr: CK_INTERFACE_PTR = ptr::null_mut();
+    // SAFETY: null name/version request the default interface; `iface_ptr` is a valid out-parameter.
     let rv = unsafe { get_interface(ptr::null_mut(), ptr::null_mut(), &raw mut iface_ptr, 0) };
     check_rv(rv, "C_GetInterface (default lookup)")?;
     if iface_ptr.is_null() {
@@ -453,12 +481,14 @@ fn call_verify_interfaces(lib: &Library) -> KmsCliResult<()> {
 
     // Exact-name lookup must also succeed.
     let name_ptr = PKCS11_INTERFACE_NAME.as_ptr().cast_mut();
+    // SAFETY: `name_ptr` points to the NUL-terminated static `PKCS11_INTERFACE_NAME`, only read.
     let rv = unsafe { get_interface(name_ptr, ptr::null_mut(), &raw mut iface_ptr, 0) };
     check_rv(rv, "C_GetInterface (exact-name lookup)")?;
 
     // Backward-compatible v3.0 request: a v3.1 implementation must still satisfy a caller
     // that explicitly asks for {major: 3, minor: 0}.
     let mut v3_0 = CK_VERSION { major: 3, minor: 0 };
+    // SAFETY: as above; `v3_0` is a live `CK_VERSION` for the duration of the call.
     let rv = unsafe { get_interface(name_ptr, &raw mut v3_0, &raw mut iface_ptr, 0) };
     check_rv(rv, "C_GetInterface (v3.0 backward-compat request)")?;
 
@@ -467,6 +497,7 @@ fn call_verify_interfaces(lib: &Library) -> KmsCliResult<()> {
         .as_ptr()
         .cast_mut()
         .cast::<pkcs11_sys::CK_UTF8CHAR>();
+    // SAFETY: `bogus_name` points to a NUL-terminated static C string, only read.
     let rv = unsafe { get_interface(bogus_name, ptr::null_mut(), &raw mut iface_ptr, 0) };
     if rv == CKR_OK {
         return Err(KmsCliError::Default(
@@ -501,6 +532,7 @@ fn call_get_info(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<()> {
     })?;
 
     let mut info = CK_INFO::default();
+    // SAFETY: `info` is a valid, correctly-sized `CK_INFO` out-parameter.
     let rv = unsafe { c_get_info(&raw mut info) };
     check_rv(rv, "C_GetInfo")?;
 
@@ -557,6 +589,7 @@ fn call_verify_mechanisms(func_list: &CK_FUNCTION_LIST, slot_id: CK_SLOT_ID) -> 
     })?;
 
     let mut count: CK_ULONG = 0;
+    // SAFETY: a null `pMechanismList` asks only for the count, written to the valid `count`.
     let rv = unsafe { c_get_mechanism_list(slot_id, ptr::null_mut(), &raw mut count) };
     check_rv(rv, "C_GetMechanismList (count)")?;
 
@@ -566,6 +599,7 @@ fn call_verify_mechanisms(func_list: &CK_FUNCTION_LIST, slot_id: CK_SLOT_ID) -> 
         ))
     })?;
     let mut mechanisms: Vec<CK_MECHANISM_TYPE> = vec![0; mechanism_count];
+    // SAFETY: `mechanisms` holds exactly `count` entries, the capacity passed in `count`.
     let rv = unsafe { c_get_mechanism_list(slot_id, mechanisms.as_mut_ptr(), &raw mut count) };
     check_rv(rv, "C_GetMechanismList (fill)")?;
 
@@ -584,6 +618,7 @@ fn call_verify_mechanisms(func_list: &CK_FUNCTION_LIST, slot_id: CK_SLOT_ID) -> 
         }
 
         let mut info = CK_MECHANISM_INFO::default();
+        // SAFETY: `info` is a valid, correctly-sized `CK_MECHANISM_INFO` out-parameter.
         let rv = unsafe { c_get_mechanism_info(slot_id, mechanism, &raw mut info) };
         check_rv(rv, &format!("C_GetMechanismInfo({name})"))?;
         // `CK_MECHANISM_INFO` is a packed struct: copy `flags` to a local variable before use
@@ -668,6 +703,8 @@ fn find_handles_by_class(
     let c_find_objects_init = func_list
         .C_FindObjectsInit
         .ok_or_else(|| "FAIL [C_FindObjectsInit]: not present in function list".to_owned())?;
+    // SAFETY: `template` is one live `CK_ATTRIBUTE` whose `pValue` points to the live
+    // `object_class` of `ulValueLen` bytes.
     let rv = unsafe { c_find_objects_init(session, &raw mut template, 1) };
     check_rv_raw(rv, &format!("C_FindObjectsInit({class_name})"))?;
 
@@ -681,6 +718,7 @@ fn find_handles_by_class(
     loop {
         let mut handles: Vec<CK_OBJECT_HANDLE> = vec![0; MAX_OBJECTS];
         let mut found: CK_ULONG = 0;
+        // SAFETY: `handles` holds `MAX_OBJECTS` (= `max_ck`) entries; `found` is a valid out-parameter.
         let rv = unsafe { c_find_objects(session, handles.as_mut_ptr(), max_ck, &raw mut found) };
         check_rv_raw(rv, &format!("C_FindObjects({class_name})"))?;
 
@@ -699,6 +737,7 @@ fn find_handles_by_class(
     let c_find_objects_final = func_list
         .C_FindObjectsFinal
         .ok_or_else(|| "FAIL [C_FindObjectsFinal]: not present in function list".to_owned())?;
+    // SAFETY: closes the search started by `C_FindObjectsInit` on this `session`.
     let rv = unsafe { c_find_objects_final(session) };
     check_rv_raw(rv, &format!("C_FindObjectsFinal({class_name})"))?;
 
@@ -752,6 +791,7 @@ fn call_verify_profiles(
             pValue: (&raw mut profile_id).cast::<c_void>(),
             ulValueLen: profile_id_len,
         };
+        // SAFETY: `template.pValue` points to the live `profile_id`, `ulValueLen` bytes long.
         let rv = unsafe { c_get_attribute_value(session, handle, &raw mut template, 1) };
         check_rv(rv, "C_GetAttributeValue(CKA_PROFILE_ID)")?;
 

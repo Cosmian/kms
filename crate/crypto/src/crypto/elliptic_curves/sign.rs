@@ -1,28 +1,34 @@
+#[cfg(feature = "non-fips")]
+use std::ffi::c_uint;
+
 use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::DigitalSignatureAlgorithm};
+#[cfg(feature = "non-fips")]
+use foreign_types::ForeignTypeRef as _;
 #[cfg(feature = "non-fips")]
 use k256::ecdsa::{
     Signature as K256Signature, SigningKey as K256SigningKey,
     signature::{Signer as _, hazmat::PrehashSigner as _},
+};
+#[cfg(feature = "non-fips")]
+use openssl::{
+    hash::Hasher,
+    md::Md,
+    pkey_ctx::{PkeyCtx, PkeyCtxRef},
 };
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
     sign::Signer,
 };
-#[cfg(feature = "non-fips")]
-use p256::ecdsa::{
-    Signature as P256Signature, SigningKey as P256SigningKey, signature::DigestSigner as _,
-    signature::hazmat::PrehashSigner as _,
-};
-#[cfg(feature = "non-fips")]
-use sha2::{Digest, Sha256};
 
 #[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::ECDSA_256_D_PRIVATE_KEY_LENGTH;
 use crate::error::CryptoError;
 
-/// ECDSA signature helper implementing RFC6979 determinism for NIST P-256 + SHA-256 in non-fips builds,
-/// falling back to OpenSSL Signer otherwise.
+/// ECDSA signature helper: in non-fips builds P-256 and secp256k1 are signed deterministically
+/// (RFC 6979) — P-256 via OpenSSL's deterministic nonce mode (when the digest has the hash
+/// length), secp256k1 via k256 with low-S, which is ~3x faster than OpenSSL on that curve.
+/// Everything else uses OpenSSL's randomised signer.
 pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>, CryptoError> {
     let digital_signature_algorithm = request.cryptographic_parameters.as_ref().map_or(
         DigitalSignatureAlgorithm::ECDSAWithSHA256,
@@ -43,16 +49,19 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
         }
     };
 
-    // RFC6979 deterministic ECDSA for P-256 and secp256k1 in non-fips builds
+    // RFC6979 deterministic ECDSA for P-256 (OpenSSL) and secp256k1 (k256) in non-fips builds
     #[cfg(feature = "non-fips")]
     {
         if let Ok(ec_key) = private_key.ec_key() {
             let curve_nid = ec_key.group().curve_name();
 
-            let is_p256 = curve_nid == Some(openssl::nid::Nid::X9_62_PRIME256V1);
-            let is_k256 = curve_nid == Some(openssl::nid::Nid::SECP256K1);
-
-            if is_p256 || is_k256 {
+            if curve_nid == Some(openssl::nid::Nid::X9_62_PRIME256V1) {
+                // `None` (digest length != hash length) falls through to the randomised
+                // OpenSSL path below.
+                if let Some(signature) = ecdsa_sign_rfc6979_openssl(request, private_key, digest)? {
+                    return Ok(signature);
+                }
+            } else if curve_nid == Some(openssl::nid::Nid::SECP256K1) {
                 let mut msg_bytes = Vec::new();
                 if let Some(corr) = request.correlation_value.clone() {
                     msg_bytes.extend_from_slice(&corr);
@@ -73,31 +82,17 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
                     let start = d_bytes.len().saturating_sub(ECDSA_256_D_PRIVATE_KEY_LENGTH);
                     d_bytes = d_bytes.get(start..).unwrap_or(&d_bytes[..]).to_vec();
                 }
-                return if is_p256 {
-                    let key = P256SigningKey::from_slice(&d_bytes)
-                        .map_err(|e| CryptoError::NotSupported(format!("P256 key error: {e}")))?;
-                    let sig: P256Signature = if request.digested_data.is_some() {
-                        key.sign_prehash(&msg_bytes).map_err(|e| {
-                            CryptoError::NotSupported(format!("Sign (P256) error: {e}"))
-                        })?
-                    } else {
-                        key.sign_digest(Sha256::new().chain_update(&msg_bytes))
-                    };
-                    Ok(sig.to_der().as_bytes().to_vec())
+                let key = K256SigningKey::from_slice(&d_bytes)
+                    .map_err(|e| CryptoError::NotSupported(format!("K256 key error: {e}")))?;
+                let sig: K256Signature = if request.digested_data.is_some() {
+                    key.sign_prehash(&msg_bytes)
+                        .map_err(|e| CryptoError::NotSupported(format!("Sign (K256) error: {e}")))?
                 } else {
-                    let key = K256SigningKey::from_slice(&d_bytes)
-                        .map_err(|e| CryptoError::NotSupported(format!("K256 key error: {e}")))?;
-                    let sig: K256Signature = if request.digested_data.is_some() {
-                        key.sign_prehash(&msg_bytes).map_err(|e| {
-                            CryptoError::NotSupported(format!("Sign (K256) error: {e}"))
-                        })?
-                    } else {
-                        // k256 `Signer` hashes with SHA-256 (RFC 6979), same as the P-256 path.
-                        key.sign(&msg_bytes)
-                    };
-                    // Apply Low-S normalization
-                    Ok(sig.normalize_s().to_der().as_bytes().to_vec())
+                    // k256 `Signer` hashes with SHA-256 (RFC 6979).
+                    key.sign(&msg_bytes)
                 };
+                // Apply Low-S normalization
+                return Ok(sig.normalize_s().to_der().as_bytes().to_vec());
             }
         }
     }
@@ -142,6 +137,87 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
         signer.sign_oneshot_to_vec(&data_to_sign)?
     };
     Ok(signature)
+}
+
+/// RFC 6979 deterministic ECDSA computed by OpenSSL (`nonce-type` = 1), which uses its
+/// optimised curve arithmetic (~20x faster than the pure-Rust `p256` crate).
+/// Returns `Ok(None)` when `digested_data` is not exactly `digest.size()` bytes: OpenSSL
+/// rejects such inputs, so the caller falls back to the randomised OpenSSL signer.
+#[cfg(feature = "non-fips")]
+fn ecdsa_sign_rfc6979_openssl(
+    request: &Sign,
+    private_key: &PKey<Private>,
+    digest: MessageDigest,
+) -> Result<Option<Vec<u8>>, CryptoError> {
+    let hashed;
+    let tbs: &[u8] = if let Some(digested_data) = &request.digested_data {
+        if digested_data.len() != digest.size() {
+            return Ok(None);
+        }
+        digested_data
+    } else {
+        let mut hasher = Hasher::new(digest)?;
+        if let Some(corr) = &request.correlation_value {
+            hasher.update(corr)?;
+        }
+        if let Some(data) = &request.data {
+            hasher.update(data.as_ref())?;
+        }
+        hashed = hasher.finish()?;
+        &hashed
+    };
+    let md = Md::from_nid(digest.type_()).ok_or_else(|| {
+        CryptoError::NotSupported(format!(
+            "ecdsa_sign: no OpenSSL MD for {:?}",
+            digest.type_()
+        ))
+    })?;
+    let mut ctx = PkeyCtx::new(private_key)?;
+    ctx.sign_init()?;
+    ctx.set_signature_md(md)?;
+    if !set_deterministic_nonce(&mut ctx) {
+        return Ok(None);
+    }
+    let mut signature = Vec::new();
+    ctx.sign_to_vec(tbs, &mut signature)?;
+    Ok(Some(signature))
+}
+
+/// Switches `ctx` to RFC 6979 deterministic nonces via the `nonce-type` signature parameter.
+///
+/// `openssl::pkey_ctx::NonceType` is gated on `ossl320`, which is off whenever `openssl-sys`
+/// is built against older headers (e.g. system 3.0.x) while the final binary links the
+/// 3.6.2 libcrypto from `build.rs`. The raw `OSSL_PARAM` call only needs `ossl300`.
+/// Returns `false` when the linked libcrypto does not honour the parameter (OpenSSL < 3.2
+/// silently ignores unknown parameters), so the caller never mistakes a random-nonce
+/// signature for an RFC 6979 one and falls back to the default OpenSSL signer instead.
+#[cfg(feature = "non-fips")]
+#[allow(unsafe_code)] // reason: raw OSSL_PARAM FFI; openssl's safe `set_nonce_type` is gated on ossl320, off when openssl-sys is built against 3.0.x headers
+fn set_deterministic_nonce(ctx: &mut PkeyCtxRef<Private>) -> bool {
+    let key = c"nonce-type";
+    let mut requested: c_uint = 1; // 1 = RFC 6979 deterministic k
+    // SAFETY: `key` is a NUL-terminated static, `requested` outlives the call, and the params
+    // array is terminated by `OSSL_PARAM_construct_end`. `ctx.as_ptr()` is a live EVP_PKEY_CTX.
+    let set_ok = unsafe {
+        let params = [
+            openssl_sys::OSSL_PARAM_construct_uint(key.as_ptr(), &raw mut requested),
+            openssl_sys::OSSL_PARAM_construct_end(),
+        ];
+        openssl_sys::EVP_PKEY_CTX_set_params(ctx.as_ptr(), params.as_ptr())
+    };
+    if set_ok <= 0 {
+        return false;
+    }
+    let mut effective: c_uint = 0;
+    // SAFETY: same invariants as above; `effective` outlives the call.
+    let get_ok = unsafe {
+        let mut params = [
+            openssl_sys::OSSL_PARAM_construct_uint(key.as_ptr(), &raw mut effective),
+            openssl_sys::OSSL_PARAM_construct_end(),
+        ];
+        openssl_sys::EVP_PKEY_CTX_get_params(ctx.as_ptr(), params.as_mut_ptr())
+    };
+    get_ok > 0 && effective == 1
 }
 
 /// `EdDSA` (e.g., `Ed25519`) signing helper. Uses OpenSSL's one-shot signer without digest.
@@ -393,5 +469,70 @@ mod tests {
         assert_ne!(pair_result0.0, pair_result1.1);
         assert_ne!(pair_result0.1, pair_result1.0);
         assert_ne!(pair_result0.1, pair_result1.1);
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn p256_rfc6979_matches_known_answer() {
+        // RFC 6979 A.2.5 (P-256, SHA-256, message "sample").
+        let pem = "-----BEGIN PRIVATE KEY-----\n\
+                   MEECAQAwEwYHKoZIzj0CAQYIKoZIzj0DAQcEJzAlAgEBBCDJr6nYRbp1FmtcIVdnsdaTTlDD2zbo\n\
+                   mxJ7imIrEg9nIQ==\n\
+                   -----END PRIVATE KEY-----";
+        let ec_key = openssl::ec::EcKey::private_key_from_pem(pem.as_bytes()).unwrap();
+        let pkey = PKey::from_ec_key(ec_key).unwrap();
+
+        // The linked libcrypto (3.6.2) must honour `nonce-type`; otherwise `ecdsa_sign`
+        // would silently take the slow pure-Rust fallback.
+        let mut ctx = PkeyCtx::new(&pkey).unwrap();
+        ctx.sign_init().unwrap();
+        assert!(set_deterministic_nonce(&mut ctx));
+        let expected = hex::decode(
+            "3046022100EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716022100F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
+        )
+        .unwrap();
+        let cp = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        };
+
+        let req_data = Sign {
+            data: Some(b"sample".to_vec().into()),
+            cryptographic_parameters: Some(cp.clone()),
+            ..Default::default()
+        };
+        assert_eq!(ecdsa_sign(&req_data, &pkey).unwrap(), expected);
+        // The OpenSSL fast path itself (not the randomised fallback) must produce the KAT.
+        assert_eq!(
+            ecdsa_sign_rfc6979_openssl(&req_data, &pkey, MessageDigest::sha256()).unwrap(),
+            Some(expected.clone())
+        );
+
+        let sha256 = openssl::hash::hash(MessageDigest::sha256(), b"sample").unwrap();
+        let req_digest = Sign {
+            digested_data: Some(sha256.to_vec()),
+            cryptographic_parameters: Some(cp.clone()),
+            ..Default::default()
+        };
+        assert_eq!(ecdsa_sign(&req_digest, &pkey).unwrap(), expected);
+
+        // 20-byte digest: not a SHA-256 length, so OpenSSL's deterministic mode rejects it and
+        // `ecdsa_sign` falls back to the randomised OpenSSL signer; the signature must verify.
+        let sha1 = openssl::hash::hash(MessageDigest::sha1(), b"sample").unwrap();
+        let req_sha1 = Sign {
+            digested_data: Some(sha1.to_vec()),
+            cryptographic_parameters: Some(cp),
+            ..Default::default()
+        };
+        let sig1 = ecdsa_sign(&req_sha1, &pkey).unwrap();
+        let public_key = PKey::public_key_from_pem(&pkey.public_key_to_pem().unwrap()).unwrap();
+        let cp_verify = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+            ..Default::default()
+        };
+        assert_eq!(
+            ecdsa_verify(&public_key, &sha1, &sig1, &cp_verify, true).unwrap(),
+            cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid
+        );
     }
 }

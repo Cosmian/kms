@@ -7,10 +7,8 @@ use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     actions::{
-        shared::RevokeReasonArgs,
-        symmetric::keys::{
-            create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
-        },
+        shared::{RevokeKeyAction, RevokeReasonArgs},
+        symmetric::keys::{create_key::CreateKeyAction, destroy_key::DestroyKeyAction},
     },
     error::result::KmsCliResult,
 };

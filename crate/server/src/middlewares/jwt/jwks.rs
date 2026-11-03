@@ -6,12 +6,15 @@
 
 use std::{collections::HashMap, sync::RwLock};
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use cosmian_logger::trace;
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use reqwest::{Client, header::HeaderValue};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::JwtConfig;
 use crate::{config::ProxyParams, error::KmsError, kms_bail, kms_error, result::KResult};
 
 static REFRESH_INTERVAL: i64 = 60; // in secs
@@ -78,6 +81,29 @@ impl JwksManager {
                     .find(|jwk| jwk.common.key_id.as_deref() == Some(kid))
             })
             .cloned())
+    }
+
+    /// Execute a closure over each `&Jwk` in the cache until it returns `Some` or finishes.
+    pub fn find_map_key<R>(&self, mut f: impl FnMut(&Jwk) -> Option<R>) -> KResult<Option<R>> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        for set in jwks_lock.values() {
+            for key in &set.keys {
+                if let Some(res) = f(key) {
+                    return Ok(Some(res));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Check whether the JWKS cache is empty without allocating.
+    pub fn is_empty(&self) -> KResult<bool> {
+        let jwks_lock = self.jwks.read().map_err(|e| {
+            KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+        })?;
+        Ok(jwks_lock.values().all(|set| set.keys.is_empty()))
     }
 
     /// Return all JWKs from all registered JWKS sets, regardless of `kid`.
@@ -188,6 +214,64 @@ impl JwksManager {
     }
 }
 
+/// Refresh, throttled per key set by [`JwksManager::refresh`], the JWKS of the
+/// configurations whose issuer is the `iss` claim of `token`, or of every configuration
+/// when no issuer matches (unreadable token, unknown issuer).
+///
+/// `token` is a compact JWT, optionally prefixed by its `Bearer` scheme: only its payload
+/// segment is read, without any verification, to select the key set(s) to refresh.
+pub(crate) async fn refresh_jwks_for_token<'a>(
+    configs: impl Iterator<Item = &'a JwtConfig> + Clone,
+    token: &str,
+) -> KResult<()> {
+    let issuer = unverified_issuer(token);
+    let is_issuer = |config: &JwtConfig| issuer.as_deref() == Some(config.jwt_issuer_uri.as_str());
+    let issuer_known = configs.clone().any(is_issuer);
+    futures::future::try_join_all(
+        configs
+            .filter(|config| !issuer_known || is_issuer(config))
+            .map(|config| config.jwks.refresh()),
+    )
+    .await?;
+    Ok(())
+}
+
+/// The unverified `iss` claim of a compact JWT.
+fn unverified_issuer(token: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Issuer {
+        iss: String,
+    }
+    let payload = URL_SAFE_NO_PAD.decode(token.split('.').nth(1)?).ok()?;
+    serde_json::from_slice::<Issuer>(&payload)
+        .ok()
+        .map(|claims| claims.iss)
+}
+
+/// The `reqwest` proxy of the `[proxy]` server settings, shared by the outbound clients of
+/// the identity providers (JWKS fetch, Auth Verifier session check).
+pub(crate) fn reqwest_proxy(proxy_params: &ProxyParams) -> KResult<reqwest::Proxy> {
+    let mut proxy = reqwest::Proxy::all(proxy_params.url.clone())
+        .map_err(|e| kms_error!("Failed to configure the HTTPS proxy: {e}"))?;
+    if let Some(username) = &proxy_params.basic_auth_username {
+        proxy = proxy.basic_auth(
+            username,
+            &proxy_params.basic_auth_password.clone().unwrap_or_default(),
+        );
+    } else if let Some(custom_auth_header) = &proxy_params.custom_auth_header {
+        proxy = proxy.custom_http_auth(
+            HeaderValue::from_str(custom_auth_header)
+                .map_err(|e| kms_error!("Failed to set the custom HTTP proxy auth header: {e}"))?,
+        );
+    }
+    if !proxy_params.exclusion_list.is_empty() {
+        proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
+            &proxy_params.exclusion_list.join(","),
+        ));
+    }
+    Ok(proxy)
+}
+
 /// Fetch a JWKS from the provided URI and parse it.
 ///
 /// This function will log errors for invalid JWKs
@@ -208,25 +292,7 @@ async fn parse_jwks(
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {
-        let mut proxy = reqwest::Proxy::all(proxy_params.url.clone())
-            .map_err(|e| kms_error!("Failed to configure the HTTPS proxy for JWKS fetch: {e}"))?;
-        if let Some(username) = &proxy_params.basic_auth_username {
-            proxy = proxy.basic_auth(
-                username,
-                &proxy_params.basic_auth_password.clone().unwrap_or_default(),
-            );
-        } else if let Some(custom_auth_header) = &proxy_params.custom_auth_header {
-            proxy =
-                proxy.custom_http_auth(HeaderValue::from_str(custom_auth_header).map_err(|e| {
-                    kms_error!("Failed to set custom HTTP auth header for JWKS fetch: {e}")
-                })?);
-        }
-        if !proxy_params.exclusion_list.is_empty() {
-            proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
-                &proxy_params.exclusion_list.join(","),
-            ));
-        }
-        client = client.proxy(proxy);
+        client = client.proxy(reqwest_proxy(proxy_params)?);
     }
 
     let response = client
@@ -278,6 +344,8 @@ async fn parse_jwks(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
@@ -517,5 +585,63 @@ mod tests {
             manager.find(ROTATED_KID).unwrap().is_some(),
             "rotated key should be discoverable after refresh-on-miss"
         );
+    }
+
+    /// A token whose payload carries `iss` (header and signature are irrelevant here).
+    fn token_from(issuer: &str) -> String {
+        format!(
+            "e30.{}.c2ln",
+            URL_SAFE_NO_PAD.encode(json!({ "iss": issuer }).to_string())
+        )
+    }
+
+    /// Regression (per-issuer JWKS split): with two issuers where only the second rotates
+    /// its signing key, a token of the second issuer must refresh the second key set, not
+    /// `configs.first()`; a token of an unknown issuer refreshes every key set.
+    #[actix_web::test]
+    async fn refresh_for_token_targets_the_token_issuer() {
+        async fn idp(issuer: &str, rotated: std::sync::Arc<AtomicBool>) -> JwtConfig {
+            let port = rotating_jwks_http_server(SAMPLE_JWKS, SAMPLE_JWKS_ROTATED, rotated).await;
+            let jwks = JwksManager::new(vec![format!("http://127.0.0.1:{port}/jwks.json")], None)
+                .await
+                .unwrap();
+            // Lift the 60 s throttle set by the initial fetch.
+            *jwks.last_update.write().unwrap() = None;
+            JwtConfig {
+                jwt_issuer_uri: issuer.to_owned(),
+                jwt_audience: None,
+                jwks: std::sync::Arc::new(jwks),
+                accept_spiffe_subject: false,
+            }
+        }
+        let rotated = std::sync::Arc::new(AtomicBool::new(false));
+        let configs = [
+            idp("https://idp-a", std::sync::Arc::new(AtomicBool::new(false))).await,
+            idp("https://idp-b", rotated.clone()).await,
+        ];
+        let [idp_a, idp_b] = &configs;
+        rotated.store(true, Ordering::SeqCst);
+
+        refresh_jwks_for_token(
+            configs.iter(),
+            &format!("Bearer {}", token_from("https://idp-b")),
+        )
+        .await
+        .unwrap();
+        assert!(
+            idp_b.jwks.find(ROTATED_KID).unwrap().is_some(),
+            "the rotated key of the token issuer must be picked up"
+        );
+        assert!(
+            idp_a.jwks.last_update.read().unwrap().is_none(),
+            "the key set of another issuer must not be refreshed"
+        );
+
+        *idp_b.jwks.last_update.write().unwrap() = None;
+        refresh_jwks_for_token(configs.iter(), &token_from("https://unknown"))
+            .await
+            .unwrap();
+        assert!(idp_a.jwks.last_update.read().unwrap().is_some());
+        assert!(idp_b.jwks.last_update.read().unwrap().is_some());
     }
 }

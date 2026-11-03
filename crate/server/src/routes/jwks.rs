@@ -21,6 +21,7 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::openssl::kmip_public_key_to_openssl,
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{info, trace, warn};
 use jsonwebtoken::jwk::{
@@ -104,13 +105,12 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
 
 /// Build the JWK Set and a boolean indicating whether the result was truncated.
 async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
-    let objects = Box::pin(discover_eligible_public_keys(kms)).await?;
     let max_keys = kms.params.jwks_endpoint.jwks_endpoint_max_keys;
-    let truncated = objects.len() > max_keys;
+    let (objects, truncated) = Box::pin(discover_eligible_public_keys(kms, max_keys)).await?;
 
-    let mut keys = Vec::with_capacity(objects.len().min(max_keys));
-    for (uid, object, attributes) in objects.into_iter().take(max_keys) {
-        match object_to_jwk(&uid, &object, &attributes) {
+    let mut keys = Vec::with_capacity(objects.len());
+    for (uid, owm) in objects {
+        match object_to_jwk(&uid, owm.object(), owm.attributes()) {
             Ok(Some(jwk)) => keys.push(jwk),
             Ok(None) => {
                 // Unsupported key type — silently skip (e.g., Ed448).
@@ -135,7 +135,10 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
 /// The order is stable within a session but is not guaranteed to be stable across
 /// server restarts or across different database backends (`PostgreSQL`, `MySQL`).
 /// JWKS consumers **must not** rely on position — always match keys by `kid`.
-async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object, Attributes)>> {
+async fn discover_eligible_public_keys(
+    kms: &KMS,
+    max_keys: usize,
+) -> KResult<(Vec<(String, Arc<ObjectWithMetadata>)>, bool)> {
     let mut filter = Attributes {
         object_type: Some(ObjectType::PublicKey),
         ..Default::default()
@@ -156,17 +159,21 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
         )
         .await?;
 
-    let mut objects = Vec::new();
+    let mut objects = Vec::with_capacity(results.len().min(max_keys));
+    let mut eligible_count = 0_usize;
     for (uid, state, _attrs) in results {
         // Include Active (in service) and Deactivated (retired, rotation overlap).
         // Exclude Compromised, Destroyed, and Destroyed_Compromised.
         if !matches!(state, State::Active | State::Deactivated) {
             continue;
         }
-        match kms.database.retrieve_object(&uid).await? {
-            Some(owm) => objects.push((uid, owm.object().clone(), owm.attributes().clone())),
-            None => {
-                warn!("Key uid={uid} found by Locate but missing on retrieve — skipping");
+        eligible_count += 1;
+        if objects.len() < max_keys {
+            match kms.database.retrieve_object_arc(&uid).await? {
+                Some(owm) => objects.push((uid, owm)),
+                None => {
+                    warn!("Key uid={uid} found by Locate but missing on retrieve — skipping");
+                }
             }
         }
     }
@@ -175,7 +182,8 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
          Returning {} eligible key(s); consumers must match by `kid`, not position.",
         objects.len()
     );
-    Ok(objects)
+    let truncated = eligible_count > max_keys;
+    Ok((objects, truncated))
 }
 
 /// Convert a KMIP `PublicKey` object to a JWK, serialized as raw JSON.
@@ -197,7 +205,7 @@ fn object_to_jwk(
     let usage_mask = attributes.cryptographic_usage_mask;
 
     match pkey.id() {
-        Id::RSA => rsa_to_jwk(uid, &pkey).map(|jwk| to_json_value(uid, &jwk)),
+        Id::RSA => rsa_to_jwk(uid, &pkey, usage_mask).map(|jwk| to_json_value(uid, &jwk)),
         Id::EC => Ok(ec_to_jwk(uid, &pkey, usage_mask)?.and_then(|jwk| to_json_value(uid, &jwk))),
         #[cfg(feature = "non-fips")]
         Id::ED25519 => Ok(eddsa_to_jwk(uid, &pkey)?.and_then(|jwk| to_json_value(uid, &jwk))),
@@ -221,9 +229,16 @@ fn to_json_value(uid: &str, jwk: &Jwk) -> Option<serde_json::Value> {
 /// Serialize an RSA public key to JWK.
 ///
 /// Encodes the modulus (`n`) and public exponent (`e`) as unsigned big-endian
-/// base64url strings.  The `alg` field is inferred from the modulus bit length:
-/// 2048 → `RS256`, 3072 → `RS384`, 4096 → `RS512`.
-fn rsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Jwk> {
+/// base64url strings.  `use`/`alg` are derived from the `CryptographicUsageMask`:
+/// - absent mask, or `Verify` without `Encrypt`/`WrapKey` → `use=sig`, `alg` inferred
+///   from the modulus bit length (2048 → `RS256`, 3072 → `RS384`, 4096 → `RS512`);
+/// - `Encrypt`/`WrapKey` without `Verify` → `use=enc`, no `alg`;
+/// - both, or neither → neither `use` nor `alg` (the key is not restricted to one purpose).
+fn rsa_to_jwk(
+    uid: &str,
+    pkey: &PKey<Public>,
+    usage_mask: Option<CryptographicUsageMask>,
+) -> KResult<Jwk> {
     let rsa = pkey
         .rsa()
         .map_err(|e| KmsError::ServerError(format!("Failed to extract RSA key uid={uid}: {e}")))?;
@@ -242,16 +257,28 @@ fn rsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Jwk> {
     // Exponent is typically 3 bytes (65537 = 0x010001) — no padding needed.
     let e_bytes = rsa.e().to_vec();
 
-    let alg = match key_bits {
+    let size_alg = match key_bits {
         2048 => Some(KeyAlgorithm::RS256),
         3072 => Some(KeyAlgorithm::RS384),
         4096 => Some(KeyAlgorithm::RS512),
         _ => None,
     };
 
+    let (public_key_use, alg) =
+        usage_mask.map_or((Some(PublicKeyUse::Signature), size_alg), |mask| {
+            let has_verify = mask.contains(CryptographicUsageMask::Verify);
+            let has_enc =
+                mask.intersects(CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey);
+            match (has_verify, has_enc) {
+                (true, false) => (Some(PublicKeyUse::Signature), size_alg),
+                (false, true) => (Some(PublicKeyUse::Encryption), None),
+                _ => (None, None),
+            }
+        });
+
     Ok(Jwk {
         common: CommonParameters {
-            public_key_use: Some(PublicKeyUse::Signature),
+            public_key_use,
             key_algorithm: alg,
             key_id: Some(uid.to_owned()),
             ..Default::default()
@@ -419,7 +446,6 @@ fn x25519_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<serde_json::V
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_access::access::Access;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
@@ -427,18 +453,13 @@ mod tests {
     };
 
     use super::{JWKS_TAG, discover_eligible_public_keys};
-    use crate::{
-        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-        tests::test_utils::https_clap_config,
-    };
+    use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
     /// A `jwks`-tagged key owned by another user and shared with `*` must not be
     /// published; the same kind of key owned by `default_username` must be.
     #[tokio::test]
     async fn test_jwks_excludes_keys_only_shared_with_default_user() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
         let attacker = UserId::from("attacker");
         let request =
             || create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, [JWKS_TAG], 2048, false, None);
@@ -462,11 +483,8 @@ mod tests {
             )
             .await?;
 
-        let published: Vec<String> = Box::pin(discover_eligible_public_keys(&kms))
-            .await?
-            .into_iter()
-            .map(|(uid, _, _)| uid)
-            .collect();
+        let (keys, _truncated) = Box::pin(discover_eligible_public_keys(&kms, usize::MAX)).await?;
+        let published: Vec<String> = keys.into_iter().map(|(uid, _)| uid).collect();
         assert!(
             !published.contains(&foreign.public_key_unique_identifier.to_string()),
             "a key shared with the default user must not be published"

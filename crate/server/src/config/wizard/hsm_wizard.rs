@@ -4,6 +4,7 @@
 
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 
+use super::PromptResultExt;
 use crate::{
     config::{HsmConfig, HsmModel},
     error::KmsError,
@@ -17,7 +18,7 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
         .with_prompt("Enable Hardware Security Module (HSM) support?")
         .default(false)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable {
         return Ok(HsmConfig::default());
@@ -33,7 +34,7 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
         )
         .default(0)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let hsm_model = HsmModel::VARIANTS
         .get(model_idx)
         .ok_or_else(|| KmsError::ServerError("Invalid HSM model selection".to_owned()))?
@@ -44,7 +45,7 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
         .with_prompt("HSM admin usernames (comma-separated; use * to allow all users)")
         .default("admin".to_owned())
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     let hsm_admin: Vec<String> = hsm_admin_input
         .split(',')
         .map(|s| s.trim().to_owned())
@@ -59,7 +60,7 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
             .with_prompt("HSM slot number (leave blank to finish)")
             .allow_empty(true)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         if slot.trim().is_empty() {
             break;
         }
@@ -74,7 +75,7 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
             ))
             .allow_empty_password(true)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         hsm_slot.push(slot_num);
         hsm_password.push(password);
@@ -83,7 +84,7 @@ pub fn configure_hsm() -> KResult<HsmConfig> {
             .with_prompt("Add another HSM slot?")
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
         if !add_more {
             break;
         }

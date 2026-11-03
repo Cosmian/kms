@@ -7,6 +7,28 @@ use time::{UtcOffset, format_description::well_known::Rfc3339};
 use super::{KmipEnumerationVariant, ttlv_struct::TTLV};
 use crate::ttlv::ttlv_struct::TTLValue;
 
+/// Upper-case hex view of a byte slice; `serde_json` streams it via `collect_str` without a heap `String`.
+struct UpperHex<'a>(&'a [u8]);
+
+impl core::fmt::Display for UpperHex<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut buf = [0_u8; 128];
+        for chunk in self.0.chunks(64) {
+            let out = buf.get_mut(..chunk.len() * 2).ok_or(core::fmt::Error)?;
+            hex::encode_to_slice(chunk, out).map_err(|_e| core::fmt::Error)?;
+            out.make_ascii_uppercase();
+            f.write_str(core::str::from_utf8(out).map_err(|_e| core::fmt::Error)?)?;
+        }
+        Ok(())
+    }
+}
+
+impl Serialize for UpperHex<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
 /// Serialize TTLV structure to the Serde Data Model
 ///
 /// Serialization if performed by calling methods on the Serializer object.
@@ -61,7 +83,7 @@ impl Serialize for TTLV {
             TTLValue::Boolean(v) => serialize_struct_(serializer, &self.tag, "Boolean", v),
             TTLValue::TextString(v) => serialize_struct_(serializer, &self.tag, "TextString", v),
             TTLValue::ByteString(v) => {
-                serialize_struct_(serializer, &self.tag, "ByteString", &hex::encode_upper(v))
+                serialize_struct_(serializer, &self.tag, "ByteString", &UpperHex(v))
             }
             TTLValue::DateTime(v) => serialize_struct_(
                 serializer,

@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+#MISE description="Renew one Gmail CSE S/MIME key pair and patch its existing identity"
+#USAGE arg "<user_id>" help="Existing Gmail CSE identity email address"
+#USAGE flag "-c --config <path>" env="CKMS_CONF_PATH" help="ckms configuration file"
+#USAGE flag "-i --issuer-private-key-id <id>" env="CSE_ISSUER_PRIVATE_KEY_ID" help="Active KMS private key that signs the replacement certificate"
+#USAGE flag "-d --days <days>" env="CSE_CERTIFICATE_DAYS" help="Replacement certificate validity days" default="365"
+#USAGE flag "--apply" help="Create the replacement key pair and patch the identity; omitted means read-only preflight"
+set -euo pipefail
+
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+USER_ID="${usage_user_id:?user_id is required}"
+CONFIG="${usage_config:-${CKMS_CONF_PATH:-}}"
+ISSUER_PRIVATE_KEY_ID="${usage_issuer_private_key_id:-${CSE_ISSUER_PRIVATE_KEY_ID:-}}"
+DAYS="${usage_days:-365}"
+APPLY="${usage_apply:-false}"
+CKMS_BIN="${CKMS_BIN:-ckms}"
+
+[ -n "${CONFIG}" ] || print_error "Pass --config with the ckms configuration file."
+[ -n "${ISSUER_PRIVATE_KEY_ID}" ] || print_error "Pass --issuer-private-key-id with the active S/MIME issuer key."
+[[ "${DAYS}" =~ ^[1-9][0-9]*$ ]] || print_error "--days must be a positive integer."
+[[ "${USER_ID}" == *"@"* && "${USER_ID}" != *$'\n'* ]] || print_error "user_id must be one email address."
+require_cmd "${CKMS_BIN}"
+require_cmd openssl
+require_cmd python3
+
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${TMP_DIR}"' EXIT
+IDENTITY_JSON="${TMP_DIR}/identity.json"
+KEY_PAIRS_JSON="${TMP_DIR}/key-pairs.json"
+STATE_JSON="${TMP_DIR}/state.json"
+PRIMARY_PEM="${TMP_DIR}/primary.pem"
+EXTENSIONS_FILE="${TMP_DIR}/extensions.cnf"
+CREATE_OUTPUT="${TMP_DIR}/create-output.txt"
+UPDATED_KEY_PAIRS_JSON="${TMP_DIR}/updated-key-pairs.json"
+UPDATED_IDENTITY_JSON="${TMP_DIR}/updated-identity.json"
+NEW_PEM="${TMP_DIR}/replacement.pem"
+
+run_ckms() {
+  "${CKMS_BIN}" -c "${CONFIG}" "$@"
+}
+
+print_header "Gmail CSE S/MIME renewal: ${USER_ID}"
+run_ckms google identities list "${USER_ID}" >"${IDENTITY_JSON}"
+run_ckms google key-pairs list "${USER_ID}" >"${KEY_PAIRS_JSON}"
+
+python3 - "${USER_ID}" "${IDENTITY_JSON}" "${KEY_PAIRS_JSON}" "${STATE_JSON}" "${PRIMARY_PEM}" <<'PY'
+import json
+import os
+import sys
+
+user_id, identity_path, pairs_path, state_path, pem_path = sys.argv[1:]
+identities = json.load(open(identity_path, encoding="utf-8")).get("cseIdentities", [])
+if identities != [{"emailAddress": user_id, "primaryKeyPairId": identities[0].get("primaryKeyPairId")}]:
+    raise SystemExit("expected exactly one existing CSE identity for the requested email")
+primary_id = identities[0]["primaryKeyPairId"]
+pairs = json.load(open(pairs_path, encoding="utf-8")).get("cseKeyPairs", [])
+primary = next((pair for pair in pairs if pair.get("keyPairId") == primary_id), None)
+if primary is None:
+    raise SystemExit("identity primaryKeyPairId is absent from the Gmail key-pair list")
+if primary.get("enablementState") != "enabled":
+    raise SystemExit("identity primary key pair is not enabled")
+metadata = primary.get("privateKeyMetadata", [])
+if len(metadata) != 1:
+    raise SystemExit("identity primary key pair must have exactly one KACLS metadata entry")
+kacls_uri = metadata[0].get("kaclsKeyMetadata", {}).get("kaclsUri")
+if not kacls_uri:
+    raise SystemExit("identity primary key pair has no KACLS URI")
+subject_emails = primary.get("subjectEmailAddresses", [])
+if subject_emails != [user_id]:
+    raise SystemExit("identity primary certificate SAN does not exactly match the requested email")
+with open(pem_path, "w", encoding="utf-8") as pem_file:
+    pem_file.write(primary["pem"])
+os.chmod(pem_path, 0o600)
+with open(state_path, "w", encoding="utf-8") as state_file:
+    json.dump({"primary_key_pair_id": primary_id, "pair_count": len(pairs), "kacls_uri": kacls_uri}, state_file)
+PY
+
+read -r PRIMARY_KEY_PAIR_ID PAIR_COUNT KACLS_URI < <(
+  python3 - "${STATE_JSON}" <<'PY'
+import json
+import sys
+state = json.load(open(sys.argv[1], encoding="utf-8"))
+print(state["primary_key_pair_id"], state["pair_count"], state["kacls_uri"])
+PY
+)
+
+SUBJECT_OUTPUT="$(openssl x509 -in "${PRIMARY_PEM}" -noout -subject -nameopt RFC2253)"
+SUBJECT_NAME="${SUBJECT_OUTPUT#subject=}"
+openssl x509 -in "${PRIMARY_PEM}" -noout -dates
+print_status "Primary key pair: ${PRIMARY_KEY_PAIR_ID}; KACLS: ${KACLS_URI}"
+
+if [ "${APPLY}" != "true" ]; then
+  print_success "Read-only preflight passed. Re-run with --apply to create and associate one replacement key pair."
+  exit 0
+fi
+
+cat >"${EXTENSIONS_FILE}" <<EOF
+[ v3_ca ]
+keyUsage=nonRepudiation,digitalSignature,dataEncipherment,keyEncipherment
+extendedKeyUsage=emailProtection
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
+subjectAltName=email:${USER_ID}
+EOF
+
+run_ckms google key-pairs create \
+  --cse-key-id google_cse \
+  --subject-name "${SUBJECT_NAME}" \
+  --issuer-private-key-id "${ISSUER_PRIVATE_KEY_ID}" \
+  --leaf-certificate-extensions "${EXTENSIONS_FILE}" \
+  --days "${DAYS}" \
+  "${USER_ID}" >"${CREATE_OUTPUT}"
+
+NEW_KEY_PAIR_ID="$(
+  python3 - "${CREATE_OUTPUT}" <<'PY'
+import re
+import sys
+
+match = re.search(r'"keyPairId":\s*"([^"]+)"', open(sys.argv[1], encoding="utf-8").read())
+if match is None:
+    raise SystemExit("Gmail key-pair creation returned no keyPairId")
+print(match.group(1))
+PY
+)"
+
+run_ckms google key-pairs list "${USER_ID}" >"${UPDATED_KEY_PAIRS_JSON}"
+python3 - "${USER_ID}" "${NEW_KEY_PAIR_ID}" "${PAIR_COUNT}" "${KACLS_URI}" "${UPDATED_KEY_PAIRS_JSON}" "${NEW_PEM}" <<'PY'
+import json
+import os
+import sys
+
+user_id, key_pair_id, old_count, kacls_uri, pairs_path, pem_path = sys.argv[1:]
+pairs = json.load(open(pairs_path, encoding="utf-8")).get("cseKeyPairs", [])
+if len(pairs) != int(old_count) + 1:
+    raise SystemExit("Gmail key-pair count did not increase by exactly one")
+replacement = [pair for pair in pairs if pair.get("keyPairId") == key_pair_id]
+if len(replacement) != 1:
+    raise SystemExit("Gmail did not return exactly one replacement key pair")
+replacement = replacement[0]
+if replacement.get("enablementState") != "enabled":
+    raise SystemExit("replacement key pair is not enabled")
+if replacement.get("subjectEmailAddresses") != [user_id]:
+    raise SystemExit("replacement certificate SAN does not exactly match the requested email")
+metadata = replacement.get("privateKeyMetadata", [])
+if len(metadata) != 1 or metadata[0].get("kaclsKeyMetadata", {}).get("kaclsUri") != kacls_uri:
+    raise SystemExit("replacement KACLS URI differs from the existing primary key pair")
+with open(pem_path, "w", encoding="utf-8") as pem_file:
+    pem_file.write(replacement["pem"])
+os.chmod(pem_path, 0o600)
+PY
+
+openssl x509 -in "${NEW_PEM}" -noout -dates -checkend 0
+run_ckms google identities patch "${NEW_KEY_PAIR_ID}" --user-id "${USER_ID}"
+run_ckms google identities list "${USER_ID}" >"${UPDATED_IDENTITY_JSON}"
+python3 - "${USER_ID}" "${NEW_KEY_PAIR_ID}" "${UPDATED_IDENTITY_JSON}" <<'PY'
+import json
+import sys
+
+user_id, key_pair_id, identity_path = sys.argv[1:]
+identities = json.load(open(identity_path, encoding="utf-8")).get("cseIdentities", [])
+expected = [{"emailAddress": user_id, "primaryKeyPairId": key_pair_id}]
+if identities != expected:
+    raise SystemExit("Gmail identity does not reference the replacement key pair")
+PY
+
+print_success "Associated replacement Gmail CSE key pair ${NEW_KEY_PAIR_ID} with ${USER_ID}."

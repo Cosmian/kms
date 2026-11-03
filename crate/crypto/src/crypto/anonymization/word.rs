@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use rand::RngExt;
 use regex::Regex;
 
 use super::AnoError;
+use crate::crypto::KmsRng;
 
 pub struct WordTokenizer {
     /// A mapping of words to random tokens.
@@ -21,11 +21,14 @@ impl WordTokenizer {
     /// * `target_words`: words to be replaced by tokens.
     pub fn new(target_words: &[&str]) -> Result<Self, AnoError> {
         let mut mapping = HashMap::with_capacity(target_words.len());
-        let mut rng = rand::rng();
+        let rng = KmsRng::new();
 
         for word in target_words {
             let mut uuid = [0; 16];
-            rng.fill(&mut uuid);
+            // tokens are returned to clients: public DRBG (rng/mod.rs)
+            rng.fill_public_bytes(&mut uuid).map_err(|e| {
+                AnoError::AnonymizationError(format!("token generation failed: {e}"))
+            })?;
             mapping.insert(word.to_lowercase(), hex::encode_upper(uuid));
         }
         Ok(Self {

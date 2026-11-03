@@ -15,13 +15,13 @@ pub enum AesKeySize {
 }
 
 impl Session {
-    /// Helper for AES key generation without explicit `CKA_SENSITIVE`
-    /// (used by AWS `CloudHSM` or when default sensitivity attributes are requested).
+    /// Helper for AES key generation with an explicit `CKA_EXTRACTABLE` but no
+    /// `CKA_SENSITIVE` (AWS `CloudHSM` rejects any explicit value for the latter).
     fn generate_aes_key_internal(
         &self,
         id: &[u8],
         size: AesKeySize,
-        extractable: Option<bool>,
+        extractable: bool,
         error_context: &'static str,
     ) -> HResult<CK_OBJECT_HANDLE> {
         let size = CK_ULONG::try_from(match size {
@@ -36,53 +36,37 @@ impl Session {
         };
         let mut aes_key_handle = CK_OBJECT_HANDLE::default();
 
-        if let Some(extractable) = extractable {
-            let extractable = if extractable { CK_TRUE } else { CK_FALSE };
-            let mut template = aes_key_template!(id, size, extractable);
-            #[cfg(target_os = "windows")]
-            let len = u32::try_from(template.len())?;
-            #[cfg(not(target_os = "windows"))]
-            let len = u64::try_from(template.len())?;
-            hsm_call!(
-                self.hsm(),
-                error_context,
-                C_GenerateKey,
-                self.session_handle(),
-                &raw mut mechanism,
-                template.as_mut_ptr(),
-                len,
-                &raw mut aes_key_handle
-            );
-        } else {
-            let mut template = aes_key_template!(id, size);
-            #[cfg(target_os = "windows")]
-            let len = u32::try_from(template.len())?;
-            #[cfg(not(target_os = "windows"))]
-            let len = u64::try_from(template.len())?;
-            hsm_call!(
-                self.hsm(),
-                error_context,
-                C_GenerateKey,
-                self.session_handle(),
-                &raw mut mechanism,
-                template.as_mut_ptr(),
-                len,
-                &raw mut aes_key_handle
-            );
-        }
+        let extractable = if extractable { CK_TRUE } else { CK_FALSE };
+        let mut template = aes_key_template!(id, size, extractable);
+        #[cfg(target_os = "windows")]
+        let len = u32::try_from(template.len())?;
+        #[cfg(not(target_os = "windows"))]
+        let len = u64::try_from(template.len())?;
+        hsm_call!(
+            self.hsm(),
+            error_context,
+            C_GenerateKey,
+            self.session_handle(),
+            &raw mut mechanism,
+            template.as_mut_ptr(),
+            len,
+            &raw mut aes_key_handle
+        );
 
         self.object_handles_cache()
             .insert(id.to_vec(), aes_key_handle)?;
         Ok(aes_key_handle)
     }
 
-    /// Generate a sensitive AES key using the PKCS#11 default sensitivity attributes.
+    /// Generate a sensitive AES key using `CKA_EXTRACTABLE=false`, without
+    /// setting `CKA_SENSITIVE`: AWS `CloudHSM` rejects any explicit value for
+    /// the Sensitive attribute.
     pub fn generate_sensitive_aes_key(
         &self,
         id: &[u8],
         size: AesKeySize,
     ) -> HResult<CK_OBJECT_HANDLE> {
-        self.generate_aes_key_internal(id, size, None, "Failed generating sensitive key")
+        self.generate_aes_key_internal(id, size, false, "Failed generating sensitive key")
     }
 
     /// Generate an exportable AES key using `CKA_EXTRACTABLE=true`, without
@@ -93,7 +77,7 @@ impl Session {
         id: &[u8],
         size: AesKeySize,
     ) -> HResult<CK_OBJECT_HANDLE> {
-        self.generate_aes_key_internal(id, size, Some(true), "Failed generating exportable key")
+        self.generate_aes_key_internal(id, size, true, "Failed generating exportable key")
     }
 
     /// Generate an AES key
@@ -108,9 +92,9 @@ impl Session {
         tags: Option<&HashSet<String>>,
     ) -> HResult<CK_OBJECT_HANDLE> {
         // Some vendors (AWS CloudHSM) reject any explicit value for CKA_SENSITIVE on
-        // C_GenerateKey; fall back to the attribute-free/extractable-only templates,
-        // which reach the same effective non-extractable/extractable state on those HSMs.
-        if !self.hsm_capabilities().supports_aes_sensitive_attribute {
+        // C_GenerateKey; fall back to the CKA_EXTRACTABLE-only templates, so a sensitive
+        // key is still explicitly non-extractable on those HSMs.
+        if !self.hsm_capabilities().aes.supports_sensitive_attribute {
             return if sensitive {
                 self.generate_sensitive_aes_key(id, size)
             } else {

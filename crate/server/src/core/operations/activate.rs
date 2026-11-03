@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
@@ -60,13 +62,15 @@ pub(crate) async fn activate(
     // there must be an identifier
     let object_handle = from_request(Some(&request.unique_identifier), "Activate")?;
 
-    let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
-        object_handle,
-        KmipOperation::Activate,
-        kms,
-        user,
-    ))
-    .await?;
+    let mut owm: ObjectWithMetadata = Arc::unwrap_or_clone(
+        Box::pin(retrieve_object_for_operation(
+            object_handle,
+            KmipOperation::Activate,
+            kms,
+            user,
+        ))
+        .await?,
+    );
     trace!("Retrieved object for: {}", owm.object());
 
     // KMIP 2.1 Compliance: Validate object type supports activation
@@ -145,23 +149,19 @@ pub(crate) async fn activate(
     // Atomically update the object and its state in a single transaction
     // to prevent TOCTOU races where a concurrent request could see an
     // inconsistent intermediate state.
+    let (id, object, attributes) = owm.into_parts();
     kms.database
         .atomic(
             user,
             &[
-                AtomicOperation::UpdateObject((
-                    owm.id().to_owned(),
-                    owm.object().clone(),
-                    owm.attributes().clone(),
-                    None,
-                )),
-                AtomicOperation::UpdateState((owm.id().to_owned(), State::Active)),
+                AtomicOperation::UpdateObject((id.clone(), object, attributes, None)),
+                AtomicOperation::UpdateState((id.clone(), State::Active)),
             ],
         )
         .await?;
 
     // All Objects are activated by default on the KMS, so simply answer OK
     Ok(ActivateResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(id),
     })
 }

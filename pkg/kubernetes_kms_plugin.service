@@ -1,6 +1,6 @@
 [Unit]
 Description=Cosmian KMS Kubernetes Plugin
-Documentation=https://docs.cosmian.com/integrations/kubernetes/kms-provider-plugin/
+Documentation=https://docs.cosmian.com/key_management_system/integrations/kubernetes/kms-provider-plugin.html
 Requires=network-online.target
 After=network-online.target
 

@@ -7,7 +7,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, Hash, Operation},
+        kmip_operations::{Create, Hash, MAC, Operation},
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
             DigitalSignatureAlgorithm, RecommendedCurve,
@@ -61,6 +61,17 @@ fn override_allowlists_can_tighten_policy() {
         final_indicator: None,
     });
     assert_policy_denied(enforce(&params, "Hash", &op_hash));
+
+    // `MAC` is subject to the same hash allow-list.
+    let op_mac = Operation::MAC(MAC {
+        cryptographic_parameters: Some(CryptographicParameters {
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        }),
+        data: Some(vec![0; 16]),
+        ..Default::default()
+    });
+    assert_policy_denied(enforce(&params, "MAC", &op_mac));
 
     // Sanity: curve also restricted.
     let create_ec = Operation::Create(Create {

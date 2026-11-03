@@ -7,6 +7,55 @@ The Eviden Key Management Server is compatible with [Google Workspace client-sid
 
 Google has extensive documentation on how to enable CSE in Google Workspace. The [Use client-side encryption for users' data page](https://support.google.com/a/topic/10742486?hl=en) is a good starting point. It may be slightly overwhelming, and this documentation adds some details to help you get started.
 
+## Architecture
+
+The diagram below summarizes the components described in this documentation and in Google's
+[CSE API reference](https://developers.google.com/workspace/cse/reference): the Eviden KMS plays the role of the
+Key Access Control List Service (KACLS) that Google calls the "external key service".
+
+```mermaid
+flowchart LR
+    subgraph Users["Users"]
+        App["Workspace apps<br/>Drive, Docs, Meet, Calendar, Gmail<br/>(browser, desktop, mobile)"]
+    end
+
+    subgraph Google["Google"]
+        Admin["Admin console<br/>External key service<br/>Identity provider<br/>S/MIME root CA chain"]
+        Issuer["Token issuer<br/>gsuitecse-tokenissuer-APP<br/>authorization JWT"]
+        GmailAPI["Gmail API<br/>CSE key pairs and identities"]
+    end
+
+    subgraph IdPBox["Identity provider"]
+        IdP["Google Identity or other OIDC IdP<br/>authentication JWT"]
+    end
+
+    subgraph Customer["Customer infrastructure"]
+        Nginx["Nginx<br/>TLS termination<br/>serves the .well-known file"]
+        subgraph KMS["Eviden KMS - KACLS at kms_public_url/google_cse"]
+            Endpoints["CSE endpoints<br/>status, certs, wrap, unwrap, digest<br/>privatekeysign, privatekeydecrypt<br/>privilegedwrap, privilegedunwrap<br/>privilegedprivatekeydecrypt, rewrap"]
+            Keys["Keys<br/>google_cse AES wrapping key<br/>google_cse_rsa and google_cse_rsa_pk"]
+        end
+        CA["Certificate authority<br/>issues the users S/MIME certificates"]
+        CLI["ckms CLI<br/>sym keys, access-rights<br/>google key-pairs and identities"]
+    end
+
+    OldKACLS["Previous KACLS<br/>(migration only)"]
+
+    Admin -- "① configures KACLS URL and IdP" --> Nginx
+    App -- "② signs in" --> IdP
+    App -- "③ requests authorization JWT" --> Issuer
+    App -- "④ wrap, unwrap, privatekey calls<br/>authentication + authorization JWT" --> Nginx
+    Nginx --> Endpoints
+    Endpoints -- "⑤ fetches the JWKS to validate the JWTs" --> IdP
+    Endpoints --> Keys
+    CA -- "certificates" --> CLI
+    CLI -- "create google_cse key<br/>wrap user private keys" --> Endpoints
+    CLI -- "⑥ service account: key pairs, identities" --> GmailAPI
+    GmailAPI -- "S/MIME key material" --> App
+    Endpoints -- "⑦ migration: privilegedunwrap with JWT, audience kacls-migration" --> OldKACLS
+    OldKACLS -- "fetches certs to verify the migration JWT" --> Endpoints
+```
+
 ## Prerequisites
 
 !!! info
@@ -177,5 +226,12 @@ Eviden KMS supports this feature, and to enable it:
 - Ensure that external users can access the Google CSE symmetric key
 
 ## User experience
+
+!!! warning "Supported browsers"
+    Google restricts client-side encrypted content (Drive, Docs, Gmail S/MIME, Meet, Calendar) to
+    **Google Chrome** and **Microsoft Edge (Chromium)** — see Google's
+    [browser requirements](https://knowledge.workspace.google.com/admin/security/client-side-encryption-setup-overview).
+    On Safari, Google's CSE client stops after reading `.well-known/cse-configuration` and never calls
+    the KMS (`/google_cse/*`), so no KMS-side setting can make it work.
 
 Learn more [details about CSE user experience](https://support.google.com/a/answer/14311764?hl=en&ref_topic=10742486) over all supported applications.

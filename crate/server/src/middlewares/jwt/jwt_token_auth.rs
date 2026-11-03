@@ -14,7 +14,9 @@ use super::UserClaim;
 use crate::{
     error::KmsError,
     middlewares::{
-        AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig, reject_reserved_aws_xks_identity,
+        AuthMethod, AuthenticatedUser, UserId,
+        jwt::{JwtConfig, refresh_jwks_for_token},
+        reject_reserved_service_identity,
     },
     result::KResult,
 };
@@ -91,8 +93,8 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
         ));
     }
     debug!("JWT-SVID access granted to {sub}!");
-    let username = UserId::from(sub.to_owned());
-    reject_reserved_aws_xks_identity(&username)?;
+    let username = UserId::from(sub);
+    reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
         auth_method: AuthMethod::JwtSvid,
@@ -113,8 +115,8 @@ fn resolve_authenticated_user(
     if let Some(email) = user_claim.email.as_deref() {
         // Authentication successful with valid email
         debug!("JWT Access granted to {email}!");
-        let username = UserId::from(email.to_owned());
-        reject_reserved_aws_xks_identity(&username)?;
+        let username = UserId::from(email);
+        reject_reserved_service_identity(&username)?;
         return Ok(AuthenticatedUser {
             username,
             auth_method: AuthMethod::OidcJwt,
@@ -159,9 +161,9 @@ fn extract_svid_claim(
 /// merely carries an `email` claim is rejected, so `/ui/login_svid` cannot be used to turn an
 /// ordinary OIDC bearer token into a 24h browser session.
 ///
-/// When validation fails, the JWKS is refreshed once (throttled) and validation retried, so a
-/// SPIRE signing-key rotation, or a JWKS endpoint that was unreachable at startup, does not
-/// break the login until the next restart.
+/// When validation fails, the JWKS of the token's issuer is refreshed once (throttled) and
+/// validation retried, so a SPIRE signing-key rotation, or a JWKS endpoint that was
+/// unreachable at startup, does not break the login until the next restart.
 pub(crate) async fn validate_jwt_svid(
     configs: &[JwtConfig],
     token: &str,
@@ -173,10 +175,8 @@ pub(crate) async fn validate_jwt_svid(
 
     let mut claim = extract_svid_claim(&spiffe_configs, token);
     if claim.is_err() {
-        if let Some(config) = spiffe_configs.first() {
-            if let Err(error) = config.jwks.refresh().await {
-                warn!("JWKS refresh failed while validating a JWT-SVID: {error:?}");
-            }
+        if let Err(error) = refresh_jwks_for_token(spiffe_configs.iter().copied(), token).await {
+            warn!("JWKS refresh failed while validating a JWT-SVID: {error:?}");
         }
         claim = extract_svid_claim(&spiffe_configs, token);
     }
@@ -211,33 +211,24 @@ pub(super) async fn handle_jwt(
     trace!("JWT Authentication...");
 
     // Extract identity from either the Identity service or the Authorization header
-    let identity = Identity::extract(req.request())
+    let identity_from_header: Option<String> = Identity::extract(req.request())
         .into_inner()
-        .map_or_else(
-            |_| {
-                // If Identity extraction fails, try the Authorization header
-                req.headers()
-                    .get(header::AUTHORIZATION)
-                    .and_then(|h| h.to_str().ok().map(str::to_owned))
-            },
-            |identity| identity.id().ok(),
-        )
-        .unwrap_or_default();
-
+        .ok()
+        .map(|identity| identity.id().unwrap_or_default());
+    let identity: &str = identity_from_header.as_deref().unwrap_or_else(|| {
+        req.headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or_default()
+    });
     // Try to extract and validate the user claim
-    let mut private_claim = extract_user_claim(&configs, &identity);
+    let mut private_claim = extract_user_claim(&configs, identity);
 
-    // If no configuration could get the claim, try refreshing them and extract the user claim again
+    // If no configuration could get the claim, refresh the JWKS of the token's issuer
+    // (a key rotation or a failed startup fetch) and extract the user claim again
     if private_claim.is_err() {
-        // Refresh the JWKS (JSON Web Key Set) and try again
-        configs
-            .first()
-            .ok_or_else(|| KmsError::ServerError("No config available".to_owned()))?
-            .jwks
-            .refresh()
-            .await?;
-
-        private_claim = extract_user_claim(&configs, &identity);
+        refresh_jwks_for_token(configs.iter(), identity).await?;
+        private_claim = extract_user_claim(&configs, identity);
     }
 
     match private_claim {

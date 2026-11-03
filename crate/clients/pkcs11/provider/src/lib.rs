@@ -286,6 +286,8 @@ pub unsafe extern "C" fn C_GetInterfaceList(
         return rv;
     }
     ensure_func_list_3_0_registered();
+    // SAFETY: `pul_count` is non-null (checked above); `p_interfaces_list` is written only when
+    // non-null and `*pul_count >= INTERFACE_COUNT`, so the caller's array holds both entries.
     unsafe {
         if p_interfaces_list.is_null() {
             *pul_count = INTERFACE_COUNT;
@@ -376,6 +378,7 @@ pub unsafe extern "C" fn C_GetInterface(
         return rv;
     }
     ensure_func_list_3_0_registered();
+    // SAFETY: `pp_interface` is non-null (checked above) and writable per the safety contract.
     unsafe {
         *pp_interface = interface;
     }
@@ -388,5 +391,5 @@ pub unsafe extern "C" fn C_GetInterface(
 mod tests;
 #[cfg(test)]
 #[cfg(feature = "non-fips")]
-#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(clippy::expect_used, clippy::panic_in_result_fn)] // tests: a panic is the failure signal
 mod tests_v3;

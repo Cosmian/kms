@@ -25,7 +25,10 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::create_user_decryption_key;
 use crate::{
-    core::{KMS, wrapping::unwrap_object},
+    core::{
+        KMS,
+        wrapping::{authorize_stored_unwrap, unwrap_stored_object},
+    },
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -70,6 +73,8 @@ impl KMS {
             if let Some(ref metrics) = self.metrics {
                 metrics.record_cache_operation("get", "hit");
             }
+            // the cache is shared by all users: authorize this user exactly as on a miss
+            Box::pin(authorize_stored_unwrap(object, self, user)).await?;
             return Ok(u);
         }
 
@@ -80,7 +85,7 @@ impl KMS {
         }
         let unwrapped_object = {
             let mut unwrapped_object = object.clone();
-            Box::pin(unwrap_object(&mut unwrapped_object, self, user)).await?;
+            Box::pin(unwrap_stored_object(&mut unwrapped_object, self, user)).await?;
             unwrapped_object
         };
 

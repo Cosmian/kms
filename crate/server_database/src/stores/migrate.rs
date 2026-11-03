@@ -1,7 +1,10 @@
 use async_trait::async_trait;
+use cosmian_kmip::kmip_2_1::{
+    extra::tagging::SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, kmip_objects::Object,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::error::DbResult;
+use crate::{core::extract_serial_hex_from_object, error::DbResult};
 
 /// Name of the `parameters` row that records whether the one-time
 /// `wrapping_key_id` backfill has completed for this database.
@@ -11,6 +14,17 @@ use crate::error::DbResult;
 /// startup (unwrapped objects legitimately keep a `NULL` value forever), so the
 /// marker gates it to run at most once per database.
 pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled";
+
+/// Name of the `parameters` row that records whether the one-time `_serial=<HEX>` tag
+/// backfill for certificates stored before that tag existed has completed.
+pub(crate) const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
+
+/// `_serial=<HEX>` tag for a certificate object (same value as `set_certificate_serial_tag`),
+/// `None` for any other object or an unparsable certificate.
+pub(crate) fn certificate_serial_tag(object: &Object) -> Option<String> {
+    extract_serial_hex_from_object(object)
+        .map(|hex| format!("{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{hex}"))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

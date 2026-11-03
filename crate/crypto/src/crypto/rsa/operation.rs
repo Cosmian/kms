@@ -21,9 +21,10 @@ use num_bigint_dig::{BigInt, Sign};
 use openssl::{pkey::Private, rsa::Rsa};
 use zeroize::Zeroizing;
 
-#[cfg(not(feature = "non-fips"))]
-use crate::crypto_bail;
-use crate::{CryptoResultHelper, crypto::KeyPair, error::CryptoError};
+use crate::{CryptoResultHelper, crypto::KeyPair, crypto_bail, error::CryptoError};
+
+/// Largest RSA modulus (bits) accepted for key generation: OpenSSL's `OPENSSL_RSA_MAX_MODULUS_BITS`.
+pub const MAX_RSA_MODULUS_LENGTH: u32 = 16_384;
 
 #[cfg(not(feature = "non-fips"))]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
@@ -224,6 +225,13 @@ pub fn create_rsa_key_pair(
         crypto_bail!(
             "FIPS 140 mode requires a minimum key length of {} bits",
             FIPS_MIN_RSA_MODULUS_LENGTH
+        )
+    }
+    // OpenSSL refuses RSA operations on moduli above OPENSSL_RSA_MAX_MODULUS_BITS (16384),
+    // while generating such keys still runs for minutes: reject them up front.
+    if key_size_in_bits > MAX_RSA_MODULUS_LENGTH {
+        crypto_bail!(
+            "RSA key size {key_size_in_bits} exceeds the maximum of {MAX_RSA_MODULUS_LENGTH} bits"
         )
     }
 
@@ -459,5 +467,32 @@ mod tests {
         );
 
         res.unwrap();
+    }
+
+    /// Above the cap the request fails before OpenSSL starts a minutes-long generation.
+    #[test]
+    fn test_create_rsa_rejects_oversized_modulus() {
+        let common_attributes = Attributes {
+            cryptographic_length: Some(i32::try_from(super::MAX_RSA_MODULUS_LENGTH).unwrap() + 1),
+            ..Attributes::default()
+        };
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(FIPS_PRIVATE_RSA_MASK),
+            ..Attributes::default()
+        };
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(FIPS_PUBLIC_RSA_MASK),
+            ..Attributes::default()
+        };
+
+        let res = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
+            "privkey01",
+            "pubkey01",
+            common_attributes,
+            Some(private_key_attributes),
+            Some(public_key_attributes),
+        );
+        assert!(matches!(&res, Err(e) if e.to_string().contains("exceeds the maximum")));
     }
 }

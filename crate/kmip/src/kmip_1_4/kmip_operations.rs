@@ -64,6 +64,64 @@ debug_from_display!(
     RNGSeedResponse,
 );
 
+/// Implements `TryFrom<kmip_2_1::kmip_operations::$t> for $t` for responses that only carry the
+/// unique identifier; every field listed in `{ .. }` is set to `None`. A trailing `=> trace`
+/// also logs the incoming KMIP 2.1 response at trace level.
+macro_rules! impl_try_from_uid_response {
+    ($($t:ident $({ $($none:ident),* })? $(=> $log:ident)?),+ $(,)?) => {
+        $(
+            impl TryFrom<kmip_2_1::kmip_operations::$t> for $t {
+                type Error = KmipError;
+
+                fn try_from(value: kmip_2_1::kmip_operations::$t) -> Result<Self, Self::Error> {
+                    $($log!("Converting KMIP 2.1 {} to KMIP 1.4: {value}", stringify!($t));)?
+                    Ok(Self {
+                        unique_identifier: value.unique_identifier.to_string(),
+                        $($($none: None,)*)?
+                    })
+                }
+            }
+        )+
+    };
+}
+
+impl_try_from_uid_response!(
+    RegisterResponse { template_attribute } => trace,
+    ReKeyResponse { template_attribute },
+    DeriveKeyResponse { template_attribute },
+    CertifyResponse { template_attribute },
+    ReCertifyResponse { template_attribute },
+    JoinSplitKeyResponse { template_attribute },
+    ActivateResponse,
+    RevokeResponse,
+    DestroyResponse => trace,
+    ImportResponse => trace,
+);
+
+/// Implements `Display` as `"<Type> { unique_identifier: <id> }"`.
+macro_rules! display_unique_identifier {
+    ($($t:ident),+ $(,)?) => {
+        $(
+            impl Display for $t {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    write!(
+                        f,
+                        concat!(stringify!($t), " {{ unique_identifier: {} }}"),
+                        self.unique_identifier
+                    )
+                }
+            }
+        )+
+    };
+}
+
+display_unique_identifier!(
+    RegisterResponse,
+    GetAttributesResponse,
+    ActivateResponse,
+    DestroyResponse,
+);
+
 /// 4.1 Create
 /// This operation requests the server to generate a new managed cryptographic object. The request
 /// contains information about the type of object being created, and some of the attributes to be
@@ -243,29 +301,6 @@ pub struct RegisterResponse {
     pub template_attribute: Option<TemplateAttribute>,
 }
 
-impl TryFrom<kmip_2_1::kmip_operations::RegisterResponse> for RegisterResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::RegisterResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value}");
-
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-            template_attribute: None,
-        })
-    }
-}
-
-impl Display for RegisterResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "RegisterResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
-}
-
 /// 4.4 Re-key
 /// This operation requests the server to generate a replacement key for an existing symmetric key.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -301,17 +336,6 @@ pub struct ReKeyResponse {
     /// Template attributes applied to the new key
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
-}
-
-impl TryFrom<kmip_2_1::kmip_operations::ReKeyResponse> for ReKeyResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::ReKeyResponse) -> Result<Self, Self::Error> {
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-            template_attribute: None,
-        })
-    }
 }
 
 /// 4.5 Re-key Key Pair
@@ -486,25 +510,21 @@ pub struct DeriveKeyResponse {
     pub template_attribute: Option<TemplateAttribute>,
 }
 
-impl TryFrom<kmip_2_1::kmip_operations::DeriveKeyResponse> for DeriveKeyResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::DeriveKeyResponse) -> Result<Self, Self::Error> {
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-            template_attribute: None,
-        })
-    }
-}
-
 /// 4.7 Certify
 /// This operation requests the server to generate a Certificate object for a public key.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
-    pub unique_identifier: String,
-    pub certificate_request_type: CertificateRequestType,
-    pub certificate_request_value: Vec<u8>,
+    /// The Unique Identifier of the Public Key being certified. If omitted (and no
+    /// Certificate Request is sent), the server uses the ID Placeholder value (§4.7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+    /// REQUIRED if the Certificate Request is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_type: Option<CertificateRequestType>,
+    /// Tag 0x420018 `CertificateRequest` (KMIP 1.4 name).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
@@ -516,6 +536,23 @@ pub struct CertifyResponse {
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl From<Certify> for kmip_2_1::kmip_operations::Certify {
+    fn from(certify: Certify) -> Self {
+        let cert_req_type = certify.certificate_request_type.map(|t| match t {
+            CertificateRequestType::CRMF => kmip_2_1::kmip_types::CertificateRequestType::CRMF,
+            CertificateRequestType::PKCS10 => kmip_2_1::kmip_types::CertificateRequestType::PKCS10,
+            CertificateRequestType::PEM => kmip_2_1::kmip_types::CertificateRequestType::PEM,
+        });
+        Self {
+            unique_identifier: certify.unique_identifier.map(Into::into),
+            certificate_request_type: cert_req_type,
+            certificate_request_value: certify.certificate_request,
+            attributes: certify.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
 }
 
 /// 4.8 Re-certify
@@ -561,17 +598,6 @@ impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
             attributes: recertify.template_attribute.map(Into::into),
             protection_storage_masks: None,
         }
-    }
-}
-
-impl TryFrom<kmip_2_1::kmip_operations::ReCertifyResponse> for ReCertifyResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::ReCertifyResponse) -> Result<Self, Self::Error> {
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-            template_attribute: None,
-        })
     }
 }
 
@@ -924,16 +950,6 @@ impl TryFrom<kmip_2_1::kmip_operations::GetAttributesResponse> for GetAttributes
     }
 }
 
-impl Display for GetAttributesResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "GetAttributesResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
-}
-
 /// 4.13 Get Attribute List
 /// This operation requests a list of the attribute names associated with a Managed Object.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -1275,26 +1291,6 @@ pub struct ActivateResponse {
     pub unique_identifier: String,
 }
 
-impl TryFrom<kmip_2_1::kmip_operations::ActivateResponse> for ActivateResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::ActivateResponse) -> Result<Self, Self::Error> {
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-        })
-    }
-}
-
-impl Display for ActivateResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ActivateResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
-}
-
 /// 4.20 Revoke
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1326,16 +1322,6 @@ pub struct RevokeResponse {
     pub unique_identifier: String,
 }
 
-impl TryFrom<kmip_2_1::kmip_operations::RevokeResponse> for RevokeResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::RevokeResponse) -> Result<Self, Self::Error> {
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-        })
-    }
-}
-
 /// 4.21 Destroy
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1361,28 +1347,6 @@ impl From<Destroy> for kmip_2_1::kmip_operations::Destroy {
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     pub unique_identifier: String,
-}
-
-impl TryFrom<kmip_2_1::kmip_operations::DestroyResponse> for DestroyResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::DestroyResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value}");
-
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-        })
-    }
-}
-
-impl Display for DestroyResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DestroyResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
-        )
-    }
 }
 
 /// 4.22 Archive
@@ -2402,18 +2366,6 @@ pub struct ImportResponse {
     pub unique_identifier: String,
 }
 
-impl TryFrom<kmip_2_1::kmip_operations::ImportResponse> for ImportResponse {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_operations::ImportResponse) -> Result<Self, Self::Error> {
-        trace!("Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value}");
-
-        Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
-        })
-    }
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // KMIP 1.4 ↔ 2.1 conversions for CreateSplitKey and JoinSplitKey
 // ──────────────────────────────────────────────────────────────────────────
@@ -2467,20 +2419,6 @@ impl From<JoinSplitKey> for kmip_2_1::kmip_operations::JoinSplitKey {
             attributes: req.template_attribute.map(Into::into),
             protection_storage_masks: None,
         }
-    }
-}
-
-/// Converts a KMIP 2.1 [`JoinSplitKeyResponse`] into the equivalent KMIP 1.4 response.
-impl TryFrom<kmip_2_1::kmip_operations::JoinSplitKeyResponse> for JoinSplitKeyResponse {
-    type Error = KmipError;
-
-    fn try_from(
-        resp: kmip_2_1::kmip_operations::JoinSplitKeyResponse,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self {
-            unique_identifier: resp.unique_identifier.to_string(),
-            template_attribute: None,
-        })
     }
 }
 
@@ -2822,9 +2760,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // Operation::Cancel(cancel) => {
             //     Self::Cancel(cancel.into())
             // }
-            // Operation::Certify(certify) => {
-            //     Self::Certify(certify.into())
-            // }
+            Operation::Certify(certify) => Self::Certify(Box::new(certify.into())),
             // Operation::Check(check) => Self::Check(check.into()),
             Operation::Create(create) => Self::Create(create.into()),
             Operation::CreateKeyPair(create_key_pair) => {
@@ -2912,9 +2848,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::CancelResponse(cancel_response) => {
             //     Self::CancelResponse(cancel_response.into())
             // }
-            // Operation::CertifyResponse(certify_response) => {
-            //     Self::CertifyResponse(certify_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::CertifyResponse(certify_response) => {
+                Self::CertifyResponse(certify_response.try_into().context("CertifyResponse")?)
+            }
             kmip_2_1::kmip_operations::Operation::CheckResponse(check_response) => {
                 Self::CheckResponse(check_response.try_into().context("CheckResponse")?)
             }

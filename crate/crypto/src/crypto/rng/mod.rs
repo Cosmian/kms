@@ -1,5 +1,12 @@
-use std::ffi::{c_int, c_uint, c_void};
+use std::{
+    ffi::{c_int, c_uint, c_void},
+    sync::atomic::{Ordering, compiler_fence},
+};
 
+use cosmian_crypto_core::{
+    CsRng,
+    reexport::rand_core::{self, CryptoRng, RngCore, SeedableRng},
+};
 use openssl::error::ErrorStack;
 use openssl_sys::RAND_add;
 use zeroize::Zeroizing;
@@ -17,6 +24,9 @@ use crate::error::CryptoError;
 /// is weaker than that, instead of silently returning lower-strength bits as `RAND_bytes` (which
 /// passes a strength of 0) would.
 const REQUIRED_STRENGTH_BITS: c_uint = 256;
+
+/// `RAND_priv_bytes_ex` / `RAND_bytes_ex` signature.
+type RandBytesEx = unsafe extern "C" fn(*mut c_void, *mut u8, usize, c_uint) -> c_int;
 
 #[expect(unsafe_code)]
 unsafe extern "C" {
@@ -41,9 +51,10 @@ unsafe extern "C" {
 ///   `SalsaSealBox`)
 /// - Session/OIDC tokens and AES-GCM/JOSE content keys and IVs
 ///
-/// SLH-DSA, hybrid KEM, RSA/EC/EdDSA key generation and Covercrypt do not draw from `KmsRng`:
-/// OpenSSL (or the Covercrypt library, which exposes no way to inject an RNG) generates their
-/// key material internally.
+/// SLH-DSA, hybrid KEM, RSA/EC/EdDSA key generation, the SCEP CMS envelope content key and IV
+/// (`CmsContentInfo::encrypt`, drawn by OpenSSL at requested strength 0) and Covercrypt do not draw
+/// from `KmsRng`: OpenSSL (or the Covercrypt library, which exposes no way to inject an RNG)
+/// generates them internally. `uuid::Uuid::new_v4` identifiers come from the OS via `getrandom`.
 ///
 /// # Design
 ///
@@ -55,11 +66,14 @@ unsafe extern "C" {
 ///   DRBG), so serialising callers behind a `Mutex` would add contention and a poisoning failure
 ///   mode without adding safety.
 /// - **Private vs public DRBG.** [`fill_bytes`](Self::fill_bytes) and
-///   [`random_vec`](Self::random_vec) use OpenSSL's *private* DRBG (`RAND_priv_bytes_ex`), which
-///   OpenSSL documents for long-term key material. [`fill_public_bytes`](Self::fill_public_bytes)
-///   uses the *public* DRBG (`RAND_bytes_ex`) for values that are handed to clients, such as
-///   KMIP `RNGRetrieve`, so that output visible to a client never comes from the generator that
-///   produces keys.
+///   [`random_vec`](Self::random_vec) use OpenSSL's *private* DRBG (`RAND_priv_bytes_ex`) for
+///   values that stay secret (keys, seeds, KEKs, split-key shares, tokens).
+///   [`fill_public_bytes`](Self::fill_public_bytes) uses the *public* DRBG (`RAND_bytes_ex`) for
+///   values that leave the server in clear (nonces, IVs, certificate serials, KMIP `RNGRetrieve`,
+///   PKCS#11 `C_GenerateRandom`), so private-DRBG output is never observable. OpenSSL keeps the
+///   two instances apart "so that a compromise of the public PRNG instance will not affect the
+///   secrecy of these private values" (`RAND_bytes(3)`): defence in depth, since CTR-DRBG output
+///   does not reveal its state.
 /// - **Requested strength.** Every call requests [`REQUIRED_STRENGTH_BITS`] bits of security
 ///   strength and returns an error if the serving DRBG cannot provide it
 ///   (NIST SP 800-133r2 §4, SP 800-90A r1 §9.3.1).
@@ -77,9 +91,9 @@ unsafe extern "C" {
 ///
 /// # Why not `cosmian_crypto_core::CsRng`
 ///
-/// `CsRng` (`rand_chacha::ChaCha12Rng`, seeded via `getrandom`) is used elsewhere in this
-/// codebase for non-compliance-relevant randomness, but it bypasses OpenSSL entirely and is not
-/// an NIST SP 800-90A-approved DRBG construction. Do not substitute it here — see
+/// `CsRng` (`rand_chacha::ChaCha12Rng`) bypasses OpenSSL when seeded via `getrandom` and is not an
+/// NIST SP 800-90A-approved DRBG construction. It is only ever seeded from `KmsRng`
+/// ([`KmsRng::seeded_csrng`]). Do not substitute it here — see
 /// `documentation/adr/2026-10-10-keep-kmsrng-openssl-backed-over-csrng.md`.
 #[derive(Debug, Default)]
 pub struct KmsRng;
@@ -102,7 +116,7 @@ impl KmsRng {
     }
 
     /// Fill a buffer with cryptographically random bytes for **secret** values (keys, seeds,
-    /// split-key material, serial numbers).
+    /// KEKs, split-key material, tokens).
     ///
     /// Uses OpenSSL's private DRBG and requests [`REQUIRED_STRENGTH_BITS`] bits of strength.
     ///
@@ -111,43 +125,21 @@ impl KmsRng {
     /// Returns `CryptoError` if OpenSSL cannot generate the bytes at the requested strength
     /// (DRBG not instantiated, entropy source failure, or DRBG strength below 256 bits).
     /// The buffer content is unspecified on error and MUST NOT be used.
-    #[expect(unsafe_code)]
     pub fn fill_bytes(&self, dest: &mut [u8]) -> Result<(), CryptoError> {
-        // SAFETY: `dest` is a valid, exclusively borrowed slice, so `dest.as_mut_ptr()` is valid
-        // for writes of `dest.len()` bytes (a dangling non-null pointer with length 0 is allowed
-        // by OpenSSL, which does not dereference it). A NULL library context selects the default
-        // context.
-        let ret = unsafe {
-            RAND_priv_bytes_ex(
-                std::ptr::null_mut(),
-                dest.as_mut_ptr(),
-                dest.len(),
-                REQUIRED_STRENGTH_BITS,
-            )
-        };
-        check_rand_result(ret)
+        generate(RAND_priv_bytes_ex, dest)
     }
 
-    /// Fill a buffer with random bytes that are **handed to clients** (KMIP `RNGRetrieve`).
+    /// Fill a buffer with random bytes for values that **leave the server in clear** (nonces,
+    /// IVs, certificate serials, KMIP `RNGRetrieve`, PKCS#11 `C_GenerateRandom`).
     ///
-    /// Uses OpenSSL's public DRBG, separate from the private DRBG that generates keys, and
+    /// Uses OpenSSL's public DRBG, separate from the private DRBG that generates secrets, and
     /// requests [`REQUIRED_STRENGTH_BITS`] bits of strength.
     ///
     /// # Errors
     ///
     /// Same as [`fill_bytes`](Self::fill_bytes).
-    #[expect(unsafe_code)]
     pub fn fill_public_bytes(&self, dest: &mut [u8]) -> Result<(), CryptoError> {
-        // SAFETY: see `fill_bytes`.
-        let ret = unsafe {
-            RAND_bytes_ex(
-                std::ptr::null_mut(),
-                dest.as_mut_ptr(),
-                dest.len(),
-                REQUIRED_STRENGTH_BITS,
-            )
-        };
-        check_rand_result(ret)
+        generate(RAND_bytes_ex, dest)
     }
 
     /// Generate a vector of random bytes with automatic zeroization.
@@ -164,19 +156,39 @@ impl KmsRng {
         Ok(buf)
     }
 
+    /// A `ChaCha12` generator seeded with 256 bits from the private DRBG.
+    ///
+    /// For third-party APIs that require an infallible `rand_core` 0.6 `CryptoRngCore` and offer no
+    /// way to inject entropy (ECIES `SalsaSealBox`, `OpenPGP`), and for test fixtures. Everything the
+    /// returned generator produces is bounded by this single 256-bit draw from `KmsRng`.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`fill_bytes`](Self::fill_bytes).
+    pub fn seeded_csrng(&self) -> Result<SeededCsRng, CryptoError> {
+        let mut seed = Zeroizing::new([0_u8; 32]);
+        self.fill_bytes(&mut seed[..])?;
+        // `from_seed` takes the seed by value: that stack copy cannot be cleared from safe Rust.
+        Ok(SeededCsRng(CsRng::from_seed(*seed)))
+    }
+
     /// Mix caller-supplied data into the OpenSSL primary DRBG as **additional input**
     /// (KMIP `RNGSeed`).
     ///
     /// OpenSSL (≥ 3.0, built with an entropy source) turns `RAND_add` into
-    /// `EVP_RAND_reseed(primary, ..., additional_input = seed)`: the primary DRBG is
-    /// **reseeded immediately from the operating-system entropy source** and `seed` is only
-    /// additional input. NIST SP 800-90A r1 §8.7.2: a DRBG does not rely on additional input for
-    /// entropy and "knowledge of the additional input by an adversary does not degrade the
+    /// `EVP_RAND_reseed(primary, ..., additional_input = seed)` (`crypto/rand/rand_meth.c`): the
+    /// primary DRBG is **reseeded immediately from the operating-system entropy source** and `seed`
+    /// is only additional input. NIST SP 800-90A r1 §8.7.2: a DRBG does not rely on additional input
+    /// for entropy and "knowledge of the additional input by an adversary does not degrade the
     /// security strength of a DRBG", so a hostile or low-entropy `RNGSeed` cannot weaken the
     /// generator. The seed is credited with zero bits of entropy.
     ///
-    /// Side effect: every call forces a reseed of the process-wide primary DRBG, so callers
-    /// must authorise and rate-limit it; this method does not.
+    /// `RAND_add` returns `void`: a failed reseed is not reported here. A DRBG whose entropy source
+    /// fails refuses later generate calls, which [`fill_bytes`](Self::fill_bytes) reports.
+    ///
+    /// Cost (FIPS build, Apple M-series): about 0.6 µs for the reseed, plus about 3 µs on the next
+    /// generate call, whose DRBG then reseeds from the primary. That is far below the cost of the
+    /// KMIP request that triggers it, so `RNGSeed` needs no rate limit of its own.
     ///
     /// # Errors
     ///
@@ -188,23 +200,70 @@ impl KmsRng {
         }
         let seed_len_i32 = i32::try_from(seed.len())
             .map_err(|e| CryptoError::Default(format!("seed length exceeds i32: {e}")))?;
+        // SAFETY: `seed` is a valid byte slice, non-null and readable for `seed.len()` bytes.
         // Client-supplied seed material is never credited as entropy (0.0 bits).
-        let entropy_estimate = 0.0_f64;
-        // SAFETY: RAND_add accepts a pointer to bytes, a valid length, and an entropy estimate.
-        // seed is a valid byte slice; seed.as_ptr() is non-null and valid for seed.len() bytes.
-        unsafe {
-            RAND_add(
-                seed.as_ptr().cast::<std::ffi::c_void>(),
-                seed_len_i32,
-                entropy_estimate,
-            );
-        }
+        unsafe { RAND_add(seed.as_ptr().cast::<c_void>(), seed_len_i32, 0.0) };
         Ok(())
     }
 }
 
-/// Convert the return value of `RAND_*_bytes_ex` (1 on success, 0 or -1 on failure).
-fn check_rand_result(ret: c_int) -> Result<(), CryptoError> {
+/// [`KmsRng::seeded_csrng`] output: a `CsRng` overwritten when dropped.
+///
+/// Its `ChaCha12` key is the seed, so whoever reads the state can recompute every byte it produced
+/// (ECIES ephemeral keys, `OpenPGP` keys). `CsRng` does not zeroize itself.
+pub struct SeededCsRng(CsRng);
+
+impl Drop for SeededCsRng {
+    #[expect( // false positive: CsRng is plain data and this volatile write is the zeroization itself
+        unsafe_code,
+        clippy::volatile_composites,
+        reason = "the store only has to survive dead-store elimination; tearing is irrelevant"
+    )]
+    fn drop(&mut self) {
+        // SAFETY: `self.0` is valid, aligned and initialised. `CsRng` has no `Drop` and owns no heap
+        // memory, so overwriting it without dropping the old value releases nothing. The write is
+        // volatile so that it is not removed as a dead store.
+        unsafe { std::ptr::write_volatile(&raw mut self.0, CsRng::from_seed([0; 32])) };
+        compiler_fence(Ordering::SeqCst);
+    }
+}
+
+impl RngCore for SeededCsRng {
+    fn next_u32(&mut self) -> u32 {
+        self.0.next_u32()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.0.next_u64()
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        self.0.fill_bytes(dest);
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.0.try_fill_bytes(dest)
+    }
+}
+
+impl CryptoRng for SeededCsRng {}
+
+/// Generate `dest.len()` bytes at [`REQUIRED_STRENGTH_BITS`] with `RAND_priv_bytes_ex` or
+/// `RAND_bytes_ex`.
+#[expect(unsafe_code)]
+fn generate(rand_bytes_ex: RandBytesEx, dest: &mut [u8]) -> Result<(), CryptoError> {
+    // SAFETY: `dest` is a valid, exclusively borrowed slice, so `dest.as_mut_ptr()` is valid for
+    // writes of `dest.len()` bytes (a dangling non-null pointer with length 0 is allowed by
+    // OpenSSL, which does not dereference it). A NULL library context selects the default context.
+    let ret = unsafe {
+        rand_bytes_ex(
+            std::ptr::null_mut(),
+            dest.as_mut_ptr(),
+            dest.len(),
+            REQUIRED_STRENGTH_BITS,
+        )
+    };
+    // `RAND_*_bytes_ex` return 1 on success, 0 or -1 on failure.
     if ret == 1 {
         Ok(())
     } else {
@@ -218,7 +277,7 @@ fn check_rand_result(ret: c_int) -> Result<(), CryptoError> {
 #[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, sync::Arc};
+    use std::{collections::HashSet, mem::ManuallyDrop, sync::Arc};
 
     use super::*;
 
@@ -267,6 +326,20 @@ mod tests {
         rng.reseed(b"")?;
         assert_ne!(*before, *after_1);
         assert_ne!(*after_1, *after_2);
+        Ok(())
+    }
+
+    #[test]
+    #[expect(unsafe_code)]
+    fn seeded_csrng_state_is_overwritten_on_drop() -> Result<(), CryptoError> {
+        let mut rng = ManuallyDrop::new(KmsRng::new().seeded_csrng()?);
+        rng.next_u64();
+        assert_ne!(rng.0.get_seed(), [0; 32]);
+        // SAFETY: `rng` is not dropped again; the drop only overwrites `rng.0` with another valid
+        // `CsRng`, so reading it afterwards reads initialised memory.
+        unsafe { ManuallyDrop::drop(&mut rng) };
+        assert_eq!(rng.0.get_seed(), [0; 32]);
+        assert_eq!(rng.0.get_word_pos(), 0);
         Ok(())
     }
 

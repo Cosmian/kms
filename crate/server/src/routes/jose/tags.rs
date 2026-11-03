@@ -30,6 +30,7 @@ pub(crate) async fn add_tags(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "POST /v1/crypto/keys/{kid}/tags");
+    super::audit(&req, Some(&kid));
 
     validate_user_tags(&body.tags)?;
 
@@ -58,6 +59,7 @@ pub(crate) async fn remove_tags(
     let body = body.into_inner();
 
     trace!(user = user.as_str(), "DELETE /v1/crypto/keys/{kid}/tags");
+    super::audit(&req, Some(&kid));
 
     validate_user_tags(&body.tags)?;
 
@@ -84,6 +86,7 @@ pub(crate) async fn list_tags(
     let kid = kid.into_inner();
 
     trace!(user = user.as_str(), "GET /v1/crypto/keys/{kid}/tags");
+    super::audit(&req, Some(&kid));
 
     let (_uid, all_tags) = fetch_all_tags(&kms, &kid, &user, KmipOperation::GetAttributes).await?;
 
@@ -155,7 +158,7 @@ async fn persist_tags(
 ) -> Result<(), CryptoApiError> {
     let owm = kms
         .database
-        .retrieve_object(kid)
+        .retrieve_object_arc(kid)
         .await
         .map_err(|e| CryptoApiError::from(KmsError::from(e)))?
         .ok_or_else(|| CryptoApiError::NotFound(format!("Key '{kid}' not found")))?;
@@ -181,7 +184,6 @@ fn tags_response(kid: String, all_tags: HashSet<String>) -> TagsResponse {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_access::access::Access;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
@@ -190,17 +192,12 @@ mod tests {
     };
 
     use super::fetch_all_tags;
-    use crate::{
-        config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-        tests::test_utils::https_clap_config,
-    };
+    use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
     /// A user holding only `Encrypt` may read tags but not add or remove them.
     #[tokio::test]
     async fn test_tag_changes_require_attribute_permissions() -> KResult<()> {
-        let kms = Arc::new(
-            KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?,
-        );
+        let kms = test_kms().await?;
         let alice = UserId::from("alice");
         let bob = UserId::from("bob");
         let request = symmetric_key_create_request(

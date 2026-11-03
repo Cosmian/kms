@@ -12,6 +12,7 @@
 //!   error_cases     — unknown alg (422), bad key id (4xx), wrong key type
 //!   rfc_vectors     — RFC 7515 known-answer and known-key tests
 
+mod cek_kid;
 mod common;
 mod ecdh;
 mod encrypt_decrypt;

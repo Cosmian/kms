@@ -243,18 +243,14 @@ pub struct JwtConfig {
 impl JwtConfig {
     /// Decode a JWT bearer header
     pub(crate) fn decode_bearer_header(&self, authorization_content: &str) -> KResult<UserClaim> {
-        let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
+        let (scheme, token) = authorization_content.split_once(' ').ok_or_else(|| {
+            KmsError::Unauthorized("Bad authorization header content (missing bearer)".to_owned())
+        })?;
         kms_ensure!(
-            bearer.first().ok_or_else(|| KmsError::Unauthorized(
-                "Bad authorization header content (missing bearer)".to_owned()
-            ))? == &"Bearer"
-                && bearer.get(1).is_some(),
+            scheme.eq_ignore_ascii_case("Bearer"),
             KmsError::Unauthorized("Bad authorization header content (bad bearer)".to_owned())
         );
 
-        let token: &str = bearer.get(1).ok_or_else(|| {
-            KmsError::Unauthorized("Bad authorization header content (missing token)".to_owned())
-        })?;
         self.validate_authentication_token(token, true)
     }
 

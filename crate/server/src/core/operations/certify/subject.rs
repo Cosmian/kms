@@ -7,10 +7,13 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes, kmip_objects::Object, kmip_types::UniqueIdentifier,
     },
-    cosmian_kms_crypto::openssl::{kmip_public_key_to_openssl, openssl_certificate_extensions},
+    cosmian_kms_crypto::openssl::{
+        kmip_public_key_to_openssl, oid::asn1_object, openssl_certificate_extensions,
+    },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use openssl::{
+    nid::Nid,
     pkey::{PKey, Public},
     x509::{X509, X509Extension, X509Name, X509NameRef, X509Req},
 };
@@ -125,8 +128,11 @@ impl Subject {
     /// This prevents [`crate::core::operations::certify::build_certificate`] from injecting
     /// a duplicate CDP when re-certifying a certificate that was previously issued with one.
     pub(crate) fn has_crl_distribution_points(&self) -> bool {
-        // OID 2.5.29.31 — id-ce-cRLDistributionPoints DER bytes
-        const CDP_OID: &[u8] = &[0x55, 0x1d, 0x1f];
+        // OID of id-ce-cRLDistributionPoints, as OpenSSL registers it (DER content octets)
+        let Ok(cdp_oid) = asn1_object(Nid::CRL_DISTRIBUTION_POINTS) else {
+            return false;
+        };
+        let cdp_oid = cdp_oid.as_slice();
         match self {
             Self::Certificate(_, x509, _) => {
                 let Ok(der) = x509.to_der() else { return false };
@@ -136,7 +142,7 @@ impl Subject {
                 parsed
                     .extensions()
                     .iter()
-                    .any(|ext| ext.oid.as_bytes() == CDP_OID)
+                    .any(|ext| ext.oid.as_bytes() == cdp_oid)
             }
             Self::X509Req(_, req) => {
                 // CSR extensions live inside a requestedExtensions attribute
@@ -147,7 +153,7 @@ impl Subject {
                     stack.iter().any(|ext| {
                         ext.to_der().is_ok_and(|der| {
                             // OID appears near the start; simple byte search suffices.
-                            der.windows(CDP_OID.len()).any(|w| w == CDP_OID)
+                            der.windows(cdp_oid.len()).any(|w| w == cdp_oid)
                         })
                     })
                 })

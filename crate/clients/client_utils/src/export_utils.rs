@@ -61,8 +61,8 @@ pub enum WrappingAlgorithm {
 /// This is required to match the Java library behavior which expects
 /// the first tag to describe the type of object and not simply equal 'Object'
 // TODO: check what is specified by the KMIP norm if any
-pub fn tag_from_object(object: &Object) -> String {
-    match &object {
+pub const fn tag_from_object(object: &Object) -> &'static str {
+    match object {
         Object::PublicKey { .. } => "PublicKey",
         Object::SecretData { .. } => "SecretData",
         Object::PGPKey { .. } => "PGPKey",
@@ -73,7 +73,6 @@ pub fn tag_from_object(object: &Object) -> String {
         Object::OpaqueObject { .. } => "OpaqueObject",
         Object::PrivateKey { .. } => "PrivateKey",
     }
-    .to_owned()
 }
 
 /// Converts DER bytes to PEM bytes for keys
@@ -264,7 +263,6 @@ pub fn export_request(
     key_format_type: Option<KeyFormatType>,
     encoding_to_ttlv: bool,
     wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
 ) -> Export {
     Export::new(
         UniqueIdentifier::TextString(object_id_or_tags.to_owned()),
@@ -273,7 +271,6 @@ pub fn export_request(
             key_wrapping_specification(
                 wrapping_key_id,
                 wrapping_cryptographic_parameters,
-                authenticated_encryption_additional_data,
                 encoding_to_ttlv,
             )
         }),
@@ -289,7 +286,6 @@ pub fn get_request(
     key_format_type: Option<KeyFormatType>,
     encoding_to_ttlv: bool,
     wrapping_cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
 ) -> Get {
     Get::new(
         UniqueIdentifier::TextString(object_id_or_tags.to_owned()),
@@ -298,7 +294,6 @@ pub fn get_request(
             key_wrapping_specification(
                 wrapping_key_id,
                 wrapping_cryptographic_parameters,
-                authenticated_encryption_additional_data,
                 encoding_to_ttlv,
             )
         }),
@@ -310,7 +305,6 @@ pub fn get_request(
 fn key_wrapping_specification(
     wrapping_key_id: &str,
     cryptographic_parameters: Option<CryptographicParameters>,
-    authenticated_encryption_additional_data: Option<String>,
     encode_to_ttlv: bool,
 ) -> KeyWrappingSpecification {
     KeyWrappingSpecification {
@@ -319,7 +313,6 @@ fn key_wrapping_specification(
             unique_identifier: UniqueIdentifier::TextString(wrapping_key_id.to_owned()),
             cryptographic_parameters,
         }),
-        attribute_name: authenticated_encryption_additional_data.map(|data| vec![data]),
         encoding_option: Some(if encode_to_ttlv {
             EncodingOption::TTLVEncoding
         } else {

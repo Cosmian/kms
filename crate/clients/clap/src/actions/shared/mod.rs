@@ -1,3 +1,22 @@
+/// Dispatch a subcommand enum (`self`) to the `run(kms_rest_client)` method of the
+/// matched variant's action and discard its output, propagating errors with `?`.
+///
+/// Variants listed after `boxed:` have their future pinned on the heap, which
+/// keeps large action futures out of the caller's future.
+macro_rules! dispatch_run {
+    ($cmd:expr, $kms_rest_client:expr, [$($variant:ident),* $(,)?] $(, boxed: [$($boxed:ident),* $(,)?])?) => {
+        match $cmd {
+            $(Self::$variant(action) => {
+                action.run($kms_rest_client).await?;
+            })*
+            $($(Self::$boxed(action) => {
+                Box::pin(action.run($kms_rest_client)).await?;
+            })*)?
+        }
+    };
+}
+pub(crate) use dispatch_run;
+
 mod activate;
 pub(crate) mod export_key;
 mod get_key_uid;
@@ -6,6 +25,7 @@ pub(crate) mod import_key;
 mod locate;
 mod rekey_keypair;
 pub(crate) mod resolve_key;
+mod revoke_key;
 mod revoke_reason_args;
 mod rotation_policy_args;
 mod set_rotation_policy;
@@ -24,6 +44,7 @@ pub use get_rotation_policy::GetRotationPolicyAction;
 pub use import_key::ImportSecretDataOrKeyAction;
 pub use locate::LocateObjectsAction;
 pub use rekey_keypair::ReKeyKeyPairAction;
+pub use revoke_key::RevokeKeyAction;
 pub use revoke_reason_args::RevokeReasonArgs;
 pub use rotation_policy_args::RotationPolicyArgs;
 pub use set_rotation_policy::SetRotationPolicyAction;

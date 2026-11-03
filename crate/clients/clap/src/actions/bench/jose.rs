@@ -86,8 +86,9 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
     let mut group = timed_group(c, "jose/encrypt");
     let payload = b64url(&[1_u8; 64]);
 
-    for enc in ["A128GCM", "A192GCM", "A256GCM"] {
-        if !bench_filter_matches(enc, None) {
+    for (enc, bits) in [("A128GCM", "128"), ("A192GCM", "192"), ("A256GCM", "256")] {
+        // Accept the KMIP vocabulary (`-a aes-gcm -k 256`) as well as the JWA name.
+        if !bench_filter_matches("aes-gcm", Some(bits)) && !bench_filter_matches(enc, None) {
             continue;
         }
         let Some(kid) = jose_create_sym_key(rt, client, enc) else {

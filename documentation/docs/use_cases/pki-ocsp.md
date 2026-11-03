@@ -111,6 +111,11 @@ by the `Revoke` operation (the same values the CRL lists), so OCSP and CRL alway
 agree. Destroying a revoked certificate keeps it `revoked`: its issuer link and
 revocation details survive `Destroy`.
 
+Only certificates the CA really issued are considered, with the same rules as the CRL
+(issuer name and signature, then the owner's right to issue with the CA key; see
+[Revocation & CRL Distribution](pki-revocation.md#crl-generation)). If several records
+carry the requested serial, a revoked one wins over an active one.
+
 Every `CertID` in a request must name the configured CA; a request that mixes in
 another issuer is answered `unauthorized`. The in-memory response cache is used only
 for single-`CertID` requests without a nonce, is keyed by the full `CertID` (hash

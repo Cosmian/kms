@@ -71,7 +71,7 @@ pub(crate) fn aes_gcm_encrypt(
 
     // Generate random IV
     let mut iv = vec![0_u8; AES_GCM_IV_LEN];
-    rng.fill_bytes(&mut iv)
+    rng.fill_public_bytes(&mut iv)
         .map_err(|e| CryptoApiError::InternalError(format!("Failed to generate random IV: {e}")))?;
 
     // Encrypt

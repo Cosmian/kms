@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{borrow::Cow, collections::HashSet};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -14,7 +14,6 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto,
-    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
 use uuid::Uuid;
@@ -58,9 +57,13 @@ pub(crate) async fn create_split_key(
     };
 
     // Retrieve the master key — user must have Get permission
-    let owm: ObjectWithMetadata =
-        retrieve_object_for_operation(ObjectHandle::from(&uid_str), KmipOperation::Get, kms, user)
-            .await?;
+    let owm = Box::pin(retrieve_object_for_operation(
+        ObjectHandle::from(&uid_str),
+        KmipOperation::Get,
+        kms,
+        user,
+    ))
+    .await?;
 
     // The actual stored UID of the source key — used for share naming and attributes.
     // This differs from `uid_str` when the caller resolves by tag (e.g. `["my-tag"]`)
@@ -93,7 +96,7 @@ pub(crate) async fn create_split_key(
     }
 
     // Extract raw key bytes from the master object's key block
-    let key_bytes: Zeroizing<Vec<u8>> = extract_key_bytes(owm.object())?;
+    let key_bytes: &[u8] = extract_key_bytes_ref(owm.object())?;
 
     // Determine whether this is a Crypto Officer ceremony split.
     //
@@ -169,13 +172,13 @@ pub(crate) async fn create_split_key(
 
     let raw_shares: Vec<Zeroizing<Vec<u8>>> = match request.split_key_method {
         SplitKeyMethod::XOR => {
-            cosmian_kms_crypto::crypto::split_key::xor_split(&key_bytes, total_parts_u32, &kms.rng)
+            cosmian_kms_crypto::crypto::split_key::xor_split(key_bytes, total_parts_u32, &kms.rng)
                 .map_err(|e| match e {
-                    cosmian_kms_crypto::crypto::split_key::SplitKeyError::Rng(_) => {
-                        KmsError::ServerError(format!("CreateSplitKey error: {e}"))
-                    }
-                    _ => KmsError::InvalidRequest(format!("CreateSplitKey error: {e}")),
-                })?
+                cosmian_kms_crypto::crypto::split_key::SplitKeyError::Rng(_) => {
+                    KmsError::ServerError(format!("CreateSplitKey error: {e}"))
+                }
+                _ => KmsError::InvalidRequest(format!("CreateSplitKey error: {e}")),
+            })?
         }
         SplitKeyMethod::PolynomialSharingGf28
         | SplitKeyMethod::PolynomialSharingGf216
@@ -213,11 +216,10 @@ pub(crate) async fn create_split_key(
     // Each share's raw bytes are wrapped with this key before being stored in the DB,
     // so that a DB-level attacker cannot read share plaintext without also accessing
     // the wrapping key (which may itself be HSM-resident when the KMS is HSM-backed).
-    let wrapping_key_bytes: Option<Zeroizing<Vec<u8>>> =
-        if let Some(ref wrap_key_id) = kms.params.crypto_officer.ceremony_wrapping_key_id {
-            let wrap_owm = kms
-                .database
-                .retrieve_object(wrap_key_id)
+    let wrap_owm = if let Some(wrap_key_id) = &kms.params.crypto_officer.ceremony_wrapping_key_id {
+        Some(
+            kms.database
+                .retrieve_object_arc(wrap_key_id)
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(
@@ -231,11 +233,15 @@ pub(crate) async fn create_split_key(
                          Create it with: ckms sym keys create --id {wrap_key_id} \
                          --number-of-bits 256"
                     ))
-                })?;
-            Some(extract_key_bytes(wrap_owm.object())?)
-        } else {
-            None
-        };
+                })?,
+        )
+    } else {
+        None
+    };
+    let wrapping_key_bytes: Option<&[u8]> = wrap_owm
+        .as_ref()
+        .map(|o| extract_key_bytes_ref(o.object()))
+        .transpose()?;
 
     for (idx, share_bytes) in raw_shares.into_iter().enumerate() {
         // 1-indexed share number; idx fits in i32 since total_parts <= 255.
@@ -245,16 +251,18 @@ pub(crate) async fn create_split_key(
         // by a different CO candidate to enforce dual control (NIST SP 800-57 Part 2
         // Rev 1 §4.6). The creating user owns share 0; shares 1..n are assigned to
         // the other CO candidates round-robin.
-        let share_owner: UserId = if is_co_ceremony_key && !co_users.is_empty() {
+        let share_owner: Cow<'_, UserId> = if is_co_ceremony_key && !co_users.is_empty() {
             let co_idx = idx % co_users.len();
-            UserId::from(co_users.get(co_idx).map_or("unknown", |s| s.as_str()))
+            Cow::Owned(UserId::from(
+                co_users.get(co_idx).map_or("unknown", |s| s.as_str()),
+            ))
         } else {
-            (*user).clone()
+            Cow::Borrowed(user)
         };
 
         // If a ceremony wrapping key is configured, AES-KW wrap the share bytes.
         // The plaintext share is consumed here; only the wrapped ciphertext is stored.
-        let stored_share_bytes: Zeroizing<Vec<u8>> = match &wrapping_key_bytes {
+        let stored_share_bytes: Zeroizing<Vec<u8>> = match wrapping_key_bytes {
             Some(wkb) => {
                 let wrapped =
                     cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_wrap(&share_bytes, wkb)
@@ -508,19 +516,19 @@ pub(crate) async fn create_split_key(
 ///
 /// Used both by `CreateSplitKey` (to extract the source key's bytes) and by
 /// `JoinSplitKey` when it needs to retrieve a ceremony wrapping key from the DB.
-pub(crate) fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> {
+pub(crate) fn extract_key_bytes_ref(object: &Object) -> KResult<&[u8]> {
     match object {
-        Object::SymmetricKey(sk) => Ok(sk.key_block.key_bytes().map_err(|e| {
+        Object::SymmetricKey(sk) => Ok(sk.key_block.key_bytes_ref().map_err(|e| {
             KmsError::InvalidRequest(format!(
                 "CreateSplitKey: cannot read symmetric key bytes: {e}"
             ))
         })?),
-        Object::SecretData(sd) => Ok(sd.key_block.key_bytes().map_err(|e| {
+        Object::SecretData(sd) => Ok(sd.key_block.key_bytes_ref().map_err(|e| {
             KmsError::InvalidRequest(format!(
                 "CreateSplitKey: cannot read secret data bytes: {e}"
             ))
         })?),
-        Object::OpaqueObject(oo) => Ok(Zeroizing::new(oo.opaque_data_value.clone())),
+        Object::OpaqueObject(oo) => Ok(oo.opaque_data_value.as_slice()),
         other => kms_bail!(KmsError::NotSupported(format!(
             "CreateSplitKey: unsupported object type {:?}",
             other.object_type()
@@ -567,8 +575,8 @@ mod tests {
         let obj = Object::SymmetricKey(SymmetricKey {
             key_block: make_raw_key_block(raw.clone()),
         });
-        let result = extract_key_bytes(&obj).expect("should extract bytes from SymmetricKey");
-        assert_eq!(result.as_slice(), raw.as_slice());
+        let result = extract_key_bytes_ref(&obj).expect("should extract bytes from SymmetricKey");
+        assert_eq!(result, raw.as_slice());
     }
 
     #[test]
@@ -578,8 +586,8 @@ mod tests {
             secret_data_type: SecretDataType::Password,
             key_block: make_raw_key_block(raw.clone()),
         });
-        let result = extract_key_bytes(&obj).expect("should extract bytes from SecretData");
-        assert_eq!(result.as_slice(), raw.as_slice());
+        let result = extract_key_bytes_ref(&obj).expect("should extract bytes from SecretData");
+        assert_eq!(result, raw.as_slice());
     }
 
     #[test]
@@ -589,8 +597,8 @@ mod tests {
             opaque_data_type: OpaqueDataType::Unknown,
             opaque_data_value: raw.clone(),
         });
-        let result = extract_key_bytes(&obj).expect("should extract bytes from OpaqueObject");
-        assert_eq!(result.as_slice(), raw.as_slice());
+        let result = extract_key_bytes_ref(&obj).expect("should extract bytes from OpaqueObject");
+        assert_eq!(result, raw.as_slice());
     }
 
     #[test]
@@ -599,10 +607,10 @@ mod tests {
         let obj = Object::PrivateKey(PrivateKey {
             key_block: make_raw_key_block(vec![0_u8; 32]),
         });
-        let result = extract_key_bytes(&obj);
+        let result = extract_key_bytes_ref(&obj);
         assert!(
             result.is_err(),
-            "PrivateKey should not be supported by extract_key_bytes"
+            "PrivateKey should not be supported by extract_key_bytes_ref"
         );
         assert!(matches!(result.unwrap_err(), KmsError::NotSupported(_)));
     }

@@ -205,7 +205,7 @@ fn get_cert_path(relative_path: &str) -> PathBuf {
 ///
 /// To run this test:
 /// ```bash
-/// cargo test --package cosmian_kms_server --lib test_postgresql_mtls_connection -- --ignored --nocapture
+/// cargo test --package cosmian_kms_server --lib test_db_postgresql_mtls_connection -- --ignored --nocapture
 /// ```
 #[ignore = "Requires postgres-mtls service running (docker compose up -d postgres-mtls)"]
 #[tokio::test]
@@ -238,8 +238,7 @@ async fn test_db_postgresql_mtls_connection() -> KResult<()> {
         ..Default::default()
     };
 
-    let server_params = std::sync::Arc::new(crate::config::ServerParams::try_from(config)?);
-    let _kms = crate::core::KMS::instantiate(server_params).await?;
+    let _kms = crate::tests::test_utils::test_kms_with_config(config).await?;
 
     Ok(())
 }
@@ -258,7 +257,7 @@ async fn test_db_postgresql_mtls_connection() -> KResult<()> {
 ///
 /// To run this test:
 /// ```bash
-/// cargo test --package cosmian_kms_server --lib test_mysql_mtls_connection -- --ignored --nocapture
+/// cargo test --package cosmian_kms_server --lib test_db_mysql_mtls_connection -- --ignored --nocapture
 /// ```
 #[ignore = "Requires mysql-mtls service running (docker compose up -d mysql-mtls)"]
 #[tokio::test]
@@ -291,8 +290,7 @@ async fn test_db_mysql_mtls_connection() -> KResult<()> {
         ..Default::default()
     };
 
-    let server_params = std::sync::Arc::new(crate::config::ServerParams::try_from(config)?);
-    let _kms = crate::core::KMS::instantiate(server_params).await?;
+    let _kms = crate::tests::test_utils::test_kms_with_config(config).await?;
 
     Ok(())
 }

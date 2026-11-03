@@ -19,7 +19,7 @@ When an object is destroyed, the key material cannot be exported anymore; only t
 
 To be able to export an Object the user must have the `export` permission on the object or be the object owner.
 
-Key wrapping and unwrapping on export is supported for all keys, except OpenPGP (`PGPKey`) keys, which can be exported wrapped but not unwrapped on export. Please check the
+Key wrapping and unwrapping on export is supported for all keys, except OpenPGP (`PGPKey`) keys, which can be exported wrapped at rest but not unwrapped on export. A `KeyWrappingSpecification` is refused (`Key_Wrap_Type_Not_Supported`) for objects the export path cannot wrap — OpenPGP keys, Opaque Objects and Split Keys — and such an object marked `Sensitive` cannot be exported at all (`Sensitive`). Please check the
 [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md)
 for more details, including how to invoke
 [CKM_RSA_AES_KEY_WRAP](../certifications_and_compliance/cryptographic_algorithms/algorithms.md#ckm_rsa_aes_key_wrap)

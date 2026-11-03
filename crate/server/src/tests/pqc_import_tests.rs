@@ -2,25 +2,25 @@
 //! (native hybrid KEM groups and `ConfigurableKEM`) must be importable into a KMS instance
 //! unchanged, and remain usable for encapsulation afterwards.
 
-use std::sync::Arc;
-
 use cosmian_kms_client_utils::configurable_kem_utils::{
     KemAlgorithm, build_create_configurable_kem_keypair_request,
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-    kmip_attributes::Attributes,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Import},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
-    requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Get, Import},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+        requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
+    },
+    cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
+    core::KMS, error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
 };
 
 /// Re-import `object` under a fresh identifier and return that identifier.
@@ -44,8 +44,7 @@ async fn reimport_public_key(kms: &KMS, owner: &UserId, object: &Object) -> KRes
 #[tokio::test]
 async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("pqcimporthybrid");
 
     let cr = kms
@@ -81,21 +80,18 @@ async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
             &owner,
         )
         .await?;
-    let shared_secret = er
-        .data
-        .clone()
-        .ok_or_else(|| KmsError::InvalidRequest("no shared secret".to_owned()))?;
-    let ciphertext = er
-        .i_v_counter_nonce
-        .clone()
-        .ok_or_else(|| KmsError::InvalidRequest("no KEM ciphertext".to_owned()))?;
+    assert_eq!(er.i_v_counter_nonce, None);
+    let (shared_secret, ciphertext) = unpack_kem_encapsulation(
+        &er.data
+            .ok_or_else(|| KmsError::InvalidRequest("no KEM data".to_owned()))?,
+    )?;
     assert!(!shared_secret.is_empty());
     assert!(!ciphertext.is_empty());
 
     // decapsulate with the original private key (never re-imported)
     let dr = kms
         .decrypt(
-            decrypt_request(&priv_uid, None, ciphertext, None, None, None),
+            decrypt_request(&priv_uid, None, ciphertext.to_vec(), None, None, None),
             &owner,
         )
         .await?;
@@ -109,8 +105,7 @@ async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
 #[tokio::test]
 async fn test_import_configurable_kem_public_key_cross_instance() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("pqcimportconfigurable");
 
     let cr = kms

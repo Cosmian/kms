@@ -11,21 +11,21 @@ use crate::{
 fn test_enumeration() {
     let es = KmipEnumerationVariant {
         value: 1,
-        name: "blah".to_owned(),
+        name: "blah".into(),
     };
     let s = serde_json::to_string_pretty(&es).unwrap();
     assert_eq!(es, serde_json::from_str(&s).unwrap());
 
     let i_plus = KmipEnumerationVariant {
         value: 1,
-        name: String::new(),
+        name: "".into(),
     };
     let s = serde_json::to_string_pretty(&i_plus).unwrap();
     assert_eq!(i_plus, serde_json::from_str(&s).unwrap());
 
     let i_max = KmipEnumerationVariant {
         value: u32::MAX,
-        name: String::new(),
+        name: "".into(),
     };
     let s = serde_json::to_string_pretty(&i_max).unwrap();
     assert_eq!(i_max, serde_json::from_str(&s).unwrap());
@@ -36,58 +36,58 @@ fn test_serialization_deserialization() {
     log_init(option_env!("RUST_LOG"));
     let now = OffsetDateTime::now_utc();
     let ttlv = TTLV {
-        tag: "Test".to_owned(),
+        tag: "Test".into(),
         value: TTLValue::Structure(vec![
             TTLV {
-                tag: "AnInt".to_owned(),
+                tag: "AnInt".into(),
                 value: TTLValue::Integer(42),
             },
             TTLV {
-                tag: "ALongInt".to_owned(),
+                tag: "ALongInt".into(),
                 value: TTLValue::LongInteger(-42_i64),
             },
             TTLV {
-                tag: "ABigInteger".to_owned(),
+                tag: "ABigInteger".into(),
                 value: TTLValue::BigInteger(
                     BigInt::from(2_487_678_887_987_987_798_676_u128).into(),
                 ),
             },
             TTLV {
-                tag: "AnEnumeration_1".to_owned(),
+                tag: "AnEnumeration_1".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     value: 54,
-                    name: String::new(),
+                    name: "".into(),
                 }),
             },
             TTLV {
-                tag: "AnEnumeration_2".to_owned(),
+                tag: "AnEnumeration_2".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     value: 1,
-                    name: "blah".to_owned(),
+                    name: "blah".into(),
                 }),
             },
             TTLV {
-                tag: "ABoolean".to_owned(),
+                tag: "ABoolean".into(),
                 value: TTLValue::Boolean(true),
             },
             TTLV {
-                tag: "ATextString".to_owned(),
+                tag: "ATextString".into(),
                 value: TTLValue::TextString("blah".to_owned()),
             },
             TTLV {
-                tag: "AnByteString".to_owned(),
+                tag: "AnByteString".into(),
                 value: TTLValue::ByteString(b"hello".to_vec()),
             },
             TTLV {
-                tag: "ADateTime".to_owned(),
+                tag: "ADateTime".into(),
                 value: TTLValue::DateTime(now),
             },
             TTLV {
-                tag: "AnInterval".to_owned(),
+                tag: "AnInterval".into(),
                 value: TTLValue::Interval(27),
             },
             TTLV {
-                tag: "ADateTimeExtended".to_owned(),
+                tag: "ADateTimeExtended".into(),
                 value: TTLValue::DateTimeExtended(now.unix_timestamp_nanos() / 1000),
             },
         ]),
@@ -199,24 +199,24 @@ fn test_enumerations_deserialize() {
         rec.value,
         TTLValue::Structure(vec![
             TTLV {
-                tag: "AnEnumeration_1".to_owned(),
+                tag: "AnEnumeration_1".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     value: 54,
-                    name: String::new(),
+                    name: "".into(),
                 }),
             },
             TTLV {
-                tag: "AnEnumeration_2".to_owned(),
+                tag: "AnEnumeration_2".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     value: 0,
-                    name: "blah".to_owned(),
+                    name: "blah".into(),
                 }),
             },
             TTLV {
-                tag: "AnEnumeration_2".to_owned(),
+                tag: "AnEnumeration_2".into(),
                 value: TTLValue::Enumeration(KmipEnumerationVariant {
                     value: 12,
-                    name: String::new(),
+                    name: "".into(),
                 }),
             },
         ])
@@ -255,14 +255,14 @@ fn test_arrays() {
     assert_eq!(
         rec.value,
         TTLValue::Structure(vec![TTLV {
-            tag: "AnArray".to_owned(),
+            tag: "AnArray".into(),
             value: TTLValue::Structure(vec![
                 TTLV {
-                    tag: "AnInt".to_owned(),
+                    tag: "AnInt".into(),
                     value: TTLValue::Integer(42),
                 },
                 TTLV {
-                    tag: "AnInt".to_owned(),
+                    tag: "AnInt".into(),
                     value: TTLValue::Integer(-42),
                 },
             ]),

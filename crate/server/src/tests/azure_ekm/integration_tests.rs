@@ -17,15 +17,13 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
-    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-        CsRng,
-        reexport::rand_core::{RngCore, SeedableRng},
+    cosmian_kms_crypto::{
+        crypto::KmsRng, reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
     },
 };
 use cosmian_logger::{log_init, warn};
 
 use crate::{
-    config::ServerParams,
     core::KMS,
     middlewares::UserId,
     result::KResult,
@@ -33,7 +31,7 @@ use crate::{
         handlers::{unwrap_key_handler, wrap_key_handler},
         models::{RequestContext, UnwrapKeyRequest, WrapAlgorithm, WrapKeyRequest},
     },
-    tests::test_utils::https_clap_config,
+    tests::test_utils::test_kms,
 };
 
 #[tokio::test]
@@ -41,8 +39,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     // INFO: I will take care of this one by adding the new code
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("ekm_owner");
 
     // Test 1: Invalid Base64 URL encoding
@@ -188,8 +185,7 @@ async fn test_wrap_unwrap_error_cases() -> KResult<()> {
 async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("ekm_owner");
 
     // RFC 3394 Section 4.6: Wrap 256 bits of Key Data with a 256-bit KEK
@@ -279,13 +275,12 @@ async fn test_wrap_unwrap_roundtrip_aes256_kw() -> KResult<()> {
 async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("ekm_owner");
 
     // For info, the rfc document has no test vector with a 256-bit KEK, so we generate our own
     for _ in 0..5 {
-        let mut rng = CsRng::from_entropy();
+        let mut rng = KmsRng::new().seeded_csrng()?;
         let mut rfc_kek_bytes = vec![0_u8; 32];
         rng.fill_bytes(&mut rfc_kek_bytes);
 
@@ -363,8 +358,7 @@ async fn test_wrap_unwrap_roundtrip_aes256_kwp() -> KResult<()> {
 async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("ekm_owner");
 
     let create_keys = kms
@@ -386,7 +380,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
         key_id_private
     );
 
-    let mut rng = CsRng::from_entropy();
+    let mut rng = KmsRng::new().seeded_csrng()?;
     let plaintext_len = 1 + (rng.next_u32() as usize % 190); // OAEP with SHA-256 and 2048-bit key max
     let mut valid_random_plaintext = vec![0_u8; plaintext_len];
     rng.fill_bytes(&mut valid_random_plaintext);
@@ -442,8 +436,7 @@ async fn test_wrap_unwrap_roundtrip_rsa_oaep_256() -> KResult<()> {
 async fn test_wrap_unwrap_respects_key_state() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("ekm_owner");
 
     let create = |activate: bool| -> KResult<_> {
@@ -570,8 +563,7 @@ async fn test_wrap_unwrap_respects_key_state() -> KResult<()> {
 async fn test_wrap_unwrap_refuse_deactivated_key_with_key_disabled() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("ekm_owner");
     let kek_id = kms
         .create(

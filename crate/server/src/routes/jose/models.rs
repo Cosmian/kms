@@ -10,7 +10,7 @@ use super::algorithm::{JoseAlgorithm, JoseEncAlgorithm};
 /// - **Import**: additionally provide key material fields (`k` for oct; `d`/`x`/`y` for EC;
 ///   `d`/`n`/`e`/`p`/`q`/`dp`/`dq`/`qi` for RSA).
 #[derive(Debug, Deserialize)]
-// Unknown JWK members (e.g. `key_ops`) are ignored on deserialization.
+// Other unknown JWK members are ignored on deserialization.
 pub(crate) struct KeyCreateRequest {
     /// JWK key type: `"oct"`, `"EC"`, `"RSA"`, `"OKP"`
     pub(crate) kty: String,
@@ -43,12 +43,17 @@ pub(crate) struct KeyCreateRequest {
     pub(crate) dq: Option<String>,
     /// RSA CRT coefficient (base64url)
     pub(crate) qi: Option<String>,
+    /// Caller-chosen KMS unique identifier (import only)
+    pub(crate) kid: Option<String>,
+    /// Permitted operations for a public-only RSA import: `encrypt`, `wrapKey`, `verify`
+    pub(crate) key_ops: Option<Vec<String>>,
 }
 
 impl KeyCreateRequest {
-    /// Returns `true` when the request contains private key material (import mode).
+    /// Returns `true` when the request carries key material (import mode): a symmetric
+    /// value `k`, a private exponent `d`, or a full RSA public key (`n` and `e`).
     pub(crate) const fn is_import(&self) -> bool {
-        self.k.is_some() || self.d.is_some()
+        self.k.is_some() || self.d.is_some() || (self.n.is_some() && self.e.is_some())
     }
 }
 
@@ -103,6 +108,9 @@ pub(crate) struct EncryptRequest {
     pub(crate) data: String,
     /// Additional Authenticated Data as base64url (no padding), optional
     pub(crate) aad: Option<String>,
+    /// KMS UID of an AES key used as the CEK instead of a random one; RSA-OAEP / RSA-OAEP-256
+    /// only. The key leaves the KMS wrapped under `kid`.
+    pub(crate) cek_kid: Option<String>,
 }
 
 /// POST /v1/crypto/encrypt — flattened JWE JSON response

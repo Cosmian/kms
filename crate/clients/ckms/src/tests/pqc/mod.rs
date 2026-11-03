@@ -178,10 +178,14 @@ fn test_kem(cli_conf_path: &str, name: &str, algorithm: &str) -> CosmianResult<(
         &encapsulation_file,
         &session_key_file,
     )?;
-    assert!(session_key_file.exists());
-
+    // `pqc encrypt` writes the shared secret next to the encapsulation, as `<output>.key`
+    let shared_secret = std::fs::read(encapsulation_file.with_extension("key"))?;
     let session_key = std::fs::read(&session_key_file)?;
     assert!(!session_key.is_empty());
+    assert_eq!(
+        session_key, shared_secret,
+        "{name}: decapsulated secret differs"
+    );
     Ok(())
 }
 

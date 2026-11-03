@@ -1,15 +1,59 @@
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType, kmip_operations::Destroy, kmip_types::UniqueIdentifier,
+        kmip_objects::ObjectType,
+        kmip_operations::{Destroy, GetAttributes},
+        kmip_types::UniqueIdentifier,
     },
 };
 
 use crate::{
-    actions::console,
+    actions::{console, labels::KEY_ID, shared::get_key_uid},
     cli_bail,
-    error::result::{KmsCliResult, KmsCliResultHelper},
+    error::{
+        KmsCliError,
+        result::{KmsCliResult, KmsCliResultHelper},
+    },
 };
+
+/// Destroy the key designated by `key_id` (or `tags`) once a pre-flight check
+/// confirms its object type is one of `allowed_types`.
+///
+/// `expected` completes the `not ...` part of the type-mismatch error
+/// (e.g. `a PrivateKey or PublicKey`).
+///
+/// # Errors
+///
+/// Fails if the key cannot be resolved, its attributes cannot be fetched,
+/// its object type is not allowed, or the destroy request fails.
+pub(crate) async fn destroy_key(
+    kms_rest_client: KmsClient,
+    key_id: Option<&String>,
+    tags: Option<&Vec<String>>,
+    remove: bool,
+    allowed_types: &[ObjectType],
+    expected: &str,
+) -> KmsCliResult<UniqueIdentifier> {
+    let id = get_key_uid(key_id, tags, KEY_ID)?;
+
+    // Pre-flight: verify the object type matches the calling subcommand.
+    let object_type = kms_rest_client
+        .get_attributes(GetAttributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
+            attribute_reference: None,
+        })
+        .await?
+        .attributes
+        .object_type;
+    if !object_type.is_some_and(|t| allowed_types.contains(&t)) {
+        return Err(KmsCliError::NotSupported(format!(
+            "Object '{id}' is of type {object_type:?}, not {expected}. Use the correct 'ckms ... \
+             keys destroy' subcommand for this key type."
+        )));
+    }
+
+    destroy(kms_rest_client, &id, remove, object_type).await
+}
 
 /// Destroy a cryptographic object on the KMS
 /// # Arguments

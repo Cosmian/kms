@@ -6,7 +6,7 @@ compliant Key Management System implementing KMIP 2.1/1.4 — on Kubernetes.
 ## Documentation
 
 Full installation guide, configuration reference, and publishing instructions are
-available in the [Kubernetes (Helm) documentation](https://docs.cosmian.com/installation/kubernetes_helm/).
+available in the [Kubernetes (Helm) documentation](https://docs.cosmian.com/key_management_system/integrations/kubernetes/helm.html).
 
 ## Quick start
 
