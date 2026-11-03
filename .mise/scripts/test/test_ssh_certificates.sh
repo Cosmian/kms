@@ -126,7 +126,7 @@ create_ca() {
 # Host key and user keys are shared across the CA scenarios.
 ssh-keygen -q -t ecdsa -b 256 -N "" -f "${WORK_DIR}/host_key"
 ssh-keygen -q -t ecdsa -b 256 -N "" -f "${WORK_DIR}/user_key"
-ssh-keygen -q -t rsa -b 1024 -N "" -f "${WORK_DIR}/weak_user_key"
+ssh-keygen -q -t rsa -b 2048 -N "" -f "${WORK_DIR}/weak_user_key"
 SSHD_PORT="$(kms_pick_free_port)"
 
 run_scenario() {
@@ -216,7 +216,7 @@ EOF
     "{\"public_key\":${pubkey_json},\"valid_principals\":[\"${LOGIN_USER}\"],\"ttl\":\"2h\"}")" 422
   local weak_json
   weak_json="$(python3 -c 'import json,sys; print(json.dumps(open(sys.argv[1]).read().strip()))' "${WORK_DIR}/weak_user_key.pub")"
-  expect_status "RSA-1024 subject key is refused" "$(kms_call POST /v1/ssh/sign/developers \
+  expect_status "RSA-2048 subject key is refused" "$(kms_call POST /v1/ssh/sign/developers \
     "{\"public_key\":${weak_json},\"valid_principals\":[\"${LOGIN_USER}\"],\"ttl\":\"1m\"}")" 422
 
   local wait_secs=$((CERT_TTL_SECS + 2 - (SECONDS - issued_at)))

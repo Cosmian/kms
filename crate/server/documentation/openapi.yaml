@@ -3189,8 +3189,9 @@ paths:
     post:
       tags: [SSH Certificates]
       summary: Issue a short-lived SSH user certificate
-      description: Requires KMS Sign authorization for the configured CA key and a role policy that allows every requested principal. HSM keys are signed
-        through the HSM oracle without export or software fallback.
+      description: Requires KMS Sign authorization for the configured CA key and a role policy that allows every requested principal. The subject public
+        key must be RSA of at least 3072 bits, NIST ECDSA, or (non-FIPS only) Ed25519. HSM keys are signed through the HSM oracle without export or software
+        fallback.
       operationId: signSshCertificate
       security:
         - bearerAuth: []

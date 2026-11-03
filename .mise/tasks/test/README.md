@@ -767,7 +767,7 @@ To run it by hand: `mise run test:openbao-kmip --variant non-fips`. The KMS must
 
 **Description:** KMS-issued OpenSSH user certificates checked by a real, unprivileged `sshd` (`TrustedUserCAKeys`). Runs in both variants; needs `sshd` and `ssh-keygen` on the host. The script ([`test_ssh_certificates.sh`](../../scripts/test/test_ssh_certificates.sh)) creates an ECDSA P-256 CA and then an RSA-3072 CA with `ckms`, configures the CA and a role, and issues a 6-second certificate.
 
-It asserts that `ssh-keygen -L` parses the certificate and that its signing key is the published CA key; that `sshd` accepts it before expiry, refuses a principal different from the login and refuses it after expiry; and that a principal outside the role (401), a TTL above the role maximum (422) and an RSA-1024 subject key (422) are rejected. The HSM-resident CA path is covered by `tests::hsm::ssh_ca` in `test:hsm-softhsm2`.
+It asserts that `ssh-keygen -L` parses the certificate and that its signing key is the published CA key; that `sshd` accepts it before expiry, refuses a principal different from the login and refuses it after expiry; and that a principal outside the role (401), a TTL above the role maximum (422) and an RSA-2048 subject key (422) are rejected. The HSM-resident CA path is covered by `tests::hsm::ssh_ca` in `test:hsm-softhsm2`.
 
 ### `test:secret-rotation`
 

@@ -23,6 +23,10 @@ use crate::{
     result::KResult,
 };
 
+/// Minimum RSA modulus size accepted for the public key being certified (BSI TR-02102-1 and
+/// ANSSI recommend 3000 bits or more); the CA key keeps the 2048-bit floor of the KMS policy.
+const MIN_SUBJECT_RSA_BITS: usize = 3072;
+
 #[derive(Clone, Copy)]
 pub(crate) enum SshSignatureAlgorithm {
     RsaSha256,
@@ -464,10 +468,10 @@ pub(crate) fn validate_subject_algorithm(public_key: &PublicKey) -> KResult<()> 
                     Some(bytes.len() * 8 - usize::try_from(first.leading_zeros()).ok()?)
                 })
                 .unwrap_or(0);
-            if modulus_bits < 2048 {
-                return Err(KmsError::InvalidRequest(
-                    "SSH subject RSA public key must be at least 2048 bits".to_owned(),
-                ));
+            if modulus_bits < MIN_SUBJECT_RSA_BITS {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SSH subject RSA public key must be at least {MIN_SUBJECT_RSA_BITS} bits"
+                )));
             }
             Ok(())
         }
@@ -518,10 +522,19 @@ mod tests {
     #[test]
     fn weak_rsa_subject_key_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
         crate::openssl_providers::init_openssl_providers_for_tests();
-        let weak = PKey::from_rsa(Rsa::generate(1024)?)?;
-        let weak_public = PKey::public_key_from_der(&weak.public_key_to_der()?)?;
-        let subject = PublicKey::from_openssh(&open_ssh_public_key(&weak_public)?)?;
-        assert!(super::validate_subject_algorithm(&subject).is_err());
+        for bits in [1024, 2048] {
+            let weak = PKey::from_rsa(Rsa::generate(bits)?)?;
+            let weak_public = PKey::public_key_from_der(&weak.public_key_to_der()?)?;
+            let subject = PublicKey::from_openssh(&open_ssh_public_key(&weak_public)?)?;
+            assert!(
+                super::validate_subject_algorithm(&subject).is_err(),
+                "RSA-{bits} subject key must be rejected"
+            );
+        }
+        let strong = PKey::from_rsa(Rsa::generate(3072)?)?;
+        let strong_public = PKey::public_key_from_der(&strong.public_key_to_der()?)?;
+        let subject = PublicKey::from_openssh(&open_ssh_public_key(&strong_public)?)?;
+        super::validate_subject_algorithm(&subject)?;
         Ok(())
     }
 
@@ -532,7 +545,9 @@ mod tests {
         let public = PKey::public_key_from_der(&private.public_key_to_der()?)?;
         let ssh_public = open_ssh_public_key(&public)?;
         let ca = PublicKey::from_openssh(&ssh_public)?;
-        let subject = PublicKey::from_openssh(&ssh_public)?;
+        let subject_private = PKey::from_rsa(Rsa::generate(3072)?)?;
+        let subject_public = PKey::public_key_from_der(&subject_private.public_key_to_der()?)?;
+        let subject = PublicKey::from_openssh(&open_ssh_public_key(&subject_public)?)?;
         let principals = vec!["alice".to_owned()];
         let tbs = build_certificate_tbs(&CertificateTbs {
             subject: &subject,

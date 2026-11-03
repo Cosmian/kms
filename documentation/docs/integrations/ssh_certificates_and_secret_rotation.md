@@ -166,8 +166,8 @@ This pattern demonstrates recovery from a failed KV publication; it is not an at
 
 - SSH CA configuration and role changes require an active Crypto Officer.
 - Certificate signing requires `Sign` authorization for the selected CA key; every requested principal must be allowed by the role.
-- Roles are not bound to users: any caller authorized to `Sign` with the CA key can request any role. Grant `Sign` on the CA key only to callers trusted with every role's principals.
-- Subject public keys must be RSA of at least 2048 bits, NIST ECDSA, or (non-FIPS only) Ed25519.
+- Roles are not bound to users: any caller authorized to `Sign` with the CA key can request any role. Grant `Sign` on the CA key only to callers trusted with every role's principals. The SSH server trusts the CA, not individual keys: a caller allowed to sign with a role that permits principal `alice` can get its own key certified as `alice`. On each SSH host, restrict the accepted principals per account with `AuthorizedPrincipalsFile` or `AuthorizedPrincipalsCommand`.
+- Subject public keys must be RSA of at least 3072 bits, NIST ECDSA, or (non-FIPS only) Ed25519.
 - `GET /v1/ssh/public_key` requires no authentication so that hosts can fetch the CA public key.
 - The CA must be active and use a supported algorithm. RSA keys must be at least 2048 bits; ECDSA CA keys must use NIST P-256, P-384, or P-521. Ed25519 is non-FIPS only.
 - Generated passwords are not stored or automatically rotated into an external service.

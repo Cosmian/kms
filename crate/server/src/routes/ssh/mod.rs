@@ -465,7 +465,7 @@ mod tests {
         let response = actix_test::call_service(&app, role_request).await;
         assert_eq!(response.status(), actix_web::http::StatusCode::NO_CONTENT);
 
-        let subject_private = PKey::from_rsa(Rsa::generate(2048)?)?;
+        let subject_private = PKey::from_rsa(Rsa::generate(3072)?)?;
         let subject_public = PKey::public_key_from_der(&subject_private.public_key_to_der()?)?;
         let subject_public = certificate::open_ssh_public_key(&subject_public)?;
         let sign_request = actix_test::TestRequest::post()
