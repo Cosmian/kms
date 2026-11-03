@@ -154,7 +154,7 @@ Look up the correct vendor/product in the
 Report locations:
 
 - `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
-- `sbom/openssl_3_6_2/` — SBOM + vulnerability scan for the OpenSSL 3.6.2 (non-FIPS) derivation
+- `sbom/openssl_3_6_5/` — SBOM + vulnerability scan for the OpenSSL 3.6.5 (non-FIPS) derivation
 - `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
     - `<variant>`: `fips` | `non-fips`
     - `<link>`: `static` | `dynamic`
@@ -383,8 +383,8 @@ mise run sbom:generate
 # OpenSSL 3.1.2 derivation only (writes under sbom/openssl_3_1_2)
 mise run sbom:generate --target openssl_3_1_2
 
-# OpenSSL 3.6.2 derivation only (writes under sbom/openssl_3_6_2)
-mise run sbom:generate --target openssl_3_6_2
+# OpenSSL 3.6.5 derivation only (writes under sbom/openssl_3_6_5)
+mise run sbom:generate --target openssl_3_6_5
 
 # All server combinations (writes under sbom/server/<variant>/<link>)
 mise run sbom:generate --target server

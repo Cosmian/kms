@@ -5,6 +5,7 @@
       - [Severity Rating](#severity-rating)
       - [Known Vulnerabilities](#known-vulnerabilities)
             - [2026](#2026)
+                  - [COSMIAN-2026-049 — Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs](#cosmian-2026-049--statically-linked-openssl-362-and-container-runtime-packages-with-fixable-cves)
                   - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
                   - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
                   - [COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`](#cosmian-2026-046--server-key-encryption-key-usable-as-a-decryption-oracle-through-pre-wrapped-import)
@@ -108,6 +109,25 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-049 — Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs
+
+| Field      | Value                                                     |
+| ---------- | --------------------------------------------------------- |
+| Severity   | Critical                                                  |
+| Published  | Pending                                                   |
+| Affected   | from 5.15.0 before 5.30.0                                 |
+| Fixed in   | 5.30.0                                                    |
+| Found by   | Issue #1349 (Syft + Grype scan, 1 November 2026)          |
+| References | [#1349](https://github.com/Cosmian/kms/issues/1349)       |
+
+**Summary:** The KMS binary statically linked OpenSSL 3.6.2, which has fixable Critical CVEs (CVE-2026-63073, CVE-2026-34182, CVE-2026-75803). The `ghcr.io/cosmian/kms` and `ghcr.io/cosmian/kms-fips` images also shipped runtime packages from a nixpkgs 24.11 pin with fixable CVEs: curl 8.11.0, openssl 3.3.2, nghttp2 1.64.0 and zlib 1.3.1.
+
+**Impact:** Various, depending on the CVE. See [OpenSSL advisories](https://openssl-library.org/news/vulnerabilities/).
+
+**Mitigation:** Upgrade to 5.30.0, which statically links OpenSSL 3.6.5 and builds the image runtime from nixos-26.05. The FIPS provider is unchanged: OpenSSL 3.1.2, CMVP #4985.
+
+---
 
 #### COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA
 

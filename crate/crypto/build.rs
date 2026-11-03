@@ -12,15 +12,15 @@ use std::{
     process::Command,
 };
 
-const OPENSSL_MAIN_VERSION: &str = "3.6.2";
-const OPENSSL_MAIN_TARBALL: &str = "openssl-3.6.2.tar.gz";
-const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
+const OPENSSL_MAIN_VERSION: &str = "3.6.5";
+const OPENSSL_MAIN_TARBALL: &str = "openssl-3.6.5.tar.gz";
+const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
 const OPENSSL_MAIN_SHA256: &str =
-    "aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f";
+    "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
 
 // The FIPS provider MUST be built from a version holding a CMVP certificate (OpenSSL
 // `README-FIPS.md`). The newest validated OpenSSL FIPS Provider is 3.1.2 (FIPS 140-3,
-// NIST CMVP Certificate #4985), so it is built separately from the main 3.6.2 library
+// NIST CMVP Certificate #4985), so it is built separately from the main 3.6.5 library
 // and loaded at runtime, exactly as the Nix build does (`nix/common.nix`).
 const OPENSSL_FIPS_VERSION: &str = "3.1.2";
 const OPENSSL_FIPS_TARBALL: &str = "openssl-3.1.2.tar.gz";
@@ -89,8 +89,8 @@ fn main() {
     let _ = fs::create_dir_all(&build_root);
     let _ = fs::create_dir_all(&main_prefix);
 
-    // Build main OpenSSL (3.6.2) if not present. It never contains a FIPS provider built from
-    // the 3.6.2 sources: that provider is not CMVP-validated.
+    // Build main OpenSSL (3.6.5) if not present. It never contains a FIPS provider built from
+    // the 3.6.5 sources: that provider is not CMVP-validated.
     if !main_prefix.join("lib/libcrypto.a").exists() {
         let _ = build_and_install_openssl(
             &workspace_root,
