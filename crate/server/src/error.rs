@@ -286,7 +286,7 @@ impl From<CryptoError> for KmsError {
         // Map low-level crypto layer errors to precise KMIP 2.1 ErrorReasons so that
         // KMIP test vectors expecting CryptographicFailure (e.g. invalid GCM tag, wrong IV,
         // manipulated ciphertext) receive the correct ResultReason instead of the generic
-        // Operation_Not_Supported fallback applied later in message.rs.
+        // General_Failure fallback applied later in message.rs.
         match value {
             // Explicit cryptographic verification failures
             CryptoError::InvalidTag(e)

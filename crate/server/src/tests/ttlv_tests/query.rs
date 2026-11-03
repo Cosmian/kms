@@ -69,6 +69,7 @@ fn test_query_(major: i32, minor: i32) {
                                 kmip_2_1::kmip_types::QueryFunction::QueryOperations,
                                 kmip_2_1::kmip_types::QueryFunction::QueryObjects,
                                 kmip_2_1::kmip_types::QueryFunction::QueryServerInformation,
+                                kmip_2_1::kmip_types::QueryFunction::QueryStorageProtectionMasks,
                             ]),
                         },
                     ),
@@ -140,5 +141,9 @@ fn test_query_(major: i32, minor: i32) {
             panic!("Expected vendor identification");
         };
         assert!(!vendor_identification.is_empty());
+        assert_eq!(
+            query_response.protection_storage_masks,
+            Some(kmip_2_1::kmip_data_structures::SupportedProtectionStorageMasks::default())
+        );
     }
 }
