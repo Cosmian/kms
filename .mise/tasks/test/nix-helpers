@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Run the nix_helpers.sh re-entry regression test (secrets must not reach nix-shell arguments)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running nix_helpers.sh re-entry test"
+
+# shellcheck disable=SC2119  # get_repo_root intentionally receives no task arguments
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_nix_helpers.sh"
+
+print_success "nix_helpers.sh re-entry test completed"

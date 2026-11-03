@@ -22,34 +22,8 @@ use pkcs11_sys::{
     CKF_ENCRYPT, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN, CKF_VERIFY, CKM_AES_GCM, CKM_ECDSA,
     CKM_EDDSA, CKM_RSA_PKCS_PSS, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE,
     CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKP_AUTHENTICATION_TOKEN, CKP_BASELINE_PROVIDER,
-    CKP_EXTENDED_PROVIDER, CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_ACTION_PROHIBITED, CKR_ARGUMENTS_BAD,
-    CKR_ATTRIBUTE_READ_ONLY, CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID,
-    CKR_ATTRIBUTE_VALUE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_CANCEL, CKR_CANT_LOCK,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_CURVE_NOT_SUPPORTED,
-    CKR_DATA_INVALID, CKR_DATA_LEN_RANGE, CKR_DEVICE_ERROR, CKR_DEVICE_MEMORY, CKR_DEVICE_REMOVED,
-    CKR_DOMAIN_PARAMS_INVALID, CKR_ENCRYPTED_DATA_INVALID, CKR_ENCRYPTED_DATA_LEN_RANGE,
-    CKR_EXCEEDED_MAX_ITERATIONS, CKR_FIPS_SELF_TEST_FAILED, CKR_FUNCTION_CANCELED,
-    CKR_FUNCTION_FAILED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
-    CKR_FUNCTION_REJECTED, CKR_GENERAL_ERROR, CKR_HOST_MEMORY, CKR_INFORMATION_SENSITIVE,
-    CKR_KEY_CHANGED, CKR_KEY_EXHAUSTED, CKR_KEY_FUNCTION_NOT_PERMITTED, CKR_KEY_HANDLE_INVALID,
-    CKR_KEY_INDIGESTIBLE, CKR_KEY_NEEDED, CKR_KEY_NOT_NEEDED, CKR_KEY_NOT_WRAPPABLE,
-    CKR_KEY_SIZE_RANGE, CKR_KEY_TYPE_INCONSISTENT, CKR_KEY_UNEXTRACTABLE, CKR_LIBRARY_LOAD_FAILED,
-    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_MUTEX_BAD, CKR_MUTEX_NOT_LOCKED,
-    CKR_NEED_TO_CREATE_THREADS, CKR_NO_EVENT, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_EXPIRED, CKR_PIN_INCORRECT,
-    CKR_PIN_INVALID, CKR_PIN_LEN_RANGE, CKR_PIN_LOCKED, CKR_PIN_TOO_WEAK, CKR_PUBLIC_KEY_INVALID,
-    CKR_RANDOM_NO_RNG, CKR_RANDOM_SEED_NOT_SUPPORTED, CKR_SAVED_STATE_INVALID, CKR_SESSION_CLOSED,
-    CKR_SESSION_COUNT, CKR_SESSION_EXISTS, CKR_SESSION_HANDLE_INVALID,
-    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SESSION_READ_ONLY, CKR_SESSION_READ_ONLY_EXISTS,
-    CKR_SESSION_READ_WRITE_SO_EXISTS, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
-    CKR_SLOT_ID_INVALID, CKR_STATE_UNSAVEABLE, CKR_TEMPLATE_INCOMPLETE, CKR_TEMPLATE_INCONSISTENT,
-    CKR_TOKEN_NOT_PRESENT, CKR_TOKEN_NOT_RECOGNIZED, CKR_TOKEN_RESOURCE_EXCEEDED,
-    CKR_TOKEN_WRITE_PROTECTED, CKR_UNWRAPPING_KEY_HANDLE_INVALID, CKR_UNWRAPPING_KEY_SIZE_RANGE,
-    CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT, CKR_USER_ALREADY_LOGGED_IN,
-    CKR_USER_ANOTHER_ALREADY_LOGGED_IN, CKR_USER_NOT_LOGGED_IN, CKR_USER_PIN_NOT_INITIALIZED,
-    CKR_USER_TOO_MANY_TYPES, CKR_USER_TYPE_INVALID, CKR_VENDOR_DEFINED, CKR_WRAPPED_KEY_INVALID,
-    CKR_WRAPPED_KEY_LEN_RANGE, CKR_WRAPPING_KEY_HANDLE_INVALID, CKR_WRAPPING_KEY_SIZE_RANGE,
-    CKR_WRAPPING_KEY_TYPE_INCONSISTENT, CKU_USER, CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
+    CKP_EXTENDED_PROVIDER, CKP_PUBLIC_CERTIFICATES_TOKEN, CKR_OK, CKU_USER, CRYPTOKI_VERSION_MAJOR,
+    CRYPTOKI_VERSION_MINOR,
 };
 
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -363,20 +337,24 @@ const PKCS11_INTERFACE_NAME: &[u8] = b"PKCS 11\0";
 /// (default lookup). The legacy `C_GetFunctionList` entry point only returns a
 /// v2.40-sized `CK_FUNCTION_LIST`, which does not include the v3.0 message-based
 /// signing functions (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal`).
+///
+/// Returns `Ok(None)` when the library has no usable v3.x table: `C_GetInterface` is not
+/// exported, answers `CKR_FUNCTION_NOT_SUPPORTED`, or returns a table whose version is not 3.x.
+/// A v2.x table must not be read as a `CK_FUNCTION_LIST_3_0`, which is longer.
 pub(crate) fn call_get_function_list_3_0(
     lib: &Library,
-) -> KmsCliResult<*const pkcs11_sys::CK_FUNCTION_LIST_3_0> {
+) -> KmsCliResult<Option<*const pkcs11_sys::CK_FUNCTION_LIST_3_0>> {
     // SAFETY: `GetInterfaceFn` matches the PKCS#11 v3 `C_GetInterface` prototype.
-    let get_interface: Symbol<GetInterfaceFn> =
-        unsafe { lib.get(b"C_GetInterface\0") }.map_err(|e| {
-            KmsCliError::Default(format!(
-                "FAIL [C_GetInterface]: symbol not found in .so: {e}"
-            ))
-        })?;
+    let Ok(get_interface) = (unsafe { lib.get::<GetInterfaceFn>(b"C_GetInterface\0") }) else {
+        return Ok(None);
+    };
 
     let mut iface_ptr: CK_INTERFACE_PTR = ptr::null_mut();
     // SAFETY: null name/version request the default interface; `iface_ptr` is a valid out-parameter.
     let rv = unsafe { get_interface(ptr::null_mut(), ptr::null_mut(), &raw mut iface_ptr, 0) };
+    if rv == pkcs11_sys::CKR_FUNCTION_NOT_SUPPORTED {
+        return Ok(None);
+    }
     check_rv(rv, "C_GetInterface (default lookup)")?;
     if iface_ptr.is_null() {
         return Err(KmsCliError::Default(
@@ -392,9 +370,45 @@ pub(crate) fn call_get_function_list_3_0(
             "FAIL [C_GetInterface]: interface reports a null function list".to_owned(),
         ));
     }
-    Ok(iface
-        .pFunctionList
-        .cast::<pkcs11_sys::CK_FUNCTION_LIST_3_0>())
+    // SAFETY: `pFunctionList` is non-null (checked above) and, per the PKCS#11 interface
+    // contract, points to a function list starting with a `CK_VERSION`.
+    Ok(unsafe { function_list_3_0_if_v3(iface.pFunctionList.cast_const()) })
+}
+
+/// Casts `function_list` to the v3.0 table only when its leading `CK_VERSION` (shared by every
+/// `CK_FUNCTION_LIST*` layout) says 3.x; `None` for a v2.x table.
+///
+/// # Safety
+///
+/// `function_list` must point to a valid, readable PKCS#11 function list (at least a
+/// `CK_VERSION`).
+pub(crate) unsafe fn function_list_3_0_if_v3(
+    function_list: *const c_void,
+) -> Option<*const pkcs11_sys::CK_FUNCTION_LIST_3_0> {
+    // SAFETY: per the caller contract, `function_list` starts with a `CK_VERSION`.
+    let version = unsafe { *function_list.cast::<CK_VERSION>() };
+    (version.major == 3).then(|| function_list.cast::<pkcs11_sys::CK_FUNCTION_LIST_3_0>())
+}
+
+/// A `CK_FUNCTION_LIST_3_0` holding only the legacy entries of `legacy`; every v3.0 entry is
+/// absent. Used for a library without a v3.x table, so that all v3 probes report "not implemented".
+pub(crate) const fn v2_only_function_list_3_0(
+    legacy: &CK_FUNCTION_LIST,
+) -> pkcs11_sys::CK_FUNCTION_LIST_3_0 {
+    // SAFETY: `CK_FUNCTION_LIST_3_0` is a `CK_VERSION` followed by `Option<fn>` slots, for
+    // which all-zero bytes are valid (version 0.0, every function `None`).
+    let mut table: pkcs11_sys::CK_FUNCTION_LIST_3_0 = unsafe { std::mem::zeroed() };
+    // SAFETY: the 3.0 layout starts with the whole legacy layout, both are plain data and
+    // the destination is at least `size_of::<CK_FUNCTION_LIST>()` bytes long; the regions
+    // belong to distinct objects.
+    unsafe {
+        ptr::copy_nonoverlapping(
+            ptr::from_ref(legacy).cast::<u8>(),
+            (&raw mut table).cast::<u8>(),
+            size_of::<CK_FUNCTION_LIST>(),
+        );
+    }
+    table
 }
 
 /// Exercises the v3.0 Interfaces API surface: `C_GetInterfaceList` (two-call convention) and
@@ -832,116 +846,9 @@ fn check_rv_raw(rv: CK_RV, step: &str) -> Result<(), String> {
     }
 }
 
-/// Map a PKCS#11 return value to its symbolic name using imported constants.
-///
-/// Uses a macro to avoid repeating each constant name as both pattern and string.
-macro_rules! ckr_match {
-    ($rv:expr; $($name:ident),+ $(,)?) => {
-        match $rv {
-            $( $name => stringify!($name), )+
-            _ => "CKR_UNKNOWN",
-        }
-    };
-}
-
+/// Map a PKCS#11 return value to its symbolic name (the table shared with the HSM crate).
 pub(crate) const fn ckr_name(rv: CK_RV) -> &'static str {
-    ckr_match!(rv;
-        CKR_OK,
-        CKR_CANCEL,
-        CKR_HOST_MEMORY,
-        CKR_SLOT_ID_INVALID,
-        CKR_GENERAL_ERROR,
-        CKR_FUNCTION_FAILED,
-        CKR_ARGUMENTS_BAD,
-        CKR_NO_EVENT,
-        CKR_NEED_TO_CREATE_THREADS,
-        CKR_CANT_LOCK,
-        CKR_ATTRIBUTE_READ_ONLY,
-        CKR_ATTRIBUTE_SENSITIVE,
-        CKR_ATTRIBUTE_TYPE_INVALID,
-        CKR_ATTRIBUTE_VALUE_INVALID,
-        CKR_ACTION_PROHIBITED,
-        CKR_DATA_INVALID,
-        CKR_DATA_LEN_RANGE,
-        CKR_DEVICE_ERROR,
-        CKR_DEVICE_MEMORY,
-        CKR_DEVICE_REMOVED,
-        CKR_ENCRYPTED_DATA_INVALID,
-        CKR_ENCRYPTED_DATA_LEN_RANGE,
-        CKR_FUNCTION_CANCELED,
-        CKR_FUNCTION_NOT_PARALLEL,
-        CKR_FUNCTION_NOT_SUPPORTED,
-        CKR_KEY_HANDLE_INVALID,
-        CKR_KEY_SIZE_RANGE,
-        CKR_KEY_TYPE_INCONSISTENT,
-        CKR_KEY_NOT_NEEDED,
-        CKR_KEY_CHANGED,
-        CKR_KEY_NEEDED,
-        CKR_KEY_INDIGESTIBLE,
-        CKR_KEY_FUNCTION_NOT_PERMITTED,
-        CKR_KEY_NOT_WRAPPABLE,
-        CKR_KEY_UNEXTRACTABLE,
-        CKR_MECHANISM_INVALID,
-        CKR_MECHANISM_PARAM_INVALID,
-        CKR_OBJECT_HANDLE_INVALID,
-        CKR_OPERATION_ACTIVE,
-        CKR_OPERATION_NOT_INITIALIZED,
-        CKR_PIN_INCORRECT,
-        CKR_PIN_INVALID,
-        CKR_PIN_LEN_RANGE,
-        CKR_PIN_EXPIRED,
-        CKR_PIN_LOCKED,
-        CKR_SESSION_CLOSED,
-        CKR_SESSION_COUNT,
-        CKR_SESSION_HANDLE_INVALID,
-        CKR_SESSION_PARALLEL_NOT_SUPPORTED,
-        CKR_SESSION_READ_ONLY,
-        CKR_SESSION_EXISTS,
-        CKR_SESSION_READ_ONLY_EXISTS,
-        CKR_SESSION_READ_WRITE_SO_EXISTS,
-        CKR_SIGNATURE_INVALID,
-        CKR_SIGNATURE_LEN_RANGE,
-        CKR_TEMPLATE_INCOMPLETE,
-        CKR_TEMPLATE_INCONSISTENT,
-        CKR_TOKEN_NOT_PRESENT,
-        CKR_TOKEN_NOT_RECOGNIZED,
-        CKR_TOKEN_WRITE_PROTECTED,
-        CKR_UNWRAPPING_KEY_HANDLE_INVALID,
-        CKR_UNWRAPPING_KEY_SIZE_RANGE,
-        CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT,
-        CKR_USER_ALREADY_LOGGED_IN,
-        CKR_USER_NOT_LOGGED_IN,
-        CKR_USER_PIN_NOT_INITIALIZED,
-        CKR_USER_TYPE_INVALID,
-        CKR_USER_ANOTHER_ALREADY_LOGGED_IN,
-        CKR_USER_TOO_MANY_TYPES,
-        CKR_WRAPPED_KEY_INVALID,
-        CKR_WRAPPED_KEY_LEN_RANGE,
-        CKR_WRAPPING_KEY_HANDLE_INVALID,
-        CKR_WRAPPING_KEY_SIZE_RANGE,
-        CKR_WRAPPING_KEY_TYPE_INCONSISTENT,
-        CKR_RANDOM_SEED_NOT_SUPPORTED,
-        CKR_RANDOM_NO_RNG,
-        CKR_DOMAIN_PARAMS_INVALID,
-        CKR_CURVE_NOT_SUPPORTED,
-        CKR_BUFFER_TOO_SMALL,
-        CKR_SAVED_STATE_INVALID,
-        CKR_INFORMATION_SENSITIVE,
-        CKR_STATE_UNSAVEABLE,
-        CKR_CRYPTOKI_NOT_INITIALIZED,
-        CKR_CRYPTOKI_ALREADY_INITIALIZED,
-        CKR_MUTEX_BAD,
-        CKR_MUTEX_NOT_LOCKED,
-        CKR_EXCEEDED_MAX_ITERATIONS,
-        CKR_FIPS_SELF_TEST_FAILED,
-        CKR_LIBRARY_LOAD_FAILED,
-        CKR_PIN_TOO_WEAK,
-        CKR_PUBLIC_KEY_INVALID,
-        CKR_FUNCTION_REJECTED,
-        CKR_TOKEN_RESOURCE_EXCEEDED,
-        CKR_KEY_EXHAUSTED,
-        CKR_VENDOR_DEFINED,
-    )
+    cosmian_kms_base_hsm::pkcs11_return_code_name(rv)
 }
 
 // ---------------------------------------------------------------------------
@@ -992,4 +899,58 @@ fn describe_config(so_path: &Path, conf: Option<&Path>) {
         }
     }
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::c_void;
+
+    use pkcs11_sys::{CK_FUNCTION_LIST, CK_FUNCTION_LIST_3_0, CK_VERSION};
+
+    use super::{function_list_3_0_if_v3, v2_only_function_list_3_0};
+
+    fn v2_list(major: u8, minor: u8) -> CK_FUNCTION_LIST {
+        CK_FUNCTION_LIST {
+            version: CK_VERSION { major, minor },
+            ..Default::default()
+        }
+    }
+
+    fn ptr_of<T>(value: &T) -> *const c_void {
+        std::ptr::from_ref(value).cast()
+    }
+
+    /// A v2.40 table must never be read as the longer v3.0 table.
+    #[test]
+    fn v2_function_list_is_not_cast_to_v3() {
+        let v2 = v2_list(2, 40);
+        // SAFETY: points to a live function list.
+        assert!(unsafe { function_list_3_0_if_v3(ptr_of(&v2)) }.is_none());
+        let v3 = CK_FUNCTION_LIST_3_0 {
+            version: CK_VERSION { major: 3, minor: 0 },
+            ..Default::default()
+        };
+        // SAFETY: as above.
+        assert!(unsafe { function_list_3_0_if_v3(ptr_of(&v3)) }.is_some());
+    }
+
+    /// The table synthesized for a v2-only library keeps its legacy entries and has no v3 entry.
+    #[test]
+    fn v2_only_table_keeps_legacy_entries_and_no_v3_entries() {
+        unsafe extern "C" fn initialize(_: *mut c_void) -> pkcs11_sys::CK_RV {
+            0
+        }
+        let mut v2 = v2_list(2, 40);
+        v2.C_Initialize = Some(initialize);
+        let table = v2_only_function_list_3_0(&v2);
+        // Copy the fields out: they may live in a packed struct on some targets.
+        let (initialize, message_encrypt_init, get_interface) = (
+            table.C_Initialize,
+            table.C_MessageEncryptInit,
+            table.C_GetInterface,
+        );
+        assert!(initialize.is_some());
+        assert!(message_encrypt_init.is_none());
+        assert!(get_interface.is_none());
+    }
 }

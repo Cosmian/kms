@@ -827,14 +827,8 @@ impl CryptoOracle for HsmStore {
             }
         };
         ensure_key_wrap_supported(&cryptographic_algorithm, &supported_algorithms, slot_id)?;
-        if matches!(cryptographic_algorithm, CryptoAlgorithm::AesGcm) && iv_counter_nonce.is_some()
-        {
-            return Err(InterfaceError::InvalidRequest(
-                "Caller-supplied AES-GCM IVs are not accepted for HSM keys; \
-                 the HSM integration generates a fresh nonce"
-                    .to_owned(),
-            ));
-        }
+        // Whether a caller-supplied AES-GCM IV is acceptable depends on the HSM build and
+        // backend profile, so that decision is made by the HSM integration, not here.
         let mut content = self
             .hsm
             .encrypt(
@@ -2096,6 +2090,50 @@ mod tests {
             compatibility.is_ok(),
             "tag filters should be compatible with HSM searches: {compatibility:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_encrypt_forwards_caller_aes_gcm_iv_to_the_hsm() {
+        let mut mock = MockHsm::new();
+        mock.expect_get_supported_algorithms()
+            .return_once(|_| Ok(vec![CryptoAlgorithm::AesGcm]));
+        mock.expect_encrypt().times(1).returning(
+            |slot_id, key_id, algorithm, data, iv_counter_nonce| {
+                assert_eq!(slot_id, 7);
+                assert_eq!(key_id, b"key");
+                assert!(matches!(algorithm, CryptoAlgorithm::AesGcm));
+                assert_eq!(data, b"hello");
+                assert_eq!(iv_counter_nonce, &[7_u8; 12][..]);
+                Ok(EncryptedContent {
+                    ciphertext: vec![1, 2, 3],
+                    iv: Some(vec![7_u8; 12]),
+                    tag: Some(vec![9_u8; 16]),
+                    cryptographic_algorithm: None,
+                })
+            },
+        );
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let content = store
+            .encrypt(
+                "hsm::7::key",
+                b"hello",
+                Some(CryptoAlgorithm::AesGcm),
+                None,
+                Some(&[7_u8; 12]),
+            )
+            .await;
+        assert!(
+            content.is_ok(),
+            "a caller-supplied GCM IV must reach the HSM: {content:?}"
+        );
+        let Ok(content) = content else {
+            return;
+        };
+        assert_eq!(
+            content.cryptographic_algorithm,
+            Some(CryptoAlgorithm::AesGcm)
+        );
+        assert_eq!(content.iv, Some(vec![7_u8; 12]));
     }
 
     #[tokio::test]

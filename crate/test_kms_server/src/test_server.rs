@@ -1123,9 +1123,25 @@ fn start_test_kms_server(
     // oversubscribed and an individual server startup can take longer than a
     // tight timeout would allow. 60s gives enough headroom under contention
     // while still failing fast on a genuinely stuck server.
-    let server_handle = rx.recv_timeout(Duration::from_secs(60)).map_err(|e| {
-        KmsClientError::UnexpectedError(format!("Error getting test KMS server handle: {e}"))
-    })?;
+    let server_handle = match rx.recv_timeout(Duration::from_secs(60)) {
+        Ok(server_handle) => server_handle,
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            return match thread_handle.join() {
+                Ok(Err(error)) => Err(error),
+                Ok(Ok(())) => Err(KmsClientError::UnexpectedError(
+                    "test KMS server exited before providing a server handle".to_owned(),
+                )),
+                Err(_) => Err(KmsClientError::UnexpectedError(
+                    "test KMS server thread panicked before providing a server handle".to_owned(),
+                )),
+            };
+        }
+        Err(error) => {
+            return Err(KmsClientError::UnexpectedError(format!(
+                "Error getting test KMS server handle: {error}"
+            )));
+        }
+    };
     trace!("... got handle ...");
     Ok((server_handle, thread_handle))
 }
