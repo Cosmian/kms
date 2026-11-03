@@ -1,6 +1,6 @@
 import type { ThemeConfig } from "antd";
 
-export type MenuTheme = "light" | "dark";
+type MenuTheme = "light" | "dark";
 
 export type Branding = {
     title: string;

@@ -13,6 +13,8 @@
 - Pin pnpm by hash (`packageManager: pnpm@10.17.1+sha512.…`) and run it through Corepack everywhere (MISE tasks, test
   scripts, Windows CI) instead of an unverified `npm install -g pnpm`; every install uses `--frozen-lockfile`
 - Drop the `moment` dependency in favour of `dayjs`, already used by Ant Design
+- Bump the dev dependencies `vitest` to 5.0.5 (`@vitest/mocker`: GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp) and `knip`
+  to 6.43.0 (`zod`: GHSA-mrhx-c7xc-m3w5), found by the new OSV-Scanner gate
 
 ### CI
 
@@ -22,8 +24,6 @@
   on `ui/pnpm-lock.yaml`, and `npm audit signatures`
 - Add the `npm` ecosystem to Dependabot for `/ui`, with a 7-day cooldown
 - Add the `npm-policy` and `pnpm-frozen-lockfile` pre-commit hooks and the `npm-audit` pre-push hook
-- Pin `azure/setup-helm` and `medyagh/setup-minikube` in `test_all.yml` to commit SHAs (required by the
-  `github-actions-sha-pin` hook)
 
 ## Bug Fixes
 
