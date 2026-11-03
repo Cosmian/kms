@@ -196,9 +196,12 @@ ensure_pnpm() {
   require_cmd corepack "Corepack (bundled with Node.js 22) is required to run the hash-pinned pnpm."
   local shim_dir="${TMPDIR:-/tmp}/kms-corepack-shims"
   mkdir -p "${shim_dir}"
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  # Skip the "latest pnpm" lookup: Corepack < 0.31 (Node 23.2 in nix-shell) cannot verify npm's rotated
+  # signing key and fails on it. The pinned version is still checked against its sha512.
+  export COREPACK_DEFAULT_TO_LATEST=0
   run_isolated corepack enable --install-directory "${shim_dir}" pnpm
   export PATH="${shim_dir}:${PATH}"
-  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
   (cd "$(get_repo_root)/ui" && run_isolated pnpm --version >/dev/null)
 }
 
