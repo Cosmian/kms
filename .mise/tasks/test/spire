@@ -377,7 +377,7 @@ for t in "${TENANTS[@]}"; do
   for n in 1 2; do
     agent="mistral-agent-${t}${n}"
     print_status "Running ${agent} identity test..."
-    docker compose --profile spire run --rm "${agent}"
+    docker compose --profile spire run --build --rm "${agent}"
     print_success "${agent} passed."
   done
 done
