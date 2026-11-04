@@ -2,6 +2,7 @@
     "create": "创建",
     "export": "导出",
     "import": "导入",
+    "activate": "激活",
     "revoke": "撤销",
     "destroy": "销毁",
     "encrypt": "加密",

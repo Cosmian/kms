@@ -2,6 +2,7 @@
     "create": "Créer",
     "export": "Exporter",
     "import": "Importer",
+    "activate": "Activer",
     "revoke": "Révoquer",
     "destroy": "Détruire",
     "encrypt": "Chiffrer",

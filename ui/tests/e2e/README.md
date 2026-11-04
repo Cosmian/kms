@@ -55,6 +55,8 @@ graph LR
     D --> E[Destroy]
 ```
 
+Also covers Activate of a Pre-Active key, from the Activate page and from the Locate results table.
+
 ### symmetric-encrypt-decrypt
 
 ```mermaid
