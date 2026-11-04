@@ -213,10 +213,14 @@ read_checks() {
 start_server() {
   PHASE="$1"
   set_toml_value "${KMS_TOML}" sqlite_path "\"$3\""
-  export KMS_CONFIG_FILE="${KMS_TOML}"
-  export KMS_LOG_FILE="${WORK_DIR}/${PHASE}.log"
-  export KMS_PORT="${HTTP_PORT}"
-  export KMS_URL="${SERVER_URL}"
+  # shellcheck disable=SC2034  # read by kms_start_from_bin/kms_stop (sourced .mise/lib/kms_server.sh)
+  KMS_CONFIG_FILE="${KMS_TOML}"
+  # shellcheck disable=SC2034  # same
+  KMS_LOG_FILE="${WORK_DIR}/${PHASE}.log"
+  # shellcheck disable=SC2034  # same
+  KMS_PORT="${HTTP_PORT}"
+  # shellcheck disable=SC2034  # same
+  KMS_URL="${SERVER_URL}"
   # kms_wait_ready probes without a client certificate: under pipefail its curl TLS failure
   # (exit 56, "000") reads as "not ready" until the timeout. The mTLS probe below really waits.
   set +o pipefail
