@@ -4,9 +4,9 @@
 #
 #    pip-compile --generate-hashes --no-strip-extras --output-file=.mise/scripts/test/requirements-cef.txt .mise/scripts/test/requirements-cef.in
 #
-jc==1.26.1 \
-    --hash=sha256:cc71bc981ac38c77b1c2b34db73228227460f2b3c61b882db3e4ae9a804a9c57 \
-    --hash=sha256:fdf1a58d05db351bd597438cf3b67ff7a9653cc0da4c63234ce77fe26051a4dc
+jc==1.26.2 \
+    --hash=sha256:3250b83b55435e3f272238b2d1063eacda1458df6c90daccff459800171bfc40 \
+    --hash=sha256:6e57c302ce55d5862c1f7be1c2ba2baa630bea1ba690f6bb82a8c7e734b70fc1
     # via -r requirements-cef.in
 pygments==2.21.0 \
     --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9 \

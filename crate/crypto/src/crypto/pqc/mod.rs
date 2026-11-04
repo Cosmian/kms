@@ -293,7 +293,7 @@ fn pqc_keygen(
 /// Generate a PQC key pair and extract raw key bytes (for algorithms that don't
 /// support DER serialization, such as hybrid KEMs).
 ///
-/// `rng` is unused for hybrid KEMs: OpenSSL 3.6.2 generates composite keys atomically
+/// `rng` is unused for hybrid KEMs: OpenSSL 3.6.5 generates composite keys atomically
 /// without exposing a seed parameter (see `mlx_kmgmt.c`).
 ///
 /// Upstream tracking: `EVP_PKEY_Q_keygen` is used until safe bindings land in `rust-openssl`

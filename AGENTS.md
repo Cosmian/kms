@@ -142,7 +142,7 @@ crate/
       module/       cosmian_pkcs11_module      — PKCS#11 module implementation
       provider/     cosmian_pkcs11             — PKCS#11 provider binary
     wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.2
+  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.5
   hsm/
     base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
     softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
@@ -538,7 +538,7 @@ mise run [task] --variant [fips|non-fips] [args]
 
 ### 8.3 OpenSSL handling
 
-**No external OpenSSL needed.** OpenSSL 3.6.2 is downloaded, SHA-256-verified,
+**No external OpenSSL needed.** OpenSSL 3.6.5 is downloaded, SHA-256-verified,
 and built from source by `crate/crypto/build.rs` into `target/` on first build.
 
 At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:

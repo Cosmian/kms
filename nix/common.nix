@@ -22,11 +22,11 @@ let
     else
       opensslPkgs.callPackage ./openssl.nix {
         inherit static;
-        version = "3.6.2";
+        version = "3.6.5";
         enableLegacy = true;
-        srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
-        sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
-        expectedHash = "aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f";
+        srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
+        sha256SRI = "sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=";
+        expectedHash = "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
       };
 
   openssl312_ =
@@ -38,7 +38,7 @@ let
         version = "3.1.2";
       };
 
-  # Always link against OpenSSL 3.6.2; the FIPS provider (3.1.2) is loaded at runtime.
+  # Always link against OpenSSL 3.6.5; the FIPS provider (3.1.2) is loaded at runtime.
   opensslLink = openssl36_;
 
   srcRoot = ../.;

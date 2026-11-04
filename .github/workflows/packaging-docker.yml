@@ -190,6 +190,22 @@ jobs:
         run: |
           mise run test:docker --variant ${{ matrix.features }}
 
+      # Syft SBOM + Grype on the image under test, Cargo.lock and ui/pnpm-lock.yaml.
+      # Fails on any fixable High/Critical finding. Syft and Grype come from the hash-pinned
+      # nixos-26.05 (`image-scan-tools`); the image is scanned from the local Docker daemon.
+      - name: Scan Docker image with Syft and Grype
+        env:
+          DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+        run: mise run test:docker-scan --variant ${{ matrix.features }}
+
+      - name: Upload SBOM and vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: image-scan-${{ matrix.features }}-${{ steps.arch.outputs.arch }}
+          path: target/image-scan/${{ matrix.features }}/
+          if-no-files-found: warn
+
       # - name: Oracle TDE remote upgrade and smoke test
       #   if: matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
       #   env:

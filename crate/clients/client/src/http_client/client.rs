@@ -314,7 +314,7 @@ impl HttpClient {
 
     /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
     ///
-    /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
+    /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.5.
     ///
     /// # Errors
     /// Will return an error if the client cannot be instantiated

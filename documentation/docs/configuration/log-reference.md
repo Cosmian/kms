@@ -440,8 +440,7 @@ Crate path: `crate/server`
 | `trace` | `{}` | `src/core/operations/locate.rs` | — | — |
 | `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
 | `error` | `Failed to find KMIP version` | `src/routes/kmip/handlers.rs` | — | — |
-| `error` | `Failed to parse RequestMessage: {}` | `src/routes/kmip/handlers.rs` | — | — |
-| `error` | `Failed to process request: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
+| `error` | `Failed to process request: {}` | `src/routes/kmip/handlers.rs` | — | - |
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
@@ -483,7 +482,6 @@ Crate path: `crate/server`
 | `trace` | `Response Message: {response_message}` | `src/routes/kmip/handlers.rs` | `response_message` | — |
 | `trace` | `retrieved object uid={} type={:?} state={:?} key_fmt={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `error` | `Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}` | `src/routes/kmip/handlers.rs` | — | — |
-| `warn` | `Failed to process request:\n{response_message}` | `src/routes/kmip/handlers.rs` | `response_message` | — |
 | `info` | `\n{:?}` | `src/routes/kmip/handlers.rs` | — | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
@@ -810,6 +808,8 @@ Crate path: `crate/server`
 | `debug` | `{operation}: no activation_date or future date, setting state to PreActive` | `src/core/operations/import.rs` | `operation`: KMIP operation (`Import` or `Register`) | - |
 | `trace` | `ignoring certificate '{uid}': not issued by the CA '{}'` | `src/core/certificate/find.rs` | `uid` | - |
 | `trace` | `skipping certificate '{uid}': cannot parse DER` | `src/core/certificate/find.rs` | `uid` | - |
+| `error` | `Failed to process request: {error_message}` | `src/routes/kmip/handlers.rs` | `error_message` | - |
+| `warn` | `Failed to process KMIP request: {error_message}` | `src/routes/kmip/handlers.rs` | `error_message` | - |
 
 ### `cosmian_kms_server_database`
 

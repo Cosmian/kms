@@ -14,7 +14,7 @@ use super::{
     kmip_attributes::{Attribute, Attributes},
     kmip_data_structures::{
         CapabilityInformation, DefaultsInformation, DerivationParameters, ExtensionInformation,
-        KeyWrappingSpecification, ServerInformation,
+        KeyWrappingSpecification, ServerInformation, SupportedProtectionStorageMasks,
     },
     kmip_objects::{Object, ObjectType},
     kmip_types::{
@@ -860,8 +860,9 @@ impl_display!(RNGSeed, "RNGSeed", { req_b64 data });
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeedResponse {
-    /// Number of bytes of seed data accepted by the RNG.
-    #[serde(alias = "DataLength")]
+    /// KMIP 2.1 §6.1.50: the response field is `Data Length`.
+    /// `AmountOfSeedData` is still accepted from servers older than this fix.
+    #[serde(rename = "DataLength", alias = "AmountOfSeedData")]
     pub amount_of_seed_data: i32,
 }
 
@@ -2504,9 +2505,9 @@ pub struct QueryResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub defaults_information: Option<DefaultsInformation>,
 
-    /// Protection Storage Masks supported by the server.
+    /// Protection Storage Masks supported by the server (KMIP 2.1 §6.1.40, Table 283).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+    pub protection_storage_masks: Option<SupportedProtectionStorageMasks>,
 }
 
 impl Display for QueryResponse {
