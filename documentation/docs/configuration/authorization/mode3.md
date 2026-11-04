@@ -1,7 +1,7 @@
 # Mode 3 — Enforcing (OPA + Native KMS)
 
 When the OPA server is configured with `opa_mode = "enforcing"`, **OPA is the authoritative
-policy engine**. A denial, an error or a timeout is final, and for most requests an allow is
+policy engine** for the requests it is asked about. A denial, an error or a timeout is final, and for most of them an allow is
 sufficient: the native KMS permission system (ownership, grants) is **not** consulted afterwards.
 It still applies in two cases:
 
@@ -10,6 +10,8 @@ It still applies in two cases:
   permission system only, so the [key ceremony](key_ceremony.md) keeps working without JWT roles.
 - **HSM-backed objects** must also pass the native KMS permission system (owner, HSM admin or
   explicit grant) after OPA has allowed the request.
+
+Several operations never reach OPA, in Mode 3 as in [Mode 2](mode2.md): Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy and Rekey are authorized from the native KMS ownership and grants only (see the second warning below).
 
 ```toml
 # kms.toml — Mode 3
@@ -74,17 +76,20 @@ over Mode 2 when:
   still apply to the keys stored in an HSM.
 
 !!! warning "Per-object grants do not restrict OPA-allowed access"
-    On non-HSM objects an OPA allow is final: ownership and the grants created with
+    For the operations that query OPA, an OPA allow on a non-HSM object is final: ownership and the grants created with
     `ckms access-rights grant` are not checked afterwards, and a grant never overrides an OPA denial.
     To restrict access per object, express the rule in the Rego policy (for example with
     `input.is_owner`).
+
+!!! warning "The policy does not control every operation"
+    Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy and Rekey on a key owned by someone else are authorized from the native KMS ownership and grants only. OPA is not queried for them: a caller that the policy would allow but that has no native grant is refused, and a native grant is honored even where the policy would deny. Restrict these operations with native grants, not with the Rego policy.
 
 ---
 
 ## Who decides what
 
 *Native Crypto Officer* means a user listed in `crypto_officer_users`, whether already activated or
-still waiting for the ceremony to complete.
+still waiting for the ceremony to complete. The table covers the operations that query OPA: Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy and Rekey are decided by the native KMS only (see the warning above).
 
 | Caller | Object | Decided by |
 | ------ | ------ | ---------- |
@@ -96,6 +101,8 @@ still waiting for the ceremony to complete.
 ---
 
 ## Sequence diagram
+
+The diagrams of this page describe the operations that query OPA, not Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy and Rekey.
 
 ```mermaid
 sequenceDiagram
@@ -178,7 +185,7 @@ invisible to OPA.
 
 ## Interaction scenarios
 
-*Other caller* means anyone who is not a native Crypto Officer.
+*Other caller* means anyone who is not a native Crypto Officer. All rows but the last one describe operations that query OPA.
 
 | Caller and object | OPA decision | Native KMS decision | Final result | Explanation |
 | ----------------- | :----------: | :-----------------: | :----------: | ----------- |
@@ -191,6 +198,7 @@ invisible to OPA.
 | Any caller, HSM-backed object | Allow | Allow (owner, HSM admin or grant) | **Granted** | Both must allow |
 | Any caller, HSM-backed object | Allow | Deny | **Denied** | The native KMS check vetoes the OPA allow |
 | Any caller, HSM-backed object | Deny | *(not evaluated)* | **Denied** | OPA veto |
+| Any caller, Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy or Rekey | *(not queried)* | Allow (owner or explicit grant) or deny | **Native decision** | The policy cannot allow or deny these operations |
 
 ---
 
@@ -200,10 +208,10 @@ Alice's JWT carries the `CryptoOfficer` role and the domain `acme.com`, and she 
 `crypto_officer_users`. `key-123` belongs to Bob, is in the domain `acme.com`, is not HSM-backed, and
 Alice holds no grant on it. The examples use the reference `kms.rego` policy.
 
-Alice destroys `key-123`:
+Alice gets `key-123`:
 
 ```text
-OPA:        CryptoOfficer + same domain + "destroy" in crypto_officer_ops → Allow ✓
+OPA:        CryptoOfficer + same domain + "get" in crypto_officer_ops → Allow ✓
 Native KMS: not evaluated (non-HSM object, Alice is not a native Crypto Officer)
 Final:      Granted
 ```
@@ -211,17 +219,29 @@ Final:      Granted
 Alice is neither the owner nor a grantee, yet the request is granted: in Mode 3 an OPA allow on a
 non-HSM object is final.
 
-Alice encrypts with `key-123`:
+Carol's JWT carries the `Auditor` role and the domain `acme.com`. Carol activates `key-123`:
 
 ```text
-OPA:        CryptoOfficer + same domain, but "encrypt" is not in crypto_officer_ops → Deny ✗
+OPA:        Auditor + same domain, but "activate" is not in auditor_ops → Deny ✗
 Native KMS: not evaluated
 Final:      Denied
 ```
 
-An `encrypt` grant on `key-123` would not change the result, because a grant never overrides an OPA
-denial. Alice would need the `User` role (`encrypt` belongs to `user_ops` in the reference policy), or
-the policy would have to be extended.
+An `activate` grant on `key-123` would not change the result, because a grant never overrides an OPA
+denial. Carol would need the `CryptoOfficer` role (`activate` belongs to `crypto_officer_ops` in the
+reference policy), or the policy would have to be extended.
+
+Alice destroys `key-123`, or encrypts with it:
+
+```text
+OPA:        not queried (Destroy and Encrypt are authorized from the native KMS only)
+Native KMS: Alice is not the owner, holds no grant and is not a native Crypto Officer → Deny ✗
+Final:      Denied
+```
+
+The policy would allow Alice to destroy `key-123` (`destroy` is in `crypto_officer_ops`), but it is not
+asked, so the request is still refused. Conversely, an `encrypt` grant on `key-123` would let Alice
+encrypt with it although the policy does not allow `encrypt` for her role.
 
 ---
 
@@ -229,13 +249,13 @@ the policy would have to be extended.
 
 | Aspect | Mode 2 (Exclusive) | Mode 3 (Enforcing) |
 | ------ | :----------------: | :----------------: |
-| OPA consulted | Yes, for every request | Yes, except for native Crypto Officers on non-HSM objects |
+| OPA consulted | Yes, except for Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy and Rekey | Yes, except for the same operations and for native Crypto Officers on non-HSM objects |
 | OPA deny = final deny | Yes | Yes |
 | OPA allow sufficient | Yes | Yes, except on HSM-backed objects |
 | Native KMS consulted | No | Only for native Crypto Officers (non-HSM objects) and HSM-backed objects |
 | Native KMS can veto an OPA allow | N/A | Only on HSM-backed objects |
 | Ceremony super-admin | Suspended | Active (native Crypto Officers skip OPA) |
-| Per-object grants used | No | Only for native Crypto Officers and HSM-backed objects |
+| Per-object grants used | Only for the operations that never reach OPA | Only for those operations, native Crypto Officers and HSM-backed objects |
 | HSM admin bypass | No | **Yes** (HSM-backed objects, after OPA allows) |
 
 ---

@@ -33,7 +33,7 @@
 - Update `OPA-middleware.md` SA3 section to reflect full decoupling
 - Update `documentation/mkdocs.yml` navigation
 - Add the how-to page `Try RBAC with Keycloak and OPA` (`configuration/authorization/rbac-keycloak-opa-demo.md`) and `deploy/rbac_rego/README.md`
-- Document in `mode2.md` that Encrypt and Revoke of a key owned by someone else are authorized from the native KMS grants only, even in exclusive OPA mode
+- Document in `mode2.md`, `mode3.md`, the Keycloak how-to page and `deploy/rbac_rego/README.md` that Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify, Revoke, Destroy and Rekey on a key owned by someone else are authorized from the native KMS ownership and grants only, even in exclusive and enforcing OPA modes
 - Document in the Keycloak how-to page and in `deploy/rbac_rego/README.md` that a token without a domain claim places its user in the empty domain, which `kms.rego` treats as one shared domain
 - Fix the debug query of `mode2.md`: the Rego rule that lists the matching rules is `/v1/data/kms/reasons`, not `/v1/data/kms/reason`
 
