@@ -524,7 +524,7 @@ vault_token_cache_ttl_secs = 0
 [kv]
 kv_enabled = false
 kv_mount = ""
-kv_ttl_check_interval_secs = 0
+kv_ttl_check_interval_secs = 30
 
 [audit]
 enabled = false

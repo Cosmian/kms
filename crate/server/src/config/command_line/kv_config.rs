@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// following the Vault KV v2 wire format. This lets Vault/`bao`-compatible
 /// clients (e.g. the `vault kv` / `bao kv` CLI, `OpenBao`) use the KMS as a
 /// generic secrets backend.
-#[derive(Args, ConfigArgs, Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Args, ConfigArgs, Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct KvConfig {
     /// Enable the Vault KV v2-compatible `/<kv_mount>/` scope.
@@ -33,4 +33,19 @@ pub struct KvConfig {
     /// Defaults to `30`.
     #[clap(long, env = "KMS_KV_TTL_CHECK_INTERVAL_SECS", default_value = "30")]
     pub kv_ttl_check_interval_secs: u64,
+}
+
+/// Hand-written so that a TOML `[kv]` section (parsed with `#[serde(default)]`)
+/// and `--print-default-config` agree with the clap default of `30` for
+/// `kv_ttl_check_interval_secs`; a derived `Default` would yield `0` and
+/// silently disable the TTL sweep. `kv_mount` stays empty (resolved to `"kv"`
+/// by `resolve_kv_mount`), like the other `vault_*` mounts.
+impl Default for KvConfig {
+    fn default() -> Self {
+        Self {
+            kv_enabled: false,
+            kv_mount: String::new(),
+            kv_ttl_check_interval_secs: 30,
+        }
+    }
 }
