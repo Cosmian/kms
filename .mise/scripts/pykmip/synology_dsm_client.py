@@ -377,22 +377,11 @@ def op_modify_attribute(
             traceback.print_exc()
         return False
     except Exception as exc:
-        msg = str(exc)
-        # PyKMIP 0.10.0 may fail to deserialize the Attribute echoed in the KMIP 1.x
-        # ModifyAttributeResponse (required by KMIP spec §6.13 for KMIP 1.x clients).
-        # After issue #820 the server echoes the real modified attribute (e.g. Name)
-        # instead of a Comment placeholder.  For simple types like ActivationDate
-        # PyKMIP parses the response fine; for structured types like Name the parser
-        # may raise an exception.  In either case the ResultStatus=SUCCESS is encoded
-        # in the batch item *before* the response payload, so the operation DID
-        # succeed on the server — treat any non-OperationFailure exception as success.
-        _ok(
-            'Modify Attribute',
-            f'Name set to {volume_uuid} '
-            f'(PyKMIP 0.10.0 response parse limitation: {msg})',
-            verbose,
-        )
-        return True
+        # Decoder failures are errors, never success.
+        _fail('Modify Attribute', str(exc))
+        if verbose:
+            traceback.print_exc()
+        return False
 
 
 def op_get(proxy: KMIPProxy, uid: str, verbose: bool) -> bool:
