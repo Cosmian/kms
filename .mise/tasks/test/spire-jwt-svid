@@ -621,7 +621,8 @@ else
   print_info "No real ui/dist build found (placeholder index.html only): skipping spiffe-ui-login.spec.ts."
 fi
 
-if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e -- "${E2E_SPECS[@]}"); then
+# No `--` before the specs: pnpm forwards it, and Playwright >= 1.64 then ignores the file filter and runs the whole suite.
+if (cd "${REPO_ROOT}/ui" && ([ -d node_modules ] || pnpm install --frozen-lockfile) && CI=true pnpm run test:e2e "${E2E_SPECS[@]}"); then
   print_success "Playwright E2E tests for SPIFFE JWT-SVID passed (${E2E_SPECS[*]})."
 else
   print_error "Playwright E2E tests for SPIFFE JWT-SVID failed (${E2E_SPECS[*]})."
