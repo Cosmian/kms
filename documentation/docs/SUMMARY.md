@@ -109,6 +109,7 @@
   - [Getting started](installation/installation_getting_started.md)
   - [Deploying in a Cosmian Confidential VM](installation/marketplace_guide.md)
   - [High-availability](installation/high_availability_mode.md)
+  - [Upgrading from 5.x to 6.0](installation/upgrade_5_to_6.md)
 - [Configuration]()
     - [Configuration file](configuration/server_configuration_file.md)
     - [Configuration examples](configuration/configurations.md)

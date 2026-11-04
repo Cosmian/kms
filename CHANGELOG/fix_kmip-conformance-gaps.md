@@ -1,3 +1,30 @@
+## Release guidance
+
+### Why this needs a major version
+
+**Release this work as 6.0.0, rather than another 5.x update, because existing integrations may need changes before they can safely upgrade.** A request that worked on the old server can now fail, and a batch can stop earlier than it did before. The major version makes that upgrade requirement visible to operators; it is not just a change of label for internal Rust code.
+
+Most of these changes correct behaviour that did not follow KMIP. They remain bug fixes, not a new interpretation of the protocol. However, a client can still depend on the old behaviour even when that behaviour was wrong. We must keep the specification-correct behaviour and give users a clear migration boundary, rather than silently preserving incompatible exceptions.
+
+The main changes to check before upgrading are:
+
+| Existing workflow | What changes | What the client or operator must do |
+|---|---|---|
+| Create a key, then revoke it before activating it | A non-compromise Revoke of a Pre-Active key is refused. | Destroy a never-activated key directly. If the key needs to be used, activate it before use and revoke it when retiring it. |
+| Send a batch without choosing how errors are handled | The server stops at the first failure instead of continuing with later operations. | Send `BatchErrorContinuationOption=Continue` explicitly if later operations must still run, and check each result. |
+| Send a KMIP 1.4 DeriveKey request without Object Type | The incomplete request is rejected instead of silently assuming a symmetric key. | Include the required `ObjectType`, such as `SymmetricKey`. |
+| Issue a certificate without an Activation Date | The certificate starts Pre-Active, rather than Active. | Set an appropriate Activation Date or activate the certificate before workflows that require it to be Active. |
+| Use a `Get` grant to change a key's usage, dates or other protected attributes | That grant alone no longer authorizes those edits. | Grant the required attribute-edit operation explicitly, or have the owner perform it. |
+| Match old error codes or assume a fixed attribute list | Responses now use corrected KMIP error codes and list only attributes actually present. | Update error handling and treat absent attributes as absent rather than expecting invented defaults. |
+| Use `IV Length` in bytes (e.g. `12` for AES-GCM) | `IV Length` is in bits, as KMIP defines it; `12` is refused with `Bad_Cryptographic_Parameters`. | Send `96` for a 12-byte IV, or supply the IV yourself. |
+| MAC or MAC Verify with a key lacking the MAC usage bits | The key's `MACGenerate` / `MACVerify` mask bit is now required (`Incompatible_Cryptographic_Usage_Mask`). | Create new keys with those bits, then re-MAC the data; do not rely on editing the mask. |
+| Revoke a Pre-Active Opaque Object | Refused like any Pre-Active object (`Wrong_Key_Lifecycle_State`). | Destroy it directly (Opaque Objects have no Activate operation). |
+| Call Set Constraints on a server without roles | Refused (`Unauthorized`) unless a Crypto Officer is configured. | Add `[roles] crypto_officer_users` before upgrading. |
+
+**Before production rollout, test the real client workflow against 6.0.0:** create or register, locate and retrieve, use the key, rotate it, then revoke and destroy it. Passing updated repository tests does not prove that an unchanged third-party product will work. In particular, a test fixture named after a vendor is not evidence that the vendor's deployed product has been tested.
+
+The major version is an upgrade warning, not permission to ship defects or weaken KMIP requirements. It does not by itself mean that a database schema migration is required, and it is not a claim that every existing client is incompatible.
+
 ## Bug Fixes
 
 ### KMIP
@@ -5,9 +32,9 @@
 - Require an exact Result Reason for every expected KMIP response failure while preserving diagnostic assertions for HTTP failures; correct precise reasons for unsupported key formats and invalid Certify object types.
 - Report the KMIP 2.1 Result Reason from each operation's error table: `Wrong_Key_Lifecycle_State` for crypto-operation lifecycle failures, `Invalid_Object_Type` / `Incompatible_Cryptographic_Usage_Mask` for keys the caller may use but the operation cannot, `Object_Not_Found` for Destroy, Revoke and DeriveKey, `Invalid_Attribute_Value` for invalid key lengths, `Read_Only_Attribute` for Add/Set Attribute, `Feature_Not_Supported` for unsupported Hash/MAC algorithms or a missing HSM, and `Object_Already_Exists` for duplicate objects.
 - Enforce BatchCount consistency, default omitted batch-error behavior to `Stop`, echo Client Correlation Values, and reject unsupported critical Message Extensions.
-- Restrict configured Operators from `PKCS11` (needs a configured Crypto Officer) and `RNGSeed`/`SetConstraints` (once roles are configured), and prevent sensitive KMIP payload logging and cyclic or oversized certificate chains. Operators keep every other operation on the objects they own or were granted, as before.
+- Restrict configured Operators from `PKCS11` and `RNGSeed`/`SetConstraints` (once roles are configured); `PKCS11` and `SetConstraints` need a configured Crypto Officer. Prevent sensitive KMIP payload logging and cyclic or oversized certificate chains. Operators keep every other operation on the objects they own or were granted, as before.
 - Avoid pre-filter limits for destroyed-only results, advertise `ReCertify`, and reject unsupported key-compression requests while accepting uncompressed EC keys.
-- Compatibility with deployed clients: Revoke of an already Deactivated or Destroyed object stays a no-op, Locate accepts any Offset Items, Validate accepts a text Validity Time, certificate attributes keep their `CertificateSubjectCn`-style JSON names, an empty Query is accepted, Extractable can be set back to true, a client-supplied IV ignores IV Length (a byte value equal to the nonce size is accepted for a generated IV), and RSA keys wrapped without a requested format are wrapped as PKCS#8 / SPKI.
+- Compatibility with deployed clients: Revoke of an already Deactivated or Destroyed object stays a no-op, Locate accepts any Offset Items, Validate accepts a text Validity Time, certificate attributes keep their `CertificateSubjectCn`-style JSON names, an empty Query is accepted, Extractable can be set back to true, a client-supplied IV ignores IV Length, and RSA keys wrapped without a requested format are wrapped as PKCS#8 / SPKI.
 - **Behaviour changes required by the spec** (clients relying on the old behaviour must adapt): Revoke of a Pre-Active object with a non-compromise reason and Destroy of an Active object return `Wrong_Key_Lifecycle_State`; Certify without an Activation Date creates Pre-Active objects; Set Attribute `Name` replaces the name; `ckms certificates validate` exits with an error unless the chain is `Valid`; a Locate matching several objects empties the ID Placeholder.
 - **Rust API break**: KMIP 1.4 request/response structs in `cosmian_kmip::kmip_1_4::kmip_operations` now carry `Option` for omitted `unique_identifier` (and similar) fields.
 - Attribute operations: Get Attributes with no Unique Identifier now uses the ID Placeholder (no table scan), returns all stored attributes (including CertificateType, DigitalSignatureAlgorithm, KeyValueLocation/Present, NISTKeyType, ObjectGroupMember, OpaqueDataType, PKCS12FriendlyName, ProtectionLevel/Period, UsageLimits, X.509 identifier/issuer/subject), no longer invents Lease Time, Destroy Date or Random Number Generator values, derives the Short Unique Identifier from the SHA-256 of the Unique Identifier (KMIP 2.1 §4.56), reports the Key Format Type a default Get produces (PKCS#1 for RSA, Raw for symmetric keys, §4.26 Table 81), returns rotation attributes only when requested, and rejects duplicate Attribute References. Get Attribute List returns the object's real attribute names and its Unique Identifier. RSA key generation no longer stores an implicit Cryptographic Parameters attribute.
@@ -27,7 +54,7 @@
 - Wire encoding: the Message Extension's Vendor Extension is a Structure whose vendor tags (`0x54xxxx`) decode, the Hashed Password Timestamp is a Date Time Extended, the Hashed Password is a Byte String, and the binary decoder rejects wrong fixed lengths, misaligned Structures and Booleans other than 0/1. Requests carrying a Hashed Password credential are refused with `Feature_Not_Supported`: the server holds no client password, so it cannot return the required Server Hashed Password. A missing Unique Batch Item ID in a multi-item batch is tolerated (it is a client requirement).
 - Multi-part (Init Indicator / Correlation Value / Final Indicator) Encrypt, Decrypt, Hash, MAC, MAC Verify, Sign and Signature Verify keep their state server-side under a random Correlation Value bound to the user, operation and key, bounded in number (1024, 64 per user), expired after 5 idle minutes or one hour in total, and aborted when the key is destroyed or revoked as compromised; each Encrypt/Decrypt part returns its own output (CS-BC-M-GCM-3-21), multi-part Hash/MAC no longer chain digests, unknown values return `Invalid_Correlation_Value`, Init + Final without a Correlation Value is single-part, later Encrypt/Decrypt parts that change the Cryptographic Parameters, IV or AAD return `Invalid_Field`, and HSM keys, XTS/key-wrap/GCM-SIV/pure ChaCha20 and PGP keys return `Feature_Not_Supported` for multi-part. Multi-part AEAD Decrypt returns each part's plaintext before the final part verifies the tag (required by CS-BC-M-GCM-3-21): that plaintext is unauthenticated until the final part succeeds.
 - Crypto reasons: unsupported algorithms, modes and paddings return `Unsupported_Cryptographic_Parameters` (was `Operation_Not_Supported`); a missing Decrypt IV returns `Missing_Initialization_Vector` and a wrong IV length `Invalid_Field`; an invalid Tag Length `Bad_Cryptographic_Parameters`; RNG failures `Cryptographic_Failure`; a negative RNG Retrieve Data Length `Invalid_Field`; single-part Hash/MAC without Data `Invalid_Field`. IV Length and Random IV = false are honoured, Fixed Field / Invocation Field / Counter Length / Initial Counter Value are rejected as unsupported.
-- MAC and MAC Verify accept the HMAC algorithm from the request Cryptographic Algorithm and compare MACs in constant time; HMAC/SHA-3 keys created by `symmetric_key_create_request` now get the `MACGenerate` / `MACVerify` mask bits, and HMAC-SHA3 keys (`HMACSHA3224`-`HMACSHA3512`) can be created. The usage mask is not enforced, so existing keys keep working.
+- MAC and MAC Verify accept the HMAC algorithm from the request Cryptographic Algorithm and compare MACs in constant time; HMAC/SHA-3 keys created by `symmetric_key_create_request` now get the `MACGenerate` / `MACVerify` mask bits, and HMAC-SHA3 keys (`HMACSHA3224`-`HMACSHA3512`) can be created. MAC requires `MACGenerate` and MAC Verify `MACVerify` in the key's usage mask.
 - `RequestMessageHeader::default()` no longer sets a 1 MiB Maximum Response Size. The server applies Maximum Response Size to Query only, as before.
 - Types: MAC Verify gains Correlation Value / Init / Final and an optional Validity Indicator; KMIP 1.4 Encrypt, Decrypt and MAC accept an omitted Unique Identifier, and 1.4 Sign, Signature Verify, MAC Verify and Hash carry the multi-part fields.
 - Sign with an RSA key and a non-RSA Digital Signature Algorithm (e.g. ECDSA) returns `Unsupported_Cryptographic_Parameters` instead of `Cryptographic_Failure`.
@@ -53,7 +80,12 @@
 
 ## Behavior changes
 
-- `IV Length` in Cryptographic Parameters is interpreted in bits (KMIP spec) when the server generates the IV; it is ignored when the client supplies the IV, and a byte value equal to the cipher's nonce size (for example `ovh/kmip-go` `IVLength: 12` on GCM) is still accepted.
+- `IV Length` in Cryptographic Parameters is interpreted in bits only (KMIP spec) when the server generates the IV; it is ignored when the client supplies the IV. A byte value such as `ovh/kmip-go`'s `IVLength: 12` on GCM is refused with `Bad_Cryptographic_Parameters`: send `96`.
+- MAC requires the `MACGenerate` usage mask bit and MAC Verify the `MACVerify` bit (`Incompatible_Cryptographic_Usage_Mask` otherwise). Keys created before without those bits must be replaced by keys created with them, and the data re-MACed.
+- Revoke of a Pre-Active Opaque Object follows the §4.57 state table like any other object (`Wrong_Key_Lifecycle_State`); destroy it directly.
+- Set Constraints is refused (`Unauthorized`) unless a Crypto Officer is configured, like PKCS11; Get Constraints stays open to every authenticated user.
+- Protection Storage Mask is server-managed and read-only for Add/Set/Modify/Delete Attribute.
+- A KMIP 2.0 Query no longer lists Ping, Set Constraints and Get Constraints (KMIP 2.1 operations).
 - `GetAttributeList` lists only attributes set on the object.
 - `DeleteAttribute` of a Link with an empty identifier removes every link of that Link Type (used by the Web UI).
 
