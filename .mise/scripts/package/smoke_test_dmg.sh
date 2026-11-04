@@ -195,9 +195,9 @@ fi
 info "\xe2\x9c\x93 Binary executed successfully"
 
 # Determine expected OpenSSL runtime version
-# - All non-FIPS and FIPS static builds expect 3.6.2
+# - All non-FIPS and FIPS static builds expect 3.6.5
 # - FIPS dynamic builds bundle 3.1.2 runtime libs to match the FIPS provider
-EXPECTED_VER="3.6.2"
+EXPECTED_VER="3.6.5"
 info "Verifying OpenSSL runtime version (expected ${EXPECTED_VER})…"
 if [ -n "$ENV_OPENSSL_CONF" ] || [ -n "$ENV_OPENSSL_MODULES" ]; then
   INFO_CMD=(env)

@@ -250,6 +250,129 @@ fn test_cc_requests() {
     );
 }
 
+/// The Covercrypt action a `ReKeyKeyPair` request carries — its `cover_crypt_rekey_action`
+/// vendor attribute, decoded from hex.
+fn cc_rekey_action(request: &JsValue) -> String {
+    fn find(node: &serde_json::Value, found_name: &mut bool) -> Option<String> {
+        match node {
+            serde_json::Value::Array(nodes) => nodes.iter().find_map(|n| find(n, found_name)),
+            serde_json::Value::Object(map) => {
+                match map.get("tag").and_then(serde_json::Value::as_str) {
+                    Some("AttributeName") => {
+                        *found_name = map.get("value").and_then(serde_json::Value::as_str)
+                            == Some("cover_crypt_rekey_action");
+                        None
+                    }
+                    Some("AttributeValue") if *found_name => map
+                        .get("value")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                    _ => map.get("value").and_then(|v| find(v, found_name)),
+                }
+            }
+            _ => None,
+        }
+    }
+    let json: serde_json::Value = serde_wasm_bindgen::from_value(request.clone()).unwrap();
+    let hex = find(&json, &mut false).expect("no cover_crypt_rekey_action attribute");
+    let bytes = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect::<Vec<_>>();
+    String::from_utf8(bytes).unwrap()
+}
+
+#[wasm_bindgen_test]
+fn test_cc_rekey_requests() {
+    let action = |r: Result<JsValue, JsValue>| cc_rekey_action(&r.unwrap());
+    assert_eq!(
+        action(w::rekey_cc_access_policy_ttlv_request(
+            "msk",
+            "D::a".to_owned()
+        )),
+        r#"{"RekeyAccessPolicy":"D::a"}"#
+    );
+    assert_eq!(
+        action(w::prune_cc_access_policy_ttlv_request(
+            "msk",
+            "D::a".to_owned()
+        )),
+        r#"{"PruneAccessPolicy":"D::a"}"#
+    );
+    assert_eq!(
+        action(w::add_cc_attribute_ttlv_request(
+            "msk",
+            "D::b".to_owned(),
+            "Classic",
+            Some("a".to_owned())
+        )),
+        r#"{"AddAttribute":[["D::b","Classic","a"]]}"#
+    );
+    // An empty `after` from JavaScript means "at the very bottom".
+    assert_eq!(
+        action(w::add_cc_attribute_ttlv_request(
+            "msk",
+            "D::b".to_owned(),
+            "post-quantum",
+            Some(String::new())
+        )),
+        r#"{"AddAttribute":[["D::b","PostQuantum",null]]}"#
+    );
+    assert_eq!(
+        action(w::rename_cc_attribute_ttlv_request(
+            "msk",
+            "D::a".to_owned(),
+            "z".to_owned()
+        )),
+        r#"{"RenameAttribute":[["D::a","z"]]}"#
+    );
+    assert_eq!(
+        action(w::disable_cc_attribute_ttlv_request(
+            "msk",
+            "D::a".to_owned()
+        )),
+        r#"{"DisableAttribute":["D::a"]}"#
+    );
+    assert_eq!(
+        action(w::remove_cc_attribute_ttlv_request(
+            "msk",
+            "D::a".to_owned()
+        )),
+        r#"{"DeleteAttribute":["D::a"]}"#
+    );
+    assert_eq!(
+        action(w::add_cc_dimension_ttlv_request(
+            "msk",
+            "E".to_owned(),
+            vec!["x".to_owned(), "y".to_owned()],
+            vec!["Hybridized".to_owned(), "Hybridized".to_owned()],
+            true
+        )),
+        r#"{"AddHierarchy":["E",[["E::x","Hybridized"],["E::y","Hybridized"]]]}"#
+    );
+    assert_eq!(
+        action(w::add_cc_dimension_ttlv_request(
+            "msk",
+            "E".to_owned(),
+            vec!["x".to_owned(), "y".to_owned()],
+            vec!["Classic".to_owned(), "PostQuantum".to_owned()],
+            false
+        )),
+        r#"{"AddAnarchy":["E",[["E::x","Classic"],["E::y","PostQuantum"]]]}"#
+    );
+    assert!(
+        w::add_cc_dimension_ttlv_request(
+            "msk",
+            "E".to_owned(),
+            vec!["x".to_owned(), "y".to_owned()],
+            vec!["Classic".to_owned()],
+            false
+        )
+        .is_err()
+    );
+    assert!(w::add_cc_attribute_ttlv_request("msk", "D::b".to_owned(), "quantum", None).is_err());
+}
+
 #[wasm_bindgen_test]
 fn test_certificate_requests() {
     assert!(

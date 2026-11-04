@@ -59,7 +59,7 @@ const SYSTEM_CA_BUNDLES: &[&str] = &[
 ///
 /// This replaces the former `reqwest`-based TLS builder. OpenSSL is used
 /// exclusively, providing native PQC algorithm support (ML-DSA, ML-KEM,
-/// SLH-DSA) through OpenSSL 3.6.2.
+/// SLH-DSA) through OpenSSL 3.6.5.
 pub(crate) fn build_ssl_connector(
     http_conf: &HttpClientConfig,
 ) -> HttpClientResult<SslConnectorBuilder> {

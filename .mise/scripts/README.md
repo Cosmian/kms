@@ -155,6 +155,7 @@ mise test:siem --suite filebeat      # Filebeat → Elasticsearch
 | `test:jose` | non-fips | JOSE REST API + jwcrypto interoperability |
 | `test:edb-tde` | non-fips | EDB TDE KMIP compliance |
 | `test:docker` | fips | Docker image smoke tests |
+| `test:docker-scan` | fips | Syft SBOM + Grype scan of a Docker image, `Cargo.lock` and `ui/pnpm-lock.yaml` (fails on fixable High/Critical) |
 | `test:docker-oracle` | — | Oracle TDE remote upgrade smoke test (non-fips, amd64 only) |
 | `test:helm` | fips | Helm chart lint, template validation, and optional E2E deployment |
 | `test:load-balancer` | fips | nginx load-balancer graceful shutdown |

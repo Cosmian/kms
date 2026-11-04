@@ -107,8 +107,8 @@ let
     }
 
     # OpenSSL is always statically embedded in this build (no separate libssl/libcrypto.so).
-    strings "$BIN" | grep -q "OpenSSL 3.6.2" || {
-      echo "ERROR: Binary not statically linked against OpenSSL 3.6.2"; exit 1;
+    strings "$BIN" | grep -q "OpenSSL 3.6.5" || {
+      echo "ERROR: Binary not statically linked against OpenSSL 3.6.5"; exit 1;
     }
 
     # Run version check only for the fully static variant on a matching CPU

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Scan a KMS Docker image with Syft and Grype (fails on fixable High/Critical)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-i --image <image>" env="DOCKER_IMAGE_NAME" help="Image reference present in the local Docker daemon (e.g. cosmian-kms:5.29.0-non-fips)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+print_header "Scanning Docker image (${VARIANT_NAME})"
+export DOCKER_IMAGE_NAME="${usage_image:-${DOCKER_IMAGE_NAME:-}}"
+bash "$(get_repo_root)/.mise/scripts/test/scan_docker_image.sh"
+print_success "Docker image scan passed"

@@ -53,6 +53,26 @@ updates:
         applies-to: security-updates
         patterns: ['*']
 
+  - package-ecosystem: npm
+    directory: /ui
+    # Version updates also bump parents that pin a vulnerable transitive exactly, which
+    # security updates cannot do (vitest 5.0.0 -> @vitest/mocker 5.0.0, alerts #119/#120).
+    # cooldown: 7-day release age required for npm packages (dependencies.instructions.md §3).
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
+
   - package-ecosystem: gomod
     directory: /.mise/scripts/kmip-go
     schedule:
