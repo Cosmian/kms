@@ -322,16 +322,7 @@ export const getMimeType = (fileName: string): string => {
 };
 
 export type ObjectType =
-    | "rsa"
-    | "ec"
-    | "symmetric"
-    | "fpe"
-    | "covercrypt"
-    | "pqc"
-    | "pgp"
-    | "certificate"
-    | "secret-data"
-    | "opaque-object";
+    "rsa" | "ec" | "symmetric" | "fpe" | "covercrypt" | "pqc" | "pgp" | "certificate" | "secret-data" | "opaque-object";
 
 export const getObjectLabel = (type: ObjectType): string => {
     switch (type) {
