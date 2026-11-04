@@ -441,7 +441,7 @@ kv_enabled = false
 # Mirrors `vault_transit_mount`/`vault_pki_mount`. Defaults to `"kv"`.
 kv_mount = ""
 # Interval, in seconds, between KV TTL-expiry sweeps (destroys secret versions whose `options.ttl` has elapsed). `0` disables the sweep. Defaults to `30`
-kv_ttl_check_interval_secs = 0
+kv_ttl_check_interval_secs = 30
 
 [roles]
 # Require a split-key ceremony to activate the Crypto Officer role.
