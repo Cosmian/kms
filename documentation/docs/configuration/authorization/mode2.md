@@ -2,7 +2,7 @@
 
 When the OPA server is configured with `opa_mode = "exclusive"`, OPA is the **sole
 authorization decision maker**. The native KMS permission system (ownership, grants)
-is completely bypassed.
+is bypassed, except for Encrypt and Revoke on the keys of other users (see the note below the table).
 
 ```toml
 # kms.toml — Mode 2
@@ -16,16 +16,21 @@ opa_mode = "exclusive"
 | `KMS_OPA_URL`        | `http://localhost:8181` |
 | `KMS_OPA_MODE`       | `exclusive` |
 
+!!! note "Encrypt and Revoke of another user's key"
+    In the current server, Encrypt and Revoke on a key owned by someone else are authorized from the native KMS grants only: OPA is not queried for them, and a caller that the policy would allow but that has no native grant gets `Item_Not_Found`. [Try RBAC with Keycloak and OPA](rbac-keycloak-opa-demo.md) shows it.
+
 ---
 
 ## Prerequisites
 
 - **JWT authentication required** — all users must authenticate via JWT issued by the
-  Eviden Authentication Server. The JWT must contain the `roles` and `as_domain` claims.
+  Eviden Authentication Server. The JWT must contain the `roles` and `as_domain` claims
+  (`as_rid` is accepted as an alias of `as_domain`).
 - **Non-JWT auth is fail-closed** — mTLS and API token users receive `roles: []` in the
   OPA input, causing all role-based rules to evaluate to `false`.
 - **Native KMS grants are ignored** — even if a user has explicit grants in the KMS
-  database, they are not consulted.
+  database, they are not consulted. The exception is Encrypt and Revoke on the keys of
+  other users, which are authorized from the native grants only (see the note above).
 
 ---
 
@@ -142,7 +147,7 @@ The policy can be updated at runtime without restarting KMS or OPA.
 Query the debug endpoint to see which rules matched:
 
 ```bash
-curl -s -X POST http://localhost:8181/v1/data/kms/reason \
+curl -s -X POST http://localhost:8181/v1/data/kms/reasons \
   -H "Content-Type: application/json" \
   -d '{
     "input": {
@@ -167,4 +172,5 @@ If the response contains `"denied"`, no rule matched.
 
 - [Authorization overview](index.md) — role model, JWT claims, OPA input document
 - [Mode 3 — Enforcing](mode3.md) — OPA stays authoritative; native Crypto Officers and HSM-backed objects also use the native KMS check
+- [Try RBAC with Keycloak and OPA](rbac-keycloak-opa-demo.md) — run the roles end to end with a Keycloak, OPA and KMS Docker Compose stack
 - Rego policy source: `test_data/opa/kms.rego`

@@ -129,6 +129,7 @@
         - [Mode 3 — Enforcing (OPA + KMS)]()
             - [Architecture and use cases](configuration/authorization/mode3.md)
             - [OPA + Authentication Verifier setup](configuration/authorization/opa-authverifier-setup.md)
+        - [Try RBAC with Keycloak and OPA](configuration/authorization/rbac-keycloak-opa-demo.md)
     - [Enabling TLS](configuration/tls.md)
     - [Obtaining TLS Certificates](configuration/certificates.md)
     - [Observability]()

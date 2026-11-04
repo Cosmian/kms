@@ -14,6 +14,12 @@
 - Add `kms.rego` Rego policy supporting role-based domain-scoped access control
 - Extract JWT `roles` and `as_domain` claims into `AuthenticatedUser` for OPA context
 - Add per-request `OpaUserContext` thread-local to propagate roles/domain without threading through all function signatures
+- Add the `deploy/rbac_rego` Docker Compose stack that runs the KMS in exclusive OPA mode behind Keycloak, to try the RBAC roles end to end:
+    - Keycloak realm `kms` with the five role groups (`SuperAdmin`, `DomainAdmin`, `CryptoOfficer`, `Auditor`, `User`), eight sample users in two domains, token mappers for the `roles`, `as_rid` and audience claims, and a `domain` attribute that is mandatory when an administrator creates a user
+    - OPA with live policy reload (`--watch`) and a console decision log, loading `test_data/opa/kms.rego`
+    - `verify.sh`: 53 checks that send KMIP requests with the token of each sample user and compare the outcome with the expected role matrix and with OPA
+    - Dependabot (`docker-compose` ecosystem) keeps the digest-pinned Keycloak and OPA images up to date
+    - Complete KMS fixture `test_data/configs/server/rbac/keycloak_opa.toml` and `test_data/certificates/client_server/generate_idp_server_cert.sh`, which issues the `keycloak.localhost` certificate with the existing test CA
 
 ## Documentation
 
@@ -26,6 +32,10 @@
 - Remove `is_super_admin` allow rule and `super_admin_ceremony` reason from `kms.rego`
 - Update `OPA-middleware.md` SA3 section to reflect full decoupling
 - Update `documentation/mkdocs.yml` navigation
+- Add the how-to page `Try RBAC with Keycloak and OPA` (`configuration/authorization/rbac-keycloak-opa-demo.md`) and `deploy/rbac_rego/README.md`
+- Document in `mode2.md` that Encrypt and Revoke of a key owned by someone else are authorized from the native KMS grants only, even in exclusive OPA mode
+- Document in the Keycloak how-to page and in `deploy/rbac_rego/README.md` that a token without a domain claim places its user in the empty domain, which `kms.rego` treats as one shared domain
+- Fix the debug query of `mode2.md`: the Rego rule that lists the matching rules is `/v1/data/kms/reasons`, not `/v1/data/kms/reason`
 
 ## Refactor
 
