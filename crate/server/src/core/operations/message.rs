@@ -939,7 +939,28 @@ async fn process_operation(
             )
         }
             Operation::Query(kmip_request) => {
-                Operation::QueryResponse(Box::new(kms.query(kmip_request).await?))
+                let mut response = kms.query(kmip_request).await?;
+                // Ping, Set/Get Constraints are KMIP 2.1 operations: a 2.0 client must not see them.
+                let is_kmip_2_0 = matches!(
+                    protocol_version,
+                    Some(ProtocolVersion {
+                        protocol_version_major: 2,
+                        protocol_version_minor: 0,
+                    })
+                );
+                if is_kmip_2_0 {
+                    if let Some(operations) = response.operation.as_mut() {
+                        operations.retain(|op| {
+                            !matches!(
+                                op,
+                                OperationEnumeration::Ping
+                                    | OperationEnumeration::SetConstraints
+                                    | OperationEnumeration::GetConstraints
+                            )
+                        });
+                    }
+                }
+                Operation::QueryResponse(Box::new(response))
             }
             Operation::Register(kmip_request) => Operation::RegisterResponse(
                 kms.register(*kmip_request, user)

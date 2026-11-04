@@ -99,13 +99,16 @@ pub(crate) async fn check_role_permission(
     operation: OperationEnumeration,
     crypto_officer: &CryptoOfficerConfig,
 ) -> KResult<()> {
-    // PKCS11 controls the server's shared HSM library and requires an explicit Crypto Officer.
-    // (SetConstraints does not: the OASIS vectors, e.g. TC-MD-24-21, call it on a server without
-    // roles; it is refused to Operators once roles are configured.)
-    if operation == OperationEnumeration::PKCS11 && !crypto_officer.is_configured() {
-        kms_bail!(KmsError::Unauthorized(
-            "PKCS11 requires a configured Crypto Officer".to_owned()
-        ));
+    // PKCS11 controls the server's shared HSM library and SetConstraints replaces the
+    // server-wide constraint set: both need an explicit Crypto Officer.
+    if matches!(
+        operation,
+        OperationEnumeration::PKCS11 | OperationEnumeration::SetConstraints
+    ) && !crypto_officer.is_configured()
+    {
+        kms_bail!(KmsError::Unauthorized(format!(
+            "{operation} requires a configured Crypto Officer"
+        )));
     }
 
     // If no role lists are configured, skip role enforcement entirely.
@@ -384,15 +387,10 @@ async fn dispatch_inner(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::to_ttlv;
 
     use super::*;
-    use crate::{
-        config::ServerParams,
-        tests::test_utils::{https_clap_config, test_kms},
-    };
+    use crate::tests::test_utils::{https_clap_config, test_kms, test_kms_with_config};
 
     #[test]
     fn parse_operation_accepts_both_mac_spellings_and_rejects_unknown_tags() {
@@ -458,7 +456,7 @@ mod tests {
     async fn operator_can_manage_the_lifecycle_of_its_objects() -> KResult<()> {
         let mut config = https_clap_config();
         config.roles.crypto_officer_users = Some(vec!["officer@example.com".to_owned()]);
-        let kms = KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?;
+        let kms = test_kms_with_config(config).await?;
         for operation in [
             OperationEnumeration::Activate,
             OperationEnumeration::Revoke,
@@ -484,7 +482,7 @@ mod tests {
     async fn operator_cannot_invoke_administrative_operations() -> KResult<()> {
         let mut config = https_clap_config();
         config.roles.crypto_officer_users = Some(vec!["officer@example.com".to_owned()]);
-        let kms = KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?;
+        let kms = test_kms_with_config(config).await?;
         let operator = UserId::from("operator@example.com");
 
         for operation in [
@@ -532,5 +530,44 @@ mod tests {
             ));
         }
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_constraints_requires_a_configured_crypto_officer() -> KResult<()> {
+        let kms = test_kms().await?;
+        let result = check_role_permission(
+            &kms,
+            "unconfigured@example.com",
+            OperationEnumeration::SetConstraints,
+            &kms.params.crypto_officer,
+        )
+        .await;
+        if !matches!(result, Err(KmsError::Unauthorized(_))) {
+            return Err(KmsError::Default(
+                "SetConstraints was permitted without a configured Crypto Officer".to_owned(),
+            ));
+        }
+        // Get Constraints stays open to every authenticated user.
+        check_role_permission(
+            &kms,
+            "unconfigured@example.com",
+            OperationEnumeration::GetConstraints,
+            &kms.params.crypto_officer,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn crypto_officer_can_set_constraints() -> KResult<()> {
+        let mut config = https_clap_config();
+        config.roles.crypto_officer_users = Some(vec!["officer@example.com".to_owned()]);
+        let kms = test_kms_with_config(config).await?;
+        check_role_permission(
+            &kms,
+            "officer@example.com",
+            OperationEnumeration::SetConstraints,
+            &kms.params.crypto_officer,
+        )
+        .await
     }
 }

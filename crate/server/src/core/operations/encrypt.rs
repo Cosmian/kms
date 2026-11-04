@@ -513,8 +513,8 @@ pub(super) fn encryption_nonce<'a>(
             format!("Encrypt: IV Length of {bits} bits is not valid for {cipher:?}"),
         )
     };
-    // A client-supplied IV is used as is: IV Length only sizes a server-generated IV, and
-    // deployed clients send it in bytes, so an unusable value is not an error in that case.
+    // A client-supplied IV is used as is: IV Length only sizes a server-generated IV, so it is
+    // not validated in that case.
     let iv_supplied = request
         .i_v_counter_nonce
         .as_deref()
@@ -529,12 +529,6 @@ pub(super) fn encryption_nonce<'a>(
                     .filter(|b| (8..=1024).contains(b) && b % 8 == 0)
                     .map(|b| b / 8)
                     .filter(|len| *len == cipher.nonce_size() || cipher.allows_variable_nonce())
-                    .or_else(|| {
-                        // Legacy clients send the length in bytes.
-                        usize::try_from(bits)
-                            .ok()
-                            .filter(|b| *b == cipher.nonce_size())
-                    })
                     .ok_or_else(|| invalid_iv_length(bits))
             })
             .transpose()?

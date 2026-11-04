@@ -510,7 +510,7 @@ replays the steps sequentially.
 | Negative / RSA | `negative/rsa/rsa_decrypt_garbage` | Tests that RSA-OAEP decryption fails when ciphertext is random garbage data | 2 |
 | Negative / RSA | `negative/rsa/rsa_decrypt_with_public_key` | Tests that RSA decryption fails when attempting to use a public key for decryption | 2 |
 | Negative / RSA | `negative/rsa/rsa_encrypt_oversized_data` | Tests that RSA-OAEP encryption fails when plaintext exceeds modulus size limit | 2 |
-| Negative / Security | `negative/security/constraints_enforced` | Server constraints restrict Create and Register for every user until cleared | 8 |
+| Negative / Security | `negative/security/constraints_enforced` | Server constraints restrict Create and Register for every user until cleared | 9 |
 | Negative / Security | `negative/security/foreign_key_operations_hidden` | A user with no grant cannot read or alter another user's key | 7 |
 | Negative / Security | `negative/security/import_replace_existing_foreign` | Import with ReplaceExisting cannot overwrite another user's object | 3 |
 | Negative / Security | `negative/security/locate_cross_tenant` | Locate by Name does not reveal another user's object | 4 |

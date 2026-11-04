@@ -32,12 +32,15 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
     kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType, OpaqueObject},
         kmip_operations::{
             CreateKeyPairResponse, CreateResponse, Destroy, DestroyResponse, GetAttributes,
-            GetAttributesResponse, Revoke, RevokeResponse,
+            GetAttributesResponse, Register, RegisterResponse, Revoke, RevokeResponse,
         },
         kmip_types::{
-            AttributeReference, CryptographicAlgorithm, RecommendedCurve, Tag, UniqueIdentifier,
+            AttributeReference, CryptographicAlgorithm, OpaqueDataType, RecommendedCurve, Tag,
+            UniqueIdentifier,
         },
         requests::{create_ec_key_pair_request, symmetric_key_create_request},
     },
@@ -343,6 +346,47 @@ async fn test_revoke_of_a_pre_active_key_is_refused() -> KResult<()> {
         State::PreActive,
     )
     .await
+}
+
+/// KMIP 2.1 §4.57 has no Pre-Active -> Deactivated transition for any object type: a Pre-Active
+/// Opaque Object is refused too, and can be destroyed directly (OASIS OMOS-M-1-21).
+#[tokio::test]
+async fn test_revoke_of_a_pre_active_opaque_object_is_refused() -> KResult<()> {
+    let app = test_utils::setup_app(None).await;
+    let register = Register {
+        object_type: ObjectType::OpaqueObject,
+        attributes: Attributes {
+            object_type: Some(ObjectType::OpaqueObject),
+            ..Attributes::default()
+        },
+        object: Object::OpaqueObject(OpaqueObject {
+            opaque_data_type: OpaqueDataType::Unknown,
+            opaque_data_value: vec![1, 2, 3],
+        }),
+        protection_storage_masks: None,
+    };
+    let resp: RegisterResponse = test_utils::post_2_1(&app, register).await?;
+    let uid = resp.unique_identifier.to_string();
+    assert_eq!(get_state(&app, &uid).await?, Some(State::PreActive));
+    assert_revoke_refused(
+        &app,
+        &uid,
+        RevocationReasonCode::CessationOfOperation,
+        State::PreActive,
+    )
+    .await?;
+    test_utils::post_2_1::<_, _, DestroyResponse, _>(
+        &app,
+        Destroy {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            remove: false,
+            cascade: false,
+            expected_object_type: None,
+        },
+    )
+    .await?;
+    assert_eq!(get_state(&app, &uid).await?, Some(State::Destroyed));
+    Ok(())
 }
 
 /// Asserts that a Revoke with `reason_code` fails with `Wrong_Key_Lifecycle_State` and

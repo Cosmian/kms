@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -56,9 +56,8 @@ impl CryptoOpSpec for MacOp {
     }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
-        // The usage mask is deliberately not checked: keys created by earlier versions (and by
-        // external clients) carry no MAC bit, and §4.17 only says the mask "indicates" usage.
         matches!(owm.object(), Object::SymmetricKey { .. })
+            && owm.has_usage_mask(CryptographicUsageMask::MACGenerate, false)
     }
 
     fn execute_local(
@@ -161,6 +160,7 @@ impl CryptoOpSpec for MacVerifyOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         matches!(owm.object(), Object::SymmetricKey { .. })
+            && owm.has_usage_mask(CryptographicUsageMask::MACVerify, false)
     }
 
     fn execute_local(
@@ -438,7 +438,7 @@ fn infer_hmac_hashing_algorithm(
 #[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm},
         kmip_2_1::{
             extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_operations::{MAC, MACVerify},
@@ -656,29 +656,89 @@ mod tests {
         Ok(())
     }
 
+    /// MAC needs the `MACGenerate` usage bit, MAC Verify needs `MACVerify`.
     #[tokio::test]
-    async fn test_server_mac_accepts_a_key_without_mac_usage_bit() -> KResult<()> {
+    async fn test_server_mac_requires_mac_usage_bits() -> KResult<()> {
         let kms = test_kms().await?;
         let user = UserId::from("user");
-        // AES keys created with the default mask (Encrypt|Decrypt|...) have no MACGenerate bit
-        let uid = kms
-            .create(
-                symmetric_key_create_request(
+        let create = |algorithm, mask: Option<CryptographicUsageMask>| {
+            let kms = &kms;
+            let user = &user;
+            async move {
+                let mut request = symmetric_key_create_request(
                     VENDOR_ID_COSMIAN,
                     None,
                     256,
-                    CryptographicAlgorithm::AES,
+                    algorithm,
                     EMPTY_TAGS,
                     false,
                     None,
-                )?,
-                &user,
+                )?;
+                if mask.is_some() {
+                    request.attributes.cryptographic_usage_mask = mask;
+                }
+                KResult::Ok(kms.create(request, user).await?.unique_identifier)
+            }
+        };
+        let verify = |uid: &UniqueIdentifier| MACVerify {
+            unique_identifier: uid.clone(),
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..Default::default()
+            }),
+            data: vec![1],
+            mac_data: vec![0; 32],
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
+        };
+        let is_mask_error = |error: &KmsError| {
+            matches!(
+                error,
+                KmsError::Kmip21Error(ErrorReason::Incompatible_Cryptographic_Usage_Mask, _)
             )
-            .await?
-            .unique_identifier;
-        // Keys created by earlier versions and by external clients carry no MAC bit: still usable.
-        kms.mac(mac_request(&uid, Some(&[1]), None, None, None), &user)
+        };
+
+        // A default AES key carries no MAC bit: both operations are refused.
+        let aes = create(CryptographicAlgorithm::AES, None).await?;
+        let error = kms
+            .mac(mac_request(&aes, Some(&[1]), None, None, None), &user)
+            .await
+            .unwrap_err();
+        assert!(is_mask_error(&error), "{error:?}");
+        let error = kms.mac_verify(verify(&aes), &user).await.unwrap_err();
+        assert!(is_mask_error(&error), "{error:?}");
+
+        // MACGenerate alone MACs but cannot verify.
+        let generate_only = create(
+            CryptographicAlgorithm::AES,
+            Some(CryptographicUsageMask::MACGenerate),
+        )
+        .await?;
+        kms.mac(
+            mac_request(&generate_only, Some(&[1]), None, None, None),
+            &user,
+        )
+        .await?;
+        let error = kms
+            .mac_verify(verify(&generate_only), &user)
+            .await
+            .unwrap_err();
+        assert!(is_mask_error(&error), "{error:?}");
+
+        // MACGenerate | MACVerify does both.
+        let both = create(
+            CryptographicAlgorithm::AES,
+            Some(CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify),
+        )
+        .await?;
+        kms.mac(mac_request(&both, Some(&[1]), None, None, None), &user)
             .await?;
+        let response = kms.mac_verify(verify(&both), &user).await?;
+        assert_eq!(
+            response.validity_indicator,
+            Some(ValidityIndicator::Invalid)
+        );
         Ok(())
     }
 

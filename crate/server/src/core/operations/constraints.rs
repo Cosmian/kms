@@ -11,8 +11,7 @@
 //!
 //! Authorization: [`check_role_permission`](super::dispatch::check_role_permission) applies.
 //! When roles are configured, Set Constraints is reserved to Crypto Officers (Operators fail
-//! closed) while Get Constraints is open to all; with no roles configured, any authenticated
-//! user may set them.
+//! closed); with no roles configured it is refused like PKCS11. Get Constraints is open to all.
 //!
 //! Enforcement: while the set is not empty, every Managed Object stored by Create, Create Key
 //! Pair (both keys), Register, Import, Derive Key, Re-key and Re-key Key Pair (including the

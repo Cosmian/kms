@@ -149,6 +149,70 @@ fn test_query_(major: i32, minor: i32) {
     }
 }
 
+/// Operations listed by a KMIP 2.`minor` `QueryOperations` request.
+fn query_operations_2_x(minor: i32) -> Vec<kmip_2_1::kmip_types::OperationEnumeration> {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: minor,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            kmip_2_1::kmip_messages::RequestMessageBatchItem {
+                operation: kmip_2_1::kmip_types::OperationEnumeration::Query,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: kmip_2_1::kmip_operations::Operation::Query(
+                    kmip_2_1::kmip_operations::Query {
+                        query_function: Some(vec![
+                            kmip_2_1::kmip_types::QueryFunction::QueryOperations,
+                        ]),
+                        ..Default::default()
+                    },
+                ),
+                message_extension: None,
+            },
+        )],
+    };
+    let response = get_client()
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)
+        .expect("Failed to send request");
+    let Some(ResponseMessageBatchItemVersioned::V21(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Expected a V21 response batch item");
+    };
+    let Some(kmip_2_1::kmip_operations::Operation::QueryResponse(query_response)) =
+        &batch_item.response_payload
+    else {
+        panic!("Expected QueryResponse");
+    };
+    query_response
+        .operation
+        .clone()
+        .expect("Expected operations")
+}
+
+/// Ping, Set Constraints and Get Constraints are KMIP 2.1 operations: they do not occur in the
+/// KMIP 2.0 specification, so a 2.0 Query must not list them (Login stays: it is in 2.0).
+#[test]
+fn test_query_operations_2_0_omits_2_1_only_operations() {
+    use kmip_2_1::kmip_types::OperationEnumeration as Op;
+    log_init(option_env!("RUST_LOG"));
+    let operations_2_0 = query_operations_2_x(0);
+    for op in [Op::Ping, Op::SetConstraints, Op::GetConstraints] {
+        assert!(!operations_2_0.contains(&op), "{op} listed for KMIP 2.0");
+    }
+    assert!(operations_2_0.contains(&Op::Login));
+
+    let operations_2_1 = query_operations_2_x(1);
+    for op in [Op::Ping, Op::SetConstraints, Op::GetConstraints, Op::Login] {
+        assert!(operations_2_1.contains(&op), "{op} missing for KMIP 2.1");
+    }
+}
+
 #[test]
 fn test_query_rngs_and_server_information_2_1_binary() {
     log_init(option_env!("RUST_LOG"));

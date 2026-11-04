@@ -21,7 +21,7 @@
 //! - `set_attribute`: Asynchronously sets an attribute on the KMIP server.
 //! - `test_set_attribute_server`: The main test function that initializes the server and runs all attribute tests.
 //! - `set_activation_date_whose_deletion_is_refused`: Tests that the activation date can be set but not deleted.
-//! - `set_protection_storage_mask_and_remove_it`: Tests setting and removing the protection storage mask attribute.
+//! - `server_managed_attributes_are_rejected`: Tests that server-managed attributes (including the protection storage mask) are refused.
 //! - `set_link_attribute_and_remove_it`: Tests setting and removing link attributes.
 //! - `set_cryptographic_algorithm_is_rejected_as_read_only`: Tests that setting or deleting the cryptographic algorithm is refused.
 //! - `set_cryptographic_length_is_rejected_as_read_only`: Tests that setting or deleting the cryptographic length is refused.
@@ -145,7 +145,6 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     // Start tests
     //
     set_activation_date_whose_deletion_is_refused(&kms, &uid).await?;
-    set_protection_storage_mask_and_remove_it(&kms, &uid).await?;
     set_cryptographic_algorithm_is_rejected_as_read_only(&kms, &uid).await?;
     set_cryptographic_length_is_rejected_as_read_only(&kms, &uid).await?;
     server_managed_attributes_are_rejected(&kms, &uid).await?;
@@ -204,39 +203,6 @@ async fn set_activation_date_whose_deletion_is_refused(kms: &Arc<KMS>, uid: &str
         Some(offset_datetime)
     );
 
-    Ok(())
-}
-
-async fn set_protection_storage_mask_and_remove_it(kms: &Arc<KMS>, uid: &str) -> KResult<()> {
-    let mask = ProtectionStorageMasks::Software;
-    set_attribute(kms, uid, Attribute::ProtectionStorageMask(mask.clone())).await?;
-    assert_eq!(
-        get_attributes(kms, uid, Tag::ProtectionStorageMask)
-            .await?
-            .attributes
-            .protection_storage_masks,
-        Some(mask)
-    );
-
-    delete_attribute(
-        kms,
-        DeleteAttribute {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-            attribute_references: Some(vec![AttributeReference::Standard(
-                Tag::ProtectionStorageMask,
-            )]),
-            ..DeleteAttribute::default()
-        },
-    )
-    .await?;
-
-    assert!(
-        get_attributes(kms, uid, Tag::ProtectionStorageMask)
-            .await?
-            .attributes
-            .protection_storage_masks
-            .is_none()
-    );
     Ok(())
 }
 
@@ -408,6 +374,7 @@ async fn server_managed_attributes_are_rejected(kms: &Arc<KMS>, uid: &str) -> KR
         Attribute::InitialDate(OffsetDateTime::UNIX_EPOCH),
         Attribute::LastChangeDate(OffsetDateTime::UNIX_EPOCH),
         Attribute::OriginalCreationDate(OffsetDateTime::UNIX_EPOCH),
+        Attribute::ProtectionStorageMask(ProtectionStorageMasks::Software),
         Attribute::Fresh(true),
     ] {
         let results = [
@@ -465,6 +432,7 @@ async fn server_managed_attributes_are_rejected(kms: &Arc<KMS>, uid: &str) -> KR
         .get_attributes(request, &UserId::from(USER))
         .await?
         .attributes;
+    assert!(after.protection_storage_masks.is_none());
     assert_eq!(after, before);
     Ok(())
 }

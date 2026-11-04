@@ -43,7 +43,7 @@ impl Tag {
                 | Self::ObjectType
                 | Self::OpaqueDataType
                 | Self::OriginalCreationDate
-                | Self::ProtectionStorageMasks
+                | Self::ProtectionStorageMask
                 | Self::RandomNumberGenerator
                 | Self::RotateDate
                 | Self::RotateGeneration
@@ -119,7 +119,7 @@ mod tests {
                 kmip_objects::ObjectType,
                 kmip_types::{
                     CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
-                    NistKeyType, UniqueIdentifier,
+                    NistKeyType, ProtectionStorageMasks, UniqueIdentifier,
                 },
             },
         };
@@ -176,6 +176,10 @@ mod tests {
                 Attribute::X509CertificateSubject("CN=x".to_owned()),
                 Tag::X509CertificateSubject,
             ),
+            (
+                Attribute::ProtectionStorageMask(ProtectionStorageMasks::Software),
+                Tag::ProtectionStorageMask,
+            ),
         ] {
             assert_eq!(attribute.tag(), Some(tag), "{attribute}");
         }
@@ -212,6 +216,7 @@ mod tests {
                 Tag::Fresh,
                 Tag::LastChangeDate,
                 Tag::OriginalCreationDate,
+                Tag::ProtectionStorageMask,
                 Tag::State,
             ],
             [ServerManaged; 4],
