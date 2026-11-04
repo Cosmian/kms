@@ -1331,7 +1331,6 @@ mod tests {
     use super::{Role, get_hash_algorithm, kacls_client};
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn get_hash_algorithm_all_names() {
         for (name, size) in [
             ("sha-256", 32),

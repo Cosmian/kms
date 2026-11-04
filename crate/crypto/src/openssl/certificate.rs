@@ -98,10 +98,10 @@ pub fn openssl_x509_to_certificate_attributes(x509: &X509) -> CertificateAttribu
             _ => (),
         }
     }
-    if let Ok(serial_number) = x509.serial_number().to_bn() {
-        if let Ok(serial_number) = serial_number.to_hex_str() {
-            attributes.certificate_subject_serial_number = serial_number.to_string();
-        }
+    if let Ok(serial_number) = x509.serial_number().to_bn()
+        && let Ok(serial_number) = serial_number.to_hex_str()
+    {
+        attributes.certificate_subject_serial_number = serial_number.to_string();
     }
 
     // add the SPKI tag corresponding to the `SubjectKeyIdentifier` X509 extension
@@ -216,7 +216,6 @@ fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<
     })
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use crate::openssl::certificate::openssl_x509_to_certificate_attributes;

@@ -122,16 +122,16 @@ pub(crate) async fn modify_attribute(
     // The transition Pre-Active → Active is triggered automatically when the new date is
     // in the past or equals the current time.
     let mut activate = false;
-    if let Attribute::ActivationDate(_) = &request.new_attribute {
-        if current_state != State::PreActive {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Wrong_Key_Lifecycle_State,
-                format!(
-                    "ModifyAttribute: ActivationDate can only be modified on a Pre-Active object \
+    if let Attribute::ActivationDate(_) = &request.new_attribute
+        && current_state != State::PreActive
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Wrong_Key_Lifecycle_State,
+            format!(
+                "ModifyAttribute: ActivationDate can only be modified on a Pre-Active object \
                      (current state: {current_state:?})"
-                ),
-            ));
-        }
+            ),
+        ));
     }
 
     check_grant(

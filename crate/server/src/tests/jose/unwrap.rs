@@ -205,7 +205,7 @@ async fn test_unwrap_key_unsupported_alg() -> KResult<()> {
     let protected = build_protected_header("dir", "A256GCM", "some-kid");
     let req = actix_test::TestRequest::post()
         .uri("/v1/crypto/keys/unwrap")
-        .set_json(&json!({
+        .set_json(json!({
             "protected": protected,
             "encrypted_key": URL_SAFE_NO_PAD.encode(b"fake-wrapped-key")
         }))
@@ -226,7 +226,7 @@ async fn test_unwrap_key_missing_enc() -> KResult<()> {
     let protected = URL_SAFE_NO_PAD.encode(header.to_string().as_bytes());
     let req = actix_test::TestRequest::post()
         .uri("/v1/crypto/keys/unwrap")
-        .set_json(&json!({
+        .set_json(json!({
             "protected": protected,
             "encrypted_key": URL_SAFE_NO_PAD.encode(b"fake")
         }))
@@ -237,7 +237,7 @@ async fn test_unwrap_key_missing_enc() -> KResult<()> {
     Ok(())
 }
 
-/// Error case: empty encrypted_key should return 400.
+/// Error case: empty `encrypted_key` should return 400.
 #[tokio::test]
 async fn test_unwrap_key_empty_encrypted_key() -> KResult<()> {
     log_init(None);
@@ -248,7 +248,7 @@ async fn test_unwrap_key_empty_encrypted_key() -> KResult<()> {
 
     let req = actix_test::TestRequest::post()
         .uri("/v1/crypto/keys/unwrap")
-        .set_json(&json!({
+        .set_json(json!({
             "protected": protected,
             "encrypted_key": ""
         }))
@@ -276,7 +276,7 @@ async fn test_unwrap_key_size_mismatch() -> KResult<()> {
     let protected = build_protected_header("RSA-OAEP", "A256GCM", &kid_priv);
     let req = actix_test::TestRequest::post()
         .uri("/v1/crypto/keys/unwrap")
-        .set_json(&json!({
+        .set_json(json!({
             "protected": protected,
             "encrypted_key": encrypted_key
         }))

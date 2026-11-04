@@ -35,7 +35,7 @@ async fn test_tokenize_hash_sha2() -> CosmianResult<()> {
         "hash",
         &["--data", "hello world", "--method", "sha2"],
     )?;
-    assert!(!out.is_empty());
+    assert_ne!(out, "");
     Ok(())
 }
 
@@ -48,7 +48,7 @@ async fn test_tokenize_hash_sha3() -> CosmianResult<()> {
         "hash",
         &["--data", "hello world", "--method", "sha3"],
     )?;
-    assert!(!out.is_empty());
+    assert_ne!(out, "");
     Ok(())
 }
 

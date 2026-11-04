@@ -126,7 +126,10 @@ macro_rules! impl_display {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(untagged)]
-#[expect(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
+)]
 pub enum Operation {
     Activate(Activate),
     ActivateResponse(ActivateResponse),

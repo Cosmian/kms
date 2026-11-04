@@ -407,16 +407,16 @@ fn infer_hmac_hashing_algorithm(
     key_block: &KeyBlock,
     attrs: &Attributes,
 ) -> KResult<HashingAlgorithm> {
-    if let Some(ca) = key_block.cryptographic_algorithm {
-        if let Ok(ha) = hmac_algorithm_to_hashing(ca) {
-            return Ok(ha);
-        }
+    if let Some(ca) = key_block.cryptographic_algorithm
+        && let Ok(ha) = hmac_algorithm_to_hashing(ca)
+    {
+        return Ok(ha);
     }
     // the Cryptographic Algorithm attribute (KMIP 2.1 §4.12) when the key block does not carry it
-    if let Some(ca) = attrs.cryptographic_algorithm {
-        if let Ok(ha) = hmac_algorithm_to_hashing(ca) {
-            return Ok(ha);
-        }
+    if let Some(ca) = attrs.cryptographic_algorithm
+        && let Ok(ha) = hmac_algorithm_to_hashing(ca)
+    {
+        return Ok(ha);
     }
     let cp = attrs
         .cryptographic_parameters
@@ -435,7 +435,10 @@ fn infer_hmac_hashing_algorithm(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
@@ -470,7 +473,7 @@ mod tests {
         let key = vec![1, 2, 3, 4];
         let data = vec![];
         let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
-        assert!(!hmac.is_empty());
+        assert_ne!(hmac.len(), 0);
 
         // Empty key
         let key = vec![];
@@ -497,7 +500,7 @@ mod tests {
 
         for algo in algorithms {
             let hmac = compute_hmac(&key, &data, algo)?;
-            assert!(!hmac.is_empty());
+            assert_ne!(hmac.len(), 0);
         }
 
         // Test unsupported algorithm

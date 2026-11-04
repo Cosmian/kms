@@ -8,10 +8,11 @@ use std::ptr;
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
     asn1::Asn1OctetString,
+    bn::BigNum,
     nid::Nid,
     pkey::{PKeyRef, Private},
     sha::Sha1,
-    x509::{X509Crl, X509Extension, X509Ref},
+    x509::{X509Crl, X509Extension, X509Ref, extension::CrlNumber},
 };
 use time::OffsetDateTime;
 
@@ -37,9 +38,19 @@ pub enum CrlReasonCode {
 
 impl CrlReasonCode {
     /// Returns the reason code as an `openssl_sys::BN_ULONG`.
-    #[expect(clippy::as_conversions)]
     fn as_bn_ulong(self) -> openssl_sys::BN_ULONG {
-        openssl_sys::BN_ULONG::from(self as u32)
+        openssl_sys::BN_ULONG::from(match self {
+            Self::Unspecified => 0_u32,
+            Self::KeyCompromise => 1,
+            Self::CaCompromise => 2,
+            Self::AffiliationChanged => 3,
+            Self::Superseded => 4,
+            Self::CessationOfOperation => 5,
+            Self::CertificateHold => 6,
+            Self::RemoveFromCRL => 8,
+            Self::PrivilegeWithdrawn => 9,
+            Self::AaCompromise => 10,
+        })
     }
 }
 
@@ -70,7 +81,7 @@ pub struct RevokedEntry {
 ///
 /// # Errors
 /// Returns `CryptoError` on any OpenSSL failure.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn build_crl(
     issuer_cert: &X509Ref,
     issuer_key: &PKeyRef<Private>,
@@ -173,7 +184,7 @@ pub fn build_crl(
 struct CrlGuard(*mut openssl_sys::X509_CRL);
 
 impl Drop for CrlGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was either null-checked before wrapping or is handled by
         // X509_CRL_free which accepts null as a no-op.
@@ -182,7 +193,7 @@ impl Drop for CrlGuard {
 }
 
 /// Add a single revoked certificate entry to the CRL.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_revoked_entry(
     crl: *mut openssl_sys::X509_CRL,
     entry: &RevokedEntry,
@@ -238,10 +249,10 @@ unsafe fn add_revoked_entry(
 
         // Add reason code extension (RFC 5280 §5.3.1) — non-critical, SHOULD be present
         // Omit if reason is Unspecified (conforming to RFC 5280 §5.3.1 recommendation).
-        if let Some(reason) = entry.reason_code {
-            if reason != CrlReasonCode::Unspecified {
-                add_reason_code_extension(revoked, reason)?;
-            }
+        if let Some(reason) = entry.reason_code
+            && reason != CrlReasonCode::Unspecified
+        {
+            add_reason_code_extension(revoked, reason)?;
         }
 
         // Add invalidity date extension (RFC 5280 §5.3.2) — non-critical
@@ -267,7 +278,7 @@ unsafe fn add_revoked_entry(
 /// Since openssl-sys 0.9 does not expose `ASN1_ENUMERATED_new`/`_set`, we
 /// create an `ASN1_INTEGER` via `BN_to_ASN1_INTEGER` and cast. The i2d handler
 /// for `NID_crl_reason` expects an `ASN1_ENUMERATED*` which works transparently.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_reason_code_extension(
     revoked: *mut openssl_sys::X509_REVOKED,
     reason: CrlReasonCode,
@@ -315,7 +326,7 @@ unsafe fn add_reason_code_extension(
 /// `GeneralizedTime`.  We therefore build the time value via `ASN1_TIME_set_string` with
 /// an explicit `"YYYYMMDDHHmmssZ"` string (`GeneralizedTime` format), which causes OpenSSL
 /// to store the value with the `V_ASN1_GENERALIZEDTIME` tag regardless of the date.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn add_invalidity_date_extension(
     revoked: *mut openssl_sys::X509_REVOKED,
     date: OffsetDateTime,
@@ -384,7 +395,7 @@ unsafe fn add_invalidity_date_extension(
 ///   keyIdentifier [0] IMPLICIT KeyIdentifier OPTIONAL }
 /// KeyIdentifier ::= OCTET STRING
 /// ```
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn add_aki_extension(
     crl: *mut openssl_sys::X509_CRL,
     issuer_cert: &X509Ref,
@@ -439,25 +450,14 @@ fn add_aki_extension(
 /// Write an ASN.1 DER length field into `buf` (short or long form).
 ///
 /// Supports lengths up to 65 535.
-// SAFETY: casts are guarded by explicit range checks immediately above each cast.
-#[expect(
-    clippy::as_conversions,
-    reason = "casts are guarded by explicit range checks immediately above each `as` conversion"
-)]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "casts are guarded by explicit range checks immediately above each `as` conversion"
-)]
 fn aki_write_length(buf: &mut Vec<u8>, len: usize) -> Result<(), CryptoError> {
+    let [.., hi, lo] = len.to_be_bytes();
     if len < 0x80 {
-        buf.push(len as u8);
+        buf.push(lo);
     } else if len <= 0xFF {
-        buf.push(0x81_u8);
-        buf.push(len as u8);
+        buf.extend([0x81, lo]);
     } else if len <= 0xFFFF {
-        buf.push(0x82_u8);
-        buf.push((len >> 8) as u8);
-        buf.push((len & 0xFF) as u8);
+        buf.extend([0x82, hi, lo]);
     } else {
         return Err(CryptoError::Default(format!(
             "AKI key identifier length {len} exceeds 65535"
@@ -467,47 +467,27 @@ fn aki_write_length(buf: &mut Vec<u8>, len: usize) -> Result<(), CryptoError> {
 }
 
 /// Add CRL Number extension (RFC 5280 §5.2.3 — MUST, non-critical).
-#[expect(unsafe_code)]
-unsafe fn add_crl_number_extension(
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
+fn add_crl_number_extension(
     crl: *mut openssl_sys::X509_CRL,
     crl_number: u64,
 ) -> Result<(), CryptoError> {
-    unsafe {
-        let bn = openssl_sys::BN_new();
-        if bn.is_null() {
-            return Err(CryptoError::Default("BN_new failed".to_owned()));
-        }
-        // BN_set_word sets the BIGNUM to a u64 value
-        if openssl_sys::BN_set_word(bn, crl_number) != 1 {
-            openssl_sys::BN_free(bn);
-            return Err(CryptoError::Default("BN_set_word failed".to_owned()));
-        }
-        let asn1_int = openssl_sys::BN_to_ASN1_INTEGER(bn, ptr::null_mut());
-        openssl_sys::BN_free(bn);
-        if asn1_int.is_null() {
-            return Err(CryptoError::Default(
-                "BN_to_ASN1_INTEGER (CRL Number) failed".to_owned(),
-            ));
-        }
-        let rc = openssl_sys::X509_CRL_add1_ext_i2d(
-            crl,
-            openssl_sys::NID_crl_number,
-            asn1_int.cast(),
-            0, // non-critical
-            0, // flags
-        );
-        openssl_sys::ASN1_INTEGER_free(asn1_int);
-        if rc != 1 {
-            return Err(CryptoError::Default(
-                "X509_CRL_add1_ext_i2d (CRL Number) failed".to_owned(),
-            ));
-        }
-        Ok(())
+    let bn = BigNum::from_slice(&crl_number.to_be_bytes())
+        .map_err(|e| CryptoError::Default(format!("CRL Number extension: {e}")))?;
+    let ext = CrlNumber::new(bn)
+        .and_then(CrlNumber::build)
+        .map_err(|e| CryptoError::Default(format!("CRL Number extension: {e}")))?;
+    // SAFETY: `crl` is a valid CRL owned by the caller; ext.as_ptr() is valid for this call.
+    let rc = unsafe { openssl_sys::X509_CRL_add_ext(crl, ext.as_ptr(), -1) };
+    if rc != 1 {
+        return Err(CryptoError::Default(
+            "X509_CRL_add_ext (CRL Number) failed".to_owned(),
+        ));
     }
+    Ok(())
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use openssl::{
         pkey::PKey,
@@ -581,6 +561,19 @@ mod tests {
         let cert = builder.build();
 
         (cert, pkey)
+    }
+
+    #[test]
+    fn crl_number_extension_encodes_full_u64() {
+        let (cert, key) = create_test_ca();
+        let n = 0x0102_0304_0506_0708_u64;
+        let der = build_crl(&cert, &key, &[], n, 7)
+            .expect("build_crl")
+            .to_der()
+            .expect("to_der");
+        let (_, parsed) = x509_parser::parse_x509_crl(&der).expect("parse CRL");
+        let number = parsed.crl_number().expect("crl number");
+        assert_eq!(number.to_bytes_be(), n.to_be_bytes());
     }
 
     #[test]
@@ -787,5 +780,73 @@ mod tests {
              got 0x{tag_byte:02X} instead. \
              UTCTime (0x17) here means ASN1_TIME_set is being used instead of ASN1_TIME_set_string."
         );
+    }
+}
+#[cfg(test)]
+mod characterization_tests {
+    use super::aki_write_length;
+
+    #[test]
+    fn characterization_aki_write_length_short_and_long_forms() {
+        // len < 128 (short form)
+        let mut buf = Vec::new();
+        aki_write_length(&mut buf, 0x42).unwrap();
+        assert_eq!(buf, vec![0x42]);
+
+        // len in 128..=255 (2 bytes)
+        buf.clear();
+        aki_write_length(&mut buf, 0x80).unwrap();
+        assert_eq!(buf, vec![0x81, 0x80]);
+
+        buf.clear();
+        aki_write_length(&mut buf, 0xFF).unwrap();
+        assert_eq!(buf, vec![0x81, 0xFF]);
+
+        // len in 256..=65535 (3 bytes)
+        buf.clear();
+        aki_write_length(&mut buf, 0x0100).unwrap();
+        assert_eq!(buf, vec![0x82, 0x01, 0x00]);
+
+        buf.clear();
+        aki_write_length(&mut buf, 0x1234).unwrap();
+        assert_eq!(buf, vec![0x82, 0x12, 0x34]);
+
+        buf.clear();
+        aki_write_length(&mut buf, 0xFFFF).unwrap();
+        assert_eq!(buf, vec![0x82, 0xFF, 0xFF]);
+
+        // len > 65535 fails
+        buf.clear();
+        let err = aki_write_length(&mut buf, 0x10000).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "AKI key identifier length 65536 exceeds 65535"
+        );
+    }
+
+    #[test]
+    fn characterization_crl_reason_code_as_bn_ulong_matches_rfc_5280() {
+        use super::CrlReasonCode::{
+            AaCompromise, AffiliationChanged, CaCompromise, CertificateHold, CessationOfOperation,
+            KeyCompromise, PrivilegeWithdrawn, RemoveFromCRL, Superseded, Unspecified,
+        };
+        for (reason, value) in [
+            (Unspecified, 0_u8),
+            (KeyCompromise, 1),
+            (CaCompromise, 2),
+            (AffiliationChanged, 3),
+            (Superseded, 4),
+            (CessationOfOperation, 5),
+            (CertificateHold, 6),
+            (RemoveFromCRL, 8),
+            (PrivilegeWithdrawn, 9),
+            (AaCompromise, 10),
+        ] {
+            assert_eq!(
+                reason.as_bn_ulong(),
+                openssl_sys::BN_ULONG::from(value),
+                "{reason:?}"
+            );
+        }
     }
 }

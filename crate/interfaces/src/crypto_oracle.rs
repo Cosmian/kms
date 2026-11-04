@@ -511,10 +511,8 @@ impl SigningAlgorithm {
     /// message length would silently pick SHA-1 for a 20-byte message, or SHA-384/SHA-512 for
     /// a 48/64-byte one, producing signatures no default-configured verifier accepts.
     const fn default_rsa_hash(input_is_digest: bool, input_len: usize) -> HashingAlgorithm {
-        if input_is_digest {
-            if let Some(hash) = Self::infer_hash_from_digest_len(input_len) {
-                return hash;
-            }
+        if input_is_digest && let Some(hash) = Self::infer_hash_from_digest_len(input_len) {
+            return hash;
         }
         HashingAlgorithm::SHA256
     }
@@ -538,7 +536,7 @@ impl SigningAlgorithm {
     #[cfg(feature = "non-fips")]
     #[expect(
         clippy::unnecessary_wraps,
-        reason = "signature must match the FIPS variant of this function"
+        reason = "signature must match the FIPS variant, which can fail"
     )]
     const fn check_rsa_signature_hash_allowed(
         _hashing_algorithm: HashingAlgorithm,
@@ -818,7 +816,6 @@ pub trait CryptoOracle: Send + Sync {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
 
     use super::*;

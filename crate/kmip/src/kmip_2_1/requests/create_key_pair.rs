@@ -150,7 +150,10 @@ fn build_mask_from_curve(
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
 #[cfg(feature = "non-fips")]
-#[expect(clippy::unnecessary_wraps)]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "same signature as the fallible FIPS variant"
+)]
 const fn build_mask_from_curve(
     _curve: RecommendedCurve,
     _is_private_mask: bool,

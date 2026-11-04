@@ -260,19 +260,19 @@ async fn generate_ec_key_pair(
     // `alg=ES256/384`) instead of a pure encryption/key-agreement key. Override
     // the usage mask on every attribute set to the KeyAgreement-only mask in
     // that case.
-    if let Some(alg) = alg {
-        if matches!(alg, "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW") {
-            let key_agreement_mask = usage_mask_from_alg(alg);
-            for attrs in [
-                create_req.common_attributes.as_mut(),
-                create_req.private_key_attributes.as_mut(),
-                create_req.public_key_attributes.as_mut(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
-            }
+    if let Some(alg) = alg
+        && matches!(alg, "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")
+    {
+        let key_agreement_mask = usage_mask_from_alg(alg);
+        for attrs in [
+            create_req.common_attributes.as_mut(),
+            create_req.private_key_attributes.as_mut(),
+            create_req.public_key_attributes.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            attrs.cryptographic_usage_mask = Some(key_agreement_mask);
         }
     }
 
@@ -439,19 +439,19 @@ async fn generate_okp_key_pair(
     // a generated X25519 key authorized for arbitrary operations (e.g. generic
     // encrypt/decrypt) even though the validation above only permits it to be used
     // for ECDH-ES key agreement. Restrict it to KeyAgreement explicitly.
-    if crv == "X25519" {
-        if let Some(alg) = alg {
-            let key_agreement_mask = usage_mask_from_alg(alg);
-            for attrs in [
-                create_req.common_attributes.as_mut(),
-                create_req.private_key_attributes.as_mut(),
-                create_req.public_key_attributes.as_mut(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
-            }
+    if crv == "X25519"
+        && let Some(alg) = alg
+    {
+        let key_agreement_mask = usage_mask_from_alg(alg);
+        for attrs in [
+            create_req.common_attributes.as_mut(),
+            create_req.private_key_attributes.as_mut(),
+            create_req.public_key_attributes.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            attrs.cryptographic_usage_mask = Some(key_agreement_mask);
         }
     }
 

@@ -48,7 +48,7 @@ fn aes_key_value(key_value: &[u8]) -> KeyValue {
         attributes: Some(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(key_value.len() as i32 * 8),
+            cryptographic_length: Some(i32::try_from(key_value.len()).unwrap() * 8),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::default()
@@ -62,7 +62,7 @@ fn aes_key_block(key_value: &[u8]) -> KeyBlock {
         key_compression_type: None,
         key_value: Some(aes_key_value(key_value)),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        cryptographic_length: Some(key_value.len() as i32 * 8),
+        cryptographic_length: Some(i32::try_from(key_value.len()).unwrap() * 8),
         key_wrapping_data: None,
     }
 }
@@ -100,7 +100,7 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                     },
                     TTLV {
                         tag: "CryptographicLength".into(),
-                        value: TTLValue::Integer(key_value.len() as i32 * 8),
+                        value: TTLValue::Integer(i32::try_from(key_value.len()).unwrap() * 8),
                     },
                     TTLV {
                         tag: "CryptographicUsageMask".into(),
@@ -147,7 +147,7 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
             },
             TTLV {
                 tag: "CryptographicLength".into(),
-                value: TTLValue::Integer(key_value.len() as i32 * 8),
+                value: TTLValue::Integer(i32::try_from(key_value.len()).unwrap() * 8),
             },
         ]),
     }
@@ -579,7 +579,10 @@ fn test_attributes() {
 fn test_some_attributes() {
     #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
     #[serde(untagged)]
-    #[expect(clippy::large_enum_variant)]
+    #[expect(
+        clippy::large_enum_variant,
+        reason = "test-local serde wrapper around a KMIP wire type"
+    )]
     enum Wrapper {
         #[serde(rename_all = "PascalCase")]
         Attr {

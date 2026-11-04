@@ -18,8 +18,6 @@
 //! - reconstructed key object intact after peer revocation.
 //! - Operator (non-candidate) cannot peer-revoke a CO.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::sync::Arc;
 
 use cosmian_kms_access::access::CryptoOfficerConfig;
@@ -2042,7 +2040,7 @@ async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
 
     // Reconstruct — source key is still alive (no ceremony destruction).
     let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
-    assert!(!reconstructed_uid.is_empty());
+    assert_ne!(reconstructed_uid.len(), 0);
 
     Ok(())
 }

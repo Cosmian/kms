@@ -309,12 +309,12 @@ fn check_requested_extensions(csr_der: &[u8]) -> KResult<()> {
             if let ParsedExtension::ParseError { .. } = ext.parsed_extension() {
                 return Err(invalid(format!("CSR extension {oid} is not valid DER")));
             }
-            if let ParsedExtension::KeyUsage(ku) = ext.parsed_extension() {
-                if ku.key_cert_sign() || ku.crl_sign() {
-                    return Err(invalid(
-                        "CSR keyUsage must not include keyCertSign or cRLSign",
-                    ));
-                }
+            if let ParsedExtension::KeyUsage(ku) = ext.parsed_extension()
+                && (ku.key_cert_sign() || ku.crl_sign())
+            {
+                return Err(invalid(
+                    "CSR keyUsage must not include keyCertSign or cRLSign",
+                ));
             }
         }
     }
@@ -535,13 +535,11 @@ impl CertTemplate {
                 )));
             }
         }
-        if !any_san {
-            if let Some(kind) = requests.other_san_types.first() {
-                return Err(invalid(format!(
-                    "SAN type {kind} is not allowed by the template (requires allow_any_identity \
+        if !any_san && let Some(kind) = requests.other_san_types.first() {
+            return Err(invalid(format!(
+                "SAN type {kind} is not allowed by the template (requires allow_any_identity \
                      = true and no san_*_regex)"
-                )));
-            }
+            )));
         }
         Ok(())
     }

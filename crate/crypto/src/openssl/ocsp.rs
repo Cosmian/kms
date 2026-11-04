@@ -18,11 +18,14 @@ use std::{
 };
 
 use cosmian_logger::warn;
-use foreign_types::ForeignTypeRef;
+use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
+    hash::MessageDigest,
     nid::Nid,
+    ocsp::{OcspBasicResponse, OcspRequest, OcspResponse, OcspResponseStatus},
     pkey::{PKeyRef, Private},
-    x509::X509Ref,
+    stack::Stack,
+    x509::{X509, X509Ref},
 };
 use time::OffsetDateTime;
 
@@ -163,36 +166,9 @@ pub struct ParsedOcspQuery {
 // RAII guards for FFI-allocated objects
 // ──────────────────────────────────────────────────────────────
 
-struct BasicRespGuard(*mut openssl_sys::OCSP_BASICRESP);
-impl Drop for BasicRespGuard {
-    #[expect(unsafe_code)]
-    fn drop(&mut self) {
-        // SAFETY: pointer was null-checked before wrapping.
-        unsafe { openssl_sys::OCSP_BASICRESP_free(self.0) }
-    }
-}
-
-struct OcspResponseGuard(*mut openssl_sys::OCSP_RESPONSE);
-impl Drop for OcspResponseGuard {
-    #[expect(unsafe_code)]
-    fn drop(&mut self) {
-        // SAFETY: pointer was null-checked before wrapping.
-        unsafe { openssl_sys::OCSP_RESPONSE_free(self.0) }
-    }
-}
-
-struct OcspRequestGuard(*mut openssl_sys::OCSP_REQUEST);
-impl Drop for OcspRequestGuard {
-    #[expect(unsafe_code)]
-    fn drop(&mut self) {
-        // SAFETY: pointer was null-checked before wrapping.
-        unsafe { openssl_sys::OCSP_REQUEST_free(self.0) }
-    }
-}
-
 struct GeneralizedTimeGuard(*mut openssl_sys::ASN1_GENERALIZEDTIME);
 impl Drop for GeneralizedTimeGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { ASN1_GENERALIZEDTIME_free(self.0) }
@@ -201,7 +177,7 @@ impl Drop for GeneralizedTimeGuard {
 
 struct CidGuard(*mut openssl_sys::OCSP_CERTID);
 impl Drop for CidGuard {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn drop(&mut self) {
         // SAFETY: pointer was null-checked before wrapping.
         unsafe { openssl_sys::OCSP_CERTID_free(self.0) }
@@ -218,25 +194,13 @@ impl Drop for CidGuard {
 ///
 /// # Errors
 /// Returns [`CryptoError`] if the DER is malformed or contains no certificate IDs.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, CryptoError> {
-    let req_len = c_long::try_from(request_der.len())
-        .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
+    let req = OcspRequest::from_der(request_der)
+        .map_err(|e| CryptoError::Default(format!("Failed to parse OCSP request DER: {e}")))?;
 
-    // SAFETY: d2i_OCSP_REQUEST advances the pointer and returns null on error.
-    let req = unsafe {
-        let mut p = request_der.as_ptr();
-        openssl_sys::d2i_OCSP_REQUEST(ptr::null_mut(), &raw mut p, req_len)
-    };
-    if req.is_null() {
-        return Err(CryptoError::Default(
-            "Failed to parse OCSP request DER".to_owned(),
-        ));
-    }
-    let _req_guard = OcspRequestGuard(req);
-
-    // SAFETY: req is non-null (checked above).
-    let count = unsafe { ocsp_ffi::OCSP_request_onereq_count(req) };
+    // SAFETY: `req` is a live parsed request.
+    let count = unsafe { ocsp_ffi::OCSP_request_onereq_count(req.as_ptr()) };
     if count <= 0 {
         return Err(CryptoError::Default(
             "OCSP request contains no certificate IDs".to_owned(),
@@ -258,7 +222,7 @@ pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, Cr
 
     for i in 0..count {
         // SAFETY: i is in [0, count), req is non-null.
-        let one_req = unsafe { ocsp_ffi::OCSP_request_onereq_get0(req, i) };
+        let one_req = unsafe { ocsp_ffi::OCSP_request_onereq_get0(req.as_ptr(), i) };
         if one_req.is_null() {
             return Err(CryptoError::Default(format!(
                 "OCSP_request_onereq_get0 returned null for index {i}"
@@ -292,7 +256,7 @@ pub fn parse_ocsp_request(request_der: &[u8]) -> Result<Vec<ParsedOcspQuery>, Cr
 /// build does not support) yields `false`: otherwise one matching `CertId` would let
 /// the responder sign statuses for other issuers' `CertId`s, looked up by serial
 /// under this CA. Returns `false` for an empty query list.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn verify_issuer_hashes_match_ca(
     queries: &[ParsedOcspQuery],
     ca_cert: &X509Ref,
@@ -301,18 +265,17 @@ pub fn verify_issuer_hashes_match_ca(
         return Ok(false);
     }
     for q in queries {
-        // SAFETY: EVP_get_digestbynid returns null for an unrecognised NID; checked below.
-        let md = unsafe { openssl_sys::EVP_get_digestbynid(q.hash_algorithm_nid) };
-        if md.is_null() {
-            // Unknown/unsupported digest algorithm — cannot match.
+        // Unknown/unsupported digest algorithm: cannot match.
+        let Some(md) = MessageDigest::from_nid(Nid::from_raw(q.hash_algorithm_nid)) else {
             return Ok(false);
-        }
+        };
 
         // Build a reference OCSP_CERTID from the CA itself. With a null subject OpenSSL hashes
         // the *issuer's own* subject name and public key; passing the CA as subject would hash
         // the CA's issuer name instead, which differs for every non-self-signed (sub-)CA.
         // SAFETY: ca_cert is valid; a null subject is allowed; null is returned on error.
-        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ptr::null(), ca_cert.as_ptr()) };
+        let ref_cid =
+            unsafe { ocsp_ffi::OCSP_cert_to_id(md.as_ptr(), ptr::null(), ca_cert.as_ptr()) };
         if ref_cid.is_null() {
             return Ok(false);
         }
@@ -419,7 +382,7 @@ pub fn verify_delegated_responder_authorization(signer_cert_der: &[u8]) -> Resul
 /// - RFC 6960 §4.4.1 + RFC 9654 §2.1 — Nonce extension
 /// - RFC 6960 §4.4.4 — Archive-cutoff extension
 /// - RFC 6960 §4.2.2.2 — Authorized responder
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn build_ocsp_response(
     request_der: &[u8],
     _issuer_cert: &X509Ref,
@@ -428,21 +391,8 @@ pub fn build_ocsp_response(
     entries: &[OcspStatusEntry],
     config: &OcspBuildConfig,
 ) -> Result<Vec<u8>, CryptoError> {
-    let req_len = c_long::try_from(request_der.len())
-        .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
-
-    // Parse the request.
-    // SAFETY: d2i_OCSP_REQUEST advances the raw pointer; returns null on error.
-    let req = unsafe {
-        let mut p = request_der.as_ptr();
-        openssl_sys::d2i_OCSP_REQUEST(ptr::null_mut(), &raw mut p, req_len)
-    };
-    if req.is_null() {
-        return Err(CryptoError::Default(
-            "Failed to parse OCSP request DER".to_owned(),
-        ));
-    }
-    let _req_guard = OcspRequestGuard(req);
+    let req = OcspRequest::from_der(request_der)
+        .map_err(|e| CryptoError::Default(format!("Failed to parse OCSP request DER: {e}")))?;
 
     // Allocate a new BasicResponse.
     // SAFETY: OCSP_BASICRESP_new returns null on OOM.
@@ -450,7 +400,8 @@ pub fn build_ocsp_response(
     if brsp.is_null() {
         return Err(CryptoError::Default("OCSP_BASICRESP_new failed".to_owned()));
     }
-    let brsp_guard = BasicRespGuard(brsp);
+    // SAFETY: `brsp` is non-null and freshly allocated; `OcspBasicResponse` frees it.
+    let brsp = unsafe { OcspBasicResponse::from_ptr(brsp) };
 
     // ── Compute thisUpdate and nextUpdate ────────────────────────────────────────
     let now_epoch = to_c_long(OffsetDateTime::now_utc().unix_timestamp())?;
@@ -478,10 +429,10 @@ pub fn build_ocsp_response(
 
     // ── Add status for each ONEREQ in the request ────────────────────────────────
     // SAFETY: req is non-null.
-    let count = unsafe { ocsp_ffi::OCSP_request_onereq_count(req) };
+    let count = unsafe { ocsp_ffi::OCSP_request_onereq_count(req.as_ptr()) };
     for i in 0..count {
         // SAFETY: i in [0, count).
-        let one_req = unsafe { ocsp_ffi::OCSP_request_onereq_get0(req, i) };
+        let one_req = unsafe { ocsp_ffi::OCSP_request_onereq_get0(req.as_ptr(), i) };
         if one_req.is_null() {
             continue;
         }
@@ -499,125 +450,54 @@ pub fn build_ocsp_response(
             .iter()
             .find(|e| e.serial_hex.eq_ignore_ascii_case(&serial_hex));
 
-        add_single_response(brsp, cid, entry, this_update, next_update)?;
+        add_single_response(brsp.as_ptr(), cid, entry, this_update, next_update)?;
     }
 
     // ── Nonce extension (RFC 9654 §2.1, RFC 6960 §4.4.1) ──────────────────────────
-    handle_nonce(req, brsp, config.nonce_policy)?;
+    handle_nonce(req.as_ptr(), brsp.as_ptr(), config.nonce_policy)?;
 
     // ── Archive-cutoff extension (RFC 6960 §4.4.4) ───────────────────────────────
     if let Some(cutoff_secs) = config.archive_cutoff_secs {
-        add_archive_cutoff(brsp, now_epoch, cutoff_secs)?;
+        add_archive_cutoff(brsp.as_ptr(), now_epoch, cutoff_secs)?;
     }
 
     // ── Sign the BasicResponse ───────────────────────────────────────────────────
     // RSA: SHA-256; ECDSA: digest matching the curve (RFC 5480 §4); PQC/EdDSA: null digest
     let md = x509_signing_digest(signer_key).as_ptr();
-    let certs_stack: *mut openssl_sys::stack_st_X509 = if config.include_signer_cert {
-        // Build a one-element stack with the signer cert so clients can verify the
-        // delegated responder's authorization without a separate fetch.
-        //
-        // We use OPENSSL_sk_* (the underlying generic stack API) because openssl-sys
-        // does not expose the type-specific sk_X509_* wrappers (they are C macros).
-        //
-        // SAFETY: OPENSSL_sk_new_null returns null on OOM; we check before use.
-        let stack =
-            unsafe { openssl_sys::OPENSSL_sk_new_null().cast::<openssl_sys::stack_st_X509>() };
-        if stack.is_null() {
-            ptr::null_mut()
-        } else {
-            // X509_dup is required because OCSP_basic_sign (and the stack) do not
-            // take a reference — the stack owns the certs and they must outlive the call.
-            // SAFETY: signer_cert is a valid X509.
-            let duped = unsafe { openssl_sys::X509_dup(signer_cert.as_ptr()) };
-            if !duped.is_null() {
-                // SAFETY: stack is non-null; duped is non-null.
-                unsafe {
-                    openssl_sys::OPENSSL_sk_push(
-                        stack.cast::<openssl_sys::OPENSSL_STACK>(),
-                        duped.cast::<std::ffi::c_void>(),
-                    );
-                }
-            }
-            stack
-        }
+    let certs_stack = if config.include_signer_cert {
+        // One-element stack with the signer cert so clients can verify the delegated
+        // responder's authorization without a separate fetch.
+        let mut s = Stack::<X509>::new()?;
+        s.push(signer_cert.to_owned())?;
+        Some(s)
     } else {
-        ptr::null_mut()
+        None
     };
 
-    // SAFETY: signer_cert and signer_key are valid; OCSP_basic_sign returns 1 on success.
+    // SAFETY: signer_cert and signer_key are valid; OCSP_basic_sign returns 1 on success;
+    // `certs_stack` outlives the call.
     let signed = unsafe {
         ocsp_ffi::OCSP_basic_sign(
-            brsp,
+            brsp.as_ptr(),
             signer_cert.as_ptr(),
             signer_key.as_ptr(),
             md,
-            certs_stack,
+            certs_stack
+                .as_ref()
+                .map_or(ptr::null_mut(), ForeignType::as_ptr),
             0, // flags: 0 = include signer cert in response if certs_stack is non-null
         )
     };
-
-    // Free the certs stack (OCSP_basic_sign already referenced the certs).
-    if !certs_stack.is_null() {
-        // SAFETY: OPENSSL_sk_pop_free frees the duped X509 certs;
-        // X509_free matches X509_dup used above.
-        unsafe {
-            // Use a cast-based approach: wrap X509_free in a C-compatible thunk.
-            // SAFETY: p is a *mut X509 cast to *mut c_void by OPENSSL_sk_pop_free.
-            unsafe extern "C" fn x509_free_thunk(p: *mut std::ffi::c_void) {
-                // SAFETY: p was originally a *mut X509 duped above.
-                unsafe {
-                    openssl_sys::X509_free(p.cast::<openssl_sys::X509>());
-                }
-            }
-            openssl_sys::OPENSSL_sk_pop_free(
-                certs_stack.cast::<openssl_sys::OPENSSL_STACK>(),
-                Some(x509_free_thunk),
-            );
-        }
-    }
 
     if signed != 1 {
         return Err(CryptoError::Default("OCSP_basic_sign failed".to_owned()));
     }
 
     // ── Wrap in OcspResponse ─────────────────────────────────────────────────────
-    // SAFETY: brsp is non-null and fully built; response_create takes ownership of a copy.
-    let resp = unsafe {
-        openssl_sys::OCSP_response_create(openssl_sys::OCSP_RESPONSE_STATUS_SUCCESSFUL, brsp)
-    };
-    if resp.is_null() {
-        return Err(CryptoError::Default(
-            "OCSP_response_create failed".to_owned(),
-        ));
-    }
-    let _resp_guard = OcspResponseGuard(resp);
-
-    // ── Serialize to DER ─────────────────────────────────────────────────────────
-    // SAFETY: i2d_OCSP_RESPONSE with null pp returns the size; then we allocate and serialize.
-    let der_len = unsafe { openssl_sys::i2d_OCSP_RESPONSE(resp, ptr::null_mut()) };
-    if der_len <= 0 {
-        return Err(CryptoError::Default(
-            "i2d_OCSP_RESPONSE (size query) failed".to_owned(),
-        ));
-    }
-    let der_len = usize::try_from(der_len)
-        .map_err(|e| CryptoError::Default(format!("Invalid OCSP response DER length: {e}")))?;
-    let mut der = vec![0_u8; der_len];
-    let mut p = der.as_mut_ptr();
-    // SAFETY: der has exactly der_len bytes; p is valid for writing.
-    let written = unsafe { openssl_sys::i2d_OCSP_RESPONSE(resp, &raw mut p) };
-    if usize::try_from(written).ok() != Some(der_len) {
-        return Err(CryptoError::Default(format!(
-            "i2d_OCSP_RESPONSE wrote {written} bytes, expected {der_len}"
-        )));
-    }
-
-    // Prevent the guard from freeing brsp since OCSP_response_create already consumed it.
-    // (The guard for brsp only fires on early-return error paths from this point.)
-    std::mem::forget(brsp_guard);
-
-    Ok(der)
+    // `OCSP_response_create` copies `brsp`, which therefore drops normally.
+    let resp = OcspResponse::create(OcspResponseStatus::SUCCESSFUL, Some(&brsp))
+        .map_err(|e| CryptoError::Default(format!("OCSP_response_create failed: {e}")))?;
+    Ok(resp.to_der()?)
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -625,7 +505,7 @@ pub fn build_ocsp_response(
 // ──────────────────────────────────────────────────────────────
 
 /// Add a single certificate status to `brsp`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn add_single_response(
     brsp: *mut openssl_sys::OCSP_BASICRESP,
     cid: *mut openssl_sys::OCSP_CERTID,
@@ -690,7 +570,7 @@ fn add_single_response(
 /// Extract the nonce extension's raw octets from a parsed `OCSP_REQUEST`, if present
 /// and within the RFC 9654 §2.1 16–128 octet length bound (shorter nonces are treated
 /// as absent per §3's "SHOULD be silently ignored").
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>> {
     let nonce_nid = Nid::ID_PKIX_OCSP_NONCE.as_raw();
 
@@ -754,22 +634,10 @@ fn extract_request_nonce(req: *mut openssl_sys::OCSP_REQUEST) -> Option<Vec<u8>>
 ///
 /// # Errors
 /// Returns [`CryptoError`] if `request_der` is not a well-formed OCSP request.
-#[expect(unsafe_code)]
 pub fn request_has_nonce(request_der: &[u8]) -> Result<bool, CryptoError> {
-    let req_len = c_long::try_from(request_der.len())
-        .map_err(|e| CryptoError::Default(format!("OCSP request DER too large: {e}")))?;
-    // SAFETY: d2i_OCSP_REQUEST advances the pointer and returns null on error.
-    let req = unsafe {
-        let mut p = request_der.as_ptr();
-        openssl_sys::d2i_OCSP_REQUEST(ptr::null_mut(), &raw mut p, req_len)
-    };
-    if req.is_null() {
-        return Err(CryptoError::Default(
-            "Failed to parse OCSP request DER".to_owned(),
-        ));
-    }
-    let _req_guard = OcspRequestGuard(req);
-    Ok(extract_request_nonce(req).is_some())
+    let req = OcspRequest::from_der(request_der)
+        .map_err(|e| CryptoError::Default(format!("Failed to parse OCSP request DER: {e}")))?;
+    Ok(extract_request_nonce(req.as_ptr()).is_some())
 }
 
 /// Handle the nonce extension according to the configured policy (RFC 9654 §2.1).
@@ -778,7 +646,7 @@ pub fn request_has_nonce(request_der: &[u8]) -> Result<bool, CryptoError> {
 /// - Responders MUST accept nonces of length 16–128 octets.
 /// - Nonces shorter than 16 octets SHOULD be silently ignored (not rejected).
 /// - Responders MUST echo the nonce verbatim when present and valid.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn handle_nonce(
     req: *mut openssl_sys::OCSP_REQUEST,
     brsp: *mut openssl_sys::OCSP_BASICRESP,
@@ -817,7 +685,7 @@ fn handle_nonce(
 /// Add the `id-pkix-ocsp-archive-cutoff` extension to the `BasicResponse` (RFC 6960 §4.4.4).
 ///
 /// The extension value is a `GeneralizedTime` equal to `now - archive_cutoff_secs`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn add_archive_cutoff(
     brsp: *mut openssl_sys::OCSP_BASICRESP,
     now_epoch: c_long,
@@ -855,7 +723,7 @@ fn add_archive_cutoff(
 }
 
 /// Extract a [`ParsedOcspQuery`] from an `OCSP_CERTID*`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn extract_query_from_cert_id(
     cid: *mut openssl_sys::OCSP_CERTID,
 ) -> Result<ParsedOcspQuery, CryptoError> {
@@ -908,7 +776,7 @@ fn extract_query_from_cert_id(
 }
 
 /// Extract the serial number from an `OCSP_CERTID` as an uppercase hex string.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn extract_serial_hex(cid: *mut openssl_sys::OCSP_CERTID) -> Result<String, CryptoError> {
     let mut serial_ptr: *mut openssl_sys::ASN1_INTEGER = ptr::null_mut();
 
@@ -959,7 +827,7 @@ fn extract_serial_hex(cid: *mut openssl_sys::OCSP_CERTID) -> Result<String, Cryp
 /// Copy bytes from an `ASN1_STRING*` into a `Vec<u8>`.
 ///
 /// Returns an empty vec if the pointer is null.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 fn asn1_string_bytes(s: *const openssl_sys::ASN1_STRING) -> Vec<u8> {
     if s.is_null() {
         return Vec::new();
@@ -1031,7 +899,6 @@ const fn reason_to_crl_code(reason: Option<CrlReasonCode>) -> std::ffi::c_int {
 // ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, unsafe_code)]
 mod tests {
     use openssl::{
         asn1::Asn1Integer,
@@ -1088,6 +955,7 @@ mod tests {
     }
 
     /// Build a minimal OCSP request for a given serial number using the openssl crate's high-level API.
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn build_test_request(ca_cert: &X509, _serial_hex: &str, with_nonce: bool) -> Vec<u8> {
         let md = MessageDigest::sha256();
         // Build a dummy subject cert with the target serial so we can use OcspCertId::from_cert.
@@ -1125,7 +993,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
 
         // Parse the response with the openssl crate.
         let resp = OcspResponse::from_der(&resp_der).expect("OcspResponse::from_der");
@@ -1201,7 +1069,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
 
         let resp = OcspResponse::from_der(&resp_der).expect("parse");
         assert_eq!(resp.status(), openssl::ocsp::OcspResponseStatus::SUCCESSFUL);
@@ -1218,10 +1086,11 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
     }
 
     #[test]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn test_nonce_echoed() {
         let (ca, ca_key) = create_test_ca();
         let req_der = build_test_request(&ca, "01", true);
@@ -1237,7 +1106,7 @@ mod tests {
 
         let resp_der =
             build_ocsp_response(&req_der, &ca, &ca, &ca_key, &entries, &config).expect("build");
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
 
         // The response DER should contain the nonce bytes (0xAB × 32).
         let nonce_pattern = [0xAB_u8; 32];
@@ -1251,20 +1120,13 @@ mod tests {
         // is structurally wrong and fails real client-side verification. Re-parse
         // both DER blobs with the same raw `OCSP_check_nonce` API a real client
         // (e.g. `openssl ocsp`) uses, to catch that class of bug.
-        let req_len = c_long::try_from(req_der.len()).expect("req len");
-        // SAFETY: d2i_OCSP_REQUEST advances the pointer and returns null on error.
-        let req_ptr = unsafe {
-            let mut p = req_der.as_ptr();
-            openssl_sys::d2i_OCSP_REQUEST(ptr::null_mut(), &raw mut p, req_len)
-        };
-        assert!(!req_ptr.is_null());
-        let _req_guard = OcspRequestGuard(req_ptr);
+        let req = OcspRequest::from_der(&req_der).expect("OcspRequest::from_der");
 
         let resp = OcspResponse::from_der(&resp_der).expect("OcspResponse::from_der");
         let basic = resp.basic().expect("basic response");
 
-        // SAFETY: req_ptr and basic.as_ptr() are both non-null, valid OCSP structures.
-        let check = unsafe { ocsp_ffi::OCSP_check_nonce(req_ptr, basic.as_ptr()) };
+        // SAFETY: req.as_ptr() and basic.as_ptr() are both non-null, valid OCSP structures.
+        let check = unsafe { ocsp_ffi::OCSP_check_nonce(req.as_ptr(), basic.as_ptr()) };
         assert_eq!(
             check, 1,
             "OCSP_check_nonce must report a structurally matching nonce (got {check})"
@@ -1363,7 +1225,7 @@ mod tests {
 
         // A non-empty response DER implies thisUpdate and nextUpdate were set
         // (OCSP_basic_add1_status would fail otherwise).
-        assert!(!resp_der.is_empty());
+        assert_ne!(resp_der.len(), 0);
         assert!(before <= after, "time must be monotone");
     }
 
@@ -1452,8 +1314,8 @@ mod tests {
         let queries = parse_ocsp_request(&req_der).expect("parse_ocsp_request");
         let query = queries.first().expect("one parsed query");
         assert_eq!(queries.len(), 1);
-        assert!(!query.issuer_name_hash.is_empty());
-        assert!(!query.issuer_key_hash.is_empty());
+        assert_ne!(query.issuer_name_hash.len(), 0);
+        assert_ne!(query.issuer_key_hash.len(), 0);
     }
 
     /// Build a request using an explicit digest for the `CertId` (bypassing

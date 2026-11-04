@@ -1,9 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::unwrap_in_result
-)]
 use std::path::Path;
 
 use cosmian_logger::{log_init, reexport::tracing};
@@ -93,7 +87,6 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
 }
 
 #[ignore = "Requires a running Redis instance"]
-#[allow(clippy::large_stack_frames)] // This a test, we can skip this as long as test machines can handle such a stack
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {

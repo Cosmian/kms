@@ -295,7 +295,7 @@ async fn kmip_2_1_xml_test_cases_cn01() {
 #[tokio::test]
 #[serial_test::serial]
 async fn kmip_xml_draft_vectors() {
-    use test_kms_server::start_default_test_kms_server;
+    use test_kms_server::start_isolated_test_kms_server;
 
     cosmian_logger::log_init(None);
     let filter = std::env::var("KMIP_XML_DRAFT_FILTER").unwrap_or_default();
@@ -306,9 +306,13 @@ async fn kmip_xml_draft_vectors() {
             filter.is_empty() || filter.split(',').any(|f| shown.contains(f))
         })
         .collect();
-    let ctx = start_default_test_kms_server().await;
+    // Unfiltered Locate vectors must only see this suite's objects.
+    let ctx = start_isolated_test_kms_server(&format!("xml-drafts-{}", uuid::Uuid::new_v4()))
+        .await
+        .expect("start isolated draft-vector server");
     let client = ctx.get_owner_client();
     run_vectors_checked(None, &client, paths.iter().map(PathBuf::as_path)).await;
+    ctx.stop_server().await.expect("stop draft-vector server");
 }
 
 /// Client registration drafts: per protocol version, TC-CREG-1 registers a key pair and a
@@ -316,10 +320,13 @@ async fn kmip_xml_draft_vectors() {
 #[tokio::test]
 #[serial_test::serial]
 async fn kmip_xml_creg() {
-    use test_kms_server::start_default_test_kms_server;
+    use test_kms_server::start_isolated_test_kms_server;
 
     cosmian_logger::log_init(None);
-    let ctx = start_default_test_kms_server().await;
+    // Registration scenarios must not Locate objects created by unrelated tests.
+    let ctx = start_isolated_test_kms_server(&format!("xml-creg-{}", uuid::Uuid::new_v4()))
+        .await
+        .expect("start isolated registration-vector server");
     let client = ctx.get_owner_client();
     let paths = draft_vectors(Some("TC-CREG-"));
     for version in paths.chunk_by(|a, b| a.parent() == b.parent()) {
@@ -330,6 +337,9 @@ async fn kmip_xml_creg() {
         )
         .await;
     }
+    ctx.stop_server()
+        .await
+        .expect("stop registration-vector server");
 }
 
 /// Every `.xml` file under `kmip/website` is accounted for exactly once (see

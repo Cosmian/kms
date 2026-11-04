@@ -32,6 +32,8 @@ pub struct ObjectHandlesCache {
     metadata: Mutex<LruCache<CK_OBJECT_HANDLE, cosmian_kms_interfaces::SigningKeyMetadata>>,
 }
 
+const OBJECT_HANDLES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+
 impl Default for ObjectHandlesCache {
     fn default() -> Self {
         Self::new()
@@ -41,8 +43,7 @@ impl Default for ObjectHandlesCache {
 impl ObjectHandlesCache {
     #[must_use]
     pub fn new() -> Self {
-        #[expect(unsafe_code)]
-        let max = unsafe { NonZeroUsize::new_unchecked(100) };
+        let max = OBJECT_HANDLES_CACHE_SIZE;
         Self {
             handles: Mutex::new(LruCache::new(max)),
             metadata: Mutex::new(LruCache::new(max)),
@@ -112,12 +113,11 @@ impl ObjectHandlesCache {
 
     /// Remove an object handle from the cache.
     pub fn remove(&self, key: &[u8]) -> HResult<()> {
-        if let Ok(mut lock) = self.handles.lock() {
-            if let Some(handle) = lock.pop(key) {
-                if let Ok(mut meta_lock) = self.metadata.lock() {
-                    meta_lock.pop(&handle);
-                }
-            }
+        if let Ok(mut lock) = self.handles.lock()
+            && let Some(handle) = lock.pop(key)
+            && let Ok(mut meta_lock) = self.metadata.lock()
+        {
+            meta_lock.pop(&handle);
         }
         Ok(())
     }
@@ -334,8 +334,7 @@ impl SlotManager {
     /// This function calls unsafe FFI functions from the HSM library to query mechanism information.
     pub fn get_mechanism_info(&self, mech: CK_MECHANISM_TYPE) -> HResult<CK_MECHANISM_INFO> {
         let slot_id: CK_SLOT_ID = CK_SLOT_ID::try_from(self.slot_id)?;
-        #[expect(unsafe_code)]
-        let mut info: CK_MECHANISM_INFO = unsafe { std::mem::zeroed() };
+        let mut info = CK_MECHANISM_INFO::default();
         hsm_call!(
             self.hsm_lib,
             format!("Failed to get mechanism info for {}", mech),
@@ -352,14 +351,14 @@ impl SlotManager {
             .login_state
             .lock()
             .map_err(|e| HError::Default(format!("Failed to lock HSM login state: {e}")))?;
-        if login_state.session.is_none() {
-            if let Some(password) = login_state.password.take() {
-                match self.open_session_(false, Some(password.as_str())) {
-                    Ok(session) => login_state.session = Some(session),
-                    Err(error) => {
-                        login_state.password = Some(password);
-                        return Err(error);
-                    }
+        if login_state.session.is_none()
+            && let Some(password) = login_state.password.take()
+        {
+            match self.open_session_(false, Some(password.as_str())) {
+                Ok(session) => login_state.session = Some(session),
+                Err(error) => {
+                    login_state.password = Some(password);
+                    return Err(error);
                 }
             }
         }
@@ -435,12 +434,12 @@ impl SlotManager {
 
     /// Return a healthy session to the pool for reuse.
     pub fn checkin_session(&self, session: Session) {
-        if let Ok(mut pool) = self.session_pool.lock() {
-            if pool.len() < self.hsm_capabilities.max_concurrent_sessions {
-                pool.push(session);
-            }
-            // Otherwise session drops and closes
+        if let Ok(mut pool) = self.session_pool.lock()
+            && pool.len() < self.hsm_capabilities.max_concurrent_sessions
+        {
+            pool.push(session);
         }
+        // Otherwise session drops and closes
     }
 
     fn open_session_(&self, read_write: bool, login_password: Option<&str>) -> HResult<Session> {
@@ -490,35 +489,34 @@ impl SlotManager {
                     CK_ULONG::try_from(pwd_bytes.len())?,
                 )
             };
-            if rv == CKR_ARGUMENTS_BAD {
-                if let (Some(login_user), Some((username, password))) =
+            if rv == CKR_ARGUMENTS_BAD
+                && let (Some(login_user), Some((username, password))) =
                     (hsm_lib.C_LoginUser, login_password.split_once(':'))
+            {
+                let mut username_bytes = Zeroizing::new(username.as_bytes().to_vec());
+                let mut password_bytes = Zeroizing::new(password.as_bytes().to_vec());
+                #[expect(unsafe_code)]
                 {
-                    let mut username_bytes = Zeroizing::new(username.as_bytes().to_vec());
-                    let mut password_bytes = Zeroizing::new(password.as_bytes().to_vec());
-                    #[expect(unsafe_code)]
-                    {
-                        // SAFETY: both buffers are live owned vectors passed with their exact
-                        // lengths (null when empty) and outlive the `C_LoginUser` call.
-                        rv = unsafe {
-                            login_user(
-                                session_handle,
-                                CKU_USER,
-                                if password_bytes.is_empty() {
-                                    ptr::null_mut()
-                                } else {
-                                    password_bytes.as_mut_ptr()
-                                },
-                                CK_ULONG::try_from(password_bytes.len())?,
-                                if username_bytes.is_empty() {
-                                    ptr::null_mut()
-                                } else {
-                                    username_bytes.as_mut_ptr()
-                                },
-                                CK_ULONG::try_from(username_bytes.len())?,
-                            )
-                        };
-                    }
+                    // SAFETY: both buffers are live owned vectors passed with their exact
+                    // lengths (null when empty) and outlive the `C_LoginUser` call.
+                    rv = unsafe {
+                        login_user(
+                            session_handle,
+                            CKU_USER,
+                            if password_bytes.is_empty() {
+                                ptr::null_mut()
+                            } else {
+                                password_bytes.as_mut_ptr()
+                            },
+                            CK_ULONG::try_from(password_bytes.len())?,
+                            if username_bytes.is_empty() {
+                                ptr::null_mut()
+                            } else {
+                                username_bytes.as_mut_ptr()
+                            },
+                            CK_ULONG::try_from(username_bytes.len())?,
+                        )
+                    };
                 }
             }
             if rv == CKR_USER_ALREADY_LOGGED_IN {

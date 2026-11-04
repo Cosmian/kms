@@ -10,7 +10,6 @@ static INIT: Once = Once::new();
 
 /// Ensures the ckms binary is built before any test runs
 /// Call this function at the start of every test that needs the ckms binary
-#[allow(clippy::print_stdout)]
 pub(crate) fn ensure_ckms_binary() {
     INIT.call_once(|| {
         build_ckms_binary();
@@ -127,15 +126,13 @@ fn build_ckms_binary() {
 
     // If an orphaned lock file exists from a crashed or killed process, check
     // its age and clear it if it exceeds the timeout.
-    if let Ok(metadata) = fs::metadata(&lock_path) {
-        if let Ok(age) = metadata
+    if let Ok(metadata) = fs::metadata(&lock_path)
+        && let Ok(age) = metadata
             .modified()
             .and_then(|m| m.elapsed().map_err(std::io::Error::other))
-        {
-            if age > wait_timeout {
-                drop(fs::remove_file(&lock_path));
-            }
-        }
+        && age > wait_timeout
+    {
+        drop(fs::remove_file(&lock_path));
     }
 
     match OpenOptions::new()
@@ -160,8 +157,6 @@ fn build_ckms_binary() {
         }
     }
 }
-
-#[allow(clippy::print_stdout)]
 fn run_cargo_build(workspace_root: &Path, binary_path: &Path) {
     use std::process::Command;
 

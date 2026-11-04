@@ -187,7 +187,7 @@ fn test_omitted_unique_identifier_uses_id_placeholder_2_1_binary() {
         panic!("Expected RequestPayload structure");
     };
     payload.retain(|child| &*child.tag != "UniqueIdentifier");
-    assert!(payload.is_empty());
+    assert_eq!(payload.len(), 0);
 
     let request_bytes = ttlv
         .to_bytes(KmipFlavor::Kmip2)

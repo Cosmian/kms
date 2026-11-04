@@ -409,20 +409,20 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
         // ── 8. Cache + respond ────────────────────────────────────────────────────
         // `unknown` responses are not cached: they are what random-serial requests
         // produce, and caching them would let unauthenticated clients grow the map.
-        if let (Some(query), [entry]) = (cacheable_query, entries.as_slice()) {
-            if !matches!(entry.status, OcspCertStatus::Unknown) {
-                let expires_at = Instant::now() + std::time::Duration::from_secs(ttl_secs);
-                let mut cache = OCSP_CACHE.write().await;
-                if cache.len() >= MAX_OCSP_CACHE_ENTRIES {
-                    let now = Instant::now();
-                    cache.retain(|_, (_, entry_expires_at)| *entry_expires_at > now);
-                }
-                if cache.len() < MAX_OCSP_CACHE_ENTRIES {
-                    cache.insert(
-                        ocsp_cache_key(ca_uid, query),
-                        (resp_der.clone(), expires_at),
-                    );
-                }
+        if let (Some(query), [entry]) = (cacheable_query, entries.as_slice())
+            && !matches!(entry.status, OcspCertStatus::Unknown)
+        {
+            let expires_at = Instant::now() + std::time::Duration::from_secs(ttl_secs);
+            let mut cache = OCSP_CACHE.write().await;
+            if cache.len() >= MAX_OCSP_CACHE_ENTRIES {
+                let now = Instant::now();
+                cache.retain(|_, (_, entry_expires_at)| *entry_expires_at > now);
+            }
+            if cache.len() < MAX_OCSP_CACHE_ENTRIES {
+                cache.insert(
+                    ocsp_cache_key(ca_uid, query),
+                    (resp_der.clone(), expires_at),
+                );
             }
         }
 
@@ -729,7 +729,6 @@ fn build_malformed_request_response() -> HttpResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

@@ -431,7 +431,6 @@ fn verify_message(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use hex::FromHex;
     use openssl::{hash::MessageDigest, rsa::Padding, sign::Verifier};

@@ -257,7 +257,6 @@ pub(super) async fn handle_jwt(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use std::sync::Arc;
 
@@ -453,7 +452,6 @@ mod tests {
 /// validation path for SPIFFE JWT-SVIDs.
 #[cfg(test)]
 #[cfg(not(feature = "insecure"))]
-#[allow(clippy::expect_used)]
 mod real_validation {
     use std::{collections::HashMap, sync::Arc};
 

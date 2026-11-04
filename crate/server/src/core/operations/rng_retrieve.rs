@@ -47,7 +47,6 @@ pub(crate) async fn rng_retrieve(
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
 mod tests {
 
     use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::RNGRetrieve;

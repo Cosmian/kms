@@ -28,12 +28,18 @@ use crate::{
 };
 
 /// Static regex: matches `$NOW-<digits>` placeholders.
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "regex literal is valid; exercised by XML parser tests"
+)]
 static RE_NOW_DELTA: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$NOW-\d+").expect("static regex RE_NOW_DELTA"));
 
 /// Static regex: matches `$UNIQUE_IDENTIFIER_<digits>` placeholders.
-#[allow(clippy::expect_used)]
+#[expect(
+    clippy::expect_used,
+    reason = "regex literal is valid; exercised by XML parser tests"
+)]
 static RE_UID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)").expect("static regex RE_UID"));
 
@@ -77,16 +83,14 @@ fn reconstruct_tag(
 // Helper to backfill LocateResponse.located_items when omitted in XML
 fn backfill_locate_response(resp: &mut ResponseMessage) {
     for bi in &mut resp.batch_item {
-        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi {
-            if let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
+        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi
+            && let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
                 &mut inner.response_payload
-            {
-                if lr.located_items.is_none() {
-                    let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
-                    let cnt = i32::try_from(len).unwrap_or(i32::MAX);
-                    lr.located_items = Some(cnt);
-                }
-            }
+            && lr.located_items.is_none()
+        {
+            let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
+            let cnt = i32::try_from(len).unwrap_or(i32::MAX);
+            lr.located_items = Some(cnt);
         }
     }
 }
@@ -282,7 +286,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
 mod tests {
     use super::*;
 

@@ -45,7 +45,9 @@ fn decode_hex(bytes: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let high = hex_value(pair.first().copied()?)?;
             let low = hex_value(pair.get(1).copied()?)?;

@@ -20,3 +20,6 @@ pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
         bytes.insert(0, 0);
     }
 }
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

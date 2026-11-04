@@ -73,14 +73,11 @@ fn check_block_cipher_mode_in_encryption_key_information(
     } else if let Some(encryption_key_information) = key_wrapping_specification
         .encryption_key_information
         .as_ref()
-    {
-        if let Some(cryptographic_parameters) =
+        && let Some(cryptographic_parameters) =
             encryption_key_information.cryptographic_parameters.as_ref()
-        {
-            if cryptographic_parameters.block_cipher_mode.is_some() {
-                crypto_bail!("BlockCipherMode is only used for a SymmetricKey object")
-            }
-        }
+        && cryptographic_parameters.block_cipher_mode.is_some()
+    {
+        crypto_bail!("BlockCipherMode is only used for a SymmetricKey object")
     }
     Ok(())
 }
@@ -135,18 +132,18 @@ pub fn wrap_object_with_key(
     //
     // NISTKeyWrap is also the KMIP spec default when no BlockCipherMode is specified
     // (see KMIP 2.1 §4.26).
-    if matches!(wrapping_key, Object::SymmetricKey { .. }) {
-        if let Some(ref mut eki) = kwd.encryption_key_information {
-            let current_mode = eki
+    if matches!(wrapping_key, Object::SymmetricKey { .. })
+        && let Some(ref mut eki) = kwd.encryption_key_information
+    {
+        let current_mode = eki
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|p| p.block_cipher_mode);
+        if current_mode.is_none() {
+            let cp = eki
                 .cryptographic_parameters
-                .as_ref()
-                .and_then(|p| p.block_cipher_mode);
-            if current_mode.is_none() {
-                let cp = eki
-                    .cryptographic_parameters
-                    .get_or_insert_with(CryptographicParameters::default);
-                cp.block_cipher_mode = Some(BlockCipherMode::NISTKeyWrap);
-            }
+                .get_or_insert_with(CryptographicParameters::default);
+            cp.block_cipher_mode = Some(BlockCipherMode::NISTKeyWrap);
         }
     }
     object_key_block.key_wrapping_data = Some(kwd);

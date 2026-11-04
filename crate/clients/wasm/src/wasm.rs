@@ -308,7 +308,6 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
     let sym = list_symmetric_algorithms();
     let ec_list = list_ec_algorithms();
 
-    #[allow(unused_mut)]
     let mut variants: Vec<CryptographicAlgorithm> = vec![
         CryptographicAlgorithm::AES,
         CryptographicAlgorithm::RSA,
@@ -724,7 +723,10 @@ pub fn get_kmip_operations() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen(start)]
-#[allow(clippy::missing_const_for_fn)]
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "wasm_bindgen exports cannot be const fn; #[expect] is not honoured through the macro expansion"
+)]
 pub fn init_panic_hook() {
     // Improve error messages for panics in the browser console
     #[cfg(target_arch = "wasm32")]
@@ -733,8 +735,11 @@ pub fn init_panic_hook() {
 
 /// Returns true when compiled in FIPS mode (default), false in non-FIPS builds.
 #[wasm_bindgen]
-#[allow(clippy::missing_const_for_fn)]
 #[must_use]
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "wasm_bindgen exports cannot be const fn; #[expect] is not honoured through the macro expansion"
+)]
 pub fn is_fips_mode() -> bool {
     // `non-fips` feature disables FIPS mode
     !cfg!(feature = "non-fips")
@@ -742,8 +747,7 @@ pub fn is_fips_mode() -> bool {
 
 // Locate request
 #[wasm_bindgen]
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::too_many_arguments, reason = "JS ABI surface")]
 pub fn locate_ttlv_request(
     tags: Option<Vec<String>>,
     cryptographic_algorithm: Option<String>,
@@ -804,8 +808,6 @@ wasm_response_parser!(parse_locate_ttlv_response, LocateResponse);
 
 // Create keys Requests
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
-#[allow(clippy::too_many_arguments)]
 pub fn create_rsa_key_pair_ttlv_request(
     private_key_id: Option<String>,
     tags: Vec<String>,
@@ -830,8 +832,6 @@ pub fn create_rsa_key_pair_ttlv_request(
 }
 
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
-#[allow(clippy::too_many_arguments)]
 pub fn create_ec_key_pair_ttlv_request(
     private_key_id: Option<String>,
     tags: Vec<String>,
@@ -865,7 +865,10 @@ wasm_response_parser!(parse_create_keypair_ttlv_response, CreateKeyPairResponse)
 /// `algorithm` must be one of: `ml-kem-512`, `ml-kem-768`, `ml-kem-1024`,
 /// `ml-dsa-44`, `ml-dsa-65`, `ml-dsa-87`.
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn create_pqc_key_pair_ttlv_request(
     tags: Vec<String>,
     algorithm: &str,
@@ -1038,7 +1041,10 @@ pub fn get_pqc_algorithms() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn create_sym_key_ttlv_request(
     key_id: Option<String>,
     tags: Vec<String>,
@@ -1096,8 +1102,11 @@ pub fn create_sym_key_ttlv_request(
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn create_secret_data_ttlv_request(
     secret_type: &str,
     secret_value: Option<String>,
@@ -1149,6 +1158,10 @@ pub fn create_secret_data_ttlv_request(
 
 /// Builds the TTLV `Create` request for an `OpenPGP` key (`Ed25519` or `RSA`).
 #[wasm_bindgen]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn create_pgp_key_ttlv_request(
     key_id: Option<String>,
     tags: Vec<String>,
@@ -1239,7 +1252,10 @@ wasm_response_parser!(parse_join_split_key_ttlv_response, JoinSplitKeyResponse);
 /// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
 /// Wrapping key id can be provided to set the object wrapping attribute.
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn create_opaque_object_ttlv_request(
     object_value: Option<String>,
     object_id: Option<String>,
@@ -1410,7 +1426,6 @@ pub fn encrypt_ec_ttlv_request(
 wasm_response_parser!(parse_encrypt_ttlv_response, EncryptResponse);
 
 // FPE (Format-Preserving Encryption) requests
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn create_fpe_key_ttlv_request(
     key_id: Option<String>,
@@ -1440,7 +1455,6 @@ pub fn create_fpe_key_ttlv_request(
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn encrypt_fpe_ttlv_request(
     key_unique_identifier: &str,
@@ -1464,7 +1478,6 @@ pub fn encrypt_fpe_ttlv_request(
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn decrypt_fpe_ttlv_request(
     key_unique_identifier: &str,
@@ -1637,7 +1650,6 @@ wasm_response_parser!(
 );
 
 // Export request
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn export_ttlv_request(
     unique_identifier: &str,
@@ -1778,9 +1790,8 @@ pub fn get_ec_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsV
 }
 
 // Import request
-#[allow(clippy::needless_pass_by_value)]
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments, reason = "JS ABI surface")]
 pub fn import_ttlv_request(
     unique_identifier: Option<String>,
     key_bytes: Vec<u8>,
@@ -1842,7 +1853,10 @@ wasm_response_parser!(parse_import_ttlv_response, ImportResponse);
 
 // Revoke request
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)] // required by wasm_bindgen: Option<String> from JS
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn revoke_ttlv_request(
     unique_identifier: &str,
     revocation_reason_message: String,
@@ -1868,7 +1882,6 @@ wasm_response_parser!(parse_revoke_ttlv_response, RevokeResponse);
 
 // Covercrypt requests
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
 pub fn create_cc_master_keypair_ttlv_request(
     access_structure: &str,
     tags: Vec<String>,
@@ -1890,7 +1903,6 @@ pub fn create_cc_master_keypair_ttlv_request(
 }
 
 #[wasm_bindgen]
-#[allow(clippy::needless_pass_by_value)]
 pub fn create_cc_user_key_ttlv_request(
     master_secret_key_id: &str,
     access_policy: &str,
@@ -2096,9 +2108,8 @@ pub fn add_cc_dimension_ttlv_request(
 }
 
 // Certificate requests
-#[allow(clippy::needless_pass_by_value)]
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments, reason = "JS ABI surface")]
 pub fn import_certificate_ttlv_request(
     certificate_id: Option<String>,
     certificate_bytes: Vec<u8>,
@@ -2216,7 +2227,6 @@ pub fn import_certificate_ttlv_request(
     to_wasm_ttlv(&request)
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
 pub fn export_certificate_ttlv_request(
     unique_identifier: &str,
@@ -2371,9 +2381,8 @@ pub fn decrypt_certificate_ttlv_request(
 }
 
 // Certify request
-#[allow(clippy::needless_pass_by_value)]
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments, reason = "JS ABI surface")]
 pub fn certify_ttlv_request(
     certificate_id: Option<String>,
     certificate_signing_request_format: Option<String>,
@@ -2452,8 +2461,11 @@ wasm_response_parser!(parse_certify_ttlv_response, CertifyResponse);
 /// replaces in-place), this sends the dedicated KMIP `ReCertify` operation
 /// that creates a **new certificate** with a fresh UID and links the old and
 /// new certificates via `ReplacedObjectLink` / `ReplacementObjectLink`.
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn re_certify_ttlv_request(
     certificate_id_to_re_certify: String,
     issuer_private_key_id: Option<String>,
@@ -2525,8 +2537,11 @@ pub fn get_attributes_ttlv_request_with_options(
     to_wasm_ttlv(&request)
 }
 
-#[allow(clippy::needless_pass_by_value)]
 #[wasm_bindgen]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "wasm_bindgen marshals owned String/Vec from JS"
+)]
 pub fn parse_get_attributes_ttlv_response(
     response: &str,
     selected_attributes: Vec<String>,
@@ -2751,8 +2766,8 @@ wasm_response_parser!(parse_hash_ttlv_response, HashResponse);
 /// - `symmetric_algorithm`: output key algorithm, e.g. `"aes"`.
 /// - `cryptographic_length`: output key length in bits (e.g. `256`).
 /// - `derived_key_id`: optional unique identifier for the newly derived key.
-#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments, reason = "JS ABI surface")]
 pub fn derive_key_ttlv_request(
     base_key_id: &str,
     derivation_method: &str,

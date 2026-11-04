@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::kmip_types::{

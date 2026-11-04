@@ -377,43 +377,43 @@ fn verify_interior_chain(path: &Path) -> KResult<InteriorChainVerification> {
         offset += consumed;
         let line = String::from_utf8_lossy(&line_bytes).into_owned();
 
-        if let Some((pending_line, pending_offset)) = pending.take() {
-            if !pending_line.trim().is_empty() {
-                match check_row(&pending_line) {
-                    RowCheck::Verified(event) => {
-                        if verify_chain_link(&event, prev.as_ref()) {
-                            prev = Some(event);
-                        } else {
-                            return Ok(InteriorChainVerification {
-                                previous_event: None,
-                                failure: Some(InteriorChainFailure {
-                                    reason: SealReason::BrokenLink,
-                                    claimed_last_id: Some(event.id),
-                                    failure_offset: pending_offset,
-                                }),
-                            });
-                        }
-                    }
-                    RowCheck::HashMismatch(event) => {
+        if let Some((pending_line, pending_offset)) = pending.take()
+            && !pending_line.trim().is_empty()
+        {
+            match check_row(&pending_line) {
+                RowCheck::Verified(event) => {
+                    if verify_chain_link(&event, prev.as_ref()) {
+                        prev = Some(event);
+                    } else {
                         return Ok(InteriorChainVerification {
                             previous_event: None,
                             failure: Some(InteriorChainFailure {
-                                reason: SealReason::HashMismatch,
+                                reason: SealReason::BrokenLink,
                                 claimed_last_id: Some(event.id),
                                 failure_offset: pending_offset,
                             }),
                         });
                     }
-                    RowCheck::Unparsable => {
-                        return Ok(InteriorChainVerification {
-                            previous_event: None,
-                            failure: Some(InteriorChainFailure {
-                                reason: SealReason::Unparsable,
-                                claimed_last_id: prev.as_ref().map(|p| p.id),
-                                failure_offset: pending_offset,
-                            }),
-                        });
-                    }
+                }
+                RowCheck::HashMismatch(event) => {
+                    return Ok(InteriorChainVerification {
+                        previous_event: None,
+                        failure: Some(InteriorChainFailure {
+                            reason: SealReason::HashMismatch,
+                            claimed_last_id: Some(event.id),
+                            failure_offset: pending_offset,
+                        }),
+                    });
+                }
+                RowCheck::Unparsable => {
+                    return Ok(InteriorChainVerification {
+                        previous_event: None,
+                        failure: Some(InteriorChainFailure {
+                            reason: SealReason::Unparsable,
+                            claimed_last_id: prev.as_ref().map(|p| p.id),
+                            failure_offset: pending_offset,
+                        }),
+                    });
                 }
             }
         }
@@ -547,10 +547,10 @@ fn seal_and_roll(
     );
 
     // fsync the containing directory so the rename itself is durable.
-    if let Some(parent) = path.parent() {
-        if let Ok(dir) = std::fs::File::open(parent) {
-            drop(dir.sync_all());
-        }
+    if let Some(parent) = path.parent()
+        && let Ok(dir) = std::fs::File::open(parent)
+    {
+        drop(dir.sync_all());
     }
 
     let mut sink = open_append(path).map_err(|e| {

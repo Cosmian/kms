@@ -128,7 +128,10 @@ impl Stdout {
     /// # Errors
     ///
     /// Returns an error if there is an issue with writing to the console.
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     pub fn write(&self) -> KmsCliResult<()> {
         // Check if the output format should be JSON
         let output_format = match std::env::var(COSMIAN_KMS_CLI_FORMAT) {
@@ -199,12 +202,12 @@ impl Stdout {
                 }
 
                 // Print the list of tags if present
-                if let Some(t) = &self.tags {
-                    if !t.is_empty() {
-                        println!("\tTags:");
-                        for tag in t {
-                            println!("\t\t- {tag}");
-                        }
+                if let Some(t) = &self.tags
+                    && !t.is_empty()
+                {
+                    println!("\tTags:");
+                    for tag in t {
+                        println!("\t\t- {tag}");
                     }
                 }
                 println!(); // consecutive calls feel cluttered and become hard to read

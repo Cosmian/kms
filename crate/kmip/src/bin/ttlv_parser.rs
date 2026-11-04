@@ -1,4 +1,3 @@
-#![allow(clippy::print_stdout, clippy::unwrap_used)]
 use std::io::{Write, stdin, stdout};
 
 use cosmian_kmip::{
@@ -10,11 +9,17 @@ use cosmian_kmip::{
 /// It reads hex strings from the user, decodes them, and parses them into TTLV objects.
 /// It also attempts to convert the TTLV objects into KMIP request or response messages.
 /// The parser continues until the user types "quit" or "exit".
+#[expect(
+    clippy::print_stdout,
+    reason = "interactive parser writes its output to stdout"
+)]
 fn main() {
     println!("TTLV Parser - Enter hex strings (or 'quit' to exit)");
     loop {
         print!("> ");
-        stdout().flush().unwrap();
+        if stdout().flush().is_err() {
+            break;
+        }
 
         let mut input = String::new();
         if stdin().read_line(&mut input).is_err() {

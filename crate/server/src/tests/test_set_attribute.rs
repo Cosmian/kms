@@ -5,7 +5,6 @@
 //! 1. Verify the attribute is not set initially.
 //! 2. Set the attribute.
 
-#![allow(clippy::unwrap_in_result)]
 //! 3. Verify the attribute is set correctly.
 //! 4. Remove the attribute.
 //! 5. Verify the attribute is removed.
