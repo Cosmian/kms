@@ -59,8 +59,8 @@ git -C "${KMIPKIT_DIR}" remote add origin "${KMIPKIT_URL}"
 git -C "${KMIPKIT_DIR}" fetch -q --depth 1 origin "${KMIPKIT_SHA}"
 git -C "${KMIPKIT_DIR}" checkout -q FETCH_HEAD
 
-# The pinned lifecycle fixtures confuse Sign/Verify with WrapKey/UnwrapKey.
-git -C "${KMIPKIT_DIR}" apply --unidiff-zero "${REPO_ROOT}/.mise/scripts/kmipkit-usage-masks.patch"
+# Fixes in the pinned KMIPKit tests: Sign/Verify usage masks, Sensitive tag (0x420120, not IV Length 0x4200CD), wrapped key-pair targets default to the row algorithm.
+git -C "${KMIPKIT_DIR}" apply --unidiff-zero "${REPO_ROOT}/.mise/scripts/kmipkit-fixes.patch"
 
 print_status "Generating mTLS PKI with KMIPKit's generator..."
 # Container files are root-owned with mode 600: chown them back to the caller.
