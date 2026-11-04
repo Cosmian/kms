@@ -29,7 +29,6 @@
   unrelated PRs; the daily develop run fails on any advisory. `pnpm audit --prod` is informational
 - Ignore the minimatch DoS GHSA-g3hv-75wg-m249 until 2027-01-02: it needs `optimizationLevel >= 2`, which no
   consumer sets, and its fix (minimatch 11) is not supported by eslint yet
-- Add the `npm` ecosystem to Dependabot for `/ui`, with a 7-day cooldown
 - Add the `npm-policy` and `pnpm-frozen-lockfile` pre-commit hooks and the `npm-audit` pre-push hook
 
 ## Bug Fixes
