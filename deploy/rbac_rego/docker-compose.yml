@@ -34,13 +34,17 @@ services:
       - ../../test_data/certificates/client_server/server/keycloak.localhost.crt:/opt/keycloak/conf/server.crt:ro
       - ../../test_data/certificates/client_server/server/keycloak.localhost.key:/opt/keycloak/conf/server.key:ro
     healthcheck:
-      # The Keycloak image ships neither curl nor wget: speak HTTP over bash's /dev/tcp.
+      # The Keycloak image ships neither curl nor wget: speak HTTP over bash's /dev/tcp. Only the
+      # status line counts: while the realm is still importing, the 503 body also holds the
+      # `"status": "UP"` of its passing sub-checks, and a KMS started then gets no signing keys
+      # and answers 401 to every token until its next JWKS refresh.
       test:
         - CMD-SHELL
         - >-
           exec 3<>/dev/tcp/127.0.0.1/9000 &&
           printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
-          grep -q '"status": "UP"' <&3
+          read -r status_line <&3 &&
+          case "$$status_line" in *' 200 '*) true;; *) false;; esac
       interval: 5s
       timeout: 5s
       retries: 60
@@ -70,6 +74,9 @@ services:
   kms:
     # Locally built FIPS image: `mise run build:docker --variant fips --load` (see README.md).
     image: ${KMS_IMAGE:?build the image and set KMS_IMAGE in .env}
+    # Explicit -c: the image entrypoint never auto-loads /etc/cosmian/kms.toml, because its
+    # COSMIAN_KMS_CONF lookup in nix/docker.nix is written `$${...}`, which bash expands to the PID.
+    command: [-c, /etc/cosmian/kms.toml]
     # The fixture uses repository-root-relative certificate paths: recreate that layout.
     working_dir: /repo
     environment:
