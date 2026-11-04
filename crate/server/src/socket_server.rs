@@ -1,5 +1,5 @@
 use std::{
-    io::{ErrorKind, Read, Write},
+    io::{self, ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
     sync::{
         Arc, RwLock,
@@ -7,7 +7,7 @@ use std::{
         mpsc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use cosmian_logger::{debug, error, info, trace, warn};
@@ -24,7 +24,8 @@ use crate::{
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
 
-/// Timeout for the (unauthenticated) TLS handshake, so pre-auth clients release their slot quickly.
+/// Absolute deadline for the whole (unauthenticated) TLS handshake, so pre-auth clients release
+/// their slot quickly even when they trickle bytes.
 const SOCKET_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Idle/read/write timeout of an authenticated client socket (same as the HTTP keep-alive).
 const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(120);
@@ -335,17 +336,6 @@ impl SocketServer {
                         continue;
                     }
                     let slot = ConnectionSlot(active_connections.clone());
-                    // Bound the TLS handshake so unauthenticated or slow clients cannot hold a
-                    // thread forever; `handle_client` switches to the idle timeout afterwards.
-                    if let Err(e) = stream
-                        .set_read_timeout(Some(SOCKET_HANDSHAKE_TIMEOUT))
-                        .and_then(|()| stream.set_write_timeout(Some(SOCKET_HANDSHAKE_TIMEOUT)))
-                    {
-                        warn!(
-                            "Socket server: cannot set socket timeouts, dropping connection: {e}"
-                        );
-                        continue;
-                    }
                     let server_config = server_config.clone();
                     let handler = handler.clone();
                     // Spawn a new thread to handle the client connection
@@ -368,6 +358,79 @@ impl SocketServer {
     }
 }
 
+/// Socket whose reads and writes share one absolute deadline while `deadline` is set.
+///
+/// Socket timeouts alone bound each `recv`, so a client trickling one byte per interval could
+/// stretch the TLS handshake (and hold a connection slot) indefinitely.
+#[derive(Debug)]
+struct DeadlineStream<'a> {
+    stream: &'a mut TcpStream,
+    /// `None` once the handshake is done: plain socket I/O under the idle timeout.
+    deadline: Option<Instant>,
+}
+
+impl DeadlineStream<'_> {
+    /// Time left before the deadline, or `TimedOut` once it has passed.
+    fn remaining(&self) -> io::Result<Option<Duration>> {
+        self.deadline
+            .map(|deadline| {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    Err(io::Error::new(
+                        ErrorKind::TimedOut,
+                        "socket server: TLS handshake deadline exceeded",
+                    ))
+                } else {
+                    Ok(left)
+                }
+            })
+            .transpose()
+    }
+}
+
+impl Read for DeadlineStream<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if let Some(left) = self.remaining()? {
+            self.stream.set_read_timeout(Some(left))?;
+        }
+        self.stream.read(buf)
+    }
+}
+
+impl Write for DeadlineStream<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if let Some(left) = self.remaining()? {
+            self.stream.set_write_timeout(Some(left))?;
+        }
+        self.stream.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+/// Run the TLS handshake within `timeout` (total, not per `recv`), then switch the socket to
+/// the [`SOCKET_IO_TIMEOUT`] idle timeout.
+fn accept_tls<'a>(
+    server_config: &SslAcceptor,
+    stream: &'a mut TcpStream,
+    timeout: Duration,
+) -> KResult<SslStream<DeadlineStream<'a>>> {
+    let deadline = Some(Instant::now() + timeout);
+    let mut tls_stream = server_config
+        .accept(DeadlineStream { stream, deadline })
+        .context("socket server: failed to create OpenSSL TLS connection")?;
+    let socket = tls_stream.get_mut();
+    socket.deadline = None;
+    socket
+        .stream
+        .set_read_timeout(Some(SOCKET_IO_TIMEOUT))
+        .and_then(|()| socket.stream.set_write_timeout(Some(SOCKET_IO_TIMEOUT)))
+        .context("socket server: failed to set socket timeouts")?;
+    Ok(tls_stream)
+}
+
 fn handle_client(
     kms_server: &Arc<KMS>,
     server_config: &Arc<SslAcceptor>,
@@ -380,18 +443,7 @@ fn handle_client(
         .map_or_else(|_| "[N/A]".to_owned(), |sa| sa.to_string());
     debug!("socket server: client connected from {}", peer_addr);
 
-    let mut tls_stream = server_config
-        .accept(stream)
-        .context("socket server: failed to create OpenSSL TLS connection")?;
-    tls_stream
-        .get_ref()
-        .set_read_timeout(Some(SOCKET_IO_TIMEOUT))
-        .and_then(|()| {
-            tls_stream
-                .get_ref()
-                .set_write_timeout(Some(SOCKET_IO_TIMEOUT))
-        })
-        .context("socket server: failed to set socket timeouts")?;
+    let mut tls_stream = accept_tls(server_config, stream, SOCKET_HANDSHAKE_TIMEOUT)?;
 
     while let Some(request) = read_request(&mut tls_stream)? {
         let username = client_username(&tls_stream)?;
@@ -462,7 +514,7 @@ fn read_request(stream: &mut impl Read) -> KResult<Option<Vec<u8>>> {
 }
 
 /// Extract the username from the client certificate, with the same checks as HTTP mTLS.
-fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> KResult<UserId> {
+fn client_username<S>(tls_stream: &SslStream<S>) -> KResult<UserId> {
     let client_certificate = tls_stream.ssl().peer_certificate().ok_or_else(|| {
         // unreachable: the acceptor sets FAIL_IF_NO_PEER_CERT (see `create_openssl_acceptor`)
         KmsError::Certificate(
@@ -517,9 +569,11 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
 mod tests {
     use std::{
         error::Error,
-        fs, io,
+        fs,
+        io::{self, Write},
         net::{TcpListener, TcpStream},
         thread,
+        time::{Duration, Instant},
     };
 
     use openssl::{
@@ -529,14 +583,15 @@ mod tests {
         nid::Nid,
         pkey::{PKey, Private},
         ssl::{
-            SslConnector, SslConnectorBuilder, SslFiletype, SslMethod, SslStream, SslVerifyMode,
+            SslAcceptor, SslConnector, SslConnectorBuilder, SslFiletype, SslMethod, SslStream,
+            SslVerifyMode,
         },
         x509::{X509, X509NameBuilder, extension::BasicConstraints},
     };
 
     use super::{
-        MAX_SOCKET_REQUEST_BODY, SocketServerParams, client_username, create_openssl_acceptor,
-        read_request,
+        DeadlineStream, MAX_SOCKET_REQUEST_BODY, SOCKET_HANDSHAKE_TIMEOUT, SocketServerParams,
+        accept_tls, client_username, create_openssl_acceptor, read_request,
     };
     use crate::routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER};
 
@@ -544,12 +599,8 @@ mod tests {
 
     const CERTS: &str = "../../test_data/certificates/client_server";
 
-    /// Run one server-side TLS handshake against a client built by `client_setup` and return
-    /// `on_accept` applied to the accepted server stream (`None` when the server refused it).
-    fn serve_one<T: Send + 'static>(
-        client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
-        on_accept: impl FnOnce(&SslStream<&mut TcpStream>) -> T + Send + 'static,
-    ) -> TestResult<Option<T>> {
+    /// The socket server TLS acceptor configured with the test server certificate and client CA.
+    fn test_acceptor() -> TestResult<SslAcceptor> {
         let cert = fs::read(format!("{CERTS}/server/kmserver.acme.com.crt"))?;
         let key = PKey::private_key_from_pem(&fs::read(format!(
             "{CERTS}/server/kmserver.acme.com.key"
@@ -567,12 +618,23 @@ mod tests {
             client_ca_cert_pem: &ca,
             cipher_suites: None,
         };
-        let acceptor = create_openssl_acceptor(&params)?;
+        Ok(create_openssl_acceptor(&params)?)
+    }
+
+    /// Run one server-side TLS handshake against a client built by `client_setup` and return
+    /// `on_accept` applied to the accepted server stream (`None` when the server refused it).
+    fn serve_one<T: Send + 'static>(
+        client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
+        on_accept: impl FnOnce(&SslStream<DeadlineStream<'_>>) -> T + Send + 'static,
+    ) -> TestResult<Option<T>> {
+        let acceptor = test_acceptor()?;
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let addr = listener.local_addr()?;
         let server = thread::spawn(move || -> io::Result<Option<T>> {
             let (mut stream, _) = listener.accept()?;
-            Ok(acceptor.accept(&mut stream).ok().map(|tls| on_accept(&tls)))
+            Ok(accept_tls(&acceptor, &mut stream, SOCKET_HANDSHAKE_TIMEOUT)
+                .ok()
+                .map(|tls| on_accept(&tls)))
         });
 
         let mut builder = SslConnector::builder(SslMethod::tls())?;
@@ -674,6 +736,46 @@ mod tests {
         })?;
         if !accepted {
             return Err("server rejected a valid client certificate".into());
+        }
+        Ok(())
+    }
+
+    /// A client trickling its `ClientHello` faster than any per-`recv` timeout is still cut off
+    /// at the handshake deadline, so it cannot hold a connection slot indefinitely.
+    #[test]
+    fn trickling_handshake_is_cut_at_deadline() -> TestResult {
+        const DEADLINE: Duration = Duration::from_millis(500);
+        const TRICKLE_INTERVAL: Duration = Duration::from_millis(50);
+        const CLIENT_GIVE_UP: Duration = Duration::from_secs(4);
+
+        let acceptor = test_acceptor()?;
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let addr = listener.local_addr()?;
+        let server = thread::spawn(move || -> io::Result<(bool, Duration)> {
+            let (mut stream, _) = listener.accept()?;
+            let start = Instant::now();
+            let accepted = accept_tls(&acceptor, &mut stream, DEADLINE).is_ok();
+            Ok((accepted, start.elapsed()))
+        });
+
+        let mut client = TcpStream::connect(addr)?;
+        // TLS handshake record header announcing a 16 KiB body, then one body byte at a time.
+        client.write_all(&[0x16, 0x03, 0x01, 0x40, 0x00])?;
+        let start = Instant::now();
+        while !server.is_finished()
+            && start.elapsed() < CLIENT_GIVE_UP
+            && client.write_all(&[0]).is_ok()
+        {
+            thread::sleep(TRICKLE_INTERVAL);
+        }
+        drop(client);
+
+        let (accepted, elapsed) = server.join().map_err(|_e| "server thread panicked")??;
+        if accepted {
+            return Err("server accepted a garbage handshake".into());
+        }
+        if elapsed > DEADLINE * 3 {
+            return Err(format!("handshake lasted {elapsed:?}, deadline is {DEADLINE:?}").into());
         }
         Ok(())
     }

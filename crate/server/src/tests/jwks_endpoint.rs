@@ -4,10 +4,10 @@
 
 use actix_web::test::{self, call_service, read_body};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-        kmip_operations::{CreateKeyPairResponse, CreateResponse, RevokeResponse},
+        kmip_operations::{CreateKeyPair, CreateKeyPairResponse, CreateResponse, RevokeResponse},
         kmip_types::{CryptographicAlgorithm, RecommendedCurve},
         requests::{
             build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
@@ -57,8 +57,14 @@ async fn test_jwks_rsa2048_verify_key_present() -> KResult<()> {
     let app = test_utils::setup_app(None).await;
 
     // Create an RSA-2048 key pair via KMIP (no tags yet).
-    let kp_req =
+    let mut kp_req =
         create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?;
+    // A signature-only pair: JWKS derives `use=sig` / `alg=RS256` from the public `Verify` mask.
+    set_rsa_pair_masks(
+        &mut kp_req,
+        CryptographicUsageMask::Sign,
+        CryptographicUsageMask::Verify,
+    );
     let kp_resp: CreateKeyPairResponse = test_utils::post_2_1(&app, kp_req).await?;
     let public_kid = kp_resp.public_key_unique_identifier.to_string();
 
@@ -103,6 +109,108 @@ async fn test_jwks_rsa2048_verify_key_present() -> KResult<()> {
     // kid should match
     assert_eq!(jwk.common.key_id.as_deref(), Some(public_kid.as_str()));
 
+    Ok(())
+}
+
+/// Applies private / public / common usage masks to an RSA `CreateKeyPair` request.
+fn set_rsa_pair_masks(
+    kp_req: &mut CreateKeyPair,
+    private: CryptographicUsageMask,
+    public: CryptographicUsageMask,
+) {
+    for (attrs, mask) in [
+        (&mut kp_req.private_key_attributes, private),
+        (&mut kp_req.public_key_attributes, public),
+        (&mut kp_req.common_attributes, private | public),
+    ] {
+        attrs
+            .get_or_insert_with(Default::default)
+            .cryptographic_usage_mask = Some(mask);
+    }
+}
+
+/// RSA-2048 public key with `Encrypt | WrapKey` → `use=enc`, no `alg`.
+#[tokio::test]
+async fn test_jwks_rsa_encrypt_only_key_use_enc() -> KResult<()> {
+    let app = test_utils::setup_app(None).await;
+
+    let mut kp_req =
+        create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?;
+    set_rsa_pair_masks(
+        &mut kp_req,
+        CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey,
+        CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey,
+    );
+    let kp_resp: CreateKeyPairResponse = test_utils::post_2_1(&app, kp_req).await?;
+    let public_kid = kp_resp.public_key_unique_identifier.to_string();
+
+    drop(
+        test_utils::post_json_with_uri::<_, _, serde_json::Value, _>(
+            &app,
+            serde_json::json!({"tags": ["jwks"]}),
+            &format!("/v1/crypto/keys/{public_kid}/tags"),
+        )
+        .await?,
+    );
+
+    let resp = get_jwks_response(&app).await;
+    assert_eq!(resp.status(), 200);
+    let body = read_body(resp).await;
+    let set: JwkSet = serde_json::from_slice(&body).expect("valid JwkSet JSON");
+    let jwk = set
+        .keys
+        .iter()
+        .find(|k| k.common.key_id.as_deref() == Some(&public_kid))
+        .expect("RSA-2048 encryption key should be in JWKS");
+
+    assert_eq!(
+        jwk.common.public_key_use,
+        Some(jsonwebtoken::jwk::PublicKeyUse::Encryption)
+    );
+    assert_eq!(jwk.common.key_algorithm, None);
+    Ok(())
+}
+
+/// REST-generated RSA pairs advertise `use`/`alg` according to the requested JOSE `alg`.
+#[tokio::test]
+async fn test_jwks_rest_generated_rsa_use_alg_follow_requested_alg() -> KResult<()> {
+    use jsonwebtoken::jwk::{KeyAlgorithm, PublicKeyUse};
+
+    let app = test_utils::setup_app(None).await;
+
+    for (alg, expected_use, expected_alg) in [
+        ("RS256", PublicKeyUse::Signature, Some(KeyAlgorithm::RS256)),
+        ("RSA-OAEP-256", PublicKeyUse::Encryption, None),
+    ] {
+        let created: serde_json::Value = test_utils::post_json_with_uri(
+            &app,
+            serde_json::json!({"kty": "RSA", "alg": alg}),
+            "/v1/crypto/keys",
+        )
+        .await?;
+        let public_kid = created["kid_public"]
+            .as_str()
+            .expect("kid_public in key creation response")
+            .to_owned();
+        drop(
+            test_utils::post_json_with_uri::<_, _, serde_json::Value, _>(
+                &app,
+                serde_json::json!({"tags": ["jwks"]}),
+                &format!("/v1/crypto/keys/{public_kid}/tags"),
+            )
+            .await?,
+        );
+
+        let body = read_body(get_jwks_response(&app).await).await;
+        let set: JwkSet = serde_json::from_slice(&body).expect("valid JwkSet JSON");
+        let jwk = set
+            .keys
+            .iter()
+            .find(|k| k.common.key_id.as_deref() == Some(&public_kid))
+            .expect("generated RSA public key should be in JWKS");
+        assert_eq!(jwk.common.public_key_use, Some(expected_use), "alg={alg}");
+        assert_eq!(jwk.common.key_algorithm, expected_alg, "alg={alg}");
+    }
     Ok(())
 }
 

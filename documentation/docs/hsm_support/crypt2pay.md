@@ -272,9 +272,10 @@ which stores the keys generated through PKCS#11, wrapped by the KDK. `[C2P_DIR]`
 (`replicaCount: 1`, autoscaling disabled). Otherwise each pod would keep its own objects directory.
 
 !!! note
-    Validated on minikube against a live Crypt2pay with the values below, with the non-FIPS and
-    FIPS images: HSM key creation, AES-GCM encryption and decryption through the KMS pod, and
-    decryption with the same HSM key after the pod was deleted and recreated.
+    Validated on minikube against a live Crypt2pay: HSM key creation, AES-CBC encryption and decryption with the FIPS image, AES-GCM encryption and decryption with the non-FIPS image, and decryption after pod recreation in both variants. The AES-CBC round trip checks deployment connectivity only, not authenticated application encryption.
+
+!!! warning
+    Crypt2pay has no PKCS#11 v3.0 message API. FIPS builds require an HSM-generated AES-GCM IV; the tested physical HSM and simulator provide none, so their FIPS tests verify that encryption is rejected. For key wrapping, use `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"` if it supplies no GCM IV.
 
 ### 1. Crypt2pay client image
 

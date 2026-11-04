@@ -96,7 +96,6 @@ if [ "$CI_MODE" = "true" ]; then
   exit 0
 fi
 
-# pre-commit run -a --hook-stage manual release-git-cliff
 # Regenerate all docs (server CLI help, ckms markdown, KMIP tables, crypto inventory, CBOM)
 bash .mise/scripts/docs/generate_docs.sh || true
 

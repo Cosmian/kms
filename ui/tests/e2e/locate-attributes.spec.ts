@@ -11,7 +11,7 @@
  *
  * PLAYWRIGHT_HSM_KEY_COUNT sets the number of HSM keys pre-created (default 3).
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
     createEcKeyPair,
     createRsaKeyPair,
@@ -30,6 +30,16 @@ const _env = (globalThis as GlobalWithProcess).process?.env ?? {};
 const HSM_KEY_COUNT = parseInt(_env.PLAYWRIGHT_HSM_KEY_COUNT ?? "3", 10);
 const HSM_AVAILABLE = HSM_KEY_COUNT > 0;
 
+// Rows render before their per-row get_attributes call returns, and paging only enriches the
+// newly visible page, so Type / Key Format Type read "N/A" until it lands. With many keys
+// created by parallel workers the HSM rows sit beyond page 1, where a fixed sleep is too short.
+const ENRICH_TIMEOUT = 30_000;
+
+async function waitForEnrichedRow(cells: Locator): Promise<void> {
+    await expect(cells.nth(1)).not.toHaveText("N/A", { timeout: ENRICH_TIMEOUT });
+    await expect(cells.nth(4)).not.toHaveText("N/A", { timeout: ENRICH_TIMEOUT });
+}
+
 /**
  * Walk every page of the Ant Design Table and collect Type and Key Format Type
  * values for rows matching the given UID prefix (or all rows if no prefix).
@@ -46,6 +56,8 @@ async function collectAttributeColumns(page: Page, uidPrefix?: string): Promise<
             const cells = row.locator("td");
             const uidText = (await cells.nth(0).textContent()) ?? "";
             if (uidPrefix && !uidText.startsWith(uidPrefix)) continue;
+            // Without a prefix (whole-table scan) transient N/A is tolerated by the caller.
+            if (uidPrefix) await waitForEnrichedRow(cells);
             const typeText = (await cells.nth(1).textContent()) ?? "";
             const kftText = (await cells.nth(4).textContent()) ?? "";
             types.push(typeText.trim());
@@ -81,6 +93,7 @@ async function findRowByUid(page: Page, uidSubstring: string): Promise<{ type: s
             const cells = row.locator("td");
             const uidText = (await cells.nth(0).textContent()) ?? "";
             if (uidText.includes(uidSubstring)) {
+                await waitForEnrichedRow(cells);
                 const typeText = (await cells.nth(1).textContent()) ?? "";
                 const kftText = (await cells.nth(4).textContent()) ?? "";
                 return { type: typeText.trim(), keyFormatType: kftText.trim() };

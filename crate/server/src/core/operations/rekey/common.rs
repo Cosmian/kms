@@ -36,7 +36,7 @@ use crate::{
         KMS,
         operations::key_ops::ObjectLifecycleExt,
         uid_utils::ObjectHandle,
-        wrapping::{unwrap_object, wrap_and_cache, wrap_object},
+        wrapping::{unwrap_stored_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
     middlewares::UserId,
@@ -302,7 +302,7 @@ impl KMS {
             return Ok(None);
         };
 
-        if let Err(e) = Box::pin(unwrap_object(dep_object, self, owner)).await {
+        if let Err(e) = Box::pin(unwrap_stored_object(dep_object, self, owner)).await {
             warn!("failed to unwrap dependant {dep_uid}: {e}, skipping");
             return Ok(None);
         }

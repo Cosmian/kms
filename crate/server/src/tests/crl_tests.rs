@@ -48,12 +48,10 @@ use openssl::x509::{X509Crl, X509NameBuilder, X509ReqBuilder};
 use x509_parser::prelude::{CertificateRevocationList, FromDer, X509Certificate};
 
 use crate::{
-    config::ServerParams,
     core::{KMS, operations::generate_crl::get_cached_crl},
     middlewares::UserId,
-    openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
-    tests::test_utils::{https_clap_config, https_clap_config_opts, setup_app},
+    tests::test_utils::{https_clap_config_opts, setup_app, test_kms, test_kms_with_config},
 };
 
 // ── Extension strings ────────────────────────────────────────────────────────
@@ -81,24 +79,9 @@ basicConstraints=critical,CA:FALSE
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Spin up a fresh in-process KMS backed by a temporary `SQLite` database.
-async fn make_kms() -> KResult<Arc<KMS>> {
-    init_openssl_providers_for_tests();
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config())?)).await?);
-    Ok(kms)
-}
-
 /// Same but with a `kms_public_url` so auto-CRL refresh is enabled.
 async fn make_kms_with_public_url(url: &str) -> KResult<Arc<KMS>> {
-    init_openssl_providers_for_tests();
-    let kms = Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(https_clap_config_opts(
-            Some(url.to_owned()),
-        ))?))
-        .await?,
-    );
-    Ok(kms)
+    test_kms_with_config(https_clap_config_opts(Some(url.to_owned()))).await
 }
 
 /// Issue a certificate using KMIP `Certify`.
@@ -219,11 +202,16 @@ async fn get_cert_der(kms: &Arc<KMS>, owner: &UserId, cert_id: &str) -> Vec<u8> 
 
 /// Call `generate_crl` and return the DER bytes.
 async fn generate_crl_der(kms: &Arc<KMS>, owner: &UserId, ca_id: &str) -> Vec<u8> {
-    crate::core::operations::generate_crl::generate_crl(kms, ca_id, None, owner)
-        .await
-        .expect("generate_crl")
-        .to_der()
-        .expect("CRL to DER")
+    crate::core::operations::generate_crl::generate_crl(
+        kms,
+        ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(owner),
+    )
+    .await
+    .expect("generate_crl")
+    .to_der()
+    .expect("CRL to DER")
 }
 
 /// Convert a `BigUint` (from `x509_parser`) to `u64` using its big-endian byte representation.
@@ -251,7 +239,7 @@ fn revoked_serials(crl_der: &[u8]) -> Vec<Vec<u8>> {
 /// The CRL must parse, verify, and contain zero revoked entries.
 #[tokio::test]
 async fn test_crl_empty_for_ca_with_no_revoked_certs() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
 
     let (ca_id, _) = certify(&kms, &owner, "Empty-CRL CA", None, None, CA_EXT).await?;
@@ -277,7 +265,7 @@ async fn test_crl_empty_for_ca_with_no_revoked_certs() -> KResult<()> {
 /// (→ `Deactivated` state) to cover both revocation state paths.
 #[tokio::test]
 async fn test_crl_includes_revoked_cert() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
 
     let (ca_id, ca_sk_id) = certify(&kms, &owner, "Test CA", None, None, CA_EXT).await?;
@@ -318,7 +306,7 @@ async fn test_crl_includes_revoked_cert() -> KResult<()> {
 /// This tests RFC 5280 §5.2.3 within a single server instance.
 #[tokio::test]
 async fn test_crl_number_strictly_increases() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "Monotonic CA", None, None, CA_EXT).await?;
 
@@ -346,7 +334,7 @@ async fn test_crl_number_strictly_increases() -> KResult<()> {
 /// This ensures the public CDP endpoint can serve CRLs after a restart.
 #[tokio::test]
 async fn test_crl_persisted_to_db() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "Persist CA", None, None, CA_EXT).await?;
 
@@ -365,13 +353,18 @@ async fn test_crl_persisted_to_db() -> KResult<()> {
 /// Both DER and PEM output must parse and verify with the CA public key.
 #[tokio::test]
 async fn test_crl_der_and_pem_output_valid() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "Format CA", None, None, CA_EXT).await?;
 
-    let crl = crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &owner)
-        .await
-        .expect("generate_crl");
+    let crl = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&owner),
+    )
+    .await
+    .expect("generate_crl");
 
     let der = crl.to_der().expect("to_der");
     let pem = crl.to_pem().expect("to_pem");
@@ -400,7 +393,7 @@ async fn test_crl_der_and_pem_output_valid() -> KResult<()> {
 /// returned by `get_cached_crl` must match the DB-stored DER bytes.
 #[tokio::test]
 async fn test_crl_cache_consistent_with_db() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "Cache CA", None, None, CA_EXT).await?;
 
@@ -422,7 +415,7 @@ async fn test_crl_cache_consistent_with_db() -> KResult<()> {
 /// in the CRL regardless of which `RevocationReasonCode` was used.
 #[tokio::test]
 async fn test_crl_includes_all_revoked_certs_from_same_ca() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, ca_sk_id) = certify(&kms, &owner, "Multi CA", None, None, CA_EXT).await?;
 
@@ -489,8 +482,7 @@ async fn test_public_crl_endpoint_404_before_generation() -> KResult<()> {
 /// has generated a CRL (which populates the cache and DB).
 #[tokio::test]
 async fn test_public_crl_endpoint_serves_valid_der() -> KResult<()> {
-    init_openssl_providers_for_tests();
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "CDP CA", None, None, CA_EXT).await?;
 
@@ -514,7 +506,7 @@ async fn test_public_crl_endpoint_serves_valid_der() -> KResult<()> {
 /// NOT include `cRLSign`, `generate_crl` must return `InvalidRequest`.
 #[tokio::test]
 async fn test_crl_rejects_ca_without_crl_sign_key_usage() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
 
     // Certify a CA that has keyUsage but lacks cRLSign.
@@ -528,8 +520,13 @@ async fn test_crl_rejects_ca_without_crl_sign_key_usage() -> KResult<()> {
     )
     .await?;
 
-    let result =
-        crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &owner).await;
+    let result = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&owner),
+    )
+    .await;
 
     assert!(
         result.is_err(),
@@ -554,7 +551,7 @@ async fn test_crl_rejects_non_certificate_issuer() -> KResult<()> {
         extra::tagging::EMPTY_TAGS, kmip_operations::CreateResponse,
         requests::symmetric_key_create_request,
     };
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
 
     // Create an AES-256 key.
@@ -572,8 +569,13 @@ async fn test_crl_rejects_non_certificate_issuer() -> KResult<()> {
     } = kms.create(req, &owner).await?;
     let sym_key_id = unique_identifier.to_string();
 
-    let result =
-        crate::core::operations::generate_crl::generate_crl(&kms, &sym_key_id, None, &owner).await;
+    let result = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &sym_key_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&owner),
+    )
+    .await;
     assert!(
         result.is_err(),
         "generate_crl must fail when issuer UID is not a certificate"
@@ -592,7 +594,7 @@ async fn test_remove_from_crl_reason_is_suppressed_in_complete_crl() -> KResult<
     // OID 2.5.29.21 — id-ce-reasonCode (RFC 5280 §5.3.1).
     const REASON_OID: &str = "2.5.29.21";
 
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, ca_sk_id) = certify(&kms, &owner, "Delta CA", None, None, CA_EXT).await?;
     let (leaf_id, _) = certify(
@@ -632,7 +634,7 @@ async fn test_remove_from_crl_reason_is_suppressed_in_complete_crl() -> KResult<
 /// short time window) — the seed must still exceed the DB max.
 #[tokio::test]
 async fn test_crl_number_monotonicity_seed_exceeds_db_max() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, _) = certify(&kms, &owner, "Seed CA", None, None, CA_EXT).await?;
 
@@ -684,7 +686,7 @@ async fn test_all_reason_codes_produce_correct_crl_entries() -> KResult<()> {
         (RevocationReasonCode::RemoveFromCRL, None), // 8 — suppressed in complete CRL
     ];
 
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, ca_sk_id) = certify(&kms, &owner, "Reason CA", None, None, CA_EXT).await?;
 
@@ -769,7 +771,6 @@ async fn test_all_reason_codes_produce_correct_crl_entries() -> KResult<()> {
 /// key-ceremony split required.
 async fn make_kms_with_co(co_user: &str) -> KResult<Arc<KMS>> {
     use crate::config::{ClapConfig, MainDBConfig};
-    init_openssl_providers_for_tests();
     let mut conf = ClapConfig {
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
@@ -781,8 +782,7 @@ async fn make_kms_with_co(co_user: &str) -> KResult<Arc<KMS>> {
     };
     conf.roles.crypto_officer_users = Some(vec![co_user.to_owned()]);
     conf.roles.crypto_officer_require_ceremony = false;
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf)?)).await?);
-    Ok(kms)
+    test_kms_with_config(conf).await
 }
 
 /// Grant `user` `Get` + `Revoke` access to `object_id` via the DB permissions layer.
@@ -855,7 +855,7 @@ async fn grant_certify_access(
 /// revoked certificates issued by that CA, irrespective of object ownership in the KMS.
 #[tokio::test]
 async fn test_crl_no_co_all_revoked_certs_present() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let alice = UserId::new("alice");
     let bob = UserId::new("bob");
 
@@ -1173,7 +1173,7 @@ async fn test_crl_mixed_co_and_non_co_revocations_all_present() -> KResult<()> {
 /// the CRL — the CRL generation endpoint requires read access to the CA cert.
 #[tokio::test]
 async fn test_crl_non_co_cannot_generate_crl_without_ca_access() -> KResult<()> {
-    let kms = make_kms().await?; // no CO configured
+    let kms = test_kms().await?; // no CO configured
     let alice = UserId::new("alice");
     let bob = UserId::new("bob");
 
@@ -1181,8 +1181,13 @@ async fn test_crl_non_co_cannot_generate_crl_without_ca_access() -> KResult<()> 
     let (ca_id, _) = certify(&kms, &alice, "Access CA", None, None, CA_EXT).await?;
 
     // Bob (not owner, not CO) tries to generate the CRL for alice's CA.
-    let result =
-        crate::core::operations::generate_crl::generate_crl(&kms, &ca_id, None, &bob).await;
+    let result = crate::core::operations::generate_crl::generate_crl(
+        &kms,
+        &ca_id,
+        None,
+        crate::core::operations::generate_crl::CrlRequester::User(&bob),
+    )
+    .await;
     assert!(
         result.is_err(),
         "Non-owner, non-CO user must NOT be able to generate a CRL for another user's CA"
@@ -1223,7 +1228,7 @@ const COUNT_CERTS: usize = 5;
 /// across all DB owners with no duplicates and no missing entries.
 #[tokio::test]
 async fn test_crl_counting_revoked_certs_no_co() -> KResult<()> {
-    let kms = make_kms().await?; // no CO configured
+    let kms = test_kms().await?; // no CO configured
     let ca_owner = UserId::new("ca_owner");
 
     // ── Setup: CA + N leaves, each owned by a distinct user ──────────────────
@@ -1488,7 +1493,7 @@ fn generate_test_csr(cn: &str) -> Vec<u8> {
 #[tokio::test]
 async fn test_certify_from_csr_with_requested_validity_days() -> KResult<()> {
     const TTL_DAYS: i32 = 30;
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("csr_ttl_owner");
 
     // 1. Create a root CA with cRLSign so CRL generation also works.
@@ -1574,7 +1579,7 @@ async fn test_certify_from_csr_with_requested_validity_days() -> KResult<()> {
 /// TTL attribute is absent.
 #[tokio::test]
 async fn test_certify_from_csr_default_validity() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("csr_default_owner");
 
     let (ca_id, ca_sk_id) =
@@ -1631,7 +1636,7 @@ async fn test_certify_from_csr_default_validity() -> KResult<()> {
 /// Certify must reject targeting the reserved UID `"*"` (GHSA-pvw2-jxwc-95xq Part A).
 #[tokio::test]
 async fn test_certify_rejects_reserved_uid_star() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let alice = UserId::new("alice");
 
     let subject_name = "C=FR, O=KMS Test, CN=Star CA";
@@ -1671,7 +1676,7 @@ async fn test_certify_cannot_overwrite_victim_object() -> KResult<()> {
 
     use crate::core::ObjectHandle;
 
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let alice = UserId::new("alice");
     let bob = UserId::new("bob");
 
@@ -1749,7 +1754,7 @@ async fn test_certify_cannot_overwrite_victim_object() -> KResult<()> {
 async fn test_crl_keeps_revoked_certificate_after_destroy() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Destroy;
 
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, ca_sk_id) = certify(&kms, &owner, "Destroy CA", None, None, CA_EXT).await?;
     let (leaf_id, _) = certify(
@@ -1788,7 +1793,7 @@ async fn test_crl_keeps_revoked_certificate_after_destroy() -> KResult<()> {
 async fn test_recertify_issues_new_serial_not_listed_in_crl() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::ReCertify;
 
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::new("crl_owner");
     let (ca_id, ca_sk_id) = certify(&kms, &owner, "Renew CA", None, None, CA_EXT).await?;
     let (leaf_id, _) = certify(

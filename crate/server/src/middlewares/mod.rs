@@ -7,7 +7,7 @@ pub(crate) use audit::{
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
 pub(crate) use tls_auth::{
-    PeerCertificate, extract_peer_certificate, is_enrollment_issued, tls_auth_fn,
+    PeerCertificate, TlsUnique, extract_peer_certificate, is_enrollment_issued, tls_auth_fn,
     user_from_client_certificate, verified_issuers,
 };
 
@@ -15,14 +15,20 @@ mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
 mod auth_verifier;
-pub(crate) use auth_verifier::{AuthVerifier, verify_auth_verifier_jwt};
+#[cfg(test)]
+pub(crate) use auth_verifier::test_helpers as auth_verifier_test_helpers;
+pub(crate) use auth_verifier::{
+    AUTH_VERIFIER_SESSION_COOKIE, AuthVerifier, AuthVerifierValidator,
+    authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt,
+};
 
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;
 
 mod jwt;
 pub(crate) use jwt::{
-    JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware, validate_jwt_svid,
+    JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, jwt_auth_middleware,
+    refresh_jwks_for_token, reqwest_proxy, validate_jwt_svid,
 };
 
 mod rate_limiter;
@@ -87,6 +93,8 @@ pub(crate) enum AuthMethod {
     JwtSvid,
     /// Cosmian Auth Verifier JWT (no `kid`)
     AuthVerifierJwt,
+    /// Cosmian Auth Verifier `_ea_` session cookie (browser SAML single sign-on)
+    AuthVerifierSession,
     /// Static API token (Bearer)
     ApiToken,
     /// mTLS client certificate

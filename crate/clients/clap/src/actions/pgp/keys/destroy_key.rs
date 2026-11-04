@@ -1,17 +1,12 @@
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
-    kmip_2_1::{
-        kmip_objects::ObjectType, kmip_operations::GetAttributes, kmip_types::UniqueIdentifier,
-    },
+    kmip_2_1::{kmip_objects::ObjectType, kmip_types::UniqueIdentifier},
 };
 
 use crate::{
-    actions::{
-        labels::KEY_ID,
-        shared::{get_key_uid, utils::destroy},
-    },
-    error::{KmsCliError, result::KmsCliResult},
+    actions::{labels::KEY_ID, shared::utils::destroy_key},
+    error::result::KmsCliResult,
 };
 
 /// Destroy an `OpenPGP` key.
@@ -47,28 +42,13 @@ impl DestroyPgpKeyAction {
     ///
     /// Returns an error if key UID resolution or destruction fails.
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
-        let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
-
-        // Pre-flight: verify the object type matches this subcommand.
-        let attr = kms_rest_client
-            .get_attributes(GetAttributes {
-                unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
-                attribute_reference: None,
-            })
-            .await?;
-        if !matches!(attr.attributes.object_type, Some(ObjectType::PGPKey)) {
-            return Err(KmsCliError::NotSupported(format!(
-                "Object '{id}' is of type {:?}, not PGPKey. \
-                 Use the correct 'ckms ... keys destroy' subcommand for this key type.",
-                attr.attributes.object_type
-            )));
-        }
-
-        destroy(
+        destroy_key(
             kms_rest_client,
-            &id,
+            self.key_id.as_ref(),
+            self.tags.as_ref(),
             self.remove,
-            attr.attributes.object_type,
+            &[ObjectType::PGPKey],
+            "PGPKey",
         )
         .await
     }

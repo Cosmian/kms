@@ -27,6 +27,8 @@ pub(super) const BYTE_LIKE_TAGS: &[&str] = &[
     "SignatureData",
     "DigestedData",
     "CertificateRequestValue",
+    // KMIP 1.x name of the Certify CSR tag (0x420018)
+    "CertificateRequest",
     "IssuerDistinguishedName",
     "CertificateSerialNumber",
     "TicketValue",

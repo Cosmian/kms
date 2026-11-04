@@ -9,6 +9,47 @@
 > use Cosmian's FIPS 140-3 KMS as its certificate authority and key custodian —
 > **without requiring a separate secrets management cluster or a reverse proxy**.
 
+## Architecture overview
+
+SPIRE delegates two distinct roles to Eviden KMS through its built-in Vault plugins:
+
+- **`KeyManager "hashicorp_vault"`** stores SPIRE's private signing keys (X.509 CA key and
+  JWT signing keys) and performs every signature with them, through the KMS **Transit engine**.
+- **`UpstreamAuthority "vault"`** gets SPIRE's intermediate CA certificate signed by the KMS
+  root CA, through the KMS **PKI engine**.
+
+Both plugins authenticate with the same AppRole token, issued by the auth-verifier through
+the KMS `/v1/auth/*` proxy.
+
+```mermaid
+flowchart LR
+    subgraph SPIRE["SPIRE Server"]
+        KM["KeyManager plugin<br/>hashicorp_vault<br/>(stores and uses CA + JWT keys)"]
+        UA["UpstreamAuthority plugin<br/>vault<br/>(gets intermediate CA signed)"]
+    end
+
+    subgraph KMS["Eviden KMS (vault_addr)"]
+        AUTHP["/v1/auth/*<br/>auth proxy"]
+        TRANSIT["/v1/transit/*<br/>Transit engine<br/>(key create, sign)"]
+        PKI["/v1/pki/*<br/>PKI engine<br/>(sign-intermediate)"]
+        STORE[("KMIP objects<br/>SPIRE keys + root CA key")]
+    end
+
+    AUTHV["auth-verifier<br/>(AppRole, token lifecycle)"]
+    AGENT["SPIRE Agent"]
+    WL["Workloads"]
+
+    KM -- "AppRole login" --> AUTHP
+    UA -- "AppRole login" --> AUTHP
+    AUTHP -- "proxy" --> AUTHV
+    KM -- "X-Vault-Token<br/>create key, sign digest" --> TRANSIT
+    UA -- "X-Vault-Token<br/>CSR" --> PKI
+    TRANSIT --> STORE
+    PKI --> STORE
+    SPIRE -- "SVIDs" --> AGENT
+    AGENT -- "Workload API" --> WL
+```
+
 ## End-to-end flow
 
 ```mermaid
@@ -77,7 +118,7 @@ generated, stored, and used exclusively inside the FIPS 140-3-validated KMS.
 | **No additional cluster to operate** | Reuses infrastructure you already run (Eviden KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE.                     |
 | **Centralized audit trail**          | Every CA signature and transit `sign` call is a KMIP operation logged by the KMS with identity, timestamp, and key identifier.                                                     |
 | **Post-quantum-ready transit keys**  | Transit keys support `ml-dsa-65` (non-FIPS builds) alongside classical `ecdsa-p256/p384` and `rsa-2048/4096`.                                                                      |
-| **Drop-in `vault_addr`**             | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing `vault_addr` at the KMS. No nginx or extra proxy required. |
+| **Drop-in `vault_addr`**             | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "hashicorp_vault"` plugins need no code changes — only configuration pointing `vault_addr` at the KMS. No nginx or extra proxy required. |
 
 ## Who should use it?
 
@@ -161,7 +202,7 @@ unchanged to auth-verifier — the KMS never inspects the body or response of au
 
 #### `/v1/{mount}/keys/*` and `/v1/{mount}/sign/*` — Transit engine
 
-Handled **natively** by the KMS. Caller: SPIRE server (`KeyManager "vault"` plugin).
+Handled **natively** by the KMS. Caller: SPIRE server (`KeyManager "hashicorp_vault"` plugin).
 Requires `X-Vault-Token`; the `entity_id` from the token becomes
 the KMIP object owner, enforcing per-AppRole isolation.
 
@@ -530,9 +571,9 @@ signed certificate itself (Vault ≥1.11 semantics).
 
 ### 3. Transit key lifecycle (KeyManager engine)
 
-SPIRE's `KeyManager "vault"` plugin drives this engine. The lifecycle of a transit key
+SPIRE's `KeyManager "hashicorp_vault"` plugin drives this engine. The lifecycle of a transit key
 is the same regardless of which AppRole-authenticated client (in practice, SPIRE's
-`KeyManager "vault"` plugin) calls it:
+`KeyManager "hashicorp_vault"` plugin) calls it:
 
 ```mermaid
 sequenceDiagram
@@ -576,7 +617,7 @@ sequenceDiagram
 ### 5. Workload SVID issuance (AI agent identity)
 
 JWT-SVIDs are signed by the **SPIRE Server** using its JWT signing key. When the
-`KeyManager "vault"` plugin is configured, that signing key lives exclusively in the KMS
+`KeyManager "hashicorp_vault"` plugin is configured, that signing key lives exclusively in the KMS
 transit engine — the SPIRE Server calls `/v1/transit/sign/{name}/{hash_alg}` every time it
 mints a SVID. The KMS performs the cryptographic operation server-side and returns the
 signature; the private key never leaves the KMS.
@@ -845,14 +886,14 @@ UpstreamAuthority "vault" {
 #### Optional: store SPIRE's own keys in the KMS (Transit KeyManager)
 
 ```hcl
-KeyManager "vault" {
+KeyManager "hashicorp_vault" {
     plugin_data {
         vault_addr = "https://kms.example.com"
         approle_auth {
             approle_auth_mount_point = "approle"
         }
-        transit_engine_path = "transit"
-        key_name            = "spire-server-key"
+        transit_engine_path  = "transit"
+        key_identifier_value = "spire-server-1"
     }
 }
 ```

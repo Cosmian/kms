@@ -24,9 +24,14 @@ use serde_json::Value;
 use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
-use super::locate_query::{
-    LocateParam, LocateQuery, SqlitePlaceholder, find_by_rotate_name_query,
-    find_due_for_rotation_query, query_all_from_attributes, query_from_attributes,
+use super::{
+    crl_number_from_sql, crl_number_to_sql,
+    locate_query::{
+        LocateParam, LocateQuery, SqlitePlaceholder, filter_due_for_rotation,
+        find_by_rotate_name_query, find_due_for_rotation_query, query_all_from_attributes,
+        query_from_attributes,
+    },
+    merge_granted_operations,
 };
 use crate::{
     db_error,
@@ -34,7 +39,10 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES, SQLITE_QUERIES,
-        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
+        migrate::{
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            certificate_serial_tag,
+        },
         sql::database::SqlDatabase,
     },
 };
@@ -358,6 +366,57 @@ impl SqlitePool {
         .await?;
         if !backfill_done {
             pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
+                .await?;
+        }
+
+        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
+        // existed, gated by a completion marker. Idempotent: an interrupted run (marker
+        // still unset) re-executes cleanly on the next boot.
+        if pool
+            .get_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
+            .await?
+            != Some("true".to_owned())
+        {
+            let select_missing = get_sqlite_query!("select-certificates-missing-serial-tag");
+            let insert_tag = get_sqlite_query!("insert-tags-if-absent");
+            retry_on_transient_lock(|| async {
+                pool.writer
+                    .call(
+                        move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                            let tx = c.transaction()?;
+                            let rows: Vec<(String, String)> = {
+                                let mut stmt = tx.prepare(select_missing)?;
+                                let mut rows = stmt.query([])?;
+                                let mut out = Vec::new();
+                                while let Some(row) = rows.next()? {
+                                    out.push((row.get(0)?, row.get(1)?));
+                                }
+                                out
+                            };
+                            for (id, object_json) in &rows {
+                                match serde_json::from_str::<Object>(object_json) {
+                                    Ok(obj) => {
+                                        if let Some(tag) = certificate_serial_tag(&obj) {
+                                            tx.execute(insert_tag, rusqlite::params![id, tag])?;
+                                        }
+                                    }
+                                    Err(e) => tracing::warn!(
+                                        uid = %id,
+                                        error = %e,
+                                        "serial tag backfill: skipping object that failed to \
+                                         deserialize"
+                                    ),
+                                }
+                            }
+                            tx.commit()?;
+                            Ok(())
+                        },
+                    )
+                    .await
+                    .map_err(DbError::from)
+            })
+            .await?;
+            pool.set_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true")
                 .await?;
         }
 
@@ -951,14 +1010,16 @@ impl ObjectsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
 
-        let mut due = Vec::with_capacity(rows.len());
-        for (uid, owner, attrs_json) in rows {
-            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
-            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                due.push((uid, owner));
-            }
-        }
-        Ok(due)
+        Ok(filter_due_for_rotation(
+            rows.into_iter().map(|(uid, owner, attrs_json)| {
+                (
+                    uid,
+                    owner,
+                    serde_json::from_str(&attrs_json).unwrap_or_default(),
+                )
+            }),
+            now,
+        ))
     }
 
     async fn find_by_rotate_name(
@@ -1155,14 +1216,7 @@ impl PermissionsStore for SqlitePool {
                         let perms_raw: String = r.get(3)?;
                         let perms: HashSet<KmipOperation> = serde_json::from_str(&perms_raw)
                             .map_err(|_err| rusqlite::Error::InvalidQuery)?;
-                        // The same object may be returned twice: once for the direct
-                        // grant and once for the wildcard `*` grant. Union the
-                        // permission sets instead of overwriting the entry.
-                        ids.entry(id)
-                            .and_modify(|(_, _, existing_perms)| {
-                                existing_perms.extend(perms.iter().copied());
-                            })
-                            .or_insert((owner, state, perms));
+                        merge_granted_operations(&mut ids, id, owner, state, perms);
                     }
                     Ok(ids)
                 },
@@ -1387,7 +1441,7 @@ impl PermissionsStore for SqlitePool {
         let issuer_id_s = issuer_id.to_owned();
         let crl_der_v = crl_der.to_vec();
 
-        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let crl_number_i = crl_number_to_sql(crl_number);
         let generated_at_s = generated_at.to_owned();
         let next_update_s = next_update.to_owned();
         self.writer
@@ -1469,7 +1523,7 @@ impl PermissionsStore for SqlitePool {
             )
             .await
             .map_err(DbError::from)?;
-        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
+        Ok(max.map(crl_number_from_sql))
     }
 }
 

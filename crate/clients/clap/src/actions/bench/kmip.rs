@@ -758,8 +758,11 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             .block_on(client.encrypt(enc_req))
             .expect("pre-encapsulate for decapsulate");
         // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
-        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
-            .expect("KEM encapsulation tuple");
+        let Ok((_, ct)) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default()) else {
+            eprintln!("[bench] KEM {label} returned a malformed encapsulation, skipping");
+            bench_ko(format!("{slug}/kem/configurable"));
+            continue;
+        };
         let ct = ct.to_vec();
         let dec_req = decrypt_request(
             &priv_id.to_string(),
@@ -824,8 +827,11 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
         );
 
         // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
-        let (_, ct) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default())
-            .expect("KEM encapsulation tuple");
+        let Ok((_, ct)) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default()) else {
+            eprintln!("[bench] PQC KEM {label} returned a malformed encapsulation, skipping");
+            bench_ko(format!("{slug}/kem/pqc"));
+            continue;
+        };
         let ct = ct.to_vec();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
@@ -1584,6 +1590,34 @@ pub(super) fn bench_hsm_encrypt(
     }
 }
 
+/// HSM `EdDSA` sign benchmarks (Ed25519/Ed448 are non-FIPS).
+#[cfg(feature = "non-fips")]
+const HSM_EDDSA_SIGN: [(&str, RecommendedCurve, CryptographicAlgorithm); 2] = [
+    (
+        "eddsa-ed25519",
+        RecommendedCurve::CURVEED25519,
+        CryptographicAlgorithm::Ed25519,
+    ),
+    (
+        "eddsa-ed448",
+        RecommendedCurve::CURVEED448,
+        CryptographicAlgorithm::Ed448,
+    ),
+];
+/// No HSM `EdDSA` sign benchmark in a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+const HSM_EDDSA_SIGN: [(&str, RecommendedCurve, CryptographicAlgorithm); 0] = [];
+
+/// HSM `EdDSA` key-creation benchmarks (Ed25519/Ed448 are non-FIPS).
+#[cfg(feature = "non-fips")]
+const HSM_EDDSA_KEY_CREATION: [(&str, RecommendedCurve); 2] = [
+    ("hsm-ed25519", RecommendedCurve::CURVEED25519),
+    ("hsm-ed448", RecommendedCurve::CURVEED448),
+];
+/// No HSM `EdDSA` key-creation benchmark in a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+const HSM_EDDSA_KEY_CREATION: [(&str, RecommendedCurve); 0] = [];
+
 pub(super) fn bench_hsm_sign_verify(
     c: &mut Criterion,
     client: &KmsClient,
@@ -1721,19 +1755,7 @@ pub(super) fn bench_hsm_sign_verify(
     // must set `cryptographic_algorithm` to `Ed25519`/`Ed448` (mirroring
     // `ckms ec sign`'s own request construction — see module docs above) with
     // no `digital_signature_algorithm` and no `digested_data`.
-    #[cfg(feature = "non-fips")]
-    for (label, curve, algorithm) in [
-        (
-            "eddsa-ed25519",
-            RecommendedCurve::CURVEED25519,
-            CryptographicAlgorithm::Ed25519,
-        ),
-        (
-            "eddsa-ed448",
-            RecommendedCurve::CURVEED448,
-            CryptographicAlgorithm::Ed448,
-        ),
-    ] {
+    for (label, curve, algorithm) in HSM_EDDSA_SIGN {
         let Some((_pub_id, priv_id)) = try_create_hsm_ec_kp(
             rt,
             client,
@@ -1861,11 +1883,7 @@ pub(super) fn bench_hsm_key_creation(
 
     // EdDSA key pairs (Ed25519/Ed448, non-FIPS). Key creation succeeds
     // unconditionally on SoftHSM2 (unlike P-521, see module docs above).
-    #[cfg(feature = "non-fips")]
-    for (label, curve) in [
-        ("hsm-ed25519", RecommendedCurve::CURVEED25519),
-        ("hsm-ed448", RecommendedCurve::CURVEED448),
-    ] {
+    for (label, curve) in HSM_EDDSA_KEY_CREATION {
         let mut group = timed_group(c, format!("{slug}/key-creation/{label}"));
         group.bench_function("create", |b| {
             b.to_async(rt).iter(|| {

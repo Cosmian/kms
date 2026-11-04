@@ -15,13 +15,13 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{TracingConfig, trace, tracing_init};
 
 use crate::{
-    config::{MainDBConfig, ServerParams},
+    config::MainDBConfig,
     core::KMS,
     middlewares::UserId,
     result::KResult,
     tests::{
         migrate::utils::{open_file, restore_db_from_dump},
-        test_utils::https_clap_config,
+        test_utils::{https_clap_config, test_kms_with_config},
     },
 };
 
@@ -60,9 +60,7 @@ async fn init_test_kms(dump_filename: &str) -> KResult<Arc<KMS>> {
         clear_database: false,
         ..Default::default()
     };
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-
-    Ok(kms)
+    test_kms_with_config(clap_config).await
 }
 
 fn log_init_colorized(rust_log: Option<&str>) {
@@ -249,7 +247,7 @@ async fn from_5_1_0_to_5_12_0() -> KResult<()> {
         clear_database: false,
         ..Default::default()
     };
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     // assert the deletion/revocation worked as expected
     let locate_response = kms

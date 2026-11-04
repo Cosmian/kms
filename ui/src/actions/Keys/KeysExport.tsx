@@ -14,7 +14,6 @@ interface KeyExportFormData {
     wrapKeyId?: string;
     allowRevoked: boolean;
     wrappingAlgorithm?: WrappingAlgorithm;
-    authenticatedAdditionalData?: string;
 }
 
 type ExportKeyFormat =
@@ -69,7 +68,6 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const { t } = useTranslation("actions");
     const wrapKeyId = Form.useWatch("wrapKeyId", form);
-    const selectedAlgorithm: WrappingAlgorithm | undefined = Form.useWatch("wrappingAlgorithm", form);
 
     const isSecretData = key_type === "secret-data";
     const isOpaqueObject = key_type === "opaque-object";
@@ -82,18 +80,9 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
 
     useEffect(() => {
         if (!wrapKeyId) {
-            form.setFieldsValue({
-                wrappingAlgorithm: undefined,
-                authenticatedAdditionalData: undefined,
-            });
+            form.setFieldsValue({ wrappingAlgorithm: undefined });
         }
     }, [wrapKeyId, form]);
-
-    useEffect(() => {
-        if (selectedAlgorithm !== "aes-gcm") {
-            form.setFieldsValue({ authenticatedAdditionalData: undefined });
-        }
-    }, [selectedAlgorithm, form]);
 
     const onFinish = async (values: KeyExportFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -242,12 +231,6 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                                     disabled={!wrapKeyId}
                                 />
                             </Form.Item>
-
-                            {selectedAlgorithm === "aes-gcm" && (
-                                <Form.Item name="authenticatedAdditionalData" label={t("keysExport.authenticatedAdditionalData")}>
-                                    <Input placeholder={t("keysExport.enterAuthenticatedData")} disabled={!wrapKeyId} />
-                                </Form.Item>
-                            )}
                         </Card>
                     )}
 

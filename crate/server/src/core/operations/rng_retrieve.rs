@@ -44,23 +44,17 @@ pub(crate) async fn rng_retrieve(
 #[cfg(test)]
 #[allow(clippy::panic)]
 mod tests {
-    use std::sync::Arc;
 
     use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_operations::RNGRetrieve;
 
     use crate::{
-        config::ServerParams,
-        core::{KMS, operations::rng_retrieve},
-        error::KmsError,
-        middlewares::UserId,
-        result::KResult,
-        tests::test_utils::https_clap_config,
+        core::operations::rng_retrieve, error::KmsError, middlewares::UserId, result::KResult,
+        tests::test_utils::test_kms,
     };
 
     #[tokio::test]
     async fn rng_retrieve_openssl_only_returns_length() -> KResult<()> {
-        let clap_config = https_clap_config();
-        let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+        let kms = test_kms().await?;
         // Intentionally no owner reference needed in this unit test.
 
         let resp0 =

@@ -4,17 +4,18 @@ use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
 use cosmian_kmip::kmip_2_1::{
     kmip_data_structures::KeyWrappingData,
     kmip_objects::Object,
-    kmip_types::{
-        CryptographicDomainParameters, CryptographicParameters, EncodingOption, RecommendedCurve,
-    },
+    kmip_types::{CryptographicDomainParameters, EncodingOption, RecommendedCurve},
 };
 use cosmian_kmip::{
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyValue, KeyWrappingSpecification},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, EncryptionKeyInformation,
+            KeyFormatType, UniqueIdentifier,
+        },
         requests::create_symmetric_key_kmip_object,
     },
 };
@@ -258,6 +259,65 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     unwrap_key_block(data_encryption_key.key_block_mut()?, &key_encryption_key)?;
 
     assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    Ok(())
+}
+
+#[test]
+fn test_wrap_unwrap_aes_gcm_all_kek_sizes() -> CryptoResult<()> {
+    #[cfg(not(feature = "non-fips"))]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips")
+        .map_err(|e| CryptoError::Default(format!("Failed to load FIPS provider: {e}")))?;
+
+    for kek_len in [16, 24, 32] {
+        let mut kek_bytes = vec![0; kek_len];
+        KmsRng::new().fill_bytes(&mut kek_bytes)?;
+        let kek = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            kek_bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
+        let mut dek_bytes = vec![0; 32];
+        KmsRng::new().fill_bytes(&mut dek_bytes)?;
+        let mut dek = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            dek_bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?;
+        let original_key_block = dek.key_block()?.clone();
+
+        wrap_object_with_key(
+            &mut dek,
+            &kek,
+            &KeyWrappingSpecification {
+                encryption_key_information: Some(EncryptionKeyInformation {
+                    unique_identifier: UniqueIdentifier::TextString("kek".to_owned()),
+                    cryptographic_parameters: Some(CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        block_cipher_mode: Some(BlockCipherMode::GCM),
+                        ..Default::default()
+                    }),
+                }),
+                ..Default::default()
+            },
+            &KmsRng::new(),
+        )?;
+        let Some(KeyValue::ByteString(_)) = &dek.key_block()?.key_value else {
+            crypto_bail!("Key value is not a byte string");
+        };
+        unwrap_key_block(dek.key_block_mut()?, &kek)?;
+        assert_eq!(
+            dek.key_block()?,
+            &original_key_block,
+            "KEK of {kek_len} bytes"
+        );
+    }
     Ok(())
 }
 

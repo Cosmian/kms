@@ -14,9 +14,11 @@ use std::{
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
-    cms::{CMSOptions, CmsContentInfo},
+    cms::CmsContentInfo,
     nid::Nid,
-    pkey::{PKeyRef, Private},
+    pkey::{Id, PKeyRef, Private, Public},
+    pkey_ctx::PkeyCtxRef,
+    rsa::Padding,
     stack::Stack,
     symm::Cipher,
     x509::{X509, X509Ref},
@@ -37,7 +39,12 @@ use crate::{crypto_bail, crypto_error, error::result::CryptoResult};
 /// Protocol transport, outside the KMIP algorithm policy (like TLS): RFC 8894 defines only CBC
 /// content encryption.
 const ENVELOPE_CIPHERS: [Nid; 3] = [Nid::AES_128_CBC, Nid::AES_192_CBC, Nid::AES_256_CBC];
+/// Key-transport algorithms accepted for the (RSA) CA recipient: RSAES-OAEP only. PKCS#1 v1.5
+/// encryption is disallowed after 2023 (NIST SP 800-131A Rev. 2, Table 5).
+#[cfg(not(feature = "non-fips"))]
+const ENVELOPE_KEY_TRANSPORTS: [Nid; 1] = [Nid::RSAESOAEP];
 /// Key-transport algorithms accepted for the (RSA) CA recipient: PKCS#1 v1.5 and RSAES-OAEP.
+#[cfg(feature = "non-fips")]
 const ENVELOPE_KEY_TRANSPORTS: [Nid; 2] = [Nid::RSAENCRYPTION, Nid::RSAESOAEP];
 /// Signer digest algorithms accepted on a `pkiMessage` (RFC 8894 §3.5.2 `SHA-256`/`SHA-512`,
 /// plus SHA-384); SHA-1 and MD5 are refused even when a loaded provider still verifies them.
@@ -144,22 +151,91 @@ pub fn certs_only_der(certs: &[X509]) -> CryptoResult<Vec<u8>> {
 }
 
 /// Encrypt `plaintext` into a CMS `EnvelopedData` addressed to `recipient`, using
-/// AES-128-CBC (RFC 8894 §3.5.2 `AES` capability).
+/// AES-128-CBC (RFC 8894 §3.5.2 `AES` capability). An RSA recipient gets RSAES-OAEP key
+/// transport in FIPS builds and PKCS#1 v1.5 otherwise; an EC recipient gets ECDH key agreement.
 ///
 /// # Errors
 /// Fails when OpenSSL cannot build the structure.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn envelope_for_recipient(recipient: &X509Ref, plaintext: &[u8]) -> CryptoResult<Vec<u8>> {
-    let mut stack = Stack::<X509>::new()?;
-    stack.push(recipient.to_owned())?;
-    let cms =
-        CmsContentInfo::encrypt(&stack, plaintext, Cipher::aes_128_cbc(), CMSOptions::BINARY)?;
+    // SAFETY: null certificates and data are accepted with `CMS_PARTIAL`; the cipher is a
+    // static method table. The result is a new owned structure or null.
+    let raw = unsafe {
+        openssl_sys::CMS_encrypt(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            Cipher::aes_128_cbc().as_ptr(),
+            CMS_PARTIAL | CMS_BINARY,
+        )
+    };
+    if raw.is_null() {
+        return Err(openssl::error::ErrorStack::get().into());
+    }
+    // SAFETY: `raw` is a freshly allocated, owned `CMS_ContentInfo`; `CmsContentInfo` frees it.
+    seal_envelope(
+        &unsafe { CmsContentInfo::from_ptr(raw) },
+        recipient,
+        plaintext,
+    )
+}
+
+/// Add `recipient` to the partial `EnvelopedData` `cms` and encrypt `plaintext` into it.
+#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+fn seal_envelope(
+    cms: &CmsContentInfo,
+    recipient: &X509Ref,
+    plaintext: &[u8],
+) -> CryptoResult<Vec<u8>> {
+    let rsa = recipient.public_key()?.id() == Id::RSA;
+    // `CMS_KEY_PARAM` keeps the RSA recipient's key context so that its padding can be chosen.
+    let flags = if rsa { openssl_sys::CMS_KEY_PARAM } else { 0 };
+    // SAFETY: `cms` and `recipient` are live; OpenSSL takes its own reference on the
+    // certificate and the returned RecipientInfo is owned by `cms`.
+    let ri =
+        unsafe { super::cms_ffi::CMS_add1_recipient_cert(cms.as_ptr(), recipient.as_ptr(), flags) };
+    if ri.is_null() {
+        return Err(openssl::error::ErrorStack::get().into());
+    }
+    if rsa {
+        // SAFETY: `ri` is a live key-transport RecipientInfo added with `CMS_KEY_PARAM`.
+        let pctx = unsafe { super::cms_ffi::CMS_RecipientInfo_get0_pkey_ctx(ri) };
+        if pctx.is_null() {
+            crypto_bail!("SCEP envelope: the RSA recipient has no key context");
+        }
+        // SAFETY: `pctx` is owned by `ri` (itself owned by `cms`, borrowed for this whole
+        // function) and no other reference to it exists.
+        set_response_key_transport(unsafe { PkeyCtxRef::<Public>::from_ptr_mut(pctx) })?;
+    }
+    let data = MemBio::over(plaintext)?;
+    // SAFETY: `cms` is a partial structure with its recipient added; `data` outlives the call.
+    let ok =
+        unsafe { super::cms_ffi::CMS_final(cms.as_ptr(), data.0, ptr::null_mut(), CMS_BINARY) };
+    if ok != 1 {
+        return Err(openssl::error::ErrorStack::get().into());
+    }
     Ok(cms.to_der()?)
+}
+
+/// RSAES-OAEP (SHA-256, MGF1-SHA-256) key transport: the only FIPS-approved RSA choice.
+#[cfg(not(feature = "non-fips"))]
+fn set_response_key_transport(ctx: &mut PkeyCtxRef<Public>) -> CryptoResult<()> {
+    ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
+    ctx.set_rsa_oaep_md(openssl::md::Md::sha256())?;
+    ctx.set_rsa_mgf1_md(openssl::md::Md::sha256())?;
+    Ok(())
+}
+
+/// PKCS#1 v1.5 key transport, which every SCEP client can decrypt.
+#[cfg(feature = "non-fips")]
+fn set_response_key_transport(ctx: &mut PkeyCtxRef<Public>) -> CryptoResult<()> {
+    ctx.set_rsa_padding(Padding::PKCS1)?;
+    Ok(())
 }
 
 /// Decrypt a CMS `EnvelopedData` addressed to `cert` with its private key.
 ///
-/// Only AES-CBC content encryption and RSA key transport are accepted, checked before any
-/// decryption.
+/// Only AES-CBC content encryption and RSA key transport (RSAES-OAEP only in FIPS builds) are
+/// accepted, checked before any decryption.
 ///
 /// # Errors
 /// Fails on malformed input, an algorithm outside the allow-list, or when the key does not
@@ -607,7 +683,7 @@ pub fn parse_signed_pkimessage(der: &[u8]) -> CryptoResult<ParsedPkiMessage> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use std::ffi::{c_char, c_uint};
 
@@ -715,7 +791,10 @@ mod tests {
             .windows(payload.len())
             .position(|w| w == payload.as_slice())
             .unwrap();
-        msg[pos + 10] ^= 0xFF;
+        // (an untampered message would make `unwrap_err` below fail the test)
+        if let Some(byte) = msg.get_mut(pos + 10) {
+            *byte ^= 0xFF;
+        }
         parse_signed_pkimessage(&msg).unwrap_err();
     }
 
@@ -831,9 +910,34 @@ mod tests {
         cms.to_der().unwrap()
     }
 
-    /// An `EnvelopedData` of `b"csr"` addressed to `recipient` with `cipher`, built in `ctx`.
+    /// An `EnvelopedData` of `b"csr"` addressed to `recipient` with `cipher` and the production
+    /// key transport, built in `ctx` (null: the default library context).
     #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
-    fn envelope_with(ctx: &FixtureCtx, recipient: &X509, cipher: Cipher) -> Vec<u8> {
+    fn envelope_with(
+        ctx: *mut openssl_sys::OSSL_LIB_CTX,
+        recipient: &X509,
+        cipher: Cipher,
+    ) -> Vec<u8> {
+        // SAFETY: null certificates/data are valid for a partial structure; `ctx` is null or live.
+        let raw = unsafe {
+            CMS_encrypt_ex(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                cipher.as_ptr(),
+                CMS_PARTIAL | CMS_BINARY,
+                ctx,
+                ptr::null(),
+            )
+        };
+        assert!(!raw.is_null(), "{}", openssl::error::ErrorStack::get());
+        // SAFETY: `raw` is an owned structure.
+        seal_envelope(&unsafe { CmsContentInfo::from_ptr(raw) }, recipient, b"csr").unwrap()
+    }
+
+    /// An AES-128-CBC `EnvelopedData` of `b"csr"` with PKCS#1 v1.5 (`rsaEncryption`) key
+    /// transport, OpenSSL's default, built in `ctx`.
+    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    fn pkcs1_envelope(ctx: &FixtureCtx, recipient: &X509) -> Vec<u8> {
         let mut certs = Stack::<X509>::new().unwrap();
         certs.push(recipient.clone()).unwrap();
         let data = MemBio::over(b"csr").unwrap();
@@ -842,7 +946,7 @@ mod tests {
             CMS_encrypt_ex(
                 certs.as_ptr(),
                 data.0,
-                cipher.as_ptr(),
+                Cipher::aes_128_cbc().as_ptr(),
                 CMS_BINARY,
                 ctx.ctx.as_ptr(),
                 ptr::null(),
@@ -851,6 +955,58 @@ mod tests {
         assert!(!raw.is_null(), "{}", openssl::error::ErrorStack::get());
         // SAFETY: `raw` is an owned structure.
         unsafe { CmsContentInfo::from_ptr(raw) }.to_der().unwrap()
+    }
+
+    /// DER of the RSAES-OAEP and rsaEncryption (PKCS#1 v1.5) `OBJECT IDENTIFIER`s.
+    const RSAES_OAEP_OID: [u8; 11] = [
+        0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x07,
+    ];
+    const RSA_ENCRYPTION_OID: [u8; 11] = [
+        0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01,
+    ];
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn fips_envelopes_use_rsaes_oaep_only() {
+        let (ca_cert, ca_key) = self_signed("ca");
+        let envelope = envelope_for_recipient(&ca_cert, b"csr").unwrap();
+        assert!(contains(&envelope, &RSAES_OAEP_OID));
+        assert!(!contains(&envelope, &RSA_ENCRYPTION_OID));
+        assert_eq!(
+            decrypt_envelope(&envelope, &ca_key, &ca_cert).unwrap(),
+            b"csr"
+        );
+
+        let ctx = FixtureCtx::new(&["default"]);
+        let err = decrypt_envelope(&pkcs1_envelope(&ctx, &ca_cert), &ca_key, &ca_cert)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("key-transport algorithm rsaEncryption is not allowed"),
+            "{err}"
+        );
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn non_fips_envelopes_keep_pkcs1_v15() {
+        let (ca_cert, ca_key) = self_signed("ca");
+        let envelope = envelope_for_recipient(&ca_cert, b"csr").unwrap();
+        assert!(contains(&envelope, &RSA_ENCRYPTION_OID));
+        assert!(!contains(&envelope, &RSAES_OAEP_OID));
+        assert_eq!(
+            decrypt_envelope(&envelope, &ca_key, &ca_cert).unwrap(),
+            b"csr"
+        );
+        let ctx = FixtureCtx::new(&["default"]);
+        assert_eq!(
+            decrypt_envelope(&pkcs1_envelope(&ctx, &ca_cert), &ca_key, &ca_cert).unwrap(),
+            b"csr"
+        );
     }
 
     #[test]
@@ -897,17 +1053,12 @@ mod tests {
     #[test]
     fn aes_cbc_envelopes_are_accepted() {
         let (ca_cert, ca_key) = self_signed("ca");
-        let mut certs = Stack::<X509>::new().unwrap();
-        certs.push(ca_cert.clone()).unwrap();
         for cipher in [
             Cipher::aes_128_cbc(),
             Cipher::aes_192_cbc(),
             Cipher::aes_256_cbc(),
         ] {
-            let envelope = CmsContentInfo::encrypt(&certs, b"csr", cipher, CMSOptions::BINARY)
-                .unwrap()
-                .to_der()
-                .unwrap();
+            let envelope = envelope_with(ptr::null_mut(), &ca_cert, cipher);
             assert_eq!(
                 decrypt_envelope(&envelope, &ca_key, &ca_cert).unwrap(),
                 b"csr"
@@ -919,7 +1070,7 @@ mod tests {
     fn des3_envelope_is_refused() {
         let ctx = FixtureCtx::new(&["default"]);
         let (ca_cert, ca_key) = self_signed("ca");
-        let envelope = envelope_with(&ctx, &ca_cert, Cipher::des_ede3_cbc());
+        let envelope = envelope_with(ctx.ctx.as_ptr(), &ca_cert, Cipher::des_ede3_cbc());
         let err = decrypt_envelope(&envelope, &ca_key, &ca_cert)
             .unwrap_err()
             .to_string();
@@ -935,7 +1086,7 @@ mod tests {
         let ctx = FixtureCtx::new(&["default", "legacy"]);
         let (ca_cert, ca_key) = self_signed("ca");
         for cipher in [Cipher::des_cbc(), Cipher::rc2_cbc()] {
-            let envelope = envelope_with(&ctx, &ca_cert, cipher);
+            let envelope = envelope_with(ctx.ctx.as_ptr(), &ca_cert, cipher);
             let err = decrypt_envelope(&envelope, &ca_key, &ca_cert)
                 .unwrap_err()
                 .to_string();

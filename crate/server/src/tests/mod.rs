@@ -30,9 +30,11 @@ mod ms_dke;
 mod mtls_db;
 #[cfg(feature = "non-fips")]
 mod pqc_import_tests;
+mod revocation_authority_tests;
 mod revoke_tests;
 mod secret_data_tests;
 mod security_regression;
+mod sub_ca_tests;
 mod test_always_sensitive;
 mod test_modify_attribute;
 pub(crate) mod test_set_attribute;

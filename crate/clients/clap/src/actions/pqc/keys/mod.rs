@@ -9,7 +9,7 @@ use crate::{
     actions::shared::{
         ActivateKeyAction, ExportSecretDataOrKeyAction, GetRotationPolicyAction,
         ImportSecretDataOrKeyAction, ReKeyKeyPairAction, SetRotationPolicyAction,
-        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
+        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction, dispatch_run,
     },
     error::result::KmsCliResult,
 };
@@ -36,39 +36,23 @@ pub enum KeysCommands {
 
 impl KeysCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        match self {
-            Self::Activate(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Create(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Export(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Import(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Wrap(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Unwrap(action) => Box::pin(action.run(kms_rest_client)).await?,
-            Self::Revoke(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::Destroy(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::ReKey(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::SetRotationPolicy(action) => {
-                action.run(kms_rest_client).await?;
-            }
-            Self::GetRotationPolicy(action) => {
-                action.run(kms_rest_client).await?;
-            }
-        }
+        dispatch_run!(
+            self,
+            kms_rest_client,
+            [
+                Activate,
+                Create,
+                Export,
+                Import,
+                Wrap,
+                Revoke,
+                Destroy,
+                ReKey,
+                SetRotationPolicy,
+                GetRotationPolicy
+            ],
+            boxed: [Unwrap]
+        );
         Ok(())
     }
 }

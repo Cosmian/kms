@@ -1,6 +1,7 @@
 mod add_attribute_1_4;
 mod add_attribute_2_1;
 mod attribute_version_gating;
+mod certify_1_4;
 mod config;
 mod create_1_4;
 mod create_2_1;

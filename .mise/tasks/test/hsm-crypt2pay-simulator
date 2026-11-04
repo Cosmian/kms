@@ -24,6 +24,7 @@ cleanup() {
   # bnt runs as root; the pid file holds the pid of the `sudo` wrapper, so kill by name.
   sudo killall -9 bnt 2>/dev/null || true
   rm -f "$CRYPT2PAY_SIM_PID_FILE"
+  rm -rf "${C2P_SHIM_DIR:-}"
 }
 
 trap cleanup EXIT
@@ -40,16 +41,25 @@ rm -rf "$SIM_WORKDIR"
 
 require_cmd cargo
 
+# libpkcs11c2p.so crashes (SIGSEGV in strcmp, in its own "surveyKeyDb" key-directory inotify
+# thread) while keys are created/destroyed: a race inside the vendor library that no caller can
+# avoid. These single-process tests do not need that watcher, so build a tiny LD_PRELOAD shim
+# that makes inotify_init1() fail; the library then runs without the thread.
+# See .mise/scripts/test/c2p_no_inotify.c.
+C2P_SHIM_DIR="$(mktemp -d)"
+require_cmd cc
+cc -shared -fPIC -O2 -o "${C2P_SHIM_DIR}/c2p_no_inotify.so" \
+  "${MISE_CONFIG_ROOT}/.mise/scripts/test/c2p_no_inotify.c"
+
 # CRYPT2PAY_SIM_PASSWORD: PKCS#11 user PIN of the simulator slot.
-# libpkcs11c2p.so intermittently (~10%) SIGSEGVs in one of its own worker threads (strcmp,
-# reproduced under gdb, independent of the test). Retry only that signal, never test failures.
-CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
+LD_PRELOAD="${C2P_SHIM_DIR}/c2p_no_inotify.so${LD_PRELOAD:+:${LD_PRELOAD}}" \
+  CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
   C2P_CONF=/etc/c2p/c2p.xml \
   HSM_USER_PASSWORD="${CRYPT2PAY_SIM_PASSWORD:-}" \
   cargo test \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact 2>&1
+  -- --nocapture tests::test_crypt2pay_simulator_all --ignored --exact 2>&1
 
 print_success "Crypt2Pay simulator HSM tests completed"

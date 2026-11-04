@@ -33,10 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
-
-# Repo root is three levels up from the script file
-#   .mise/scripts/sbom/generate_cbom.py → .mise/scripts/sbom/ → .mise/scripts/ → .mise/ → repo root
+# Repo root is four levels up from the script file
+#   .mise/scripts/sbom/generate_cbom.py → sbom/ → scripts/ → .mise/ → repo root
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
@@ -464,10 +462,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 128,
         'nist_pqc_level': 0,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_openssl_provider'],
-        'usage': 'Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt',
+        'usage': 'Pre-quantum KEM over P-256: MonadicKEM<32, P256, SHA-256>; shared secret 32 bytes; used in CoverCrypt (non-FIPS only)',
         'patterns': [
             r'cover_crypt|Covercrypt'
         ],  # P256 KEM is internal to cosmian_cover_crypt; used via Covercrypt API
@@ -494,11 +492,11 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 800,
         'classical_security': 128,
         'nist_pqc_level': 1,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
-        'implementing_libs': ['ml-kem'],
-        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 1); used in CoverCrypt hybrid KEM',
-        'oid': '1.3.6.1.4.1.22554.5.6.1',
+        'implementing_libs': ['openssl', 'ml-kem'],
+        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 1): OpenSSL ML-KEM provider (crate/crypto pqc module) and RustCrypto ml-kem inside the CoverCrypt hybrid KEM; non-FIPS only',
+        'oid': '2.16.840.1.101.3.4.4.1',
         'patterns': [r'MlKem512|ml_kem.*512'],
     },
     {
@@ -508,11 +506,11 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 1184,
         'classical_security': 192,
         'nist_pqc_level': 3,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
-        'implementing_libs': ['ml-kem'],
-        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 3); used in CoverCrypt hybrid KEM',
-        'oid': '1.3.6.1.4.1.22554.5.6.2',
+        'implementing_libs': ['openssl', 'ml-kem'],
+        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 3): OpenSSL ML-KEM provider (crate/crypto pqc module) and RustCrypto ml-kem inside the CoverCrypt hybrid KEM; non-FIPS only',
+        'oid': '2.16.840.1.101.3.4.4.2',
         'patterns': [r'MlKem768|ml_kem.*768'],
     },
     {
@@ -522,10 +520,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 128,
         'nist_pqc_level': 1,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_cover_crypt'],
-        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption',
+        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-512 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption; non-FIPS only',
         'patterns': [r'cover_crypt|Covercrypt'],
     },
     {
@@ -535,10 +533,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 192,
         'nist_pqc_level': 3,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_cover_crypt'],
-        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption',
+        'usage': 'Hybrid KEM: P256-KEM ⊕ ML-KEM-768 via KemCombiner<SHA-256>; CoverCrypt ABE policy encryption; non-FIPS only',
         'patterns': [r'cover_crypt|Covercrypt'],
     },
     {
@@ -574,10 +572,10 @@ ALGORITHMS: list[dict[str, Any]] = [
         'key_size': 256,
         'classical_security': 128,
         'nist_pqc_level': 0,
-        'fips': True,
+        'fips': False,
         'functions': ['encapsulate', 'decapsulate'],
         'implementing_libs': ['cosmian_crypto_core'],
-        'usage': 'Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure',
+        'usage': 'Combines two KEM outputs: SHA-256(ek ‖ ss₁ ‖ ss₂ ‖ enc₁ ‖ enc₂); CCA-secure if either KEM is secure; only reachable through the non-FIPS CoverCrypt/KEM modules',
         'patterns': [
             r'cover_crypt|Covercrypt'
         ],  # combiner is internal to cosmian_cover_crypt / cosmian_crypto_core
@@ -1020,7 +1018,120 @@ ALGORITHMS: list[dict[str, Any]] = [
         'usage': 'KDF + IV derivation in ECIES P-384 / P-521 (non-FIPS context; NIST FIPS 202)',
         'patterns': [r'shake_256|shake256|SHAKE256|Shake256'],
     },
+    # ── Entries below: algorithms implemented in crate/crypto but previously missing ──
+    {
+        'bom_ref': 'algo-chacha20',
+        'name': 'ChaCha20',
+        'primitive': 'stream-cipher',
+        'key_size': 256,
+        'classical_security': 256,
+        'nist_pqc_level': 0,
+        'fips': False,
+        'functions': ['encrypt', 'decrypt'],
+        'implementing_libs': ['openssl'],
+        'usage': 'KMIP Encrypt/Decrypt, unauthenticated stream cipher (non-FIPS only)',
+        'patterns': [r'Cipher::chacha20\(\)'],
+    },
+    {
+        'bom_ref': 'algo-x448',
+        'name': 'X448',
+        'primitive': 'key-agree',
+        'key_size': 448,
+        'classical_security': 224,
+        'nist_pqc_level': 0,
+        'fips': False,
+        'functions': ['generate'],
+        'implementing_libs': ['openssl'],
+        'usage': 'X448 KMIP key type and key-pair generation (non-FIPS only)',
+        'oid': '1.3.101.111',
+        'patterns': [r'create_x448_key_pair'],
+    },
+    {
+        'bom_ref': 'algo-ml-kem-1024',
+        'name': 'ML-KEM-1024',
+        'primitive': 'kem',
+        'key_size': 1568,
+        'classical_security': 256,
+        'nist_pqc_level': 5,
+        'fips': False,
+        'functions': ['encapsulate', 'decapsulate'],
+        'implementing_libs': ['openssl'],
+        'usage': 'Post-quantum KEM (NIST FIPS 203 Level 5) via the OpenSSL ML-KEM provider (crate/crypto pqc module; non-FIPS only)',
+        'oid': '2.16.840.1.101.3.4.4.3',
+        'patterns': [r'"ML-KEM-1024"'],
+    },
+    {
+        'bom_ref': 'algo-hybrid-kem-x25519-mlkem768',
+        'name': 'X25519MLKEM768 Hybrid KEM',
+        'primitive': 'kem',
+        'key_size': 256,
+        'classical_security': 128,
+        'nist_pqc_level': 3,
+        'fips': False,
+        'functions': ['encapsulate', 'decapsulate'],
+        'implementing_libs': ['openssl'],
+        'usage': 'Native OpenSSL hybrid KEM X25519 + ML-KEM-768; KMIP Encrypt/Decrypt (non-FIPS only)',
+        'patterns': [r'"X25519MLKEM768"'],
+    },
+    {
+        'bom_ref': 'algo-hybrid-kem-x448-mlkem1024',
+        'name': 'X448MLKEM1024 Hybrid KEM',
+        'primitive': 'kem',
+        'key_size': 448,
+        'classical_security': 224,
+        'nist_pqc_level': 5,
+        'fips': False,
+        'functions': ['encapsulate', 'decapsulate'],
+        'implementing_libs': ['openssl'],
+        'usage': 'Native OpenSSL hybrid KEM X448 + ML-KEM-1024; KMIP Encrypt/Decrypt (non-FIPS only)',
+        'patterns': [r'"X448MLKEM1024"'],
+    },
 ]
+
+# Post-quantum signatures implemented by the OpenSSL provider in crate/crypto `pqc`
+# (non-FIPS build only). OIDs are under sigAlgs 2.16.840.1.101.3.4.3 and NIST levels come
+# from RFC 9881 (ML-DSA) and RFC 9909 (SLH-DSA); both RFCs were checked against these values.
+_PQC_SIGNATURE_SETS: list[tuple[str, int, int]] = [
+    # (parameter set, OID arc under sigAlgs, NIST PQC security level)
+    ('ML-DSA-44', 17, 2),
+    ('ML-DSA-65', 18, 3),
+    ('ML-DSA-87', 19, 5),
+    ('SLH-DSA-SHA2-128s', 20, 1),
+    ('SLH-DSA-SHA2-128f', 21, 1),
+    ('SLH-DSA-SHA2-192s', 22, 3),
+    ('SLH-DSA-SHA2-192f', 23, 3),
+    ('SLH-DSA-SHA2-256s', 24, 5),
+    ('SLH-DSA-SHA2-256f', 25, 5),
+    ('SLH-DSA-SHAKE-128s', 26, 1),
+    ('SLH-DSA-SHAKE-128f', 27, 1),
+    ('SLH-DSA-SHAKE-192s', 28, 3),
+    ('SLH-DSA-SHAKE-192f', 29, 3),
+    ('SLH-DSA-SHAKE-256s', 30, 5),
+    ('SLH-DSA-SHAKE-256f', 31, 5),
+]
+_PQC_CLASSICAL_SECURITY = {1: 128, 2: 128, 3: 192, 5: 256}
+ALGORITHMS.extend(
+    {
+        'bom_ref': f"algo-{name.lower()}",
+        'name': name,
+        'primitive': 'signature',
+        'parameter_set': name,
+        'key_size': None,
+        'classical_security': _PQC_CLASSICAL_SECURITY[level],
+        'nist_pqc_level': level,
+        'fips': False,
+        'functions': ['sign', 'verify'],
+        'implementing_libs': ['openssl'],
+        'usage': (
+            'KMIP Create Key Pair, Sign and Signature Verify (FIPS 204; non-FIPS only)'
+            if name.startswith('ML-DSA')
+            else 'KMIP Create Key Pair (FIPS 205; non-FIPS only)'
+        ),
+        'oid': f"2.16.840.1.101.3.4.3.{arc}",
+        'patterns': [rf'"{name}"'],
+    }
+    for name, arc, level in _PQC_SIGNATURE_SETS
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1105,11 +1216,28 @@ def find_in_sources(root: Path, patterns: list[str]) -> bool:
         return True  # grep not available (Windows); skip scan
 
 
-def certification_level(fips: bool | str) -> list[str]:
-    if fips is True:
-        return ['fips140-3']
-    if fips == 'restricted':
-        return ['fips140-3']  # conditionally approved
+# OpenSSL FIPS Provider 3.1.2: CMVP certificate #4985, overall security level 1
+# (https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985).
+FIPS_CERTIFICATION_LEVEL = 'fips140-3-l1'
+
+# CycloneDX 1.6 vocabularies (validate_cbom.py checks them against the official schema).
+# Catalogue values the schema lacks (XTS, key wrap, PSS) are emitted as 'other' or as the
+# closest function, and the exact value is kept in a cosmian:* property.
+_SCHEMA_MODES = {'cbc', 'ecb', 'ccm', 'gcm', 'cfb', 'ofb', 'ctr'}
+_SCHEMA_PADDINGS = {'pkcs5', 'pkcs7', 'pkcs1v15', 'oaep', 'raw'}
+_SCHEMA_FUNCTION_ALIASES = {'wrap': 'encrypt', 'unwrap': 'decrypt'}
+
+
+def certification_level(algo: dict[str, Any]) -> list[str]:
+    """Certified only when approved AND implemented by the validated OpenSSL FIPS provider.
+
+    Algorithms built on other libraries (RustCrypto, cosmian_*) are not covered by the
+    certificate, whatever their FIPS flag says.
+    """
+    if algo['fips'] is not False and 'openssl' in algo['implementing_libs']:
+        return [
+            FIPS_CERTIFICATION_LEVEL
+        ]  # True, or 'restricted' (conditionally approved)
     return []
 
 
@@ -1117,20 +1245,33 @@ def build_algorithm_component(
     algo: dict[str, Any],
     found_in_source: bool,
 ) -> dict[str, Any]:
+    functions = [_SCHEMA_FUNCTION_ALIASES.get(f, f) for f in algo['functions']]
     algo_props: dict[str, Any] = {
         'primitive': algo['primitive'],
         'executionEnvironment': 'software-plain-ram',
-        'implementationLevel': 'library',
-        'certificationLevel': certification_level(algo['fips']),
-        'cryptoFunctions': algo['functions'],
+        'certificationLevel': certification_level(algo),
+        'cryptoFunctions': functions,
         'classicalSecurityLevel': algo['classical_security'],
         'nistQuantumSecurityLevel': algo['nist_pqc_level'],
     }
+    exact: list[dict[str, str]] = []
+    if functions != algo['functions']:
+        exact.append(
+            {'name': 'cosmian:crypto-functions', 'value': ','.join(algo['functions'])}
+        )
     if algo.get('mode'):
-        algo_props['mode'] = algo['mode']
+        in_schema = algo['mode'] in _SCHEMA_MODES
+        algo_props['mode'] = algo['mode'] if in_schema else 'other'
+        if not in_schema:
+            exact.append({'name': 'cosmian:mode', 'value': algo['mode']})
     if algo.get('padding'):
-        algo_props['padding'] = algo['padding']
-    if algo.get('key_size') is not None:
+        in_schema = algo['padding'] in _SCHEMA_PADDINGS
+        algo_props['padding'] = algo['padding'] if in_schema else 'other'
+        if not in_schema:
+            exact.append({'name': 'cosmian:padding', 'value': algo['padding']})
+    if algo.get('parameter_set'):
+        algo_props['parameterSetIdentifier'] = algo['parameter_set']
+    elif algo.get('key_size') is not None:
         algo_props['parameterSetIdentifier'] = str(algo['key_size'])
 
     crypto_props: dict[str, Any] = {
@@ -1163,6 +1304,7 @@ def build_algorithm_component(
                 'name': 'cosmian:found-in-source',
                 'value': str(found_in_source).lower(),
             },
+            *exact,
         ],
     }
     return comp
@@ -1243,14 +1385,16 @@ def build_cbom(
         'version': 1,
         'metadata': {
             'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'tools': [
-                {
-                    'type': 'application',
-                    'name': 'generate_cbom.py',
-                    'version': '1.0',
-                    'description': 'Cosmian KMS CBOM generator — combines cargo metadata with source scanning',
-                }
-            ],
+            'tools': {
+                'components': [
+                    {
+                        'type': 'application',
+                        'name': 'generate_cbom.py',
+                        'version': '1.0',
+                        'description': 'Cosmian KMS CBOM generator — combines cargo metadata with source scanning',
+                    }
+                ]
+            },
             'component': {
                 'type': 'application',
                 'bom-ref': 'kms-server',
@@ -1284,7 +1428,7 @@ def main() -> None:
         '--output',
         '-o',
         metavar='FILE',
-        default=str(ROOT / 'cbom' / 'cbom.cdx.json'),
+        default=str(REPO_ROOT / 'cbom' / 'cbom.cdx.json'),
         help='Output path (default: cbom/cbom.cdx.json)',
     )
     parser.add_argument(
@@ -1315,7 +1459,7 @@ def main() -> None:
                 file=sys.stderr,
             )
 
-    cbom = build_cbom(ROOT, args.kms_version, lib_versions=lib_versions)
+    cbom = build_cbom(REPO_ROOT, args.kms_version, lib_versions=lib_versions)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

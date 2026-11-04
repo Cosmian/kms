@@ -44,15 +44,21 @@ pub struct PendingSignature {
     pub signature: Vec<u8>,
 }
 
+/// PKCS#11 signing API family an active sign context was initialized for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SignOperation {
+    /// Single-part or multi-part `C_SignInit`/`C_Sign`/`C_SignUpdate`/`C_SignFinal`.
     Classic,
+    /// PKCS#11 v3.0 message-based `C_MessageSignInit`/`C_SignMessage`.
     Message,
 }
 
+/// State of an active verification operation started by `C_VerifyInit`.
 #[derive(Debug)]
 pub struct VerifyContext {
+    /// Signature algorithm selected by the verification mechanism.
     pub algorithm: SignatureAlgorithm,
+    /// Public key used to check the signature.
     pub public_key: Arc<dyn PublicKey>,
     /// Payload stored for multipart `C_VerifyUpdate` operations.
     pub payload: Option<Vec<u8>>,

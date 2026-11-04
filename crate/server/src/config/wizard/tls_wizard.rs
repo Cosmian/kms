@@ -8,8 +8,11 @@ use std::path::PathBuf;
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
-use super::cert_gen::{CertGenOptions, generate_self_signed_pki};
-use crate::{config::TlsConfig, error::KmsError, result::KResult};
+use super::{
+    PromptResultExt,
+    cert_gen::{CertGenOptions, generate_self_signed_pki},
+};
+use crate::{config::TlsConfig, result::KResult};
 
 pub struct TlsWizardResult {
     pub tls: TlsConfig,
@@ -32,7 +35,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
         .with_prompt("Enable TLS?")
         .default(true)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if !enable_tls {
         return Ok(TlsWizardResult {
@@ -50,7 +53,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
         )
         .default(true)
         .interact()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     if generate_certs {
         #[cfg(not(target_os = "windows"))]
@@ -65,43 +68,43 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
             .with_prompt("Directory to write certificate files")
             .default(default_certs_dir)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let ca_cn: String = Input::with_theme(&theme)
             .with_prompt("CA Common Name (CN)")
             .default("Cosmian KMS CA".to_owned())
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let server_cn: String = Input::with_theme(&theme)
             .with_prompt("Server certificate Common Name (CN)")
             .default("Cosmian KMS Server".to_owned())
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let client_cn: String = Input::with_theme(&theme)
             .with_prompt("Client certificate Common Name (CN)")
             .default("Cosmian KMS Client".to_owned())
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let ca_validity_days: u32 = Input::with_theme(&theme)
             .with_prompt("CA certificate validity (days)")
             .default(3650_u32)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let server_validity_days: u32 = Input::with_theme(&theme)
             .with_prompt("Server certificate validity (days)")
             .default(365_u32)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let client_validity_days: u32 = Input::with_theme(&theme)
             .with_prompt("Client certificate validity (days)")
             .default(365_u32)
             .interact_text()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         let opts = CertGenOptions {
             output_dir: PathBuf::from(&certs_dir),
@@ -125,7 +128,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
             )
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         return Ok(TlsWizardResult {
             tls: TlsConfig {
@@ -164,24 +167,24 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
             .with_prompt("Use a PKCS#12 (.p12) file instead of separate PEM files?")
             .default(false)
             .interact()
-            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            .prompt_err()?;
 
         if use_p12 {
             let p12_path: String = Input::with_theme(&theme)
                 .with_prompt("Path to PKCS#12 file")
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
 
             let p12_password: String = dialoguer::Password::with_theme(&theme)
                 .with_prompt("PKCS#12 password")
                 .interact()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
 
             let ca_cert: String = Input::with_theme(&theme)
                 .with_prompt("Clients CA certificate file (for mTLS, leave blank to skip)")
                 .allow_empty(true)
                 .interact_text()
-                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+                .prompt_err()?;
 
             let cipher_suites = prompt_cipher_suites(&theme)?;
 
@@ -210,24 +213,24 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
     let cert_file: String = Input::with_theme(&theme)
         .with_prompt("Path to server certificate PEM file (--tls-cert-file)")
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let key_file: String = Input::with_theme(&theme)
         .with_prompt("Path to server private key PEM file (--tls-key-file)")
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let chain_file: String = Input::with_theme(&theme)
         .with_prompt("Path to certificate chain PEM file (optional, leave blank to skip)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let ca_cert_file: String = Input::with_theme(&theme)
         .with_prompt("Clients CA certificate file for mTLS (optional, leave blank to skip)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
 
     let cipher_suites = prompt_cipher_suites(&theme)?;
 
@@ -262,7 +265,7 @@ fn prompt_cipher_suites(theme: &ColorfulTheme) -> KResult<Option<String>> {
         .with_prompt("TLS cipher suites (colon-separated OpenSSL string, leave blank for defaults)")
         .allow_empty(true)
         .interact_text()
-        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        .prompt_err()?;
     Ok(if cipher_suites.trim().is_empty() {
         None
     } else {

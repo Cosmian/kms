@@ -54,6 +54,7 @@ non-fips = [
   "cosmian_kms_client_utils/non-fips",
   "cosmian_kms_server_database/non-fips",
   "aws_cloudhsm_pkcs11_loader/non-fips",
+  "azure_cloud_hsm_pkcs11_loader/non-fips",
   "crypt2pay_pkcs11_loader/non-fips",
   "luna_pkcs11_loader/non-fips",
   "proteccio_pkcs11_loader/non-fips",
@@ -71,10 +72,11 @@ actix-identity = { workspace = true }
 actix-rt = { workspace = true }
 actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
-actix-web = { workspace = true, features = ["macros", "openssl"] }
+actix-web = { workspace = true, features = ["cookies", "macros", "openssl"] }
 async-recursion = { workspace = true }
 async-trait = { workspace = true }
 aws_cloudhsm_pkcs11_loader = { workspace = true }
+azure_cloud_hsm_pkcs11_loader = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = [
@@ -94,6 +96,7 @@ cosmian_kms_server_database = { workspace = true }
 cosmian_logger = { workspace = true }
 crypt2pay_pkcs11_loader = { workspace = true }
 dashmap = { workspace = true }
+der = { workspace = true, features = ["alloc", "derive", "oid"] }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 fs4 = { workspace = true }
@@ -144,6 +147,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 utimaco_pkcs11_loader = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+x509-cert = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 

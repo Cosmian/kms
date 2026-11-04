@@ -12,6 +12,7 @@ the [Smartcard HSM](https://www.smartcard-hsm.com/features.html),
 the [Kryoptic PKCS#11 v3.0 software token](https://github.com/latchset/kryoptic),
 the [AWS CloudHSM](https://aws.amazon.com/cloudhsm/),
 the [GCP Cloud HSM](../gcp_cloud_hsm.md),
+the [Azure Cloud HSM](../azure_cloud_hsm.md),
 and any HSM that has a standard PKCS#11 interface such as [SoftHSMv2](https://github.com/softhsm/SoftHSMv2).
 
 ## Integration Workflow

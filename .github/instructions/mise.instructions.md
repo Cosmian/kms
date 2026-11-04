@@ -130,7 +130,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 |---|---|
 | `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm_v10`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
 | `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
-| `.mise/lib/kms_server.sh` | `kms_write_config`, `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
+| `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
 | `.mise/lib/nix_helpers.sh` | Nix shell invocation, hash lookup |
 | `.mise/lib/package_build.sh` | Deb/RPM build helpers |
@@ -211,18 +211,22 @@ Use the default ports from `common.sh` slot variables (`KMS_SLOT_POSTGRES_PORT`,
 
 Always use `kms_server.sh` helpers; never inline server startup:
 
+`kms_start_from_bin` reads `KMS_PORT`, `KMS_URL`, `KMS_LOG_FILE` — set them before calling (as `kms_write_config` does):
+
 ```bash
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 
-KMS_PORT=$(kms_pick_free_port)
-kms_write_config "$KMS_PORT" "/tmp/kms-test-data"
-kms_start
-# server PID is in $KMS_PID; URL in $KMS_URL
-# kms_stop is registered via trap EXIT by kms_start
+KMS_PORT="$(kms_pick_free_port)"
+WORK_DIR="$(mktemp -d)"
+cp "${MISE_CONFIG_ROOT}/test_data/configs/server/auth/plain.toml" "${WORK_DIR}/kms.toml"
+KMS_URL="https://127.0.0.1:${KMS_PORT}"
+KMS_LOG_FILE="${WORK_DIR}/kms.log"
+kms_start_from_bin "$(get_kms_bin)" --config "${WORK_DIR}/kms.toml"
+# server PID is in $KMS_PID
 ```
 
-The `kms_start` function registers an `EXIT` trap that calls `kms_stop` automatically.
-Do not register your own `EXIT` trap — append to it with `trap '…; kms_stop' EXIT` if needed.
+Neither `kms_start` nor `kms_start_from_bin` registers a trap: add `trap 'kms_stop; rm -rf -- "${WORK_DIR:?}"' EXIT`
+yourself right after creating `WORK_DIR` (`kms_stop` is idempotent).
 
 ## `run_isolated` — strip FIPS OpenSSL env from subprocesses
 

@@ -227,4 +227,11 @@ Eviden KMS supports this feature, and to enable it:
 
 ## User experience
 
+!!! warning "Supported browsers"
+    Google restricts client-side encrypted content (Drive, Docs, Gmail S/MIME, Meet, Calendar) to
+    **Google Chrome** and **Microsoft Edge (Chromium)** — see Google's
+    [browser requirements](https://knowledge.workspace.google.com/admin/security/client-side-encryption-setup-overview).
+    On Safari, Google's CSE client stops after reading `.well-known/cse-configuration` and never calls
+    the KMS (`/google_cse/*`), so no KMS-side setting can make it work.
+
 Learn more [details about CSE user experience](https://support.google.com/a/answer/14311764?hl=en&ref_topic=10742486) over all supported applications.

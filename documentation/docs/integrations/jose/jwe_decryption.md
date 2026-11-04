@@ -86,7 +86,9 @@ sqlite_path   = "data/kms-objects"
 
 If `Kpriv` is stored in the HSM with UID `hsm::softhsm2::0::my_rsa_key`, set the
 `kid` in the JWE protected header to this UID. The KMS automatically routes the
-RSA-OAEP decrypt to the HSM via the crypto oracle.
+RSA-OAEP decrypt to the HSM via the crypto oracle (`CKM_RSA_PKCS_OAEP`, SHA-1 or SHA-256).
+The HSM object must be an RSA key. Tested with Kryoptic; SoftHSM2 2.6.1 is not supported
+for this path.
 
 ### Re-encryption
 
@@ -252,7 +254,7 @@ sequenceDiagram
 
 | Approach | Ksym exposed? | Ksym persisted? | Dev required? | Conformant? |
 |----------|---------------|-----------------|---------------|-------------|
-| `POST /v1/crypto/decrypt` (RSA-OAEP, full JWE) | ❌ No | ❌ No | ❌ No | ✅ If full JWE always available |
+| `POST /v1/crypto/decrypt` (RSA-OAEP, full JWE) | ❌ No | ❌ No (KMS-DB keys: CEK cached in RAM) | ❌ No | ✅ If full JWE always available; also with the RSA key in an HSM |
 | `POST /v1/crypto/keys/unwrap` + `alg=dir` decrypt | ❌ No | ✅ Yes (KMS DB) | ❌ No | ✅ Yes |
 | KMIP Decrypt + Import | ✅ Yes | ✅ Yes | ❌ No | ❌ No (violates constraint) |
 | HSM `C_UnwrapKey` + `alg=dir` | ❌ No | ✅ Yes (HSM) | ⚠️ Yes | ✅ Yes |

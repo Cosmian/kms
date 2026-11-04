@@ -308,7 +308,6 @@ fn unwrap_with_symmetric_key(
 ///
 /// # Arguments
 /// * `ciphertext` - the ciphertext to unwrap
-/// * `aad` - the additional authenticated data
 /// * `unwrap_secret` - the unwrapping key
 ///
 /// # Returns
@@ -322,7 +321,11 @@ fn aes_gcm_unwrap(
     if len < TAG_LENGTH + NONCE_LENGTH {
         crypto_bail!("Invalid wrapped key - insufficient length.");
     }
-    let aead = SymCipher::Aes256Gcm;
+    let aead = SymCipher::from_algorithm_and_key_size(
+        CryptographicAlgorithm::AES,
+        Some(BlockCipherMode::GCM),
+        unwrap_secret.len(),
+    )?;
     let nonce = ciphertext
         .get(..NONCE_LENGTH)
         .ok_or_else(|| CryptoError::IndexingSlicing("unwrap: nonce".to_owned()))?;

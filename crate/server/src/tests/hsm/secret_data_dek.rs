@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_0::kmip_types::SecretDataType,
     kmip_2_1::{
@@ -14,13 +12,11 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams,
-    core::KMS,
     error::KmsError,
     result::KResult,
     tests::{
         hsm::{create_kek, delete_key, export_object, hsm_clap_config, import_object, revoke_key},
-        test_utils::get_tmp_sqlite_path,
+        test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
 
@@ -36,7 +32,7 @@ pub(super) async fn test_wrapped_secret_data() -> KResult<()> {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
 
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     create_kek(&kek_uid, &owner, &kms).await?;
 
@@ -64,7 +60,7 @@ pub(super) async fn test_wrapped_secret_data() -> KResult<()> {
     // re-instantiate the kms
     let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
     clap_config.db.sqlite_path = sqlite_path.clone();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     let exported = export_object(&kms, &owner, &secret_id).await?;
     assert_eq!(exported.object_type(), secret_data.object_type());
@@ -79,7 +75,7 @@ pub(super) async fn test_wrapped_secret_data() -> KResult<()> {
     let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
         return Err(KmsError::Default("Missing KEK".to_owned()));
     };
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     let exported = export_object(&kms, &owner, &secret_id).await?;
     assert_eq!(exported.object_type(), secret_data.object_type());

@@ -75,6 +75,15 @@ retry git clone -q --depth 1 --branch "${SCEPCLIENT_VERSION}" https://github.com
   perl -pi -e 's/digestOid: OIDDigestAlgorithmSHA1\}/digestOid: OIDDigestAlgorithmSHA256}/' "${WORKDIR}/pkcs7-src/sign.go"
   grep -q 'digestOid: OIDDigestAlgorithmSHA256}' "${WORKDIR}/pkcs7-src/sign.go" ||
     print_error "SHA-256 digest patch did not apply to smallstep/pkcs7 v0.1.1"
+  # The FIPS build refuses PKCS#1 v1.5 key transport, the library default: encrypt the envelope
+  # key with RSAES-OAEP. SHA-1 because the library encodes only the OAEP hash, so the MGF1 hash
+  # a decrypter reads is the RFC 4055 default (SHA-1) and must match what Go encrypts with.
+  perl -pi -e 's/^var KeyEncryptionAlgorithm = OIDEncryptionAlgorithmRSA$/var KeyEncryptionAlgorithm = OIDEncryptionAlgorithmRSAESOAEP/; s/^var KeyEncryptionHash = crypto.SHA256$/var KeyEncryptionHash = crypto.SHA1/' \
+    "${WORKDIR}/pkcs7-src/encrypt.go"
+  for patched in 'var KeyEncryptionAlgorithm = OIDEncryptionAlgorithmRSAESOAEP' 'var KeyEncryptionHash = crypto.SHA1'; do
+    grep -qxF "${patched}" "${WORKDIR}/pkcs7-src/encrypt.go" ||
+      print_error "RSAES-OAEP patch did not apply to smallstep/pkcs7 v0.1.1"
+  done
   go mod edit -replace "github.com/smallstep/pkcs7=${WORKDIR}/pkcs7-src"
   mkdir -p "${WORKDIR}/bin"
   retry go build -o "${WORKDIR}/bin/scepclient" ./cmd/scepclient

@@ -6,17 +6,6 @@
 //! `cosmian_pkcs11` shared library — the same call path real-world consumers
 //! (Oracle TDE, OpenSSH, disk-encryption tools, ...) use.
 
-#![allow(
-    unsafe_code,
-    non_snake_case,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    clippy::format_push_string
-)]
-
 pub(crate) mod criterion_bench;
 pub(crate) mod error;
 pub(crate) mod load;
@@ -24,31 +13,26 @@ pub(crate) mod ops;
 pub(crate) mod report;
 pub(crate) mod setup;
 
-use std::{
-    env,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use clap::Parser;
+use clap::{Args, Parser};
 use cosmian_kms_client::KmsClient;
 use criterion_bench::{BenchSpeed, CriterionRunConfig, run_criterion};
 pub(crate) use error::{BenchError, BenchResult};
 use load::{LoadResult, SweepConfig, expand_bench_mode, run_all};
 use ops::open_pool;
 
+use super::verify::set_ckms_conf;
 use crate::{
-    actions::bench::types::{BenchFilter, BenchMode},
+    actions::{
+        bench::types::{BenchFilter, BenchMode},
+        console,
+    },
     error::{KmsCliError, result::KmsCliResult},
 };
 
-// Thread-safe configuration for CKMS_CONF environment variable
-static CKMS_CONF_LOCK: Mutex<()> = Mutex::new(());
-
 /// Real PKCS#11 (`dlopen()`) load benchmark for the `cosmian_pkcs11` provider.
 #[derive(Parser, Debug)]
-#[allow(clippy::struct_excessive_bools)] // CLI flag structs legitimately have many boolean flags
 pub struct Pkcs11BenchAction {
     /// Path to the PKCS#11 shared library (`libcosmian_pkcs11.so` / `.dylib` / `.dll`).
     #[arg(long, value_name = "PATH")]
@@ -114,6 +98,14 @@ pub struct Pkcs11BenchAction {
     #[arg(long)]
     pub(crate) shared_session: bool,
 
+    /// Optional `criterion` micro-benchmark run.
+    #[clap(flatten)]
+    pub(crate) criterion: CriterionOptions,
+}
+
+/// `criterion` micro-benchmark flags of [`Pkcs11BenchAction`].
+#[derive(Args, Debug)]
+pub(crate) struct CriterionOptions {
     /// Also run real `criterion`-crate single-operation micro-benchmarks, on top of
     /// the concurrency sweep that always runs — gives statistically rigorous
     /// per-call latency (mean/median/CI) in addition to the sweep's
@@ -145,18 +137,19 @@ fn parse_concurrency(spec: &str) -> BenchResult<Vec<usize>> {
         .collect()
 }
 
-#[allow(clippy::print_stdout)]
-fn print_results(results: &[LoadResult]) {
-    println!(
+fn print_results(results: &[LoadResult]) -> KmsCliResult<()> {
+    let header = format!(
         "{:<18} {:>12} {:>14} {:>10} {:>10} {:>10} {:>10}",
         "operation", "concurrency", "throughput/s", "p50 (ms)", "p95 (ms)", "p99 (ms)", "samples"
     );
-    for r in results {
-        println!(
+    let rows = results.iter().map(|r| {
+        format!(
             "{:<18} {:>12} {:>14.1} {:>10.3} {:>10.3} {:>10.3} {:>10}",
             r.operation, r.concurrency, r.throughput_ops, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-        );
-    }
+        )
+    });
+    let table: Vec<String> = std::iter::once(header).chain(rows).collect();
+    console::Stdout::new(&table.join("\n")).write()
 }
 
 impl Pkcs11BenchAction {
@@ -195,8 +188,8 @@ impl Pkcs11BenchAction {
         let conf = self.conf.clone();
         let _token = self.token.clone();
         let shared_session = self.shared_session;
-        let criterion = self.criterion;
-        let speed = self.speed;
+        let criterion = self.criterion.criterion;
+        let speed = self.criterion.speed;
         let delegated = self.delegated;
         let hsm_slot = self.hsm_slot;
 
@@ -217,12 +210,8 @@ impl Pkcs11BenchAction {
                 ))
                 .map_err(|e| KmsCliError::Default(e.to_string()))?;
 
-            let _guard = CKMS_CONF_LOCK
-                .lock()
-                .map_err(|_lock_err| KmsCliError::Default("CKMS_CONF_LOCK poisoned".to_owned()))?;
             if let Some(conf_path) = conf {
-                // SAFETY: protected by mutex to ensure exclusive access to environment variables
-                unsafe { env::set_var("CKMS_CONF", conf_path) };
+                set_ckms_conf(&conf_path)?;
             }
 
             let pool_size = if shared_session {
@@ -247,7 +236,7 @@ impl Pkcs11BenchAction {
                 hsm_prefix.as_deref(),
             )
             .map_err(|e| KmsCliError::Default(e.to_string()))?;
-            print_results(&results);
+            print_results(&results)?;
             report::write_load_json(&results).map_err(|e| KmsCliError::Default(e.to_string()))?;
 
             if criterion {

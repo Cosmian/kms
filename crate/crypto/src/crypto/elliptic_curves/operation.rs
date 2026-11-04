@@ -25,7 +25,7 @@ use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint, PointConversionForm},
     nid::Nid,
-    pkey::PKey,
+    pkey::{PKey, Private},
     pkey_ctx::PkeyCtx,
 };
 use zeroize::Zeroizing;
@@ -273,6 +273,25 @@ struct EcKeyMaterial<'a> {
     public_key_bytes: &'a [u8],
 }
 
+/// Builds a key pair from a raw-encoded (X25519, X448, Ed25519, Ed448) private key.
+fn create_raw_ec_key_pair(
+    identity: KeyPairIdentity<'_>,
+    spec: EcKeySpec,
+    private_key: &PKey<Private>,
+) -> Result<KeyPair, CryptoError> {
+    let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
+    let public_key_bytes = private_key.raw_public_key()?;
+    create_ec_key_pair(
+        identity,
+        spec,
+        EcKeyMaterial {
+            private_key_bytes: &private_key_bytes,
+            private_key_num_bits: private_key.bits(),
+            public_key_bytes: &public_key_bytes,
+        },
+    )
+}
+
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
 #[cfg(feature = "non-fips")]
 pub fn create_x25519_key_pair(
@@ -284,13 +303,7 @@ pub fn create_x25519_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let private_key = PKey::generate_x25519()?;
-
-    let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
-    let private_key_num_bits = private_key.bits();
-    let public_key_bytes = private_key.raw_public_key()?;
-
-    create_ec_key_pair(
+    create_raw_ec_key_pair(
         KeyPairIdentity {
             vendor_id,
             private_key_uid,
@@ -303,11 +316,7 @@ pub fn create_x25519_key_pair(
             curve: RecommendedCurve::CURVE25519,
             cryptographic_algorithm: *cryptographic_algorithm,
         },
-        EcKeyMaterial {
-            private_key_bytes: &private_key_bytes,
-            private_key_num_bits,
-            public_key_bytes: &public_key_bytes,
-        },
+        &PKey::generate_x25519()?,
     )
 }
 
@@ -479,13 +488,7 @@ pub fn create_x448_key_pair(
     private_key_attributes: Option<Attributes>,
     public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, CryptoError> {
-    let private_key = PKey::generate_x448()?;
-
-    let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
-    let private_key_num_bits = private_key.bits();
-    let public_key_bytes = private_key.raw_public_key()?;
-
-    create_ec_key_pair(
+    create_raw_ec_key_pair(
         KeyPairIdentity {
             vendor_id,
             private_key_uid,
@@ -498,11 +501,7 @@ pub fn create_x448_key_pair(
             curve: RecommendedCurve::CURVE448,
             cryptographic_algorithm: *cryptographic_algorithm,
         },
-        EcKeyMaterial {
-            private_key_bytes: &private_key_bytes,
-            private_key_num_bits,
-            public_key_bytes: &public_key_bytes,
-        },
+        &PKey::generate_x448()?,
     )
 }
 
@@ -539,12 +538,7 @@ pub fn create_ed25519_key_pair(
         )?;
     }
 
-    let private_key = PKey::generate_ed25519()?;
-    let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
-    let private_key_num_bits = private_key.bits();
-    let public_key_bytes = private_key.raw_public_key()?;
-
-    create_ec_key_pair(
+    create_raw_ec_key_pair(
         KeyPairIdentity {
             vendor_id,
             private_key_uid,
@@ -557,11 +551,7 @@ pub fn create_ed25519_key_pair(
             curve: RecommendedCurve::CURVEED25519,
             cryptographic_algorithm: CryptographicAlgorithm::Ed25519,
         },
-        EcKeyMaterial {
-            private_key_bytes: &private_key_bytes,
-            private_key_num_bits,
-            public_key_bytes: &public_key_bytes,
-        },
+        &PKey::generate_ed25519()?,
     )
 }
 
@@ -598,12 +588,7 @@ pub fn create_ed448_key_pair(
         )?;
     }
 
-    let private_key = PKey::generate_ed448()?;
-    let private_key_bytes = Zeroizing::from(private_key.raw_private_key()?);
-    let private_key_num_bits = private_key.bits();
-    let public_key_bytes = private_key.raw_public_key()?;
-
-    create_ec_key_pair(
+    create_raw_ec_key_pair(
         KeyPairIdentity {
             vendor_id,
             private_key_uid,
@@ -616,11 +601,7 @@ pub fn create_ed448_key_pair(
             curve: RecommendedCurve::CURVEED448,
             cryptographic_algorithm: CryptographicAlgorithm::Ed448,
         },
-        EcKeyMaterial {
-            private_key_bytes: &private_key_bytes,
-            private_key_num_bits,
-            public_key_bytes: &public_key_bytes,
-        },
+        &PKey::generate_ed448()?,
     )
 }
 

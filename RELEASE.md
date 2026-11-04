@@ -58,11 +58,6 @@ debugged.
 ### Pre-requisites
 
 1. Install git-flow: <https://skoch.github.io/Git-Workflow/\>
-2. Install git-cliff:
-
-```sh
-cargo install git-cliff
-```
 
 ### Step by step
 

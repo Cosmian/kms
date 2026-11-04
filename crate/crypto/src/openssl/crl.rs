@@ -15,7 +15,7 @@ use openssl::{
 };
 use time::OffsetDateTime;
 
-use super::oid::asn1_object;
+use super::{oid::asn1_object, x509_signing_digest};
 use crate::error::CryptoError;
 
 /// RFC 5280 §5.3.1 `CRLReason` values.
@@ -154,8 +154,8 @@ pub fn build_crl(
         // Add CRL Number extension (RFC 5280 §5.2.3 — MUST, non-critical)
         add_crl_number_extension(crl, crl_number)?;
 
-        // Sign the CRL
-        let md = signing_md(issuer_key);
+        // Sign the CRL (digest matching the issuer key: RFC 5480 §4 for ECDSA)
+        let md = x509_signing_digest(issuer_key).as_ptr();
         if openssl_sys::X509_CRL_sign(crl, issuer_key.as_ptr(), md) <= 0 {
             return Err(CryptoError::Default("X509_CRL_sign failed".to_owned()));
         }
@@ -506,22 +506,6 @@ unsafe fn add_crl_number_extension(
     }
 }
 
-/// Select the message digest for CRL signing based on the key type.
-///
-/// Mirrors the logic in `build_certificate.rs::signing_digest`.
-#[expect(unsafe_code)]
-fn signing_md(key: &PKeyRef<Private>) -> *const openssl_sys::EVP_MD {
-    // SAFETY: EVP_sha256/EVP_md_null return static pointers — no allocation.
-    unsafe {
-        match key.id() {
-            openssl::pkey::Id::RSA | openssl::pkey::Id::EC => openssl_sys::EVP_sha256(),
-            // PQC algorithms (ML-DSA, SLH-DSA) use null digest — the algorithm
-            // performs its own internal hashing.
-            _ => openssl_sys::EVP_md_null(),
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -536,8 +520,13 @@ mod tests {
     /// Helper: generate a self-signed CA certificate for testing.
     fn create_test_ca() -> (X509, openssl::pkey::PKey<Private>) {
         let rsa = openssl::rsa::Rsa::generate(2048).expect("RSA keygen");
-        let pkey = PKey::from_rsa(rsa).expect("PKey from RSA");
+        create_test_ca_with_key(PKey::from_rsa(rsa).expect("PKey from RSA"))
+    }
 
+    /// Helper: self-signed CA certificate (signed with SHA-256) for `pkey`.
+    fn create_test_ca_with_key(
+        pkey: openssl::pkey::PKey<Private>,
+    ) -> (X509, openssl::pkey::PKey<Private>) {
         let mut name = openssl::x509::X509NameBuilder::new().expect("X509NameBuilder");
         name.append_entry_by_text("CN", "Test CA")
             .expect("append CN");
@@ -605,6 +594,38 @@ mod tests {
 
         // Verify signature
         assert!(parsed.verify(&key).expect("verify signature"));
+    }
+
+    /// RFC 5480 §4: an ECDSA CRL is signed with the digest matching the issuer curve.
+    #[test]
+    fn test_ec_crl_digest_matches_curve() {
+        for (curve, oid) in [
+            (Nid::X9_62_PRIME256V1, "1.2.840.10045.4.3.2"),
+            (Nid::SECP384R1, "1.2.840.10045.4.3.3"),
+            (Nid::SECP521R1, "1.2.840.10045.4.3.4"),
+        ] {
+            let group = openssl::ec::EcGroup::from_curve_name(curve).expect("EcGroup");
+            let key = PKey::from_ec_key(openssl::ec::EcKey::generate(&group).expect("EC keygen"))
+                .expect("PKey from EC");
+            let (cert, key) = create_test_ca_with_key(key);
+            let der = build_crl(&cert, &key, &[], 1, 7)
+                .expect("build_crl")
+                .to_der()
+                .expect("to_der");
+            assert!(
+                X509Crl::from_der(&der)
+                    .expect("from_der")
+                    .verify(&key)
+                    .expect("verify signature"),
+                "{curve:?}"
+            );
+            let (_, parsed) = x509_parser::parse_x509_crl(&der).expect("parse CRL");
+            assert_eq!(
+                parsed.signature_algorithm.algorithm.to_id_string(),
+                oid,
+                "{curve:?}"
+            );
+        }
     }
 
     #[test]

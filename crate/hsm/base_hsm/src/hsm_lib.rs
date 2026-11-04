@@ -3,11 +3,11 @@ use std::ptr;
 use cosmian_logger::warn;
 use libloading::Library;
 use pkcs11_sys::{
-    CK_C_CloseSession, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit, CK_C_DecryptMessage,
-    CK_C_DecryptMessageBegin, CK_C_DecryptMessageNext, CK_C_DecryptUpdate, CK_C_DeriveKey,
-    CK_C_DestroyObject, CK_C_Encrypt, CK_C_EncryptFinal, CK_C_EncryptInit, CK_C_EncryptMessage,
-    CK_C_EncryptMessageBegin, CK_C_EncryptMessageNext, CK_C_EncryptUpdate, CK_C_Finalize,
-    CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
+    CK_C_CloseSession, CK_C_CreateObject, CK_C_Decrypt, CK_C_DecryptFinal, CK_C_DecryptInit,
+    CK_C_DecryptMessage, CK_C_DecryptMessageBegin, CK_C_DecryptMessageNext, CK_C_DecryptUpdate,
+    CK_C_DeriveKey, CK_C_DestroyObject, CK_C_Encrypt, CK_C_EncryptFinal, CK_C_EncryptInit,
+    CK_C_EncryptMessage, CK_C_EncryptMessageBegin, CK_C_EncryptMessageNext, CK_C_EncryptUpdate,
+    CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
     CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
     CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
     CK_C_Login, CK_C_LoginUser, CK_C_Logout, CK_C_MessageDecryptFinal, CK_C_MessageDecryptInit,
@@ -101,13 +101,15 @@ const MAX_PLAUSIBLE_PKCS11_V3_INTERFACES: pkcs11_sys::CK_ULONG = 4096;
 /// with descriptive error messages.
 #[expect(non_snake_case)]
 pub struct HsmLib {
-    _library: Library,
+    library: Option<Library>,
+    skip_finalize_on_drop: bool,
     pub(crate) C_Initialize: CK_C_Initialize,
     pub(crate) C_Finalize: CK_C_Finalize,
 
     pub(crate) C_OpenSession: CK_C_OpenSession,
     pub(crate) C_CloseSession: CK_C_CloseSession,
 
+    pub(crate) C_CreateObject: CK_C_CreateObject,
     pub(crate) C_DestroyObject: CK_C_DestroyObject,
 
     pub(crate) C_Decrypt: CK_C_Decrypt,
@@ -222,6 +224,13 @@ impl HsmLib {
     where
         P: AsRef<std::ffi::OsStr>,
     {
+        Self::instantiate_with_options(path, false)
+    }
+
+    pub(crate) fn instantiate_with_options<P>(path: P, skip_finalize_on_drop: bool) -> HResult<Self>
+    where
+        P: AsRef<std::ffi::OsStr>,
+    {
         #[expect(unsafe_code)]
         unsafe {
             let library = Library::new(path)?;
@@ -280,6 +289,7 @@ impl HsmLib {
                 C_DecryptInit: resolve!(b"C_DecryptInit", C_DecryptInit),
                 C_DecryptUpdate: resolve!(b"C_DecryptUpdate", C_DecryptUpdate),
                 C_DecryptFinal: resolve!(b"C_DecryptFinal", C_DecryptFinal),
+                C_CreateObject: resolve!(b"C_CreateObject", C_CreateObject),
                 C_DestroyObject: resolve!(b"C_DestroyObject", C_DestroyObject),
                 C_FindObjectsInit: resolve!(b"C_FindObjectsInit", C_FindObjectsInit),
                 C_FindObjects: resolve!(b"C_FindObjects", C_FindObjects),
@@ -362,7 +372,8 @@ impl HsmLib {
                     C_MessageVerifyFinal
                 ),
                 // we need to keep the library alive
-                _library: library,
+                library: Some(library),
+                skip_finalize_on_drop,
             };
 
             // At least the core v2.40 functions must have resolved through one of the
@@ -674,11 +685,169 @@ impl std::fmt::Display for Info {
 
 impl Drop for HsmLib {
     fn drop(&mut self) {
-        drop(self.finalize());
+        if self.skip_finalize_on_drop {
+            std::mem::forget(self.library.take());
+        } else {
+            drop(self.finalize());
+            drop(self.library.take());
+        }
     }
 }
 
 #[cfg(test)]
+mod function_table_fallback_tests {
+    use super::HsmLib;
+    use crate::{
+        DerivedKeySpec, HError, HResult, HkdfParams,
+        hsm_capabilities::HsmCapabilities,
+        test_fixtures::{compile_fixture, fixture_session},
+    };
+
+    /// Regression test for the `C_GetFunctionList`/`C_GetInterface` fallback path
+    /// (PKCS#11 v3.1 §5.4.4/§5.4.6): a library exporting *only* the three
+    /// function-table entry points must still load and expose a working v3.0
+    /// interface, exactly as validated manually against Kryoptic 1.5.2.
+    #[test]
+    fn function_table_only_library_loads_via_fallback() -> HResult<()> {
+        let path = compile_fixture("minimal_pkcs11.c", &[])?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+
+        if !hsm_lib.supports_pkcs11_v3_interfaces() {
+            return Err(HError::Default(
+                "the fallback-resolved library must report v3.0 interface support".to_owned(),
+            ));
+        }
+        let Some(interfaces) = hsm_lib.list_pkcs11_v3_interfaces()? else {
+            return Err(HError::Default(
+                "a v3.0-capable library must report at least one interface".to_owned(),
+            ));
+        };
+        if !interfaces.iter().any(|i| i.name == "PKCS 11") {
+            return Err(HError::Default(format!(
+                "expected a \"PKCS 11\" interface entry, got: {interfaces:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// `CKM_EDDSA` (v3.0-only) must be gracefully reported as unsupported —
+    /// not silently incorrectly signed — when the loaded library is v2.40-only, per the
+    /// additive/non-breaking philosophy established for issue #1153.
+    #[test]
+    fn eddsa_sign_gracefully_reports_unsupported_mechanism() -> HResult<()> {
+        let path = compile_fixture("minimal_pkcs11.c", &[])?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = fixture_session(hsm_lib, HsmCapabilities::default());
+
+        let Err(err) = session.sign(1, crate::HsmSigningAlgorithm::Eddsa, b"data") else {
+            return Err(HError::Default(
+                "signing with CKM_EDDSA on a v2.40-only library must fail".to_owned(),
+            ));
+        };
+        if !err.to_string().contains("112") {
+            return Err(HError::Default(format!(
+                "expected the CKR_MECHANISM_INVALID (112) return code in the error, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Same as above, for `Session::verify`.
+    #[test]
+    fn eddsa_verify_gracefully_reports_unsupported_mechanism() -> HResult<()> {
+        let path = compile_fixture("minimal_pkcs11.c", &[])?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = fixture_session(hsm_lib, HsmCapabilities::default());
+
+        let Err(err) = session.verify(1, crate::HsmSigningAlgorithm::Eddsa, b"data", b"sig") else {
+            return Err(HError::Default(
+                "verifying with CKM_EDDSA on a v2.40-only library must fail".to_owned(),
+            ));
+        };
+        if !err.to_string().contains("does not support mechanism") {
+            return Err(HError::Default(format!(
+                "expected a clear \"does not support mechanism\" error, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// A mechanism the fixture library does accept (any classic RSA-family signing
+    /// mechanism) must still succeed end-to-end — proving graceful degradation
+    /// only rejects genuinely unsupported v3.0-only mechanisms, not everything.
+    #[test]
+    fn rsa_sign_succeeds_through_classic_mechanism() -> HResult<()> {
+        let path = compile_fixture("minimal_pkcs11.c", &[])?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = fixture_session(hsm_lib, HsmCapabilities::default());
+
+        session.sign(1, crate::HsmSigningAlgorithm::Sha256WithRsa, b"data")?;
+        Ok(())
+    }
+
+    /// `CKM_HKDF_DERIVE` (v3.0-only) must be gracefully reported as unsupported on
+    /// a v2.40-only library, mirroring the `EdDSA` sign/verify behaviour above.
+    #[test]
+    fn hkdf_derive_gracefully_reports_unsupported_mechanism() -> HResult<()> {
+        let path = compile_fixture("minimal_pkcs11.c", &[])?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        let session = fixture_session(hsm_lib, HsmCapabilities::default());
+
+        let Err(err) = session.derive_hkdf_key(
+            1,
+            HkdfParams {
+                prf_hash: pkcs11_sys::CKM_SHA256,
+                salt: None,
+                info: b"info",
+            },
+            DerivedKeySpec {
+                id: b"derived",
+                len_bytes: 32,
+                sensitive: true,
+            },
+        ) else {
+            return Err(HError::Default(
+                "deriving via CKM_HKDF_DERIVE on a v2.40-only library must fail".to_owned(),
+            ));
+        };
+        if !err.to_string().contains("112") {
+            return Err(HError::Default(format!(
+                "expected the CKR_MECHANISM_INVALID (112) return code in the error, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Message-based AEAD (`C_MessageEncryptInit`/... , v3.0-only) must be
+    /// proactively gated by the `supports_message_encrypt`/`supports_message_decrypt`
+    /// capability checks — not attempted and left to fail deep inside the FFI call —
+    /// since the fixture exports no message-based function-table entries at all.
+    #[test]
+    fn message_aead_gracefully_reports_unsupported_capability() -> HResult<()> {
+        let path = compile_fixture("minimal_pkcs11.c", &[])?;
+        let hsm_lib = HsmLib::instantiate(&path)?;
+        if hsm_lib.supports_message_encrypt() {
+            return Err(HError::Default(
+                "the minimal fixture must not report message-encrypt support".to_owned(),
+            ));
+        }
+        let session = fixture_session(hsm_lib, HsmCapabilities::default());
+
+        let Err(err) = session.encrypt_message_aes_gcm(1, b"aad", b"plaintext") else {
+            return Err(HError::Default(
+                "message-based AES-GCM encryption must fail on a v2.40-only library".to_owned(),
+            ));
+        };
+        if !err.to_string().to_lowercase().contains("message") {
+            return Err(HError::Default(format!(
+                "expected an error mentioning the missing message-based functions, got: {err}"
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(any())]
 mod function_table_fallback_tests {
     use std::{
         path::PathBuf,
@@ -690,7 +859,7 @@ mod function_table_fallback_tests {
     };
 
     use super::HsmLib;
-    use crate::{DerivedKeySpec, HError, HResult, HkdfParams};
+    use crate::{HError, HResult};
 
     /// Monotonic counter giving each `compile_minimal_pkcs11_shim()` invocation a
     /// unique output filename. Required because this module now has several
@@ -779,7 +948,9 @@ mod function_table_fallback_tests {
             .cargo_metadata(false) // this is a plain test, not a build script
             .get_compiler();
         let mut cmd = Command::new(compiler.path());
-        cmd.envs(compiler.get_envs());
+        for (key, value) in compiler.env() {
+            cmd.env(key, value);
+        }
         cmd.args(compiler.args());
         if !cfg!(target_os = "windows") {
             // Silence the intentional generic-function-pointer-cast warning below:
@@ -929,16 +1100,12 @@ mod function_table_fallback_tests {
 
         let Err(err) = session.derive_hkdf_key(
             1,
-            HkdfParams {
-                prf_hash: pkcs11_sys::CKM_SHA256,
-                salt: None,
-                info: b"info",
-            },
-            DerivedKeySpec {
-                id: b"derived",
-                len_bytes: 32,
-                sensitive: true,
-            },
+            pkcs11_sys::CKM_SHA256,
+            None,
+            b"info",
+            32,
+            b"derived",
+            true,
         ) else {
             return Err(HError::Default(
                 "deriving via CKM_HKDF_DERIVE on a v2.40-only library must fail".to_owned(),

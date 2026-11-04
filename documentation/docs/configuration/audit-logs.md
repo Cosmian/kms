@@ -66,12 +66,13 @@ The settings below apply to whichever backend you use:
 | `--audit-enable`              | `KMS_AUDIT_ENABLE`              | `false`                        | Enable the audit pipeline. When `false`, no backend is started.                                                                                                                            |
 | `--audit-channel-capacity`    | `KMS_AUDIT_CHANNEL_CAPACITY`    | `4096`                         | Capacity of the in-memory queue between request handling and the backend writer. Raise this if you see `channel full` warnings under sustained load.                                                                               |
 | `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                      | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
-| `--audit-failure-mode`        | `KMS_AUDIT_FAILURE_MODE`        | `continue`                     | What to do when an event cannot be recorded. `continue`: log the error, keep serving. `reject`: return HTTP 503. See [Audit failure mode](#audit-failure-mode).                                                        |
+| `--audit-failure-mode`        | `KMS_AUDIT_FAILURE_MODE`        | `continue`                     | What to do when an event cannot be queued for the writer. `continue`: log the error, keep serving. `reject`: return HTTP 503. See [Audit failure mode](#audit-failure-mode).                                           |
 
 If you see `AuditFileStore: channel full, dropping audit event` in the server log, raise
 `--audit-channel-capacity`. The dropped events are still accounted for: the next successful
-write is preceded by an `audit:eviction` event recording how many were lost. See
-[Audit events](./audit-events.md#system-events).
+write is preceded by an `audit:eviction` event recording how many were lost. Events the backend
+fails to persist (for example while the PostgreSQL audit database is unreachable) are counted
+the same way. See [Audit events](./audit-events.md#system-events).
 
 ### Client IP and reverse proxies
 
@@ -95,13 +96,19 @@ proxy forward the real client IP.
 
 ### Audit failure mode
 
-By default (`continue`) the KMS keeps serving even when an audit event cannot be recorded: the
+By default (`continue`) the KMS keeps serving even when an audit event cannot be queued: the
 event is dropped, an error is logged, and the request succeeds normally.
 
-Set `--audit-failure-mode reject` to enforce strict auditability: if an event cannot be recorded
-(the queue is full or the backend has stopped), the KMS returns **HTTP 503** to the client
-instead of the normal KMIP response. The KMIP operation has already executed at this point; the
-503 signals that its outcome was not recorded.
+Set `--audit-failure-mode reject` to refuse requests whose event cannot be queued: if the queue
+is full or the writer has stopped, the KMS returns **HTTP 503** to the client instead of the
+normal KMIP response. The KMIP operation has already executed at this point; the 503 signals that
+its outcome was not recorded.
+
+`reject` governs queue admission only. The response is sent before the writer persists the
+event, so a queued event that the backend then fails to write (disk error, PostgreSQL audit
+database unreachable after retries) does not turn the response into a 503. Such an event is
+dropped, an error is logged, and the next successful write is preceded by an `audit:eviction`
+event recording the loss.
 
 !!! warning "`reject` mode can cause service disruption"
     When `failure_mode = reject`, a saturated event queue or a stopped backend will make every
@@ -121,9 +128,12 @@ ckms audit verify --path /var/log/cosmian-kms/audit.jsonl
 ckms audit verify --audit-postgres-url postgresql://kms_audit:password@db-host:5432/kms_audit
 ```
 
-Exit code `0` means the chain is intact; `1` means a broken link or a tampered event was found,
-or, with the file backend, that sealed evidence is altered or missing. See
-[File backend](./audit-file-backend.md#verifying-a-file-or-a-directory) or
+Exit code `0` means the chain is internally consistent; `1` means a broken link or a tampered event
+was found, or, with the file backend, that sealed evidence is altered or missing. The chain hashes
+are unkeyed, so whoever can write the audit file or bypass the database triggers can rewrite events
+and recompute later hashes, or drop the latest events, without failing verification. To detect
+that, keep the latest chain head (`id` and `row_hash`) outside the audit store and compare it on
+audit. See [File backend](./audit-file-backend.md#verifying-a-file-or-a-directory) or
 [PostgreSQL backend](./audit-postgresql-backend.md#verifying-and-exporting) for the full set of
 options and sample output.
 

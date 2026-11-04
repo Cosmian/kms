@@ -9,7 +9,7 @@ system events described below. `ckms audit export` and `ckms audit verify` both 
 | ------------- | ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `id`          | `integer`                                | No       | Monotonically increasing row counter, starting at 0 for each chain (for each chain generation with the PostgreSQL backend).                    |
 | `timestamp`   | `string` (RFC 3339 / UTC)                | No       | Wall-clock time of the KMIP operation.                                                                                                           |
-| `operation`   | `string`                                 | No       | KMIP operation name, e.g. `"Create"`, `"Encrypt"`, `"Destroy"`. Batch requests produce a `+`-joined name such as `"Create+Encrypt"`.             |
+| `operation`   | `string`                                 | No       | KMIP operation name, e.g. `"Create"`, `"Encrypt"`, `"Destroy"`. Batch requests produce a `+`-joined name such as `"Create+Encrypt"`. REST Native Crypto API requests are named by HTTP method and route, e.g. `"POST /v1/crypto/encrypt"`. A request refused before its handler (e.g. a `401`) is named by the first segment of its path (`"kmip"`, `"v1"`, …). |
 | `user`        | `string`                                 | No       | Authenticated username. `"unauthenticated"` when no identity was presented (e.g. 401 paths). `"server"` for a system event.                      |
 | `object_uid`  | `string` or `null`                       | Yes      | KMIP `UniqueIdentifier` of the object involved. `null` when unavailable (e.g. failed auth, batch, system event).                                 |
 | `algorithm`   | `string` or `null`                       | Yes      | Cryptographic algorithm, e.g. `"AES"`, `"RSA"`. `null` when the operation carries no algorithm.                                                  |
@@ -56,7 +56,7 @@ hash chain as ordinary KMIP events, with `user` set to `"server"`.
 
 | Event                        | Written when                                                                            | `result`                                     | `details`                                                                                          |
 | ---------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `audit:eviction`             | One or more events were dropped because the writer's queue was full.                    | `Failure`, with the count of dropped events. | `null`                                                                                             |
+| `audit:eviction`             | One or more events were dropped because the writer's queue was full or the backend failed to write them. | `Failure`, with the count of dropped events. | `null`                                                                                             |
 | `audit:size-cap-reached`     | The file backend's `--audit-file-max-size-bytes` cap was reached.                       | `Failure`                                    | `null`                                                                                             |
 | `audit:torn-write-recovered` | File backend only: an incomplete trailing row was found and discarded after an ungraceful restart. | `Success`                         | `bytes_discarded` and `offset` of the discarded fragment.                                          |
 | `audit:reanchor`             | The KMS started a fresh chain after finding the previous one corrupted (seal-and-roll). | `Success`                                    | `reason` (see [Reanchor reasons](#reanchor-reasons)) plus backend-specific evidence fields, described in [File backend](./audit-file-backend.md#startup-and-recovery) and [PostgreSQL backend](./audit-postgresql-backend.md#startup-and-recovery). |
@@ -87,6 +87,8 @@ was added still hash to the same bytes.
 
 `prev_hash` of the first event (`id = 0`) is the 32-byte all-zeros sentinel.
 
-Any modification to a field in any row, including reordering rows, deleting rows, or appending
-forged rows, breaks at least one `prev_hash → row_hash` link and is detected by
-`ckms audit verify`.
+Modifying, reordering or deleting a row without recomputing the hashes that follow it breaks at
+least one `prev_hash → row_hash` link and is detected by `ckms audit verify`. The hash is unkeyed:
+anyone with write access to the audit store can recompute the chain after an edit, delete the
+latest rows, or append well-formed rows, and the chain still verifies. Detecting this requires a
+chain head (`id` and `row_hash` of a recent event) retained outside the audit store.

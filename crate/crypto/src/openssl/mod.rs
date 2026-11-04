@@ -16,6 +16,8 @@ pub use certificate::{
     openssl_certificate_extensions, openssl_certificate_to_kmip,
     openssl_x509_to_certificate_attributes,
 };
-pub use hashing::{hashing_algorithm_to_openssl, hashing_algorithm_to_openssl_ref};
+pub use hashing::{
+    hashing_algorithm_to_openssl, hashing_algorithm_to_openssl_ref, x509_signing_digest,
+};
 pub use private_key::{kmip_private_key_to_openssl, openssl_private_key_to_kmip};
 pub use public_key::{kmip_public_key_to_openssl, openssl_public_key_to_kmip};

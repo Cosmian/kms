@@ -1,12 +1,13 @@
 //! CRL generation operation.
 //!
 //! Generates an X.509 v2 CRL for a given CA certificate, listing all
-//! certificates that have been revoked (state Deactivated or Compromised)
-//! and whose `CertificateLink` attribute points to the issuer.
+//! certificates that have been revoked (state Deactivated or Compromised),
+//! whose `CertificateLink` attribute points to the issuer and that the issuer
+//! actually issued (see [`find_ca_issued_certificates`]).
 
 use std::{
-    collections::HashMap,
-    sync::{LazyLock, atomic::Ordering},
+    collections::{HashMap, HashSet},
+    sync::{Arc, LazyLock, atomic::Ordering},
     time::Instant,
 };
 
@@ -17,20 +18,29 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_objects::{Certificate, Object, ObjectType},
-            kmip_types::{Link, LinkType, LinkedObjectIdentifier},
+            kmip_types::{LinkType, LinkedObjectIdentifier},
         },
     },
-    cosmian_kms_crypto::openssl::{
-        crl::{CrlReasonCode, RevokedEntry, build_crl},
-        kmip_private_key_to_openssl,
-    },
+    cosmian_kms_crypto::openssl::crl::{CrlReasonCode, RevokedEntry, build_crl},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, error, trace, warn};
-use openssl::x509::{X509, X509Crl};
+use openssl::{
+    bn::BigNum,
+    x509::{X509, X509Crl},
+};
 use time::OffsetDateTime;
 
 use crate::{
-    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS, ObjectHandle,
+        certificate::{
+            find_ca_issued_certificates,
+            oracle_signing::{placeholder_signing_key, sign_crl_with_oracle},
+        },
+        operations::certify::{IssuerKey, load_issuer_key},
+        retrieve_object_utils::retrieve_object_for_operation,
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -120,35 +130,52 @@ pub(crate) async fn get_cached_crl(
     }
 }
 
-/// Regenerate the CRL of `issuer_certificate_id` on behalf of the issuer
-/// certificate's owner.
+/// Who asks for a CRL: an authenticated user, or the server itself (post-Revoke / refresh
+/// cron). Both are access-checked on the signing key; they differ only in who is checked and
+/// in how the issuer certificate is read.
+#[derive(Clone, Copy)]
+pub(crate) enum CrlRequester<'a> {
+    User(&'a UserId),
+    Server,
+}
+
+/// Regenerate a CRL on behalf of the server after a revocation or during refresh.
 ///
-/// Used by automatic regeneration (post-Revoke and the refresh cron). Those run as
-/// identities — the revoking leaf owner, or `default_username` — that usually have
-/// no access to the CA key, so regeneration failed silently and the published CRL
-/// went stale or expired. The CA owner is the principal that can sign it; CRL
-/// content is fully determined by server state, so no caller-controlled input is
-/// signed.
-///
-/// This deliberately bypasses the Crypto Officer gate of [`generate_crl`]: it is a
-/// server-initiated refresh, not a caller-driven request, and requiring the CA owner to
-/// be an active Crypto Officer would silently stop CRL refresh whenever CO users are
-/// configured.
-pub(crate) async fn regenerate_crl_as_issuer_owner(
+/// The server reads the public issuer certificate directly and authorizes its signing key as
+/// the certificate owner, never as the revoking caller. This avoids stale CRLs while preventing
+/// an imported certificate from using the server as a signing oracle for another owner's key.
+/// Server-triggered refreshes bypass the Crypto Officer gate; caller-driven generation does not.
+pub(crate) async fn regenerate_crl(kms: &KMS, issuer_certificate_id: &str) -> KResult<X509Crl> {
+    Box::pin(generate_crl(
+        kms,
+        issuer_certificate_id,
+        None,
+        CrlRequester::Server,
+    ))
+    .await
+}
+
+/// Retrieve the issuer certificate: ACL-checked for a user, read directly (but not destroyed)
+/// for the server, since a certificate is public information.
+async fn retrieve_issuer_certificate(
     kms: &KMS,
-    issuer_certificate_id: &str,
-) -> KResult<X509Crl> {
-    let issuer_owner = kms
-        .database
-        .retrieve_object_arc(issuer_certificate_id)
-        .await?
-        .map(|owm| owm.owner_id().clone())
-        .ok_or_else(|| {
-            KmsError::ItemNotFound(format!(
-                "CRL regeneration: issuer certificate '{issuer_certificate_id}' not found"
-            ))
-        })?;
-    Box::pin(sign_crl(kms, issuer_certificate_id, None, &issuer_owner)).await
+    uid: &str,
+    requester: CrlRequester<'_>,
+) -> KResult<Arc<ObjectWithMetadata>> {
+    match requester {
+        CrlRequester::User(user) => {
+            retrieve_object_for_operation(ObjectHandle::Uid(uid), KmipOperation::Get, kms, user)
+                .await
+        }
+        CrlRequester::Server => kms
+            .database
+            .retrieve_object_arc(uid)
+            .await?
+            .filter(|owm| !matches!(owm.state(), State::Destroyed | State::Destroyed_Compromised))
+            .ok_or_else(|| {
+                KmsError::ItemNotFound(format!("CRL generation: object '{uid}' not found"))
+            }),
+    }
 }
 
 /// Generate a CRL for the given issuer certificate.
@@ -157,7 +184,7 @@ pub(crate) async fn regenerate_crl_as_issuer_owner(
 /// * `kms` — KMS instance
 /// * `issuer_certificate_id` — UID of the CA certificate
 /// * `validity_days` — Optional override for the CRL validity period (default: 7 days)
-/// * `user` — Authenticated user performing the operation
+/// * `requester` — Authenticated user performing the operation, or the server itself
 ///
 /// # Returns
 /// The signed `X509Crl` (can be serialized to DER or PEM by the caller).
@@ -173,60 +200,55 @@ pub(crate) async fn regenerate_crl_as_issuer_owner(
 ///
 /// `find_all` is used internally to collect revoked certificates across all owners.
 /// This is correct and intentional: a CA's CRL must list *every* revoked certificate
-/// it issued, regardless of who owns the DB record.
+/// it issued, regardless of who owns the DB record. When Crypto Officers are configured,
+/// only an active Crypto Officer may invoke this cross-owner operation.
 pub(crate) async fn generate_crl(
     kms: &KMS,
     issuer_certificate_id: &str,
     validity_days: Option<u32>,
-    user: &UserId,
+    requester: CrlRequester<'_>,
 ) -> KResult<X509Crl> {
-    // Guard: when CO users are configured, only an active CO may call this.
-    // CRL generation uses find_all (no user filter) — the CO role is the
-    // documented gating condition for that bypass (same as Locate with CO).
-    if !kms.params.crypto_officer.users.is_empty() && !kms.is_crypto_officer(user).await? {
-        return Err(KmsError::Unauthorized(format!(
-            "Generating a CRL requires the Crypto Officer role. \
-             User '{user}' is not an active Crypto Officer."
-        )));
-    }
-    if !kms.params.crypto_officer.users.is_empty() {
-        // Audit log — CO bypass is a high-value security event.
-        error!(
-            target: "audit",
-            user = %user,
-            issuer_id = issuer_certificate_id,
-            "CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)",
-        );
+    if let CrlRequester::User(user) = requester {
+        if !kms.params.crypto_officer.users.is_empty() && !kms.is_crypto_officer(user).await? {
+            return Err(KmsError::Unauthorized(format!(
+                "Generating a CRL requires the Crypto Officer role. \
+                 User '{user}' is not an active Crypto Officer."
+            )));
+        }
+        if !kms.params.crypto_officer.users.is_empty() {
+            error!(
+                target: "audit",
+                user = %user,
+                issuer_id = issuer_certificate_id,
+                "CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)",
+            );
+        }
     }
 
-    Box::pin(sign_crl(kms, issuer_certificate_id, validity_days, user)).await
+    Box::pin(sign_crl(
+        kms,
+        issuer_certificate_id,
+        validity_days,
+        requester,
+    ))
+    .await
 }
 
-/// Build and sign the CRL of `issuer_certificate_id`, without any Crypto Officer check.
-///
-/// Shared by the caller-facing [`generate_crl`], which enforces the CO guard first, and
-/// by [`regenerate_crl_as_issuer_owner`] (post-Revoke and the refresh cron). Access to
-/// the issuer certificate and key is still checked as `user`.
+/// Build and sign the CRL of `issuer_certificate_id` after the caller-level CO check.
 async fn sign_crl(
     kms: &KMS,
     issuer_certificate_id: &str,
     validity_days: Option<u32>,
-    user: &UserId,
+    requester: CrlRequester<'_>,
 ) -> KResult<X509Crl> {
     debug!(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id
     );
 
-    // 1. Retrieve the issuer certificate
-    let issuer_owm = retrieve_object_for_operation(
-        ObjectHandle::Uid(issuer_certificate_id),
-        KmipOperation::Get,
-        kms,
-        user,
-    )
-    .await
-    .context("CRL generation: retrieving issuer certificate")?;
+    let issuer_owm = retrieve_issuer_certificate(kms, issuer_certificate_id, requester)
+        .await
+        .context("CRL generation: retrieving issuer certificate")?;
 
     let issuer_cert_der = match issuer_owm.object() {
         Object::Certificate(Certificate {
@@ -282,29 +304,45 @@ async fn sign_crl(
         })?
         .to_string();
 
+    // The signing key is always access-checked: as the requesting user, or, for a
+    // server-triggered CRL, as the issuer certificate's owner. The `PrivateKeyLink` of an
+    // imported certificate is user-controlled, so the server must never sign on its behalf
+    // with a key that its owner cannot use (this also applies to `hsm::` keys).
+    // HSM grants are per operation and the oracle never exports the key: signing needs the
+    // `Certify` grant (as for issuing certificates), not `Get`/`Export`. Database keys keep `Get`.
+    let key_user = match requester {
+        CrlRequester::User(user) => user,
+        CrlRequester::Server => issuer_owm.owner_id(),
+    };
+    let key_operation = if ObjectHandle::from(issuer_private_key_id.as_str()).is_hsm() {
+        KmipOperation::Certify
+    } else {
+        KmipOperation::Get
+    };
     let issuer_key_owm = retrieve_object_for_operation(
         ObjectHandle::Uid(&issuer_private_key_id),
-        KmipOperation::Get,
+        key_operation,
         kms,
-        user,
+        key_user,
     )
     .await
     .context("CRL generation: retrieving issuer private key")?;
 
-    // The CA key may be wrapped at rest (server `key_encryption_key` or a user KEK);
-    // `retrieve_object_for_operation` only unwraps for `default_unwrap_types`.
-    let issuer_key_object =
-        Box::pin(kms.get_unwrapped(issuer_key_owm.id(), issuer_key_owm.object(), user))
-            .await
-            .context("CRL generation: unwrapping issuer private key")?;
-    let issuer_pkey = kmip_private_key_to_openssl(&issuer_key_object).map_err(|e| {
-        KmsError::ServerError(format!(
-            "Failed to convert issuer private key to OpenSSL: {e}"
-        ))
-    })?;
+    // HSM keys are never loaded: the HSM signs through the crypto oracle. Database keys may be
+    // wrapped at rest (server `key_encryption_key` or a user KEK); `retrieve_object_for_operation`
+    // only unwraps for `default_unwrap_types`.
+    let issuer_key = Box::pin(load_issuer_key(
+        kms,
+        &issuer_key_owm,
+        issuer_x509.public_key()?,
+        key_user,
+    ))
+    .await
+    .context("CRL generation: loading issuer private key")?;
 
     // 3. Find all certificates signed by this issuer that are revoked
-    let revoked_entries = Box::pin(find_revoked_certificates(kms, issuer_certificate_id)).await?;
+    let revoked_entries =
+        Box::pin(find_revoked_certificates(kms, &issuer_owm, &issuer_x509)).await?;
 
     trace!(
         "Found {} revoked certificate(s) for issuer '{}'",
@@ -323,14 +361,25 @@ async fn sign_crl(
     let validity = validity_days
         .unwrap_or(kms.params.crl_default_validity_days)
         .max(1); // guard against misconfiguration producing a 0-day CRL
-    let crl = build_crl(
-        &issuer_x509,
-        &issuer_pkey,
-        &revoked_entries,
-        crl_number,
-        validity,
-    )
-    .map_err(|e| KmsError::ServerError(format!("Failed to build CRL: {e}")))?;
+    let crl = match &issuer_key {
+        IssuerKey::Local(key) => {
+            build_crl(&issuer_x509, key, &revoked_entries, crl_number, validity)
+                .map_err(|e| KmsError::ServerError(format!("Failed to build CRL: {e}")))?
+        }
+        IssuerKey::Oracle(key) => {
+            // HSM key: build with a throwaway key, then have the HSM sign the real TBS bytes.
+            let placeholder = placeholder_signing_key()?;
+            let draft = build_crl(
+                &issuer_x509,
+                &placeholder,
+                &revoked_entries,
+                crl_number,
+                validity,
+            )
+            .map_err(|e| KmsError::ServerError(format!("Failed to build CRL: {e}")))?;
+            Box::pin(sign_crl_with_oracle(kms, key, &draft)).await?
+        }
+    };
 
     debug!(
         "CRL generated successfully for issuer '{}': {} entries, validity {} days",
@@ -388,106 +437,110 @@ async fn sign_crl(
     Ok(crl)
 }
 
-/// Find all certificates issued by `issuer_certificate_id` that are in a revoked state.
+/// `true` when a certificate in `state` with these `attributes` is revoked: listed on the CRL,
+/// `revoked` for OCSP. A certificate destroyed without ever being revoked is not revoked.
+pub(crate) const fn is_revoked(state: State, attributes: &Attributes) -> bool {
+    match state {
+        State::Deactivated | State::Compromised | State::Destroyed_Compromised => true,
+        State::Destroyed => attributes.revocation_reason.is_some(),
+        State::Active | State::PreActive => false,
+    }
+}
+
+/// Find all certificates issued by `issuer` that are in a revoked state, one entry per serial.
 ///
 /// Uses `find_all` (bypasses user ownership filters) so that the CRL contains every
-/// revoked certificate regardless of which user owns it in the KMS database.  The
-/// caller is responsible for ensuring the requesting user holds the Crypto Officer role
-/// before invoking this function (enforced by `generate_crl`).
+/// revoked certificate regardless of which user owns it in the KMS database; only the
+/// certificates the issuer really issued count (see [`find_ca_issued_certificates`]).
 ///
 /// Returns a list of `RevokedEntry` structs ready for CRL generation.
 async fn find_revoked_certificates(
     kms: &KMS,
-    issuer_certificate_id: &str,
+    issuer: &ObjectWithMetadata,
+    issuer_x509: &X509,
 ) -> KResult<Vec<RevokedEntry>> {
-    let mut entries = Vec::new();
-
-    // Search for certificates with CertificateLink pointing to this issuer.
+    // First the serials of the revoked certificates linked to the issuer, then every record of
+    // these serials: an authoritative active record outweighs a revoked copy.
     // Destroyed certificates must stay listed (RFC 5280 §3.3: until they expire):
     // Destroy keeps the issuer link and revocation details for exactly this purpose.
-    let search_attrs = Attributes {
+    let mut search_attrs = Attributes {
         object_type: Some(ObjectType::Certificate),
-        link: Some(vec![Link {
-            link_type: LinkType::CertificateLink,
-            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                issuer_certificate_id.to_owned(),
-            ),
-        }]),
         ..Attributes::default()
     };
-
+    search_attrs.set_link(
+        LinkType::CertificateLink,
+        LinkedObjectIdentifier::TextString(issuer.id().to_owned()),
+    );
+    let mut serials = HashSet::new();
     for state in [
         State::Deactivated,
         State::Compromised,
         State::Destroyed,
         State::Destroyed_Compromised,
     ] {
-        // Use find_all to bypass user ownership filters — the CRL must include
-        // every revoked certificate issued by this CA, regardless of who owns it.
         let results = kms
             .database
             .find_all(Some(&search_attrs), Some(state), kms.vendor_id())
             .await
             .context("CRL generation: searching for revoked certificates")?;
-
         for (uid, _state, attributes) in results {
-            // A certificate destroyed without ever being revoked is not revoked.
-            if state == State::Destroyed && attributes.revocation_reason.is_none() {
+            if !is_revoked(state, &attributes) {
                 continue;
             }
-            // Retrieve the actual certificate to extract serial number
             let Some(owm) = kms.database.retrieve_object_arc(&uid).await? else {
                 continue;
             };
-
             let Object::Certificate(Certificate {
-                certificate_value: cert_der,
-                ..
+                certificate_value, ..
             }) = owm.object()
             else {
                 continue;
             };
+            if let Ok(serial) = X509::from_der(certificate_value)
+                .and_then(|x509| x509.serial_number().to_bn())
+                .and_then(|bn| bn.to_hex_str().map(|hex| hex.to_ascii_uppercase()))
+            {
+                serials.insert(serial);
+            }
+        }
+    }
 
-            let x509 = match X509::from_der(cert_der) {
-                Ok(x509) => x509,
-                Err(e) => {
-                    trace!("Skipping certificate '{}': cannot parse DER: {e}", uid);
-                    continue;
-                }
-            };
-
-            // Extract serial number as big-endian bytes
-            let serial_bytes = x509
-                .serial_number()
-                .to_bn()
-                .map_err(|e| {
-                    KmsError::ServerError(format!(
-                        "Failed to extract serial number from certificate '{uid}': {e}"
-                    ))
-                })?
-                .to_vec();
-
+    let mut entries = Vec::new();
+    for (serial, records) in Box::pin(find_ca_issued_certificates(
+        kms,
+        issuer,
+        issuer_x509,
+        &serials,
+    ))
+    .await?
+    {
+        // One entry per serial: the earliest revocation among the records that count.
+        let Some((_, _, attributes)) = records
+            .iter()
+            .filter(|(_, state, attributes)| is_revoked(*state, attributes))
+            .min_by_key(|(_, _, attributes)| attributes.deactivation_date)
+        else {
+            continue;
+        };
+        let serial_number = BigNum::from_hex_str(&serial)
+            .map_err(|e| {
+                KmsError::ServerError(format!("Failed to decode serial number {serial}: {e}"))
+            })?
+            .to_vec();
+        entries.push(RevokedEntry {
+            serial_number,
             // Determine revocation date (deactivation_date from attributes)
-            let revocation_date = attributes
+            revocation_date: attributes
                 .deactivation_date
-                .unwrap_or_else(OffsetDateTime::now_utc);
-
+                .unwrap_or_else(OffsetDateTime::now_utc),
             // Map KMIP RevocationReasonCode to CRL reason code
-            let reason_code = attributes
+            reason_code: attributes
                 .revocation_reason
                 .as_ref()
-                .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code));
-
+                .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
             // Invalidity date = compromise_occurrence_date (RFC 5280 §5.3.2)
-            let invalidity_date = attributes.compromise_occurrence_date;
-
-            entries.push(RevokedEntry {
-                serial_number: serial_bytes,
-                revocation_date,
-                reason_code,
-                invalidity_date,
-            });
-        }
+            invalidity_date: attributes.compromise_occurrence_date,
+        });
     }
 
     Ok(entries)

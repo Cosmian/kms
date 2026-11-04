@@ -23,7 +23,6 @@ interface ImportKeyFormData {
     replaceExisting: boolean;
     tags: string[];
     keyUsage?: KeyUsage[];
-    authenticatedAdditionalData?: string;
     wrappingKeyId?: string;
 }
 
@@ -277,16 +276,6 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
 
                         <Form.Item name="replaceExisting" valuePropName="checked" help={t("keysImport.replaceExistingHelp")}>
                             <Checkbox>{t("keysImport.replaceExisting")}</Checkbox>
-                        </Form.Item>
-                    </Card>
-
-                    <Card>
-                        <Form.Item
-                            name="authenticatedAdditionalData"
-                            label={t("keysImport.authenticatedAdditionalData")}
-                            help={t("keysImport.authenticatedAdditionalDataHelp")}
-                        >
-                            <Input placeholder={t("keysImport.enterAuthenticatedData")} />
                         </Form.Item>
                     </Card>
 

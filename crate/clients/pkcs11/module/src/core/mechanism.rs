@@ -223,6 +223,8 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             //  Bind to locals to prevent unaligned reads https://github.com/rust-lang/rust/issues/82523
             // `read_unaligned` is used instead of `read` because PKCS#11 callers are C code and
             // may pass a pointer with no alignment guarantee.
+            // SAFETY: `parameter_ptr` is non-null and `parameter_len` equals
+            // `size_of::<CK_RSA_PKCS_PSS_PARAMS>()` (both checked above).
             let params: CK_RSA_PKCS_PSS_PARAMS = unsafe {
                 parameter_ptr
                     .cast::<CK_RSA_PKCS_PSS_PARAMS>()

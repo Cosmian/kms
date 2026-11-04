@@ -1,6 +1,6 @@
 ---
 name: 'Mermaid Diagrams'
-description: 'Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset'
+description: 'Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check'
 applyTo: "**/*.md"
 ---
 
@@ -90,6 +90,63 @@ sequenceDiagram
 ```
 
 The same constraints apply: no list markers, no code spans.
+
+## Identifiers must not be Mermaid keywords
+
+Mermaid's lexer matches keywords case-insensitively, so a participant id equal to a
+keyword breaks the parse, with an error pointing at a later line. **Always give participants
+and nodes a descriptive id (`Online`, `Root`, `Client`) and put the display text in the alias
+or label.** Verified to fail as `sequenceDiagram` ids: `Off`, `End`, `Loop`, `Alt`, `Opt`,
+`Par`, `Note`, `Rect`, `Box`, `Actor`, `Title`, `Activate`, `Link`, `Over`, `Participant`
+(`On` happens to parse, but do not rely on short ids). In `flowchart`, `end` fails as an id.
+
+```mermaid
+%%  WRONG — `Off` is the keyword of `autonumber off`: "Parse error on line N":
+sequenceDiagram
+    participant On as Online KMS
+    participant Off as Offline root KMS
+    Off->>On: certificate
+
+%%  CORRECT:
+sequenceDiagram
+    participant Online as Online KMS
+    participant Root as Offline root KMS
+    Root->>Online: certificate
+```
+
+In `flowchart`, an id starting with `o` or `x` right after an edge (`A---oB`) is read as a
+circle / cross edge end: put spaces around arrows and use descriptive ids.
+
+## Other syntax pitfalls
+
+- Sequence message text: `;` ends the statement (`A->>B: a; b` fails to parse); write `#59;`
+  or reword. `#` starts an entity: write `#35;` for a literal `#`.
+- Quote any flowchart node label containing `()`, `[]`, `{}`, `/`, `:`, `,` or `"`:
+  `A["Sign (HSM)"]`. Never use a double quote inside a quoted label (use `#quot;` or reword).
+- Sequence participant labels need no quotes; `(`, `)` are fine there, but not `;` or `#`.
+- One statement per line, no trailing text after a closing bracket, no tabs.
+- Do not mix diagram types or put prose / Markdown inside the fence.
+- Keep a `%%` comment on its own line.
+
+## Validate every new or edited diagram
+
+A diagram that "looks right" can still fail to parse. After writing or editing one, parse it
+with the Mermaid package before finishing (works headless, no browser needed):
+
+```bash
+# one diagram saved as /tmp/d.mmd; mermaid-cli ships the parser:
+cat > /tmp/p.mjs <<'EOF'
+import mermaid from '/opt/homebrew/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/mermaid/dist/mermaid.core.mjs';
+import fs from 'fs';
+await mermaid.parse(fs.readFileSync('/tmp/d.mmd', 'utf8')); console.log('OK');
+EOF
+node /tmp/p.mjs   # prints OK, or "Parse error on line N"
+```
+
+Adjust the package path to the local `npm root -g`. Limit: headless parsing catches grammar
+errors (keywords, `;`, bad arrows) but cannot parse flowchart node labels (`DOMPurify.addHook is
+not a function`, an environment error, not a diagram error); for those, follow the label rules
+above and say in the final report that rendering was not verified.
 
 ## Checking for violations before commit
 

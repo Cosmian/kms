@@ -22,6 +22,7 @@ pub mod access;
 pub mod aws_xks;
 pub(crate) mod azure_ekm;
 pub(crate) mod crl;
+pub(crate) mod csr;
 pub(crate) mod enrollment;
 pub(crate) mod enrollment_guard;
 pub(crate) mod est;

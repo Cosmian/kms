@@ -174,7 +174,7 @@ Reading the numbers:
 - JSON path: −65 % allocations, −38 % bytes, 3× less time at 4 KiB. The JSON response encode still allocates
   28 times (4 KiB), dominated by `serde_json` output buffers.
 
-### Server-level figures (from `CHANGELOG/rust_reduce_allocs.md`, not independently reproduced)
+### Server-level figures (from the former `CHANGELOG/rust_reduce_allocs.md`, consolidated into `CHANGELOG.md` 5.29.0 and kept in git history; not independently reproduced)
 
 Single sample, debug build, counting allocator, base `20274da5b` vs this branch (reported by the author of
 the change): `retrieve_object_for_operation` on a cached key 36 → 3 allocations (42 823 → 13 264 B);
@@ -263,7 +263,7 @@ SQLite `atomic(UpdateObject)` 57 → 39 allocations (12 713 → 7 391 B).
 
 - **IMP-001**: Commits: `d70bf88b2` (codec, handlers, `HttpClient`), `73697fd32` (`Cow` tags, `Arc` object
   sharing, borrow/move, SQL layers, audit, middlewares, COSMIAN-2026-031), `bc49681f1` (ADR and
-  `HttpClient::send` fix), `ccc23ffc3` (docs and security updates). Changelog entries: `CHANGELOG/rust_cleanup.md`, `CHANGELOG/rust_reduce_allocs.md`.
+  `HttpClient::send` fix), `ccc23ffc3` (docs and security updates). Changelog entries: the former `CHANGELOG/rust_cleanup.md` and `CHANGELOG/rust_reduce_allocs.md`, consolidated into `CHANGELOG.md` 5.29.0 (full text in git history).
 - **IMP-002**: **Lesson learned**: the first allocation commit (`20274da5b`, rewritten as `d70bf88b2`) left
   `HttpClient::send` unable to compile: `retry_req` was referenced after the request had been moved into the
   client, and the client crate did not build at that revision (CI run 38884335018). The URI is now cloned
@@ -281,8 +281,8 @@ SQLite `atomic(UpdateObject)` 57 → 39 allocations (12 713 → 7 391 B).
 
 ## References
 
-- **REF-001**: `CHANGELOG/rust_cleanup.md` and `CHANGELOG/rust_reduce_allocs.md` (breaking change, security,
-  refactor and performance entries).
+- **REF-001**: the former `CHANGELOG/rust_cleanup.md` and `CHANGELOG/rust_reduce_allocs.md`, consolidated into `CHANGELOG.md` 5.29.0 (breaking change, security,
+  refactor and performance entries; full text in git history).
 - **REF-002**: `crate/kmip/src/ttlv/` (`ttlv_struct.rs`, `serialize.rs`, `deserialize.rs`, `date_time.rs`,
   `kmip_ttlv_deserializer/`, `wire/`).
 - **REF-003**: `crate/server/src/routes/kmip/handlers.rs`, `crate/server/src/core/retrieve_object_utils.rs`,

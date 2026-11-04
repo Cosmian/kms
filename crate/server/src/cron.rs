@@ -135,10 +135,10 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
              (expires within {overlap_hours}h)"
         );
 
-        // Sign as the CA owner: `default_username` usually cannot read the CA key.
-        if let Err(e) = Box::pin(
-            crate::core::operations::generate_crl::regenerate_crl_as_issuer_owner(kms, &issuer_id),
-        )
+        // Server-triggered: `default_username` usually has no grant on the CA key.
+        if let Err(e) = Box::pin(crate::core::operations::generate_crl::regenerate_crl(
+            kms, &issuer_id,
+        ))
         .await
         {
             warn!(

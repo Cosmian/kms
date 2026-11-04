@@ -1,16 +1,3 @@
-/// HSM key permissions non-regression tests.
-///
-/// Tests the full permission matrix for HSM keys with two actors:
-/// - `owner.client@acme.com` — HSM admin
-/// - `user.client@acme.com` — non-admin user
-///
-/// Decision record:
-/// - Locate: non-admin sees only HSM keys with at least one granted operation
-/// - Ownership: shared — all HSM admins are co-owners
-/// - Destroy: admin-only, cannot be delegated
-/// - Revoke grant: blocked on HSM keys (state changes not supported)
-/// - Get-as-wildcard: removed for HSM keys — explicit grants required
-/// - Server KEK: shared for wrapping/unwrapping only, direct ops require grants
 use std::sync::Arc;
 
 use cosmian_kms_access::access::Access;
@@ -27,8 +14,21 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::info;
 use uuid::Uuid;
 
+/// HSM key permissions non-regression tests.
+///
+/// Tests the full permission matrix for HSM keys with two actors:
+/// - `owner.client@acme.com` — HSM admin
+/// - `user.client@acme.com` — non-admin user
+///
+/// Decision record:
+/// - Locate: non-admin sees only HSM keys with at least one granted operation
+/// - Ownership: shared — all HSM admins are co-owners
+/// - Destroy: admin-only, cannot be delegated
+/// - Revoke grant: blocked on HSM keys (state changes not supported)
+/// - Get-as-wildcard: removed for HSM keys — explicit grants required
+/// - Server KEK: shared for wrapping/unwrapping only, direct ops require grants
+use crate::tests::test_utils::test_kms_with_config;
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     middlewares::UserId,
@@ -52,7 +52,7 @@ async fn setup_kms(kek_uuid: Option<Uuid>) -> KResult<(Arc<KMS>, Option<String>,
     clap_config.db.sqlite_path = sqlite_path;
     let kek_uid = clap_config.key_encryption_key.clone();
     let slot = clap_config.hsm.hsm_slot[0];
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     Ok((kms, kek_uid, slot))
 }
 

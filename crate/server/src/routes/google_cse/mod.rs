@@ -126,6 +126,14 @@ where
     (request, cse_config)
 }
 
+/// Turn a CSE operation result into a JSON 200 response or a structured CSE error reply.
+fn cse_response<T: Serialize>(result: KResult<T>) -> HttpResponse {
+    match result {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => CseErrorReply::from(&e).into(),
+    }
+}
+
 #[post("/digest")]
 pub(crate) async fn digest(
     request: Json<DigestRequest>,
@@ -133,14 +141,7 @@ pub(crate) async fn digest(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("digest", request, cse_config);
-
-    match operations::digest(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::digest(request, &cse_config, &kms).await)
 }
 
 #[post("/privilegedprivatekeydecrypt")]
@@ -151,15 +152,7 @@ pub(crate) async fn privileged_private_key_decrypt(
 ) -> HttpResponse {
     let (request, cse_config) =
         prepare_post_params("privilegedprivatekeydecrypt", request, cse_config);
-    let kms = kms.into_inner();
-
-    match operations::privileged_private_key_decrypt(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::privileged_private_key_decrypt(request, &cse_config, &kms).await)
 }
 
 #[post("/privilegedunwrap")]
@@ -169,14 +162,7 @@ pub(crate) async fn privileged_unwrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privilegedunwrap", request, cse_config);
-
-    match operations::privileged_unwrap(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::privileged_unwrap(request, &cse_config, &kms).await)
 }
 
 #[post("/privilegedwrap")]
@@ -186,14 +172,7 @@ pub(crate) async fn privileged_wrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privilegedwrap", request, cse_config);
-
-    match operations::privileged_wrap(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::privileged_wrap(request, &cse_config, &kms).await)
 }
 
 #[post("/rewrap")]
@@ -211,14 +190,7 @@ pub(crate) async fn rewrap(
     };
 
     let google_cse_kacls_url = format!("{base_url}/google_cse");
-
-    match operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms).await)
 }
 
 #[derive(Deserialize, Debug)]
@@ -249,12 +221,7 @@ pub(crate) async fn wrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("wrap", request, cse_config);
-    let kms = kms.into_inner();
-
-    match operations::wrap(request, &cse_config, &kms).await.map(Json) {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::wrap(request, &cse_config, &kms).await)
 }
 
 /// Decrypt the Data Encryption Key (DEK) and associated data.
@@ -268,15 +235,7 @@ pub(crate) async fn unwrap(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("unwrap", request, cse_config);
-    let kms = kms.into_inner();
-
-    match operations::unwrap(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::unwrap(request, &cse_config, &kms).await)
 }
 
 /// Unwraps a wrapped private key and then signs the digest provided by the client.
@@ -289,15 +248,7 @@ pub(crate) async fn private_key_sign(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privatekeysign", request, cse_config);
-    let kms = kms.into_inner();
-
-    match operations::private_key_sign(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::private_key_sign(request, &cse_config, &kms).await)
 }
 
 /// Unwraps a wrapped private key and then decrypts the content encryption key that is encrypted to the public key.
@@ -310,15 +261,7 @@ pub(crate) async fn private_key_decrypt(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privatekeydecrypt", request, cse_config);
-    let kms = kms.into_inner();
-
-    match operations::private_key_decrypt(request, &cse_config, &kms)
-        .await
-        .map(Json)
-    {
-        Ok(response) => HttpResponse::Ok().json(response),
-        Err(e) => CseErrorReply::from(&e).into(),
-    }
+    cse_response(operations::private_key_decrypt(request, &cse_config, &kms).await)
 }
 
 #[post("/delegate")]

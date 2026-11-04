@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse, b64_decode,
-    b64_encode, ecdsa_coord_size, ecdsa_der_to_p1363, jose_to_kmip_params,
+    b64_encode, ecdsa_coord_size, ecdsa_der_to_p1363, jose_to_kmip_params, jws_signing_input,
 };
 use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
@@ -37,6 +37,7 @@ pub(crate) async fn sign(
         user = user.as_str(),
         "POST /v1/crypto/sign kid={}", body.kid
     );
+    super::audit(&req, Some(&body.kid));
 
     // JWS convention (RFC 7515 §4.1.4): `kid` in the protected header identifies
     // the public key that can verify the signature, not the signing private key.
@@ -61,13 +62,9 @@ pub(crate) async fn sign(
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
     b64_decode("data", &body.data)?;
-    let payload_b64 = body.data.as_str();
 
     // RFC 7515 §2: signing_input = ASCII(protected_b64 + "." + payload_b64)
-    let mut signing_input_bytes = Vec::with_capacity(protected_b64.len() + 1 + payload_b64.len());
-    signing_input_bytes.extend_from_slice(protected_b64.as_bytes());
-    signing_input_bytes.push(b'.');
-    signing_input_bytes.extend_from_slice(payload_b64.as_bytes());
+    let signing_input_bytes = jws_signing_input(&protected_b64, &body.data);
 
     let kmip_params = jose_to_kmip_params(body.alg, None)?;
     let sign_req = KmipSign {

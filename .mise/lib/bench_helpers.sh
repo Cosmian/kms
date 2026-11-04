@@ -854,6 +854,7 @@ PYEOF
 #   --pkcs11 to plot_version_compare.py so the report describes the real
 #   dlopen()-based Cryptoki C API benchmark. May be combined with is_hsm=true
 #   for PKCS#11 operations delegated to HSM-resident keys.
+#   BENCH_DOCS_SUFFIX (env, optional): appended to docs_subdir, e.g. "_hr" or "2_ed25519".
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
@@ -862,7 +863,9 @@ PYEOF
 #         $CRITERION_HOME/reports/<version>/report.md   combined report
 bench_generate_report() {
   local port="$1"
-  local docs_subdir="${2:-ckms_bench}"
+  # BENCH_DOCS_SUFFIX keeps a rerun on another device of the same model (e.g. Luna 2) from
+  # replacing the first device's report: BENCH_DOCS_SUFFIX=2_ed25519 -> ..._luna2_ed25519.
+  local docs_subdir="${2:-ckms_bench}${BENCH_DOCS_SUFFIX:-}"
   local is_hsm="${3:-false}"
   local is_hsm_kek="${4:-false}"
   local is_pkcs11="${5:-false}"

@@ -49,11 +49,12 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, `AWS CloudHSM`, `SoftHSM2`, and `Kryoptic` are natively supported.
+          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+          are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, gcp_cloud_hsm, kryoptic, other]
+          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, gcp_cloud_hsm, kryoptic, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
@@ -85,6 +86,17 @@ Options:
           Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
 
           [env: KMS_HSM_PASSWORD=]
+
+      --key-encryption-key-wrapping-algorithm <KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM>
+          Algorithm used to wrap keys at rest with `key_encryption_key`:
+          `aes-gcm`, `aes-key-wrap` (NIST SP 800-38F KW, RFC 3394), `aes-key-wrap-padding`
+          (NIST SP 800-38F KWP, RFC 5649) or `rsa-oaep` (SHA-256). The AES modes need an AES key
+          encryption key, `rsa-oaep` an RSA one. Unset: AES-GCM for an HSM AES key, RSA-OAEP
+          (SHA-256) for an HSM RSA key, AES-KWP for a software AES key; a software RSA key requires
+          `rsa-oaep`. Startup probing covers HSM AES keys only.
+
+          [env: KMS_KEY_ENCRYPTION_KEY_WRAPPING_ALGORITHM=]
+          [possible values: aes-gcm, aes-key-wrap, aes-key-wrap-padding, rsa-oaep]
 
       --default-unwrap-type <DEFAULT_UNWRAP_TYPE>
           Specifies which KMIP object types should be automatically unwrapped when retrieved.
@@ -480,7 +492,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.28.0"]
+          [default: "Cosmian KMS v5.29.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory

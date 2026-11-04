@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{KeyWrapType, SecretDataType},
     kmip_2_1::{
@@ -30,15 +28,15 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
+    middlewares::UserId,
+    result::KResult,
+    tests::test_utils::{https_clap_config, test_kms, test_kms_with_config},
 };
 
 #[tokio::test]
 async fn test_secret_data_create_basic() -> KResult<()> {
     // Instantiate KMS
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_secret_data_create_basic@example.com");
 
     // Create a basic secret data object using the existing request function
@@ -124,8 +122,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
 async fn test_secret_data_with_wrapping() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
     // Instantiate KMS
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_secret_data_wrapping@example.com");
 
     // Create a SecretData object with wrapping enabled
@@ -213,7 +210,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
     // Instantiate KMS
     let clap_config = https_clap_config();
     let sqlite_path = clap_config.db.sqlite_path.clone();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
     let key_material = Zeroizing::from(b"TestData".to_vec());
     let owner = UserId::from("test_secret_data_wrapping@example.com");
 
@@ -239,7 +236,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
     let mut clap_config_kek = https_clap_config();
     clap_config_kek.db.sqlite_path = sqlite_path.clone();
     clap_config_kek.key_encryption_key = Some(wrapping_key_id.to_string());
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+    let kms = test_kms_with_config(clap_config_kek).await?;
 
     let secret_id = UniqueIdentifier::TextString(format!("test-secret-wrapped-{}", Uuid::new_v4()));
     let secret_data = Object::SecretData(SecretData {
@@ -329,8 +326,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
     clap_config_unwrap.db.sqlite_path = sqlite_path;
     clap_config_unwrap.key_encryption_key = Some(wrapping_key_id.to_string());
     clap_config_unwrap.default_unwrap_type = Some(["SecretData".to_owned()].to_vec());
-    let kms =
-        Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_unwrap)?)).await?);
+    let kms = test_kms_with_config(clap_config_unwrap).await?;
 
     // Test Export operation with default unwrapping
     let export_request_default_unwrap = Export {

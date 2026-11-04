@@ -145,13 +145,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install mdBook toolchain
-        run: bash documentation/theme/scripts/setup-mdbook.sh
+      - uses: ./.github/actions/install-mise
 
       - name: Build documentation
+        env:
+          # Turns on the combined public docs build; empty on fork PRs
+          PUBLIC_DOCS_TOKEN: ${{ github.event_name == 'pull_request' && secrets.PAT_TOKEN || '' }}
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
-          cd documentation && mdbook build
+          mise run docs:mdbook-build
 
   linkcheck:
     name: Check documentation links

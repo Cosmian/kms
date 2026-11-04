@@ -44,13 +44,12 @@ use super::{
     },
 };
 use crate::{
-    config::ServerParams,
     core::KMS,
     error::KmsError,
     middlewares::UserId,
     result::KResult,
     start_kms_server::migrate_aws_xks_key_access,
-    tests::test_utils::{https_clap_config, test_kms},
+    tests::test_utils::{https_clap_config, test_kms, test_kms_with_config},
 };
 
 fn http_req() -> HttpRequest {
@@ -237,7 +236,7 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
     // `CreateKey` on every deployment that configures `privileged_users`.
     let mut clap_config = https_clap_config();
     clap_config.privileged_users = Some(vec!["someone-else@acme.com".to_owned()]);
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms_with_config(clap_config).await?;
 
     provision_xks_key(&kms, "xks-key-privileged", "arn:aws:iam::1:role/Creator").await?;
 

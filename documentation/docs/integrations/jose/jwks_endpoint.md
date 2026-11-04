@@ -84,6 +84,21 @@ Expected output (abbreviated):
 }
 ```
 
+## RSA `use` and `alg`
+
+For RSA keys, `use`/`alg` come from the public key's KMIP usage mask:
+
+| Public-key mask | `use` | `alg` |
+|---|---|---|
+| `Verify` (no `Encrypt`/`WrapKey`) | `sig` | `RS256`/`RS384`/`RS512` for 2048/3072/4096 bits |
+| `Encrypt` and/or `WrapKey` (no `Verify`) | `enc` | omitted |
+| Both, or neither | omitted | omitted |
+
+Keys created with `POST /v1/crypto/keys` get the mask from the requested `alg`:
+`RSA-OAEP`/`RSA-OAEP-256` → `Encrypt | WrapKey`; `RS*`/`PS*` or no `alg` → `Verify`.
+Keys created through KMIP keep the mask of the request, so a pair left with the default
+(sign + encrypt) mask is published without `use`/`alg`.
+
 ## Opt a key out of JWKS
 
 Remove the `jwks` tag from the public key to stop advertising it. The key

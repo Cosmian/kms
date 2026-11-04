@@ -114,6 +114,8 @@
     "certificates/certs/revoke": "Revoke",
     "certificates/certs/destroy": "Destroy",
     "certificates/certs/validate": "Validate",
+    "certificates/certs/generate-crl": "Download CRL",
+    "certificates/certs/generate-csr": "Generate CSR",
     "certificates/encrypt": "Encrypt",
     "certificates/decrypt": "Decrypt",
     "attributes": "Attributes",

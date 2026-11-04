@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_in_result)]
 #[cfg(feature = "non-fips")]
 use std::collections::HashSet;
+#[cfg(feature = "non-fips")]
 use std::sync::Arc;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -35,10 +36,9 @@ use cosmian_kms_server_database::reexport::{
 };
 use zeroize::Zeroizing;
 
-use crate::{
-    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
-    tests::test_utils::https_clap_config,
-};
+#[cfg(feature = "non-fips")]
+use crate::core::KMS;
+use crate::{middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
 /// Helper function to create a symmetric key for testing `DeriveKey` operations
 fn create_base_symmetric_key_request() -> Create {
@@ -55,8 +55,7 @@ fn create_base_secret_data_request() -> Create {
 /// Test PBKDF2 key derivation with default parameters
 #[tokio::test]
 async fn test_derive_key_pbkdf2_default() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base symmetric key
@@ -146,8 +145,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
 /// Test PBKDF2 key derivation with different hash algorithms
 #[tokio::test]
 async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base symmetric key
@@ -216,8 +214,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
 /// Test HKDF key derivation
 #[tokio::test]
 async fn test_derive_key_hkdf() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base symmetric key
@@ -283,8 +280,7 @@ async fn test_derive_key_hkdf() -> KResult<()> {
 /// Test deriving from `SecretData` object
 #[tokio::test]
 async fn test_derive_key_from_secret_data() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base secret data object
@@ -328,8 +324,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
 /// Test error cases for `DeriveKey` operation
 #[tokio::test]
 async fn test_derive_key_error_cases() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base symmetric key WITHOUT DeriveKey usage mask
@@ -390,8 +385,7 @@ async fn test_derive_key_error_cases() -> KResult<()> {
 /// Test PBKDF2 validation: missing salt should fail
 #[tokio::test]
 async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base symmetric key
@@ -441,8 +435,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
 /// Test non-existent base key
 #[tokio::test]
 async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create DeriveKey request with non-existent base key
@@ -484,8 +477,7 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
 /// Test missing cryptographic length
 #[tokio::test]
 async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("test_user");
 
     // Create a base symmetric key
@@ -530,14 +522,6 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
     }
 
     Ok(())
-}
-
-#[cfg(feature = "non-fips")]
-async fn make_kms() -> KResult<Arc<KMS>> {
-    let clap_config = https_clap_config();
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
-    ))
 }
 
 #[cfg(feature = "non-fips")]
@@ -717,7 +701,7 @@ async fn secret_bytes(kms: &Arc<KMS>, uid: &str) -> KResult<Zeroizing<Vec<u8>>> 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::from("x25519-owner");
     let alice_private =
         hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
@@ -810,7 +794,7 @@ async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::from("x25519-generated-owner");
 
     let alice = kms
@@ -1017,7 +1001,7 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_derive_key_x25519_authorization_is_generic() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::from("x25519-auth-owner");
     let bob = UserId::from("x25519-auth-bob");
 
@@ -1083,7 +1067,7 @@ async fn test_derive_key_x25519_authorization_is_generic() -> KResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_derive_key_x25519_validation_failures_create_no_object() -> KResult<()> {
-    let kms = make_kms().await?;
+    let kms = test_kms().await?;
     let owner = UserId::from("x25519-validation-owner");
     let alice_private =
         hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
@@ -1406,8 +1390,7 @@ async fn test_derive_key_x25519_validation_failures_create_no_object() -> KResul
 #[cfg(not(feature = "non-fips"))]
 #[tokio::test]
 async fn test_derive_key_asymmetric_not_supported_in_fips() -> KResult<()> {
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = UserId::from("fips-owner");
 
     let error = kms

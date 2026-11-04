@@ -28,10 +28,9 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
         ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
         ObjectType::SecretData => kms.create_secret_data_and_tags(&request)?,
         ObjectType::PGPKey => {
-            // OpenPGP key generation is CPU-bound (pure-Rust RSA takes tens of seconds in
-            // unoptimized builds). Run it on the blocking pool: on the HTTP worker thread it
-            // would stall every other connection served by that worker until their request
-            // head times out with `408 Request Timeout`.
+            // OpenPGP key generation is CPU-bound (RSA prime search). Run it on the blocking
+            // pool: on the HTTP worker thread it would stall every other connection served by
+            // that worker until their request head times out with `408 Request Timeout`.
             let vendor_id = kms.vendor_id().to_owned();
             let create_request = request.clone();
             let rng = kms.rng.clone();

@@ -38,6 +38,7 @@ use super::{
         V_OCSP_CERTSTATUS_REVOKED, V_OCSP_CERTSTATUS_UNKNOWN,
     },
     oid::asn1_object,
+    x509_signing_digest,
 };
 use crate::error::CryptoError;
 
@@ -307,12 +308,11 @@ pub fn verify_issuer_hashes_match_ca(
             return Ok(false);
         }
 
-        // Build a reference OCSP_CERTID from the CA itself, using the same digest as
-        // the query. OCSP_cert_to_id(dgst, subject=ca_cert, issuer=ca_cert) gives us
-        // what we need because OpenSSL computes issuerNameHash from issuer.subject and
-        // issuerKeyHash from issuer.pubkey; the serial number is irrelevant here.
-        // SAFETY: ca_cert is valid; OCSP_cert_to_id returns null on error.
-        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ca_cert.as_ptr(), ca_cert.as_ptr()) };
+        // Build a reference OCSP_CERTID from the CA itself. With a null subject OpenSSL hashes
+        // the *issuer's own* subject name and public key; passing the CA as subject would hash
+        // the CA's issuer name instead, which differs for every non-self-signed (sub-)CA.
+        // SAFETY: ca_cert is valid; a null subject is allowed; null is returned on error.
+        let ref_cid = unsafe { ocsp_ffi::OCSP_cert_to_id(md, ptr::null(), ca_cert.as_ptr()) };
         if ref_cid.is_null() {
             return Ok(false);
         }
@@ -511,7 +511,8 @@ pub fn build_ocsp_response(
     }
 
     // ── Sign the BasicResponse ───────────────────────────────────────────────────
-    let md = signing_md(signer_key);
+    // RSA: SHA-256; ECDSA: digest matching the curve (RFC 5480 §4); PQC/EdDSA: null digest
+    let md = x509_signing_digest(signer_key).as_ptr();
     let certs_stack: *mut openssl_sys::stack_st_X509 = if config.include_signer_cert {
         // Build a one-element stack with the signer cert so clients can verify the
         // delegated responder's authorization without a separate fetch.
@@ -1009,22 +1010,6 @@ fn decode_der_octet_string(bytes: &[u8]) -> Option<&[u8]> {
     }
 }
 
-/// Choose the digest algorithm for signing based on the key type.
-///
-/// Per RFC 6960 §4.3 (and NIST guidance):
-/// - RSA / EC → SHA-256
-/// - PQC (ML-DSA, SLH-DSA) → null digest (algorithm performs its own hashing)
-#[expect(unsafe_code)]
-fn signing_md(key: &PKeyRef<Private>) -> *const openssl_sys::EVP_MD {
-    // SAFETY: EVP_sha256/EVP_md_null return static pointers.
-    unsafe {
-        match key.id() {
-            openssl::pkey::Id::RSA | openssl::pkey::Id::EC => openssl_sys::EVP_sha256(),
-            _ => openssl_sys::EVP_md_null(),
-        }
-    }
-}
-
 /// Convert an `Option<CrlReasonCode>` to the `CRL_REASON_*` integer for FFI.
 const fn reason_to_crl_code(reason: Option<CrlReasonCode>) -> std::ffi::c_int {
     match reason {
@@ -1051,10 +1036,16 @@ mod tests {
     use openssl::{
         asn1::Asn1Integer,
         bn::BigNum,
+        ec::{EcGroup, EcKey},
         hash::MessageDigest,
-        ocsp::{OcspCertId, OcspRequest, OcspResponse},
+        nid::Nid,
+        ocsp::{OcspCertId, OcspFlag, OcspRequest, OcspResponse},
         pkey::PKey,
-        x509::{X509, X509Builder, X509NameBuilder, extension::BasicConstraints},
+        stack::Stack,
+        x509::{
+            X509, X509Builder, X509NameBuilder, extension::BasicConstraints,
+            store::X509StoreBuilder,
+        },
     };
     use time::OffsetDateTime;
 
@@ -1063,8 +1054,13 @@ mod tests {
     /// Generate a self-signed CA certificate + private key for testing.
     fn create_test_ca() -> (X509, openssl::pkey::PKey<openssl::pkey::Private>) {
         let rsa = openssl::rsa::Rsa::generate(2048).expect("RSA keygen");
-        let pkey = PKey::from_rsa(rsa).expect("PKey");
+        create_test_ca_with_key(PKey::from_rsa(rsa).expect("PKey"))
+    }
 
+    /// Self-signed CA certificate (signed with SHA-256) for `pkey`.
+    fn create_test_ca_with_key(
+        pkey: openssl::pkey::PKey<openssl::pkey::Private>,
+    ) -> (X509, openssl::pkey::PKey<openssl::pkey::Private>) {
         let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
         nb.append_entry_by_text("CN", "Test CA").expect("CN");
         let name = nb.build();
@@ -1134,6 +1130,58 @@ mod tests {
         // Parse the response with the openssl crate.
         let resp = OcspResponse::from_der(&resp_der).expect("OcspResponse::from_der");
         assert_eq!(resp.status(), openssl::ocsp::OcspResponseStatus::SUCCESSFUL);
+    }
+
+    /// RFC 5480 §4: an ECDSA-signed response uses the digest matching the signer curve.
+    #[test]
+    fn test_ec_response_digest_matches_curve() {
+        // DER `AlgorithmIdentifier` of ecdsa-with-SHA256/384/512 (1.2.840.10045.4.3.{2,3,4})
+        let algorithm_identifier = |last: u8| {
+            [
+                0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, last,
+            ]
+        };
+        for (curve, last) in [
+            (Nid::X9_62_PRIME256V1, 0x02),
+            (Nid::SECP384R1, 0x03),
+            (Nid::SECP521R1, 0x04),
+        ] {
+            let group = EcGroup::from_curve_name(curve).expect("EcGroup");
+            let key = PKey::from_ec_key(EcKey::generate(&group).expect("EC keygen")).expect("PKey");
+            let (ca, ca_key) = create_test_ca_with_key(key);
+            let req_der = build_test_request(&ca, "01", false);
+            let entries = vec![OcspStatusEntry {
+                serial_hex: "01".to_owned(),
+                status: OcspCertStatus::Good,
+            }];
+            let resp_der = build_ocsp_response(
+                &req_der,
+                &ca,
+                &ca,
+                &ca_key,
+                &entries,
+                &OcspBuildConfig::default(),
+            )
+            .expect("build");
+
+            let basic = OcspResponse::from_der(&resp_der)
+                .expect("parse")
+                .basic()
+                .expect("basic");
+            let mut trusted = X509StoreBuilder::new().expect("store");
+            trusted.add_cert(ca.clone()).expect("add_cert");
+            let mut certs = Stack::new().expect("stack");
+            certs.push(ca.clone()).expect("push");
+            basic
+                .verify(&certs, &trusted.build(), OcspFlag::empty())
+                .expect("verify");
+            // the CA certificate is signed with SHA-256: SHA-384/512 can only be the response's
+            let expected = algorithm_identifier(last);
+            assert!(
+                resp_der.windows(expected.len()).any(|w| w == expected),
+                "{curve:?}: response not signed with the curve's digest"
+            );
+        }
     }
 
     #[test]
@@ -1433,6 +1481,44 @@ mod tests {
                 md.type_()
             );
         }
+    }
+
+    #[test]
+    fn test_verify_issuer_hashes_match_ca_accepts_sub_ca() {
+        // A sub-CA's issuer name differs from its subject name: the CertId of a certificate
+        // it issued hashes the sub-CA subject, which is what the check must compare with.
+        let (root, root_key) = create_test_ca();
+        let sub_key =
+            PKey::from_rsa(openssl::rsa::Rsa::generate(2048).expect("RSA keygen")).expect("PKey");
+        let cert = |subject: &str, key: &PKey<openssl::pkey::Private>, issuer: &X509| {
+            let mut nb = X509NameBuilder::new().expect("X509NameBuilder");
+            nb.append_entry_by_text("CN", subject).expect("CN");
+            let name = nb.build();
+            let mut b = X509Builder::new().expect("X509Builder");
+            b.set_version(2).expect("v3");
+            b.set_subject_name(&name).expect("subject");
+            b.set_issuer_name(issuer.subject_name()).expect("issuer");
+            b.set_pubkey(key).expect("pubkey");
+            b.set_not_before(&openssl::asn1::Asn1Time::days_from_now(0).expect("nb"))
+                .expect("set_not_before");
+            b.set_not_after(&openssl::asn1::Asn1Time::days_from_now(30).expect("na"))
+                .expect("set_not_after");
+            b.set_serial_number(
+                &Asn1Integer::from_bn(BigNum::from_u32(2).expect("bn").as_ref()).expect("serial"),
+            )
+            .expect("set_serial");
+            b.sign(&root_key, MessageDigest::sha256()).expect("sign");
+            b.build()
+        };
+        let sub = cert("Sub CA", &sub_key, &root);
+        let leaf = cert("Leaf", &sub_key, &sub);
+
+        let mut req = OcspRequest::new().expect("OcspRequest::new");
+        req.add_id(OcspCertId::from_cert(MessageDigest::sha1(), &leaf, &sub).expect("cert id"))
+            .expect("add_id");
+        let queries = parse_ocsp_request(&req.to_der().expect("to_der")).expect("parse");
+        assert!(verify_issuer_hashes_match_ca(&queries, &sub).expect("verify"));
+        assert!(!verify_issuer_hashes_match_ca(&queries, &root).expect("verify"));
     }
 
     #[test]
