@@ -23,8 +23,8 @@ use crate::tests::xml::{
 };
 
 /// Vector families run by dedicated tests in `kmip.rs`: TL and SASED are cross-vector
-/// scenarios, PKCS11 needs an HSM.
-const DELEGATED_PREFIXES: [&str; 3] = ["TL-", "SASED-", "PKCS11-"];
+/// scenarios, PKCS11 needs an HSM, TC-MD-24 (Set Constraints) needs a configured Crypto Officer.
+const DELEGATED_PREFIXES: [&str; 4] = ["TL-", "SASED-", "PKCS11-", "TC-MD-24-"];
 
 /// File stem of a vector path.
 pub(crate) fn vector_stem(path: &Path) -> &str {

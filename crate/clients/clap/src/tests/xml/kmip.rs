@@ -656,3 +656,42 @@ async fn kmip_xml_pkcs11() {
         .await
         .unwrap_or_else(|e| panic!("stop SoftHSM2 test server: {e}"));
 }
+
+// ─── Special: Set Constraints (needs a configured Crypto Officer) ─────────────
+
+#[tokio::test]
+#[serial_test::serial]
+async fn kmip_xml_constraints() {
+    use cosmian_logger::log_init;
+    use test_kms_server::{TestClientOptions, start_test_server_with_patch, test_config_path};
+
+    log_init(None);
+    let workspace =
+        std::env::temp_dir().join(format!("kms_test_xml_constraints_{}", std::process::id()));
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth/plain.toml"),
+        |config| {
+            // Set Constraints is refused unless a Crypto Officer is configured; the plain-HTTP
+            // client is the default user `tech@cosmian.com`.
+            config.roles.crypto_officer_users = Some(vec!["tech@cosmian.com".to_owned()]);
+            config.db.sqlite_path = workspace.join("sqlite-data");
+            config.db.clear_database = true;
+            config.workspace.root_data_path = workspace.join("workspace");
+            config.workspace.tmp_path = workspace.join("tmp");
+        },
+        TestClientOptions::default(),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("start constraints test server: {e}"));
+    let client = ctx.get_owner_client();
+
+    let paths: Vec<PathBuf> = vector_paths(WEBSITE_TEST_CASES[2])
+        .into_iter()
+        .filter(|path| vector_stem(path).starts_with("TC-MD-24-"))
+        .collect();
+    assert!(!paths.is_empty(), "no TC-MD-24 vector found");
+    run_vectors_checked(None, &client, paths.iter().map(PathBuf::as_path)).await;
+    ctx.stop_server()
+        .await
+        .unwrap_or_else(|e| panic!("stop constraints test server: {e}"));
+}
