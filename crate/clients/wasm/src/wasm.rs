@@ -43,8 +43,8 @@ use cosmian_kms_client_utils::{
                 OpaqueObject as KmipOpaqueObject, PrivateKey,
             },
             kmip_operations::{
-                CertifyResponse, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-                CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute,
+                Activate, ActivateResponse, CertifyResponse, CreateKeyPair, CreateKeyPairResponse,
+                CreateResponse, CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute,
                 DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse,
                 EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse, Hash,
                 HashResponse, ImportResponse, JoinSplitKeyResponse, LocateResponse,
@@ -1324,6 +1324,17 @@ pub fn decrypt_ec_ttlv_request(
 }
 
 wasm_response_parser!(parse_decrypt_ttlv_response, DecryptResponse);
+
+// Activate request
+#[wasm_bindgen]
+pub fn activate_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
+    let request = Activate {
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier),
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_activate_ttlv_response, ActivateResponse);
 
 // Destroy request
 #[wasm_bindgen]
