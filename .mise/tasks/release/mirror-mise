@@ -6,9 +6,9 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
 # .github/actions/install-mise downloads the pinned mise binary from
-# https://package.cosmian.com/mise/<version>/ first, then from GitHub releases and
-# mise.jdx.dev, and verifies the SHA-256 pin. Run this task after bumping MISE_VERSION
-# in that action so the copy exists when GitHub releases are unavailable (HTTP 5xx).
+# https://package.cosmian.com/mise/<version>/ (GitHub releases only as a fallback) and
+# verifies the SHA-256 pin. Run this task with --upload after bumping MISE_VERSION in that
+# action, so CI does not depend on GitHub releases being available.
 
 ACTION="${MISE_CONFIG_ROOT}/.github/actions/install-mise/action.yml"
 VERSION="$(sed -n 's/^ *MISE_VERSION="\(v[0-9.]*\)"/\1/p' "${ACTION}" | head -n 1)"

@@ -2,9 +2,8 @@
 name: Install mise
 description: >
   Install a pinned, SHA-256-verified mise release binary on Linux and macOS,
-  without installer release-index discovery. The download tries the
-  package.cosmian.com copy, then GitHub releases, then the mise.jdx.dev mirror,
-  with backoff, so a GitHub incident (HTTP 5xx) does not fail the job.
+  without installer release-index discovery. The binary comes from the copy on
+  package.cosmian.com, with GitHub releases as the fallback for unmirrored versions.
   Sets MISE_YES=1 so all subsequent mise commands run non-interactively.
 
 runs:
@@ -64,31 +63,24 @@ runs:
         work_dir="$(mktemp -d)"
         trap 'rm -rf -- "${work_dir:?}"' EXIT
         file="mise-${MISE_VERSION}-${asset}"
-        # Same bytes on every host: the pinned checksum is the trust anchor, so a mirror
-        # (or a corrupted/partial download) can never install anything unexpected.
-        # A miss on package.cosmian.com (404) just moves on to the next source.
-        urls=(
-          "https://package.cosmian.com/mise/${MISE_VERSION}/${file}"
-          "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/${file}"
-          "https://mise.jdx.dev/${MISE_VERSION}/${file}"
-        )
-        # Up to 8 rounds over all sources with growing sleeps (15 s ... 105 s), about 7 minutes
-        # in the worst case, to ride out a GitHub/CDN incident (HTTP 502/503/504).
+        # The pinned checksum is the trust anchor: a mirror (or a truncated download) can never
+        # install anything unexpected. package.cosmian.com holds the copy (published with
+        # `mise run release:mirror-mise`); GitHub releases are only the fallback for a version
+        # that has not been mirrored yet.
         ok=false
-        for attempt in 1 2 3 4 5 6 7 8; do
-          for url in "${urls[@]}"; do
-            if curl --retry 2 --retry-delay 5 --connect-timeout 20 --max-time 120 \
-              -fsSL "$url" -o "${work_dir}/mise" &&
-              [ "$(sha256_of "${work_dir}/mise")" = "$checksum" ]; then
-              ok=true
-              break 2
-            fi
-            echo "::warning::mise download failed or checksum mismatch (attempt ${attempt}): ${url}"
-          done
-          [ "$attempt" -lt 8 ] && sleep $((attempt * 15))
+        for url in \
+          "https://package.cosmian.com/mise/${MISE_VERSION}/${file}" \
+          "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/${file}"; do
+          if curl --retry 3 --retry-delay 5 --connect-timeout 20 --max-time 120 \
+            -fsSL "$url" -o "${work_dir}/mise" &&
+            [ "$(sha256_of "${work_dir}/mise")" = "$checksum" ]; then
+            ok=true
+            break
+          fi
+          echo "::warning::mise download failed or checksum mismatch: ${url}"
         done
         if [ "$ok" != true ]; then
-          echo "::error::Could not download a checksum-verified ${file} from any source"
+          echo "::error::Could not download a checksum-verified ${file}"
           exit 1
         fi
         mkdir -p "$HOME/.local/bin"
