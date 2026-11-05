@@ -609,12 +609,7 @@ if [[ "${STRICT}" -eq 1 ]]; then
   export TEST_JWT_STRICT=1
 fi
 
-# The UI lockfile requires pnpm >= 10, which is not pre-installed on CI runners
-# used by the spire job. Bootstrap it from npm when it is missing or too old.
-ensure_pnpm_v10
-if ! command -v pnpm >/dev/null 2>&1; then
-  print_error "pnpm is required for the Playwright E2E tests (Step 10) but could not be provisioned."
-fi
+ensure_pnpm
 
 # spiffe-jwt-svid-auth.spec.ts exercises the JSON /ui endpoints only. spiffe-ui-login.spec.ts
 # establishes a session through POST /ui/login_svid and then loads the SPA, which a placeholder
