@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#MISE description="OpenBao CLI scenario with the KMS KV store on PostgreSQL (docker compose service 'postgres')"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+
+# Same scenario as test:openbao, replayed on PostgreSQL; the compose service must already be running.
+export OPENBAO_DATABASE_URL="${OPENBAO_DATABASE_URL:-postgresql://kms:kms@127.0.0.1:5432/kms}"
+exec mise run test:openbao --variant "${usage_variant:-fips}" --link "${usage_link:-static}"

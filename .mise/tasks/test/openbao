@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+#MISE description="OpenBao CLI (bao kv) against the KMS Vault KV v2-compatible store"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+
+# Keep the original exit status: kms_stop succeeding must not mask a failed scenario.
+VERIFIER_NAME=""
+PROXY_PID=""
+cleanup() {
+  local rc=$?
+  kms_stop
+  if [[ -n "${PROXY_PID}" ]]; then kill "${PROXY_PID}" 2>/dev/null || true; fi
+  if [[ -n "${VERIFIER_NAME}" ]]; then docker rm -f "${VERIFIER_NAME}" >/dev/null 2>&1 || true; fi
+  exit "${rc}"
+}
+trap cleanup EXIT
+
+require_cmd docker
+require_cmd cargo
+require_cmd curl
+require_cmd python3
+
+print_header "OpenBao + KMS KV v2 integration test (${VARIANT_NAME})"
+
+# Identities: a throw-away OpenBao dev server acts as the token verifier (the KMS calls its
+# /auth/token/lookup-self, which a small proxy maps to OpenBao's /v1 path). Two userpass logins give two tokens, each mapped to its own entity.
+BAO_IMAGE="${BAO_IMAGE:-ghcr.io/openbao/openbao:2.7.1}"
+VERIFIER_PORT="$(kms_pick_free_port)"
+PROXY_PORT="$(kms_pick_free_port)"
+VERIFIER_NAME="kms-openbao-verifier-$$"
+print_status "Starting the OpenBao token verifier on port ${VERIFIER_PORT}..."
+docker run -d --name "${VERIFIER_NAME}" -p "127.0.0.1:${VERIFIER_PORT}:8200" \
+  -e BAO_DEV_ROOT_TOKEN_ID=verifier-root -e BAO_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
+  "${BAO_IMAGE}" >/dev/null
+verifier_bao() {
+  docker exec -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN=verifier-root "${VERIFIER_NAME}" bao "$@"
+}
+for _ in $(seq 1 30); do
+  verifier_bao status >/dev/null 2>&1 && break
+  sleep 1
+done
+verifier_bao status >/dev/null 2>&1 || print_error "the OpenBao token verifier did not start"
+verifier_bao auth enable userpass >/dev/null
+verifier_login() {
+  verifier_bao write auth/userpass/users/"$1" password="$1-password" >/dev/null
+  verifier_bao write -format=json auth/userpass/login/"$1" password="$1-password" |
+    python3 -c "import sys, json; print(json.load(sys.stdin)['auth']['client_token'])"
+}
+python3 "${REPO_ROOT}/.mise/scripts/test/bao_lookup_proxy.py" "${PROXY_PORT}" "http://127.0.0.1:${VERIFIER_PORT}" &
+PROXY_PID=$!
+TOKEN_OWNER="$(verifier_login alice)"
+TOKEN_OTHER="$(verifier_login bob)"
+
+KMS_PORT_FREE="$(kms_pick_free_port)"
+kms_write_config "${KMS_PORT_FREE}" "$(mktemp -d /tmp/kms-openbao-XXXXXX)" \
+  "[kv]" \
+  "kv_enabled = true" \
+  'kv_mount = "kv"' \
+  "kv_ttl_check_interval_secs = 1" \
+  "[vault]" \
+  "vault_api_enabled = true" \
+  "vault_auth_verifier_url = \"http://127.0.0.1:${PROXY_PORT}\""
+
+# Optional: replay the whole scenario on PostgreSQL or MySQL, e.g.
+# OPENBAO_DATABASE_URL=postgresql://kms:kms@127.0.0.1:5432/kms (the type is derived from the scheme).
+if [[ -n "${OPENBAO_DATABASE_URL:-}" ]]; then
+  case "${OPENBAO_DATABASE_URL}" in
+    postgres*) OPENBAO_DATABASE_TYPE="postgresql" ;;
+    mysql*) OPENBAO_DATABASE_TYPE="mysql" ;;
+    *) print_error "OPENBAO_DATABASE_URL must start with postgresql:// or mysql://" ;;
+  esac
+  sed -i.bak -e "s#^database_type = \"sqlite\"#database_type = \"${OPENBAO_DATABASE_TYPE}\"#" \
+    -e "s#^sqlite_path = .*#database_url = \"${OPENBAO_DATABASE_URL}\"#" "${KMS_CONFIG_FILE}"
+  rm -f "${KMS_CONFIG_FILE}.bak"
+fi
+
+print_status "Building KMS server..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_start_from_bin "$(get_kms_bin)"
+
+# On Linux the container shares the host network; elsewhere it reaches the host by name.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  BAO_ADDR_FOR_CONTAINER="http://127.0.0.1:${KMS_PORT}"
+else
+  BAO_ADDR_FOR_CONTAINER="http://host.docker.internal:${KMS_PORT}"
+fi
+
+BAO_ADDR="${BAO_ADDR_FOR_CONTAINER}" \
+  BAO_TOKEN="${TOKEN_OWNER}" \
+  BAO_TOKEN_OTHER="${TOKEN_OTHER}" \
+  KV_MOUNT="kv" \
+  bash "${REPO_ROOT}/.mise/scripts/test/test_openbao_kv.sh"
+
+print_success "OpenBao integration tests completed"

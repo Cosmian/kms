@@ -53,6 +53,9 @@ pub enum DbError {
     #[error("Item not found: {0}")]
     ItemNotFound(String),
 
+    #[error("Concurrent modification: {0}")]
+    Conflict(String),
+
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
     Kmip14Error(ResultReason, String),
@@ -266,6 +269,8 @@ impl From<InterfaceError> for DbError {
     fn from(value: InterfaceError) -> Self {
         match value {
             InterfaceError::Db(s) => Self::Store(s),
+            InterfaceError::ItemNotFound(s) => Self::ItemNotFound(s),
+            InterfaceError::Conflict(s) => Self::Conflict(s),
             InterfaceError::Unauthorized(s) => Self::Unauthorized(s),
             x => Self::Store(x.to_string()),
         }
@@ -334,6 +339,8 @@ impl From<DbError> for InterfaceError {
     fn from(value: DbError) -> Self {
         match value {
             DbError::Unauthorized(msg) => Self::Unauthorized(msg),
+            DbError::ItemNotFound(msg) => Self::ItemNotFound(msg),
+            DbError::Conflict(msg) => Self::Conflict(msg),
             DbError::InvalidRequest(msg) => Self::InvalidRequest(msg),
             DbError::NotSupported(msg) => Self::NotSupported(msg),
             other => Self::Db(other.to_string()),

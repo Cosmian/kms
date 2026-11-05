@@ -1669,6 +1669,45 @@ pub(super) async fn atomic_(
                 }
                 uids.push(uid.clone());
             }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_object,
+                object,
+                attributes,
+                tags,
+            } => {
+                let row: Option<mysql_async::Row> = tx
+                    .exec_first(get_mysql_query!("select-object-for-update"), (uid,))
+                    .await
+                    .map_err(DbError::from)?;
+                let Some(row) = row else {
+                    return Err(DbError::ItemNotFound(uid.clone()));
+                };
+                let existing_owner: String = row.get(3).context("missing owner")?;
+                if existing_owner != owner {
+                    return Err(DbError::Unauthorized(format!(
+                        "User '{owner}' does not own object '{uid}' and cannot update it"
+                    )));
+                }
+                let existing_state: String = row.get(4).context("missing state")?;
+                if existing_state == State::Destroyed.to_string()
+                    || existing_state == State::Destroyed_Compromised.to_string()
+                {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                let existing_object_json: String = row.get(1).context("missing object")?;
+                let existing_object: serde_json::Value =
+                    serde_json::from_str(&existing_object_json).map_err(DbError::from)?;
+                let expected_object =
+                    serde_json::to_value(expected_object).map_err(DbError::from)?;
+                if existing_object != expected_object {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
+                    db_bail!("compare-and-swap update of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
             AtomicOperation::UpdateState((uid, state)) => {
                 if let Err(e) = update_state_(uid, *state, tx).await {
                     db_bail!("update of the state of object {uid} failed: {e}");

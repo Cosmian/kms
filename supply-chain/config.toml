@@ -1665,6 +1665,21 @@ version = "0.8.1"
 criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 0.8.1) — unaudited, pending review"
 
+[[exemptions.ssh-cipher]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+notes = "Transitive OpenSSH encoding/parser dependency; workspace need; unaudited, pending review"
+
+[[exemptions.ssh-encoding]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+notes = "Transitive OpenSSH encoding/parser dependency; workspace need; unaudited, pending review"
+
+[[exemptions.ssh-key]]
+version = "0.6.7"
+criteria = "safe-to-deploy"
+notes = "Used only for OpenSSH key/certificate parsing and serialization; signing remains OpenSSL/KMS/HSM; workspace need; unaudited, pending review"
+
 [[exemptions.stable_deref_trait]]
 version = "1.2.1"
 criteria = "safe-to-deploy"

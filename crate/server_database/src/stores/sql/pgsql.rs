@@ -962,6 +962,63 @@ impl ObjectsStore for PgPool {
                         }
                         uids.push(uid.clone());
                     }
+                    AtomicOperation::CompareAndSwapObject {
+                        uid,
+                        expected_object,
+                        object,
+                        attributes,
+                        tags,
+                    } => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attrs_param = Json(attributes);
+                        let expected_object_param =
+                            serde_json::to_string(expected_object).map_err(DbError::from)?;
+                        let wrapping_key_id = object.wrapping_key_uid();
+                        let stmt = tx
+                            .prepare_cached(get_pgsql_query!("update-object-if-matches"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let destroyed_state = State::Destroyed.to_string();
+                        let destroyed_compromised_state = State::Destroyed_Compromised.to_string();
+                        let affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &object_json,
+                                    &attrs_param,
+                                    &wrapping_key_id,
+                                    &uid,
+                                    &user,
+                                    &expected_object_param,
+                                    &destroyed_state,
+                                    &destroyed_compromised_state,
+                                ],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        if affected == 0 {
+                            return Err(DbError::Conflict(uid.clone()));
+                        }
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare_cached(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare_cached(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
                     AtomicOperation::UpdateState((uid, state)) => {
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("update-object-with-state"))

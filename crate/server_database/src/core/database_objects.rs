@@ -751,11 +751,22 @@ impl Database {
         let first_op = &operations[0];
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
-        let ids = self
+        let ids = match self
             .record("atomic", async move {
                 db.atomic(user, operations).await.map_err(DbError::from)
             })
-            .await?;
+            .await
+        {
+            Ok(ids) => ids,
+            Err(error) => {
+                for operation in operations {
+                    if let AtomicOperation::CompareAndSwapObject { uid, .. } = operation {
+                        self.object_cache.invalidate(uid).await;
+                    }
+                }
+                return Err(error);
+            }
+        };
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
@@ -770,6 +781,19 @@ impl Database {
                 | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
+                    self.rotate_name_cache
+                        .invalidate_member(uid, attributes.rotate_name.as_deref());
+                }
+                AtomicOperation::CompareAndSwapObject {
+                    uid,
+                    object,
+                    attributes,
+                    ..
+                } => {
+                    self.object_cache.invalidate(uid).await;
+                    self.unwrapped_cache
+                        .validate_cache(uid, object.as_ref())
+                        .await?;
                     self.rotate_name_cache
                         .invalidate_member(uid, attributes.rotate_name.as_deref());
                 }

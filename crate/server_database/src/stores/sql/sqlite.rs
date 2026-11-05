@@ -1610,6 +1610,14 @@ enum OwnedOp {
         wrapping_key_id: Option<String>,
         tags: Option<HashSet<String>>,
     },
+    CompareAndSwapObject {
+        uid: String,
+        expected_object_json: String,
+        object_json: String,
+        attributes_json: String,
+        wrapping_key_id: Option<String>,
+        tags: Option<HashSet<String>>,
+    },
     UpdateState {
         uid: String,
         state_s: String,
@@ -1678,6 +1686,36 @@ impl OwnedOp {
                     tags: tags.clone(),
                 })
             }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_object,
+                object,
+                attributes,
+                tags,
+            } => {
+                let expected_object_json = serde_json::to_string(expected_object).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "failed serializing the expected object to JSON: {e}"
+                    ))
+                })?;
+                let object_json = serde_json::to_string(object).map_err(|e| {
+                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                })?;
+                let attributes_json = serde_json::to_string(attributes).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "failed serializing the attributes to JSON: {e}"
+                    ))
+                })?;
+                let wrapping_key_id = object.wrapping_key_uid();
+                Ok(Self::CompareAndSwapObject {
+                    uid: uid.clone(),
+                    expected_object_json,
+                    object_json,
+                    attributes_json,
+                    wrapping_key_id,
+                    tags: tags.clone(),
+                })
+            }
             AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
                 state_s: state.to_string(),
@@ -1696,6 +1734,7 @@ fn apply_owned_ops(
     let ins_obj_sql = get_sqlite_query!("insert-objects");
     let ins_tag_sql = get_sqlite_query!("insert-tags");
     let upd_obj_sql = get_sqlite_query!("update-object-with-object");
+    let update_if_matches_obj_sql = get_sqlite_query!("update-object-if-matches");
     let del_tag_sql = get_sqlite_query!("delete-tags");
     let ups_obj_sql = get_sqlite_query!("upsert-object");
     let upd_st_sql = get_sqlite_query!("update-object-with-state");
@@ -1778,6 +1817,40 @@ fn apply_owned_ops(
                     upd_obj_sql,
                     rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
                 )?;
+                if let Some(tags) = tags {
+                    tx.execute(del_tag_sql, params_from_iter([uid]))?;
+                    for tag in tags {
+                        tx.execute(ins_tag_sql, params_from_iter([uid, tag.as_str()]))?;
+                    }
+                }
+                uids.push(uid.clone());
+            }
+            OwnedOp::CompareAndSwapObject {
+                uid,
+                expected_object_json,
+                object_json,
+                attributes_json,
+                wrapping_key_id,
+                tags,
+            } => {
+                let destroyed_state = State::Destroyed.to_string();
+                let destroyed_compromised_state = State::Destroyed_Compromised.to_string();
+                let rows_affected = tx.execute(
+                    update_if_matches_obj_sql,
+                    rusqlite::params![
+                        object_json,
+                        attributes_json,
+                        wrapping_key_id,
+                        uid,
+                        owner,
+                        expected_object_json,
+                        destroyed_state,
+                        destroyed_compromised_state,
+                    ],
+                )?;
+                if rows_affected == 0 {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
                 if let Some(tags) = tags {
                     tx.execute(del_tag_sql, params_from_iter([uid]))?;
                     for tag in tags {

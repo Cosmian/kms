@@ -18,6 +18,15 @@ pub enum AtomicOperation {
     Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
+    /// Replace an object's content only if it still matches the expected object and is not
+    /// destroyed, preserving its state. Returns `Conflict` if the content changed.
+    CompareAndSwapObject {
+        uid: String,
+        expected_object: Box<Object>,
+        object: Box<Object>,
+        attributes: Attributes,
+        tags: Option<HashSet<String>>,
+    },
     /// Update the state (uid, state)
     UpdateState((String, State)),
     /// Delete (uid)
@@ -32,7 +41,8 @@ impl AtomicOperation {
             | Self::Upsert((uid, _, _, _, _))
             | Self::UpdateObject((uid, _, _, _))
             | Self::UpdateState((uid, _))
-            | Self::Delete(uid) => uid,
+            | Self::Delete(uid)
+            | Self::CompareAndSwapObject { uid, .. } => uid,
         }
     }
 

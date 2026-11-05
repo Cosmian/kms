@@ -31,11 +31,13 @@ pub mod health;
 pub(crate) mod jose;
 pub(crate) mod jwks;
 pub mod kmip;
+pub(crate) mod kv;
 pub mod ms_dke;
 pub(crate) mod ocsp;
 pub mod root_redirect;
 pub(crate) mod scep;
 pub(crate) mod spire;
+pub(crate) mod ssh;
 pub mod swagger;
 #[cfg(feature = "non-fips")]
 pub(crate) mod tokenize;

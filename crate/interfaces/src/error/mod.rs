@@ -21,6 +21,12 @@ pub enum InterfaceError {
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
 
+    #[error("Item not found: {0}")]
+    ItemNotFound(String),
+
+    #[error("Concurrent modification: {0}")]
+    Conflict(String),
+
     #[error("Not Supported: {0}")]
     NotSupported(String),
 
