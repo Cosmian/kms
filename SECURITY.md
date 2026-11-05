@@ -1,87 +1,86 @@
 # Security Policy
 
 - [Security Policy](#security-policy)
-      - [Reporting a Vulnerability](#reporting-a-vulnerability)
-      - [Severity Rating](#severity-rating)
-      - [Known Vulnerabilities](#known-vulnerabilities)
-            - [2026](#2026)
-                  - [COSMIAN-2026-056 — Get Attributes without a Unique Identifier selected another user's newest object](#cosmian-2026-056--get-attributes-without-a-unique-identifier-selected-another-users-newest-object)
-                  - [COSMIAN-2026-055 — Batch Undo could restore objects of another user](#cosmian-2026-055--batch-undo-could-restore-objects-of-another-user)
-                  - [COSMIAN-2026-054 — ReCertify authorized the issuer key as the certificate owner](#cosmian-2026-054--recertify-authorized-the-issuer-key-as-the-certificate-owner)
-                  - [COSMIAN-2026-053 — ReKeyKeyPair retired another user's linked public key](#cosmian-2026-053--rekeykeypair-retired-another-users-linked-public-key)
-                  - [COSMIAN-2026-052 — KMIP certificate chains and unbounded HSM Locate permit excessive server work](#cosmian-2026-052--kmip-certificate-chains-and-unbounded-hsm-locate-permit-excessive-server-work)
-                  - [COSMIAN-2026-051 — KMIP payloads written to debug logs](#cosmian-2026-051--kmip-payloads-written-to-debug-logs)
-                  - [COSMIAN-2026-050 — Configured Operator role permitted PKCS#11 administration](#cosmian-2026-050--configured-operator-role-permitted-pkcs11-administration)
-                  - [COSMIAN-2026-049 — Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs](#cosmian-2026-049--statically-linked-openssl-362-and-container-runtime-packages-with-fixable-cves)
-                  - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
-                  - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
-                  - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
-                  - [COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`](#cosmian-2026-046--server-key-encryption-key-usable-as-a-decryption-oracle-through-pre-wrapped-import)
-                  - [COSMIAN-2026-045 — Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent](#cosmian-2026-045--sensitive-opaque-objects-and-split-keys-exported-in-plaintext-when-a-wrapping-specification-is-sent)
-                  - [COSMIAN-2026-044 — Attribute edits let stored keys escape the KMIP algorithm policy](#cosmian-2026-044--attribute-edits-let-stored-keys-escape-the-kmip-algorithm-policy)
-                  - [COSMIAN-2026-043 — Authentication Verifier tokens accepted after logout or session revocation](#cosmian-2026-043--authentication-verifier-tokens-accepted-after-logout-or-session-revocation)
-                  - [COSMIAN-2026-042 — Bare HSM keyset identifier bypasses the grant check in crypto operations](#cosmian-2026-042--bare-hsm-keyset-identifier-bypasses-the-grant-check-in-crypto-operations)
-                  - [COSMIAN-2026-041 — HSM keys usable to decrypt arbitrary data through `Import` unwrapping](#cosmian-2026-041--hsm-keys-usable-to-decrypt-arbitrary-data-through-import-unwrapping)
-                  - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
-                  - [COSMIAN-2026-039 — Session-cookie requests accepted from other same-site origins](#cosmian-2026-039--session-cookie-requests-accepted-from-other-same-site-origins)
-                  - [COSMIAN-2026-038 — AWS XKS SigV4 secret access key written to the startup log](#cosmian-2026-038--aws-xks-sigv4-secret-access-key-written-to-the-startup-log)
-                  - [COSMIAN-2026-037 — Crypto operations reveal the existence and state of other users' keys](#cosmian-2026-037--crypto-operations-reveal-the-existence-and-state-of-other-users-keys)
-                  - [COSMIAN-2026-036 — Unbounded per-request work: batch size, PBKDF2 iterations, RSA modulus](#cosmian-2026-036--unbounded-per-request-work-batch-size-pbkdf2-iterations-rsa-modulus)
-                  - [COSMIAN-2026-035 — Google CSE `rewrap` SSRF check bypass via redirects, IPv6 literals and DNS](#cosmian-2026-035--google-cse-rewrap-ssrf-check-bypass-via-redirects-ipv6-literals-and-dns)
-                  - [COSMIAN-2026-034 — JWT signed by one identity provider accepted for another issuer](#cosmian-2026-034--jwt-signed-by-one-identity-provider-accepted-for-another-issuer)
-                  - [COSMIAN-2026-033 — KMIP socket server skips client certificate CN checks](#cosmian-2026-033--kmip-socket-server-skips-client-certificate-cn-checks)
-                  - [COSMIAN-2026-032 — KMIP socket server exhaustion: unbounded threads, idle connections and allocation](#cosmian-2026-032--kmip-socket-server-exhaustion-unbounded-threads-idle-connections-and-allocation)
-                  - [COSMIAN-2026-031 — `Get`/`Export` Fresh-bit write-back could persist an auto-unwrapped key](#cosmian-2026-031--getexport-fresh-bit-write-back-could-persist-an-auto-unwrapped-key)
-                  - [COSMIAN-2026-030 — SetAttribute permits changes to read-only metadata](#cosmian-2026-030--setattribute-permits-changes-to-read-only-metadata)
-                  - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
-                  - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
-                  - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
-                  - [COSMIAN-2026-029 — PostgreSQL `sslmode` ignored, connections silently fall back to plaintext](#cosmian-2026-029--postgresql-sslmode-ignored-connections-silently-fall-back-to-plaintext)
-                  - [COSMIAN-2026-028 — SSRF check bypass via `kms_public_url` prefix match in CRL fetching](#cosmian-2026-028--ssrf-check-bypass-via-kms_public_url-prefix-match-in-crl-fetching)
-                  - [COSMIAN-2026-027 — CRL/OCSP revocation status could be lost, stale or wrong](#cosmian-2026-027--crlocsp-revocation-status-could-be-lost-stale-or-wrong)
-                  - [COSMIAN-2026-026 — PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`](#cosmian-2026-026--pkcs11-module-buffer-overflows-in-c_getattributevalue-and-c_encrypt)
-                  - [COSMIAN-2026-025 — JOSE tag endpoints allow tag changes with any grant](#cosmian-2026-025--jose-tag-endpoints-allow-tag-changes-with-any-grant)
-                  - [COSMIAN-2026-024 — Any user can publish a key on the unauthenticated JWKS endpoint](#cosmian-2026-024--any-user-can-publish-a-key-on-the-unauthenticated-jwks-endpoint)
-                  - [COSMIAN-2026-023 — SPIRE transit key substitution via shared tags](#cosmian-2026-023--spire-transit-key-substitution-via-shared-tags)
-                  - [COSMIAN-2026-022 — SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token](#cosmian-2026-022--spire-pki-sign-intermediate-issues-ca-certificates-to-any-vault-token)
-                  - [COSMIAN-2026-021 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport)
-                  - [COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate)
-                  - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
-                  - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
-                  - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
-                  - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
-                  - [COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign](#cosmian-2026-015--kek-plaintext-leak-via-usagelimits-persist-in-decrypt-and-sign)
-                  - [COSMIAN-2026-014 — Sensitive configuration values exposed in Debug output](#cosmian-2026-014--sensitive-configuration-values-exposed-in-debug-output)
-                  - [COSMIAN-2026-013 — Internal error details leaked in HTTP 5xx responses](#cosmian-2026-013--internal-error-details-leaked-in-http-5xx-responses)
-                  - [COSMIAN-2026-012 — `/server-info` endpoint accessible without authentication](#cosmian-2026-012--server-info-endpoint-accessible-without-authentication)
-                  - [COSMIAN-2026-011 — Non-atomic state transitions enable TOCTOU races](#cosmian-2026-011--non-atomic-state-transitions-enable-toctou-races)
-                  - [COSMIAN-2026-010 — Predictable default session cookie salt](#cosmian-2026-010--predictable-default-session-cookie-salt)
-                  - [COSMIAN-2026-009 — Google CSE rewrap SSRF via `original_kacls_url`](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url)
-                  - [COSMIAN-2026-008 — Unwrap cache not invalidated on key revocation/destruction](#cosmian-2026-008--unwrap-cache-not-invalidated-on-key-revocationdestruction)
-                  - [COSMIAN-2026-007 — MS DKE scope missing authentication middleware](#cosmian-2026-007--ms-dke-scope-missing-authentication-middleware)
-                  - [COSMIAN-2026-006 — Server crash under concurrent requests due to tracing span misuse](#cosmian-2026-006--server-crash-under-concurrent-requests-due-to-tracing-span-misuse)
-                  - [COSMIAN-2026-005 — JWT decoding race condition causing intermittent authentication bypass](#cosmian-2026-005--jwt-decoding-race-condition-causing-intermittent-authentication-bypass)
-                  - [COSMIAN-2026-004 — OTLP telemetry exported over plaintext HTTP leaks encryption queries](#cosmian-2026-004--otlp-telemetry-exported-over-plaintext-http-leaks-encryption-queries)
-                  - [COSMIAN-2026-003 — KMIP Import `replace_existing` bypasses ownership verification](#cosmian-2026-003--kmip-import-replace_existing-bypasses-ownership-verification)
-                  - [COSMIAN-2026-002 — SipHash key hardcoded to zero in unwrap cache](#cosmian-2026-002--siphash-key-hardcoded-to-zero-in-unwrap-cache)
-            - [2025](#2025)
-                  - [COSMIAN-2025-003 — glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)](#cosmian-2025-003--glibc-cves-in-container-base-image-cve-2024-2961-cve-2024-33600-cve-2024-33601)
-                  - [COSMIAN-2025-012 — Session cookie encryption key randomly regenerated on each restart](#cosmian-2025-012--session-cookie-encryption-key-randomly-regenerated-on-each-restart)
-                  - [COSMIAN-2025-011 — RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel](#cosmian-2025-011--rustsec-2023-0071-rsa-marvin-attack-timing-side-channel)
-                  - [COSMIAN-2025-004 — OpenSSL 3.x CVEs addressed by upgrade to 3.6.2](#cosmian-2025-004--openssl-3x-cves-addressed-by-upgrade-to-362)
-                  - [COSMIAN-2025-010 — JWT authentication token not forwarded to downstream services](#cosmian-2025-010--jwt-authentication-token-not-forwarded-to-downstream-services)
-                  - [COSMIAN-2025-009 — HSM unwrap operation bypasses KMS permission checks](#cosmian-2025-009--hsm-unwrap-operation-bypasses-kms-permission-checks)
-                  - [COSMIAN-2025-002 — Negative X.509 certificate serial numbers](#cosmian-2025-002--negative-x509-certificate-serial-numbers)
-                  - [COSMIAN-2025-008 — Google CSE `privilegedunwrap` endpoint unrestricted access](#cosmian-2025-008--google-cse-privilegedunwrap-endpoint-unrestricted-access)
-                  - [COSMIAN-2025-001 — CSE migration key pair race condition](#cosmian-2025-001--cse-migration-key-pair-race-condition)
-                  - [COSMIAN-2025-007 — OpenID Connect authentication silently falls back to no-auth on TLS failure](#cosmian-2025-007--openid-connect-authentication-silently-falls-back-to-no-auth-on-tls-failure)
-                  - [COSMIAN-2025-006 — Missing PKCE in OAuth2 authentication flow](#cosmian-2025-006--missing-pkce-in-oauth2-authentication-flow)
-                  - [COSMIAN-2025-005 — JWT authorization config loop — only first OIDC provider checked](#cosmian-2025-005--jwt-authorization-config-loop--only-first-oidc-provider-checked)
-      - [Summary Table](#summary-table)
-      - [Security Best Practices](#security-best-practices)
-      - [FIPS Compliance](#fips-compliance)
-      - [Security Audits](#security-audits)
-      - [Contact](#contact)
+  - [Reporting a Vulnerability](#reporting-a-vulnerability)
+  - [Severity Rating](#severity-rating)
+  - [Known Vulnerabilities](#known-vulnerabilities)
+    - [2026](#2026)
+      - [COSMIAN-2026-056 — Get Attributes without a Unique Identifier selected another user's newest object](#cosmian-2026-056--get-attributes-without-a-unique-identifier-selected-another-users-newest-object)
+      - [COSMIAN-2026-055 — Batch Undo could restore objects of another user](#cosmian-2026-055--batch-undo-could-restore-objects-of-another-user)
+      - [COSMIAN-2026-054 — ReCertify authorized the issuer key as the certificate owner](#cosmian-2026-054--recertify-authorized-the-issuer-key-as-the-certificate-owner)
+      - [COSMIAN-2026-053 — ReKeyKeyPair retired another user's linked public key](#cosmian-2026-053--rekeykeypair-retired-another-users-linked-public-key)
+      - [COSMIAN-2026-052 — KMIP certificate chains and unbounded HSM Locate permit excessive server work](#cosmian-2026-052--kmip-certificate-chains-and-unbounded-hsm-locate-permit-excessive-server-work)
+      - [COSMIAN-2026-051 — KMIP payloads written to debug logs](#cosmian-2026-051--kmip-payloads-written-to-debug-logs)
+      - [COSMIAN-2026-050 — Configured Operator role permitted PKCS#11 administration](#cosmian-2026-050--configured-operator-role-permitted-pkcs11-administration)
+      - [COSMIAN-2026-049 — Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs](#cosmian-2026-049--statically-linked-openssl-362-and-container-runtime-packages-with-fixable-cves)
+      - [COSMIAN-2026-048 — CRL and OCSP trust any certificate linked to the CA](#cosmian-2026-048--crl-and-ocsp-trust-any-certificate-linked-to-the-ca)
+      - [COSMIAN-2026-047 — Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check](#cosmian-2026-047--batched-kmip-requestmessage-operations-skip-the-algorithm-policy-and-the-role-check)
+      - [COSMIAN-2026-046 — Server key encryption key usable as a decryption oracle through pre-wrapped `Import`](#cosmian-2026-046--server-key-encryption-key-usable-as-a-decryption-oracle-through-pre-wrapped-import)
+      - [COSMIAN-2026-045 — Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent](#cosmian-2026-045--sensitive-opaque-objects-and-split-keys-exported-in-plaintext-when-a-wrapping-specification-is-sent)
+      - [COSMIAN-2026-044 — Attribute edits let stored keys escape the KMIP algorithm policy](#cosmian-2026-044--attribute-edits-let-stored-keys-escape-the-kmip-algorithm-policy)
+      - [COSMIAN-2026-043 — Authentication Verifier tokens accepted after logout or session revocation](#cosmian-2026-043--authentication-verifier-tokens-accepted-after-logout-or-session-revocation)
+      - [COSMIAN-2026-042 — Bare HSM keyset identifier bypasses the grant check in crypto operations](#cosmian-2026-042--bare-hsm-keyset-identifier-bypasses-the-grant-check-in-crypto-operations)
+      - [COSMIAN-2026-041 — HSM keys usable to decrypt arbitrary data through `Import` unwrapping](#cosmian-2026-041--hsm-keys-usable-to-decrypt-arbitrary-data-through-import-unwrapping)
+      - [COSMIAN-2026-040 — KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN](#cosmian-2026-040--kmip-socket-server-accepts-the-reserved-aws-xks-service-identity-as-a-client-certificate-cn)
+      - [COSMIAN-2026-039 — Session-cookie requests accepted from other same-site origins](#cosmian-2026-039--session-cookie-requests-accepted-from-other-same-site-origins)
+      - [COSMIAN-2026-038 — AWS XKS SigV4 secret access key written to the startup log](#cosmian-2026-038--aws-xks-sigv4-secret-access-key-written-to-the-startup-log)
+      - [COSMIAN-2026-037 — Crypto operations reveal the existence and state of other users' keys](#cosmian-2026-037--crypto-operations-reveal-the-existence-and-state-of-other-users-keys)
+      - [COSMIAN-2026-036 — Unbounded per-request work: batch size, PBKDF2 iterations, RSA modulus](#cosmian-2026-036--unbounded-per-request-work-batch-size-pbkdf2-iterations-rsa-modulus)
+      - [COSMIAN-2026-035 — Google CSE `rewrap` SSRF check bypass via redirects, IPv6 literals and DNS](#cosmian-2026-035--google-cse-rewrap-ssrf-check-bypass-via-redirects-ipv6-literals-and-dns)
+      - [COSMIAN-2026-034 — JWT signed by one identity provider accepted for another issuer](#cosmian-2026-034--jwt-signed-by-one-identity-provider-accepted-for-another-issuer)
+      - [COSMIAN-2026-033 — KMIP socket server skips client certificate CN checks](#cosmian-2026-033--kmip-socket-server-skips-client-certificate-cn-checks)
+      - [COSMIAN-2026-032 — KMIP socket server exhaustion: unbounded threads, idle connections and allocation](#cosmian-2026-032--kmip-socket-server-exhaustion-unbounded-threads-idle-connections-and-allocation)
+      - [COSMIAN-2026-031 — `Get`/`Export` Fresh-bit write-back could persist an auto-unwrapped key](#cosmian-2026-031--getexport-fresh-bit-write-back-could-persist-an-auto-unwrapped-key)
+      - [COSMIAN-2026-030 — SetAttribute permits changes to read-only metadata](#cosmian-2026-030--setattribute-permits-changes-to-read-only-metadata)
+      - [GHSA-8mmx-f92q-2gq8 — `Extractable` and `NeverExtractable` not enforced on key export paths](#ghsa-8mmx-f92q-2gq8--extractable-and-neverextractable-not-enforced-on-key-export-paths)
+      - [GHSA-pvw2-jxwc-95xq — Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite](#ghsa-pvw2-jxwc-95xq--reserved-uid--bypassable-via-atomicoperationupsert-and-certify-destination-overwrite)
+      - [GHSA-c75c-3cmm-48h7 — `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant](#ghsa-c75c-3cmm-48h7--sensitive-and-extractable-attribute-stripping-via-read-only-get-grant)
+      - [COSMIAN-2026-029 — PostgreSQL `sslmode` ignored, connections silently fall back to plaintext](#cosmian-2026-029--postgresql-sslmode-ignored-connections-silently-fall-back-to-plaintext)
+      - [COSMIAN-2026-028 — SSRF check bypass via `kms_public_url` prefix match in CRL fetching](#cosmian-2026-028--ssrf-check-bypass-via-kms_public_url-prefix-match-in-crl-fetching)
+      - [COSMIAN-2026-027 — CRL/OCSP revocation status could be lost, stale or wrong](#cosmian-2026-027--crlocsp-revocation-status-could-be-lost-stale-or-wrong)
+      - [COSMIAN-2026-026 — PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`](#cosmian-2026-026--pkcs11-module-buffer-overflows-in-c_getattributevalue-and-c_encrypt)
+      - [COSMIAN-2026-025 — JOSE tag endpoints allow tag changes with any grant](#cosmian-2026-025--jose-tag-endpoints-allow-tag-changes-with-any-grant)
+      - [COSMIAN-2026-024 — Any user can publish a key on the unauthenticated JWKS endpoint](#cosmian-2026-024--any-user-can-publish-a-key-on-the-unauthenticated-jwks-endpoint)
+      - [COSMIAN-2026-023 — SPIRE transit key substitution via shared tags](#cosmian-2026-023--spire-transit-key-substitution-via-shared-tags)
+      - [COSMIAN-2026-022 — SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token](#cosmian-2026-022--spire-pki-sign-intermediate-issues-ca-certificates-to-any-vault-token)
+      - [COSMIAN-2026-021 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport)
+      - [COSMIAN-2026-020 — `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate](#cosmian-2026-020--get-grant-on-wildcard-uid--bypasses-the-createimport-authorization-gate)
+      - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
+      - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
+      - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
+      - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
+      - [COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign](#cosmian-2026-015--kek-plaintext-leak-via-usagelimits-persist-in-decrypt-and-sign)
+      - [COSMIAN-2026-014 — Sensitive configuration values exposed in Debug output](#cosmian-2026-014--sensitive-configuration-values-exposed-in-debug-output)
+      - [COSMIAN-2026-013 — Internal error details leaked in HTTP 5xx responses](#cosmian-2026-013--internal-error-details-leaked-in-http-5xx-responses)
+      - [COSMIAN-2026-012 — `/server-info` endpoint accessible without authentication](#cosmian-2026-012--server-info-endpoint-accessible-without-authentication)
+      - [COSMIAN-2026-011 — Non-atomic state transitions enable TOCTOU races](#cosmian-2026-011--non-atomic-state-transitions-enable-toctou-races)
+      - [COSMIAN-2026-010 — Predictable default session cookie salt](#cosmian-2026-010--predictable-default-session-cookie-salt)
+      - [COSMIAN-2026-009 — Google CSE rewrap SSRF via `original_kacls_url`](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url)
+      - [COSMIAN-2026-008 — Unwrap cache not invalidated on key revocation/destruction](#cosmian-2026-008--unwrap-cache-not-invalidated-on-key-revocationdestruction)
+      - [COSMIAN-2026-007 — MS DKE scope missing authentication middleware](#cosmian-2026-007--ms-dke-scope-missing-authentication-middleware)
+      - [COSMIAN-2026-006 — Server crash under concurrent requests due to tracing span misuse](#cosmian-2026-006--server-crash-under-concurrent-requests-due-to-tracing-span-misuse)
+      - [COSMIAN-2026-005 — JWT decoding race condition causing intermittent authentication bypass](#cosmian-2026-005--jwt-decoding-race-condition-causing-intermittent-authentication-bypass)
+      - [COSMIAN-2026-004 — OTLP telemetry exported over plaintext HTTP leaks encryption queries](#cosmian-2026-004--otlp-telemetry-exported-over-plaintext-http-leaks-encryption-queries)
+      - [COSMIAN-2026-003 — KMIP Import `replace_existing` bypasses ownership verification](#cosmian-2026-003--kmip-import-replace_existing-bypasses-ownership-verification)
+      - [COSMIAN-2026-002 — SipHash key hardcoded to zero in unwrap cache](#cosmian-2026-002--siphash-key-hardcoded-to-zero-in-unwrap-cache)
+    - [2025](#2025)
+      - [COSMIAN-2025-003 — glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)](#cosmian-2025-003--glibc-cves-in-container-base-image-cve-2024-2961-cve-2024-33600-cve-2024-33601)
+      - [COSMIAN-2025-012 — Session cookie encryption key randomly regenerated on each restart](#cosmian-2025-012--session-cookie-encryption-key-randomly-regenerated-on-each-restart)
+      - [COSMIAN-2025-011 — RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel](#cosmian-2025-011--rustsec-2023-0071-rsa-marvin-attack-timing-side-channel)
+      - [COSMIAN-2025-004 — OpenSSL 3.x CVEs addressed by upgrade to 3.6.2](#cosmian-2025-004--openssl-3x-cves-addressed-by-upgrade-to-362)
+      - [COSMIAN-2025-010 — JWT authentication token not forwarded to downstream services](#cosmian-2025-010--jwt-authentication-token-not-forwarded-to-downstream-services)
+      - [COSMIAN-2025-009 — HSM unwrap operation bypasses KMS permission checks](#cosmian-2025-009--hsm-unwrap-operation-bypasses-kms-permission-checks)
+      - [COSMIAN-2025-002 — Negative X.509 certificate serial numbers](#cosmian-2025-002--negative-x509-certificate-serial-numbers)
+      - [COSMIAN-2025-008 — Google CSE `privilegedunwrap` endpoint unrestricted access](#cosmian-2025-008--google-cse-privilegedunwrap-endpoint-unrestricted-access)
+      - [COSMIAN-2025-001 — CSE migration key pair race condition](#cosmian-2025-001--cse-migration-key-pair-race-condition)
+      - [COSMIAN-2025-007 — OpenID Connect authentication silently falls back to no-auth on TLS failure](#cosmian-2025-007--openid-connect-authentication-silently-falls-back-to-no-auth-on-tls-failure)
+      - [COSMIAN-2025-006 — Missing PKCE in OAuth2 authentication flow](#cosmian-2025-006--missing-pkce-in-oauth2-authentication-flow)
+      - [COSMIAN-2025-005 — JWT authorization config loop — only first OIDC provider checked](#cosmian-2025-005--jwt-authorization-config-loop--only-first-oidc-provider-checked)
+  - [Summary Table](#summary-table)
+  - [Security Best Practices](#security-best-practices)
+  - [FIPS Compliance](#fips-compliance)
+  - [Security Audits](#security-audits)
+  - [Contact](#contact)
 
 ---
 
@@ -124,8 +123,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------- |
 | Severity   | Moderate                                                   |
 | Published  | Pending                                                    |
-| Affected   | before 5.29.0                                              |
-| Fixed in   | 5.29.0                                                     |
+| Affected   | before 6.0.0                                               |
+| Fixed in   | 6.0.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -133,7 +132,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A caller who owned no object learned the Unique Identifier of the newest object in the database, whoever owned it. Any authenticated user could also make each such request read the whole object table.
 
-**Mitigation:** Upgrade to 5.29.0. An omitted Unique Identifier now means the ID Placeholder only (KMIP 2.1 §6.1.20); with no placeholder the request fails without selecting or naming any object. Regression test: `test_get_attributes_without_identifier_selects_nothing`.
+**Mitigation:** Upgrade to 6.0.0. An omitted Unique Identifier now means the ID Placeholder only (KMIP 2.1 §6.1.20); with no placeholder the request fails without selecting or naming any object. Regression test: `test_get_attributes_without_identifier_selects_nothing`.
 
 ---
 
@@ -143,12 +142,12 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | --------------------------------------------------------------------- |
 | Severity   | Moderate                                                              |
 | Published  | Pending                                                               |
-| Affected   | unreleased development code only (introduced and fixed before 5.29.0) |
-| Fixed in   | 5.29.0                                                                |
+| Affected   | unreleased development code only (introduced and fixed before 6.0.0)  |
+| Fixed in   | 6.0.0                                                                 |
 | Found by   | Security review, 20 October 2026                                      |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md)            |
 
-**Summary:** The KMIP Undo batch error option, implemented during the 5.29.0 development cycle, snapshotted each item's target and every object the target linked to, without checking the caller's permissions, and wrote the snapshots back unconditionally after a failure. Links are client-editable, so a user could link one of their own objects to another user's object. Tag, keyset and name handles, re-keys of wrapping keys, Covercrypt cascades and Crypto Officer key splits were reported as undone although their effects remained, and a ceremony split lost its key.
+**Summary:** The KMIP Undo batch error option, implemented during the 6.0.0 development cycle, snapshotted each item's target and every object the target linked to, without checking the caller's permissions, and wrote the snapshots back unconditionally after a failure. Links are client-editable, so a user could link one of their own objects to another user's object. Tag, keyset and name handles, re-keys of wrapping keys, Covercrypt cascades and Crypto Officer key splits were reported as undone although their effects remained, and a ceremony split lost its key.
 
 **Impact:** A user could make an Undo batch overwrite another user's object with an earlier state: for example, revert a revocation or bring back key material destroyed concurrently. No released version is affected.
 
@@ -162,8 +161,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 5.29.0                                              |
-| Fixed in   | 5.29.0                                                     |
+| Affected   | before 6.0.0                                               |
+| Fixed in   | 6.0.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -171,7 +170,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user with only a read or `Certify` grant on a leaf certificate, plus the right to create objects, could have the owner's CA key sign a certificate for a request the user chose. The user owned the issued certificate. The CA key itself was not exposed.
 
-**Mitigation:** Upgrade to 5.29.0. The subject and issuer are now resolved and authorized as the requesting user, and keys linked to the old certificate are relinked only when the user may certify with them. Regression test: `test_recertify_authorizes_issuer_as_requester`.
+**Mitigation:** Upgrade to 6.0.0. The subject and issuer are now resolved and authorized as the requesting user, and keys linked to the old certificate are relinked only when the user may certify with them. Regression test: `test_recertify_authorizes_issuer_as_requester`.
 
 ---
 
@@ -181,8 +180,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 5.29.0                                              |
-| Fixed in   | 5.29.0                                                     |
+| Affected   | before 6.0.0                                               |
+| Fixed in   | 6.0.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -190,7 +189,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user could point their own private key at another user's public key and re-key it. The victim's public key was then deactivated and given a Replacement Object Link to the attacker's new key, and its attributes were copied into a key the attacker owned. This is the same class as COSMIAN-2026-017.
 
-**Mitigation:** Upgrade to 5.29.0. The linked public key now requires the `Rekey` permission and is otherwise reported as `Object_Not_Found`. Editing a Link also requires ownership or an explicit grant of the edit operation. Regression test: `test_rekey_keypair_does_not_retire_another_users_linked_public_key`.
+**Mitigation:** Upgrade to 6.0.0. The linked public key now requires the `Rekey` permission and is otherwise reported as `Object_Not_Found`. Editing a Link also requires ownership or an explicit grant of the edit operation. Regression test: `test_rekey_keypair_does_not_retire_another_users_linked_public_key`.
 
 ---
 
@@ -200,8 +199,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------- |
 | Severity   | Moderate                                                   |
 | Published  | Pending                                                    |
-| Affected   | before 5.29.0                                              |
-| Fixed in   | 5.29.0                                                     |
+| Affected   | before 6.0.0                                               |
+| Fixed in   | 6.0.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -209,7 +208,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An authenticated caller able to create or link managed certificates could make an export loop indefinitely. On a server with HSMs, any authenticated user could make each Locate read the metadata of every key on the HSMs.
 
-**Mitigation:** Upgrade to 5.29.0. Certificate chains reject cycles and chains above 100 certificates. Locate does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
+**Mitigation:** Upgrade to 6.0.0. Certificate chains reject cycles and chains above 100 certificates. Locate does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
 
 ---
 
@@ -219,8 +218,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 5.29.0                                              |
-| Fixed in   | 5.29.0                                                     |
+| Affected   | before 6.0.0                                               |
+| Fixed in   | 6.0.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -228,7 +227,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Debug logs could contain plaintext key material, wrapped keys, decrypted data, signatures, and client correlation values. Anyone who could read those logs could recover the recorded data.
 
-**Mitigation:** Upgrade to 5.29.0. KMIP logs retain only request metadata and operation names; they no longer emit payloads or encoded bytes. Rotate or restrict access to logs written by earlier versions.
+**Mitigation:** Upgrade to 6.0.0. KMIP logs retain only request metadata and operation names; they no longer emit payloads or encoded bytes. Rotate or restrict access to logs written by earlier versions.
 
 ---
 
@@ -238,8 +237,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 5.29.0                                              |
-| Fixed in   | 5.29.0                                                     |
+| Affected   | before 6.0.0                                               |
+| Fixed in   | 6.0.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -247,7 +246,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An Operator could access PKCS#11 administration, including functions acting on the HSM library shared by all users.
 
-**Mitigation:** Upgrade to 5.29.0. `PKCS11` requires a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and the new `SetConstraints` once roles are configured; regression test `operator_cannot_invoke_administrative_operations` covers the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions. Where roles are not configured, `SetConstraints` remains available to every authenticated user.
+**Mitigation:** Upgrade to 6.0.0. `PKCS11` and `SetConstraints` require a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and `SetConstraints` once roles are configured; regression tests `operator_cannot_invoke_administrative_operations`, `pkcs11_requires_a_configured_crypto_officer` and `set_constraints_requires_a_configured_crypto_officer` cover the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions.
 
 ---
 
@@ -1459,77 +1458,78 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 ## Summary Table
 
-| ID                  | Severity | Affected                | Fixed in | Title                                                                                               |
-| ------------------- | -------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------- |
-| COSMIAN-2026-056    | Moderate | before 5.29.0           | 5.29.0   | Get Attributes without a Unique Identifier selected another user's newest object                    |
-| COSMIAN-2026-055    | Moderate | unreleased              | 5.29.0   | Batch Undo could restore objects of another user                                                    |
-| COSMIAN-2026-054    | High     | before 5.29.0           | 5.29.0   | ReCertify authorized the issuer key as the certificate owner                                        |
-| COSMIAN-2026-053    | High     | before 5.29.0           | 5.29.0   | ReKeyKeyPair retired another user's linked public key                                               |
-| COSMIAN-2026-052    | Moderate | before 5.29.0           | 5.29.0   | KMIP certificate chains and unbounded HSM Locate permit excessive server work                             |
-| COSMIAN-2026-051    | High     | before 5.29.0           | 5.29.0   | KMIP payloads written to debug logs                                                                 |
-| COSMIAN-2026-050    | High     | before 5.29.0           | 5.29.0   | Configured Operator role permitted PKCS#11 administration                            |
-| COSMIAN-2026-048    | High     | 5.27.0 – 5.28.0         | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |
-| COSMIAN-2026-047    | Moderate | 5.16.0 – 5.28.0         | 5.29.0   | Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check               |
-| COSMIAN-2026-046    | High     | 5.13.0 – 5.28.0         | 5.29.0   | Server key encryption key usable as a decryption oracle through pre-wrapped `Import`                |
-| COSMIAN-2026-045    | Moderate | 5.13.0 – 5.28.0         | 5.29.0   | Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent |
-| COSMIAN-2026-044    | Moderate | 5.16.0 – 5.28.0         | 5.29.0   | Attribute edits let stored keys escape the KMIP algorithm policy                                    |
-| COSMIAN-2026-043    | Moderate | 5.26.0 – 5.28.0         | 5.29.0   | Authentication Verifier tokens accepted after logout or session revocation                          |
-| COSMIAN-2026-042    | High     | 5.25.0 – 5.28.0         | 5.29.0   | Bare HSM keyset identifier bypasses the grant check in crypto operations                            |
-| COSMIAN-2026-041    | Critical | 5.13.0 – 5.28.0         | 5.29.0   | HSM keys usable to decrypt arbitrary data through `Import` unwrapping                               |
-| COSMIAN-2026-040    | Moderate | 5.27.1 – 5.28.0         | 5.29.0   | KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN         |
-| COSMIAN-2026-039    | Low      | before 5.29.0           | 5.29.0   | Session-cookie requests accepted from other same-site origins                                       |
-| COSMIAN-2026-038    | High     | before 5.29.0           | 5.29.0   | AWS XKS SigV4 secret access key written to the startup log                                          |
-| COSMIAN-2026-037    | Low      | before 5.29.0           | 5.29.0   | Crypto operations reveal the existence and state of other users' keys                               |
-| COSMIAN-2026-036    | Moderate | before 5.29.0           | 5.29.0   | Unbounded per-request work: batch size, PBKDF2 iterations, RSA modulus                              |
-| COSMIAN-2026-035    | High     | 5.22.0 – 5.28.0         | 5.29.0   | Google CSE `rewrap` SSRF check bypass via redirects, IPv6 literals and DNS                          |
-| COSMIAN-2026-034    | High     | before 5.29.0           | 5.29.0   | JWT signed by one identity provider accepted for another issuer                                     |
-| COSMIAN-2026-033    | Moderate | before 5.29.0           | 5.29.0   | KMIP socket server skips client certificate CN checks                                               |
-| COSMIAN-2026-032    | High     | before 5.29.0           | 5.29.0   | KMIP socket server exhaustion: unbounded threads, idle connections and allocation                   |
-| COSMIAN-2026-031    | Moderate | before 5.29.0           | 5.29.0   | `Get`/`Export` Fresh-bit write-back could persist an auto-unwrapped key                             |
-| COSMIAN-2026-030    | Low      | 4.19.0 – 5.28.0         | 5.29.0   | SetAttribute permits changes to read-only metadata                                                  |
-| GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths                               |
-| GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite       |
-| GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant                         |
-| COSMIAN-2026-029    | High     | 5.15.0 – 5.28.0         | 5.29.0   | PostgreSQL `sslmode` ignored, connections silently fall back to plaintext                           |
-| COSMIAN-2026-028    | High     | 5.27.0 – 5.27.1         | 5.28.0   | SSRF check bypass via `kms_public_url` prefix match in CRL fetching                                 |
-| COSMIAN-2026-027    | High     | 5.27.0 – 5.27.1         | 5.28.0   | CRL/OCSP revocation status could be lost, stale or wrong                                            |
-| COSMIAN-2026-026    | High     | 5.17.0 – 5.27.1         | 5.28.0   | PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`                            |
-| COSMIAN-2026-025    | Moderate | 5.25.0 – 5.27.1         | 5.28.0   | JOSE tag endpoints allow tag changes with any grant                                                 |
-| COSMIAN-2026-024    | High     | 5.25.0 – 5.27.1         | 5.28.0   | Any user can publish a key on the unauthenticated JWKS endpoint                                     |
-| COSMIAN-2026-023    | High     | 5.26.0 – 5.27.1         | 5.28.0   | SPIRE transit key substitution via shared tags                                                      |
-| COSMIAN-2026-022    | Critical | 5.26.0 – 5.27.1         | 5.28.0   | SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token                             |
-| COSMIAN-2026-021    | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import                                            |
-| COSMIAN-2026-020    | Critical | 5.0.0 – 5.26.0          | 5.27.0   | `Get` grant on wildcard uid `*` bypasses Create/Import gate                                         |
-| COSMIAN-2026-019    | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time)                                 |
-| COSMIAN-2026-018    | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check                                                 |
-| COSMIAN-2026-017    | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                                                           |
-| COSMIAN-2026-016    | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type                                       |
-| COSMIAN-2026-015    | High     | 5.0.0 – 5.21.x          | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign                                          |
-| COSMIAN-2026-014    | Low      | 5.0.0 – 5.21.0          | 5.22.0   | Sensitive config values exposed in Debug output                                                     |
-| COSMIAN-2026-013    | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Internal error details leaked in HTTP 5xx responses                                                 |
-| COSMIAN-2026-012    | Low      | 5.0.0 – 5.21.0          | 5.22.0   | `/server-info` endpoint accessible without authentication                                           |
-| COSMIAN-2026-011    | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Non-atomic state transitions enable TOCTOU races                                                    |
-| COSMIAN-2026-010    | Moderate | 5.15.0 – 5.21.0         | 5.22.0   | Predictable default session cookie salt                                                             |
-| COSMIAN-2026-009    | High     | 5.0.0 – 5.21.0          | 5.22.0   | Google CSE rewrap SSRF via `original_kacls_url`                                                     |
-| COSMIAN-2026-008    | High     | 5.0.0 – 5.21.0          | 5.22.0   | Unwrap cache not invalidated on key revocation/destruction                                          |
-| COSMIAN-2026-007    | High     | 5.0.0 – 5.21.0          | 5.22.0   | MS DKE scope missing authentication middleware                                                      |
-| COSMIAN-2026-006    | High     | 5.17.0 – 5.21.0         | 5.22.0   | Server crash via tracing span misuse                                                                |
-| COSMIAN-2026-005    | High     | 5.17.0 – 5.20.1         | 5.21.0   | JWT race condition / algorithm confusion                                                            |
-| COSMIAN-2026-004    | Critical | 5.0.0+ (with HTTP OTLP) | 5.22.0   | Plaintext OTLP export leaks encryption query metadata                                               |
-| COSMIAN-2026-003    | Critical | 5.0.0 – 5.16.2          | 5.17.0   | Import `replace_existing` ownership bypass                                                          |
-| COSMIAN-2026-002    | Critical | 5.0.0 – 5.16.2          | 5.17.0   | SipHash key hardcoded to zero                                                                       |
-| COSMIAN-2025-012    | High     | 5.0.0 – 5.14.1          | 5.15.0   | Session cookie key randomly regenerated on restart                                                  |
-| COSMIAN-2025-011    | High     | 5.0.0 – 5.14.1          | 5.15.0   | RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel                                            |
-| COSMIAN-2025-010    | High     | 5.0.0 – 5.13.0          | 5.14.0   | JWT token not forwarded to downstream services                                                      |
-| COSMIAN-2025-009    | Critical | 5.0.0 – 5.12.0          | 5.13.0   | HSM unwrap bypasses KMS permission checks                                                           |
-| COSMIAN-2025-008    | Critical | 5.0.0 – 5.7.0           | 5.8.0    | Google CSE `privilegedunwrap` unrestricted access                                                   |
-| COSMIAN-2025-007    | High     | 5.0.0 – 5.6.1           | 5.6.2    | OIDC silently falls back to no-auth on TLS failure                                                  |
-| COSMIAN-2025-006    | High     | 5.0.0 – 5.0.0           | 5.1.0    | Missing PKCE in OAuth2 authentication flow                                                          |
-| COSMIAN-2025-005    | High     | 5.0.0 – 5.1.0           | 5.1.1    | JWT config loop — only first OIDC provider checked                                                  |
-| COSMIAN-2025-004    | High     | 5.0.0 – 5.14.1          | 5.15.0   | OpenSSL 3.x CVEs (upgrade to 3.6.2)                                                                 |
-| COSMIAN-2025-003    | High     | 5.0.0 – 5.15.0          | 5.16.0   | glibc CVEs in container base image                                                                  |
-| COSMIAN-2025-002    | Moderate | 5.0.0 – 5.12.0          | 5.12.1   | Negative X.509 certificate serial numbers                                                           |
-| COSMIAN-2025-001    | Moderate | 5.0.0 – 5.7.0           | 5.8.0    | CSE migration key pair race condition                                                               |
+| ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
+| ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-056    | Moderate | before 6.0.0                                                            | 6.0.0    | Get Attributes without a Unique Identifier selected another user's newest object                    |
+| COSMIAN-2026-055    | Moderate | unreleased development code only (introduced and fixed before 6.0.0)    | 6.0.0    | Batch Undo could restore objects of another user                                                    |
+| COSMIAN-2026-054    | High     | before 6.0.0                                                            | 6.0.0    | ReCertify authorized the issuer key as the certificate owner                                        |
+| COSMIAN-2026-053    | High     | before 6.0.0                                                            | 6.0.0    | ReKeyKeyPair retired another user's linked public key                                               |
+| COSMIAN-2026-052    | Moderate | before 6.0.0                                                            | 6.0.0    | KMIP certificate chains and unbounded HSM Locate permit excessive server work                       |
+| COSMIAN-2026-051    | High     | before 6.0.0                                                            | 6.0.0    | KMIP payloads written to debug logs                                                                 |
+| COSMIAN-2026-050    | High     | before 6.0.0                                                            | 6.0.0    | Configured Operator role permitted PKCS#11 administration                                           |
+| COSMIAN-2026-049    | Critical | from 5.15.0 before 5.30.0                                               | 5.30.0   | Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs                    |
+| COSMIAN-2026-048    | High     | from 5.27.0 before 5.29.0                                               | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |
+| COSMIAN-2026-047    | Moderate | from 5.16.0 before 5.29.0                                               | 5.29.0   | Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check               |
+| COSMIAN-2026-046    | High     | from 5.13.0 before 5.29.0                                               | 5.29.0   | Server key encryption key usable as a decryption oracle through pre-wrapped `Import`                |
+| COSMIAN-2026-045    | Moderate | from 5.13.0 before 5.29.0                                               | 5.29.0   | Sensitive Opaque Objects and Split Keys exported in plaintext when a wrapping specification is sent |
+| COSMIAN-2026-044    | Moderate | from 5.16.0 before 5.29.0                                               | 5.29.0   | Attribute edits let stored keys escape the KMIP algorithm policy                                    |
+| COSMIAN-2026-043    | Moderate | from 5.26.0 before 5.29.0                                               | 5.29.0   | Authentication Verifier tokens accepted after logout or session revocation                          |
+| COSMIAN-2026-042    | High     | from 5.25.0 before 5.29.0                                               | 5.29.0   | Bare HSM keyset identifier bypasses the grant check in crypto operations                            |
+| COSMIAN-2026-041    | Critical | from 5.13.0 before 5.29.0                                               | 5.29.0   | HSM keys usable to decrypt arbitrary data through `Import` unwrapping                               |
+| COSMIAN-2026-040    | Moderate | from 5.27.1 before 5.29.0                                               | 5.29.0   | KMIP socket server accepts the reserved AWS XKS service identity as a client certificate CN         |
+| COSMIAN-2026-039    | Low      | before 5.29.0                                                           | 5.29.0   | Session-cookie requests accepted from other same-site origins                                       |
+| COSMIAN-2026-038    | High     | before 5.29.0                                                           | 5.29.0   | AWS XKS SigV4 secret access key written to the startup log                                          |
+| COSMIAN-2026-037    | Low      | before 5.29.0                                                           | 5.29.0   | Crypto operations reveal the existence and state of other users' keys                               |
+| COSMIAN-2026-036    | Moderate | before 5.29.0                                                           | 5.29.0   | Unbounded per-request work: batch size, PBKDF2 iterations, RSA modulus                              |
+| COSMIAN-2026-035    | High     | from 5.22.0 before 5.29.0                                               | 5.29.0   | Google CSE `rewrap` SSRF check bypass via redirects, IPv6 literals and DNS                          |
+| COSMIAN-2026-034    | High     | before 5.29.0                                                           | 5.29.0   | JWT signed by one identity provider accepted for another issuer                                     |
+| COSMIAN-2026-033    | Moderate | before 5.29.0                                                           | 5.29.0   | KMIP socket server skips client certificate CN checks                                               |
+| COSMIAN-2026-032    | High     | before 5.29.0                                                           | 5.29.0   | KMIP socket server exhaustion: unbounded threads, idle connections and allocation                   |
+| COSMIAN-2026-031    | Moderate | before 5.29.0                                                           | 5.29.0   | `Get`/`Export` Fresh-bit write-back could persist an auto-unwrapped key                             |
+| COSMIAN-2026-030    | Low      | from 4.19.0 before 5.29.0                                               | 5.29.0   | SetAttribute permits changes to read-only metadata                                                  |
+| GHSA-8mmx-f92q-2gq8 | High     | 5.0.0 – 5.27.1                                                          | 5.28.0   | `Extractable` and `NeverExtractable` not enforced on key export paths                               |
+| GHSA-pvw2-jxwc-95xq | High     | 5.0.0 – 5.27.1                                                          | 5.28.0   | Reserved UID `*` bypassable via `AtomicOperation::Upsert` and `Certify` destination overwrite       |
+| GHSA-c75c-3cmm-48h7 | High     | 5.0.0 – 5.27.1                                                          | 5.28.0   | `Sensitive` and `Extractable` attribute stripping via read-only `Get` grant                         |
+| COSMIAN-2026-029    | High     | from 5.15.0 before 5.29.0                                               | 5.29.0   | PostgreSQL `sslmode` ignored, connections silently fall back to plaintext                           |
+| COSMIAN-2026-028    | High     | from 5.27.0 before 5.28.0                                               | 5.28.0   | SSRF check bypass via `kms_public_url` prefix match in CRL fetching                                 |
+| COSMIAN-2026-027    | High     | from 5.27.0 before 5.28.0                                               | 5.28.0   | CRL/OCSP revocation status could be lost, stale or wrong                                            |
+| COSMIAN-2026-026    | High     | from 5.17.0 before 5.28.0                                               | 5.28.0   | PKCS#11 module buffer overflows in `C_GetAttributeValue` and `C_Encrypt`                            |
+| COSMIAN-2026-025    | Moderate | from 5.25.0 before 5.28.0                                               | 5.28.0   | JOSE tag endpoints allow tag changes with any grant                                                 |
+| COSMIAN-2026-024    | High     | from 5.25.0 before 5.28.0                                               | 5.28.0   | Any user can publish a key on the unauthenticated JWKS endpoint                                     |
+| COSMIAN-2026-023    | High     | from 5.26.0 before 5.28.0                                               | 5.28.0   | SPIRE transit key substitution via shared tags                                                      |
+| COSMIAN-2026-022    | Critical | from 5.26.0 before 5.28.0                                               | 5.28.0   | SPIRE PKI `sign-intermediate` issues CA certificates to any Vault token                             |
+| COSMIAN-2026-021    | High     | from 5.0.0 before 5.27.0                                                | 5.27.0   | SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import                        |
+| COSMIAN-2026-020    | Critical | from 5.0.0 before 5.27.0                                                | 5.27.0   | `Get` grant on wildcard uid `*` bypasses the Create/Import authorization gate                       |
+| COSMIAN-2026-019    | Low      | from 5.0.0 before 5.23.0 (MySQL/Percona/MariaDB backend only)           | 5.23.0   | RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`                            |
+| COSMIAN-2026-018    | Moderate | from 5.0.0 before 5.23.0                                                | 5.23.0   | Activate operation uses overly permissive authorization check                                       |
+| COSMIAN-2026-017    | Critical | from 5.0.0 before 5.23.0                                                | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass via raw object retrieval                                  |
+| COSMIAN-2026-016    | Moderate | from 5.0.0 before 5.23.0                                                | 5.23.0   | Attribute-mutation authorization bypass via incorrect operation type                                |
+| COSMIAN-2026-015    | High     | from 5.0.0 before 5.22.0                                                | 5.22.0   | KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign                                    |
+| COSMIAN-2026-014    | Low      | from 5.0.0 before 5.22.0                                                | 5.22.0   | Sensitive configuration values exposed in Debug output                                              |
+| COSMIAN-2026-013    | Moderate | from 5.0.0 before 5.22.0                                                | 5.22.0   | Internal error details leaked in HTTP 5xx responses                                                 |
+| COSMIAN-2026-012    | Low      | from 5.0.0 before 5.22.0                                                | 5.22.0   | `/server-info` endpoint accessible without authentication                                           |
+| COSMIAN-2026-011    | Moderate | from 5.0.0 before 5.22.0                                                | 5.22.0   | Non-atomic state transitions enable TOCTOU races                                                    |
+| COSMIAN-2026-010    | Moderate | from 5.15.0 before 5.22.0                                               | 5.22.0   | Predictable default session cookie salt                                                             |
+| COSMIAN-2026-009    | High     | from 5.0.0 before 5.22.0                                                | 5.22.0   | Google CSE rewrap SSRF via `original_kacls_url`                                                     |
+| COSMIAN-2026-008    | High     | from 5.0.0 before 5.22.0                                                | 5.22.0   | Unwrap cache not invalidated on key revocation/destruction                                          |
+| COSMIAN-2026-007    | High     | from 5.0.0 before 5.22.0                                                | 5.22.0   | MS DKE scope missing authentication middleware                                                      |
+| COSMIAN-2026-006    | High     | from 5.17.0 before 5.22.0                                               | 5.22.0   | Server crash under concurrent requests due to tracing span misuse                                   |
+| COSMIAN-2026-005    | High     | from 5.17.0 before 5.21.0                                               | 5.21.0   | JWT decoding race condition causing intermittent authentication bypass                              |
+| COSMIAN-2026-004    | Critical | from 5.0.0 before 5.22.0 (when OTLP configured with `http://` endpoint) | 5.22.0   | OTLP telemetry exported over plaintext HTTP leaks encryption queries                                |
+| COSMIAN-2026-003    | Critical | from 5.0.0 before 5.17.0                                                | 5.17.0   | KMIP Import `replace_existing` bypasses ownership verification                                      |
+| COSMIAN-2026-002    | Critical | from 5.0.0 before 5.17.0                                                | 5.17.0   | SipHash key hardcoded to zero in unwrap cache                                                       |
+| COSMIAN-2025-003    | High     | from 5.0.0 before 5.16.0                                                | 5.16.0   | glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)                  |
+| COSMIAN-2025-012    | High     | from 5.0.0 before 5.15.0                                                | 5.15.0   | Session cookie encryption key randomly regenerated on each restart                                  |
+| COSMIAN-2025-011    | High     | from 5.0.0 before 5.15.0                                                | 5.15.0   | RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel                                            |
+| COSMIAN-2025-004    | High     | from 5.0.0 before 5.15.0                                                | 5.15.0   | OpenSSL 3.x CVEs addressed by upgrade to 3.6.2                                                      |
+| COSMIAN-2025-010    | High     | from 5.0.0 before 5.14.0                                                | 5.14.0   | JWT authentication token not forwarded to downstream services                                       |
+| COSMIAN-2025-009    | Critical | from 5.0.0 before 5.13.0                                                | 5.13.0   | HSM unwrap operation bypasses KMS permission checks                                                 |
+| COSMIAN-2025-002    | Moderate | from 5.0.0 before 5.12.1                                                | 5.12.1   | Negative X.509 certificate serial numbers                                                           |
+| COSMIAN-2025-008    | Critical | from 5.0.0 before 5.8.0                                                 | 5.8.0    | Google CSE `privilegedunwrap` endpoint unrestricted access                                          |
+| COSMIAN-2025-001    | Moderate | from 5.0.0 before 5.8.0                                                 | 5.8.0    | CSE migration key pair race condition                                                               |
+| COSMIAN-2025-007    | High     | from 5.0.0 before 5.6.2                                                 | 5.6.2    | OpenID Connect authentication silently falls back to no-auth on TLS failure                         |
+| COSMIAN-2025-006    | High     | from 5.0.0 before 5.1.0                                                 | 5.1.0    | Missing PKCE in OAuth2 authentication flow                                                          |
+| COSMIAN-2025-005    | High     | from 5.0.0 before 5.1.1                                                 | 5.1.1    | JWT authorization config loop — only first OIDC provider checked                                    |
 
 ---
 

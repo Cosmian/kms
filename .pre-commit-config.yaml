@@ -39,7 +39,7 @@ repos:
             # MD041 (first heading must be #) and MD025 (only one # per file) are intentionally enabled
           ]
         exclude: >-
-          documentation/docs/kms_clients/cli/main_commands.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md
+          documentation/docs/kms_clients/cli/main_commands.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md|SECURITY.md
 
   # ── YAML ──────────────────────────────────────────────────────────────
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
