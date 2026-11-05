@@ -304,7 +304,6 @@ Crate path: `crate/server`
 | `trace` | `Link: {}` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `Mac: algorithm: {algorithm:?}` | `src/core/operations/mac.rs` | `algorithm` — … | — |
 | `trace` | `matching on key format type: {:?}` | `src/core/operations/encrypt.rs` | — | — |
-| `trace` | `matching on key format type: {:?}` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `matching on public key format type: {:?}` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `ModifyAttribute: ActivationDate: {:?}` | `src/core/operations/attributes/modify.rs` | — | — |
 | `trace` | `ModifyAttribute: Link: {}` | `src/core/operations/attributes/modify.rs` | — | — |
