@@ -231,6 +231,20 @@ fn test_parse_revoke_ttlv_response() {
 }
 
 #[wasm_bindgen_test]
+fn test_activate_ttlv_request() {
+    assert!(w::activate_ttlv_request("kid".to_string()).is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_parse_activate_ttlv_response() {
+    let ok = w::parse_activate_ttlv_response(
+        r#"{"tag":"ActivateResponse","value":[{"tag":"UniqueIdentifier","type":"TextString","value":"kid"}]}"#,
+    );
+    assert!(ok.is_ok());
+    assert!(w::parse_activate_ttlv_response("{}").is_err());
+}
+
+#[wasm_bindgen_test]
 fn test_cc_requests() {
     assert!(
         w::create_cc_master_keypair_ttlv_request("{}", vec![], false, None).is_ok()

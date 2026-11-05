@@ -231,6 +231,22 @@ WITH ALGORITHM = AES_256,
      CREATION_DISPOSITION = CREATE_NEW;
 ```
 
+### Activate the keys in the KMS
+
+Keys created through the EKM provider start in the KMIP `Pre-Active` state (the KMS default after Create)
+and must be activated before use. Find the UID the KMS assigned to each key (Web UI, or
+`ckms locate --tag <tag>` if the provider tags it), then activate it:
+
+```bash
+# Symmetric key
+ckms sym keys activate --key-id <AES_KEY_UID>
+# Asymmetric key: activate the private key and the public key separately
+ckms rsa keys activate --key-id <RSA_PRIVATE_KEY_UID>
+ckms rsa keys activate --key-id <RSA_PUBLIC_KEY_UID>
+```
+
+Check the state with `ckms attributes get --id <KEY_UID>`.
+
 ---
 
 ## 10. Column-level encryption (quick check)

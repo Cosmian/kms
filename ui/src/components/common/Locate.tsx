@@ -603,6 +603,21 @@ const LocateForm: React.FC = () => {
         }
     };
 
+    const handleActivate = async (uid: string) => {
+        if (!uid) return;
+        setActionLoadingId(uid);
+        try {
+            const req = wasm.activate_ttlv_request(uid);
+            await sendKmipRequest(req, serverUrl);
+            await handleRefreshRow(uid);
+            setResult({ kind: "message", text: t("actionCompleted") });
+        } catch {
+            /* ignore */
+        } finally {
+            setActionLoadingId(undefined);
+        }
+    };
+
     // Optional TTLV helpers for actions (best-effort; may depend on WASM exports)
     const handleRevoke = async (uid: string) => {
         if (!uid) return;
@@ -910,6 +925,16 @@ const LocateForm: React.FC = () => {
                                             key: "actions",
                                             render: (row: LocateObjectRow) => (
                                                 <Space size="small">
+                                                    {normalizeState(row.state) === "preactive" && (
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            onClick={() => handleActivate(row.object_id)}
+                                                            loading={actionLoadingId === row.object_id}
+                                                        >
+                                                            {t("common:activate")}
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         size="small"
                                                         onClick={() => handleRevoke(row.object_id)}
