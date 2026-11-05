@@ -10,6 +10,11 @@ on:
       archive-name:
         required: true
         type: string
+      full-suite:
+        description: false skips test_kms_server and ckms lib tests (covered on Linux)
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   cargo-test:
@@ -25,26 +30,7 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
-      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
-        shell: pwsh
-        run: |
-          # VS 2022 ships Ninja under the CMake integration path.
-          # If we add it to PATH now, vcpkg_find_acquire_program(NINJA)
-          # will find it there instead of attempting a network download.
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstall = & $vswhere -latest -products '*' `
-            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
-            -property installationPath 2>$null
-          if ($vsInstall) {
-            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
-            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
-              Add-Content $env:GITHUB_PATH $ninjaDir
-              Write-Host "Added VS Ninja to PATH: $ninjaDir"
-              return
-            }
-          }
-          # Fallback: pinned, SHA-256-verified release of Ninja
-          .\.mise\scripts\windows\install_ninja.ps1
+      - uses: ./.github/actions/windows-vs-ninja
 
       - name: Build static OpenSSL
         uses: ./.github/actions/build-static-openssl
@@ -54,7 +40,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           . .\.mise\scripts\windows\cargo_test.ps1
-          TestProject
+          if ('${{ inputs.full-suite }}' -eq 'true') { TestProject } else { TestProject -Quick }
         env:
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
@@ -82,22 +68,7 @@ jobs:
       - name: Enable Corepack pnpm
         run: corepack enable pnpm
 
-      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstall = & $vswhere -latest -products '*' `
-            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
-            -property installationPath 2>$null
-          if ($vsInstall) {
-            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
-            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
-              Add-Content $env:GITHUB_PATH $ninjaDir
-              Write-Host "Added VS Ninja to PATH: $ninjaDir"
-              return
-            }
-          }
-          .\.mise\scripts\windows\install_ninja.ps1
+      - uses: ./.github/actions/windows-vs-ninja
 
       - name: Build static OpenSSL
         uses: ./.github/actions/build-static-openssl
@@ -135,22 +106,7 @@ jobs:
         with:
           toolchain: ${{ inputs.toolchain }}
 
-      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstall = & $vswhere -latest -products '*' `
-            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
-            -property installationPath 2>$null
-          if ($vsInstall) {
-            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
-            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
-              Add-Content $env:GITHUB_PATH $ninjaDir
-              Write-Host "Added VS Ninja to PATH: $ninjaDir"
-              return
-            }
-          }
-          .\.mise\scripts\windows\install_ninja.ps1
+      - uses: ./.github/actions/windows-vs-ninja
 
       - name: Build static OpenSSL
         uses: ./.github/actions/build-static-openssl
@@ -189,22 +145,7 @@ jobs:
         with:
           go-version-file: .mise/scripts/kmip-go/go.mod
 
-      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstall = & $vswhere -latest -products '*' `
-            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
-            -property installationPath 2>$null
-          if ($vsInstall) {
-            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
-            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
-              Add-Content $env:GITHUB_PATH $ninjaDir
-              Write-Host "Added VS Ninja to PATH: $ninjaDir"
-              return
-            }
-          }
-          .\.mise\scripts\windows\install_ninja.ps1
+      - uses: ./.github/actions/windows-vs-ninja
 
       - name: Build static OpenSSL
         uses: ./.github/actions/build-static-openssl

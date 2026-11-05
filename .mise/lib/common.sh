@@ -318,12 +318,19 @@ _run_workspace_tests() {
       export REDIS_HOST REDIS_PORT
       ;;
   esac
-  if [ "$db" != "sqlite" ]; then
+  if [ "$db" = "sqlite" ]; then
+    # sqlite runs the whole workspace once per variant (DB-agnostic tests included).
+    cargo test --workspace --lib --all-targets "${FEATURES_FLAG[@]}" --bench benches --no-run
+    cargo test --workspace --lib --bins "${FEATURES_FLAG[@]}" -- --nocapture
+  else
     cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
       -- --ignored --nocapture "test_db_${db}" test_certificate_validate
+    # Only the packages whose lib tests start the shared test server (dev-dependency on
+    # `test_kms_server`) read KMS_TEST_DB (crate/test_kms_server/src/test_server.rs).
+    # Re-derive the list with: grep -rl --include=Cargo.toml test_kms_server crate
+    cargo test --lib -p test_kms_server -p ckms -p cosmian_kms_cli_actions -p cosmian_pkcs11 \
+      -p cosmian_kms_k8s_plugin -p cosmian_cng "${FEATURES_FLAG[@]}" -- --nocapture
   fi
-  cargo test --workspace --lib --all-targets "${FEATURES_FLAG[@]}" --bench benches --no-run
-  cargo test --workspace --lib "${FEATURES_FLAG[@]}" -- --nocapture
 }
 
 run_db_tests() {

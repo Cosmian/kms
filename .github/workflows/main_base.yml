@@ -144,6 +144,10 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ matrix.features }}
+
       - name: With cargo only
         run: |
           set -ex
@@ -158,9 +162,9 @@ jobs:
           fi
           cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
 
-  test: # Run all tests
-    if: github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]' || startsWith(github.ref,
-      'refs/tags/')
+  test: # Run all tests (PRs, tags and the nightly schedule / manual dispatch)
+    if: (github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]') || startsWith(github.ref,
+      'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
     with:

@@ -45,6 +45,9 @@ jobs:
         run: |
           Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
 
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -71,9 +74,6 @@ jobs:
           Copy-Item -Recurse "ui\dist\*" "crate\server\ui_non_fips\"
           Write-Host "UI copied to crate\server\ui_non_fips"
           Get-ChildItem -Recurse "crate\server\ui_non_fips"
-
-      - name: Build static OpenSSL
-        uses: ./.github/actions/build-static-openssl
 
       - name: List vcpkg install
         shell: pwsh
@@ -246,22 +246,13 @@ jobs:
           find . -maxdepth 3 -type f -print
 
       - name: Push installers to package.cosmian.com
-        shell: bash
-        run: |
-          set -ex
-          if [[ "${GITHUB_REF}" =~ refs/tags/(.+) ]]; then
-            BRANCH="${BASH_REMATCH[1]}"
-          else
-            HEAD_REF="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-            BRANCH="last_build/${HEAD_REF}"
-          fi
-          DEST_DIR="/mnt/package/kms/${BRANCH}/windows/x86_64/non-fips/static-openssl"
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DEST_DIR"
-          # Upload both server and CLI installers
-          while IFS= read -r -d '' exe; do
-            echo "Uploading ${exe} to ${DEST_DIR}"
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:${DEST_DIR}"
-          done < <(find . -maxdepth 3 -type f \( -name 'cosmian-kms-server*.exe' -o -name 'cosmian-kms-cli*.exe' \) -print0)
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: windows/x86_64/non-fips/static-openssl
+          files: |
+            **/cosmian-kms-server*.exe
+            **/cosmian-kms-cli*.exe
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')

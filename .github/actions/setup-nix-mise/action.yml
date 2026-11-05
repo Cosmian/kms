@@ -1,0 +1,31 @@
+---
+name: Setup Nix and mise
+description: >
+  Optional runner cleanup, then Nix, then mise. Requires a prior checkout.
+
+inputs:
+  cleanup-runner:
+    description: Run the cleanup-runner action first ('true' or 'false')
+    required: false
+    default: 'false'
+  extra-nix-config:
+    description: Additional nix.conf lines (see setup-nix)
+    required: false
+    default: ''
+  dev-shell-cache:
+    description: Import the cached Nix dev-shell closure (see setup-nix)
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.cleanup-runner == 'true'
+      uses: ./.github/actions/cleanup-runner
+
+    - uses: ./.github/actions/setup-nix
+      with:
+        extra-nix-config: ${{ inputs.extra-nix-config }}
+        dev-shell-cache: ${{ inputs.dev-shell-cache }}
+
+    - uses: ./.github/actions/install-mise

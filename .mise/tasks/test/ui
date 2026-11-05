@@ -6,6 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "--standard-only" help="Run only the standard Playwright suite (CI runs auth/OIDC/SAML via test:ui-auth, test:ui-oidc, test:ui-saml)"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
@@ -17,7 +18,7 @@ REPO_ROOT="$(get_repo_root)"
 # The authentication submodule requires rustc ≥ 1.94; the nix shell pins an
 # older version.  Build with the host toolchain on the first invocation only
 # (ensure_nix_shell re-execs this script inside the nix shell).
-if [ "${IN_NIX_SHELL:-0}" != "1" ]; then
+if [ "${IN_NIX_SHELL:-0}" != "1" ] && [ "${usage_standard_only:-false}" != "true" ]; then
   AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
   if [ -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
     echo "==> Building auth_verifier (host toolchain) …"
@@ -52,6 +53,10 @@ ensure_nix_shell
 # ── 1. Standard E2E tests ────────────────────────────────────────────────────
 print_header "Standard UI E2E tests"
 bash "${REPO_ROOT}/.mise/scripts/test/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"
+if [ "${usage_standard_only:-false}" = "true" ]; then
+  print_success "Standard UI E2E tests completed"
+  exit 0
+fi
 
 # ── 2. Auth Verifier E2E tests ────────────────────────────────────────────────
 # Skip in FIPS mode: the auth verifier binary hangs at bind() in FIPS CI

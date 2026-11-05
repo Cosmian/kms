@@ -31,12 +31,6 @@ if command -v openssl >/dev/null 2>&1; then
   openssl list -providers -verbose || true
 fi
 
-# On CI, also test workspace binaries
-if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
-  echo "Testing workspace binaries..."
-  cargo test --workspace --bins ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
-fi
-
 run_db_tests "sqlite"
 run_db_softhsm2_tests "sqlite_softhsm2"
 

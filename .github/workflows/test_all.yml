@@ -10,9 +10,77 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Builds the source-built Nix inputs of shell.nix (OpenSSL 3.1.2 / 3.6.5, FIPS bootstrap, SoftHSM2,
+  # Utimaco) once per input hash and caches their closure for every Nix job below. On a hit it is a
+  # sub-minute lookup. `continue-on-error`: a cache failure only means today's from-source builds.
+  nix-dev-shell-cache:
+    name: Nix dev-shell cache
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Look up cached closure
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/nix-dev-shell
+          key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
+            'nix/utimaco.nix', '.mise/lib/common.sh') }}
+          lookup-only: true
+
+      - name: Write Nix post-build hook
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          cat > /tmp/nix-post-build-hook.sh <<'EOF'
+          #!/bin/sh
+          printf '%s\n' $OUT_PATHS >> /tmp/nix-built-paths
+          EOF
+          chmod 755 /tmp/nix-post-build-hook.sh
+
+      - name: Setup Nix
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: post-build-hook = /tmp/nix-post-build-hook.sh
+
+      - name: Build dev shells and export locally built paths
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          PIN_URL=$(sed -n 's/^export PIN_URL="\(.*\)"$/\1/p' .mise/lib/common.sh)
+          # WITH_HSM=1 realises every source-built input (openssl x3, bootstrap, softhsm per variant,
+          # utimaco); the other WITH_* flags only add substitutable nixpkgs packages.
+          for v in fips non-fips; do
+            WITH_HSM=1 nix-shell shell.nix --argstr variant "$v" -I "nixpkgs=${PIN_URL}" --run true
+          done
+          # rust-overlay toolchain paths are large and re-download fast: keep them out of the cache.
+          sort -u /tmp/nix-built-paths | grep -Ev '^/nix/store/[a-z0-9]{32}-(rust|rustc|cargo|clippy|rustfmt)-' > /tmp/nix-keep-paths || true
+          test -s /tmp/nix-keep-paths
+          mkdir -p /tmp/nix-dev-shell
+          # shellcheck disable=SC2046 # store paths contain no whitespace
+          nix-store --export $(nix-store -qR $(cat /tmp/nix-keep-paths)) > /tmp/nix-dev-shell/closure.nar
+          du -h /tmp/nix-dev-shell/closure.nar
+          # Size rule: above ~1 GB, list the biggest paths and add the non-OpenSSL/softhsm/utimaco ones to the grep -Ev above.
+          # shellcheck disable=SC2046
+          du -sh $(cat /tmp/nix-keep-paths) | sort -h | tail -n 15
+
+      - name: Save closure to cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/nix-dev-shell
+          key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
+            'nix/utimaco.nix', '.mise/lib/common.sh') }}
+
   test-nix:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ubuntu-24.04
+    needs: nix-dev-shell-cache
     env:
       # The `secrets` context is unavailable in step-level `if:`; expose via env instead.
       # Empty on fork pull requests (secrets withheld) -> login is skipped, pulls stay anonymous.
@@ -26,57 +94,17 @@ jobs:
           - percona
           - mariadb
           - psql
-          - otel
           - redis
-          - pykmip
-          - xks
-          - azure-ekm
           - gcp-cmek
-          - openssh
-          - gnupg
-          - luks
           - veracrypt
           - jose
-          - iris
           - db2
           - ase
-          - secret_cosmian_kms
-          - kmip-go
-          - cef
-          - monitoring
-          - ocsp
-          - scep-interop
-          - est-interop
-          - pki-revocation
-          - siem
           - audit
-          # Azure Cloud HSM loader compilation does not require a live HSM.
-          - azure-cloud-hsm-build
         features: [fips, non-fips]
         exclude:
-          # kryoptic-conformance only needs to be validated once (fips)
-          - type: hsm-kryoptic-conformance
-            features: non-fips
           # redis is exclusively for non-fips
           - type: redis
-            features: fips
-          # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
-          - type: pykmip
-            features: fips
-          # aws_xks relies on curl SigV4 + non-FIPS build flags
-          - type: xks
-            features: fips
-          # azure_ekm is only run with non-fips
-          - type: azure-ekm
-            features: fips
-          # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
-          - type: openssh
-            features: fips
-          # gnupg OpenPGP tests force non-fips
-          - type: gnupg
-            features: fips
-          # luks disk-encryption PKCS#11 tests force non-fips
-          - type: luks
             features: fips
           # veracrypt disk-encryption PKCS#11 tests force non-fips
           - type: veracrypt
@@ -84,28 +112,21 @@ jobs:
           # jose (REST crypto + jwcrypto interop) runs only with non-fips
           - type: jose
             features: fips
-          # iris requires non-fips (PKCS#12 + full TLS stack)
-          - type: iris
-            features: fips
           # db2 requires non-fips (PKCS#12 + full TLS stack for mTLS)
           - type: db2
             features: fips
           # ase (PKCS#11) forces non-fips like the other PKCS#11 test types
           - type: ase
             features: fips
-          # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
+          # PR CI: fips legs of the MySQL-protocol backends run nightly only (sqlite + psql keep fips on PRs).
+          - type: ${{ github.event_name == 'pull_request' && 'mysql' || 'nightly-only' }}
+            features: fips
+          - type: ${{ github.event_name == 'pull_request' && 'percona' || 'nightly-only' }}
+            features: fips
+          - type: ${{ github.event_name == 'pull_request' && 'mariadb' || 'nightly-only' }}
+            features: fips
           # google-cse, secret_vault, secret_aws and secret_azure need upstream-only secrets:
           # they run in the `test-nix-upstream` job, which is skipped on forks.
-          - type: cef
-            features: fips
-          # monitoring tests work with both variants, but run non-fips only to avoid
-          # duplicating Docker-heavy test time (OTel + VictoriaMetrics + Grafana).
-          - type: monitoring
-            features: fips
-          # siem integration tests are format-agnostic (same audit output in both variants);
-          # run non-fips only to avoid duplicating test time.
-          - type: siem
-            features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
           - type: psql
@@ -118,25 +139,49 @@ jobs:
             docker: mariadb
           - type: redis
             docker: redis
-          - type: otel
-            docker: otel-collector jaeger
-          # siem-filebeat sub-test requires Elasticsearch; fluent-bit and cef-syslog
-          # use docker run internally and do not need a pre-started compose service.
-          - type: siem
-            docker: elasticsearch
           # audit test has no external Docker dependencies from the matrix: the task starts its
           # own `postgres-audit` container (docker-compose.yml) for the PostgreSQL backend tests.
+          #
+          # Grouped legs: one build per leg, then several suites whose own test time is < 2 min
+          # (non-Nix and Nix suites are kept apart: switching OPENSSL_DIR recompiles the workspace).
+          # The azure-cloud-hsm loader compilation does not require a live HSM. siem-filebeat
+          # needs Elasticsearch; the other siem sub-tests use `docker run` internally. monitoring
+          # picks free ports, so it coexists with the compose otel-collector. Fips legs omit the
+          # suites that are non-fips only (cef, siem, monitoring: format-agnostic / Docker-heavy).
+          - type: blackbox
+            features: fips
+            suites: ocsp pki-revocation scep-interop est-interop otel secret_cosmian_kms azure-cloud-hsm-build
+            docker: otel-collector jaeger
+          - type: blackbox
+            features: non-fips
+            suites: ocsp pki-revocation scep-interop est-interop otel secret_cosmian_kms cef siem monitoring azure-cloud-hsm-build
+            docker: otel-collector jaeger elasticsearch
+          # xks needs curl SigV4 + non-fips flags; azure-ekm, pykmip and iris need non-fips
+          # (PKCS#12 + full TLS stack); kmip-go also runs with fips.
+          - type: blackbox-nix
+            features: fips
+            suites: kmip-go
+          - type: blackbox-nix
+            features: non-fips
+            suites: kmip-go xks azure-ekm pykmip iris
+          # PKCS#11 clients (OpenSSH, LUKS, GnuPG) force non-fips (EdDSA / full algorithm set).
+          - type: pkcs11-nix
+            features: non-fips
+            suites: openssh luks gnupg
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/cleanup-runner
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ matrix.features }}
 
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
 
       - name: Docker login (Docker Hub)
         if: ${{ env.DOCKERHUB_USERNAME != '' }}
@@ -213,9 +258,10 @@ jobs:
           # Provide an authenticated token so mise can install tools from
           # GitHub releases without hitting the unauthenticated rate limit.
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -ex
-          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
+        uses: ./.github/actions/run-mise-suites
+        with:
+          suites: ${{ matrix.suites || matrix.type }}
+          variant: ${{ matrix.features }}
 
       # PKCS#11 support report: exhaustive ckms pkcs11 capabilities smoke test
       # (442 mechanisms / 92 functions against a live sqlite KMS server). Runs
@@ -232,6 +278,7 @@ jobs:
   test-nix-js:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ubuntu-24.04
+    needs: nix-dev-shell-cache
     permissions:
       contents: read
     env:
@@ -248,6 +295,13 @@ jobs:
           # spire relies on the Vault API which is non-fips only
           - type: spire
             features: fips
+        include:
+          # ui runs only the standard Playwright suite; auth/OIDC/SAML run in their own leg.
+          - type: ui
+            args: --standard-only
+          - type: ui-sso
+            features: non-fips
+            suites: ui-auth ui-oidc ui-saml
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -255,11 +309,10 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      - uses: ./.github/actions/cleanup-runner
-
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
 
       # Only spire pulls images; the stored credential is then readable by later steps.
       - name: Docker login (Docker Hub)
@@ -273,9 +326,11 @@ jobs:
         env:
           # Read-only (contents: read); lets mise install tools without hitting the rate limit.
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -ex
-          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
+        uses: ./.github/actions/run-mise-suites
+        with:
+          suites: ${{ matrix.suites || matrix.type }}
+          variant: ${{ matrix.features }}
+          args: ${{ matrix.args }}
 
   # Test types that depend on upstream-only secrets / external services. Kept out of
   # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
@@ -283,6 +338,7 @@ jobs:
   test-nix-upstream:
     name: Test on ${{ matrix.type }} - ${{ matrix.features }}
     runs-on: ubuntu-24.04
+    needs: nix-dev-shell-cache
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
@@ -292,29 +348,26 @@ jobs:
       matrix:
         type:
           - google-cse
-          - secret_vault
-          - secret_aws
-          - secret_azure
         features: [fips, non-fips]
-        exclude:
-          # secret_vault, secret_aws, secret_azure require external services — run non-fips only
-          - type: secret_vault
-            features: fips
-          - type: secret_aws
-            features: fips
-          - type: secret_azure
-            features: fips
+        include:
+          # Grouped leg: one runner for the secret backends (non-fips only, they need external services).
+          - type: secrets
+            features: non-fips
+            suites: secret_vault secret_aws secret_azure
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/cleanup-runner
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ matrix.features }}
 
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
 
       - name: Test
         env:
@@ -338,19 +391,17 @@ jobs:
           # Provide an authenticated token so mise can install tools from
           # GitHub releases without hitting the unauthenticated rate limit.
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -ex
-          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
+        uses: ./.github/actions/run-mise-suites
+        with:
+          suites: ${{ matrix.suites || matrix.type }}
+          variant: ${{ matrix.features }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-24.04
-    # Software/simulated HSMs: a per-run group so they are never blocked by other PRs.
+    needs: nix-dev-shell-cache
+    # Software/simulated HSMs run locally on each runner, so fips and non-fips legs run in parallel.
     # Hardware HSMs (proteccio, crypt2pay, azure-cloud-hsm, aws-cloudhsm, gcp-cloud-hsm) run in the `hsm-upstream` job.
-    concurrency:
-      group: ${{ format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
-      queue: max
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -369,18 +420,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
-      - uses: ./.github/actions/cleanup-runner
-      - uses: ./.github/actions/setup-nix
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ matrix.features }}
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
       - name: Test
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
       - name: Bench (PKCS#11 load, HSM-delegated)
+        if: github.event_name != 'pull_request'
         run: |
           mise run bench:pkcs11 --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
 
       - name: Bench (HSM-delegated)
+        if: github.event_name != 'pull_request'
         run: |
           mise run bench:hsm --delegated --hsm-model ${{ matrix.hsm-type }} --variant ${{ matrix.features }} -s
 
@@ -396,6 +453,7 @@ jobs:
   hsm-upstream:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-24.04
+    needs: nix-dev-shell-cache
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
@@ -430,9 +488,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
-      - uses: ./.github/actions/cleanup-runner
-      - uses: ./.github/actions/setup-nix
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
 
       - name: Install OpenVPN
         run: sudo apt-get update -qq && sudo apt-get install -y -qq openvpn
@@ -524,6 +583,7 @@ jobs:
     # Upstream only: needs the XKS test server and its secrets, which forks do not have.
     if: >-
       github.repository == 'Cosmian/kms' &&
+      github.event_name != 'schedule' &&
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -536,11 +596,9 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/cleanup-runner
-
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
 
       - name: Build KMS binary (non-fips, release)
         run: cargo build --bin cosmian_kms --features non-fips --release
@@ -573,15 +631,11 @@ jobs:
   # EST / SCEP interoperability against third-party clients (micromdm scepclient, globalsign
   # estclient) on macOS; Linux runs them in the `test-nix` matrix.
   interop-macos:
-    name: Interop (macOS) - ${{ matrix.type }}
+    name: Interop (macOS) - scep + est
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        type: [scep-interop, est-interop]
 
     steps:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -593,6 +647,10 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: fips
+
       - uses: ./.github/actions/install-mise
 
       # estclient / scepclient are Go programs built by the interop scripts
@@ -603,20 +661,22 @@ jobs:
       - name: Interop test
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -ex
-          mise run test:${{ matrix.type }} --variant fips
+        uses: ./.github/actions/run-mise-suites
+        with:
+          suites: scep-interop est-interop
+          variant: fips
 
   windows-2022:
-    # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
+    # Windows is slow: PRs run the quick suite; tags and nightly run the full one.
     if: >-
-      startsWith(github.ref, 'refs/tags/') ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
+      # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off-PR only.
+      full-suite: ${{ github.event_name != 'pull_request' }}
 
   # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.).
   # cargo-publish.yml does a dry run off-tag and a real publish on tags, so it is called twice:
@@ -649,22 +709,3 @@ jobs:
       toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}
-
-  cleanup:
-    needs:
-      - cargo-publish-dry-run
-      - cargo-publish
-      - test-nix
-      - test-nix-js
-      - test-nix-upstream
-      - hsm
-      - hsm-upstream
-      - helm
-      - windows-2022
-      - interop-macos
-    if: >-
-      always() &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
-    secrets: inherit

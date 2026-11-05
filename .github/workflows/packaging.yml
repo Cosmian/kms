@@ -54,23 +54,16 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/cleanup-runner
-        if: runner.os == 'Linux'
-
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/setup-nix-mise
         with:
+          cleanup-runner: ${{ runner.os == 'Linux' }}
           extra-nix-config: http-connections = 8
 
-      - uses: ./.github/actions/install-mise
-
-      - name: Set up GPG
-        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7
+      - name: Import GPG key
+        uses: ./.github/actions/import-gpg-key
         with:
-          gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
+          gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
-
-      - name: List keys
-        run: gpg -K
 
       - name: Package with GPG signature
         run: |
@@ -183,65 +176,35 @@ jobs:
           ls -la
           find . -type f -print
 
-      - name: Push to package.cosmian.com (self-hosted)
+      - name: Compute upload set
+        id: upload-set
         shell: bash
         run: |
-          set -ex
-          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          fi
-          DESTINATION_DIR=/mnt/package/kms/$BRANCH
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DESTINATION_DIR"
-
-          # Upload artifacts from the known result directory
-          RESULT_DIR="result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}"
-          RESULT_SERVER_DIR="result-server-${{ matrix.features }}-${{ matrix.link }}/bin"
-
-          # Create remote directory
-          remote_dir="${DESTINATION_DIR}/${{ matrix.package-type }}/${{ matrix.cpu-arch }}/${{ matrix.features }}/${{ matrix.link }}"
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$remote_dir"
-
-          # If Linux runner
-          if [[ "${{ matrix.runner }}" == ubuntu* ]]; then
-            BINARY_PATTERN=linux
-          else
-            BINARY_PATTERN=darwin
-          fi
-
-          # If rpm package, adjust binary pattern
+          set -euo pipefail
+          if [[ "${{ matrix.runner }}" == ubuntu* ]]; then BINARY_PATTERN=linux; else BINARY_PATTERN=darwin; fi
           if [[ "${{ matrix.package-type }}" == "rpm" ]]; then
-            # if ubuntu arm64 runner
-            if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then
-              PACKAGE_PATTERN="aarch64"
-            else
-              PACKAGE_PATTERN="x86_64"
-            fi
+            if [[ "${{ matrix.runner }}" == "ubuntu-24.04-arm" ]]; then PACKAGE_PATTERN="aarch64"; else PACKAGE_PATTERN="x86_64"; fi
           else
             PACKAGE_PATTERN="${{ matrix.cpu-arch }}"
           fi
+          if [[ "${{ matrix.package-type }}" == "pkcs11-zip" ]]; then PKG_EXT=".zip"; else PKG_EXT=".${{ matrix.package-type }}"; fi
+          {
+            echo "subdir=${{ matrix.package-type }}/${{ matrix.cpu-arch }}/${{ matrix.features }}/${{ matrix.link }}"
+            echo 'files<<EOF'
+            if [[ "${{ matrix.package-type }}" != "pkcs11-zip" ]]; then
+              echo "./nix/signing-keys/cosmian-kms-public.asc"
+              echo "result-server-${{ matrix.features }}-${{ matrix.link }}/bin/*${BINARY_PATTERN}*"
+            fi
+            echo "result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/*${PACKAGE_PATTERN}*${PKG_EXT}*"
+            echo 'EOF'
+          } >>"$GITHUB_OUTPUT"
 
-          # Map package-type to file extension (pkcs11-zip produces .zip files)
-          if [[ "${{ matrix.package-type }}" == "pkcs11-zip" ]]; then
-            PKG_EXT=".zip"
-          else
-            PKG_EXT=".${{ matrix.package-type }}"
-          fi
-
-          # Upload package files (installer packages + server binary)
-          # pkcs11-zip: only upload ZIP artifacts (no server binary)
-          if [[ "${{ matrix.package-type }}" == "pkcs11-zip" ]]; then
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              $RESULT_DIR/*${PACKAGE_PATTERN}*${PKG_EXT}* \
-              cosmian@package.cosmian.com:${remote_dir}/
-          else
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              ./nix/signing-keys/cosmian-kms-public.asc \
-              $RESULT_DIR/*${PACKAGE_PATTERN}*${PKG_EXT}* \
-              $RESULT_SERVER_DIR/*${BINARY_PATTERN}* \
-              cosmian@package.cosmian.com:${remote_dir}/
-          fi
+      - name: Push to package.cosmian.com (self-hosted)
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: ${{ steps.upload-set.outputs.subdir }}
+          files: ${{ steps.upload-set.outputs.files }}
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/') && matrix.link == 'static' && matrix.package-type != 'pkcs11-zip'
@@ -296,25 +259,19 @@ jobs:
           name: sbom_${{ matrix.features }}_${{ matrix.link }}
           path: sbom
 
-      - name: Push SBOM to package.cosmian.com
-        shell: bash
-        run: |
-          set -ex
-          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          fi
-          SBOM_REMOTE_BASE="/mnt/package/kms/${BRANCH}/sbom"
+      - name: Push SBOM (server) to package.cosmian.com
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: sbom/server/${{ matrix.features }}/${{ matrix.link }}
+          files: sbom/server/${{ matrix.features }}/${{ matrix.link }}/*
 
-          for target in server ckms; do
-            remote_dir="${SBOM_REMOTE_BASE}/${target}/${{ matrix.features }}/${{ matrix.link }}"
-            ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              cosmian@package.cosmian.com mkdir -p "${remote_dir}"
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-              sbom/${target}/${{ matrix.features }}/${{ matrix.link }}/* \
-              cosmian@package.cosmian.com:"${remote_dir}/"
-          done
+      - name: Push SBOM (ckms) to package.cosmian.com
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}
+          files: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}/*
 
   build-monitoring-archive:
     name: Build monitoring stack archive
@@ -354,25 +311,22 @@ jobs:
         - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+
       - name: Download monitoring archive artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cosmian-kms-monitoring
 
       - name: Push to package.cosmian.com
-        shell: bash
-        run: |
-          set -ex
-          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          fi
-          REMOTE_DIR="/mnt/package/kms/${BRANCH}/monitoring"
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            cosmian-kms-monitoring.zip \
-            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: monitoring
+          files: cosmian-kms-monitoring.zip
 
       - name: Publish GitHub Release asset
         if: startsWith(github.ref, 'refs/tags/')
