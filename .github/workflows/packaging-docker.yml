@@ -186,7 +186,7 @@ jobs:
           ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
           COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
         run: |
-          mise run test:docker --variant ${{ matrix.features }}
+          mise run test:pkg:docker --variant ${{ matrix.features }}
 
       # Syft SBOM + Grype on the image under test, Cargo.lock and ui/pnpm-lock.yaml.
       # Fails on any fixable High/Critical finding. Syft and Grype come from the hash-pinned
@@ -194,7 +194,7 @@ jobs:
       - name: Scan Docker image with Syft and Grype
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-        run: mise run test:docker-scan --variant ${{ matrix.features }}
+        run: mise run test:pkg:docker-scan --variant ${{ matrix.features }}
 
       - name: Upload SBOM and vulnerability reports
         if: always()
@@ -211,7 +211,7 @@ jobs:
       #     ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
       #     COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
       #   run: |
-      #     mise run test:docker-oracle
+      #     mise run test:pkg:docker-oracle
 
       # - name: Disconnect from Netbird (non-fips amd64 only)
       #   if: always() && matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'

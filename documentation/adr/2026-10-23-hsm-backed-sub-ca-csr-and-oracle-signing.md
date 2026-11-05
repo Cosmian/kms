@@ -191,7 +191,7 @@ Out of scope: the Auditor role of issue #651 (delivered with the OPA authorizati
 - **IMP-002**: Keep `oracle_sign` free of permission checks; callers authorize the key first (Certify, CRL, CSR, OCSP).
 - **IMP-003**: Verification: unit tests for CSR/certificate/CRL/OCSP re-signing (RSA, EC and, non-FIPS, Ed25519/Ed448),
   `sub_ca_tests` (including a cross-user CRL-signing regression), an HSM scenario in `test_hsm_all`
-  (`mise run test:hsm-softhsm2`, FIPS and non-FIPS) covering an HSM root, a sub-CA CSR, leaf, CRL and OCSP, and the
+  (`mise run test:hsm:softhsm2`, FIPS and non-FIPS) covering an HSM root, a sub-CA CSR, leaf, CRL and OCSP, and the
   existing suites in FIPS and non-FIPS builds. The serial-tag backfill is tested with a seeded legacy certificate on
   SQLite and Redis only; on PostgreSQL and MySQL the startup backfill ran against an empty certificate set (no legacy
   row seeded).

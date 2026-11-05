@@ -14,7 +14,7 @@ Go-based KMIP 1.0–1.4 compliance tests for the Eviden KMS server, using the in
 
 ```bash
 # Via MISE (builds KMS, starts server, runs tests, cleans up)
-mise run test:kmip-go
+mise run test:interop:kmip-go
 
 # Directly (KMS must already run on port 15696)
 KMIP_GO_REPO_ROOT=$(git rev-parse --show-toplevel) go test -v -count=1 ./...

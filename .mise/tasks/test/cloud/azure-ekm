@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Run Azure EKM tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=non-fips needs=nix ci=blackbox-nix
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init non-fips
+
+ensure_nix_shell
+
+print_header "Running Azure EKM tests"
+
+# Delegate to existing azure test scripts
+bash "${REPO_ROOT}/.mise/scripts/test/azure_ekm_test.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/azure_ekm_mtls_test.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "Azure EKM tests completed"

@@ -7,8 +7,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-: "${DOCKER_IMAGE_NAME:?DOCKER_IMAGE_NAME must be set (mise task: test:docker-scan --image)}"
-: "${VARIANT:?VARIANT must be set by the caller (mise task: test:docker-scan)}"
+: "${DOCKER_IMAGE_NAME:?DOCKER_IMAGE_NAME must be set (mise task: test:pkg:docker-scan --image)}"
+: "${VARIANT:?VARIANT must be set by the caller (mise task: test:pkg:docker-scan)}"
 FAIL_ON="${GRYPE_FAIL_ON:-high}"
 OUT_DIR="${REPO_ROOT}/target/image-scan/${VARIANT}"
 TOOLS_LINK="${REPO_ROOT}/result-image-scan-tools"

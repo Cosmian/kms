@@ -29,7 +29,7 @@ Python is **not** the primary language of this project. Keep Python usage minima
 
 - Declare third-party packages in a `requirements*.in` next to the calling script and commit the hash-pinned `.txt` compiled from it with `pip-compile --generate-hashes`; install with `pip install --require-hashes -r`. Full procedure: `dependencies.instructions.md`.
 - Prefer the Python standard library over third-party packages for simple scripting tasks.
-- For PyKMIP tests, dependencies are managed by the MISE `test:pykmip` task.
+- For PyKMIP tests, dependencies are managed by the MISE `test:interop:pykmip` task.
 
 ## Error handling
 

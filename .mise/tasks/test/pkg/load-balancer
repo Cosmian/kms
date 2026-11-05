@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Run nginx load-balancer graceful shutdown test"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=fips,non-fips needs=nix,docker,env:DOCKER_IMAGE_NAME
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init fips
+ensure_nix_shell
+
+print_header "Running load-balancer shutdown test (${VARIANT_NAME})"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_lb_kms_shutdown.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "Load-balancer tests completed"

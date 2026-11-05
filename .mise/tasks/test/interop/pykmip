@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Run PyKMIP + Synology DSM tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=non-fips needs=nix ci=blackbox-nix
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+suite_init non-fips WITH_PYTHON
+
+print_header "Running PyKMIP + Synology DSM tests"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_pykmip.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "PyKMIP tests completed"

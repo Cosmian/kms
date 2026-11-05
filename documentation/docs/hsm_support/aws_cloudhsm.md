@@ -202,5 +202,5 @@ There is no free/local AWS CloudHSM simulator equivalent to SoftHSM2. See
 for:
 
 - the one-time runbook to provision a persistent AWS CloudHSM cluster for CI,
-- the `mise run test:hsm-aws-cloudhsm` command used by the CI `hsm` job matrix, and
+- the `mise run test:hsm:aws-cloudhsm` command used by the CI `hsm` job matrix, and
 - a fully manual validation procedure for anyone without access to the CI cluster.

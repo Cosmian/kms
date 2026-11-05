@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="E2E test: KMS CSI Provider — secrets store mount via Docker image DaemonSet (Minikube)"
+#SUITE variants=fips,non-fips needs=cmd:kubectl,cmd:helm,cmd:minikube,cmd:openssl,k8s
 # The CSI provider is tested exclusively via its published Docker image, deployed
 # as a Kubernetes DaemonSet in kube-system — matching the production topology.
 #

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared helpers for the OpenSearch/Splunk audit JSONL compatibility mise tasks
-# (test:audit-compat-opensearch, test:audit-compat-splunk). Keeps the container
+# (test:obs:audit-opensearch, test:obs:audit-splunk). Keeps the container
 # lifecycle and Python setup boilerplate in one place instead of duplicated per backend.
 
 [ -n "${_MISE_AUDIT_COMPAT_SH_LOADED:-}" ] && return 0

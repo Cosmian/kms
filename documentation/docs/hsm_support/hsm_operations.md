@@ -853,7 +853,7 @@ uses, on every machine.
 Run it locally with:
 
 ```shell
-mise run test:hsm-kryoptic --variant fips
+mise run test:hsm:kryoptic --variant fips
 ```
 
 `crate/hsm/kryoptic/src/tests.rs::test_hsm_kryoptic_all` provisions a fresh Kryoptic token

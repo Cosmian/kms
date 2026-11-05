@@ -6,5 +6,27 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#SUITE variants=fips,non-fips needs=nix ci=sqlite
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/sqlite" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+suite_init fips WITH_HSM
+
+require_cmd cargo
+
+print_header "Running SQLite tests (${VARIANT_NAME})"
+
+# Diagnostics
+echo "OpenSSL diagnostics:"
+echo "  OPENSSL_CONF=${OPENSSL_CONF:-unset}"
+echo "  OPENSSL_MODULES=${OPENSSL_MODULES:-unset}"
+echo "  VARIANT=${VARIANT} (${VARIANT_NAME})"
+if command -v openssl >/dev/null 2>&1; then
+  echo "Providers:"
+  openssl list -providers -verbose || true
+fi
+
+run_db_tests "sqlite"
+run_db_softhsm2_tests "sqlite_softhsm2"
+
+print_success "SQLite tests completed"

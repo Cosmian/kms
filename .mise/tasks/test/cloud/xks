@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Run AWS XKS tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=non-fips needs=nix ci=blackbox-nix
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+suite_init non-fips WITH_XKS WITH_CURL
+
+print_header "Running AWS XKS tests"
+
+# Delegate to the existing XKS test script (curl + SigV4)
+bash "${REPO_ROOT}/.mise/scripts/test/test_xks.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "AWS XKS tests completed"

@@ -222,7 +222,7 @@ fn public_api_shares_the_context() -> HResult<()> {
 }
 
 /// Adapter test: real `SoftHSM2` crypto behind the PKCS#11 v3.0 message functions, provided by
-/// `tests/fixtures/v3_message_adapter.c`. Run through `mise run test:hsm-softhsm2`.
+/// `tests/fixtures/v3_message_adapter.c`. Run through `mise run test:hsm:softhsm2`.
 #[cfg(unix)]
 /// The `SoftHSM2` capability profile with the message-signature path enabled.
 struct V3AdapterProvider;
@@ -333,7 +333,7 @@ fn sign_verify_round_trips(slot: &Arc<SlotManager>) -> HResult<()> {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "Requires SoftHSM2 and HSM environment (mise run test:hsm-softhsm2)"]
+#[ignore = "Requires SoftHSM2 and HSM environment (mise run test:hsm:softhsm2)"]
 fn softhsm2_v3_adapter_message_signature() -> HResult<()> {
     let extra: &[&str] = if cfg!(target_os = "macos") {
         &[]

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Run OpenSSH PKCS#11 integration tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=non-fips needs=nix ci=pkcs11
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init non-fips WITH_OPENSSH WITH_HSM
+
+print_header "Running OpenSSH PKCS#11 tests"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_openssh.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "OpenSSH PKCS#11 tests completed"

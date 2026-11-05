@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-#MISE description="Run HSM-KEK pkcs11-tool and pkcs11-check battle tests"
+#MISE description="Run HSM-KEK pkcs11-tool tests and pkcs11-check against a plain KMS"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#USAGE flag "--marker <marker>" env="PKCS11_CHECK_MARKER" help="pkcs11-check marker" default="smoke"
+#USAGE flag "--marker <marker>" env="PKCS11_CHECK_MARKER" help="pkcs11-check marker (empty runs the full available corpus)" default="smoke"
+#SUITE variants=non-fips needs=nix ci=pkcs11
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/hsm-pkcs11-tool" \
-  --variant "${usage_variant:-non-fips}" \
-  --link "${usage_link:-static}" \
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init non-fips WITH_HSM
+
+print_header "Running HSM-KEK pkcs11-tool conformance tests"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_hsm_kek_pkcs11_comprehensive.sh" \
+  --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
+
+print_success "HSM-KEK pkcs11-tool conformance tests completed"
+print_header "Running pkcs11-check after HSM-KEK tests"
+bash "${REPO_ROOT}/.mise/scripts/test/test_pkcs11_check.sh" \
+  --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}" \
   --marker "${usage_marker:-smoke}"
+
+print_success "HSM-KEK and pkcs11-check conformance tests completed"

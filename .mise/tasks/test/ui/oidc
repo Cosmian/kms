@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#MISE description="Run Playwright E2E OIDC tests against a real Auth0 IdP"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=fips,non-fips needs=nix ci=ui-sso ci_variants=non-fips scope=js
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init non-fips
+
+export WITH_WASM=1 WITH_HSM=1 WITH_CURL=1
+
+if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
+  sudo -n mkdir -p /usr/local/cosmian/lib/ossl-modules 2>/dev/null || true
+  for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
+    [ -f "$f" ] && sudo -n ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+  done
+  if [ -f "${OPENSSL_CONF:-}" ]; then
+    sudo -n mkdir -p /usr/local/cosmian/lib/ssl 2>/dev/null || true
+    sudo -n ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+  fi
+fi
+
+ensure_nix_shell
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_ui_oidc.sh" --variant "${VARIANT}" --link "${LINK}"

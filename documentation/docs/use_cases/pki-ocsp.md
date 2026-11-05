@@ -146,8 +146,8 @@ sequenceDiagram
 
 ## Manual verification with `openssl ocsp`
 
-The following walks through the same scenarios validated by `mise run test:ocsp`
-(`.mise/tasks/test/ocsp`), using only the standard `openssl` CLI and `ckms` — the
+The following walks through the same scenarios validated by `mise run test:pki:ocsp`
+(`.mise/tasks/test/pki/ocsp`), using only the standard `openssl` CLI and `ckms` — the
 tools an external customer already has.
 
 1. **Issue a CA and a leaf certificate**, then enable OCSP for that CA:

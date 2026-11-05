@@ -281,7 +281,7 @@ pkgs.mkShell {
         # path on LD_LIBRARY_PATH so the KMS server can dlopen it — dropping it
         # here caused "libstdc++.so.6: cannot open shared object file" whenever
         # the server dlopen'd the HSM's PKCS#11 library (surfaced by
-        # `mise run test:hsm-pkcs11-tool`).
+        # `mise run test:pkcs11:tool`).
         export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.

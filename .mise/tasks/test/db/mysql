@@ -6,5 +6,15 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#SUITE variants=fips,non-fips needs=nix,compose:mysql ci=mysql pr_variants=non-fips
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/mysql" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+suite_init fips WITH_HSM
+
+print_header "Running MySQL tests (${VARIANT_NAME})"
+
+check_and_test_db "MySQL" "mysql" "MYSQL_HOST" "MYSQL_PORT"
+run_db_softhsm2_tests "mysql_softhsm2"
+
+print_success "MySQL tests completed"

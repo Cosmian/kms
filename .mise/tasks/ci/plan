@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#MISE description="Emit the CI test matrices (public, js, upstream) from the #SUITE registry"
+#USAGE flag "--event <event>" help="GitHub event name; pull_request applies pr_variants" required=#true
+#USAGE flag "--upstream <upstream>" help="Include scope=upstream suites (their secrets exist)" default="false" {
+#USAGE   choices "true" "false"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+
+# shellcheck disable=SC2154 # usage_event is set by the MISE USAGE framework
+EVENT="${usage_event}"
+UPSTREAM="${usage_upstream:-false}"
+errors=0
+
+violation() {
+  echo "ci:plan: $*" >&2
+  errors=$((errors + 1))
+}
+
+# True when every item of comma list $1 is in comma list $2.
+subset() {
+  local v
+  for v in ${1//,/ }; do
+    case ",$2," in *",${v},"*) ;; *) return 1 ;; esac
+  done
+}
+
+INDEX="$(suites_index)" || exit 1
+rows=''
+leg_scopes=' '
+while IFS='|' read -r id file variants _ ci ci_variants pr_variants scope lock bench; do
+  # A direct `mise run test:<id>` uses the flag default: it must be a variant the suite supports.
+  default="$(sed -n '/^#USAGE flag "-v --variant/{s/.*default="\([^"]*\)".*/\1/p;q;}' "$file")"
+  if [ -n "$default" ] && ! subset "$default" "$variants"; then
+    violation "${id}: --variant default '${default}' is not in variants=${variants}"
+  fi
+  case "$scope" in public | js | upstream) ;; *) violation "${id}: scope '${scope}' is not public, js or upstream" ;; esac
+  [ -n "$ci" ] || continue
+  ci_set="${ci_variants:-$variants}"
+  if ! subset "$ci_set" "$variants"; then violation "${id}: ci_variants=${ci_variants} is not a subset of variants=${variants}"; fi
+  if [ -n "$pr_variants" ] && ! subset "$pr_variants" "$ci_set"; then
+    violation "${id}: pr_variants=${pr_variants} is not a subset of ${ci_set}"
+  fi
+  case "$leg_scopes" in
+    *" ${ci}=${scope} "*) ;;
+    *" ${ci}="*) violation "${id}: leg '${ci}' already has another scope (this one: ${scope})" ;;
+    *) leg_scopes="${leg_scopes}${ci}=${scope} " ;;
+  esac
+  if [ "$scope" = upstream ] && [ "$UPSTREAM" != true ]; then continue; fi
+  if [ "$EVENT" = pull_request ]; then cells="${pr_variants:-$ci_set}"; else cells="$ci_set"; fi
+  for v in ${cells//,/ }; do
+    rows="${rows}${scope}|${ci}|${v}|${id}|${lock}|${bench}"$'\n'
+  done
+done <<<"$INDEX"
+
+# One GitHub matrix per scope: {"include":[{leg,variant,suites,lock,bench},...]}; every key is always
+# present (loose null != '' comparisons in expressions are unreliable). Values match the #SUITE grammar,
+# which needs no JSON escaping.
+output=''
+for scope in public js upstream; do
+  json="$(printf '%s' "$rows" | LC_ALL=C sort -t'|' -k1,1 -k2,2 -k3,3 -k4,4 | awk -F'|' -v scope="$scope" '
+    function flush() {
+      printf "%s{\"leg\":\"%s\",\"variant\":\"%s\",\"suites\":\"%s\",\"lock\":\"%s\",\"bench\":\"%s\"}", (n++ ? "," : "{\"include\":["), leg, variant, ids, lock, bench
+    }
+    $1 == scope {
+      cell = $2 "|" $3
+      if (cell != prev) {
+        if (prev != "") flush()
+        prev = cell; leg = $2; variant = $3; ids = $4; lock = $5; bench = $6
+      } else {
+        ids = ids " " $4
+        if ($5 != lock || $6 != bench) {
+          printf "ci:plan: leg %s (%s): suites disagree on lock/bench\n", leg, variant > "/dev/stderr"
+          bad = 1
+        }
+      }
+    }
+    END { if (prev != "") flush(); if (n) print "]}"; exit bad }
+  ')" || errors=$((errors + 1))
+  output="${output}${scope}=${json}"$'\n'
+done
+
+if [ "$errors" -gt 0 ]; then
+  echo "ci:plan: ${errors} violation(s)" >&2
+  exit 1
+fi
+printf '%s' "$output"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then printf '%s' "$output" >>"$GITHUB_OUTPUT"; fi

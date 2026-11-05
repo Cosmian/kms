@@ -1,9 +1,9 @@
 # KMS Test Scenarios — Architecture & Sequence Diagrams
 
 > This document describes the component topology and runtime flow for every
-> unique MISE test task under `.mise/tasks/test/`.  Directory aliases
-> (`db/sqlite` → `sqlite`, `hsm/softhsm2` → `hsm-softhsm2`) are **not**
-> duplicated; only the canonical (implementation) task is documented.
+> MISE test task under `.mise/tasks/test/`.  A task id is its path under that
+> directory with `/` replaced by `:` (`db/psql` → `test:db:psql`); the
+> `_default` file of a group is the group itself (`test:db`).
 
 ---
 
@@ -28,75 +28,111 @@
 
 ## 1. Master Orchestrator
 
-### `test:_default`
+Every runnable test task is a **suite**. It declares its facts once, in a `#SUITE` header line; that one line drives local runs, the skipping of suites that cannot run on the current machine, and the CI matrices. The engine is `.mise/lib/suites.sh`.
 
-**Description:** Run every test group, auto-skipping any that lack required infra/credentials/tools.
+| Command | Effect |
+|---------|--------|
+| `mise run test` | Runs every registered suite (`test:suites @all`) |
+| `mise run test:<group>` | Runs the suites of one group (`test:suites @<group>`): `db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg` |
+| `mise run test:suites <selector>...` | Runs the selected suites; a selector is an id (`db:psql`), a group (`@pki`) or everything (`@all`) |
+| `mise run test:suites <selector>... --list` | Runs nothing: prints which suites would run or be skipped, and why |
+| `mise run ci:plan --event <event> [--upstream true]` | Runs nothing: prints the `public`, `js` and `upstream` CI matrices built from the `#SUITE` headers, and fails on inconsistent headers |
 
-#### Architecture Overview
+A suite that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` suites and the command exits 1 if any suite failed; a failing suite never stops the others. The `docker compose` services needed by the runnable suites are started once, before the first suite.
+
+Tasks without a `#SUITE` header are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `pki:scep-apple`, `db:upgrade-sqlite`), helpers called by suites (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
+
+### The `#SUITE` header
+
+One line, after the `#USAGE` block and before `set -euo pipefail`; values never contain spaces and lists are comma-separated:
+
+```bash
+#SUITE variants=fips,non-fips needs=nix,compose:postgres ci=psql pr_variants=non-fips
+```
+
+| Key | Meaning | Default |
+|-----|---------|---------|
+| `variants` | Variants the suite supports: `fips`, `non-fips` or both (required) | — |
+| `needs` | Comma list of prerequisites (next table) | none |
+| `ci` | CI leg name; suites with the same leg share one job per variant | not run in CI |
+| `ci_variants` | Variants CI runs (subset of `variants`) | `variants` |
+| `pr_variants` | Variants CI runs on pull requests (subset of `ci_variants`) | `ci_variants` |
+| `scope` | `public` (no secrets), `js` (no secrets, JS toolchain) or `upstream` (needs repository secrets, skipped on forks) | `public` |
+| `lock` | Concurrency group shared with the hardware users of the same device | none |
+| `bench` | HSM model of the nightly benchmark steps | none |
+
+A local run evaluates every `needs` item. With `CI=true` only the items marked (CI) are evaluated and the suite is otherwise left to run, and fail, on its own.
+
+| `needs` item | Meaning |
+|--------------|---------|
+| `nix`, `docker`, `k8s` | `nix-shell` on `PATH`, a running Docker daemon, a reachable Kubernetes cluster |
+| `cmd:<name>`, `file:<path>` | Command on `PATH`; file under the repository root (for example a submodule) |
+| `os:Linux`, `os:Darwin` (CI) | `uname -s` must match |
+| `env:<VAR>` (CI) | Variable set and non-empty; CI also emits a `::warning::` when it is not |
+| `profile` (CI) | Source `~/.cosmian/<suite name>.sh` when it exists (hardware credentials) |
+| `apt:<package>` (CI) | Locally: the command is installed; CI on Linux installs the package first |
+| `compose:<service>` (CI) | `docker compose up -d <service>` once, before the first suite |
+
+### Leaf prologue
+
+A suite sources `suites.sh` and calls `suite_init <default-variant> [WITH_FLAG...]` first. It initialises `VARIANT`, `LINK`, `REPO_ROOT` and test logging, rejects a `--variant` or an OS the header does not allow when the task is run directly, and, when `WITH_*` flags are given, exports them and re-enters the pinned nix-shell.
+
+### Adding a suite
+
+1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and a `#SUITE` line.
+2. Start the body with `source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"` and `suite_init <default-variant> [WITH_FLAG...]`.
+3. Check it with `mise run test:suites <group>:<name> --list` and `mise run ci:plan --event push --upstream true`.
+
+### Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph Orchestrator["test:_default"]
-        run["bash loop over groups"]
+    subgraph Headers["Task files under tasks/test"]
+        SuiteLines["one SUITE header line per task<br/>variants, needs, ci, scope, lock, bench"]
     end
 
-    subgraph Groups["Test Groups"]
-        DB["db:_default"]
-        HSM["hsm:_default"]
-        K8S["k8s:_default"]
-        Cloud["azure-ekm<br/>google-cse<br/>gcp-cmek<br/>xks<br/>xks-remote<br/>secret_aws<br/>secret_azure"]
-        OCSP["ocsp<br/>pki-revocation"]
-        Audit["audit<br/>monitoring<br/>otel"]
-        TDE["edb-tde<br/>docker-oracle"]
-        Client["jose<br/>kmip-go<br/>luks<br/>openssh<br/>pykmip<br/>veracrypt"]
-        UI["ui<br/>wasm"]
-        Spire["spire<br/>spire-kmip"]
-        Docker["docker<br/>iris<br/>secret_vault"]
-        Local["helm<br/>vectors-rekey<br/>load-balancer<br/>secret_cosmian_kms"]
+    subgraph Engine["Engine: .mise/lib/suites.sh"]
+        Main["suites_main<br/>select, gate, run, summarise"]
+        Prologue["suite_init<br/>leaf prologue"]
     end
 
-    run --> DB
-    run --> HSM
-    run --> K8S
-    run --> Cloud
-    run --> OCSP
-    run --> Audit
-    run --> TDE
-    run --> Client
-    run --> UI
-    run --> Spire
-    run --> Docker
-    run --> Local
+    Plan["ci:plan<br/>CI matrices"]
+    Leaf["leaf task<br/>test body"]
+
+    SuiteLines --> Main
+    SuiteLines --> Plan
+    Main -- "mise run test:ID" --> Leaf
+    Leaf --> Prologue
 ```
 
-#### Sequence Diagram
+### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant User as User
-    participant Def as test:_default
-    participant Sub as sub-task
+    participant User as Developer or CI
+    participant Main as suites_main
+    participant Compose as docker compose
+    participant Leaf as test leaf task
 
-    User->>Def: mise run test:_default --variant fips
-    loop For each test group
-        Def->>Def: evaluate gate for the group
-        alt gate reports missing infra / credentials / tool
-            Def->>Def: SKIPPED += 1 (sub-task not run)
-        else gate satisfied
-            Def->>Sub: run sub-task
-            Sub-->>Def: exit 0 | non-zero
-            Def->>Def: PASSED += 1 or FAILED += 1 (continue)
-        end
+    User->>Main: mise run test:db --variant fips
+    Main->>Main: select the suites from the SUITE headers
+    loop each selected suite
+        Main->>Main: gate on variant, OS, env, nix, docker, cmd, file, k8s
     end
-    Def-->>User: Summary: pass / fail / skip counts
+    Main->>Compose: up -d the services of the runnable suites, once
+    loop each runnable suite
+        Main->>Leaf: mise run test:ID --variant --link
+        Leaf-->>Main: exit 0 or non-zero, the run continues
+    end
+    Main-->>User: PASS, SKIP with reason and FAIL summary, exit 1 if any FAIL
 ```
 
 ---
 
 ## 2. Database Backends
 
-**Tasks:** `test:sqlite`, `test:psql`, `test:mysql`, `test:mariadb`, `test:percona`, `test:redis`
-**Orchestrator:** `test:db:_default`
+**Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`
+**Orchestrator:** `test:db`
 
 All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
 
@@ -104,7 +140,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
 | `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. |
-| `mysql` | MySQL | yes | Disabled in CI. |
+| `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
 | `redis` | Redis + Findex | **no** | Non-FIPS only. |
@@ -171,18 +207,18 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm-softhsm2`, `test:hsm-utimaco`, `test:hsm-proteccio`, `test:hsm-crypt2pay`, `test:hsm-luna`, `test:hsm-crypt2pay-simulator`
-**Orchestrator:** `test:hsm:_default`
-**Matrix:** `test:matrix` (cross-product HSM × DB × variant; Linux includes `crypt2pay-simulator`)
+**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`
+**Orchestrator:** `test:hsm`
+**Matrix:** `test:hsm:matrix` (cross-product HSM × DB × variant; Linux includes `crypt2pay-simulator`)
 
 | Task | HSM Model | Platform | DB param |
 |------|-----------|----------|----------|
-| `hsm-softhsm2` | SoftHSM2 (software) | All | configurable |
-| `hsm-utimaco` | Utimaco simulator | Linux only | passthrough |
-| `hsm-proteccio` | Proteccio | Linux only | passthrough |
-| `hsm-crypt2pay` | Crypt2Pay | Linux only | passthrough |
-| `hsm-crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
-| `hsm-luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
+| `softhsm2` | SoftHSM2 (software) | All | configurable |
+| `utimaco` | Utimaco simulator | Linux only | passthrough |
+| `proteccio` | Proteccio | Linux only | passthrough |
+| `crypt2pay` | Crypt2Pay | Linux only | passthrough |
+| `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
+| `luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
 
 ### Architecture Overview
 
@@ -213,7 +249,7 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    participant Script as hsm-softhsm2 script
+    participant Script as hsm:softhsm2 script
     participant Nix as Nix shell
     participant Setup as softhsm2_setup
     participant Cargo as cargo test
@@ -235,7 +271,7 @@ sequenceDiagram
 
 ## 4. Cloud Provider Integrations
 
-**Tasks:** `test:azure-ekm`, `test:google-cse`, `test:gcp-cmek`, `test:xks`, `test:xks-remote`
+**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
 
 | Task | Cloud | FIPS? | Credential requirement |
 |------|-------|-------|------------------------|
@@ -272,7 +308,7 @@ graph TB
     TestScripts --> AWSXKS
 ```
 
-### Sequence Diagram (representative — `test:xks`)
+### Sequence Diagram (representative — `test:cloud:xks`)
 
 ```mermaid
 sequenceDiagram
@@ -298,7 +334,7 @@ sequenceDiagram
 
 ## 5. Secret Backends
 
-**Tasks:** `test:secret_aws`, `test:secret_azure`, `test:secret_cosmian_kms`, `test:secret_vault`
+**Tasks:** `test:cloud:secret-aws`, `test:cloud:secret-azure`, `test:cloud:secret-cosmian-kms`, `test:cloud:secret-vault`
 
 All four tasks delegate to the same underlying test harness; only the target backend changes.
 
@@ -350,7 +386,7 @@ sequenceDiagram
 
 **Description:** SPIRE + Mistral client full integration (non-FIPS only). Multi-tenant topology with two independent SPIRE deployments against the same KMS.
 
-After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire-pki` (17), `test:spire-jwt-svid` (18) and `test:spire-kmip` (19).
+After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
 
 #### Architecture Overview
 
@@ -408,7 +444,7 @@ sequenceDiagram
 
 ---
 
-### `test:spire-jwt-svid`
+### `test:spire:jwt-svid`
 
 **Description:** SPIFFE JWT-SVID end-to-end authentication via SPIRE + ckms CLI, with **real** JWT validation on Linux/CI. Non-FIPS only. On macOS native-tls ignores `SSL_CERT_FILE`, so the KMS cannot trust the test CA: the task then builds the KMS with the `insecure` feature, serves the JWKS over http, and skips the checks that need signature/audience validation (wrong audience, tampered signature) and the native `spire-agent` login step (Docker Desktop host networking). Those checks are covered by the Rust `real_validation` unit tests.
 
@@ -509,7 +545,7 @@ sequenceDiagram
 
 ---
 
-### `test:spire-kmip-key-manager`
+### `test:spire:kmip-key-manager`
 
 **Description:** SPIRE kmip KeyManager plugin — binary KMIP 2.1 TCP/TLS.
 
@@ -577,13 +613,13 @@ sequenceDiagram
 
 ---
 
-### `test:spire-kmip`
+### `test:spire:kmip`
 
-**Description:** Entry point used by `test:spire`; delegates to `test:spire-kmip-key-manager` (the only SPIRE `kmip` plugin suite).
+**Description:** Entry point used by `test:spire`; delegates to `test:spire:kmip-key-manager` (the only SPIRE `kmip` plugin suite).
 
 ---
 
-### `test:spire-pki`
+### `test:spire:pki`
 
 **Description:** KMS PKI capability validation — M-01 through M-10 from Aembit Capability Validation Test Plan.
 
@@ -635,7 +671,7 @@ sequenceDiagram
 
 ---
 
-### `test:spire-sds`
+### `test:spire:sds`
 
 **Description:** PKI-10 Service mesh SDS delivery — Envoy + SPIRE + Cosmian KMS.
 
@@ -716,9 +752,9 @@ sequenceDiagram
 
 ## 7. PKI & Revocation
 
-**Tasks:** `test:ocsp`, `test:pki-revocation`
+**Tasks:** `test:pki:ocsp`, `test:pki:revocation`
 
-### `test:ocsp`
+### `test:pki:ocsp`
 
 **Description:** OCSP responder (RFC 6960) black-box test suite using `openssl ocsp` and `curl`. Tests GET/POST, nonce, caching, delegated signing, and root-compromise cascade.
 
@@ -770,7 +806,7 @@ sequenceDiagram
 
 ---
 
-### `test:pki-revocation`
+### `test:pki:revocation`
 
 **Description:** PKI revocation black-box test — CDP/CRL, AIA/OCSP, CA-compromise cascade.
 
@@ -821,13 +857,13 @@ sequenceDiagram
 
 ## 8. Audit, SIEM, Monitoring & Observability
 
-**Tasks:** `test:audit`, `test:audit-compat-generate-fixture`, `test:audit-compat-opensearch`, `test:audit-compat-splunk`, `test:cef-format`, `test:cef-syslog`, `test:cef-tcp-syslog`, `test:siem-fluent-bit`, `test:siem-filebeat`, `test:siem-cef-syslog`, `test:siem-cef-tcp-syslog`, `test:monitoring`, `test:otel`
+**Tasks:** `test:obs:audit`, `test:obs:audit-fixture`, `test:obs:audit-opensearch`, `test:obs:audit-splunk`, `test:obs:audit-postgres`, `test:obs:cef-format`, `test:obs:cef-syslog`, `test:obs:cef-tcp-syslog`, `test:obs:fluent-bit`, `test:obs:filebeat`, `test:obs:monitoring`, `test:obs:otel`
 
-**Orchestrators:** `test:cef` (format + UDP + TCP), `test:siem` (fluent-bit + filebeat)
+**Orchestrator:** `test:obs` runs every task above except `audit-fixture`, a helper that generates the JSONL fixture. In CI the four `audit*` suites share one job.
 
-### `test:audit`
+### `test:obs:audit`
 
-**Description:** Tamper-evident JSONL audit log + HTTP audit middleware capture, followed by the OpenSearch compatibility sub-task (always) and the Splunk one (only when `SPLUNK_PASSWORD` is set).
+**Description:** Tamper-evident JSONL audit log + HTTP audit middleware capture. The SIEM compatibility checks are separate suites (`test:obs:audit-opensearch`, `test:obs:audit-splunk`, `test:obs:audit-postgres`) that `test:obs` runs next.
 
 #### Architecture Overview
 
@@ -842,16 +878,9 @@ graph TB
         JSONL["/tmp/kms-audit-*.jsonl<br/>hash chain"]
     end
 
-    subgraph SIEMs["SIEM Backends"]
-        OpenSearch["OpenSearch<br/>ephemeral Docker"]
-        Splunk["Splunk<br/>ephemeral Docker"]
-    end
-
     TestAudit --> KMS10
     KMS10 --> JSONL
     TestAudit --> JSONL
-    TestAudit --> OpenSearch
-    TestAudit --> |only if SPLUNK_PASSWORD| Splunk
 ```
 
 #### Sequence Diagram
@@ -861,27 +890,17 @@ sequenceDiagram
     participant Test as audit test script
     participant KMS as KMS with audit middleware
     participant JSONL as JSONL log file
-    participant OpenSearch as OpenSearch Docker
-    participant Splunk as Splunk Docker
 
     Test->>KMS: start KMS with audit logging
     Test->>KMS: perform KMIP operations
     KMS->>JSONL: append tamper-evident JSONL line
     KMS->>JSONL: hash chain link
     JSONL-->>Test: file exists, hash verified
-    Test->>OpenSearch: docker run opensearch
-    Test->>OpenSearch: ingest JSONL via Python
-    OpenSearch-->>Test: all fields indexed correctly
-    alt SPLUNK_PASSWORD set
-        Test->>Splunk: docker run splunk
-        Test->>Splunk: HEC ingest JSONL
-        Splunk-->>Test: sourcetype _json OK
-    end
 ```
 
 ---
 
-### `test:audit-compat-opensearch` / `test:audit-compat-splunk`
+### `test:obs:audit-opensearch` / `test:obs:audit-splunk`
 
 These take a pre-generated KMS JSONL audit file and verify full-field compatibility with the target SIEM backend.
 
@@ -908,7 +927,7 @@ sequenceDiagram
 
 ---
 
-### CEF Tests (`test:cef-format`, `test:cef-syslog`, `test:cef-tcp-syslog`)
+### CEF Tests (`test:obs:cef-format`, `test:obs:cef-syslog`, `test:obs:cef-tcp-syslog`)
 
 **Description:** CEF v27 format validation and syslog transport (UDP and TCP/rsyslog).
 
@@ -948,7 +967,7 @@ sequenceDiagram
 
 ---
 
-### SIEM Tests (`test:siem-fluent-bit`, `test:siem-filebeat`)
+### SIEM Tests (`test:obs:fluent-bit`, `test:obs:filebeat`)
 
 **Description:** Fluent Bit JSONL file-tailing and Filebeat → Elasticsearch forwarding.
 
@@ -992,7 +1011,7 @@ sequenceDiagram
 
 ---
 
-### `test:monitoring`
+### `test:obs:monitoring`
 
 **Description:** Monitoring stack — OTel collector → VictoriaMetrics → Grafana.
 
@@ -1039,7 +1058,7 @@ sequenceDiagram
 
 ---
 
-### `test:otel`
+### `test:obs:otel`
 
 **Description:** OTLP/OpenTelemetry export integration test. Validates KMS metrics export to an OTel collector.
 
@@ -1076,7 +1095,7 @@ sequenceDiagram
 
 ## 9. Database TDE Integrations
 
-**Tasks:** `test:ase`, `test:db2`, `test:edb-tde`, `test:docker-oracle`, `test:iris`
+**Tasks:** `test:interop:ase`, `test:interop:db2`, `test:interop:edb-tde`, `test:pkg:docker-oracle`, `test:interop:iris`
 
 | Task | Database | Protocol | FIPS? | Requirement |
 |------|----------|----------|-------|-------------|
@@ -1146,7 +1165,7 @@ sequenceDiagram
 
 ## 10. Client & Protocol Integrations
 
-**Tasks:** `test:jose`, `test:kmip-go`, `test:luks`, `test:openssh`, `test:pykmip`, `test:veracrypt`
+**Tasks:** `test:interop:jose`, `test:interop:kmip-go`, `test:pkcs11:luks`, `test:pkcs11:openssh`, `test:interop:pykmip`, `test:pkcs11:veracrypt`
 
 | Task | Client / Protocol | FIPS? | Notes |
 |------|-------------------|-------|-------|
@@ -1207,19 +1226,19 @@ sequenceDiagram
 
 ## 11. Kubernetes E2E Tests
 
-**Tasks:** `test:k8s:_default`, `test:k8s:plugin`, `test:k8s:operator`, `test:k8s:csi-provider`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`, `test:helm`
+**Tasks:** `test:k8s:plugin`, `test:k8s:plugin-mtls`, `test:k8s:operator`, `test:k8s:csi-provider`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`, `test:k8s:helm`
 
-### `test:k8s:_default`
+### `test:k8s`
 
-**Description:** Orchestrator that runs all Kubernetes E2E tests (plugin, plugin with `--mtls`, operator, CSI provider); a failing step is recorded and the remaining ones still run.
+**Description:** Orchestrator (`test:suites @k8s`) that runs the Kubernetes E2E suites (plugin, plugin over mTLS, operator, CSI provider) and the Helm chart checks. Each suite is skipped, with its reason, when `kubectl`, `helm`, `minikube`, `openssl` or a reachable cluster is missing; a failing suite is recorded and the remaining ones still run.
 
 #### Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph Orchestrator3["k8s:_default orchestrator"]
+    subgraph Orchestrator3["test:k8s orchestrator"]
         Plugin["test:k8s:plugin"]
-        PluginMTLS["test:k8s:plugin --mtls"]
+        PluginMTLS["test:k8s:plugin-mtls"]
         Operator["test:k8s:operator"]
         CSI["test:k8s:csi-provider"]
     end
@@ -1391,11 +1410,11 @@ sequenceDiagram
 
 ## 12. Web UI & WASM
 
-**Tasks:** `test:ui`, `test:ui-auth`, `test:ui-oidc`, `test:ui-saml`, `test:wasm`
+**Tasks:** `test:ui:standard`, `test:ui:auth`, `test:ui:oidc`, `test:ui:saml`, `test:ui:wasm`
 
-**Orchestrator:** `test:ui` (runs standard + auth + OIDC + SAML sequentially). The auth suite is skipped in FIPS mode (the auth-verifier is not FIPS-aware) or when the `authentication` submodule is absent; the OIDC suite needs Auth0 secrets and skips cleanly without them; the SAML suite is skipped in FIPS mode, when no Docker daemon is available, or when the `authentication` submodule is absent.
+**Orchestrator:** `test:ui` runs the five suites above, each on its own (they are also separate CI legs). The auth and SAML suites are non-FIPS only (the auth-verifier is not FIPS-aware) and are skipped when the `authentication` submodule is absent; the SAML suite also needs a running Docker daemon; the OIDC suite needs Auth0 secrets and skips cleanly without them.
 
-**SAML single sign-on:** `test:ui-saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
+**SAML single sign-on:** `test:ui:saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
 
 ### Architecture Overview
 
@@ -1418,7 +1437,7 @@ graph TB
     Playwright2 --> |automate browser| React
 ```
 
-### Sequence Diagram (`test:ui` orchestrator)
+### Sequence Diagram (`test:ui:standard`, `test:ui:auth`, `test:ui:oidc`)
 
 ```mermaid
 sequenceDiagram
@@ -1430,14 +1449,14 @@ sequenceDiagram
 
     Test->>Nix: ensure_nix_shell WITH_WASM=1
     Test->>KMS: build + start
-    Test->>Auth: build + start auth-verifier
-    Test->>PW: run standard E2E suite
+    Test->>PW: run standard E2E suite (ui:standard)
     PW->>KMS: create keys, objects, certificates
     KMS-->>PW: responses
-    Test->>PW: run auth E2E suite
+    Test->>Auth: build + start auth-verifier (ui:auth)
+    Test->>PW: run auth E2E suite (ui:auth)
     PW->>Auth: login flow
     Auth-->>PW: JWT tokens
-    Test->>PW: run OIDC E2E suite
+    Test->>PW: run OIDC E2E suite (ui:oidc)
     PW->>KMS: OIDC callback flow
     KMS-->>PW: session cookie
 ```
@@ -1466,9 +1485,9 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:docker`, `test:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
-### `test:docker`
+### `test:pkg:docker`
 
 **Description:** Docker image smoke tests. Does **not** build an image: it exports `KMS_TLS_CONFIG_FLAVOR` (`fips` or `non_fips`, derived from `--variant`) and runs `.mise/scripts/test/test_docker_image.sh`, which starts the already-built and already-loaded image named by `DOCKER_IMAGE_NAME` through `docker compose -f .mise/scripts/docker-compose.yml up -d --wait`, probes TLS with `openssl s_client`, drives the stack with `ckms` (run through `cargo run -p ckms`), and checks the FIPS/non-FIPS variant reported by `/version`. The image itself is produced beforehand (Nix build via `mise run build:docker --load`, or the packaging CI workflow).
 
@@ -1498,7 +1517,7 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    participant Task as test:docker task
+    participant Task as test:pkg:docker task
     participant Script as test_docker_image.sh
     participant Compose as docker compose
     participant KMS as KMS containers
@@ -1521,7 +1540,7 @@ sequenceDiagram
 
 ---
 
-### `test:helm`
+### `test:k8s:helm`
 
 **Description:** Helm chart lint, template validation, and optional E2E deployment on a live Kubernetes cluster.
 
@@ -1578,7 +1597,7 @@ sequenceDiagram
 
 ## 14. Miscellaneous
 
-### `test:vectors-rekey`
+### `dev:vectors-rekey`
 
 **Description:** Generate ReKey and ReKeyKeyPair test vectors into `test_data/`.
 
@@ -1598,9 +1617,9 @@ sequenceDiagram
 
 ---
 
-### `test:load-balancer`
+### `test:pkg:load-balancer`
 
-**Description:** nginx load-balancer graceful shutdown test. Runs three KMS containers (`kms1`..`kms3`, sharing one PostgreSQL) behind `nginx-load-balancer` from `.mise/scripts/docker-compose.yml` and checks that `/health` through nginx stays 200 while at least one backend is up, answers 502/504 with none, and recovers to 200 once the backends are restored. The same script also runs at the end of `test:docker`.
+**Description:** nginx load-balancer graceful shutdown test. Runs three KMS containers (`kms1`..`kms3`, sharing one PostgreSQL) behind `nginx-load-balancer` from `.mise/scripts/docker-compose.yml` and checks that `/health` through nginx stays 200 while at least one backend is up, answers 502/504 with none, and recovers to 200 once the backends are restored. The same script also runs at the end of `test:pkg:docker`.
 
 #### Architecture Overview
 

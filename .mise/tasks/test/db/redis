@@ -6,5 +6,13 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#SUITE variants=non-fips needs=nix,compose:redis ci=redis
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/redis" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+suite_init non-fips WITH_HSM
+
+check_and_test_db "Redis" "redis" "REDIS_HOST" "REDIS_PORT"
+run_db_softhsm2_tests "redis_with_findex_softhsm2"
+
+print_success "Redis tests completed"

@@ -3,7 +3,7 @@
 # test_pkcs11_conformance.sh — Full, independent PKCS#11 v2.40/v3.0/v3.1
 # conformance suite for `cosmian_pkcs11`.
 #
-# Independent from `.mise/tasks/test/hsm-pkcs11-tool` (SoftHSM2 HSM-KEK signing
+# Independent from `.mise/tasks/test/pkcs11/tool` (SoftHSM2 HSM-KEK signing
 # regression test): this suite runs against a *plain* KMS server (sqlite, no
 # HSM), and exercises the module's real PKCS#11 surface end to end, using
 # `pkcs11-tool` (OpenSC) — an independently-implemented, non-Cosmian client —

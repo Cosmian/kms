@@ -133,6 +133,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 | `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
 | `.mise/lib/nix_helpers.sh` | Nix shell invocation, hash lookup |
+| `.mise/lib/suites.sh` | Test-suite registry (`#SUITE` header), leaf prologue `suite_init`, runner `suites_main`: see § Test suites |
 | `.mise/lib/package_build.sh` | Deb/RPM build helpers |
 | `.mise/lib/package_smoke.sh` | Smoke-test helpers for packages |
 | `.mise/lib/spire_test.sh` | SPIRE suite helpers: `spire_listener_pids`, `spire_port_listening`, `spire_wait_port_closed`, `spire_stop_port`, `spire_reset_state`, `spire_ensure_certs`, `spire_build_auth_verifier` |
@@ -145,9 +146,23 @@ Never assume `common.sh` is already loaded; always guard the source.
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
 free-port allocation, or SHA-256 computation — all three already exist.
 
+## Test suites — `#SUITE` header, `suite_init`, `suites_main`
+
+Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg`; `spire/_default` is the single `spire` suite) and declares its facts once, in a `#SUITE` line placed after the `#USAGE` block:
+
+```bash
+#SUITE variants=fips,non-fips needs=nix,compose:postgres ci=psql pr_variants=non-fips
+```
+
+The same line gives the supported variants (`variants`, required), the prerequisites that make `mise run test` skip the suite with a reason (`needs`) and its CI placement (`ci`, `ci_variants`, `pr_variants`, `scope`, `lock`, `bench`). The full grammar is in `.mise/tasks/test/README.md` § 1.
+
+- Start the body with `source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"` and `suite_init <default-variant> [WITH_FLAG...]`. It replaces `kms_init_env`, `setup_test_logging`, `REPO_ROOT=`, the hand-written non-FIPS/OS gate, `export WITH_*` and `ensure_nix_shell`. Keep `ensure_nix_shell` explicit only when code must run between the exports and the re-entry.
+- Never hand-roll a test aggregator: a group's `_default` is `suites_main @<group>`, and `mise run test:suites <id|@group|@all> [--list]` runs any selection.
+- After adding or editing a header, run `mise run test:suites <id> --list` and `mise run ci:plan --event push --upstream true` (it rejects inconsistent headers).
+
 ## Aggregator tasks — collect failures, report at the end
 
-For tasks that orchestrate multiple sub-steps, collect failures rather than aborting immediately:
+For non-test tasks that orchestrate multiple sub-steps, collect failures rather than aborting immediately (test suites use `suites_main`, see above):
 
 ```bash
 FAILED=()
@@ -164,8 +179,8 @@ run_step() {
   fi
 }
 
-run_step "sqlite"  bash "${TASK_DIR}/sqlite"  --variant "${VARIANT}" --link "${LINK}"
-run_step "psql"    bash "${TASK_DIR}/psql"    --variant "${VARIANT}" --link "${LINK}"
+run_step "sqlite"  bash "${TASK_DIR}/db/sqlite"  --variant "${VARIANT}" --link "${LINK}"
+run_step "psql"    bash "${TASK_DIR}/db/psql"    --variant "${VARIANT}" --link "${LINK}"
 
 if [ ${#FAILED[@]} -gt 0 ]; then
   echo '' >&2
@@ -181,7 +196,7 @@ For conditional steps (FIPS-only, port-dependent):
 
 ```bash
 if [ "${VARIANT}" = "non-fips" ]; then
-  run_step "redis" bash "${TASK_DIR}/redis" --variant "${VARIANT}" --link "${LINK}"
+  run_step "redis" bash "${TASK_DIR}/db/redis" --variant "${VARIANT}" --link "${LINK}"
 fi
 ```
 
@@ -263,7 +278,7 @@ A task that simply forwards to another task should use `exec` to replace the she
 #USAGE   choices "static" "dynamic"
 #USAGE }
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/mariadb" "$@"
+exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/db/mariadb" "$@"
 ```
 
 Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
@@ -282,7 +297,7 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 
 | Scope                        | Convention                         | Example                                   |
 | ---------------------------- | ---------------------------------- | ----------------------------------------- |
-| Task files                   | `kebab-case`, no extension         | `.mise/tasks/test/psql`                   |
+| Task files                   | `kebab-case`, no extension         | `.mise/tasks/test/db/psql`                   |
 | Library files                | `snake_case.sh`                    | `.mise/lib/kms_server.sh`                 |
 | Library functions            | `snake_case`, prefixed by lib name | `kms_write_config`, `kms_build_server`    |
 | Private (internal) functions | leading underscore                 | `_wait_for_port`, `_warn_system_kms_conf` |
@@ -303,4 +318,5 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 2. Add the standard header (`#!/usr/bin/env bash`, `#MISE description`, `#USAGE …`, `set -euo pipefail`).
 3. Source only the libraries you need; prefer the smallest set.
 4. End with `print_success "…"` on the happy path.
-5. If the task orchestrates sub-tasks, use the `run_step` aggregator pattern.
+5. For a test, create it under `.mise/tasks/test/<group>/`, add the `#SUITE` line and start with `suite_init` (see § Test suites).
+6. If a non-test task orchestrates sub-tasks, use the `run_step` aggregator pattern.

@@ -147,7 +147,7 @@ configured token in the `KMS_PKCS11_CONFIG` YAML).
 ## Development and CI validation
 
 See [`crate/hsm/gcp_cloud_hsm/README.md`](https://github.com/Cosmian/kms/blob/develop/crate/hsm/gcp_cloud_hsm/README.md)
-for the live test invocation. The CI `hsm-upstream` job matrix runs `mise run test:hsm-gcp-cloud-hsm`
+for the live test invocation. The CI `hsm-upstream` job matrix runs `mise run test:hsm:gcp-cloud-hsm`
 against a persistent Cloud KMS HSM-tier key ring, downloading `libkmsp11.so` and provisioning the
 service account credentials and PKCS#11 config file at runtime.
 
@@ -155,7 +155,7 @@ The MISE task does not create GCP resources; it only checks the library and pass
 and runs the ignored loader test:
 
 ```bash
-mise run test:hsm-gcp-cloud-hsm --variant non-fips
+mise run test:hsm:gcp-cloud-hsm --variant non-fips
 ```
 
 Run it from Linux with `GCP_CLOUD_HSM_PKCS11_LIB`, `KMS_PKCS11_CONFIG`,

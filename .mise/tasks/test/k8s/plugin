@@ -7,6 +7,7 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--mtls" env="K8S_MTLS" help="Deploy the KMS with TLS + client-certificate (mutual TLS) and drive the plugin over an mTLS channel"
+#SUITE variants=fips,non-fips needs=cmd:kubectl,cmd:helm,cmd:minikube,cmd:openssl,k8s
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"

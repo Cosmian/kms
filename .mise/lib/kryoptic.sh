@@ -2,7 +2,7 @@
 # .mise/lib/kryoptic.sh — Out-of-tree build helper for the published `kryoptic`
 # PKCS#11 v3.0 software token (https://github.com/latchset/kryoptic), used
 # as the PKCS#11 v3.0 test token by crate/hsm/kryoptic
-# (`mise run test:hsm-kryoptic`).
+# (`mise run test:hsm:kryoptic`).
 #
 # `kryoptic` is deliberately NOT a [dev-dependencies] entry in
 # crate/hsm/base_hsm/Cargo.toml: its `kryoptic-lib` dependency requires

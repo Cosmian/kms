@@ -14,7 +14,7 @@
 > The plugin uses [`ovh/kmip-go`](https://github.com/ovh/kmip-go) as the Go KMIP client
 > library.
 >
-> **E2E test**: the KMS repo contains `mise run test:spire-kmip-key-manager` which builds
+> **E2E test**: the KMS repo contains `mise run test:spire:kmip-key-manager` which builds
 > spire-server from the SPIRE fork, starts KMS with the binary KMIP TCP socket,
 > and validates the SPIRE + KMS stack end-to-end with mTLS.
 
@@ -300,13 +300,13 @@ sequenceDiagram
 
 ### From the KMS repository
 
-The KMS repo contains `mise run test:spire-kmip-key-manager` — an end-to-end test that
+The KMS repo contains `mise run test:spire:kmip-key-manager` — an end-to-end test that
 builds both KMS and SPIRE from source and validates the `kmip` KeyManager over binary
 KMIP TCP/TLS with mTLS:
 
 ```bash
 # From the KMS repository root
-mise run test:spire-kmip-key-manager
+mise run test:spire:kmip-key-manager
 ```
 
 The task:
@@ -337,7 +337,7 @@ The KMS repository also includes KMIP 1.x protocol compliance tests using the
 
 ```bash
 # From the KMS repository root — KMIP 1.0–1.4 compliance (not SPIRE-related)
-mise run test:kmip-go
+mise run test:interop:kmip-go
 ```
 
 ---

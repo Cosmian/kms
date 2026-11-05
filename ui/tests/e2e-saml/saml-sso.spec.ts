@@ -7,7 +7,7 @@
  * login form -> Auth Verifier ACS -> `_ea_` cookie -> KMS, and the KMS validates the session
  * JWT against the Auth Verifier JWKS (the production signature path that unit tests skip).
  *
- * Run: `mise run test:ui-saml`.
+ * Run: `mise run test:ui:saml`.
  */
 import { expect, test, request as playwrightRequest, type BrowserContext, type Page } from "@playwright/test";
 

@@ -608,7 +608,7 @@ repos:
       # ── Redis (manual) ────────────────────────────────────────────────
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips, manual)
-        entry: mise run test:redis -- --variant non-fips
+        entry: mise run test:db:redis -- --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -643,7 +643,7 @@ repos:
 
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
-        entry: mise run test:wasm
+        entry: mise run test:ui:wasm
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]

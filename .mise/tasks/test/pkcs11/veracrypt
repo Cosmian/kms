@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Run VeraCrypt PKCS#11 integration tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=non-fips needs=nix ci=veracrypt
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init non-fips
+
+print_header "Running VeraCrypt PKCS#11 tests (${VARIANT_NAME})"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_veracrypt.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "VeraCrypt tests completed"

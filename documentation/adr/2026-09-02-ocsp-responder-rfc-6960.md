@@ -220,7 +220,7 @@ mapping):
   6960 §2.7 requires the responder to keep truthfully cascading `revoked` for every
   certificate the CA issued once the CA itself is compromised — refusing to sign in
   that specific case would silence the very cascade this feature exists to provide,
-  and is exercised end-to-end by `mise run test:ocsp` (step 7).
+  and is exercised end-to-end by `mise run test:pki:ocsp` (step 7).
 - **`Validate` chain-length cap**: `validate_operation` now rejects a combined
   `certificate`/`unique_identifier` count above `MAX_VALIDATE_CHAIN_LENGTH` (32),
   checked before any per-certificate database lookup.
@@ -309,7 +309,7 @@ unrelated cross-platform build/test defect, all closed the same day:
   before this feature reached a release — an unauthenticated DoS amplification chain,
   a cross-tenant disclosure path, and defense-in-depth gaps around compromised-key
   reuse and cache freshness — with no observed exploitation. Every fix is covered by
-  the existing external black-box test suites (`test:ocsp`, `test:pki-revocation`) and
+  the existing external black-box test suites (`test:pki:ocsp`, `test:pki:revocation`) and
   the full server test suite, both `fips` and `non-fips`.
 - **POS-007**: A peer security review of the PR confirmed the responder's core
   protocol handling (nonce bounds, signing algorithm, cache freshness, DoS
@@ -387,8 +387,8 @@ unrelated cross-platform build/test defect, all closed the same day:
   `false`), `ocsp_ca_uid`, `ocsp_responder_cert_uid`, `ocsp_cache_ttl_secs` (default
   `86400`), `ocsp_nonce_policy` (default `optional`), `ocsp_include_cert_chain` (default
   `true`), `ocsp_archive_cutoff_secs` (default `0`, disabled).
-- **IMP-002**: External-customer black-box test suite (`mise run test:ocsp`,
-  `.mise/tasks/test/ocsp`) drives a real KMS server purely through `ckms` (provisioning)
+- **IMP-002**: External-customer black-box test suite (`mise run test:pki:ocsp`,
+  `.mise/tasks/test/pki/ocsp`) drives a real KMS server purely through `ckms` (provisioning)
   and `openssl ocsp` / `curl` (querying) — no internal API calls — across 23 assertions:
   status mapping (good/revoked/unknown), GET+POST transport, all three nonce policies,
   RFC 5019 cache headers + cache-hit behaviour, delegated signer + archive-cutoff, and
@@ -411,10 +411,10 @@ unrelated cross-platform build/test defect, all closed the same day:
   SSRF protection documented as COSMIAN-2026-021) and cover: leaf revocation via CRL,
   intermediate-compromise CRL cascade, root-compromise via the new internal-state check,
   a deactivated (non-compromised) ancestor, and the raw-bytes-supplied-chain path.
-- **IMP-006**: `mise run test:pki-revocation` (`.mise/tasks/test/pki-revocation`) is a
+- **IMP-006**: `mise run test:pki:revocation` (`.mise/tasks/test/pki/revocation`) is a
   new external, black-box test suite exercising this fix purely through `ckms` and
   `openssl verify -crl_check` / `openssl ocsp`, deliberately not duplicating
-  `test:ocsp`'s coverage: (1) a leaf carrying both a CDP and an AIA OCSP URL, valid
+  `test:pki:ocsp`'s coverage: (1) a leaf carrying both a CDP and an AIA OCSP URL, valid
   before and correctly reported invalid/revoked via CRL, OCSP, and `Validate` after
   revocation; (2) a 3-level chain where compromising the **intermediate** CA cascades to
   the leaf via the existing CRL mechanism; (3) a 2-level chain where compromising the
@@ -444,7 +444,7 @@ unrelated cross-platform build/test defect, all closed the same day:
 - **IMP-010**: Success criteria for this revision: `cargo clippy-all` remains
   zero-warning; `cargo fmt --all -- --check` remains clean; the full
   `cosmian_kms_server` test suite passes in both `fips` (395 tests) and `non-fips` (572
-  tests); `mise run test:ocsp` (23 assertions) and `mise run test:pki-revocation` (12
+  tests); `mise run test:pki:ocsp` (23 assertions) and `mise run test:pki:revocation` (12
   assertions) both pass in both variants, including the CA-compromise-cascade scenario
   that the first attempt at the delegated-signer-refusal fix (IMP above) initially broke
   before being narrowed to only apply to a genuinely distinct, independently-compromised
@@ -489,13 +489,13 @@ unrelated cross-platform build/test defect, all closed the same day:
   `crate/crypto/src/openssl/ocsp.rs`, `crate/crypto/src/openssl/ocsp_ffi.rs`,
   `crate/server/src/config/command_line/ocsp_config.rs`,
   `crate/server_database/src/core/database_objects.rs`,
-  `documentation/docs/use_cases/pki-revocation.md`, `.mise/tasks/test/ocsp`,
+  `documentation/docs/use_cases/pki-revocation.md`, `.mise/tasks/test/pki/ocsp`,
   `CHANGELOG/ocsp.md`.
 - **REF-007**: `Validate` fix — `crate/server/src/core/operations/validate.rs`
   (`check_internal_certificate_states`, `tag_raw_certificates_with_state`).
 - **REF-008**: Retrieval permission matrix —
   `crate/server/src/core/retrieve_object_utils.rs` (`retrieve_object_for_operation`).
-- **REF-009**: New external test suite — `.mise/tasks/test/pki-revocation`.
+- **REF-009**: New external test suite — `.mise/tasks/test/pki/revocation`.
 - **REF-010**: New Rust tests — `crate/server/src/tests/test_validate.rs`
   (`internal_state_and_crl_cascade_tests`).
 - **REF-011**: Threat-model review (2026-09-03) — `threat-model-20260903-060003/`

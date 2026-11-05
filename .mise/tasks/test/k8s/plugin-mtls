@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run the Kubernetes plugin E2E test over mutual TLS"
+#SUITE variants=fips,non-fips needs=cmd:kubectl,cmd:helm,cmd:minikube,cmd:openssl,k8s
+set -euo pipefail
+exec mise run test:k8s:plugin --mtls

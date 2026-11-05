@@ -76,7 +76,7 @@ Db2 registers and activates the DEMK through the KMS KMIP socket.
 Run the integration test with:
 
 ```bash
-mise run test:db2 --variant non-fips
+mise run test:interop:db2 --variant non-fips
 ```
 
 The test verifies:

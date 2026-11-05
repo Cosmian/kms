@@ -92,7 +92,7 @@ The vendor library is a PKCS#11 v2.40 library, so the KMS adapts as follows (see
 There is no free/local Azure Cloud HSM simulator equivalent to SoftHSM2. CI connects to a persistent, pre-provisioned partition (the cluster is currently torn down, so the live job is disabled in `.github/workflows/test_all.yml`) and runs:
 
 ```bash
-mise run test:hsm-azure-cloud-hsm --variant non-fips
+mise run test:hsm:azure-cloud-hsm --variant non-fips
 ```
 
 This installs the Azure Cloud HSM Client SDK, starts the `azcloudhsm_client` daemon (through a VPN tunnel if the partition is not directly reachable), and runs the `test_hsm_azure_cloud_hsm_all` live test of the `azure_cloud_hsm_pkcs11_loader` crate. The task retries the test with a fresh daemon (`AZURE_CLOUD_HSM_TEST_ATTEMPTS`, default 3): the cluster occasionally advertises stale member addresses that make the 3-node quorum check fail transiently with `CKR_FUNCTION_FAILED`.

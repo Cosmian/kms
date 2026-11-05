@@ -36,10 +36,10 @@ The full list of fixes is in the branch changelog (`CHANGELOG/`).
 
 ### Automated SQLite upgrade and restore proof
 
-`mise run test:upgrade-sqlite` takes four binaries that you build yourself: the old `cosmian_kms` and `ckms` (for example from the `5.29.0` tag) and the new ones. The binaries decide FIPS or non-FIPS; the task builds and downloads nothing and starts only its own servers on free ports.
+`mise run test:db:upgrade-sqlite` takes four binaries that you build yourself: the old `cosmian_kms` and `ckms` (for example from the `5.29.0` tag) and the new ones. The binaries decide FIPS or non-FIPS; the task builds and downloads nothing and starts only its own servers on free ports.
 
 ```bash
-mise run test:upgrade-sqlite \
+mise run test:db:upgrade-sqlite \
   --old-kms /path/to/5.29.0/target/debug/cosmian_kms \
   --old-ckms /path/to/5.29.0/target/debug/ckms \
   --new-kms target/debug/cosmian_kms \

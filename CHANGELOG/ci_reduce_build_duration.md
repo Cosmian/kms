@@ -6,7 +6,10 @@
 
 ## Testing
 
-- Run the full workspace suite in SQLite tasks; scope other database tasks to database tests and the packages that start the shared test server. This also changes local `mise run test:psql`, `test:mysql`, `test:percona`, `test:mariadb` and `test:redis` runs.
+- Run the full workspace suite in SQLite tasks; scope other database tasks to database tests and the packages that start the shared test server. This also changes local `mise run test:db:psql`, `test:db:mysql`, `test:db:percona`, `test:db:mariadb` and `test:db:redis` runs.
+- Regroup the `mise run test:*` tasks by area (`test:db:*`, `test:hsm:*`, `test:pkcs11:*`, `test:interop:*`, `test:pki:*`, `test:obs:*`, `test:ui:*`, `test:cloud:*`, `test:k8s:*`, `test:pkg:*`): for example `test:psql` becomes `test:db:psql`, `test:hsm-softhsm2` becomes `test:hsm:softhsm2`, `test:ocsp` becomes `test:pki:ocsp`, `test:siem-filebeat` becomes `test:obs:filebeat`, `test:wasm` becomes `test:ui:wasm` and `test:secret_aws` becomes `test:cloud:secret-aws`. `test:cef` and `test:siem` become `test:obs`, `test:matrix` becomes `test:hsm:matrix`, and `test:vectors-rekey` becomes `dev:vectors-rekey` and no longer runs as part of `mise run test`.
+- Declare each test's variants, prerequisites and CI placement once, in a `#SUITE` header, and add `mise run test:suites <id|@group|@all> [--list]`. `mise run test` and `mise run test:<group>` run every suite that can run on the machine and print why each other one was skipped.
+- Split the aggregated tests: `test:ui:standard` no longer runs the auth, OIDC and SAML E2E suites (the `--standard-only` flag is removed; use `test:ui:auth`, `test:ui:oidc`, `test:ui:saml` or `test:ui`), `test:obs:audit` no longer runs the OpenSearch, Splunk and PostgreSQL compatibility checks (use `test:obs:audit-opensearch`, `test:obs:audit-splunk`, `test:obs:audit-postgres` or `test:obs`), and `test:k8s:plugin-mtls` replaces `test:k8s:plugin --mtls` in the Kubernetes group.
 
 ## CI
 

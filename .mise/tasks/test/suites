@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Run test suites by id (db:psql), @<group> or @all, with gating and a summary"
+#USAGE arg "<suites>" var=#true help="Suite ids (e.g. db:psql), @<group> or @all"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--list" help="Print what would run or be skipped, then exit"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+# shellcheck disable=SC2086,SC2154 # usage_suites is set by mise and is a space-joined variadic arg
+suites_main ${usage_suites}

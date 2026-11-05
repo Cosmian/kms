@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="E2E test: KMS Operator — Docker image inject via Kubernetes Job (Minikube)"
+#SUITE variants=fips,non-fips needs=cmd:kubectl,cmd:helm,cmd:minikube,cmd:openssl,k8s
 # The operator is tested exclusively via its published Docker image.
 # A Kubernetes Job runs the image in inject mode (initContainer) and a
 # busybox sidecar reads back the written file to assert the round-trip.

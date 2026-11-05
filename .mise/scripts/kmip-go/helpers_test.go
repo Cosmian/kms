@@ -10,7 +10,7 @@
 //   - Client authenticates with test_data/certificates/client_server/owner/ cert
 //
 // Run via: go test -v -count=1 ./... -timeout 120s
-// Or via:  mise run test:kmip-go
+// Or via:  mise run test:interop:kmip-go
 package kmip_go_tests
 
 import (

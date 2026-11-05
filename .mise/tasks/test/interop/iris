@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Run IRIS mTLS integration tests"
+# NOTE: no "depends=[\"build:kms\"]" here — build:kms always builds with ITS OWN
+# default variant (fips) regardless of the variant this task was invoked with,
+# which previously caused a wasted redundant FIPS build every time "test:interop:iris"
+# ran with its own (non-fips) default. test_iris.sh already builds the KMS
+# server itself with the correct variant/features below.
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#SUITE variants=non-fips needs=nix,docker ci=blackbox-nix
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+suite_init non-fips
+ensure_nix_shell
+
+print_header "Running IRIS mTLS integration tests (${VARIANT_NAME})"
+
+require_cmd docker "Docker is required to run the IRIS container."
+
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/test_iris.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "IRIS tests completed"

@@ -106,7 +106,7 @@ async fn assert_signature_valid(
 /// the signature is verified server-side against the public key.
 #[test]
 #[serial]
-#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm:softhsm2"]
 fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
@@ -161,7 +161,7 @@ fn test_hsm_kek_ecdsa_p256_sign() -> Pkcs11Result<()> {
 /// is what allows this test to run at all.
 #[test]
 #[serial]
-#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm:softhsm2"]
 fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
@@ -214,7 +214,7 @@ fn test_hsm_kek_ecdsa_secp256k1_sign() -> Pkcs11Result<()> {
 /// a pre-computed digest, unlike the ECDSA tests above.
 #[test]
 #[serial]
-#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm:softhsm2"]
 fn test_hsm_kek_eddsa_ed25519_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
@@ -1084,7 +1084,7 @@ fn find_profile_count(
 /// valid.
 #[test]
 #[serial]
-#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm:softhsm2"]
 fn test_hsm_kek_rsa_pss_sign() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;
@@ -1148,7 +1148,7 @@ fn test_hsm_kek_rsa_pss_sign() -> Pkcs11Result<()> {
 /// distinction to tell "verification failed" apart from "operation error".
 #[test]
 #[serial]
-#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm-softhsm2"]
+#[ignore = "Requires softhsm2 — set up and invoked by mise run test:hsm:softhsm2"]
 fn test_hsm_kek_c_verify_round_trip() -> Pkcs11Result<()> {
     log_init(None);
     let rt = tokio::runtime::Runtime::new()?;

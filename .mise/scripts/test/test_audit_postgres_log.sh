@@ -8,13 +8,13 @@
 # Unlike test_audit_log.sh (the file backend's equivalent), this does not re-derive
 # hash-chain/field-coverage guards — those are already covered by
 # crate/server_database's and crate/clients/clap's #[ignore]-gated unit tests (run via
-# `mise run test audit-postgres`, which invokes this script). This test's job is proving
+# `mise run test:obs:audit-postgres`, which invokes this script). This test's job is proving
 # the *wiring*: server config → PostgreSQL backend → CLI verify, none of which the unit
 # tests exercise (they talk to PgAuditSink/PgAuditReader directly, never through a real
 # running KMS server or its config file).
 #
 # Requires a running PostgreSQL instance reachable at KMS_AUDIT_POSTGRES_URL — see
-# `mise run test audit-postgres`, which starts the dedicated `postgres-audit` Docker
+# `mise run test:obs:audit-postgres`, which starts the dedicated `postgres-audit` Docker
 # Compose service before calling this script.
 #
 # Usage:
@@ -30,7 +30,7 @@ source "${SCRIPT_DIR}/../../lib/audit_e2e.sh"
 init_build_env "$@"
 setup_test_logging
 
-: "${KMS_AUDIT_POSTGRES_URL:?KMS_AUDIT_POSTGRES_URL must be set — see .mise/tasks/test/audit-postgres}"
+: "${KMS_AUDIT_POSTGRES_URL:?KMS_AUDIT_POSTGRES_URL must be set — see .mise/tasks/test/obs/audit-postgres}"
 # A UUID, not $$: a reused PID across CI runners/containers could otherwise collide
 # with a leftover instance_id from an earlier run against the same database.
 INSTANCE_ID="audit-pg-e2e-$(python3 -c 'import uuid; print(uuid.uuid4())')"
