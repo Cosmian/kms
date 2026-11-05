@@ -253,8 +253,7 @@ bytes = "1"
 cc = "1.4"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-# `yaml` is deliberately not enabled: figment's YAML backend pulls in serde_yaml -> unsafe-libyaml (RUSTSEC-2024-0449)
-clap-config-fallback = { version = "0.1", default-features = false, features = ["derive", "toml", "json"] }
+clap-config-fallback = { version = "0.3", default-features = false, features = ["derive", "toml", "json"] }
 console_error_panic_hook = "0.1"
 const-oid = "0.9.6"
 criterion = { version = "0.6", default-features = false, features = [

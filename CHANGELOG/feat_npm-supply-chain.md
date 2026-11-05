@@ -27,8 +27,8 @@
   on `ui/pnpm-lock.yaml`, and `npm audit signatures`. On a pull request OSV-Scanner fails only on advisories the base
   branch does not already have (and always on a malicious package), so an advisory already on develop no longer blocks
   unrelated PRs; the daily develop run fails on any advisory. `pnpm audit --prod` is informational
-- Ignore the minimatch DoS GHSA-g3hv-75wg-m249 until 2027-01-02: it needs `optimizationLevel >= 2`, which no
-  consumer sets, and its fix (minimatch 11) is not supported by eslint yet
+- Override `minimatch` to `^11.0.1` to fix the DoS GHSA-g3hv-75wg-m249 (eslint and the other consumers work with 11);
+  the `^10.2.1` override also made Dependabot's `security_update_not_possible` job fail
 - Add the `npm-policy` and `pnpm-frozen-lockfile` pre-commit hooks and the `npm-audit` pre-push hook
 
 ## Bug Fixes

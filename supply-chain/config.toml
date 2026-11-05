@@ -369,9 +369,19 @@ criteria = "safe-to-run"
 version = "0.1.13"
 criteria = "safe-to-deploy"
 
+[[exemptions.clap-config-fallback]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+notes = "workspace server CLI config fallback (0.1.13 -> 0.3.0) — unaudited, pending review"
+
 [[exemptions.clap-config-fallback-derive]]
 version = "0.1.13"
 criteria = "safe-to-deploy"
+
+[[exemptions.clap-config-fallback-derive]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.cmov]]
 version = "0.5.4"
