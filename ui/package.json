@@ -32,7 +32,7 @@
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
         "react-i18next": "^17.1.9",
-        "react-router-dom": "^7.18.4",
+        "react-router-dom": "^7.18.5",
         "tailwindcss": "^4.3.3"
     },
     "devDependencies": {
