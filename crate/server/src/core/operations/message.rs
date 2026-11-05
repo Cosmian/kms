@@ -944,17 +944,15 @@ async fn process_operation(
                         protocol_version_minor: 0,
                     })
                 );
-                if is_kmip_2_0 {
-                    if let Some(operations) = response.operation.as_mut() {
-                        operations.retain(|op| {
-                            !matches!(
-                                op,
-                                OperationEnumeration::Ping
-                                    | OperationEnumeration::SetConstraints
-                                    | OperationEnumeration::GetConstraints
-                            )
-                        });
-                    }
+                if is_kmip_2_0 && let Some(operations) = response.operation.as_mut() {
+                    operations.retain(|op| {
+                        !matches!(
+                            op,
+                            OperationEnumeration::Ping
+                                | OperationEnumeration::SetConstraints
+                                | OperationEnumeration::GetConstraints
+                        )
+                    });
                 }
                 Operation::QueryResponse(Box::new(response))
             }
