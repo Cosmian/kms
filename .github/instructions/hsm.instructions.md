@@ -15,6 +15,6 @@ matrix.
 - [ ] HSM model enum updated in `crate/server/src/config/` or `crate/hsm/base_hsm/`
 - [ ] Wizard step in `crate/server/src/config/wizard/hsm_wizard.rs`
 - [ ] Test vectors in `test_data/vectors/hsm/<model>/`
-- [ ] CI matrix entry added in `.github/workflows/test_all.yml`
+- [ ] CI leg declared in the `#SUITE` header of `.mise/tasks/test/hsm/<model>` (`ci=`, `scope=`, `lock=` for shared hardware, `bench=`); `mise run ci:plan` generates the matrix, `test_all.yml` only maps the secrets of a `scope=upstream` HSM
 
 > Rule 4.13 of `/kms-sync-rules`.

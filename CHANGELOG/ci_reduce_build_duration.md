@@ -15,3 +15,5 @@
 
 - Add small Nix dev-shell, build.rs OpenSSL and Windows vcpkg caches; group short integration suites and split standard UI tests from SSO tests.
 - Keep MySQL-family FIPS legs, HSM benchmarks, the full Windows lib suite and compiling publication dry runs in non-PR runs. Pin the package upload host key and preserve packaging's existing Nix substituter behavior.
+- Build the `test_all.yml` test matrices from the `#SUITE` headers: a new `plan` job runs `mise run ci:plan`, the `hsm` and `hsm-upstream` jobs merge into `test-nix` and `test-nix-upstream`, and `mise run test:suites` replaces the `run-mise-suites` action. Adding, moving or re-scoping a suite edits its header only.
+- Run the PKCS#11 support report and `pkcs11-check` once, in the `pkcs11` leg, instead of in the `ase` leg and in every non-fips HSM leg. Stop passing the Google, AWS and Azure test secrets to the `test-nix` job: none of its suites uses them.

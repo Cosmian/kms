@@ -59,42 +59,48 @@ flowchart TB
 ```mermaid
 flowchart TB
     Cache["nix-dev-shell-cache<br/>OpenSSL 3.1.2 / 3.6.5 + SoftHSM2 built once per Nix input hash"]
+    Plan["plan<br/>mise run ci:plan: one matrix per scope, from the SUITE headers"]
     subgraph NixJobs["Jobs importing the Nix dev shell"]
-        TestNix["test-nix<br/>DB backends · grouped black-box suites"]
-        TestJs["test-nix-js<br/>WASM · UI standard · UI SSO · SPIRE"]
-        Upstream["test-nix-upstream<br/>google-cse · secrets"]
-        Hsm["hsm<br/>utimaco · crypt2pay-simulator · softhsm2 · kryoptic"]
-        HsmUp["hsm-upstream<br/>proteccio · crypt2pay"]
+        TestNix["test-nix (public)<br/>DB backends · black-box suites · pkcs11 clients · software HSMs"]
+        TestJs["test-nix-js (js)<br/>WASM · UI standard · UI SSO · SPIRE"]
+        Upstream["test-nix-upstream (upstream)<br/>google-cse · secrets · proteccio · crypt2pay"]
     end
-    Cache --> TestNix & TestJs & Upstream & Hsm & HsmUp
+    Cache & Plan --> TestNix & TestJs & Upstream
     Helm["helm (minikube)"]
     Xks["xks-remote<br/>not on schedule"]
     Mac["interop-macos<br/>scep + est"]
     Win["windows-2022<br/>test_windows.yml"]
     DryRun["cargo-publish-dry-run<br/>PR: no-verify · nightly: full"]
     Publish["cargo-publish<br/>tags only"]
-    TestNix & TestJs & Upstream & Hsm & HsmUp & Helm --> Publish
+    TestNix & TestJs & Upstream & Helm --> Publish
 ```
 
-`test-nix-js` (wasm, ui, ui-sso, spire) is a sibling of `test-nix` that runs without cloud or test secrets, because
-it executes `pnpm install`. It also imports the Nix dev shell.
+`plan` runs `mise run ci:plan` and publishes one matrix per scope, built from the `#SUITE` headers of `.mise/tasks/test/**` (see `.mise/tasks/test/README.md`). The three test jobs only expand their matrix and run `mise run test:suites <suites> --variant <variant>`, so adding, moving or re-scoping a suite never edits `test_all.yml`. A leg is a `ci=` name; a matrix cell is a leg and a variant.
+
+|Job|`scope`|Legs|
+|---|---|---|
+|`test-nix`|`public`|databases (`sqlite`, `psql`, `mysql`, `percona`, `mariadb`, `redis`), software HSMs (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`), `gcp-cmek`, `jose`, `db2`, `ase`, `audit`, `veracrypt` and the grouped legs below|
+|`test-nix-js`|`js`|`wasm`, `ui`, `ui-sso`, `spire`|
+|`test-nix-upstream`|`upstream`|`google-cse`, `secrets`, `proteccio`, `crypt2pay`|
+
+`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its plan is empty on forks and fork pull requests, which skips the job. A suite whose `env:` need is unset is skipped with a `::warning::`, not failed. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
 
 ### Grouped legs
 
-Black-box suites whose own test time is under two minutes share one runner (one build, then one
-`mise run test:<suite>` per suite, via `run-mise-suites`):
+Suites whose own test time is under two minutes share one runner (one build, then `mise run test:suites` runs them one after the other and reports every failing suite). Suites that re-enter the Nix shell sit in their own `-nix` leg, because switching `OPENSSL_DIR` recompiles the workspace.
 
 |Leg|Suites|
 |---|---|
-|`blackbox` fips|ocsp, pki-revocation, scep-interop, est-interop, otel, secret_cosmian_kms, azure-cloud-hsm-build|
-|`blackbox` non-fips|the fips list plus cef, siem, monitoring|
-|`blackbox-nix` fips|kmip-go|
-|`blackbox-nix` non-fips|kmip-go, xks, azure-ekm, pykmip, iris|
-|`pkcs11-nix` non-fips|openssh, luks, gnupg|
-|`ui-sso` non-fips (in `test-nix-js`)|ui-auth, ui-oidc, ui-saml (`ui` runs `--standard-only`)|
-|`secrets` non-fips (in `test-nix-upstream`)|secret_vault, secret_aws, secret_azure|
+|`blackbox` fips|`pki:ocsp`, `pki:revocation`, `pki:scep-interop`, `pki:est-interop`, `obs:otel`, `cloud:secret-cosmian-kms`, `hsm:azure-cloud-hsm-build`|
+|`blackbox` non-fips|the fips list plus `obs:cef-format`, `obs:cef-syslog`, `obs:cef-tcp-syslog`, `obs:filebeat`, `obs:fluent-bit`, `obs:monitoring`|
+|`blackbox-nix` fips|`interop:kmip-go`|
+|`blackbox-nix` non-fips|`interop:kmip-go`, `cloud:xks`, `cloud:azure-ekm`, `interop:pykmip`, `interop:iris`|
+|`pkcs11` non-fips|`pkcs11:openssh`, `pkcs11:luks`, `pkcs11:gnupg`, `pkcs11:support`, `pkcs11:tool`|
+|`audit`|`obs:audit`, `obs:audit-opensearch`, `obs:audit-postgres`, `obs:audit-splunk`|
+|`ui-sso` non-fips (in `test-nix-js`)|`ui:auth`, `ui:oidc`, `ui:saml`|
+|`secrets` non-fips (in `test-nix-upstream`)|`cloud:secret-vault`, `cloud:secret-aws`, `cloud:secret-azure`|
 
-A suite that fails only when grouped (port, Docker or environment leak) moves back to the `type:` axis of its matrix.
+A suite that fails only when grouped (port, Docker or environment leak) moves to a `ci=` leg of its own: edit its `#SUITE` header.
 
 ## PR versus nightly
 
@@ -112,7 +118,7 @@ A suite that fails only when grouped (port, Docker or environment leak) moves ba
 |`xks-remote`|runs (upstream PRs)|dispatch and tags only, not `schedule` (manual approval environment)|
 |Linux "No Nix" legs|run|run|
 
-The DB scoping also applies locally: `mise run test:psql`, `test:mysql`, `test:percona`, `test:mariadb` and `test:redis` no longer run DB-independent server, crypto and KMIP unit tests. Use `test:sqlite` for the full workspace suite.
+The DB scoping also applies locally: `mise run test:db:psql`, `test:db:mysql`, `test:db:percona`, `test:db:mariadb` and `test:db:redis` no longer run DB-independent server, crypto and KMIP unit tests. Use `test:db:sqlite` for the full workspace suite.
 
 A nightly failure notifies only the GitHub user who last edited the `main.yml` cron line.
 
@@ -147,7 +153,6 @@ job then builds the Nix closure once for that PR.
 |`cache-openssl-buildrs`|`variant`|Caches `target/openssl-*` built by `crate/crypto/build.rs`|`main_base.yml`, `forward_proxy.yml`, `test_all.yml`|
 |`build-static-openssl`|none|Windows vcpkg static OpenSSL with retries and a vcpkg binary cache|`test_windows.yml`, `build_windows.yml`|
 |`windows-vs-ninja`|none|Puts Visual Studio's Ninja on PATH so vcpkg does not download it|`test_windows.yml`|
-|`run-mise-suites`|`suites`, `variant`, `args`|Runs `mise run test:<suite>` per suite, reports every failing suite, then fails|`test_all.yml`|
 |`docker-login-ghcr`|`github-token`|Logs in to ghcr.io|`packaging-docker.yml`|
 |`import-gpg-key`|`gpg-private-key`, `passphrase`|Imports the package-signing key and lists it|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`|
 |`setup-helm-minikube`|none|Installs Helm and starts Minikube (docker driver, Kubernetes v1.32.0)|`packaging-docker.yml`|
