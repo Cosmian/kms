@@ -1,58 +1,98 @@
 ---
 name: Install mise
 description: >
-  Install mise using Homebrew on macOS and a pinned, SHA-256-verified
-  release binary on Linux, without installer release-index discovery.
+  Install a pinned, SHA-256-verified mise release binary on Linux and macOS,
+  without installer release-index discovery. The download tries the
+  package.cosmian.com copy, then GitHub releases, then the mise.jdx.dev mirror,
+  with backoff, so a GitHub incident (HTTP 5xx) does not fail the job.
   Sets MISE_YES=1 so all subsequent mise commands run non-interactively.
 
 runs:
   using: composite
   steps:
-    - name: Install mise (macOS via Homebrew)
-      if: runner.os == 'macOS'
-      shell: bash
-      run: brew install mise
-
-    - name: Install mise (Linux via pinned binary)
-      if: runner.os == 'Linux'
+    - name: Install mise (pinned binary)
+      if: runner.os == 'Linux' || runner.os == 'macOS'
       shell: bash
       run: |
         set -euo pipefail
         MISE_VERSION="v2026.10.8"
         # Recompute pins from https://github.com/jdx/mise/releases/download/<version>/SHASUMS256.txt
+        # and republish the copies with `mise run release:mirror-mise` when bumping.
         # musl hosts (Alpine containers) need the -musl build: the glibc one fails to
         # relocate even with gcompat (`__res_init: symbol not found`).
         libc="gnu"
         if compgen -G '/lib/ld-musl-*.so.1' >/dev/null; then libc="musl"; fi
-        case "$RUNNER_ARCH/$libc" in
-          X64/gnu)
+        case "$RUNNER_OS/$RUNNER_ARCH/$libc" in
+          Linux/X64/gnu)
             asset="linux-x64"
             checksum="c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428"
             ;;
-          ARM64/gnu)
+          Linux/ARM64/gnu)
             asset="linux-arm64"
             checksum="6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5"
             ;;
-          X64/musl)
+          Linux/X64/musl)
             asset="linux-x64-musl"
             checksum="043dc6b9077db988269ca2f85059851cb09fc080355350021363e95a5e227f84"
             ;;
-          ARM64/musl)
+          Linux/ARM64/musl)
             asset="linux-arm64-musl"
             checksum="d9c5447ad5084b7bf9705ef2913dfad97268235f15849a51e88a21ede7e7204a"
             ;;
+          macOS/ARM64/*)
+            asset="macos-arm64"
+            checksum="dd77de9a7574e38d8409fb06fa85e1581415896639d075987791d8c4e5a57b73"
+            ;;
+          macOS/X64/*)
+            asset="macos-x64"
+            checksum="a122fd04db5f2da07d24528ed61109bc82142ca44e821d4faafa05650f6ba627"
+            ;;
           *)
-            echo "::error::Unsupported Linux runner architecture: $RUNNER_ARCH"
+            echo "::error::Unsupported runner: $RUNNER_OS/$RUNNER_ARCH"
             exit 1
             ;;
         esac
+
+        sha256_of() {
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$1" | cut -d' ' -f1
+          else
+            shasum -a 256 "$1" | cut -d' ' -f1
+          fi
+        }
+
         work_dir="$(mktemp -d)"
         trap 'rm -rf -- "${work_dir:?}"' EXIT
-        curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors \
-          -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-${asset}" \
-          -o "${work_dir}/mise"
-        echo "${checksum}  ${work_dir}/mise" | sha256sum -c -
-        install -Dm755 "${work_dir}/mise" "$HOME/.local/bin/mise"
+        file="mise-${MISE_VERSION}-${asset}"
+        # Same bytes on every host: the pinned checksum is the trust anchor, so a mirror
+        # (or a corrupted/partial download) can never install anything unexpected.
+        # A miss on package.cosmian.com (404) just moves on to the next source.
+        urls=(
+          "https://package.cosmian.com/mise/${MISE_VERSION}/${file}"
+          "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/${file}"
+          "https://mise.jdx.dev/${MISE_VERSION}/${file}"
+        )
+        # Up to 8 rounds over all sources with growing sleeps (15 s ... 105 s), about 7 minutes
+        # in the worst case, to ride out a GitHub/CDN incident (HTTP 502/503/504).
+        ok=false
+        for attempt in 1 2 3 4 5 6 7 8; do
+          for url in "${urls[@]}"; do
+            if curl --retry 2 --retry-delay 5 --connect-timeout 20 --max-time 120 \
+              -fsSL "$url" -o "${work_dir}/mise" &&
+              [ "$(sha256_of "${work_dir}/mise")" = "$checksum" ]; then
+              ok=true
+              break 2
+            fi
+            echo "::warning::mise download failed or checksum mismatch (attempt ${attempt}): ${url}"
+          done
+          [ "$attempt" -lt 8 ] && sleep $((attempt * 15))
+        done
+        if [ "$ok" != true ]; then
+          echo "::error::Could not download a checksum-verified ${file} from any source"
+          exit 1
+        fi
+        mkdir -p "$HOME/.local/bin"
+        install -m 755 "${work_dir}/mise" "$HOME/.local/bin/mise"
         "$HOME/.local/bin/mise" --version
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
