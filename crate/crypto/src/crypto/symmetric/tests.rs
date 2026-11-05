@@ -48,6 +48,53 @@ fn test_encrypt_decrypt_aes_gcm_128() {
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
+/// Decrypt with the tag truncated to `len` bytes: `[single-part, streaming]` results.
+fn decrypt_truncated(cipher: SymCipher, len: usize) -> [Result<Vec<u8>, crate::CryptoError>; 2] {
+    let key = random_key(&KmsRng::new(), cipher).unwrap();
+    let nonce = random_nonce(&KmsRng::new(), cipher).unwrap();
+    let (ciphertext, mut tag) = encrypt(cipher, &key, &nonce, b"aad", b"message", None).unwrap();
+    tag.truncate(len);
+    let single = decrypt(cipher, &key, &nonce, b"aad", &ciphertext, &tag, None).map(|p| p.to_vec());
+    let mut stream = cipher
+        .stream_cipher(Mode::Decrypt, &key, &nonce, b"aad")
+        .unwrap();
+    let mut streamed = stream.update(&ciphertext).unwrap();
+    let tail = stream.finalize_decryption(&tag).map(|t| {
+        streamed.extend(t);
+        streamed
+    });
+    [single, tail]
+}
+
+fn assert_short_tags_rejected(cipher: SymCipher) {
+    for len in [1, 4, 8, 11] {
+        for result in decrypt_truncated(cipher, len) {
+            assert!(
+                matches!(result, Err(crate::CryptoError::InvalidTag(_))),
+                "{len}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_gcm_rejects_short_tags() {
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+    assert_short_tags_rejected(SymCipher::Aes256Gcm);
+    for len in 12..=16 {
+        for result in decrypt_truncated(SymCipher::Aes128Gcm, len) {
+            assert_eq!(result.unwrap(), b"message");
+        }
+    }
+}
+
+#[cfg(feature = "non-fips")]
+#[test]
+fn test_chacha20_poly1305_rejects_short_tags() {
+    assert_short_tags_rejected(SymCipher::Chacha20Poly1305);
+}
+
 #[test]
 fn test_encrypt_decrypt_aes_gcm_256() {
     // Load FIPS provider module from OpenSSL.

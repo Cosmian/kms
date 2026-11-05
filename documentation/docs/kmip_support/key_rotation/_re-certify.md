@@ -28,19 +28,27 @@ certificate, and re-signs it using the specified (or inherited) issuer key.
    new UID.
 4. `ReplacedObjectLink` is added to the **new** certificate pointing back to
    the old UID.
-5. The new certificate enters **Active** state (or **Pre-Active** if
-   `Offset > 0`).
-6. The old certificate is **not** automatically deactivated — its state remains
-   unchanged. Call `Revoke` explicitly to deactivate it when ready.
+5. The new certificate enters **Active** state if its Activation Date is now or
+   in the past, otherwise **Pre-Active**. With an `Offset` the Activation Date is
+   `now + Offset`; without it the Activation Date is copied from the old
+   certificate, and the new certificate is Pre-Active if the old one has none.
+6. An Active old certificate becomes **Deactivated** (Deactivation Date = now);
+   a Deactivated one is unchanged.
+
+The old certificate must be Active or Deactivated, else `Permission_Denied`.
+A source that is not a certificate returns `Invalid_Object_Type`. The subject
+and the issuer are resolved as the requester: a grant on the certificate does
+not extend to the owner's issuer key or Certificate Request objects.
 
 ## Request Payload
 
 | Item                     | Required | Description                                                                                       |
 | ------------------------ | :------: | ------------------------------------------------------------------------------------------------- |
 | `UniqueIdentifier`       | No       | UID of the existing certificate to re-certify. Defaults to the ID Placeholder if omitted.        |
-| `CertificateRequestType` | No       | Type of an optional accompanying certificate request (e.g., PKCS10).                             |
+| `CertificateRequestUniqueIdentifier` | No | UID of a managed Certificate Request object used as the subject instead of the old certificate. An inline `CertificateRequestValue` takes precedence. |
+| `CertificateRequestType` | No       | Type of an optional accompanying certificate request (e.g., PKCS10). Required with `CertificateRequestValue` (`Invalid_Field` otherwise). |
 | `CertificateRequestValue`| No       | Raw certificate request bytes (PEM or DER). Overrides the subject information from the old cert. |
-| `Offset`                 | No       | Seconds between `Initial Date` and the new certificate's `Activation Date`. `0` → Active immediately; `> 0` → Pre-Active. |
+| `Offset`                 | No       | Interval in seconds: the new certificate's `Activation Date` is `now + Offset`. Without it the Activation Date is copied from the old certificate (Pre-Active if it has none). The new certificate is Active iff its Activation Date ≤ now. |
 | `Attributes`             | No       | Desired attributes for the new certificate (e.g., issuer private key ID, issuer certificate ID, number of days). |
 | `ProtectionStorageMasks` | No       | Permissible protection storage mask selections for the new object.                                |
 
@@ -62,7 +70,7 @@ key pairs.
 | --------------------- | ------------------------------------------ | ------------------------------------------ |
 | New UID               | Always fresh                               | Optionally same as old                     |
 | Object links          | Bidirectional (old ↔ new)                  | Not set automatically                      |
-| Old cert deactivation | Manual (call `Revoke`)                     | Manual (call `Revoke`)                     |
+| Old cert deactivation | Automatic if Active (Deactivated, Deactivation Date = now) | Manual (call `Revoke`)                     |
 | KMIP operation tag    | `ReCertify`                                | `Certify`                                  |
 
 **CLI command:**
@@ -154,15 +162,20 @@ switchover by pre-staging the replacement before the old one expires.
 
 ```mermaid
 flowchart LR
-    C0["Cert₀ (old)<br/>Active"] -->|ReplacementObjectLink| C1["Cert₁ (new)<br/>Active"]
+    C0["Cert₀ (old)<br/>Deactivated"] -->|ReplacementObjectLink| C1["Cert₁ (new)<br/>Active"]
     C1 -->|ReplacedObjectLink| C0
 ```
 
-The old certificate remains `Active` until explicitly revoked.  To complete the
-rotation:
+An Active old certificate becomes Deactivated (Deactivation Date = now); a
+Deactivated one is unchanged. To complete the rotation, destroy the old
+certificate, or revoke it with a compromise reason (a Deactivated object
+accepts no other revocation reason):
 
 ```bash
-# Revoke the old certificate when no longer needed
+# Destroy the old certificate when no longer needed
+ckms certificates destroy --certificate-id <OLD_CERT_UID>
+
+# Or mark it compromised
 ckms certificates revoke --certificate-id <OLD_CERT_UID> \
-  --revocation-reason "Superseded"
+  --reason-code key-compromise "key was compromised"
 ```

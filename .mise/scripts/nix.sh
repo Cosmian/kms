@@ -43,7 +43,7 @@ usage() {
       ase                    Run SAP ASE KMIP TDE integration test (builds the ASE image on the fly)
       cef                    Run CEF audit export test (live server + jc)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
-                             backend: softhsm2 | utimaco | proteccio | all (default)
+                             backend: softhsm2 | utimaco | proteccio | crypt2pay | crypt2pay-simulator | all (default)
       ui                     Run UI E2E tests with Playwright (non-FIPS only)
     package [type]
                        Build package(s) via Nix
@@ -95,10 +95,11 @@ usage() {
     $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
     $0 --variant non-fips test openssh    # OpenSSH PKCS#11 integration tests
     $0 test luks                          # LUKS disk-encryption PKCS#11 tests
-    $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
+    $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio + Crypt2Pay + Crypt2Pay Simulator
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
     $0 test hsm proteccio       # Proteccio only
+    $0 test hsm crypt2pay-simulator # Crypt2Pay Simulator only
     $0 --variant non-fips test ui           # UI E2E tests (Playwright)
     $0 package                              # Build all packages for this OS
     $0 package deb                          # FIPS variant
@@ -573,7 +574,7 @@ test_command() {
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_ui.sh"
       ;;
     hsm)
-      # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
+      # Optional backend argument: softhsm2 | utimaco | proteccio | crypt2pay | crypt2pay-simulator | all (default)
       HSM_BACKEND="${1:-all}"
       case "$HSM_BACKEND" in
         all)
@@ -595,9 +596,13 @@ test_command() {
           SCRIPT="$REPO_ROOT/.mise/scripts/test/test_hsm_crypt2pay.sh"
           shift
           ;;
+        crypt2pay-simulator)
+          SCRIPT="$REPO_ROOT/.mise/scripts/test/test_hsm_crypt2pay_simulator.sh"
+          shift
+          ;;
         *)
           echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
-          echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, all" >&2
+          echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, crypt2pay, crypt2pay-simulator, all" >&2
           usage
           ;;
       esac

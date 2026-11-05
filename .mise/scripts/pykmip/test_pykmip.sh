@@ -14,8 +14,8 @@ NC='\033[0m' # No Color
 # Configuration
 PYKMIP_SCRIPT=".mise/scripts/pykmip/pykmip_client.py"
 DSM_SCRIPT=".mise/scripts/pykmip/synology_dsm_client.py"
-PYKMIP_CONF=".mise/scripts/pykmip/pykmip.conf"
-PYTHON_CMD="python" # Will use python from venv after activation
+PYKMIP_CONF="${PYKMIP_CONF:-.mise/scripts/pykmip/pykmip.conf}"
+PYTHON_CMD="${PYTHON_CMD:-python}" # Will use python from venv after activation
 
 # Function to print colored output
 print_status() {
@@ -158,6 +158,12 @@ run_operation() {
   if echo "$output" | grep -q '"status": "error"'; then
     failure_detected=true
     failure_reason="KMIP response status is error"
+  fi
+
+  # A run without an explicit success status is a failure
+  if ! echo "$output" | grep -q '"status": "success"'; then
+    failure_detected=true
+    failure_reason="no \"status\": \"success\" in output"
   fi
 
   # Check for Python errors/exceptions (improved detection)

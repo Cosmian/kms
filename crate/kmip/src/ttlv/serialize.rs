@@ -85,11 +85,14 @@ impl Serialize for TTLV {
             TTLValue::ByteString(v) => {
                 serialize_struct_(serializer, &self.tag, "ByteString", &UpperHex(v))
             }
+            // A KMIP Date-Time is POSIX time in seconds, as in the binary and XML encodings
             TTLValue::DateTime(v) => serialize_struct_(
                 serializer,
                 &self.tag,
                 "DateTime",
                 &v.to_offset(UtcOffset::UTC)
+                    .replace_nanosecond(0)
+                    .map_err(ser::Error::custom)?
                     .format(&Rfc3339)
                     .map_err(|err| {
                         ser::Error::custom(format!(

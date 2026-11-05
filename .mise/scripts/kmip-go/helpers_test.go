@@ -55,10 +55,17 @@ func repoRoot() string {
     }
 }
 
+// kmipAddr is the KMIP socket address, overridable with KMIP_SERVER_ADDR.
+func kmipAddr() string {
+    if a := os.Getenv("KMIP_SERVER_ADDR"); a != "" {
+        return a
+    }
+    return "127.0.0.1:15696"
+}
+
 func certPath(rel string) string { return filepath.Join(repoRoot(), rel) }
 
 const (
-    kmipAddr      = "127.0.0.1:15696"
     caCertRel     = "test_data/certificates/client_server/ca/ca.crt"
     clientCertRel = "test_data/certificates/client_server/owner/owner.client.acme.com.crt"
     clientKeyRel  = "test_data/certificates/client_server/owner/owner.client.acme.com.key"
@@ -108,7 +115,7 @@ func newClient(t *testing.T, version kmip.ProtocolVersion) *kmipclient.Client {
     }
 
     client, err := kmipclient.Dial(
-        kmipAddr,
+        kmipAddr(),
         kmipclient.WithTlsConfig(tlsCfg),
         kmipclient.EnforceVersion(version),
     )
@@ -203,3 +210,11 @@ func hasAttr(names []kmip.AttributeName, attrName string) bool {
 func sanitiseName(s string) string {
     return strings.NewReplacer("/", "_", " ", "_", ":", "_").Replace(s)
 }
+
+// aesGCM96 is kmip.AES_GCM with IV Length in bits (KMIP spec): the library's constant
+// sends 12, which KMIP defines as 12 bits and the server rejects; 96 bits is the conforming value.
+var aesGCM96 = func() kmip.CryptographicParameters {
+    p := kmip.AES_GCM
+    p.IVLength = 96
+    return p
+}()

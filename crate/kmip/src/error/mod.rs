@@ -164,7 +164,6 @@ macro_rules! kmip_2_1_bail {
     };
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::KmipError;

@@ -3,7 +3,11 @@
 // cannot see through the macro boundary.
 // `struct_field_names`: `ui_oidc_*` fields share a prefix because they are
 // flattened into the CLI namespace and serde keys.
-#![allow(clippy::collection_is_never_read, clippy::struct_field_names)]
+#![expect(
+    clippy::collection_is_never_read,
+    clippy::struct_field_names,
+    reason = "ConfigArgs derive generates intermediate collections; `ui_oidc_*` field names are CLI flag and TOML key names"
+)]
 
 use std::{fmt, sync::Arc};
 

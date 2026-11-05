@@ -1,7 +1,5 @@
 //! HTTP server configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub)]
-
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use super::PromptResultExt;
@@ -20,7 +18,7 @@ pub(super) fn default_cors_origins(scheme: &str, port: u16) -> Vec<String> {
         .collect()
 }
 
-pub fn configure_http() -> KResult<HttpConfig> {
+pub(crate) fn configure_http() -> KResult<HttpConfig> {
     let theme = ColorfulTheme::default();
 
     #[cfg(target_os = "windows")]

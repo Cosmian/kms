@@ -1,6 +1,9 @@
 // Field names intentionally share a `vault_` prefix for disambiguation in
 // flat CLI / env-var namespaces.
-#![allow(clippy::struct_field_names)]
+#![expect(
+    clippy::struct_field_names,
+    reason = "clap/serde field names share a prefix: they are CLI flag, env-var and TOML key names"
+)]
 
 use clap::Args;
 use clap_config_fallback::ConfigArgs;

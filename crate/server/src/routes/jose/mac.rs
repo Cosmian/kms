@@ -52,6 +52,9 @@ pub(crate) async fn mac(
             cryptographic_parameters: Some(kmip_params),
             data: data_bytes,
             mac_data: expected_mac_bytes,
+            correlation_value: None,
+            init_indicator: None,
+            final_indicator: None,
         };
 
         let resp = kms
@@ -59,7 +62,7 @@ pub(crate) async fn mac(
             .await
             .map_err(CryptoApiError::from)?;
 
-        let valid = matches!(resp.validity_indicator, ValidityIndicator::Valid);
+        let valid = matches!(resp.validity_indicator, Some(ValidityIndicator::Valid));
 
         Ok(actix_web::web::Json(MacResponse::Verify(
             MacVerifyResponse {

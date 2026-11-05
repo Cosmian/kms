@@ -110,7 +110,7 @@ async fn test_add_tags_happy_path() -> KResult<()> {
     Ok(())
 }
 
-/// POSTing the same tag twice results in exactly one occurrence (idempotent).
+/// `POST`ing the same tag twice results in exactly one occurrence (idempotent).
 #[tokio::test]
 async fn test_add_tags_idempotent() -> KResult<()> {
     let app = test_utils::setup_app(None).await;

@@ -17,14 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(
-    unsafe_code,
-    non_snake_case, // case come from C
-    clippy::missing_safety_doc,
-    clippy::missing_errors_doc,
-    clippy::cast_possible_truncation, // CK_ULONG is u32 on Windows, u64 on Linux; casts are inherent to the PKCS#11 FFI
-)]
-
 pub mod core;
 mod error;
 mod objects_store;
@@ -34,8 +26,7 @@ mod sessions;
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
-    clippy::unwrap_used,
-    clippy::indexing_slicing
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 mod tests;
 #[cfg(test)]

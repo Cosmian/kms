@@ -57,6 +57,7 @@ pub(super) fn get_symmetric_key_1_0(client: &SocketClient, key_id: &str) {
                 request_payload: Operation::Get(Get {
                     unique_identifier: Some(key_id.to_owned()),
                     key_format_type: None,
+                    key_wrap_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
                 }),

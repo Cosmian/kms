@@ -18,6 +18,11 @@ The Eviden KMS server supports signing with RSA and EC private keys, as well as 
 - Ed25519 (signature verification only for imported keys)
 - OpenPGP detached signatures (SHA-256, RSA or Ed25519)
 
+An RSA key used with a non-RSA `Digital Signature Algorithm` returns `Unsupported_Cryptographic_Parameters`. A key
+whose Cryptographic Usage Mask lacks `Sign` returns `Incompatible_Cryptographic_Usage_Mask`, an object of the wrong
+type `Invalid_Object_Type`, and a key that is not Active `Wrong_Key_Lifecycle_State`. Signature Verify also accepts
+Deactivated and Compromised keys.
+
 ## Example - Sign with RSA Private Key
 
 Sign data using an RSA private key with SHA-256.
@@ -202,10 +207,15 @@ curl -X POST -H "Content-Type: application/json" \
 
 ## Streaming Support
 
-Both Sign and SignatureVerify operations support streaming for large data:
+Both Sign and SignatureVerify operations support multi-part requests for large data:
 
-- Set `InitIndicator: true` to start streaming
-- Use `CorrelationValue` to continue streaming sessions
-- Set `FinalIndicator: true` to complete the operation
-
-Streaming is not supported for OpenPGP (`PGPKey`) keys: supplying `InitIndicator` or `CorrelationValue` returns an error, as does `DigestedData`.
+- The `InitIndicator: true` request returns a 16-byte `CorrelationValue`; send it back unchanged with every later part,
+  and set `FinalIndicator: true` on the last one.
+- `InitIndicator` and `FinalIndicator` together without a `CorrelationValue` make a single-part request.
+- Multi-part requests take `Data`, not `DigestedData` (`Invalid_Field`).
+- The input is buffered, up to 16 MiB per operation, 64 MiB per user and 256 MiB in total
+  (`Server_Limit_Exceeded`).
+- For Signature Verify, `SignatureData` may be sent on the Init or the Final part; if it is still missing at the end
+  the request fails with `Invalid_Field`.
+- An unknown or foreign `CorrelationValue` returns `Invalid_Correlation_Value`.
+- HSM keys and OpenPGP (`PGPKey`) keys do not support multi-part requests (`Feature_Not_Supported`).

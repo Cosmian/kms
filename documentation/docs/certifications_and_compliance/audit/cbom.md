@@ -68,4 +68,4 @@ curl -X POST "https://dtrack.example.com/api/v1/bom" \
 
 - [CycloneDX CBOM specification](https://cyclonedx.org/capabilities/cbom/)
 - [NIST Post-Quantum Cryptography standards](https://csrc.nist.gov/projects/post-quantum-cryptography)
-- [CISA Post-Quantum Cryptography initiative](https://www.cisa.gov/quantum)
+- CISA Post-Quantum Cryptography initiative: `www.cisa.gov/quantum` (not hyperlinked: cisa.gov answers 403 to the automated link checker)

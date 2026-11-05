@@ -155,8 +155,6 @@ macro_rules! cli_bail {
         return ::core::result::Result::Err($crate::cli_error!($fmt, $($arg)*))
     };
 }
-
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 

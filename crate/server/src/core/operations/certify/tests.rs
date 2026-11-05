@@ -1,9 +1,9 @@
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{kmip_operations::Certify, kmip_types::CertificateRequestType},
+};
+
 #[test]
-#[allow(
-    clippy::expect_used,
-    clippy::missing_asserts_for_indexing,
-    clippy::indexing_slicing
-)]
 fn test_serial_number_without_fix_creates_21_bytes() {
     // This test verifies the BUG: without clearing the high bit,
     // ASN.1 DER encoding adds a leading 0x00 byte to indicate positive numbers,
@@ -59,14 +59,8 @@ fn test_serial_number_without_fix_creates_21_bytes() {
 
     // Look for the INTEGER tag (0x02) which should contain our serial number
     // The serial number appears early in the certificate
-    let mut found_21_byte_serial = false;
-    for window in cert_der.windows(3) {
-        // Look for INTEGER tag (0x02) with length 0x15 (21 bytes)
-        if window[0] == 0x02 && window[1] == 0x15 && window[2] == 0x00 {
-            found_21_byte_serial = true;
-            break;
-        }
-    }
+    // INTEGER tag (0x02) with length 0x15 (21 bytes) and a leading 0x00 byte
+    let found_21_byte_serial = cert_der.windows(3).any(|w| w == [0x02, 0x15, 0x00]);
 
     assert!(
         found_21_byte_serial,
@@ -76,7 +70,6 @@ fn test_serial_number_without_fix_creates_21_bytes() {
 }
 
 #[test]
-#[allow(clippy::expect_used)]
 fn test_serial_number_length() {
     // Test that serial numbers are always 20 bytes or less
     // This verifies the fix for the issue where some certificates
@@ -135,4 +128,59 @@ fn test_serial_number_length() {
             "Test case {idx}: High bit should not be set in first byte",
         );
     }
+}
+
+#[tokio::test]
+async fn invalid_csr_returns_invalid_csr() -> crate::result::KResult<()> {
+    let kms = crate::tests::test_utils::test_kms().await?;
+    let Err(err) = super::get_subject(
+        &kms,
+        &Certify {
+            certificate_request_type: Some(CertificateRequestType::PEM),
+            certificate_request_value: Some(b"not a certificate request".to_vec()),
+            ..Certify::default()
+        },
+        &crate::middlewares::UserId::from("invalid-csr@example.com"),
+    )
+    .await
+    else {
+        return Err(crate::error::KmsError::Default(
+            "a malformed CSR must fail".to_owned(),
+        ));
+    };
+    if !matches!(
+        &err,
+        crate::error::KmsError::Kmip21Error(ErrorReason::Invalid_CSR, _)
+    ) {
+        return Err(crate::error::KmsError::Default(format!(
+            "malformed CSR returned unexpected error: {err:?}"
+        )));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn unsupported_crmf_returns_feature_not_supported() -> crate::result::KResult<()> {
+    let kms = crate::tests::test_utils::test_kms().await?;
+    let Err(err) = super::get_subject(
+        &kms,
+        &Certify {
+            certificate_request_type: Some(CertificateRequestType::CRMF),
+            certificate_request_value: Some(Vec::new()),
+            ..Certify::default()
+        },
+        &crate::middlewares::UserId::from("unsupported-crmf@example.com"),
+    )
+    .await
+    else {
+        return Err(crate::error::KmsError::Default(
+            "CRMF certificate requests must fail".to_owned(),
+        ));
+    };
+    if !matches!(&err, crate::error::KmsError::NotSupported(_)) {
+        return Err(crate::error::KmsError::Default(format!(
+            "unsupported CRMF returned unexpected error: {err:?}"
+        )));
+    }
+    Ok(())
 }

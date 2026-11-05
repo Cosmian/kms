@@ -334,9 +334,9 @@ pub(crate) async fn generate_google_jwt() -> KResult<String> {
         ))
     })?;
 
-    assert!(!client_id.is_empty());
-    assert!(!client_secret.is_empty());
-    assert!(!refresh_token.is_empty());
+    assert_ne!(client_id.len(), 0);
+    assert_ne!(client_secret.len(), 0);
+    assert_ne!(refresh_token.len(), 0);
 
     let res = reqwest::Client::new()
         .post("https://oauth2.googleapis.com/token")

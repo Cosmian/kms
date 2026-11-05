@@ -16,6 +16,13 @@ An Offset MAY be used to indicate the difference between the Initial Date and th
 
 The `Re-Key` Operation refreshes Symmetric keys.
 
+- The existing key must be Active, Deactivated or Compromised; any other state returns `Permission_Denied`.
+- Request attributes that change the cryptographic algorithm, length or curve return `Invalid_Field`.
+- `Offset` is an Interval in seconds: the new key's Activation Date is `now + Offset`, and its Process Start, Protect Stop and Deactivation Dates are shifted by the same amount.
+- The request `Attributes` are applied to the new key, except the attributes the server manages (identity, links, names, lifecycle dates, state, rotation metadata).
+- An Active existing key becomes Deactivated (Deactivation Date = now); a Deactivated or Compromised key keeps its state.
+- HSM keys reject `Offset`, `Attributes` and Protection Storage Masks with `Feature_Not_Supported`.
+
 ## Example - Refresh a Symmetric Key
 
 Corresponding [KMS CLI](../../kms_clients/index.md) command:
@@ -55,3 +62,6 @@ ckms sym keys re-key -k 64c60363-6660-4fd4-9f30-c965a0f72fc3
       ]
     }
     ```
+
+!!! note "Example abridged"
+    The real response returns the Unique Identifier of the new key, not the identifier sent in the request.

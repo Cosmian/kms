@@ -126,8 +126,11 @@ fn init_ckm_rsa_pkcs_decryption_context(
     Ok((ctx, plaintext))
 }
 
-#[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use openssl::pkey::PKey;
     use zeroize::Zeroizing;

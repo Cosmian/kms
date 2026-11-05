@@ -123,7 +123,10 @@ impl Default for HttpClientConfig {
 }
 
 /// used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde `skip_serializing_if` passes a reference"
+)]
 const fn not(b: &bool) -> bool {
     !*b
 }
@@ -645,7 +648,6 @@ impl HttpClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod default_header_tests {
     use super::{HttpClient, HttpClientConfig};
 
@@ -762,5 +764,32 @@ mod error_chain_tests {
         let embedded = Layer("connect: tls failure".to_owned(), Some(Box::new(root)));
         let top = Layer("client error".to_owned(), Some(Box::new(embedded)));
         assert_eq!(error_chain(&top), "client error: connect: tls failure");
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests for the `accept_invalid_certs` serialization rule of
+    //! `HttpClientConfig`.
+
+    use super::HttpClientConfig;
+
+    #[test]
+    fn characterization_http_client_config_serialization_skips_false_accept_invalid_certs() {
+        let json = serde_json::to_string(&HttpClientConfig::default()).unwrap();
+        assert_eq!(json, r#"{"server_url":"http://127.0.0.1:9998"}"#);
+    }
+
+    #[test]
+    fn characterization_http_client_config_serialization_keeps_true_accept_invalid_certs() {
+        let config = HttpClientConfig {
+            accept_invalid_certs: true,
+            ..HttpClientConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert_eq!(
+            json,
+            r#"{"accept_invalid_certs":true,"server_url":"http://127.0.0.1:9998"}"#
+        );
     }
 }

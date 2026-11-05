@@ -23,9 +23,8 @@ impl BulkData {
 
     /// If the data starts with the sequence 0x8787, it MAY be a `BulkData`
     #[must_use]
-    #[expect(clippy::indexing_slicing, clippy::missing_asserts_for_indexing)]
     pub const fn is_bulk_data(data: &[u8]) -> bool {
-        data.len() > 2 && data[0] == 0x87 && data[1] == 0x87
+        matches!(data, [0x87, 0x87, _, ..])
     }
 
     pub fn serialize(&self) -> KmipResult<Zeroizing<Vec<u8>>> {
@@ -38,7 +37,6 @@ impl BulkData {
         Ok(Zeroizing::new(se.finalize().to_vec()))
     }
 
-    #[expect(clippy::indexing_slicing)]
     pub fn deserialize(serialized: &[u8]) -> Result<Self, KmipError> {
         if !Self::is_bulk_data(serialized) {
             trace!("Not a BulkData");
@@ -47,7 +45,7 @@ impl BulkData {
                 "Not a BulkData".to_owned(),
             ));
         }
-        let data = &serialized[2..];
+        let data = serialized.get(2..).unwrap_or_default();
         let mut de = Deserializer::new(data);
         let v = usize::try_from(de.read_leb128_u64()?)?;
         // Each element requires at least 1 byte (a zero-length LEB128 prefix);
@@ -96,7 +94,6 @@ impl From<BulkData> for Vec<Zeroizing<Vec<u8>>> {
     }
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use crate::kmip_2_1::extra::BulkData;
@@ -120,5 +117,61 @@ mod tests {
         );
         let deserialized = BulkData::deserialize(&serialized).unwrap();
         assert_eq!(data, deserialized.0);
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    use super::BulkData;
+
+    #[test]
+    fn characterization_bulk_data_is_bulk_data_boundaries() {
+        assert!(!BulkData::is_bulk_data(&[]));
+        assert!(!BulkData::is_bulk_data(&[0x87]));
+        assert!(!BulkData::is_bulk_data(&[0x87, 0x87]));
+        assert!(BulkData::is_bulk_data(&[0x87, 0x87, 0x00]));
+        assert!(BulkData::is_bulk_data(&[0x87, 0x87, 0x00, 0xFF]));
+        assert!(!BulkData::is_bulk_data(&[0x87, 0x86, 0x00]));
+        assert!(!BulkData::is_bulk_data(&[0x86, 0x87, 0x00]));
+    }
+
+    #[test]
+    fn characterization_bulk_data_serialize_roundtrip_golden() {
+        let bd = BulkData::from(vec![vec![1_u8, 2], vec![3_u8]]);
+        let ser = bd.serialize().unwrap();
+        assert_eq!(hex::encode(ser.as_slice()), "8787020201020103");
+        let back = BulkData::deserialize(&hex::decode("8787020201020103").unwrap()).unwrap();
+        assert_eq!(back.len(), 2);
+        assert_eq!(back.first().unwrap().as_slice(), [1_u8, 2]);
+        assert_eq!(back.get(1).unwrap().as_slice(), [3_u8]);
+    }
+
+    #[test]
+    fn characterization_bulk_data_deserialize_errors() {
+        for (input, msg) in [
+            (
+                "",
+                "Invalid KMIP 2.1 Object: Illegal_Object_Type: Not a BulkData",
+            ),
+            (
+                "8787",
+                "Invalid KMIP 2.1 Object: Illegal_Object_Type: Not a BulkData",
+            ),
+            (
+                "000102",
+                "Invalid KMIP 2.1 Object: Illegal_Object_Type: Not a BulkData",
+            ),
+            (
+                "878705",
+                "Invalid KMIP 2.1 Object: Illegal_Object_Type: BulkData count 5 exceeds remaining data length 0; not valid BulkData",
+            ),
+            (
+                "8787010501",
+                "Serialization error: when reading 5 bytes, readable buffer too small: 1 bytes",
+            ),
+        ] {
+            let err = BulkData::deserialize(&hex::decode(input).unwrap()).unwrap_err();
+            assert_eq!(err.to_string(), msg);
+        }
     }
 }

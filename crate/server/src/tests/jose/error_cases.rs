@@ -32,7 +32,7 @@ async fn test_unknown_encrypt_alg_returns_422() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/encrypt")
-        .set_json(&json!({"kid": kid, "alg": "A128KW", "enc": "A256GCM", "data": "dGVzdA"}))
+        .set_json(json!({"kid": kid, "alg": "A128KW", "enc": "A256GCM", "data": "dGVzdA"}))
         .to_request();
     let resp = test::call_service(&app, req).await;
     // With typed JoseAlgorithm enum, unknown alg values are rejected at
@@ -65,7 +65,7 @@ async fn test_unknown_sign_alg_returns_422() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/sign")
-        .set_json(&json!({"kid": kid, "alg": "XYZ-UNKNOWN", "data": "dGVzdA"}))
+        .set_json(json!({"kid": kid, "alg": "XYZ-UNKNOWN", "data": "dGVzdA"}))
         .to_request();
     let resp = test::call_service(&app, req).await;
     // With typed JoseAlgorithm enum, unknown alg values are rejected at
@@ -86,7 +86,7 @@ async fn test_nonexistent_key_id() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/encrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "kid": "00000000-0000-0000-0000-000000000000",
             "alg": "dir",
             "enc": "A256GCM",
@@ -121,7 +121,7 @@ async fn test_wrong_key_type_for_sign() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/sign")
-        .set_json(&json!({"kid": kid, "alg": "RS256", "data": "dGVzdA"}))
+        .set_json(json!({"kid": kid, "alg": "RS256", "data": "dGVzdA"}))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(
@@ -146,7 +146,7 @@ async fn test_alg_none_returns_422() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/verify")
-        .set_json(&json!({
+        .set_json(json!({
             "protected": protected_b64,
             "data": data_b64,
             "signature": sig_b64
@@ -193,7 +193,7 @@ async fn test_decrypt_invalid_iv_length_returns_400() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":  enc_resp["protected"],
             "iv":         bad_iv,
             "ciphertext": enc_resp["ciphertext"],
@@ -240,7 +240,7 @@ async fn test_decrypt_short_tag_returns_400() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":  enc_resp["protected"],
             "iv":         enc_resp["iv"],
             "ciphertext": enc_resp["ciphertext"],
@@ -274,7 +274,7 @@ async fn test_rsa_oaep_decrypt_missing_encrypted_key() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":    protected_b64,
             "encrypted_key": "",          // empty — must be rejected
             "iv":           URL_SAFE_NO_PAD.encode([0_u8; 12]),
@@ -317,7 +317,7 @@ async fn test_rsa_oaep_decrypt_tampered_encrypted_key() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":    enc_resp["protected"],
             "encrypted_key": tampered_ek,
             "iv":           enc_resp["iv"],
@@ -360,7 +360,7 @@ async fn test_rsa_oaep_decrypt_symmetric_key_as_kid() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/decrypt")
-        .set_json(&json!({
+        .set_json(json!({
             "protected":    protected_b64,
             "encrypted_key": URL_SAFE_NO_PAD.encode([0_u8; 256]), // 256 bytes (fake RSA-wrapped CEK)
             "iv":           URL_SAFE_NO_PAD.encode([0_u8; 12]),

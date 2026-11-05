@@ -34,6 +34,7 @@ use cosmian_kms_server_database::reexport::{
                 VendorAttributeValue,
             },
         },
+        time_normalize,
     },
     cosmian_kms_crypto::openssl::{
         csr_attrs::csr_with_challenge_password,
@@ -171,6 +172,8 @@ async fn make_kms_inner(
         unique_identifier: Some(UniqueIdentifier::TextString(CA_UID.to_owned())),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(3072),
+        // only Active keys may sign certificates (KMIP 2.1 §4.57)
+        activation_date: Some(time_normalize()?),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(
             "C=FR, O=KMS Test, CN=Enrollment Test CA",
         )?),
@@ -1128,7 +1131,7 @@ async fn apple_scep_fixtures_parse() {
             "{}",
             dir.display()
         );
-        assert!(!parsed.attrs.transaction_id.is_empty());
+        assert_ne!(parsed.attrs.transaction_id.len(), 0);
         check_apple_envelope(&parsed.content, &ca_key, &ca);
         // Renewal capture (if any) is observational: it only has to be a valid pkiMessage.
         if dir.join("renewal.der").exists() {
@@ -1654,7 +1657,7 @@ async fn scep_resigned_envelope_is_refused() -> KResult<()> {
     let replay = parse_signed_pkimessage(&body).unwrap();
     assert_eq!(replay.attrs.pki_status, Some(PKI_STATUS_FAILURE));
     assert_eq!(replay.attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
-    assert!(replay.content.is_empty());
+    assert_eq!(replay.content.len(), 0);
     Ok(())
 }
 

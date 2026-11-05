@@ -99,7 +99,7 @@ async fn aws_byok_with_rsaes_oaep_sha256() -> KmsCliResult<()> {
 
     // Step 2: export the wrapped key
     let export_action = ExportByokAction {
-        key_id: cosmian_key_id.to_string(),
+        key_id: cosmian_key_id.to_owned(),
         kek_id: kek_id.to_string(),
         token_file_path: None,
         output_file_path: None,
@@ -150,7 +150,7 @@ async fn aws_byok_with_rsaes_oaep_sha1() -> KmsCliResult<()> {
 
     let key_sizes = [224, 256, 384, 512];
     let mut rng = KmsRng::new().seeded_csrng()?;
-    let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
+    let bits = key_sizes[usize::try_from(rng.next_u32()).unwrap_or_default() % key_sizes.len()];
 
     // Generate a random symmetric key in the kms.
     let cosmian_key_id = CreateKeyAction {
@@ -235,7 +235,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha1() -> KmsCliResult<()> {
     // Generate an RSA keypair in the KMS (the key material to wrap will be the private key)
     let key_sizes = [2048, 3072, 4096];
     let mut rng = KmsRng::new().seeded_csrng()?;
-    let bits = key_sizes[(rng.next_u32() as usize) % key_sizes.len()];
+    let bits = key_sizes[usize::try_from(rng.next_u32()).unwrap_or_default() % key_sizes.len()];
 
     let create_keypair_action = CreateRsaKeyPairAction {
         key_size: bits,

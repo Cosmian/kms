@@ -446,7 +446,7 @@ The cleanup operation will delete all objects and keys stored in the database.
 Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
 written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
 
-At first, the table `context` is responsible for storing the software run's version and the database's state.
+At first, the table `parameters` is responsible for storing the software run's version and the database's state.
 The state can be one of the following:
 
 - `ready`: the database is ready to be used
@@ -458,7 +458,7 @@ On startup, the server checks if the software version is greater than the last v
 - If yes:
 
     - it looks for all upgrades to apply in order from the last version run to this version;
-    - if there is any to run, it sets an upgrading flag on the db state field in the context table;
+    - if there is any to run, it sets an upgrading flag on the db state field in the parameters table;
     - it runs all the upgrades in order.
     - it sets the flag from upgrading to ready;
 
@@ -494,6 +494,8 @@ Notes:
 - Run these statements using a privileged MySQL user (e.g., `root`).
 - Ensure application access is paused during the migration.
 - No data loss occurs; this operation converts UNIQUE constraints to PRIMARY KEYs and enforces NOT NULL.
+
+For the operator procedure to follow when moving from 5.x to 6.0 (backup, client changes, verification), see [Upgrading from 5.x to 6.0](../../installation/upgrade_5_to_6.md).
 
 ## The Unwrapped Objects Cache
 

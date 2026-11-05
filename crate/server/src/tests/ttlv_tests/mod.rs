@@ -1,6 +1,7 @@
 mod add_attribute_1_4;
 mod add_attribute_2_1;
 mod attribute_version_gating;
+mod batch_semantics_2_1;
 mod certify_1_4;
 mod config;
 mod create_1_4;
@@ -13,6 +14,7 @@ mod decrypt_2_1;
 mod discover_versions;
 mod encrypt_1_4;
 mod encrypt_2_1;
+mod export_destroyed_2_1;
 mod get_1_0;
 mod get_1_4;
 mod get_2_1;
@@ -26,7 +28,9 @@ mod import_2_1;
 mod integrations;
 mod locate_1_4;
 mod locate_2_1;
+mod message_1_4;
 mod normative_tests;
+mod ping_2_1;
 #[cfg(not(target_os = "windows"))]
 mod pykmip;
 mod query;
@@ -164,6 +168,7 @@ fn start_test_server() -> &'static TestServerCtx {
 /// port. It is never exercised by the default test run, so the fixed port
 /// does not create the cross-process contention that [`start_test_server`]
 /// used to have.
+#[cfg(not(target_os = "windows"))] // only used by the `pykmip` test module, not built on Windows
 fn start_test_server_with_fixed_port(socket_port: u16) -> &'static TestServerCtx {
     static SERVER_HANDLES: OnceLock<TestServerCtx> = OnceLock::new();
     let mut https_config = https_clap_config();

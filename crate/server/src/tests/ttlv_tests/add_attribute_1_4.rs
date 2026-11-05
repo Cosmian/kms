@@ -50,7 +50,7 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::CustomAttribute(CustomAttribute {
                         name: "x-Product_Version".to_owned(),
                         value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned()),
@@ -63,7 +63,7 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::CustomAttribute(CustomAttribute {
                         name: "x-Vendor".to_owned(),
                         value: CustomAttributeValue::TextString("VMware, Inc.".to_owned()),
@@ -76,7 +76,7 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::CustomAttribute(CustomAttribute {
                         name: "x-Product".to_owned(),
                         value: CustomAttributeValue::TextString("VMware vSphere".to_owned()),

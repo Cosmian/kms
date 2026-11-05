@@ -6,7 +6,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::Sta
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian_cover_crypt::api::Covercrypt;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::SecretDataType,
+        kmip_0::kmip_types::{ErrorReason, SecretDataType},
         kmip_2_1::{
             extra::tagging::SYSTEM_TAG_SECRET_DATA,
             kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -139,6 +139,10 @@ impl KMS {
             | CryptographicAlgorithm::HMACSHA256
             | CryptographicAlgorithm::HMACSHA384
             | CryptographicAlgorithm::HMACSHA512
+            | CryptographicAlgorithm::HMACSHA3224
+            | CryptographicAlgorithm::HMACSHA3256
+            | CryptographicAlgorithm::HMACSHA3384
+            | CryptographicAlgorithm::HMACSHA3512
             | CryptographicAlgorithm::SHA3224
             | CryptographicAlgorithm::SHA3256
             | CryptographicAlgorithm::SHA3384
@@ -153,9 +157,12 @@ impl KMS {
                             CryptographicAlgorithm::FPE_FF1 => {
                                 let effective_bits = attributes.cryptographic_length.unwrap_or(256);
                                 if effective_bits != 256 {
-                                    return Err(KmsError::InvalidRequest(format!(
-                                        "unsupported FPE_FF1 cryptographic_length: {effective_bits} (expected 256)"
-                                    )));
+                                    return Err(KmsError::Kmip21Error(
+                                        ErrorReason::Invalid_Attribute_Value,
+                                        format!(
+                                            "unsupported FPE_FF1 cryptographic_length: {effective_bits} (expected 256)"
+                                        ),
+                                    ));
                                 }
                                 32
                             }
@@ -167,9 +174,12 @@ impl KMS {
                                 )
                             })?;
                                 if !matches!(effective_bits, 112 | 168) {
-                                    return Err(KmsError::InvalidRequest(format!(
-                                        "unsupported THREE_DES cryptographic_length: {effective_bits} (expected 112 or 168)"
-                                    )));
+                                    return Err(KmsError::Kmip21Error(
+                                        ErrorReason::Invalid_Attribute_Value,
+                                        format!(
+                                            "unsupported THREE_DES cryptographic_length: {effective_bits} (expected 112 or 168)"
+                                        ),
+                                    ));
                                 }
                                 let blocks = effective_bits / 56; // 56 effective bits per DES key (7 bits * 8 bytes with parity)
                                 usize::try_from(blocks * 8).map_err(|e| {
@@ -193,9 +203,12 @@ impl KMS {
                                 if !(MIN_SYMMETRIC_KEY_BITS..=MAX_SYMMETRIC_KEY_BITS)
                                     .contains(&bits)
                                 {
-                                    return Err(KmsError::InvalidRequest(format!(
-                                        "invalid symmetric key length {bits} bits: must be between {MIN_SYMMETRIC_KEY_BITS} and {MAX_SYMMETRIC_KEY_BITS}"
-                                    )));
+                                    return Err(KmsError::Kmip21Error(
+                                        ErrorReason::Invalid_Attribute_Value,
+                                        format!(
+                                            "invalid symmetric key length {bits} bits: must be between {MIN_SYMMETRIC_KEY_BITS} and {MAX_SYMMETRIC_KEY_BITS}"
+                                        ),
+                                    ));
                                 }
                                 usize::try_from(bits / 8).map_err(|e| {
                                     KmsError::InvalidRequest(format!(
@@ -215,7 +228,7 @@ impl KMS {
                             attributes,
                         )?;
                         let attributes = object.attributes()?;
-                        debug!("Created symmetric key with attributes: {}", attributes);
+                        debug!("Created symmetric key");
                         let mut tags = attributes.get_tags(vendor_id);
                         if *cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
                             tags.insert("fpe-ff1".to_owned());
@@ -244,9 +257,19 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
     /// Only Covercrypt user decryption keys can be created using this function
-    #[allow(clippy::unused_async)] // signature must match the non-fips async variant of this function
     #[cfg(not(feature = "non-fips"))]
-    pub(crate) async fn create_private_key_and_tags(
+    pub(crate) fn create_private_key_and_tags(
+        &self,
+        create_request: &Create,
+        owner: &str,
+    ) -> impl Future<Output = KResult<(Option<String>, Object, HashSet<String>)>> {
+        // Keeps the awaitable signature of the non-fips variant without an `async` body.
+        std::future::ready(self.create_private_key_and_tags_sync(create_request, owner))
+    }
+
+    /// Synchronous body of the FIPS [`Self::create_private_key_and_tags`].
+    #[cfg(not(feature = "non-fips"))]
+    fn create_private_key_and_tags_sync(
         &self,
         create_request: &Create,
         _owner: &str,
@@ -508,7 +531,7 @@ impl KMS {
             },
         });
         let attributes = object.attributes()?;
-        debug!("Created secret data with attributes: {}", attributes);
+        debug!("Created secret data");
         // let tags = attributes.get_tags();
         let uid = attributes
             .unique_identifier

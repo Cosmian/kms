@@ -467,7 +467,7 @@ pub(crate) async fn test_list_access_rights() -> CosmianResult<()> {
     assert!(owner_list.contains("user.client@acme.com: {get}"));
 
     // The user is not the owner and thus should not be able to list accesses on this object
-    assert!(list_access(&user_client_conf_path, &key_id).is_err());
+    list_access(&user_client_conf_path, &key_id).unwrap_err();
 
     Ok(())
 }
@@ -477,7 +477,7 @@ pub(crate) async fn test_list_access_rights_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
     let user_client_conf_path = load_client_config("cert_user.toml", ctx);
 
-    assert!(list_access(&user_client_conf_path, "BAD KEY").is_err());
+    list_access(&user_client_conf_path, "BAD KEY").unwrap_err();
     Ok(())
 }
 
@@ -777,7 +777,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> CosmianResult<()> {
         &["create"],
     );
 
-    assert!(result_grant_create.is_ok());
+    result_grant_create.unwrap();
 
     // object_id is required for other operations
     let result_grant_other = grant_access(
@@ -811,17 +811,17 @@ pub(crate) async fn test_crypto_officer_users() -> CosmianResult<()> {
         &["export", "get"],
     )?;
     let keypair_id = create_rsa_key_pair(&owner_client_conf_path, &RsaKeyPairOptions::default());
-    assert!(keypair_id.is_ok());
+    keypair_id.unwrap();
     let imported_key_id = export_import_sym_key(initial_key_id, &owner_client_conf_path);
-    assert!(imported_key_id.is_ok());
+    imported_key_id.unwrap();
 
     // by default non-privileged users can't create or import objects
     let key_id_user = gen_key(&user_client_conf_path);
-    assert!(key_id_user.is_err());
+    key_id_user.unwrap_err();
     let keypair_id_user = gen_key(&user_client_conf_path);
-    assert!(keypair_id_user.is_err());
+    keypair_id_user.unwrap_err();
     let imported_key_id = export_import_sym_key(initial_key_id, &user_client_conf_path);
-    assert!(imported_key_id.is_err());
+    imported_key_id.unwrap_err();
 
     // privileged user can grant create access
     let result_grant_create = grant_access(
@@ -830,15 +830,15 @@ pub(crate) async fn test_crypto_officer_users() -> CosmianResult<()> {
         "user.client@acme.com",
         &["create"],
     );
-    assert!(result_grant_create.is_ok());
+    result_grant_create.unwrap();
 
     // then user can create objects
     let key_id_user = gen_key(&user_client_conf_path);
-    assert!(key_id_user.is_ok());
+    key_id_user.unwrap();
     let keypair_id_user = gen_key(&user_client_conf_path);
-    assert!(keypair_id_user.is_ok());
+    keypair_id_user.unwrap();
     let imported_key_id = export_import_sym_key(initial_key_id, &user_client_conf_path);
-    assert!(imported_key_id.is_ok());
+    imported_key_id.unwrap();
 
     // simple user can't grant create access
     let result_grant_create = grant_access(
@@ -865,15 +865,15 @@ pub(crate) async fn test_crypto_officer_users() -> CosmianResult<()> {
         "user.client@acme.com",
         &["create"],
     );
-    assert!(result_revoke_create.is_ok());
+    result_revoke_create.unwrap();
 
     // then user can't create object anymore
     let key_id_user = gen_key(&user_client_conf_path);
-    assert!(key_id_user.is_err());
+    key_id_user.unwrap_err();
     let keypair_id_user = gen_key(&user_client_conf_path);
-    assert!(keypair_id_user.is_err());
+    keypair_id_user.unwrap_err();
     let imported_key_id = export_import_sym_key(initial_key_id, &user_client_conf_path);
-    assert!(imported_key_id.is_err());
+    imported_key_id.unwrap_err();
 
     // privileged user can't revoke create access to other privileged user
     let result_revoke_create = revoke_access(

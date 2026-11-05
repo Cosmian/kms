@@ -16,13 +16,6 @@ pub const KRYOPTIC_PKCS11_LIB: &str = "libkryoptic_pkcs11.so";
 
 #[cfg(test)]
 #[cfg(feature = "kryoptic")]
-#[expect(
-    unsafe_code,
-    clippy::expect_used,
-    clippy::panic,
-    reason = "test-only: loading a C shared library and calling through its function table is \
-              inherently unsafe, and a misconfigured test environment should fail loudly"
-)]
 mod tests;
 
 /// Capability profile for the `Kryoptic` software token.

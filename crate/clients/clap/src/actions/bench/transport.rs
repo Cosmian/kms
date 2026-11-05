@@ -12,6 +12,11 @@
 //! benchmark bodies be written once and parameterized by the transport, so the
 //! two protocols share the same source except serialization.
 
+#![expect(
+    clippy::expect_used,
+    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
+)]
+
 use std::{
     cell::Cell,
     time::{Duration, Instant},

@@ -26,10 +26,13 @@ use serde::{
     ser::{self, SerializeStruct},
 };
 
-use super::{kmip_operations::Operation, kmip_types::OperationEnumeration};
+use super::{
+    kmip_operations::Operation,
+    kmip_types::{OperationEnumeration, ResultReason},
+};
 use crate::{
     KmipError, KmipResultHelper,
-    kmip_0::kmip_types::{Direction, ErrorReason, MessageExtension, ResultStatusEnumeration},
+    kmip_0::kmip_types::{Direction, MessageExtension, ResultStatusEnumeration},
     kmip_2_1,
 };
 
@@ -311,15 +314,12 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::JoinSplitKey => {
                                     Operation::JoinSplitKey(map.next_value()?)
                                 }
-                                OperationEnumeration::Notify => {
-                                    return Err(de::Error::custom(
-                                        "unsupported KMIP 1 operation: Notify",
-                                    ));
-                                }
-                                OperationEnumeration::Put => {
-                                    return Err(de::Error::custom(
-                                        "unsupported KMIP 1 operation: Put",
-                                    ));
+                                // Notify and Put are server-to-client operations
+                                OperationEnumeration::Notify | OperationEnumeration::Put => {
+                                    return Err(de::Error::custom(format!(
+                                        "Request Message Batch Item: {}: {operation:?}",
+                                        kmip_2_1::kmip_messages::UNSUPPORTED_OPERATION
+                                    )));
                                 }
                             });
                         }
@@ -395,7 +395,7 @@ pub struct ResponseMessageBatchItem {
     /// responses that return a Result Status of Failure.
     ///
     /// Required if `result_status` is `Failure`
-    pub result_reason: Option<ErrorReason>,
+    pub result_reason: Option<ResultReason>,
 
     /// Contains a more descriptive error message,
     /// which MAY be provided to an end user or used for logging/auditing purposes.
@@ -579,7 +579,7 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                 let mut operation: Option<OperationEnumeration> = None;
                 let mut unique_batch_item_id: Option<Vec<u8>> = None;
                 let mut result_status: Option<ResultStatusEnumeration> = None;
-                let mut result_reason: Option<ErrorReason> = None;
+                let mut result_reason: Option<ResultReason> = None;
                 let mut result_message: Option<String> = None;
                 let mut asynchronous_correlation_value: Option<String> = None;
                 let mut response_payload: Option<Operation> = None;
@@ -854,7 +854,7 @@ impl TryFrom<kmip_2_1::kmip_messages::ResponseMessageBatchItem> for ResponseMess
                 .context("ResponseMessageBatchItem->Operation")?,
             unique_batch_item_id: value.unique_batch_item_id,
             result_status: value.result_status,
-            result_reason: value.result_reason,
+            result_reason: value.result_reason.map(Into::into),
             result_message: value.result_message,
             asynchronous_correlation_value: value.asynchronous_correlation_value,
             response_payload: value

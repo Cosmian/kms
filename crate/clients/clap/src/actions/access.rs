@@ -472,6 +472,7 @@ impl CryptoOfficerCreateSplitKey {
                 split_key_parts: n,
                 split_key_threshold: n,
                 split_key_method: SplitKeyMethod::XOR,
+                prime_field_size: None,
                 attributes: None,
                 protection_storage_masks: None,
             };

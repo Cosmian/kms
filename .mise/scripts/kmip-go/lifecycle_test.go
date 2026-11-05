@@ -41,7 +41,7 @@ func TestLifecycle_PreActiveCannotEncrypt(t *testing.T) {
 
     // Attempt to encrypt — must fail
     _, err = client.Encrypt(id).
-        WithCryptographicParameters(kmip.AES_GCM).
+        WithCryptographicParameters(aesGCM96).
         Data([]byte("test data")).
         ExecContext(tctx(t))
     assert.Errorf(t, err,
@@ -70,7 +70,7 @@ func TestLifecycle_DeactivatedCannotEncrypt(t *testing.T) {
 
     // Attempt to encrypt — must fail
     _, err = client.Encrypt(id).
-        WithCryptographicParameters(kmip.AES_GCM).
+        WithCryptographicParameters(aesGCM96).
         Data([]byte("test data")).
         ExecContext(tctx(t))
     assert.Errorf(t, err,

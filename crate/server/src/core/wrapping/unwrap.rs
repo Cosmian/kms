@@ -301,10 +301,9 @@ async fn unwrap_using_kms(
             .key_block_mut()
             .ok()
             .and_then(|key_block| key_block.key_value.as_mut())
+            && attributes.is_none()
         {
-            if attributes.is_none() {
-                *attributes = Some(unwrapping_key.attributes().clone());
-            }
+            *attributes = Some(unwrapping_key.attributes().clone());
         }
         object
     } else {

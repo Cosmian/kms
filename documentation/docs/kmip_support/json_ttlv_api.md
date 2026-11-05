@@ -25,6 +25,9 @@ To send multiple requests in a single call, se the [`Messages` API](./messages.m
 
 Please refer to the various [operations pages](./operations.md) for sample JSON TTLV messages.
 
+Date-Time values are written as RFC 3339 UTC strings in whole seconds (sub-second precision is dropped), as in the
+binary and XML encodings.
+
 ## JSON mode example
 
 This creates a (default AES 256) symmetric key which will be tagged with the string `myKey`.

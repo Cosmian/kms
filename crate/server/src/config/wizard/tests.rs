@@ -6,13 +6,6 @@
 //! - [`cert_gen`] — self-signed PKI generation (CA + server + client certs)
 //! - TOML round-trip for the assembled [`crate::config::ClapConfig`]
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::print_stdout,
-    unreachable_pub
-)]
-
 use std::path::{Path, PathBuf};
 
 use openssl::{nid::Nid, pkey::PKey, x509::X509};
@@ -269,7 +262,7 @@ fn test_config_toml_round_trip_preserves_values() {
         toml::to_string_pretty(&original).expect("ClapConfig must serialise to TOML without error");
 
     // Must be non-empty and contain expected keys.
-    assert!(!toml_str.is_empty());
+    assert_ne!(toml_str.len(), 0);
     assert!(toml_str.contains("force_default_username"));
 
     let restored: ClapConfig =

@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::unwrap_in_result)]
-
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
@@ -64,7 +62,7 @@ async fn decrypt_data_test() -> KResult<()> {
 
     let import_key = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
-        object_type: ObjectType::PrivateKey,
+        object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
         attributes: Attributes::default(),

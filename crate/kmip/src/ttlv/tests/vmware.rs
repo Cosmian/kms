@@ -1,6 +1,3 @@
-#![allow(unused)]
-use std::option;
-
 use cosmian_logger::{info, log_init};
 use zeroize::Zeroizing;
 
@@ -21,7 +18,7 @@ use crate::{
         kmip_objects::{Object, SymmetricKey},
         kmip_operations::{
             AddAttribute, Create, CreateResponse, Get, GetAttributes, GetAttributesResponse,
-            GetResponse, Operation, Query, QueryResponse,
+            GetResponse, Operation, Query,
         },
         kmip_types::{CryptographicAlgorithm, CustomAttribute, KeyFormatType, ObjectType},
     },
@@ -441,7 +438,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute: Attribute::CustomAttribute(CustomAttribute {
                 name: "x-Product_Version".to_owned(),
                 value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
@@ -456,7 +453,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute: Attribute::CustomAttribute(CustomAttribute {
                 name: "x-Vendor".to_owned(),
                 value: CustomAttributeValue::TextString("VMware, Inc.".to_owned())
@@ -471,7 +468,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute: Attribute::CustomAttribute(CustomAttribute {
                 name: "x-Product".to_owned(),
                 value: CustomAttributeValue::TextString("VMware vSphere".to_owned())
@@ -516,6 +513,7 @@ fn get() {
         Operation::Get(Get {
             unique_identifier: Some("2".to_owned()),
             key_format_type: None,
+            key_wrap_type: None,
             key_compression_type: None,
             key_wrapping_specification: None
         })

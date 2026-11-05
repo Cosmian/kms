@@ -158,6 +158,7 @@ fn get_key(client: &SocketClient, key_id: &str) -> ResponseMessage {
                     key_format_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
+                    key_wrap_type: None,
                 }),
                 message_extension: None,
             },
@@ -186,7 +187,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Destroy(Destroy {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
