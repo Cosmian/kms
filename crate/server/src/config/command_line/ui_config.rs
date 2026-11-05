@@ -1,12 +1,8 @@
-// `collection_is_never_read`: the `ConfigArgs` derive generates intermediate
-// Vec collections used only as building blocks in the arg-merge logic; clippy
-// cannot see through the macro boundary.
 // `struct_field_names`: `ui_oidc_*` fields share a prefix because they are
 // flattened into the CLI namespace and serde keys.
 #![expect(
-    clippy::collection_is_never_read,
     clippy::struct_field_names,
-    reason = "ConfigArgs derive generates intermediate collections; `ui_oidc_*` field names are CLI flag and TOML key names"
+    reason = "`ui_oidc_*` field names are CLI flag and TOML key names"
 )]
 
 use std::{fmt, sync::Arc};
