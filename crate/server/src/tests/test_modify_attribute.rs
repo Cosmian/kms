@@ -6,8 +6,6 @@
 //! - Modifying `ActivationDate` to a future date on a Pre-Active key keeps it Pre-Active.
 //! - Modifying `ActivationDate` on an already-Active key returns `Wrong_Key_Lifecycle_State`.
 
-#![allow(clippy::unwrap_in_result)]
-
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{

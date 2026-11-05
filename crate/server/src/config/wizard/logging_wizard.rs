@@ -1,7 +1,5 @@
 //! Logging configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub)]
-
 use std::path::PathBuf;
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
@@ -9,7 +7,7 @@ use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 use super::PromptResultExt;
 use crate::{config::LoggingConfig, error::KmsError, result::KResult};
 
-pub fn configure_logging() -> KResult<LoggingConfig> {
+pub(crate) fn configure_logging() -> KResult<LoggingConfig> {
     let theme = ColorfulTheme::default();
 
     let rust_log: String = Input::with_theme(&theme)

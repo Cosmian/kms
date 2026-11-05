@@ -13,14 +13,14 @@ on:
       toolchain:
         required: true
         type: string
-        default: 1.97.0
+        default: 1.99.1
   workflow_dispatch:
     inputs:
       toolchain:
         description: Rust toolchain version
         required: false
         type: string
-        default: 1.97.0
+        default: 1.99.1
 
 jobs:
   apk:
@@ -172,7 +172,7 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      - name: Install Rust via pinned rustup-init (musl-native build, same 1.97.0 pin as the rest of CI)
+      - name: Install Rust via pinned rustup-init (musl-native build, same 1.99.1 pin as the rest of CI)
         env:
           RUSTUP_VERSION: 1.29.2
         run: |
@@ -188,7 +188,7 @@ jobs:
             "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${target}/rustup-init"
           echo "${sha}  rustup-init" | sha256sum -c -
           chmod +x rustup-init
-          ./rustup-init -y --default-toolchain 1.97.0 --profile minimal
+          ./rustup-init -y --default-toolchain 1.99.1 --profile minimal
           rm rustup-init
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 

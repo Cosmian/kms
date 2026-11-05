@@ -115,12 +115,12 @@ pub(crate) async fn run_vectors_checked(
     let mut scenario_uids = HashMap::new();
     for path in paths {
         let stem = vector_stem(path);
-        if on_redis_findex() {
-            if let Some((_, reason)) = REDIS_UNSUPPORTED.iter().find(|(p, _)| stem.starts_with(p)) {
-                warn!("{stem}: skipped on Redis-findex ({reason})");
-                skipped += 1;
-                continue;
-            }
+        if on_redis_findex()
+            && let Some((_, reason)) = REDIS_UNSUPPORTED.iter().find(|(p, _)| stem.starts_with(p))
+        {
+            warn!("{stem}: skipped on Redis-findex ({reason})");
+            skipped += 1;
+            continue;
         }
         total += 1;
         drop(take_unused_deviations(stem));

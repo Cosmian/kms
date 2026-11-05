@@ -19,7 +19,7 @@ kms_init_env "${usage_variant:-fips}" "static"
 #     apk add --no-cache bash gcompat build-base perl linux-headers \
 #       openssl-dev pkgconfig curl git &&
 #     curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | \
-#       sh -s -- -y --default-toolchain 1.97.0 --profile minimal &&
+#       sh -s -- -y --default-toolchain 1.99.1 --profile minimal &&
 #     . "$HOME/.cargo/env" &&
 #     .mise/tasks/test/alpine-native-build --variant fips
 #   '

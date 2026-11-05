@@ -78,13 +78,14 @@ pub(crate) async fn create_key_pair(
         .as_ref()
         .or(request.common_attributes.as_ref())
         .and_then(|attrs| attrs.rotate_name.clone());
-    if let Some(ref rotate_name) = sk_rotate_name {
-        if !ObjectHandle::from(&sk_uid).is_hsm() && rotate_name.as_str() != sk_uid {
-            return Err(KmsError::InvalidRequest(format!(
-                "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
+    if let Some(ref rotate_name) = sk_rotate_name
+        && !ObjectHandle::from(&sk_uid).is_hsm()
+        && rotate_name.as_str() != sk_uid
+    {
+        return Err(KmsError::InvalidRequest(format!(
+            "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
                  ('{sk_uid}') — set the private key ID to the keyset name at creation time"
-            )));
-        }
+        )));
     }
     // Capture requested ActivationDate values BEFORE moving the request into key generation
     // Private key: prefer private_key_attributes.activation_date then fallback to common_attributes.activation_date
@@ -248,7 +249,14 @@ pub(super) fn generate_key_pair(
     request: CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
-    #[cfg_attr(not(feature = "non-fips"), expect(unused_variables))] rng: &KmsRng,
+    #[cfg_attr(
+        not(feature = "non-fips"),
+        expect(
+            unused_variables,
+            reason = "rng is only used by the non-fips PQC generators"
+        )
+    )]
+    rng: &KmsRng,
 ) -> KResult<KeyPair> {
     trace!("Internal create key pair");
 

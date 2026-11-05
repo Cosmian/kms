@@ -311,7 +311,6 @@ pub fn create_rsa_key_pair(
 }
 
 #[cfg(all(test, not(feature = "non-fips"), not(target_os = "windows")))]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use cosmian_kmip::{
         kmip_0::kmip_types::CryptographicUsageMask,

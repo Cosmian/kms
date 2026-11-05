@@ -91,13 +91,13 @@ impl UnwrapSecretDataOrKeyAction {
         let object_type = object.object_type();
 
         // HSM keys (identified by "::") cannot be exported; delegate to server-side unwrap.
-        if let Some(key_id) = &self.unwrap_key_id {
-            if key_id.contains("::") {
-                trace!("unwrap using server-side HSM crypto oracle for key: {key_id}");
-                return self
-                    .unwrap_via_server(kms_rest_client, object, key_id)
-                    .await;
-            }
+        if let Some(key_id) = &self.unwrap_key_id
+            && key_id.contains("::")
+        {
+            trace!("unwrap using server-side HSM crypto oracle for key: {key_id}");
+            return self
+                .unwrap_via_server(kms_rest_client, object, key_id)
+                .await;
         }
 
         // Resolve the unwrapping key from the common options.

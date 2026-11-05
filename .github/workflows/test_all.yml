@@ -486,7 +486,7 @@ jobs:
     steps:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: 1.97.0
+          toolchain: 1.99.1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -542,7 +542,7 @@ jobs:
     steps:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: ${{ inputs.toolchain || '1.97.0' }}
+          toolchain: ${{ inputs.toolchain || '1.99.1' }}
           components: rustfmt, clippy
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -584,7 +584,7 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/cargo-publish.yml
     with:
-      toolchain: 1.97.0
+      toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
@@ -601,7 +601,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
     uses: ./.github/workflows/cargo-publish.yml
     with:
-      toolchain: 1.97.0
+      toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}
 

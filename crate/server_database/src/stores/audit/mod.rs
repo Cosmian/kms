@@ -18,15 +18,17 @@ use rawsql::Loader;
 
 const AUDIT_FILE_QUERIES: &str = include_str!("audit.sql");
 
+#[expect(
+    clippy::expect_used,
+    reason = "audit SQL is embedded at compile time; every query is exercised by tests"
+)]
 static AUDIT_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
     // PANIC: unreachable by construction — the SQL file is embedded at compile time and its
     // parsing is covered by the tests below.
-    #[expect(clippy::expect_used)]
     Loader::get_queries_from(AUDIT_FILE_QUERIES).expect("Can't parse the audit SQL file")
 });
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::AUDIT_QUERIES;
 
@@ -89,5 +91,20 @@ mod tests {
                 "query '{name}' referenced by pgsql.rs is missing from audit.sql"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests pinning that the embedded audit SQL bundle parses.
+
+    use super::AUDIT_QUERIES;
+
+    #[test]
+    fn characterization_audit_queries_parse_and_expose_queries() {
+        for name in ["create-table-audit-events", "insert-audit-event"] {
+            assert_ne!(AUDIT_QUERIES.get(name).unwrap().trim().len(), 0);
+        }
+        assert!(AUDIT_QUERIES.get("no-such-query").is_none());
     }
 }

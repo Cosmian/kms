@@ -37,13 +37,13 @@ pub(crate) async fn check(kms: &KMS, request: Check, owner: &UserId) -> KResult<
         .attributes()
         .unwrap_or_else(|_| owm.attributes());
 
-    if let Some(request_mask) = request.cryptographic_usage_mask {
-        if !attributes.is_usage_authorized_for(request_mask)? {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
-                "Check Failed".to_owned(),
-            ));
-        }
+    if let Some(request_mask) = request.cryptographic_usage_mask
+        && !attributes.is_usage_authorized_for(request_mask)?
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "Check Failed".to_owned(),
+        ));
     }
 
     // Usage Limits Count (KMIP 2.1 Table 183): the units to protect must still be available.

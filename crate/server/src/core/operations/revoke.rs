@@ -59,13 +59,13 @@ pub(crate) async fn revoke_operation(
     }
 
     // For demo purposes, make some keys non-revocable (like Google CSE and MS DKE keys)
-    if let Some(non_revocable_key_id) = &kms.params.non_revocable_key_id {
-        if non_revocable_key_id.contains(&unique_identifier.to_string()) {
-            trace!("Non revocable keys detected: won't be revoked {non_revocable_key_id:?}");
-            return Ok(RevokeResponse {
-                unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_string()),
-            });
-        }
+    if let Some(non_revocable_key_id) = &kms.params.non_revocable_key_id
+        && non_revocable_key_id.contains(&unique_identifier.to_string())
+    {
+        trace!("Non revocable keys detected: won't be revoked {non_revocable_key_id:?}");
+        return Ok(RevokeResponse {
+            unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_string()),
+        });
     }
 
     recursively_revoke_key(
@@ -83,7 +83,6 @@ pub(crate) async fn revoke_operation(
 }
 
 /// Recursively revoke keys
-#[allow(clippy::too_many_arguments)]
 #[async_recursion(?Send)]
 pub(crate) async fn recursively_revoke_key(
     unique_identifier: &UniqueIdentifier,
@@ -219,10 +218,10 @@ pub(crate) async fn recursively_revoke_key(
                 // Server-triggered: neither the revoking user (e.g. a leaf-certificate
                 // owner) nor `default_username` can generally use the CA key. The key is
                 // authorized as the issuer certificate's owner.
-                if kms.params.kms_public_url.is_some() {
-                    if let Some(issuer_id) = issuer_id {
-                        trigger_crl_regeneration(kms, &issuer_id).await;
-                    }
+                if kms.params.kms_public_url.is_some()
+                    && let Some(issuer_id) = issuer_id
+                {
+                    trigger_crl_regeneration(kms, &issuer_id).await;
                 }
             }
             ObjectType::SymmetricKey
@@ -272,29 +271,28 @@ pub(crate) async fn recursively_revoke_key(
                         .unwrap_or_else(|_| owm.attributes())
                         .get_link(link_type)
                         .map(|l| l.to_string())
+                        && !ids_to_skip.contains(&linked_id)
                     {
-                        if !ids_to_skip.contains(&linked_id) {
-                            match recursively_revoke_key(
-                                &UniqueIdentifier::TextString(linked_id),
-                                revocation_reason.clone(),
-                                compromise_occurrence_date,
-                                cascade,
-                                kms,
-                                user,
-                                ids_to_skip.clone(),
-                            )
-                            .await
-                            {
-                                // A linked key already in a state this reason cannot
-                                // transition (e.g. already Deactivated) is left as is.
-                                Err(KmsError::Kmip21Error(
-                                    ErrorReason::Wrong_Key_Lifecycle_State,
-                                    msg,
-                                )) => trace!("[revoke] cascade skipped: {msg}"),
-                                other => other?,
-                            }
-                            kms.record_cascading_metrics("Revoke", op_start, user);
+                        match recursively_revoke_key(
+                            &UniqueIdentifier::TextString(linked_id),
+                            revocation_reason.clone(),
+                            compromise_occurrence_date,
+                            cascade,
+                            kms,
+                            user,
+                            ids_to_skip.clone(),
+                        )
+                        .await
+                        {
+                            // A linked key already in a state this reason cannot
+                            // transition (e.g. already Deactivated) is left as is.
+                            Err(KmsError::Kmip21Error(
+                                ErrorReason::Wrong_Key_Lifecycle_State,
+                                msg,
+                            )) => trace!("[revoke] cascade skipped: {msg}"),
+                            other => other?,
                         }
+                        kms.record_cascading_metrics("Revoke", op_start, user);
                     }
                 }
                 Box::pin(revoke_key_core(

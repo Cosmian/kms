@@ -48,7 +48,6 @@ impl Display for KeyPairData {
 }
 
 /// The party that gets signed by the issuer and gets the certificate
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum Subject {
     X509Req(
         /// Unique identifier of the certificate to create
@@ -62,13 +61,13 @@ pub(crate) enum Subject {
         /// Certificate to renew
         X509,
         /// The attributes of the certificate to renew
-        Attributes,
+        Box<Attributes>,
     ),
     PublicKeyAndSubjectName(
         /// Unique identifier of the certificate to create
         UniqueIdentifier,
         /// Public key of the certificate
-        ObjectWithMetadata,
+        Box<ObjectWithMetadata>,
         /// Subject name of the certificate
         X509Name,
     ),
@@ -76,7 +75,7 @@ pub(crate) enum Subject {
         /// Unique identifier of the certificate to create
         UniqueIdentifier,
         /// Generated `KeyPair` from which the certificate is created
-        KeyPairData,
+        Box<KeyPairData>,
         /// Subject name of the certificate
         X509Name,
     ),

@@ -584,10 +584,9 @@ pub(crate) fn setup_new_key(
     if matches!(
         object_type,
         ObjectType::SymmetricKey | ObjectType::PrivateKey | ObjectType::SecretData
-    ) {
-        if let Ok(key_attrs) = key_object.attributes_mut() {
-            key_attrs.initialize_never_extractable();
-        }
+    ) && let Ok(key_attrs) = key_object.attributes_mut()
+    {
+        key_attrs.initialize_never_extractable();
     }
 
     Ok(())
@@ -684,7 +683,6 @@ fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, A
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,

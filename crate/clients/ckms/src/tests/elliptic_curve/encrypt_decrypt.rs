@@ -17,13 +17,12 @@ use crate::{
 };
 
 /// Encrypts a file using the given public key and access policy.
-#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],
     public_key_id: &str,
     output_file: Option<&str>,
-) -> CosmianResult<()> {
+) {
     let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
@@ -41,7 +40,6 @@ pub(crate) fn encrypt(
     cmd.assert().success().stdout(predicate::str::contains(
         "The encrypted file is available at",
     ));
-    Ok(())
 }
 
 /// Decrypt a file using the given private key
@@ -93,7 +91,7 @@ async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
         &[input_file.to_str().unwrap()],
         &public_key_id,
         Some(output_file.to_str().unwrap()),
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(
@@ -135,7 +133,7 @@ async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
         &[input_file.to_str().unwrap()],
         "[\"tag_ec\"]",
         Some(output_file.to_str().unwrap()),
-    )?;
+    );
 
     // the user key should be able to decrypt the file
     decrypt(

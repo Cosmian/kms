@@ -789,14 +789,14 @@ fn resolve_assertion_value(
         result = result.replace(&format!("{{{{{name}}}}}"), value);
     }
     // Fail loudly if any unresolved placeholder remains (typo in capture name)
-    if let Some(pos) = result.find("{{") {
-        if result[pos..].contains("}}") {
-            return Err(KmsClientError::UnexpectedError(format!(
-                "resolve_assertion_value: unresolved placeholder in assertion \
+    if let Some(pos) = result.find("{{")
+        && result[pos..].contains("}}")
+    {
+        return Err(KmsClientError::UnexpectedError(format!(
+            "resolve_assertion_value: unresolved placeholder in assertion \
                  template '{template}' — result after substitution: '{result}'. \
                  Check for typos in capture variable names."
-            )));
-        }
+        )));
     }
     Ok(result)
 }
@@ -811,20 +811,19 @@ fn find_all_fields_in_json(value: &serde_json::Value, tag: &str) -> Vec<String> 
 fn find_all_fields_impl(value: &serde_json::Value, tag: &str, out: &mut Vec<String>) {
     match value {
         serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::String(t)) = map.get("tag") {
-                if t == tag {
-                    if let Some(v) = map.get("value") {
-                        let s = match v {
-                            serde_json::Value::String(s) => Some(s.clone()),
-                            serde_json::Value::Number(n) => Some(n.to_string()),
-                            serde_json::Value::Bool(b) => Some(b.to_string()),
-                            serde_json::Value::Array(_) => None,
-                            _ => Some(v.to_string()),
-                        };
-                        if let Some(s) = s {
-                            out.push(s);
-                        }
-                    }
+            if let Some(serde_json::Value::String(t)) = map.get("tag")
+                && t == tag
+                && let Some(v) = map.get("value")
+            {
+                let s = match v {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    serde_json::Value::Bool(b) => Some(b.to_string()),
+                    serde_json::Value::Array(_) => None,
+                    _ => Some(v.to_string()),
+                };
+                if let Some(s) = s {
+                    out.push(s);
                 }
             }
             if let Some(serde_json::Value::Array(children)) = map.get("value") {
@@ -1048,10 +1047,10 @@ fn backend_available(backend: &str) -> bool {
     {
         return true;
     }
-    if let Ok(v) = std::env::var("KMS_TEST_BACKENDS") {
-        if v.split(',').any(|b| b.trim() == backend) {
-            return true;
-        }
+    if let Ok(v) = std::env::var("KMS_TEST_BACKENDS")
+        && v.split(',').any(|b| b.trim() == backend)
+    {
+        return true;
     }
     // Fall back to checking the legacy per-backend connection env var.
     match backend {
@@ -1971,11 +1970,6 @@ async fn execute_steps(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use super::*;
 
@@ -2014,8 +2008,8 @@ mod tests {
         };
         let body = raw_http_body(&[segment(Some("ab"), None, 2), segment(None, Some("00ff"), 1)]);
         assert_eq!(body.unwrap(), b"abab\x00\xff");
-        assert!(raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).is_err());
-        assert!(raw_http_body(&[segment(None, Some("zz"), 1)]).is_err());
+        raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).unwrap_err();
+        raw_http_body(&[segment(None, Some("zz"), 1)]).unwrap_err();
     }
 
     #[test]
@@ -2101,7 +2095,7 @@ mod tests {
                 ]
             }]
         });
-        assert!(assert_success(&response, "test_op").is_ok());
+        assert_success(&response, "test_op").unwrap();
     }
 
     #[test]

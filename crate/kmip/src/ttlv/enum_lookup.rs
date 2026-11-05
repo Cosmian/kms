@@ -1,5 +1,7 @@
-#![allow(clippy::as_conversions)] // All enums are #[repr(u32)]; casts are intentional.
-
+#![expect(
+    clippy::as_conversions,
+    reason = "fieldless repr enum discriminant cast; no std conversion"
+)]
 use std::{collections::HashMap, sync::LazyLock};
 
 use strum::IntoEnumIterator;

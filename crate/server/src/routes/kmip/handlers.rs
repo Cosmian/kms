@@ -699,8 +699,6 @@ fn get_kmip_version(ttlv: &TTLV) -> KResult<(i32, i32)> {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
-#[expect(clippy::unwrap_used)]
 mod tests {
     use cosmian_kms_client_utils::reexport::cosmian_kmip;
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::{
@@ -838,7 +836,6 @@ mod tests {
         );
         assert_eq!(response.response_header.batch_count, 1);
         assert_eq!(response.batch_item.len(), 1);
-        #[expect(clippy::panic)]
         let ResponseMessageBatchItemVersioned::V14(batch_item) = &response
             .batch_item
             .first()
@@ -923,11 +920,10 @@ mod tests {
             ),
         };
 
-        assert!(super::request_batch_item_ids(Some(&request)).is_empty());
+        assert_eq!(super::request_batch_item_ids(Some(&request)).len(), 0);
     }
 }
 
-#[expect(clippy::expect_used)]
 #[cfg(test)]
 mod local_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -957,13 +953,12 @@ fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i3
         append_auth_tag_to_encrypt_response(response);
         // Located Items was introduced in KMIP 1.3
         for item in &mut response.batch_item {
-            if let ResponseMessageBatchItemVersioned::V14(item) = item {
-                if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::LocateResponse(
+            if let ResponseMessageBatchItemVersioned::V14(item) = item
+                && let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::LocateResponse(
                     locate,
                 )) = &mut item.response_payload
-                {
-                    locate.located_items = None;
-                }
+            {
+                locate.located_items = None;
             }
         }
     }
@@ -984,12 +979,11 @@ fn append_auth_tag_to_encrypt_response(response: &mut ResponseMessage) {
         let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
             continue;
         };
-        if let Some(EncryptResponse(resp)) = item.response_payload.as_mut() {
-            if let Some(auth_tag) = resp.authenticated_encryption_tag.take() {
-                if let Some(data) = resp.data.as_mut() {
-                    data.extend_from_slice(&auth_tag);
-                }
-            }
+        if let Some(EncryptResponse(resp)) = item.response_payload.as_mut()
+            && let Some(auth_tag) = resp.authenticated_encryption_tag.take()
+            && let Some(data) = resp.data.as_mut()
+        {
+            data.extend_from_slice(&auth_tag);
         }
     }
 }
@@ -1013,10 +1007,10 @@ fn strip_asymmetric_key_value_attributes(response: &mut ResponseMessage) {
         if !is_asymmetric {
             continue;
         }
-        if let Ok(kb) = gr.object.key_block_mut() {
-            if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
-                *attribute = None;
-            }
+        if let Ok(kb) = gr.object.key_block_mut()
+            && let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut()
+        {
+            *attribute = None;
         }
     }
 }
@@ -1085,14 +1079,13 @@ fn strip_kmip_10_initial_date(response: &mut ResponseMessage) {
         let Some(GetResponse(gr)) = item.response_payload.as_mut() else {
             continue;
         };
-        if let Ok(kb) = gr.object.key_block_mut() {
-            if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
-                if let Some(attrs) = attribute {
-                    attrs.retain(|a| !matches!(a, Kmip14Attribute::InitialDate(_)));
-                    if attrs.is_empty() {
-                        *attribute = None;
-                    }
-                }
+        if let Ok(kb) = gr.object.key_block_mut()
+            && let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut()
+            && let Some(attrs) = attribute
+        {
+            attrs.retain(|a| !matches!(a, Kmip14Attribute::InitialDate(_)));
+            if attrs.is_empty() {
+                *attribute = None;
             }
         }
     }
@@ -1114,14 +1107,13 @@ fn retain_kmip1_response_attributes(
         };
         match item.response_payload.as_mut() {
             Some(GetResponse(gr)) => {
-                if let Ok(kb) = gr.object.key_block_mut() {
-                    if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
-                        if let Some(attrs) = attribute {
-                            attrs.retain(&keep);
-                            if attrs.is_empty() {
-                                *attribute = None;
-                            }
-                        }
+                if let Ok(kb) = gr.object.key_block_mut()
+                    && let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut()
+                    && let Some(attrs) = attribute
+                {
+                    attrs.retain(&keep);
+                    if attrs.is_empty() {
+                        *attribute = None;
                     }
                 }
             }
@@ -1180,17 +1172,16 @@ fn perform_request_tweaks(request: &mut DecodedRequestMessage, major: i32, minor
                             0
                         }
                     };
-                    if len > 0 {
-                        if let Some(data) = &mut decrypt.data {
-                            if data.len() >= len {
-                                debug!(
-                                    "This is a {major}.{minor} Decrypt message. Extracting \
+                    if len > 0
+                        && let Some(data) = &mut decrypt.data
+                        && data.len() >= len
+                    {
+                        debug!(
+                            "This is a {major}.{minor} Decrypt message. Extracting \
                                      Authenticated Encryption Tag of length {len} from Data field"
-                                );
-                                let auth_tag = data.split_off(data.len() - len);
-                                decrypt.authenticated_encryption_tag = Some(auth_tag);
-                            }
-                        }
+                        );
+                        let auth_tag = data.split_off(data.len() - len);
+                        decrypt.authenticated_encryption_tag = Some(auth_tag);
                     }
                 }
             }

@@ -39,7 +39,7 @@ async fn test_count_active_keys() -> KmsCliResult<()> {
     // Revoke then destroy the first key
     RevokeKeyAction {
         reason: RevokeReasonArgs {
-            revocation_reason: "test revoke".to_string(),
+            revocation_reason: "test revoke".to_owned(),
             reason_code: RevocationReasonCode::Unspecified,
         },
         key_id: Some(first_uid.clone()),
@@ -114,7 +114,7 @@ async fn test_revoked_keys_not_active() -> KmsCliResult<()> {
     // Revoke all keys with the tag in a single operation
     RevokeKeyAction {
         reason: RevokeReasonArgs {
-            revocation_reason: "test revoke all".to_string(),
+            revocation_reason: "test revoke all".to_owned(),
             reason_code: RevocationReasonCode::Unspecified,
         },
         key_id: None,
@@ -137,12 +137,11 @@ async fn test_revoked_keys_not_active() -> KmsCliResult<()> {
 
         if let Ok(get_response) = client.get(get_req).await {
             // Check if the key's state is Active
-            if let Ok(attrs) = get_response.object.attributes() {
-                if let Some(key_state) = attrs.state {
-                    if key_state == State::Active {
-                        active_count += 1;
-                    }
-                }
+            if let Ok(attrs) = get_response.object.attributes()
+                && let Some(key_state) = attrs.state
+                && key_state == State::Active
+            {
+                active_count += 1;
             }
         }
     }

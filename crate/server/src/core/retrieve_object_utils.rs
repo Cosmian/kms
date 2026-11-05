@@ -169,30 +169,30 @@ pub(crate) async fn retrieve_object_for_operation(
                                 .ok()
                                 .and_then(|attrs| attrs.deactivation_date)
                         });
-                        if let Some(deactivation_date) = deactivation_date {
-                            if deactivation_date <= now {
-                                trace!(
-                                    "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                        if let Some(deactivation_date) = deactivation_date
+                            && deactivation_date <= now
+                        {
+                            trace!(
+                                "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                                owm.id(),
+                                deactivation_date,
+                                now
+                            );
+                            let owm_mut = Arc::make_mut(&mut owm);
+                            owm_mut.attributes_mut().state = Some(State::Deactivated);
+                            if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
+                                attributes.state = Some(State::Deactivated);
+                            }
+                            if let Err(e) = kms
+                                .database
+                                .update_state(owm.id(), State::Deactivated)
+                                .await
+                            {
+                                warn!(
+                                    "Failed to persist auto-deactivation of object {}: {}",
                                     owm.id(),
-                                    deactivation_date,
-                                    now
+                                    e
                                 );
-                                let owm_mut = Arc::make_mut(&mut owm);
-                                owm_mut.attributes_mut().state = Some(State::Deactivated);
-                                if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
-                                    attributes.state = Some(State::Deactivated);
-                                }
-                                if let Err(e) = kms
-                                    .database
-                                    .update_state(owm.id(), State::Deactivated)
-                                    .await
-                                {
-                                    warn!(
-                                        "Failed to persist auto-deactivation of object {}: {}",
-                                        owm.id(),
-                                        e
-                                    );
-                                }
                             }
                         }
                     }
@@ -253,17 +253,15 @@ pub(crate) async fn retrieve_object_for_operation(
                     | KmipOperation::DeleteAttribute
                     | KmipOperation::Activate
             );
-            if !skip_unwrap {
-                if let Some(defaults) = &kms.params.default_unwrap_types {
-                    if defaults.contains(&owm.object().object_type())
-                        && state != State::Destroyed
-                        && state != State::Destroyed_Compromised
-                    {
-                        let unwrapped_object =
-                            Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
-                        Arc::make_mut(&mut owm).set_object(unwrapped_object);
-                    }
-                }
+            if !skip_unwrap
+                && let Some(defaults) = &kms.params.default_unwrap_types
+                && defaults.contains(&owm.object().object_type())
+                && state != State::Destroyed
+                && state != State::Destroyed_Compromised
+            {
+                let unwrapped_object =
+                    Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
+                Arc::make_mut(&mut owm).set_object(unwrapped_object);
             }
 
             return Ok(owm);

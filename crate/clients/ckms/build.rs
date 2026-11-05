@@ -2,7 +2,13 @@
 // `ProductVersion`, `CompanyName`, `LegalCopyright`, `Language`) into ckms.exe so that
 // Windows Explorer's Properties > Details tab is populated. Without this, the fields
 // stay empty because plain `cargo build` never emits a Windows resource section.
-#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps))]
+#[cfg_attr(
+    not(windows),
+    allow(
+        clippy::unnecessary_wraps,
+        reason = "build.rs main returns Result on Windows"
+    )
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     {

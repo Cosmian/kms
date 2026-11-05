@@ -170,12 +170,12 @@ async fn decrypt_dir(
     body: &DecryptRequest,
 ) -> CryptoResult<CryptoDecryptResponse> {
     // 'dir' transmits no key material — encrypted_key must be absent or empty.
-    if let Some(ref ek) = body.encrypted_key {
-        if !ek.is_empty() {
-            return Err(CryptoApiError::BadRequest(
-                "'encrypted_key' must be absent or empty for 'dir' key management".to_owned(),
-            ));
-        }
+    if let Some(ref ek) = body.encrypted_key
+        && !ek.is_empty()
+    {
+        return Err(CryptoApiError::BadRequest(
+            "'encrypted_key' must be absent or empty for 'dir' key management".to_owned(),
+        ));
     }
 
     let kmip_params = jose_to_kmip_params(alg, Some(enc))?;
@@ -653,13 +653,13 @@ async fn decrypt_ecdh_es(
         JoseAlgorithm::EcdhEs => {
             // Direct agreement: encrypted_key must be absent or empty, and the
             // Concat KDF AlgorithmID is the "enc" value (the derived key is the CEK).
-            if let Some(ref ek) = body.encrypted_key {
-                if !ek.is_empty() {
-                    return Err(CryptoApiError::BadRequest(
-                        "'encrypted_key' must be absent or empty for 'ECDH-ES' key management"
-                            .to_owned(),
-                    ));
-                }
+            if let Some(ref ek) = body.encrypted_key
+                && !ek.is_empty()
+            {
+                return Err(CryptoApiError::BadRequest(
+                    "'encrypted_key' must be absent or empty for 'ECDH-ES' key management"
+                        .to_owned(),
+                ));
             }
             let key_data_len_bits = u32::try_from(cek_size_bytes(enc) * 8).map_err(|e| {
                 CryptoApiError::InternalError(format!("ECDH-ES decrypt: CEK size overflow: {e}"))

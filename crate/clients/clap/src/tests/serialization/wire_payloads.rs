@@ -270,9 +270,8 @@ pub(crate) async fn s11_unknown_json_ttlv_tag() -> KmsCliResult<()> {
 pub(crate) async fn s12_one_mb_random_binary() -> KmsCliResult<()> {
     let ctx = start_default_test_kms_server().await;
     // Pseudo-random 1 MB body (just repeated pattern — no real entropy needed)
-    #[allow(clippy::cast_possible_truncation)]
     let data: Vec<u8> = (0_u32..=1_048_575)
-        .map(|i| (i.wrapping_mul(6_364_136_223_846_793_005_u64 as u32)) as u8)
+        .map(|i| i.wrapping_mul(0x4C95_7F2D).to_le_bytes()[0])
         .collect();
     let status = raw_binary_post(ctx.server_port, data).await;
     assert_eq!(

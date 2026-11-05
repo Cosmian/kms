@@ -282,10 +282,10 @@ impl ExportAuditAction {
                 ))
             })?;
 
-            if let Some(ts) = since {
-                if event.timestamp < ts {
-                    continue;
-                }
+            if let Some(ts) = since
+                && event.timestamp < ts
+            {
+                continue;
             }
 
             let output_line = match self.format {
@@ -344,10 +344,10 @@ impl ExportAuditAction {
                     }
                     for event in &page {
                         after_id = event.id;
-                        if let Some(ts) = since {
-                            if event.timestamp < ts {
-                                continue;
-                            }
+                        if let Some(ts) = since
+                            && event.timestamp < ts
+                        {
+                            continue;
                         }
                         let output_line = match self.format {
                             ExportFormat::Json => serde_json::to_string(&PostgresExportEvent {
@@ -868,7 +868,6 @@ fn block_on_audit_source<F: std::future::Future<Output = KmsCliResult<()>>>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use std::{ffi::OsString, io::Write as _, path::PathBuf};
 

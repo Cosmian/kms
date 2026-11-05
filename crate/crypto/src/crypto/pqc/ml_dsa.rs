@@ -66,7 +66,6 @@ pub fn ml_dsa_verify(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 
@@ -82,7 +81,7 @@ mod tests {
 
         let message = b"test message for ML-DSA-44";
         let signature = ml_dsa_sign(&priv_key, message).expect("sign");
-        assert!(!signature.is_empty());
+        assert_ne!(signature.len(), 0);
 
         let valid = ml_dsa_verify(&pub_key, message, &signature).expect("verify");
         assert!(valid);

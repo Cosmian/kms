@@ -1,6 +1,5 @@
 // Field names intentionally share an `ocsp_` prefix for disambiguation in
 // flat CLI / env-var / TOML namespaces.
-#![allow(clippy::struct_field_names)]
 
 use clap::Args;
 use serde::{Deserialize, Serialize};

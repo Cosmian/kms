@@ -1,6 +1,3 @@
-#![allow(unused)]
-use std::option;
-
 use cosmian_logger::{info, log_init};
 use zeroize::Zeroizing;
 
@@ -21,7 +18,7 @@ use crate::{
         kmip_objects::{Object, SymmetricKey},
         kmip_operations::{
             AddAttribute, Create, CreateResponse, Get, GetAttributes, GetAttributesResponse,
-            GetResponse, Operation, Query, QueryResponse,
+            GetResponse, Operation, Query,
         },
         kmip_types::{CryptographicAlgorithm, CustomAttribute, KeyFormatType, ObjectType},
     },

@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::cast_possible_truncation,
-    clippy::as_conversions,
-    let_underscore_drop
-)]
 //! HTTP throughput benchmark: proves that the KMS scales on multiple CPUs.
 //!
 //! For each worker count in {1, 2, 4, 8} the bench:
@@ -23,6 +16,11 @@
 //! Generate a flamegraph (Linux, requires `cargo install flamegraph`):
 //!   `CARGO_PROFILE_BENCH_DEBUG=true`
 //!   `cargo flamegraph --bench http_throughput -p test_kms_server -- --bench`
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "bench harness: a failed setup or request must abort the run"
+)]
 
 use std::time::Instant;
 
@@ -185,7 +183,7 @@ fn bench_http_throughput(c: &mut Criterion) {
     let config_path = test_config_path("auth/plain.toml");
 
     let mut group = c.benchmark_group("kms_bench");
-    group.throughput(Throughput::Elements(CONCURRENCY as u64));
+    group.throughput(Throughput::Elements(u64::try_from(CONCURRENCY).unwrap()));
     // Reduce sample count to keep total bench time reasonable; each sample
     // already exercises many concurrent requests.
     group.sample_size(20);

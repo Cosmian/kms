@@ -102,13 +102,11 @@ pub(crate) fn update_cached_artifacts_versioned(
                         }
                     }
                     Some(Op21::LocateResponse(lr)) => {
-                        if let Some(list) = &lr.unique_identifier {
-                            if list.len() == 1 {
-                                if let UniqueIdentifier::TextString(s) = &list[0] {
+                        if let Some(list) = &lr.unique_identifier
+                            && list.len() == 1
+                                && let UniqueIdentifier::TextString(s) = &list[0] {
                                     state.last_uid = Some(s.clone());
                                 }
-                            }
-                        }
                     }
                 );
             }
@@ -139,11 +137,10 @@ pub(crate) fn update_cached_artifacts_versioned(
                         state.last_uid = Some(ckpr.private_key_unique_identifier.clone());
                     }
                     Some(Op14::LocateResponse(lr)) => {
-                        if let Some(list) = &lr.unique_identifier {
-                            if list.len() == 1 {
+                        if let Some(list) = &lr.unique_identifier
+                            && list.len() == 1 {
                                 state.last_uid = Some(list[0].clone());
                             }
-                        }
                     }
                 );
             }

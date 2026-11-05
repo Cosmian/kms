@@ -2222,11 +2222,11 @@ fn run_function_coverage(
         rsa,
     };
     shallow_probe_functions(&ctx, func_list_3_0, token, &mut rows);
-    if object != 0 {
-        if let Some(c_destroy) = func_list.C_DestroyObject {
-            // SAFETY: `object` was just created above by `generate_aes_key`.
-            let _ = unsafe { c_destroy(session, object) };
-        }
+    if object != 0
+        && let Some(c_destroy) = func_list.C_DestroyObject
+    {
+        // SAFETY: `object` was just created above by `generate_aes_key`.
+        let _ = unsafe { c_destroy(session, object) };
     }
 
     rows
@@ -2350,11 +2350,11 @@ fn shallow_probe_functions(
                 &raw mut handle,
             );
             push_probe(rows, "C_CreateObject", rv, CKR_OK);
-            if rv == CKR_OK {
-                if let Some(c_destroy) = f.C_DestroyObject {
-                    // SAFETY: `handle` was just created above.
-                    let _ = unsafe { c_destroy(session, handle) };
-                }
+            if rv == CKR_OK
+                && let Some(c_destroy) = f.C_DestroyObject
+            {
+                // SAFETY: `handle` was just created above.
+                let _ = unsafe { c_destroy(session, handle) };
             }
             Ok(())
         })();

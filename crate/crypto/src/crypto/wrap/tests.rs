@@ -41,7 +41,7 @@ use crate::{
         KmsRng,
         wrap::{unwrap_key_block, wrap_object_with_key},
     },
-    crypto_bail,
+    crypto_bail, crypto_ensure,
     error::{CryptoError, result::CryptoResult},
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
@@ -158,24 +158,27 @@ fn wrap_test(
             },
             &KmsRng::new(),
         )?;
-        assert_ne!(
-            key_to_wrap.key_block()?.wrapped_key_bytes()?,
-            key_to_wrap_bytes
+        crypto_ensure!(
+            key_to_wrap.key_block()?.wrapped_key_bytes()? != key_to_wrap_bytes,
+            "wrapped bytes equal plaintext"
         );
-        assert_eq!(
-            key_to_wrap.key_block()?.key_wrapping_data,
-            Some(KeyWrappingData::default())
+        crypto_ensure!(
+            key_to_wrap.key_block()?.key_wrapping_data == Some(KeyWrappingData::default()),
+            "unexpected key wrapping data"
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(
+        crypto_ensure!(
             match key_to_wrap {
                 Object::SymmetricKey(_) => key_to_wrap.key_block()?.key_bytes()?,
                 _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
-            },
-            key_to_wrap_bytes
+            } == key_to_wrap_bytes,
+            "unwrapped bytes mismatch"
         );
-        assert!(key_to_wrap.key_block()?.key_wrapping_data.is_none());
+        crypto_ensure!(
+            key_to_wrap.key_block()?.key_wrapping_data.is_none(),
+            "key still has wrapping data"
+        );
     };
 
     // TTLV encoding
@@ -190,27 +193,31 @@ fn wrap_test(
             },
             &KmsRng::new(),
         )?;
-        assert_ne!(
-            key_to_wrap.key_block()?.wrapped_key_bytes()?,
-            key_to_wrap_bytes
+        crypto_ensure!(
+            key_to_wrap.key_block()?.wrapped_key_bytes()? != key_to_wrap_bytes,
+            "wrapped bytes equal plaintext"
         );
-        assert_eq!(
-            key_to_wrap.key_block()?.key_wrapping_data,
-            Some(KeyWrappingData {
-                encoding_option: Some(EncodingOption::TTLVEncoding),
-                ..Default::default()
-            })
+        crypto_ensure!(
+            key_to_wrap.key_block()?.key_wrapping_data
+                == Some(KeyWrappingData {
+                    encoding_option: Some(EncodingOption::TTLVEncoding),
+                    ..Default::default()
+                }),
+            "unexpected key wrapping data"
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
-        assert_eq!(
+        crypto_ensure!(
             match key_to_wrap {
                 Object::SymmetricKey(_) => key_to_wrap.key_block()?.key_bytes()?,
                 _ => key_to_wrap.key_block()?.ec_raw_bytes()?,
-            },
-            key_to_wrap_bytes
+            } == key_to_wrap_bytes,
+            "unwrapped bytes mismatch"
         );
-        assert!(key_to_wrap.key_block()?.key_wrapping_data.is_none());
+        crypto_ensure!(
+            key_to_wrap.key_block()?.key_wrapping_data.is_none(),
+            "key still has wrapping data"
+        );
     };
 
     Ok(())
@@ -258,7 +265,10 @@ fn test_encrypt_decrypt_rfc_5649() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &key_encryption_key)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    crypto_ensure!(
+        data_encryption_key.key_block()? == &original_key_block,
+        "unwrapped key block mismatch"
+    );
     Ok(())
 }
 
@@ -312,9 +322,8 @@ fn test_wrap_unwrap_aes_gcm_all_kek_sizes() -> CryptoResult<()> {
             crypto_bail!("Key value is not a byte string");
         };
         unwrap_key_block(dek.key_block_mut()?, &kek)?;
-        assert_eq!(
-            dek.key_block()?,
-            &original_key_block,
+        crypto_ensure!(
+            dek.key_block()? == &original_key_block,
             "KEK of {kek_len} bytes"
         );
     }
@@ -371,7 +380,10 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() -> CryptoResult<()> {
         wrap_key_pair.private_key(),
     )?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    crypto_ensure!(
+        data_encryption_key.key_block()? == &original_key_block,
+        "unwrapped key block mismatch"
+    );
     Ok(())
 }
 
@@ -433,7 +445,10 @@ fn test_encrypt_decrypt_rsa() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    crypto_ensure!(
+        data_encryption_key.key_block()? == &original_key_block,
+        "unwrapped key block mismatch"
+    );
     Ok(())
 }
 
@@ -481,7 +496,10 @@ fn test_encrypt_decrypt_ec_p192() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    crypto_ensure!(
+        data_encryption_key.key_block()? == &original_key_block,
+        "unwrapped key block mismatch"
+    );
     Ok(())
 }
 
@@ -529,7 +547,10 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
     };
     unwrap_key_block(data_encryption_key.key_block_mut()?, &wrap_key_pair_priv)?;
 
-    assert_eq!(data_encryption_key.key_block()?, &original_key_block);
+    crypto_ensure!(
+        data_encryption_key.key_block()? == &original_key_block,
+        "unwrapped key block mismatch"
+    );
     Ok(())
 }
 
@@ -604,11 +625,17 @@ fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
                 },
                 &KmsRng::new(),
             )?;
-            assert!(obj.is_wrapped());
+            crypto_ensure!(obj.is_wrapped(), "{encoding:?} #{i} not wrapped");
             unwrap_key_block(obj.key_block_mut()?, &sym_key)?;
-            assert_eq!(obj.key_block()?.key_bytes()?, bytes, "{encoding:?} #{i}");
-            assert_eq!(obj.key_block()?.key_format_type, format);
-            assert!(obj.key_block()?.key_wrapping_data.is_none());
+            crypto_ensure!(obj.key_block()?.key_bytes()? == bytes, "{encoding:?} #{i}");
+            crypto_ensure!(
+                obj.key_block()?.key_format_type == format,
+                "{encoding:?} #{i} format"
+            );
+            crypto_ensure!(
+                obj.key_block()?.key_wrapping_data.is_none(),
+                "{encoding:?} #{i} still wrapped"
+            );
         }
     }
     Ok(())

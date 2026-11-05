@@ -337,12 +337,6 @@ fn try_acquire_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::io::Read;
 

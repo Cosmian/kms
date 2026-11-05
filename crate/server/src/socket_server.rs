@@ -331,12 +331,22 @@ impl SocketServer {
                         break;
                     }
                     // Reserve a slot atomically so the counter never exceeds the limit.
-                    if active_connections
-                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                            (n < MAX_SOCKET_CONNECTIONS).then_some(n + 1)
-                        })
-                        .is_err()
-                    {
+                    let mut current = active_connections.load(Ordering::Acquire);
+                    let reserved = loop {
+                        if current >= MAX_SOCKET_CONNECTIONS {
+                            break false;
+                        }
+                        match active_connections.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        ) {
+                            Ok(_) => break true,
+                            Err(seen) => current = seen,
+                        }
+                    };
+                    if !reserved {
                         warn!(
                             "Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, \
                              dropping new connection"

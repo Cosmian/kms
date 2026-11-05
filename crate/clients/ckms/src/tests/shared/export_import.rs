@@ -30,7 +30,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> CosmianResult<()> 
 
     // Generate a symmetric key to wrap
     let dek_path = tmp_path.join("dek.key");
-    let dek_file = dek_path.to_str().unwrap().to_string();
+    let dek_file = dek_path.to_str().unwrap().to_owned();
     let dek_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // Export and import the key with different block cipher modes
@@ -48,7 +48,7 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> CosmianResult<()> 
 
         let imported_key_id = import_key(ImportKeyParams {
             cli_conf_path: user_client_conf_path.clone(),
-            sub_command: "sym".to_string(),
+            sub_command: "sym".to_owned(),
             key_file: dek_file.clone(),
             key_id: Some(dek_id.clone()),
             unwrap: true,

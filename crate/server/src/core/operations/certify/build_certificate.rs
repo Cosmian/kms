@@ -115,7 +115,13 @@ pub(crate) async fn build_and_sign_certificate(
     apply_pqc_key_usage(&mut x509_builder, subject, &attributes, vendor_id)?;
 
     // RFC 5280 §4.2: user-supplied extensions from vendor attribute CNF
-    #[allow(unused_variables)]
+    #[cfg_attr(
+        not(feature = "non-fips"),
+        expect(
+            unused_variables,
+            reason = "only read by the non-fips PQC keyUsage warning"
+        )
+    )]
     let (has_cdp, has_user_key_usage) =
         apply_user_extensions(&mut x509_builder, &mut attributes, vendor_id, issuer)?;
     // Combine: CDP is present if it came from the subject (CSR/existing cert) OR user vendor attrs.
@@ -422,21 +428,17 @@ fn inject_server_crl_dp(
 ///
 /// Supports lengths up to 65 535 (two-byte long form). Lengths above this
 /// limit are rejected with an error to prevent silent DER truncation.
-// SAFETY: all `as u8` casts below are guarded by explicit range checks immediately above them.
-#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
 fn encode_der_length(buf: &mut Vec<u8>, len: usize) -> KResult<()> {
-    if len < 0x80 {
-        // len fits in 7 bits — short form; cast safe: len < 128
-        buf.push(len as u8);
-    } else if len <= 0xFF {
-        // one-byte long form; cast safe: len <= 255
-        buf.push(0x81_u8);
-        buf.push(len as u8);
-    } else if len <= 0xFFFF {
-        // two-byte long form; casts safe: len <= 65535
+    if let Ok(len_u8) = u8::try_from(len) {
+        if len_u8 >= 0x80 {
+            // one-byte long form (short form: len fits in 7 bits)
+            buf.push(0x81_u8);
+        }
+        buf.push(len_u8);
+    } else if let Ok(len_u16) = u16::try_from(len) {
+        // two-byte long form
         buf.push(0x82_u8);
-        buf.push((len >> 8) as u8);
-        buf.push((len & 0xFF) as u8);
+        buf.extend_from_slice(&len_u16.to_be_bytes());
     } else {
         return Err(KmsError::InvalidRequest(format!(
             "CRL Distribution Point URI produces a DER length of {len} bytes, \
@@ -479,4 +481,49 @@ pub(crate) fn generate_serial_number(rng: &KmsRng) -> KResult<Asn1Integer> {
         openssl::bn::BigNum::from_slice(&serial_number_bytes)?.as_ref(),
     )?;
     Ok(serial_number)
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests pinning BASE behavior of `encode_der_length`.
+
+    use super::encode_der_length;
+
+    fn encoded(len: usize) -> Vec<u8> {
+        let mut buf = vec![0xAA_u8];
+        encode_der_length(&mut buf, len).unwrap();
+        buf
+    }
+
+    #[test]
+    fn characterization_encode_der_length_short_form() {
+        assert_eq!(encoded(0), vec![0xAA, 0x00]);
+        assert_eq!(encoded(1), vec![0xAA, 0x01]);
+        assert_eq!(encoded(127), vec![0xAA, 0x7F]);
+    }
+
+    #[test]
+    fn characterization_encode_der_length_one_byte_long_form() {
+        assert_eq!(encoded(128), vec![0xAA, 0x81, 0x80]);
+        assert_eq!(encoded(200), vec![0xAA, 0x81, 0xC8]);
+        assert_eq!(encoded(255), vec![0xAA, 0x81, 0xFF]);
+    }
+
+    #[test]
+    fn characterization_encode_der_length_two_byte_long_form() {
+        assert_eq!(encoded(256), vec![0xAA, 0x82, 0x01, 0x00]);
+        assert_eq!(encoded(0x1234), vec![0xAA, 0x82, 0x12, 0x34]);
+        assert_eq!(encoded(65535), vec![0xAA, 0x82, 0xFF, 0xFF]);
+    }
+
+    #[test]
+    fn characterization_encode_der_length_too_large() {
+        let mut buf = vec![0xAA_u8];
+        let err = encode_der_length(&mut buf, 65536).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Invalid Request: CRL Distribution Point URI produces a DER length of 65536 bytes, which exceeds the maximum supported value of 65535. Shorten kms_public_url or the issuer identifier."
+        );
+        assert_eq!(buf, vec![0xAA]);
+    }
 }

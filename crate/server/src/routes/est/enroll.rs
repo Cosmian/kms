@@ -232,7 +232,7 @@ pub(crate) async fn post_simpleenroll(
     };
     let body = match read_limited_body(payload).await {
         Ok(body) => body,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let tls_unique = connection_tls_unique(&req);
     let result = async {
@@ -270,11 +270,11 @@ pub(crate) async fn enroll_for_peer(
             None => false,
         };
         if issued_by_est_ca {
-            if let Some(ca_cert) = chain.first() {
-                if let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await {
-                    warn!("EST simpleenroll rejected: {e}");
-                    return Ok(plain_response(StatusCode::FORBIDDEN, CERTIFICATE_REFUSED));
-                }
+            if let Some(ca_cert) = chain.first()
+                && let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await
+            {
+                warn!("EST simpleenroll rejected: {e}");
+                return Ok(plain_response(StatusCode::FORBIDDEN, CERTIFICATE_REFUSED));
             }
             if !csr_matches_certificate_identity(csr, peer)? {
                 return Ok(plain_response(
@@ -358,7 +358,7 @@ pub(crate) async fn post_simplereenroll(
     };
     let body = match read_limited_body(payload).await {
         Ok(body) => body,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let tls_unique = connection_tls_unique(&req);
     let result = simple_reenroll(&kms, peer.as_ref(), tls_unique.as_deref(), &body).await;

@@ -877,11 +877,11 @@ pub(crate) async fn verify_crls(
                     .and_then(DistPointNameRef::fullname)
                 {
                     for j in 0..fullname.len() {
-                        if let Some(crl_uri) = fullname.get(j).and_then(GeneralNameRef::uri) {
-                            if !uri_list.contains(&crl_uri.to_owned()) {
-                                uri_list.push(crl_uri.to_owned());
-                                trace!("Found CRL URI: {crl_uri}");
-                            }
+                        if let Some(crl_uri) = fullname.get(j).and_then(GeneralNameRef::uri)
+                            && !uri_list.contains(&crl_uri.to_owned())
+                        {
+                            uri_list.push(crl_uri.to_owned());
+                            trace!("Found CRL URI: {crl_uri}");
                         }
                     }
                 }
@@ -1214,12 +1214,6 @@ fn check_crl_freshness(crl: &X509Crl, crl_path: &str) -> KResult<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::indexing_slicing
-    )]
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,

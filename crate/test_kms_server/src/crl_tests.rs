@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use cosmian_kms_client::{
     KmsClient,
     kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},

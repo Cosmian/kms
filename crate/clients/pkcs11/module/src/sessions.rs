@@ -17,10 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::as_conversions)]
-#![allow(clippy::significant_drop_in_scrutinee)]
-#![allow(clippy::branches_sharing_code)]
-
 use std::{
     collections::HashMap,
     sync::{self, Arc, atomic::Ordering},
@@ -156,6 +152,7 @@ pub(crate) struct Session {
 /// # Safety
 /// `pul_len` must be non-null and writable; when non-null, `p_out` must point to at
 /// least `*pul_len` writable bytes.
+#[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
 unsafe fn copy_to_output_buffer(
     data: &[u8],
     p_out: CK_BYTE_PTR,
@@ -242,7 +239,8 @@ impl Session {
             // Populate the find context with every object instead of
             // rejecting the call.
             self.clear_find_objects_ctx();
-            for object in backend()?.find_all_objects()? {
+            let all_objects = backend()?.find_all_objects()?;
+            for object in all_objects {
                 self.update_find_objects_context(object)?;
             }
             return Ok(());
@@ -290,7 +288,8 @@ impl Session {
             }
         }
         // Find all objects
-        for object in backend()?.find_all_objects()? {
+        let all_objects = backend()?.find_all_objects()?;
+        for object in all_objects {
             self.update_find_objects_context(object)?;
         }
 
@@ -334,7 +333,6 @@ impl Session {
         Ok(())
     }
 
-    #[expect(clippy::too_many_lines)]
     pub(crate) fn load_find_context_by_class(
         &mut self,
         attributes: &Attributes,
@@ -405,13 +403,12 @@ impl Session {
                             data_objects
                                 .into_iter()
                                 .filter_map(|(object, handle)| {
-                                    if let Object::DataObject(data) = &*object {
-                                        if label_filter
+                                    if let Object::DataObject(data) = &*object
+                                        && label_filter
                                             .as_ref()
                                             .is_none_or(|l| data.remote_id() == *l)
-                                        {
-                                            return Some((data.remote_id().to_owned(), handle));
-                                        }
+                                    {
+                                        return Some((data.remote_id().to_owned(), handle));
                                     }
                                     None
                                 })
@@ -426,8 +423,9 @@ impl Session {
                             // stub at the same handle (upsert semantics). The read lock above
                             // is dropped before this call to avoid deadlocking on the write
                             // lock taken by `update_find_objects_context`.
-                            match backend()?.find_data_object(SearchOptions::Id(remote_id.clone()))
-                            {
+                            let full_data =
+                                backend()?.find_data_object(SearchOptions::Id(remote_id.clone()));
+                            match full_data {
                                 Ok(Some(full_data)) => {
                                     self.update_find_objects_context(Arc::new(
                                         Object::DataObject(full_data),
@@ -530,8 +528,9 @@ impl Session {
                         // the store with a fully-fetched object here, replacing the
                         // stub at the same handle.
                         let handle = if search_class == pkcs11_sys::CKO_PUBLIC_KEY {
-                            match backend()?.find_public_key(SearchOptions::Id(object.remote_id()))
-                            {
+                            let full_pk =
+                                backend()?.find_public_key(SearchOptions::Id(object.remote_id()));
+                            match full_pk {
                                 Ok(full_pk) => self.update_find_objects_context(Arc::new(
                                     Object::PublicKey(full_pk),
                                 ))?,
@@ -558,7 +557,8 @@ impl Session {
                         // combined tags (e.g. `["ssh-auth", "_sk"]`), retrying the
                         // store lookup afterwards.
                         drop(find_ctx);
-                        if let Ok(private_keys) = backend()?.find_all_private_keys() {
+                        let private_keys = backend()?.find_all_private_keys();
+                        if let Ok(private_keys) = private_keys {
                             for pk in private_keys {
                                 self.update_find_objects_context(Arc::new(Object::PrivateKey(pk)))?;
                             }
@@ -648,30 +648,34 @@ impl Session {
     ) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
         let expected_type = Self::class_to_object_type(search_class)?;
         // 1. Exact id match with the correct class.
-        if let Some((object, handle)) = store.get_using_id(id) {
-            if object.object_type() == expected_type {
-                return Some((object, handle));
-            }
+        if let Some((object, handle)) = store.get_using_id(id)
+            && object.object_type() == expected_type
+        {
+            return Some((object, handle));
         }
         // 2. Private-key search using the paired public key's CKA_ID.
-        if expected_type == ObjectType::PrivateKey {
-            if let Some(base) = id.strip_suffix(PUBLIC_KEY_ID_SUFFIX) {
-                if let Some((object, handle)) = store.get_using_id(base) {
-                    if object.object_type() == ObjectType::PrivateKey {
-                        return Some((object, handle));
-                    }
-                }
-            }
+        if expected_type == ObjectType::PrivateKey
+            && let Some(base) = id.strip_suffix(PUBLIC_KEY_ID_SUFFIX)
+            && let Some((object, handle)) = store.get_using_id(base)
+            && object.object_type() == ObjectType::PrivateKey
+        {
+            return Some((object, handle));
         }
         None
     }
 
     /// Sign the provided data, or stored payload if data is not provided.
+    ///
+    /// # Safety
+    ///
+    /// `p_signature_len` must be a valid pointer; `p_signature`, when non-null, must point to
+    /// a writable buffer of `*p_signature_len` bytes.
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) unsafe fn sign(
         &mut self,
         data: Option<&[u8]>,
-        pSignature: CK_BYTE_PTR,
-        pulSignatureLen: CK_ULONG_PTR,
+        p_signature: CK_BYTE_PTR,
+        p_signature_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
         let Some(sign_ctx) = self.sign_ctx.as_mut() else {
             return Err(ModuleError::OperationNotInitialized(0));
@@ -680,23 +684,23 @@ impl Session {
             return Err(ModuleError::OperationNotInitialized(0));
         }
         if let Some(signature_len) = Self::fixed_signature_len(sign_ctx) {
-            if pSignature.is_null() {
+            if p_signature.is_null() {
                 // A PKCS#11 length query must leave the operation initialized for
                 // the subsequent buffer-filling call. EdDSA and RSA signature sizes
                 // are fixed by the key, so no remote KMS Sign is needed to answer it.
-                // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
+                // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
                 unsafe {
-                    *pulSignatureLen = signature_len.try_into()?;
+                    *p_signature_len = signature_len.try_into()?;
                 }
                 return Ok(());
             }
-            // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
-            if unsafe { usize::try_from(*pulSignatureLen)? } < signature_len {
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
+            if unsafe { usize::try_from(*p_signature_len)? } < signature_len {
                 // The required size is known without signing; report it and keep the
                 // operation initialized so the caller can retry with a larger buffer.
-                // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`).
+                // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
                 unsafe {
-                    *pulSignatureLen = signature_len.try_into()?;
+                    *p_signature_len = signature_len.try_into()?;
                 }
                 return Err(ModuleError::BufferTooSmall);
             }
@@ -744,11 +748,11 @@ impl Session {
             });
             signature
         };
-        // SAFETY: callers pass a non-null, writable `pulSignatureLen` (`not_null!`) and, when
-        // non-null, a `pSignature` buffer of `*pulSignatureLen` writable bytes.
+        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`) and, when
+        // non-null, a `p_signature` buffer of `*p_signature_len` writable bytes.
         // On CKR_BUFFER_TOO_SMALL the operation (and cached signature) stays initialized so
         // the caller can retry with a larger buffer using the SAME signature.
-        if unsafe { copy_to_output_buffer(&signature, pSignature, pulSignatureLen) }? {
+        if unsafe { copy_to_output_buffer(&signature, p_signature, p_signature_len) }? {
             self.sign_ctx = None;
         }
         Ok(())
@@ -756,6 +760,12 @@ impl Session {
 
     /// Signs one complete PKCS#11 v3 message while keeping the message-sign
     /// operation initialized for subsequent independent messages.
+    ///
+    /// # Safety
+    ///
+    /// `p_signature_len` must be a valid pointer; `p_signature`, when non-null, must point to
+    /// a writable buffer of `*p_signature_len` bytes.
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) unsafe fn sign_message(
         &mut self,
         data: &[u8],
@@ -829,39 +839,42 @@ impl Session {
             .verify(&verify_ctx.algorithm, data, signature)
     }
 
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) fn decrypt(
         &mut self,
         ciphertext: Vec<u8>,
-        pData: CK_BYTE_PTR,
-        pulDataLen: CK_ULONG_PTR,
+        p_data: CK_BYTE_PTR,
+        pul_data_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
         let decrypt_ctx = self
             .decrypt_ctx
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let cleartext = backend()?.decrypt(decrypt_ctx, ciphertext)?;
-        // SAFETY: pulDataLen is non-null (checked by C_Decrypt); pData, when non-null, is a
-        // caller buffer of *pulDataLen bytes. Length query / too-small keep the operation active.
-        if unsafe { copy_to_output_buffer(&cleartext, pData, pulDataLen) }? {
+        // SAFETY: pul_data_len is non-null (checked by C_Decrypt); p_data, when non-null, is a
+        // caller buffer of *pul_data_len bytes. Length query / too-small keep the operation active.
+        if unsafe { copy_to_output_buffer(&cleartext, p_data, pul_data_len) }? {
             self.decrypt_ctx = None;
         }
         Ok(())
     }
 
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
     pub(crate) fn encrypt(
         &mut self,
         cleartext: Vec<u8>,
-        pEncryptedData: CK_BYTE_PTR,
-        pulEncryptedDataLen: CK_ULONG_PTR,
+        p_encrypted_data: CK_BYTE_PTR,
+        pul_encrypted_data_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
         let encrypt_ctx = self
             .encrypt_ctx
             .as_ref()
             .ok_or_else(|| ModuleError::OperationNotInitialized(0))?;
         let ciphertext = backend()?.encrypt(encrypt_ctx, cleartext)?;
-        // SAFETY: pulEncryptedDataLen is non-null (checked by C_Encrypt); pEncryptedData,
-        // when non-null, is a caller buffer of *pulEncryptedDataLen bytes.
-        if unsafe { copy_to_output_buffer(&ciphertext, pEncryptedData, pulEncryptedDataLen) }? {
+        // SAFETY: pul_encrypted_data_len is non-null (checked by C_Encrypt); p_encrypted_data,
+        // when non-null, is a caller buffer of *pul_encrypted_data_len bytes.
+        if unsafe { copy_to_output_buffer(&ciphertext, p_encrypted_data, pul_encrypted_data_len) }?
+        {
             self.encrypt_ctx = None;
         }
         Ok(())
@@ -996,7 +1009,8 @@ impl Session {
                 }
                 // A Pre-Active object cannot be revoked but can be destroyed directly
                 // (KMIP 2.1 §4.57): a failed Revoke is left for Destroy to report.
-                if let Err(e) = backend()?.revoke_object(&object.remote_id()) {
+                let revoked = backend()?.revoke_object(&object.remote_id());
+                if let Err(e) = revoked {
                     debug!("destroy_object: revoke skipped: {e}");
                 }
                 backend()?.destroy_object(&object.remote_id())?;
@@ -1018,35 +1032,28 @@ fn ignore_sessions() -> bool {
         == "true"
 }
 
-#[expect(clippy::expect_used)]
-pub(crate) fn create(flags: CK_FLAGS) -> CK_SESSION_HANDLE {
+pub(crate) fn create(flags: CK_FLAGS) -> ModuleResult<CK_SESSION_HANDLE> {
+    let new_session = || {
+        Arc::new(sync::Mutex::new(Session {
+            flags,
+            ..Default::default()
+        }))
+    };
     if ignore_sessions() {
-        {
-            let mut session_map = SESSIONS.write().expect("failed locking the sessions map");
-            if session_map.is_empty() {
-                session_map.insert(
-                    0,
-                    Arc::new(sync::Mutex::new(Session {
-                        flags,
-                        ..Default::default()
-                    })),
-                );
-            }
+        let mut session_map = SESSIONS
+            .write()
+            .context("failed locking the sessions map")?;
+        if session_map.is_empty() {
+            session_map.insert(0, new_session());
         }
-        0
+        Ok(0)
     } else {
         let handle = NEXT_SESSION_HANDLE.fetch_add(1, Ordering::SeqCst);
         SESSIONS
             .write()
-            .expect("failed locking the sessions map")
-            .insert(
-                handle,
-                Arc::new(sync::Mutex::new(Session {
-                    flags,
-                    ..Default::default()
-                })),
-            );
-        handle
+            .context("failed locking the sessions map")?
+            .insert(handle, new_session());
+        Ok(handle)
     }
 }
 
@@ -1119,8 +1126,11 @@ pub(crate) fn close_all() -> ModuleResult<()> {
     Ok(())
 }
 
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
+#[expect(
+    unsafe_code,
+    reason = "tests drive the unsafe C-ABI session helpers with in-scope buffers"
+)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -1456,5 +1466,510 @@ mod tests {
         let input = "ORACLE.SECURITY.KM.ENCRYPTION.\
                      30363946333744303931413733443446313342463243453932314542324346303";
         Session::map_oracle_tde_security_to_mk(input).unwrap_err();
+    }
+}
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests for `cosmian_pkcs11_module::sessions` behavior.
+    #![expect(unsafe_code, reason = "tests call the PKCS#11 C ABI entry points")]
+
+    use std::{ptr, sync::Arc};
+
+    use pkcs11_sys::{CK_INVALID_HANDLE, CK_ULONG, CKF_SERIAL_SESSION, CKO_DATA};
+    use serial_test::serial;
+    use zeroize::{Zeroize, Zeroizing};
+
+    use crate::{
+        ModuleError, ModuleResult,
+        core::{
+            attribute::{Attribute, Attributes},
+            object::Object,
+        },
+        objects_store::OBJECTS_STORE,
+        pkcs11::{C_Finalize, C_Initialize, C_OpenSession},
+        sessions::{self, Session},
+        traits::{
+            Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
+            KeyAlgorithm, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
+            SignContext, SignOperation, SignatureAlgorithm, SymmetricKey, Version,
+            register_backend,
+        },
+        utils::{test_decrypt, test_encrypt, test_generate_key},
+    };
+
+    struct CharTestBackend;
+
+    impl Backend for CharTestBackend {
+        fn token_label(&self) -> [u8; 32] {
+            *b"Cosmian Char Test Token         "
+        }
+
+        fn token_manufacturer_id(&self) -> [u8; 32] {
+            *b"Cosmian                         "
+        }
+
+        fn token_model(&self) -> [u8; 16] {
+            *b"char-model      "
+        }
+
+        fn token_serial_number(&self) -> [u8; 16] {
+            *b"char-serial     "
+        }
+
+        fn library_description(&self) -> [u8; 32] {
+            *b"Cosmian PKCS11 Char Test        "
+        }
+
+        fn library_version(&self) -> Version {
+            Version { major: 1, minor: 0 }
+        }
+
+        fn find_certificate(
+            &self,
+            _query: SearchOptions,
+        ) -> ModuleResult<Option<Arc<dyn Certificate>>> {
+            Ok(None)
+        }
+
+        fn find_all_certificates(&self) -> ModuleResult<Vec<Arc<dyn Certificate>>> {
+            Ok(vec![])
+        }
+
+        fn find_private_key(&self, _query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn find_all_private_keys(&self) -> ModuleResult<Vec<Arc<dyn PrivateKey>>> {
+            Ok(vec![])
+        }
+
+        fn find_public_key(&self, _query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn find_all_public_keys(&self) -> ModuleResult<Vec<Arc<dyn PublicKey>>> {
+            Ok(vec![])
+        }
+
+        fn find_symmetric_key(&self, _query: SearchOptions) -> ModuleResult<Arc<dyn SymmetricKey>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn find_all_symmetric_keys(&self) -> ModuleResult<Vec<Arc<dyn SymmetricKey>>> {
+            Ok(vec![])
+        }
+
+        fn generate_key(
+            &self,
+            _algorithm: KeyAlgorithm,
+            _key_length: usize,
+            _sensitive: bool,
+            _label: Option<&str>,
+        ) -> ModuleResult<Arc<dyn SymmetricKey>> {
+            Ok(Arc::new(CharSymKey))
+        }
+
+        fn create_object(&self, label: &str, data: &[u8]) -> ModuleResult<Arc<dyn DataObject>> {
+            Ok(Arc::new(CharDataObject {
+                remote_id: label.to_owned(),
+                value: Zeroizing::new(data.to_vec()),
+            }))
+        }
+
+        fn revoke_object(&self, _remote_id: &str) -> ModuleResult<()> {
+            Ok(())
+        }
+
+        fn destroy_object(&self, _remote_id: &str) -> ModuleResult<()> {
+            Ok(())
+        }
+
+        fn encrypt(&self, _ctx: &EncryptContext, cleartext: Vec<u8>) -> ModuleResult<Vec<u8>> {
+            let mut ct = cleartext;
+            ct.extend_from_slice(b"_enc");
+            Ok(ct)
+        }
+
+        fn decrypt(
+            &self,
+            _ctx: &DecryptContext,
+            ciphertext: Vec<u8>,
+        ) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            if ciphertext.ends_with(b"_enc") {
+                let len = ciphertext.len().saturating_sub(4);
+                let mut pt = Vec::new();
+                pt.extend_from_slice(&ciphertext[..len]);
+                Ok(Zeroizing::new(pt))
+            } else {
+                Ok(Zeroizing::new(ciphertext))
+            }
+        }
+
+        fn encrypt_message(
+            &self,
+            _ctx: &EncryptContext,
+            _cleartext: Vec<u8>,
+        ) -> ModuleResult<MessageEncryptionOutput> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+
+        fn remote_sign(
+            &self,
+            _remote_id: &str,
+            _algorithm: &SignatureAlgorithm,
+            _data: &[u8],
+            _key_algorithm: KeyAlgorithm,
+        ) -> ModuleResult<Vec<u8>> {
+            Ok(vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
+        }
+
+        fn remote_verify(
+            &self,
+            _remote_id: &str,
+            _algorithm: &SignatureAlgorithm,
+            _data: &[u8],
+            _signature: &[u8],
+            _key_algorithm: KeyAlgorithm,
+        ) -> ModuleResult<()> {
+            Ok(())
+        }
+
+        fn generate_random(&self, buf: &mut [u8]) -> ModuleResult<()> {
+            buf.fill(0xAA);
+            Ok(())
+        }
+
+        fn find_all_objects(&self) -> ModuleResult<Vec<Arc<Object>>> {
+            Ok(vec![Arc::new(Object::DataObject(Arc::new(
+                CharDataObject {
+                    remote_id: "char-data-unique-1".to_owned(),
+                    value: Zeroizing::new(b"data-val-1".to_vec()),
+                },
+            )))])
+        }
+
+        fn find_all_data_objects(&self) -> ModuleResult<Vec<Arc<dyn DataObject>>> {
+            Ok(vec![Arc::new(CharDataObject {
+                remote_id: "char-data-unique-1".to_owned(),
+                value: Zeroizing::new(b"data-val-1".to_vec()),
+            })])
+        }
+
+        fn find_data_object(
+            &self,
+            query: SearchOptions,
+        ) -> ModuleResult<Option<Arc<dyn DataObject>>> {
+            match query {
+                SearchOptions::Id(id) if id == "char-data-unique-1" => {
+                    Ok(Some(Arc::new(CharDataObject {
+                        remote_id: "char-data-unique-1".to_owned(),
+                        value: Zeroizing::new(b"refreshed-val-1".to_vec()),
+                    })))
+                }
+                _ => Ok(None),
+            }
+        }
+    }
+
+    struct CharSymKey;
+
+    impl SymmetricKey for CharSymKey {
+        fn remote_id(&self) -> &'static str {
+            "char_sym_key"
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::Aes256
+        }
+
+        fn key_size(&self) -> usize {
+            32
+        }
+
+        fn raw_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Ok(Zeroizing::new(vec![0x42; 32]))
+        }
+    }
+
+    struct CharEcdsaPrivateKey;
+
+    impl PrivateKey for CharEcdsaPrivateKey {
+        fn remote_id(&self) -> &'static str {
+            "char_ecdsa_priv_key"
+        }
+
+        fn algorithm(&self) -> KeyAlgorithm {
+            KeyAlgorithm::EccP256
+        }
+
+        fn key_size(&self) -> usize {
+            32
+        }
+
+        fn sign(&self, _algorithm: &SignatureAlgorithm, _data: &[u8]) -> ModuleResult<Vec<u8>> {
+            Ok(vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
+        }
+
+        fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+            Ok(Zeroizing::new(vec![0x30; 32]))
+        }
+
+        fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+            Err(ModuleError::FunctionNotSupported)
+        }
+    }
+
+    struct CharDataObject {
+        remote_id: String,
+        value: Zeroizing<Vec<u8>>,
+    }
+
+    impl Zeroize for CharDataObject {
+        fn zeroize(&mut self) {
+            self.value.zeroize();
+        }
+    }
+
+    impl DataObject for CharDataObject {
+        fn remote_id(&self) -> &str {
+            &self.remote_id
+        }
+
+        fn value(&self) -> Zeroizing<Vec<u8>> {
+            self.value.clone()
+        }
+
+        fn application(&self) -> Vec<u8> {
+            b"CharApp".to_vec()
+        }
+
+        fn data_hash(&self) -> Vec<u8> {
+            vec![0_u8; 32]
+        }
+    }
+
+    fn init_char_test_backend() {
+        register_backend(Box::new(CharTestBackend));
+    }
+
+    #[test]
+    #[serial]
+    fn characterization_sessions_empty_find_all_objects_loop() {
+        init_char_test_backend();
+        let mut session = Session::default();
+        let empty_attrs = Attributes::from(vec![]);
+        session.load_find_context(&empty_attrs).unwrap();
+        let store_count = session.find_objects_ctx.len();
+        assert_eq!(store_count, 1);
+    }
+
+    #[test]
+    #[serial]
+    fn characterization_sessions_cko_data_find_refresh_loop() {
+        init_char_test_backend();
+        let mut session = Session::default();
+        let dummy_data = Arc::new(Object::DataObject(Arc::new(CharDataObject {
+            remote_id: "char-data-unique-1".to_owned(),
+            value: Zeroizing::new(b"initial".to_vec()),
+        })));
+        {
+            let mut store = OBJECTS_STORE.write().unwrap();
+            store.upsert(dummy_data);
+        }
+        let attrs = Attributes::from(vec![
+            Attribute::Class(CKO_DATA),
+            Attribute::Label("char-data-unique-1".to_owned()),
+        ]);
+        session.load_find_context(&attrs).unwrap();
+        let ctx_len = session.find_objects_ctx.len();
+        assert_eq!(ctx_len, 2);
+    }
+    #[test]
+    #[serial]
+    fn characterization_sessions_search_all_cko_certificate_ensure_x509() {
+        init_char_test_backend();
+        let mut session = Session::default();
+        // 1. Valid X509 certificate type passes ensure_X509_or_none
+        let valid_attrs = Attributes::from(vec![
+            Attribute::Class(pkcs11_sys::CKO_CERTIFICATE),
+            Attribute::CertificateType(pkcs11_sys::CKC_X_509),
+        ]);
+        session.load_find_context(&valid_attrs).unwrap();
+
+        // 2. Unsupported certificate type returns error from ensure_X509_or_none
+        let invalid_attrs = Attributes::from(vec![
+            Attribute::Class(pkcs11_sys::CKO_CERTIFICATE),
+            Attribute::CertificateType(999),
+        ]);
+        let err = session.load_find_context(&invalid_attrs).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "ensure_X509_or_none: support for certificate type: 999 is not implemented".to_owned()
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn characterization_sessions_sign_buffer_size_negotiation_and_too_small() {
+        init_char_test_backend();
+        let mut session = Session {
+            sign_ctx: Some(SignContext {
+                algorithm: SignatureAlgorithm::Ecdsa,
+                private_key: Arc::new(CharEcdsaPrivateKey),
+                operation: SignOperation::Classic,
+                payload: None,
+                pending_signature: None,
+            }),
+            ..Session::default()
+        };
+
+        let data = b"characterization-sign-payload";
+        let mut sig_len: CK_ULONG = 0;
+        // 1. Buffer size query with NULL pointer: returns exact expected length
+        unsafe {
+            session
+                .sign(Some(data), ptr::null_mut(), &raw mut sig_len)
+                .unwrap();
+        }
+        assert_eq!(sig_len, 8);
+
+        // 2. Buffer too small error path (length set to 4)
+        let mut short_buf = [0_u8; 4];
+        let mut short_len: CK_ULONG = 4;
+        let err = unsafe {
+            session
+                .sign(Some(data), short_buf.as_mut_ptr(), &raw mut short_len)
+                .unwrap_err()
+        };
+        assert_eq!(err.to_string(), "buffer too small".to_owned());
+        // Required length is updated in the out pointer
+        assert_eq!(short_len, 8);
+
+        // 3. Successful signature into sized buffer
+        let mut out_buf = [0_u8; 8];
+        let mut valid_len: CK_ULONG = 8;
+        unsafe {
+            session
+                .sign(Some(data), out_buf.as_mut_ptr(), &raw mut valid_len)
+                .unwrap();
+        }
+        assert_eq!(valid_len, 8);
+        assert_eq!(out_buf, [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+    }
+
+    #[test]
+    #[serial]
+    fn characterization_sessions_decrypt_buffer_size_negotiation_and_too_small() {
+        init_char_test_backend();
+        let mut session = Session {
+            decrypt_ctx: Some(DecryptContext {
+                remote_object_id: "char_sym_key".to_owned(),
+                algorithm: EncryptionAlgorithm::AesCbcPad,
+                iv: Some(vec![0; 16]),
+                aad: None,
+            }),
+            ..Session::default()
+        };
+
+        let ciphertext = b"plaintext_enc".to_vec();
+        let mut out_len: CK_ULONG = 0;
+
+        // 1. Buffer size query with NULL pointer
+        session
+            .decrypt(ciphertext.clone(), ptr::null_mut(), &raw mut out_len)
+            .unwrap();
+        assert_eq!(out_len, 9);
+
+        // 2. Buffer too small
+        let mut short_buf = [0_u8; 4];
+        let mut short_len: CK_ULONG = 4;
+        let err = session
+            .decrypt(
+                ciphertext.clone(),
+                short_buf.as_mut_ptr(),
+                &raw mut short_len,
+            )
+            .unwrap_err();
+        assert_eq!(err.to_string(), "buffer too small".to_owned());
+
+        // 3. Full decrypt
+        let mut full_buf = [0_u8; 9];
+        let mut full_len: CK_ULONG = 9;
+        session
+            .decrypt(ciphertext, full_buf.as_mut_ptr(), &raw mut full_len)
+            .unwrap();
+        assert_eq!(full_len, 9);
+        assert_eq!(full_buf.as_slice(), b"plaintext");
+    }
+
+    #[test]
+    fn characterization_sessions_create_incremental_handle() {
+        let handle1 = sessions::create(CKF_SERIAL_SESSION).unwrap();
+        let handle2 = sessions::create(CKF_SERIAL_SESSION).unwrap();
+        assert_ne!(handle1, 0);
+        assert_ne!(handle2, 0);
+        assert_ne!(handle1, handle2);
+        let exists1 = sessions::exists(handle1).unwrap();
+        let exists2 = sessions::exists(handle2).unwrap();
+        assert!(exists1);
+        assert!(exists2);
+    }
+
+    #[test]
+    #[serial]
+    fn characterization_utils_helpers_encrypt_decrypt_cycle() {
+        init_char_test_backend();
+        C_Initialize(ptr::null_mut());
+        let mut session_h = CK_INVALID_HANDLE;
+        unsafe {
+            C_OpenSession(
+                1,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session_h,
+            );
+        }
+        assert_ne!(session_h, CK_INVALID_HANDLE);
+
+        let key_h = test_generate_key(session_h);
+        assert_ne!(key_h, CK_INVALID_HANDLE);
+
+        let plaintext = b"characterization-utils-pt".to_vec();
+        let ct = test_encrypt(session_h, key_h, plaintext.clone());
+        let pt = test_decrypt(session_h, key_h, ct);
+        assert_eq!(&pt[..plaintext.len()], plaintext.as_slice());
+
+        C_Finalize(ptr::null_mut());
+    }
+
+    /// Runs only in the child process of
+    /// `characterization_sessions_create_with_ignore_sessions_env_reuses_handle_zero`.
+    #[test]
+    #[ignore = "child of characterization_sessions_create_with_ignore_sessions_env_reuses_handle_zero"]
+    fn characterization_sessions_ignore_sessions_child() {
+        assert_eq!(sessions::create(CKF_SERIAL_SESSION).unwrap(), 0);
+        assert_eq!(sessions::create(CKF_SERIAL_SESSION).unwrap(), 0);
+        assert_eq!(super::SESSIONS.read().unwrap().len(), 1);
+    }
+
+    /// `COSMIAN_PKCS11_IGNORE_SESSIONS=true` makes every `create` return handle 0 over one shared
+    /// session. The variable is read at every call and `SESSIONS` is process-global, so it is set in
+    /// a child process instead of the shared test binary.
+    #[test]
+    fn characterization_sessions_create_with_ignore_sessions_env_reuses_handle_zero() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "sessions::characterization_tests::characterization_sessions_ignore_sessions_child",
+                "--exact",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env("COSMIAN_PKCS11_IGNORE_SESSIONS", "true")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{stdout}");
+        assert!(stdout.contains("1 passed"), "{stdout}");
     }
 }

@@ -600,10 +600,8 @@ pub(crate) async fn process_message(
                 ))
                 .await;
 
-                if ephemeral {
-                    if let Ok(payload) = &mut response_operation {
-                        clear_ephemeral_response(payload);
-                    }
+                if ephemeral && let Ok(payload) = &mut response_operation {
+                    clear_ephemeral_response(payload);
                 }
                 (
                     batch_item.operation,
@@ -665,19 +663,17 @@ pub(crate) async fn process_message(
         );
 
         // An executed operation is reverted on Undo even if its response is then replaced
-        if let Some(pre_state) = pre_state {
-            if result_status == ResultStatusEnumeration::Success {
-                if let Some(record) = batch_undo::record(
-                    kms,
-                    item_index,
-                    pre_state,
-                    response_message_batch_item.response_payload.as_ref(),
-                )
-                .await
-                {
-                    undo_records.push(record);
-                }
-            }
+        if let Some(pre_state) = pre_state
+            && result_status == ResultStatusEnumeration::Success
+            && let Some(record) = batch_undo::record(
+                kms,
+                item_index,
+                pre_state,
+                response_message_batch_item.response_payload.as_ref(),
+            )
+            .await
+        {
+            undo_records.push(record);
         }
         let mut next_placeholder = id_placeholder.clone();
         update_id_placeholder_from_response(&mut next_placeholder, &response_message_batch_item);
@@ -724,10 +720,10 @@ pub(crate) async fn process_message(
 
     if undo_triggered {
         for record in undo_records.iter().rev() {
-            if batch_undo::revert(kms, user, record).await {
-                if let Some(item) = response_items.get_mut(record.item_index) {
-                    mark_undone(item);
-                }
+            if batch_undo::revert(kms, user, record).await
+                && let Some(item) = response_items.get_mut(record.item_index)
+            {
+                mark_undone(item);
             }
         }
     }
@@ -1163,10 +1159,9 @@ fn resolve_required_id_placeholder(
     if matches!(
         unique_identifier,
         v21types::UniqueIdentifier::Enumeration(UniqueIdentifierEnumeration::IDPlaceholder)
-    ) {
-        if let Some(id_placeholder) = id_placeholder {
-            *unique_identifier = id_placeholder.clone();
-        }
+    ) && let Some(id_placeholder) = id_placeholder
+    {
+        *unique_identifier = id_placeholder.clone();
     }
 }
 
@@ -1191,21 +1186,20 @@ fn expand_kmip2_get_attributes_request(op: &mut Operation, kmip_version: KmipFla
     if !matches!(kmip_version, KmipFlavor::Kmip2) {
         return;
     }
-    if let Operation::GetAttributes(ga) = op {
-        if ga
+    if let Operation::GetAttributes(ga) = op
+        && ga
             .attribute_reference
             .as_ref()
             .is_none_or(std::vec::Vec::is_empty)
-        {
-            use v21types::{AttributeReference, Tag};
-            let mut refs: Vec<AttributeReference> = Vec::new();
-            for tag in Tag::iter() {
-                if tag != Tag::Tag {
-                    refs.push(AttributeReference::Standard(tag));
-                }
+    {
+        use v21types::{AttributeReference, Tag};
+        let mut refs: Vec<AttributeReference> = Vec::new();
+        for tag in Tag::iter() {
+            if tag != Tag::Tag {
+                refs.push(AttributeReference::Standard(tag));
             }
-            ga.attribute_reference = Some(refs);
         }
+        ga.attribute_reference = Some(refs);
     }
 }
 

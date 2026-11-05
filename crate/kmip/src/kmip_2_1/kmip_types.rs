@@ -2,7 +2,6 @@
 // see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html
 
 // see CryptographicUsageMask
-#![allow(non_upper_case_globals)]
 use std::{
     fmt,
     fmt::{Display, Formatter},
@@ -2178,8 +2177,11 @@ pub enum ItemType {
 impl TryFrom<ItemType> for i32 {
     type Error = KmipError;
 
+    #[expect(
+        clippy::as_conversions,
+        reason = "fieldless repr enum discriminant cast; no std conversion"
+    )]
     fn try_from(value: ItemType) -> Result<Self, Self::Error> {
-        #[expect(clippy::as_conversions)]
         // This conversion is idiomatic for items marked with #[repr(u32)]
         Self::try_from(value as u32).map_err(|e| {
             KmipError::ConversionError(format!("Failed to convert ItemType to i32: {e}"))

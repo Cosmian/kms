@@ -432,7 +432,7 @@ async fn private_key_sign_and_decrypt_with_tokens() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(!field(&body, "signature").is_empty());
+    assert_ne!(field(&body, "signature").len(), 0);
 
     let dek = [7_u8; 32];
     let encrypted = rsa_encrypt(

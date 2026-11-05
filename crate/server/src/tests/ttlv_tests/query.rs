@@ -120,7 +120,7 @@ fn test_query_(major: i32, minor: i32) {
         let Some(vendor_identification) = &query_response.vendor_identification else {
             panic!("Expected vendor identification");
         };
-        assert!(!vendor_identification.is_empty());
+        assert_ne!(vendor_identification.len(), 0);
     } else {
         let ResponseMessageBatchItemVersioned::V21(batch_item) = response_batch_item else {
             panic!("Expected V14 request message");
@@ -141,7 +141,7 @@ fn test_query_(major: i32, minor: i32) {
         let Some(vendor_identification) = &query_response.vendor_identification else {
             panic!("Expected vendor identification");
         };
-        assert!(!vendor_identification.is_empty());
+        assert_ne!(vendor_identification.len(), 0);
         assert_eq!(
             query_response.protection_storage_masks,
             Some(kmip_2_1::kmip_data_structures::SupportedProtectionStorageMasks::default())

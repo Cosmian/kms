@@ -270,10 +270,10 @@ impl Serialize for KeyValueSerializer {
                         key_material: key_material.clone(),
                     },
                 )?;
-                if let Some(attributes) = &attribute {
-                    if !attributes.is_empty() {
-                        st.serialize_field("Attribute", &attribute)?;
-                    }
+                if let Some(attributes) = &attribute
+                    && !attributes.is_empty()
+                {
+                    st.serialize_field("Attribute", &attribute)?;
                 }
                 st.end()
             }
@@ -758,7 +758,10 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
             }
 
-            #[expect(clippy::many_single_char_names)]
+            #[expect(
+                clippy::many_single_char_names,
+                reason = "names follow the KMIP DH/RSA key-value fields (p, q, g, j, y, x)"
+            )]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,

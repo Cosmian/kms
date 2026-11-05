@@ -352,14 +352,12 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
     // Single-op path — backfill UID for Create/CreateKeyPair
     if (op_name == "Create" || op_name == "CreateKeyPair")
         && req.extensions().get::<KmipObjectUid>().is_none()
+        && let Some(uid) = extract_object_uid(response_ttlv, op_name, true)
     {
-        if let Some(uid) = extract_object_uid(response_ttlv, op_name, true) {
-            req.extensions_mut().insert(KmipObjectUid(uid.to_owned()));
-        }
+        req.extensions_mut().insert(KmipObjectUid(uid.to_owned()));
     }
 }
 #[cfg(test)]
-#[allow(clippy::indexing_slicing)]
 mod extraction_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{
         KmipEnumerationVariant, TTLV, TTLValue,

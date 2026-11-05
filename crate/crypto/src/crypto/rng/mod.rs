@@ -193,7 +193,7 @@ impl KmsRng {
     /// # Errors
     ///
     /// Returns `CryptoError` if the seed length exceeds `i32::MAX`.
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     pub fn reseed(&self, seed: &[u8]) -> Result<(), CryptoError> {
         if seed.is_empty() {
             return Ok(());
@@ -274,8 +274,11 @@ fn generate(rand_bytes_ex: RandBytesEx, dest: &mut [u8]) -> Result<(), CryptoErr
     }
 }
 
-#[expect(clippy::panic_in_result_fn)]
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use std::{collections::HashSet, mem::ManuallyDrop, sync::Arc};
 
@@ -298,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
     fn requested_strength_above_the_drbg_strength_fails_closed() -> Result<(), CryptoError> {
         // AES-256 CTR-DRBG supports at most 256 bits; a 512-bit request must be refused rather
         // than served at a lower strength (SP 800-90A r1 §9.3.1).

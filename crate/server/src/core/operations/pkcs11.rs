@@ -46,13 +46,13 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
     })?;
 
     // Only the default V3.0 interface is supported (KMIP 2.1 Table 273)
-    if let Some(interface) = request.pkcs11_interface.as_deref() {
-        if interface != DEFAULT_PKCS11_INTERFACE {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::PKCS_11_Invalid_Interface,
-                format!("PKCS#11: unsupported interface '{interface}'"),
-            ));
-        }
+    if let Some(interface) = request.pkcs11_interface.as_deref()
+        && interface != DEFAULT_PKCS11_INTERFACE
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::PKCS_11_Invalid_Interface,
+            format!("PKCS#11: unsupported interface '{interface}'"),
+        ));
     }
 
     // Generate or use provided correlation value

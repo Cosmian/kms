@@ -104,7 +104,7 @@ pub(crate) fn validate_certificate(
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let validate_output = std::str::from_utf8(&output.stdout)?;
-        return Ok(validate_output.to_string());
+        return Ok(validate_output.to_owned());
     }
     Err(CosmianError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),

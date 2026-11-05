@@ -1,11 +1,8 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::unwrap_in_result,
+#![expect(
     clippy::panic_in_result_fn,
-    clippy::unnecessary_wraps,
-    clippy::float_cmp,
-    clippy::needless_for_each
+    reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
+
 use num_bigint::BigUint;
 use num_traits::{Num, ToPrimitive};
 use rand::{RngExt, SeedableRng};
@@ -60,7 +57,7 @@ fn test_doc_example() -> Result<(), FPEError> {
 }
 
 #[test]
-fn test_readme_examples() -> Result<(), FPEError> {
+fn test_readme_examples() {
     {
         let key = [0_u8; 32];
         let tweak = b"unique tweak";
@@ -165,11 +162,9 @@ fn test_readme_examples() -> Result<(), FPEError> {
         let ciphertext = flt.encrypt(&key, tweak, 123_456.789_f64).unwrap();
         let plaintext = flt.decrypt(&key, tweak, ciphertext).unwrap();
 
-        assert_eq!(1.170_438_892_319_619e91_f64, ciphertext);
-        assert_eq!(123_456.789_f64, plaintext);
+        assert_eq!(1.170_438_892_319_619e91_f64.to_bits(), ciphertext.to_bits());
+        assert_eq!(123_456.789_f64.to_bits(), plaintext.to_bits());
     }
-
-    Ok(())
 }
 
 #[test]
@@ -219,70 +214,67 @@ fn test_kmip_fpe_float_roundtrip() -> Result<(), FPEError> {
 }
 
 #[test]
-fn fpe_ff1_credit_card_number() -> Result<(), FPEError> {
+fn fpe_ff1_credit_card_number() {
     let alphabet = Alphabet::numeric();
-    [
+    for n in [
         "1234-1234-1234-1234",
         "0000-0000-0000-0000",
         "1234-5678-9012-3456",
-    ]
-    .iter()
-    .for_each(|n| alphabet_check(n, &alphabet, "-"));
-    Ok(())
+    ] {
+        alphabet_check(n, &alphabet, "-");
+    }
 }
 
 #[test]
-fn fpe_ff1_names() -> Result<(), FPEError> {
+fn fpe_ff1_names() {
     // alphanumeric test
     let mut alphabet = Alphabet::alpha();
 
-    ["John Doe", "Alba Martinez-Gonzalez", "MalcolmX", "abcd"]
-        .iter()
-        .for_each(|n| alphabet_check(n, &alphabet, " -"));
+    for n in ["John Doe", "Alba Martinez-Gonzalez", "MalcolmX", "abcd"] {
+        alphabet_check(n, &alphabet, " -");
+    }
 
     // extended with space and dash
     alphabet.extend_with(" -");
-    ["John Doe", "Alba Martinez-Gonzalez", "MalcolmX", "abcd"]
-        .iter()
-        .for_each(|n| alphabet_check(n, &alphabet, ""));
+    for n in ["John Doe", "Alba Martinez-Gonzalez", "MalcolmX", "abcd"] {
+        alphabet_check(n, &alphabet, "");
+    }
 
     // lower case
     let alphabet = Alphabet::alpha_lower();
-    ["John Doe", "Alba Martinez-Gonzalez", "MalcolmX", "abcde"]
-        .iter()
-        .for_each(|n| alphabet_check(&n.to_lowercase(), &alphabet, " -"));
+    for n in ["John Doe", "Alba Martinez-Gonzalez", "MalcolmX", "abcde"] {
+        alphabet_check(&n.to_lowercase(), &alphabet, " -");
+    }
 
     // extended with French characters
     let alphabet = Alphabet::latin1sup();
-    ["Goûter", "René La Taupe", "Bérangère Aigüe", "Ça va bien"]
-        .iter()
-        .for_each(|n| alphabet_check(n, &alphabet, " -"));
+    for n in ["Goûter", "René La Taupe", "Bérangère Aigüe", "Ça va bien"] {
+        alphabet_check(n, &alphabet, " -");
+    }
 
     // extended with French characters
     let alphabet = Alphabet::latin1sup_alphanum();
-    ["Goûter", "René La Taupe", "Bérangère Aigüe", "Ça va bien"]
-        .iter()
-        .for_each(|n| alphabet_check(n, &alphabet, " -"));
+    for n in ["Goûter", "René La Taupe", "Bérangère Aigüe", "Ça va bien"] {
+        alphabet_check(n, &alphabet, " -");
+    }
 
     let alphabet = Alphabet::utf();
-    [
+    for n in [
         "Bérangère Aigüe",
         "ПРС-ТУФХЦЧШЩЪЫЬ ЭЮЯаб-вгдежз ийклмнопрст уфхцчш",
         "吢櫬䀾羑襃￥",
-    ]
-    .iter()
-    .for_each(|n| alphabet_check(n, &alphabet, " -"));
+    ] {
+        alphabet_check(n, &alphabet, " -");
+    }
 
     let alphabet = Alphabet::chinese();
-    [
+    for n in [
         "天地玄黄 宇宙洪荒",
         "日月盈昃 辰宿列张",
         "寒来暑往 秋收冬藏",
-    ]
-    .iter()
-    .for_each(|n| alphabet_check(n, &alphabet, " -"));
-
-    Ok(())
+    ] {
+        alphabet_check(n, &alphabet, " -");
+    }
 }
 
 #[test]
@@ -363,13 +355,16 @@ fn fpe_float() -> Result<(), FPEError> {
     for _i in 0..1000 {
         let value = rng.random_range(0.0..f64::MAX);
         let ciphertext = float.encrypt(&key, &[], value)?;
-        assert_eq!(float.decrypt(&key, &[], ciphertext)?, value);
+        assert_eq!(
+            float.decrypt(&key, &[], ciphertext)?.to_bits(),
+            value.to_bits()
+        );
     }
     Ok(())
 }
 
 #[test]
-fn test_negative_cases() -> Result<(), FPEError> {
+fn test_negative_cases() {
     // Wrong key size: Alphabet::encrypt and decrypt should reject a 16-byte key
     let alphabet = Alphabet::alpha_lower();
     let bad_key = [0_u8; 16];
@@ -406,8 +401,6 @@ fn test_negative_cases() -> Result<(), FPEError> {
         Integer::instantiate(10, 5).is_err(),
         "5 digits for radix-10 should fail"
     );
-
-    Ok(())
 }
 
 #[test]
