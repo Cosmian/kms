@@ -2,6 +2,7 @@
 
 - Reuse the packaged server and CLI outputs when generating SBOMs so they describe the shipped build instead of rebuilding it.
 - Stop generating debug information that the development profile already strips.
+- Refresh the UI WASM, server and macOS CLI vendor hashes from packaging CI and pristine source builds without changing dependency lockfiles.
 
 ## Testing
 
