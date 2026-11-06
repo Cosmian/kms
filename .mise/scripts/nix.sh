@@ -704,7 +704,10 @@ test_command() {
         --keep PLAYWRIGHT_WORKERS \
         --keep EDB_SUBSCRIPTION_TOKEN \
         --keep EDB_PGPASSWORD \
-        --keep EDB_MASTER_KEY_UID"
+        --keep EDB_MASTER_KEY_UID \
+        --keep RUSTC_WRAPPER \
+        --keep SCCACHE_GHA_ENABLED --keep SCCACHE_GHA_VERSION \
+        --keep ACTIONS_RESULTS_URL --keep ACTIONS_RUNTIME_TOKEN --keep ACTIONS_CACHE_SERVICE_V2"
 }
 
 # Download pre-generated SBOMs from package.cosmian.com.
