@@ -15,7 +15,11 @@ The server SHALL copy the Unique Identifier returned by this operations into the
 
 The Export operation - contrarily to the `Get`operation - allows exporting objects which have been revoked or
 destroyed.
-When an object is destroyed, the key material cannot be exported anymore; only the attributes are returned.
+Export of a destroyed object succeeds with an empty Key Material and Key Format Type `Opaque`.
+The response Attributes hold every attribute as Get Attributes reports them, tags included.
+
+An object registered without its Key Value (Key Value Present false) is returned as registered.
+Requesting a Key Format Type or key wrapping for it fails with `Key_Value_Not_Present`.
 
 To be able to export an Object the user must have the `export` permission on the object or be the object owner.
 
@@ -163,3 +167,6 @@ ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked
       ]
     }
     ```
+
+!!! note "Example abridged"
+    The real response also carries an `Attributes` structure between `UniqueIdentifier` and `Object`.

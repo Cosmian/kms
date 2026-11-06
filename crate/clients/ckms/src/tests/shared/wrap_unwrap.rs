@@ -26,18 +26,28 @@ use crate::{
         utils::{ckms_bin, extract_uids::extract_wrapping_key, owner_config, recover_cmd_logs},
     },
 };
+pub(crate) struct WrapArgs<'a> {
+    pub(crate) cli_conf_path: &'a str,
+    pub(crate) sub_command: &'a str,
+    pub(crate) key_file_in: &'a Path,
+    pub(crate) key_file_out: Option<&'a PathBuf>,
+    pub(crate) wrap_password: Option<String>,
+    pub(crate) wrap_key_b64: Option<String>,
+    pub(crate) wrap_key_id: Option<String>,
+    pub(crate) wrap_key_file: Option<PathBuf>,
+}
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn wrap(
-    cli_conf_path: &str,
-    sub_command: &str,
-    key_file_in: &Path,
-    key_file_out: Option<&PathBuf>,
-    wrap_password: Option<String>,
-    wrap_key_b64: Option<String>,
-    wrap_key_id: Option<String>,
-    wrap_key_file: Option<PathBuf>,
-) -> CosmianResult<String> {
+pub(crate) fn wrap(args: WrapArgs<'_>) -> CosmianResult<String> {
+    let WrapArgs {
+        cli_conf_path,
+        sub_command,
+        key_file_in,
+        key_file_out,
+        wrap_password,
+        wrap_key_b64,
+        wrap_key_id,
+        wrap_key_file,
+    } = args;
     let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
@@ -78,18 +88,28 @@ pub(crate) fn wrap(
         std::str::from_utf8(&output.stderr)?.to_owned(),
     ))
 }
+pub(crate) struct UnwrapArgs<'a> {
+    pub(crate) cli_conf_path: &'a str,
+    pub(crate) sub_command: &'a str,
+    pub(crate) key_file_in: &'a Path,
+    pub(crate) key_file_out: Option<&'a PathBuf>,
+    pub(crate) unwrap_password: Option<String>,
+    pub(crate) unwrap_key_b64: Option<String>,
+    pub(crate) unwrap_key_id: Option<String>,
+    pub(crate) unwrap_key_file: Option<PathBuf>,
+}
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn unwrap(
-    cli_conf_path: &str,
-    sub_command: &str,
-    key_file_in: &Path,
-    key_file_out: Option<&PathBuf>,
-    unwrap_password: Option<String>,
-    unwrap_key_b64: Option<String>,
-    unwrap_key_id: Option<String>,
-    unwrap_key_file: Option<PathBuf>,
-) -> CosmianResult<()> {
+pub(crate) fn unwrap(args: UnwrapArgs<'_>) -> CosmianResult<()> {
+    let UnwrapArgs {
+        cli_conf_path,
+        sub_command,
+        key_file_in,
+        key_file_out,
+        unwrap_password,
+        unwrap_key_b64,
+        unwrap_key_id,
+        unwrap_key_file,
+    } = args;
     let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
@@ -164,7 +184,7 @@ pub(crate) fn password_wrap_import_test(
     // Export
     let key_file = temp_dir.path().join("master_private.key");
     export_key(ExportKeyParams {
-        cli_conf_path: owner_client_conf_path.to_string(),
+        cli_conf_path: owner_client_conf_path.to_owned(),
         sub_command: sub_command.to_owned(),
         key_id: private_key_id.to_owned(),
         key_file: key_file.to_str().unwrap().to_owned(),
@@ -182,16 +202,16 @@ pub(crate) fn password_wrap_import_test(
 
     // wrap and unwrap using a password
     {
-        let b64_wrapping_key = wrap(
-            owner_client_conf_path,
+        let b64_wrapping_key = wrap(WrapArgs {
+            cli_conf_path: owner_client_conf_path,
             sub_command,
-            &key_file,
-            None,
-            Some("password".to_owned()),
-            None,
-            None,
-            None,
-        )?;
+            key_file_in: &key_file,
+            key_file_out: None,
+            wrap_password: Some("password".to_owned()),
+            wrap_key_b64: None,
+            wrap_key_id: None,
+            wrap_key_file: None,
+        })?;
         let wrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(wrapped_object.key_wrapping_data().is_some());
         assert_eq!(
@@ -203,16 +223,16 @@ pub(crate) fn password_wrap_import_test(
             Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.wrapped_key_bytes()?, key_bytes);
-        unwrap(
-            owner_client_conf_path,
+        unwrap(UnwrapArgs {
+            cli_conf_path: owner_client_conf_path,
             sub_command,
-            &key_file,
-            None,
-            None,
-            Some(b64_wrapping_key),
-            None,
-            None,
-        )?;
+            key_file_in: &key_file,
+            key_file_out: None,
+            unwrap_password: None,
+            unwrap_key_b64: Some(b64_wrapping_key),
+            unwrap_key_id: None,
+            unwrap_key_file: None,
+        })?;
         let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
         assert_eq!(
@@ -233,16 +253,16 @@ pub(crate) fn password_wrap_import_test(
         let mut key = vec![0_u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
-        wrap(
-            owner_client_conf_path,
+        wrap(WrapArgs {
+            cli_conf_path: owner_client_conf_path,
             sub_command,
-            &key_file,
-            None,
-            None,
-            Some(key_b64.clone()),
-            None,
-            None,
-        )?;
+            key_file_in: &key_file,
+            key_file_out: None,
+            wrap_password: None,
+            wrap_key_b64: Some(key_b64.clone()),
+            wrap_key_id: None,
+            wrap_key_file: None,
+        })?;
         let wrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(wrapped_object.key_wrapping_data().is_some());
         assert_eq!(
@@ -255,16 +275,16 @@ pub(crate) fn password_wrap_import_test(
             Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.wrapped_key_bytes()?, key_bytes);
-        unwrap(
-            owner_client_conf_path,
+        unwrap(UnwrapArgs {
+            cli_conf_path: owner_client_conf_path,
             sub_command,
-            &key_file,
-            None,
-            None,
-            Some(key_b64),
-            None,
-            None,
-        )?;
+            key_file_in: &key_file,
+            key_file_out: None,
+            unwrap_password: None,
+            unwrap_key_b64: Some(key_b64),
+            unwrap_key_id: None,
+            unwrap_key_file: None,
+        })?;
         let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
         assert_eq!(

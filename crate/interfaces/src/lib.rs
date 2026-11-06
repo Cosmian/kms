@@ -18,8 +18,8 @@ pub use hsm::{
 };
 pub use object_handle::{HsmUidParts, ObjectHandle};
 pub use stores::{
-    AtomicOperation, AuditSink, ChainHead, FindOptions, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore, SealReason, WriteOutcome,
+    AtomicOperation, AuditSink, ChainHead, DestroyedFilter, FindOptions, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, SealReason, WriteOutcome,
 };
 pub use user_id::UserId;
 

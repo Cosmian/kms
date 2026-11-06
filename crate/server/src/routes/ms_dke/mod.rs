@@ -227,19 +227,19 @@ async fn internal_decrypt(
     })
 }
 
-#[expect(clippy::indexing_slicing)]
 fn big_int_to_u32(bu: &BigInt) -> u32 {
     let (_, bytes) = bu.to_bytes_be();
-    let len = bytes.len();
-    let min = std::cmp::min(4, len);
-    let mut padded = [0_u8; 4];
-    padded[4 - min..].copy_from_slice(&bytes[len - min..]);
-    u32::from_be_bytes(padded)
+    // keep the 4 least significant bytes, big-endian
+    bytes
+        .iter()
+        .rev()
+        .take(4)
+        .rev()
+        .fold(0_u32, |acc, byte| (acc << 8) | u32::from(*byte))
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
     use chrono::{DateTime, Utc};
     use num_bigint_dig::BigInt;
 
@@ -267,5 +267,42 @@ mod tests {
             "2020-11-21T21:15:55",
             date_time.format("%Y-%m-%dT%H:%M:%S").to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization of `big_int_to_u32` at BASE.
+
+    use num_bigint_dig::BigInt;
+
+    use super::big_int_to_u32;
+
+    #[test]
+    fn characterization_big_int_to_u32_table() {
+        for (label, bu, expected) in [
+            ("zero", BigInt::from(0_u8), 0_u32),
+            ("one", BigInt::from(1_u8), 1),
+            ("65537", BigInt::from(65_537_u32), 65_537),
+            ("0x01020304", BigInt::from(0x0102_0304_u32), 16_909_060),
+            ("max_u32", BigInt::from(u32::MAX), 4_294_967_295),
+            ("0x1_0000_0001", BigInt::from(0x1_0000_0001_u64), 1),
+            ("0x0102030405", BigInt::from(0x01_0203_0405_u64), 33_752_069),
+            (
+                "0xAABBCCDDEEFF",
+                BigInt::from(0xAABB_CCDD_EEFF_u64),
+                3_437_096_703,
+            ),
+            ("neg_12", BigInt::from(-12_i32), 12),
+            (
+                "neg_0x0102030405",
+                BigInt::from(-0x01_0203_0405_i64),
+                33_752_069,
+            ),
+            ("256", BigInt::from(256_u32), 256),
+            ("0x010000", BigInt::from(0x01_0000_u32), 65_536),
+        ] {
+            assert_eq!(big_int_to_u32(&bu), expected, "{label}");
+        }
     }
 }

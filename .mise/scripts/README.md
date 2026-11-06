@@ -76,6 +76,7 @@ The most common flags (accepted by most tasks):
 | `test:hsm-utimaco` | fips | Same as `test:hsm:utimaco` |
 | `test:hsm-proteccio` | fips | Same as `test:hsm:proteccio` |
 | `test:hsm-crypt2pay` | fips | Same as `test:hsm:crypt2pay` |
+| `test:hsm-crypt2pay-simulator` | fips | Same as `test:hsm:crypt2pay-simulator` |
 | `test:hsm-luna` | fips | Same as `test:hsm:luna` |
 
 ### Kubernetes

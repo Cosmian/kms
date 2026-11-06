@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 #[cfg(feature = "non-fips")]
@@ -27,6 +25,7 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use crate::{error::KmsError, result::KResult, tests::test_utils};
 
+#[cfg(feature = "non-fips")]
 const NUM_MESSAGES: usize = 1000;
 
 #[cfg(feature = "non-fips")]

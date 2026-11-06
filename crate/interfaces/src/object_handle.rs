@@ -115,16 +115,16 @@ impl<'a> From<&'a str> for ObjectHandle<'a> {
         if s.starts_with('[') {
             return Self::Tags(s);
         }
-        if let Some(rest) = s.strip_prefix("hsm::") {
-            if let Some(pos) = rest.find("::") {
-                let first_segment = &rest[..pos];
-                let prefix = if first_segment.parse::<usize>().is_ok() {
-                    "hsm" // Old format: hsm::<slot_id>::<key_id>
-                } else {
-                    &s[..5 + pos] // New format: hsm::<model>::... → prefix = "hsm::<model>"
-                };
-                return Self::Hsm { prefix, uid: s };
-            }
+        if let Some(rest) = s.strip_prefix("hsm::")
+            && let Some(pos) = rest.find("::")
+        {
+            let first_segment = &rest[..pos];
+            let prefix = if first_segment.parse::<usize>().is_ok() {
+                "hsm" // Old format: hsm::<slot_id>::<key_id>
+            } else {
+                &s[..5 + pos] // New format: hsm::<model>::... → prefix = "hsm::<model>"
+            };
+            return Self::Hsm { prefix, uid: s };
         }
         Self::Uid(s)
     }
@@ -198,7 +198,6 @@ impl HsmUidParts {
 
 #[cfg(test)]
 // Test-only: `expect()` and `assert!` on result states are idiomatic in unit tests.
-#[allow(clippy::expect_used, clippy::assertions_on_result_states)]
 mod handle_tests {
     use super::*;
 
@@ -289,6 +288,8 @@ mod handle_tests {
 
     #[test]
     fn test_hsm_parts_rejects_non_hsm() {
-        assert!(ObjectHandle::from("my-production-key").hsm_parts().is_err());
+        ObjectHandle::from("my-production-key")
+            .hsm_parts()
+            .unwrap_err();
     }
 }

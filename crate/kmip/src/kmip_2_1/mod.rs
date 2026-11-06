@@ -55,7 +55,10 @@ pub enum KmipOperation {
 }
 
 impl From<KmipOperation> for u8 {
-    #[allow(clippy::as_conversions)] // the discriminants are defined as u8
+    #[expect(
+        clippy::as_conversions,
+        reason = "fieldless repr enum discriminant cast; no std conversion"
+    )]
     fn from(op: KmipOperation) -> Self {
         op as Self
     }

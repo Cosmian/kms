@@ -11,9 +11,16 @@ on:
   schedule:
     - cron: 0 0 * * * # Daily at midnight
 
+# A new push to the same PR cancels the pipeline still running for the previous commit.
+# Every other run (tag, schedule, manual) gets a unique group, so it is never queued behind or
+# cancelled by another run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   main:
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
-      toolchain: 1.97.0
+      toolchain: 1.99.1

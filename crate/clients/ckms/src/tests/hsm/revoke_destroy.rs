@@ -18,7 +18,7 @@ pub(crate) fn test_revoke_symmetric_key(ctx: &TestsContext) -> CosmianResult<()>
     // sym
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        &[&("hsm::0::".to_string() + &Uuid::new_v4().to_string())],
+        &[&("hsm::0::".to_owned() + &Uuid::new_v4().to_string())],
     )?;
 
     // revoke
@@ -36,9 +36,9 @@ pub(crate) fn test_revoke_symmetric_key(ctx: &TestsContext) -> CosmianResult<()>
 
     let res = export_key(ExportKeyParams {
         cli_conf_path: owner_client_conf_path,
-        sub_command: "sym".to_string(),
+        sub_command: "sym".to_owned(),
         key_id,
-        key_file: "/tmp/key".to_string(),
+        key_file: "/tmp/key".to_owned(),
         ..Default::default()
     });
     assert!(res.is_err());

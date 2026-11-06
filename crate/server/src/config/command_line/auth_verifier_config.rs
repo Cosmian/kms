@@ -140,6 +140,10 @@ impl AuthVerifierConfig {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use super::AuthVerifierConfig;
 
@@ -257,7 +261,6 @@ mod tests {
     /// Verify that the `auth_verifier.toml` test config parses correctly and
     /// enables both bearer-token validation and the Web UI login form.
     #[test]
-    #[allow(clippy::panic_in_result_fn)]
     fn test_auth_verifier_toml_config_parses() -> Result<(), Box<dyn std::error::Error>> {
         let config_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../test_data/configs/server/auth/verifier.toml");

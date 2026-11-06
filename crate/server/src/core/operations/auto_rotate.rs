@@ -143,6 +143,7 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         ObjectType::Certificate => {
             let request = ReCertify {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+                certificate_request_unique_identifier: None,
                 offset: None,
                 attributes: None,
                 certificate_request_type: None,
@@ -181,14 +182,13 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
             // `set_rotation_metadata_from` zeroes `rotate_interval` to prevent
             // accidental double-rotation on manual rekeys; the scheduler is
             // responsible for re-arming its own replacements.
-            if let Some(interval) = old_interval {
-                if let Err(e) =
+            if let Some(interval) = old_interval
+                && let Err(e) =
                     rearm_rotation_policy(kms, ObjectHandle::from(new_uid), interval).await
-                {
-                    warn!(
-                        "[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}"
-                    );
-                }
+            {
+                warn!(
+                    "[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}"
+                );
             }
         }
         Err(e) => {
@@ -336,7 +336,10 @@ fn days_until_next_rotation(
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use std::collections::HashSet;
 
@@ -369,9 +372,7 @@ mod tests {
     fn make_aes256_key()
     -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object {
         let mut bytes = [0_u8; 32];
-        #[expect(clippy::unwrap_used)]
         KmsRng::new().fill_bytes(&mut bytes).unwrap();
-        #[expect(clippy::unwrap_used)]
         create_symmetric_key_kmip_object(
             "x-vendor",
             &bytes,
@@ -756,6 +757,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=initial-date-test",
                 )?),
@@ -833,6 +835,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=policy-at-creation-test",
                 )?),
@@ -894,6 +897,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=auto-rotate-test",
                 )?),
@@ -1155,6 +1159,7 @@ mod tests {
             attributes: Some(Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(2048),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=keypair-rotation-test",
                 )?),
@@ -1286,6 +1291,7 @@ mod tests {
                     recommended_curve: Some(RecommendedCurve::P256),
                     ..CryptographicDomainParameters::default()
                 }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
                 certificate_attributes: Some(CertificateAttributes::parse_subject_line(
                     "CN=keyset-uid-test",
                 )?),

@@ -90,10 +90,10 @@ pub(crate) async fn get_cached_crl(
 ) -> Option<(Vec<u8>, Instant, String)> {
     // 1. Fast path: recent in-memory cache hit.
     let cached = GENERATED_CRL_CACHE.read().await.get(issuer_id).cloned();
-    if let Some((der, generated_at, next_update, cached_at)) = &cached {
-        if cached_at.elapsed() < CRL_MEMORY_CACHE_TTL {
-            return Some((der.clone(), *generated_at, next_update.clone()));
-        }
+    if let Some((der, generated_at, next_update, cached_at)) = &cached
+        && cached_at.elapsed() < CRL_MEMORY_CACHE_TTL
+    {
+        return Some((der.clone(), *generated_at, next_update.clone()));
     }
 
     // 2. Cold start or stale entry: (re)load from the DB `crls` table, which another
@@ -249,14 +249,13 @@ pub(crate) async fn generate_crl(
             } else {
                 None
             }
-        }) {
-            if !ku.crl_sign() {
-                kms_bail!(KmsError::InvalidRequest(format!(
-                    "Issuer certificate '{issuer_certificate_id}' does not have the \
+        }) && !ku.crl_sign()
+        {
+            kms_bail!(KmsError::InvalidRequest(format!(
+                "Issuer certificate '{issuer_certificate_id}' does not have the \
                      cRLSign bit set in its keyUsage extension (RFC 5280 §4.2.1.3). \
                      CRL signing requires this bit."
-                )));
-            }
+            )));
         }
     }
 
@@ -496,9 +495,10 @@ async fn find_revoked_certificates(
             .to_vec();
         entries.push(RevokedEntry {
             serial_number,
-            // Determine revocation date (deactivation_date from attributes)
+            // Revocation date: Compromise Date for a compromise, else the Deactivation Date
             revocation_date: attributes
-                .deactivation_date
+                .compromise_date
+                .or(attributes.deactivation_date)
                 .unwrap_or_else(OffsetDateTime::now_utc),
             // Map KMIP RevocationReasonCode to CRL reason code
             reason_code: attributes

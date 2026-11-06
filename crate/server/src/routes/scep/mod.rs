@@ -94,7 +94,7 @@ pub(crate) async fn scep_post(
         Some("PKIOperation") => {
             let body = match read_limited_body(payload).await {
                 Ok(body) => body,
-                Err(response) => return Ok(response),
+                Err(response) => return Ok(*response),
             };
             pki_operation::pki_operation(&kms, client_ip(&kms, &req), &body).await
         }

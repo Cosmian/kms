@@ -1,17 +1,20 @@
-#![allow(clippy::manual_let_else, clippy::option_if_let_else)]
-/// Windows CNG Key Storage Provider (KSP) function table implementation.
-///
-/// This module defines the `NCRYPT_KEY_STORAGE_FUNCTION_TABLE` exported via
-/// `GetKeyStorageInterface`.  Each function pointer maps a Windows NCrypt
-/// operation to a Cosmian KMS REST API call.
-///
-/// Design notes:
-/// - Provider and key contexts are heap-allocated Rust structs; their raw
-///   addresses are cast to the opaque `NCRYPT_PROV_HANDLE` / `NCRYPT_KEY_HANDLE`
-///   (`usize`) types that Windows expects.
-/// - No panics across FFI boundaries — errors are converted to
-///   `SECURITY_STATUS` codes and logged.
-/// - The shared Tokio runtime in `backend.rs` handles all async I/O.
+#![expect(
+    unsafe_code,
+    reason = "Win32 CNG FFI: NCrypt entry points and raw handles"
+)]
+//! Windows CNG Key Storage Provider (KSP) function table implementation.
+//!
+//! This module defines the `NCRYPT_KEY_STORAGE_FUNCTION_TABLE` exported via
+//! `GetKeyStorageInterface`.  Each function pointer maps a Windows `NCrypt`
+//! operation to a Cosmian KMS REST API call.
+//!
+//! Design notes:
+//! - Provider and key contexts are heap-allocated Rust structs; their raw
+//!   addresses are cast to the opaque `NCRYPT_PROV_HANDLE` / `NCRYPT_KEY_HANDLE`
+//!   (`usize`) types that Windows expects.
+//! - No panics across FFI boundaries — errors are converted to
+//!   `SECURITY_STATUS` codes and logged.
+//! - The shared Tokio runtime in `backend.rs` handles all async I/O.
 use std::{path::PathBuf, sync::Arc};
 
 use cosmian_logger::error;
@@ -20,23 +23,24 @@ use windows_sys::Win32::Security::Cryptography::{
     NCRYPT_IMPL_SOFTWARE_FLAG, NCryptAlgorithmName, NCryptKeyName,
 };
 
+/// Convert a Win32 `DWORD` size to `usize` (lossless on every Windows target).
+fn to_usize(value: u32) -> usize {
+    usize::try_from(value).unwrap_or(0)
+}
+
+/// Read the first four bytes of a property value as a little-endian `u32`.
+fn property_u32(input: &[u8]) -> Option<u32> {
+    input
+        .first_chunk::<4>()
+        .map(|bytes| u32::from_le_bytes(*bytes))
+}
+
 // NCrypt constants not provided by windows-sys — values from ncryptprovider.h
-const NCRYPT_IMPL_HARDWARE_FLAG: u32 = 0x0000_0001;
 const NCRYPT_SIGN_OPERATION: u32 = 0x0000_0001;
 const NCRYPT_DECRYPT_OPERATION: u32 = 0x0000_0002;
 const NCRYPT_ENCRYPT_OPERATION: u32 = 0x0000_0004;
-const NCRYPT_KEY_NAME_PROPERTY: *const u16 = {
-    // "Name\0" as UTF-16LE  — same value as NCRYPT_NAME_PROPERTY
-    // We cast the NCRYPT_NAME_PROPERTY wide-string constant.
-    // We can just use NCRYPT_NAME_PROPERTY for key name queries.
-    std::ptr::null()
-};
-const NCRYPT_MAX_NAME_LEN_PROPERTY: u32 = 260;
-const NCRYPT_ALGORITHM_OPERATIONS_PARAMETER: u32 = 0x0000_0002;
-const NCRYPT_EXPORT_LEGACY_ALLOW_EXPORT_FLAG: u32 = 0x0000_0400;
 
 // CNG padding flag constants
-const BCRYPT_PAD_NONE: u32 = 0x0000_0001;
 const BCRYPT_PAD_PKCS1: u32 = 0x0000_0002;
 const BCRYPT_PAD_OAEP: u32 = 0x0000_0004;
 const BCRYPT_PAD_PSS: u32 = 0x0000_0008;
@@ -72,9 +76,12 @@ use crate::{
     error::{
         ERROR_SUCCESS, KspError, KspResult, NTE_BAD_ALGID, NTE_BAD_KEYSET, NTE_BUFFER_TOO_SMALL,
         NTE_FAIL, NTE_INVALID_HANDLE, NTE_INVALID_PARAMETER, NTE_NO_MORE_ITEMS, NTE_NOT_SUPPORTED,
-        NTE_PERM, STATUS_SUCCESS_VAL, SecurityStatus,
+        NTE_PERM, SecurityStatus,
     },
-    key::{CngKeyCtx, ExportPolicy, KeyAlgorithm, KeyState, KeyUsage, PendingCreation},
+    key::{
+        CngKeyCtx, ExportPolicy, KeyAlgorithm, KeyState, KeyUsage, PendingCreation,
+        PersistedKeyParams,
+    },
 };
 
 // ─── Provider name ────────────────────────────────────────────────────────────
@@ -89,14 +96,14 @@ pub const KSP_PROVIDER_NAME_W: &[u16] = &[
 
 // ─── Provider context ─────────────────────────────────────────────────────────
 
-pub const PROVIDER_CTX_MAGIC: u32 = 0xC0_5A_1A_AC;
+const PROVIDER_CTX_MAGIC: u32 = 0xC0_5A_1A_AC;
 
 /// Heap-allocated provider context.  Address cast to `NCRYPT_PROV_HANDLE`.
-pub struct CngProviderCtx {
-    pub magic: u32,
-    pub client:
+pub(crate) struct CngProviderCtx {
+    pub(crate) magic: u32,
+    pub(crate) client:
         Arc<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient>,
-    pub vendor_id: String,
+    pub(crate) vendor_id: String,
 }
 
 impl CngProviderCtx {
@@ -104,8 +111,7 @@ impl CngProviderCtx {
         if handle == 0 {
             return Err(KspError::InvalidHandle);
         }
-        #[allow(clippy::as_conversions)]
-        let ptr = handle as *mut Self;
+        let ptr = std::ptr::with_exposed_provenance_mut::<Self>(handle);
         let ctx = unsafe { &mut *ptr };
         if ctx.magic != PROVIDER_CTX_MAGIC {
             return Err(KspError::InvalidHandle);
@@ -166,7 +172,6 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> KspResult<String> {
             "wide string exceeds maximum length".to_owned(),
         ));
     }
-    #[allow(clippy::as_conversions)]
     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
     String::from_utf16(slice).map_err(|_e| KspError::StringConversion)
 }
@@ -203,15 +208,15 @@ unsafe fn extract_key_name_from_params(params: *const BCryptBufferDesc) -> Optio
     if desc.cBuffers == 0 || desc.pBuffers.is_null() {
         return None;
     }
-    let buffers = unsafe { std::slice::from_raw_parts(desc.pBuffers, desc.cBuffers as usize) };
+    let buffers = unsafe { std::slice::from_raw_parts(desc.pBuffers, to_usize(desc.cBuffers)) };
     for buf in buffers {
         if buf.BufferType == NCRYPTBUFFER_PKCS_KEY_NAME
             && !buf.pvBuffer.is_null()
             && buf.cbBuffer > 0
         {
-            let wide_ptr = buf.pvBuffer as *const u16;
+            let wide_ptr = buf.pvBuffer.cast::<u16>().cast_const();
             // cbBuffer is in bytes; wide chars = cbBuffer / 2
-            let wide_len = (buf.cbBuffer as usize) / 2;
+            let wide_len = to_usize(buf.cbBuffer) / 2;
             if wide_len == 0 {
                 continue;
             }
@@ -221,7 +226,9 @@ unsafe fn extract_key_name_from_params(params: *const BCryptBufferDesc) -> Optio
             if end == 0 {
                 continue;
             }
-            return String::from_utf16(&slice[..end]).ok();
+            return slice
+                .get(..end)
+                .and_then(|wide| String::from_utf16(wide).ok());
         }
     }
     None
@@ -260,9 +267,8 @@ unsafe extern "system" fn open_provider(
                 vendor_id,
             });
             let raw = Box::into_raw(ctx);
-            #[allow(clippy::as_conversions)]
             unsafe {
-                *ph_provider = raw as usize;
+                *ph_provider = raw.expose_provenance();
             }
             ERROR_SUCCESS
         }
@@ -278,8 +284,7 @@ unsafe extern "system" fn free_provider(h_provider: usize) -> SecurityStatus {
     if h_provider == 0 {
         return NTE_INVALID_HANDLE;
     }
-    #[allow(clippy::as_conversions)]
-    let ptr = h_provider as *mut CngProviderCtx;
+    let ptr = std::ptr::with_exposed_provenance_mut::<CngProviderCtx>(h_provider);
     // Validate magic before freeing to catch stale/invalid handles
     if ptr.is_null() || unsafe { (*ptr).magic } != PROVIDER_CTX_MAGIC {
         return NTE_INVALID_HANDLE;
@@ -300,13 +305,11 @@ unsafe extern "system" fn open_key(
     if ph_key.is_null() || psz_key_name.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let prov = match unsafe { CngProviderCtx::from_handle(h_provider) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(prov) = (unsafe { CngProviderCtx::from_handle(h_provider) }) else {
+        return NTE_INVALID_HANDLE;
     };
-    let name = match unsafe { wide_ptr_to_string(psz_key_name) } {
-        Ok(n) => n,
-        Err(_) => return NTE_INVALID_PARAMETER,
+    let Ok(name) = (unsafe { wide_ptr_to_string(psz_key_name) }) else {
+        return NTE_INVALID_PARAMETER;
     };
 
     let priv_uid = match backend::locate_key_by_name(&prov.client, &prov.vendor_id, &name) {
@@ -342,20 +345,21 @@ unsafe extern "system" fn open_key(
     let ctx = CngKeyCtx::new_persisted(
         Arc::clone(&prov.client),
         prov.vendor_id.clone(),
-        priv_uid,
-        pub_uid,
-        algorithm,
-        name,
-        usage,
-        ExportPolicy {
-            allow_export: true,
-            allow_plaintext_export: true,
+        PersistedKeyParams {
+            priv_uid,
+            pub_uid,
+            algorithm,
+            key_name: name,
+            usage,
+            export_policy: ExportPolicy {
+                allow_export: true,
+                allow_plaintext_export: true,
+            },
         },
     );
-    let raw = Box::into_raw(ctx);
-    #[allow(clippy::as_conversions)]
+    let raw = Box::into_raw(Box::new(ctx));
     unsafe {
-        *ph_key = raw as usize;
+        *ph_key = raw.expose_provenance();
     }
     ERROR_SUCCESS
 }
@@ -372,26 +376,21 @@ unsafe extern "system" fn create_persisted_key(
     if ph_key.is_null() || psz_alg_id.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let prov = match unsafe { CngProviderCtx::from_handle(h_provider) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(prov) = (unsafe { CngProviderCtx::from_handle(h_provider) }) else {
+        return NTE_INVALID_HANDLE;
     };
-    let alg_name = match unsafe { wide_ptr_to_string(psz_alg_id) } {
-        Ok(n) => n,
-        Err(_) => return NTE_INVALID_PARAMETER,
+    let Ok(alg_name) = (unsafe { wide_ptr_to_string(psz_alg_id) }) else {
+        return NTE_INVALID_PARAMETER;
     };
     let key_name: String = if psz_key_name.is_null() {
         uuid::Uuid::new_v4().to_string()
     } else {
-        match unsafe { wide_ptr_to_string(psz_key_name) } {
-            Ok(n) => n,
-            Err(_) => uuid::Uuid::new_v4().to_string(),
-        }
+        unsafe { wide_ptr_to_string(psz_key_name) }
+            .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string())
     };
 
-    let algorithm = match KeyAlgorithm::from_cng_name(&alg_name, 0) {
-        Ok(a) => a,
-        Err(_) => return NTE_BAD_ALGID,
+    let Ok(algorithm) = KeyAlgorithm::from_cng_name(&alg_name, 0) else {
+        return NTE_BAD_ALGID;
     };
     let pending = PendingCreation {
         algorithm,
@@ -401,10 +400,9 @@ unsafe extern "system" fn create_persisted_key(
         import_blob: None,
     };
     let ctx = CngKeyCtx::new_pending(Arc::clone(&prov.client), prov.vendor_id.clone(), pending);
-    let raw = Box::into_raw(ctx);
-    #[allow(clippy::as_conversions)]
+    let raw = Box::into_raw(Box::new(ctx));
     unsafe {
-        *ph_key = raw as usize;
+        *ph_key = raw.expose_provenance();
     }
     ERROR_SUCCESS
 }
@@ -415,9 +413,8 @@ unsafe extern "system" fn finalize_key(
     h_key: usize,
     _dw_flags: u32,
 ) -> SecurityStatus {
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     match ctx.finalize() {
         Ok(()) => ERROR_SUCCESS,
@@ -434,9 +431,8 @@ unsafe extern "system" fn delete_key(
     h_key: usize,
     _dw_flags: u32,
 ) -> SecurityStatus {
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     let result = match &ctx.state {
         KeyState::Persisted {
@@ -472,8 +468,8 @@ unsafe extern "system" fn free_key(_h_provider: usize, h_key: usize) -> Security
     ERROR_SUCCESS
 }
 
-/// `NCryptFreeBuffer` — free a buffer allocated by the KSP (e.g. in EnumKeys).
-/// For NCryptKeyName structures, frees both the struct and its name buffer.
+/// `NCryptFreeBuffer` — free a buffer allocated by the KSP (e.g. in `EnumKeys`).
+/// For `NCryptKeyName` structures, frees both the struct and its name buffer.
 unsafe extern "system" fn free_buffer(pv_input: *mut core::ffi::c_void) -> SecurityStatus {
     if pv_input.is_null() {
         return ERROR_SUCCESS;
@@ -506,13 +502,11 @@ unsafe extern "system" fn get_key_property(
     if psz_property.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
-    let prop = match unsafe { wide_ptr_to_string(psz_property) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_PARAMETER,
+    let Ok(prop) = (unsafe { wide_ptr_to_string(psz_property) }) else {
+        return NTE_INVALID_PARAMETER;
     };
 
     match prop.as_str() {
@@ -579,22 +573,19 @@ unsafe extern "system" fn set_key_property(
     if psz_property.is_null() || pb_input.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
-    let prop = match unsafe { wide_ptr_to_string(psz_property) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_PARAMETER,
+    let Ok(prop) = (unsafe { wide_ptr_to_string(psz_property) }) else {
+        return NTE_INVALID_PARAMETER;
     };
-    let input = unsafe { std::slice::from_raw_parts(pb_input, cb_input as usize) };
+    let input = unsafe { std::slice::from_raw_parts(pb_input, to_usize(cb_input)) };
 
     match prop.as_str() {
         "KeyUsageProperty" => {
-            if input.len() < 4 {
+            let Some(bits) = property_u32(input) else {
                 return NTE_INVALID_PARAMETER;
-            }
-            let bits = u32::from_le_bytes([input[0], input[1], input[2], input[3]]);
+            };
             let usage = KeyUsage::from_bits_truncate(bits);
             match &mut ctx.state {
                 KeyState::Pending(p) => p.usage = usage,
@@ -603,10 +594,9 @@ unsafe extern "system" fn set_key_property(
             ERROR_SUCCESS
         }
         "Export Policy" => {
-            if input.len() < 4 {
+            let Some(bits) = property_u32(input) else {
                 return NTE_INVALID_PARAMETER;
-            }
-            let bits = u32::from_le_bytes([input[0], input[1], input[2], input[3]]);
+            };
             let ep = ExportPolicy {
                 allow_export: bits & NCRYPT_ALLOW_EXPORT_FLAG != 0,
                 allow_plaintext_export: bits & NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG != 0,
@@ -618,10 +608,9 @@ unsafe extern "system" fn set_key_property(
             ERROR_SUCCESS
         }
         "Length" | "KeyLength" => {
-            if input.len() < 4 {
+            let Some(bits) = property_u32(input) else {
                 return NTE_INVALID_PARAMETER;
-            }
-            let bits = u32::from_le_bytes([input[0], input[1], input[2], input[3]]);
+            };
             if let KeyState::Pending(p) = &mut ctx.state {
                 if let KeyAlgorithm::Rsa { bits: b } = &mut p.algorithm {
                     *b = bits;
@@ -654,9 +643,8 @@ unsafe extern "system" fn get_provider_property(
     if psz_property.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let prop = match unsafe { wide_ptr_to_string(psz_property) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_PARAMETER,
+    let Ok(prop) = (unsafe { wide_ptr_to_string(psz_property) }) else {
+        return NTE_INVALID_PARAMETER;
     };
 
     match prop.as_str() {
@@ -680,7 +668,7 @@ unsafe extern "system" fn get_provider_property(
 }
 
 /// `NCryptSetProviderProperty` — not needed for a software KSP.
-unsafe extern "system" fn set_provider_property(
+const unsafe extern "system" fn set_provider_property(
     _h_provider: usize,
     _psz_property: *const u16,
     _pb_input: *const u8,
@@ -706,15 +694,14 @@ unsafe extern "system" fn sign_hash(
     if pb_hash_value.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     let uid = match ctx.priv_uid() {
         Ok(u) => u.to_owned(),
         Err(e) => return e.to_security_status(),
     };
-    let hash = unsafe { std::slice::from_raw_parts(pb_hash_value, cb_hash_value as usize) };
+    let hash = unsafe { std::slice::from_raw_parts(pb_hash_value, to_usize(cb_hash_value)) };
 
     // dw_flags: BCRYPT_PAD_PSS = 0x8, BCRYPT_PAD_PKCS1 = 0x2
     let (padding, hash_alg, salt_len) = match dw_flags & 0xF {
@@ -772,9 +759,8 @@ unsafe extern "system" fn verify_signature(
     if pb_hash_value.is_null() || pb_signature.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     // For verification, use the public key if available, otherwise fall back to private key
     let uid = match &ctx.state {
@@ -784,8 +770,8 @@ unsafe extern "system" fn verify_signature(
         KeyState::Persisted { priv_uid, .. } => priv_uid.clone(),
         KeyState::Pending(_) => return NTE_INVALID_PARAMETER,
     };
-    let hash = unsafe { std::slice::from_raw_parts(pb_hash_value, cb_hash_value as usize) };
-    let signature = unsafe { std::slice::from_raw_parts(pb_signature, cb_signature as usize) };
+    let hash = unsafe { std::slice::from_raw_parts(pb_hash_value, to_usize(cb_hash_value)) };
+    let signature = unsafe { std::slice::from_raw_parts(pb_signature, to_usize(cb_signature)) };
 
     let (padding, hash_alg, salt_len) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_PSS => {
@@ -827,7 +813,7 @@ unsafe extern "system" fn verify_signature(
         Ok(true) => ERROR_SUCCESS,
         Ok(false) => {
             // NTE_BAD_SIGNATURE
-            0x8009_0006_u32 as i32
+            0x8009_0006_u32.cast_signed()
         }
         Err(e) => {
             error!("CNG KSP verify_signature: {e}");
@@ -854,16 +840,15 @@ unsafe extern "system" fn encrypt(
     if pb_input.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     // Encryption uses the public key.
     let uid = match ctx.pub_uid() {
         Ok(u) => u.to_owned(),
         Err(e) => return e.to_security_status(),
     };
-    let plaintext = unsafe { std::slice::from_raw_parts(pb_input, cb_input as usize) };
+    let plaintext = unsafe { std::slice::from_raw_parts(pb_input, to_usize(cb_input)) };
 
     let (padding, hash_alg) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_OAEP => {
@@ -909,15 +894,14 @@ unsafe extern "system" fn decrypt(
     if pb_input.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     let uid = match ctx.priv_uid() {
         Ok(u) => u.to_owned(),
         Err(e) => return e.to_security_status(),
     };
-    let ciphertext = unsafe { std::slice::from_raw_parts(pb_input, cb_input as usize) };
+    let ciphertext = unsafe { std::slice::from_raw_parts(pb_input, to_usize(cb_input)) };
 
     let (padding, hash_alg) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_OAEP => {
@@ -959,9 +943,8 @@ unsafe extern "system" fn export_key(
     if pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let ctx = match unsafe { CngKeyCtx::from_handle(h_key) } {
-        Ok(c) => c,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(ctx) = (unsafe { CngKeyCtx::from_handle(h_key) }) else {
+        return NTE_INVALID_HANDLE;
     };
     let blob_type = if psz_blob_type.is_null() {
         String::new()
@@ -1011,9 +994,8 @@ unsafe extern "system" fn import_key(
     if ph_key.is_null() || pb_data.is_null() || cb_data == 0 {
         return NTE_INVALID_PARAMETER;
     }
-    let prov = match unsafe { CngProviderCtx::from_handle(h_provider) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(prov) = (unsafe { CngProviderCtx::from_handle(h_provider) }) else {
+        return NTE_INVALID_HANDLE;
     };
     let blob_type = if psz_blob_type.is_null() {
         String::new()
@@ -1024,7 +1006,7 @@ unsafe extern "system" fn import_key(
         }
     };
 
-    let blob = unsafe { std::slice::from_raw_parts(pb_data, cb_data as usize) };
+    let blob = unsafe { std::slice::from_raw_parts(pb_data, to_usize(cb_data)) };
 
     // Try to extract a key name from the parameter list (NCryptBuffer with
     // NCRYPTBUFFER_PKCS_KEY_NAME type = 45).  If not provided, generate one.
@@ -1067,20 +1049,21 @@ unsafe extern "system" fn import_key(
             let ctx = CngKeyCtx::new_persisted(
                 Arc::clone(&prov.client),
                 prov.vendor_id.clone(),
-                priv_uid,
-                None,
-                algorithm,
-                key_name,
-                usage,
-                ExportPolicy {
-                    allow_export: true,
-                    allow_plaintext_export: true,
+                PersistedKeyParams {
+                    priv_uid,
+                    pub_uid: None,
+                    algorithm,
+                    key_name,
+                    usage,
+                    export_policy: ExportPolicy {
+                        allow_export: true,
+                        allow_plaintext_export: true,
+                    },
                 },
             );
-            let raw = Box::into_raw(ctx);
-            #[allow(clippy::as_conversions)]
+            let raw = Box::into_raw(Box::new(ctx));
             unsafe {
-                *ph_key = raw as usize;
+                *ph_key = raw.expose_provenance();
             }
             ERROR_SUCCESS
         }
@@ -1097,9 +1080,8 @@ unsafe extern "system" fn is_alg_supported(
     if psz_alg_id.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let alg = match unsafe { wide_ptr_to_string(psz_alg_id) } {
-        Ok(a) => a,
-        Err(_) => return NTE_INVALID_PARAMETER,
+    let Ok(alg) = (unsafe { wide_ptr_to_string(psz_alg_id) }) else {
+        return NTE_INVALID_PARAMETER;
     };
     match alg.to_ascii_uppercase().as_str() {
         "RSA" | "ECDSA_P256" | "ECDSA_P384" | "ECDSA_P521" | "ECDH_P256" | "ECDH_P384"
@@ -1197,7 +1179,10 @@ unsafe extern "system" fn enum_algorithms(
     let count = filtered.len();
     let layout = std::alloc::Layout::array::<NCryptAlgorithmName>(count)
         .unwrap_or(std::alloc::Layout::new::<NCryptAlgorithmName>());
-    #[allow(clippy::cast_ptr_alignment)]
+    #[allow(
+        clippy::cast_ptr_alignment,
+        reason = "allocated with the Layout of NCryptAlgorithmName, so the cast is aligned"
+    )]
     let ptr = unsafe { std::alloc::alloc_zeroed(layout).cast::<NCryptAlgorithmName>() };
     if ptr.is_null() {
         return NTE_FAIL;
@@ -1231,9 +1216,8 @@ unsafe extern "system" fn enum_keys(
     if pp_key_name.is_null() {
         return NTE_INVALID_PARAMETER;
     }
-    let prov = match unsafe { CngProviderCtx::from_handle(h_provider) } {
-        Ok(p) => p,
-        Err(_) => return NTE_INVALID_HANDLE,
+    let Ok(prov) = (unsafe { CngProviderCtx::from_handle(h_provider) }) else {
+        return NTE_INVALID_HANDLE;
     };
 
     // Use enum state as index into a heap-allocated Vec of names
@@ -1252,12 +1236,10 @@ unsafe extern "system" fn enum_keys(
         }
     };
 
-    if idx >= keys.len() {
+    let Some((name, _uid)) = keys.get(idx) else {
         // Signal end of enumeration per CNG convention
         return NTE_NO_MORE_ITEMS;
-    }
-
-    let (name, _uid) = &keys[idx];
+    };
     // Allocate a proper NCRYPT_KEY_NAME struct with the key name.
     // The struct contains: pszName (*const u16), pszAlgid (*const u16), dwLegacyKeySpec (u32), dwFlags (u32)
     let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
@@ -1287,36 +1269,8 @@ unsafe extern "system" fn enum_keys(
     ERROR_SUCCESS
 }
 
-/// `NCryptGenRandom` — delegate to Windows BCryptGenRandom.
-unsafe extern "system" fn gen_random(
-    _h_provider: usize,
-    pb_buffer: *mut u8,
-    cb_buffer: u32,
-    _dw_flags: u32,
-) -> SecurityStatus {
-    use windows_sys::Win32::Security::Cryptography::{
-        BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom,
-    };
-    if pb_buffer.is_null() {
-        return NTE_INVALID_PARAMETER;
-    }
-    let status = unsafe {
-        BCryptGenRandom(
-            std::ptr::null_mut(),
-            pb_buffer,
-            cb_buffer,
-            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-        )
-    };
-    if status == STATUS_SUCCESS_VAL {
-        ERROR_SUCCESS
-    } else {
-        NTE_FAIL
-    }
-}
-
 /// `NCryptNotifyChangeKey` — stub returning success (no event plumbing needed).
-unsafe extern "system" fn notify_change_key(
+const unsafe extern "system" fn notify_change_key(
     _h_provider: usize,
     _ph_event: *mut windows_sys::Win32::Foundation::HANDLE,
     _dw_flags: u32,
@@ -1325,7 +1279,7 @@ unsafe extern "system" fn notify_change_key(
 }
 
 /// `NCryptSecretAgreement` — not supported.
-unsafe extern "system" fn secret_agreement(
+const unsafe extern "system" fn secret_agreement(
     _h_provider: usize,
     _h_priv_key: usize,
     _h_pub_key: usize,
@@ -1336,7 +1290,7 @@ unsafe extern "system" fn secret_agreement(
 }
 
 /// `NCryptDeriveKey` — not supported.
-unsafe extern "system" fn derive_key(
+const unsafe extern "system" fn derive_key(
     _h_provider: usize,
     _h_shared_secret: usize,
     _pwsz_kdf: *const u16,
@@ -1350,7 +1304,7 @@ unsafe extern "system" fn derive_key(
 }
 
 /// `NCryptFreeSecret` — no-op.
-unsafe extern "system" fn free_secret(
+const unsafe extern "system" fn free_secret(
     _h_provider: usize,
     _h_shared_secret: usize,
 ) -> SecurityStatus {
@@ -1358,7 +1312,7 @@ unsafe extern "system" fn free_secret(
 }
 
 /// `NCryptPromptUser` — interactive PIN dialog; not needed for automated KMS access.
-unsafe extern "system" fn prompt_user(
+const unsafe extern "system" fn prompt_user(
     _h_provider: usize,
     _h_key: usize,
     _psz_operation: *const u16,
@@ -1368,7 +1322,7 @@ unsafe extern "system" fn prompt_user(
 }
 
 /// `NCryptKeyDerivation` — not supported.
-unsafe extern "system" fn key_derivation(
+const unsafe extern "system" fn key_derivation(
     _h_provider: usize,
     _h_key: usize,
     _p_parameter_list: *const BCryptBufferDesc,
@@ -1381,7 +1335,7 @@ unsafe extern "system" fn key_derivation(
 }
 
 /// `NCryptCreateClaim` — not supported.
-unsafe extern "system" fn create_claim(
+const unsafe extern "system" fn create_claim(
     _h_prov: usize,
     _h_subject_key: usize,
     _h_authority_key: usize,
@@ -1396,7 +1350,7 @@ unsafe extern "system" fn create_claim(
 }
 
 /// `NCryptVerifyClaim` — not supported.
-unsafe extern "system" fn verify_claim(
+const unsafe extern "system" fn verify_claim(
     _h_prov: usize,
     _h_subject_key: usize,
     _h_authority_key: usize,
@@ -1413,13 +1367,11 @@ unsafe extern "system" fn verify_claim(
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Infer hashing algorithm from digest byte length (fallback heuristic).
-fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm{
+const fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-    #[allow(clippy::match_same_arms)]
     match len {
         20 => HashingAlgorithm::SHA1,
         28 => HashingAlgorithm::SHA224,
-        32 => HashingAlgorithm::SHA256,
         48 => HashingAlgorithm::SHA384,
         64 => HashingAlgorithm::SHA512,
         _ => HashingAlgorithm::SHA256,
@@ -1431,12 +1383,12 @@ fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actio
 /// The static `NCRYPT_KEY_STORAGE_FUNCTION_TABLE` returned by `GetKeyStorageInterface`.
 ///
 /// Fields follow the exact order mandated by the header:
-/// OpenProvider, OpenKey, CreatePersistedKey, GetProviderProperty, GetKeyProperty,
-/// SetProviderProperty, SetKeyProperty, FinalizeKey, DeleteKey, FreeProvider, FreeKey,
-/// FreeBuffer, Encrypt, Decrypt, IsAlgSupported, EnumAlgorithms, EnumKeys, ImportKey,
-/// ExportKey, SignHash, VerifySignature, PromptUser, NotifyChangeKey, SecretAgreement,
-/// DeriveKey, FreeSecret.
-pub static KSP_FUNCTION_TABLE:
+/// `OpenProvider`, `OpenKey`, `CreatePersistedKey`, `GetProviderProperty`, `GetKeyProperty`,
+/// `SetProviderProperty`, `SetKeyProperty`, `FinalizeKey`, `DeleteKey`, `FreeProvider`, `FreeKey`,
+/// `FreeBuffer`, `Encrypt`, `Decrypt`, `IsAlgSupported`, `EnumAlgorithms`, `EnumKeys`, `ImportKey`,
+/// `ExportKey`, `SignHash`, `VerifySignature`, `PromptUser`, `NotifyChangeKey`, `SecretAgreement`,
+/// `DeriveKey`, `FreeSecret`.
+pub(crate) static KSP_FUNCTION_TABLE:
     windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE =
     windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE {
         Version: windows_sys::Win32::Security::Cryptography::BCRYPT_INTERFACE_VERSION {

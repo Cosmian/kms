@@ -58,7 +58,7 @@ fn time_normalize() -> Result<OffsetDateTime, XksErrorReply> {
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct RequestMetadata {
     /// This is the ARN of the principal that invoked KMS `CreateKey` (see aws:PrincipalArn).
     /// When the caller is another AWS service, this field will contain either
@@ -130,14 +130,17 @@ impl fmt::Display for RequestMetadata {
 /// }
 /// ```
 #[derive(Deserialize, Debug, Serialize)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct GetKeyMetadataRequest {
     pub requestMetadata: RequestMetadata,
 }
 
 // Defined per XKS Proxy API spec.
 #[derive(Serialize, Debug, PartialEq, Deserialize)]
-#[allow(clippy::upper_case_acronyms)]
+#[expect(
+    clippy::upper_case_acronyms,
+    reason = "AWS XKS proxy API enum value names"
+)]
 pub(crate) enum KeyUsage {
     ENCRYPT,
     DECRYPT,
@@ -156,7 +159,7 @@ pub(crate) enum KeyUsage {
 /// }
 /// ```
 #[derive(Debug, Serialize, Default, Deserialize)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub(crate) struct GetKeyMetadataResponse {
     /// Specifies the type of external key.
     /// This field is REQUIRED.

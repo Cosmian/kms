@@ -13,7 +13,11 @@ in this operation into the ID Placeholder variable.
 
 ## Implementation
 
-This operation can be used to create a new symmetric key, a new Covercrypt user decryption key, or an OpenPGP key (`PGPKey`, non-FIPS mode).
+This operation can be used to create a new symmetric key, a secret data object (`SecretData`), a new Covercrypt user decryption key, or an OpenPGP key (`PGPKey`, non-FIPS mode).
+Other object types return `Invalid_Object_Type`.
+
+Cryptographic Domain Parameters on a symmetric key or secret data return `Invalid_Attribute`.
+A request that breaches the server constraints (see Set Constraints) returns `Constraint_Violation`.
 
 ## Example - Symmetric Key
 

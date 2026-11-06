@@ -136,7 +136,10 @@ impl LoginAction {
     /// # Errors
     /// - If the required configuration section is missing or invalid
     /// - If the authentication request fails
-    #[expect(clippy::print_stdout)]
+    #[expect(
+        clippy::print_stdout,
+        reason = "this command writes its result to stdout"
+    )]
     pub async fn process(&self, config: KmsClientConfig) -> KmsCliResult<LoginCredential> {
         match &self.subcommand {
             LoginSubcommand::Oauth => {
@@ -303,7 +306,6 @@ fn workload_api_endpoint(socket_path: &str) -> KmsCliResult<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // test assertions on known-good inputs
 mod tests {
     use super::workload_api_endpoint;
 

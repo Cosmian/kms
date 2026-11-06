@@ -11,7 +11,7 @@ use cosmian_kms_cli_actions::{
             extra::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
-            kmip_operations::Create,
+            kmip_operations::{Activate, Create},
             kmip_types::{CryptographicAlgorithm, KeyFormatType},
         },
         reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
@@ -46,7 +46,7 @@ pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> Cosmia
             .to_possible_value()
             .expect("possible value")
             .get_name()
-            .to_string(),
+            .to_owned(),
         "--length".to_owned(),
         action.cryptographic_length.to_string(),
         "--derivation-method".to_owned(),
@@ -96,7 +96,7 @@ pub(crate) fn derive_key(cli_conf_path: &str, action: DeriveKeyAction) -> Cosmia
         if let Some(pos) = stdout.find("Derived key ID:") {
             let sliced = &stdout[pos..];
             if let Some(uid) = extract_uid(sliced, "Derived key ID") {
-                return Ok(uid.to_string());
+                return Ok(uid.to_owned());
             }
         }
         return Err(CosmianError::Default(
@@ -144,6 +144,14 @@ pub(crate) async fn create_derivable_symmetric_key_with_client(
         .create(request)
         .await
         .map_err(|e| CosmianError::Default(format!("Failed to create symmetric key: {e}")))?;
+
+    // Only an Active key can be used as a derivation base (KMIP 2.1 Table 207).
+    kms_client
+        .activate(Activate {
+            unique_identifier: response.unique_identifier.clone(),
+        })
+        .await
+        .map_err(|e| CosmianError::Default(format!("Failed to activate symmetric key: {e}")))?;
 
     Ok(response.unique_identifier.to_string())
 }
@@ -499,7 +507,7 @@ pub(crate) async fn test_derive_key_x25519() -> CosmianResult<()> {
         },
     )?;
 
-    assert!(!derived_key_id.is_empty());
+    assert_ne!(derived_key_id, "");
     // Unlike the symmetric path, asymmetric derivation honors the
     // client-supplied `--derived-key-id`.
     assert_eq!(derived_key_id, "test-derived-x25519-shared-secret");

@@ -70,6 +70,8 @@ pub(crate) async fn retrieve_object_for_operation(
                     // ("cannot be activated") rather than Object_Not_Found; allow retrieval
                     // so activate.rs can emit the correct lifecycle error.
                     | KmipOperation::Activate
+                    // Validate reports a revoked certificate as Invalid (KMIP 2.1 §6.1.58)
+                    | KmipOperation::Validate
             ),
             State::Destroyed | State::Destroyed_Compromised => {
                 // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
@@ -79,9 +81,14 @@ pub(crate) async fn retrieve_object_for_operation(
                 // Similarly, Activate on a destroyed object must return Wrong_Key_Lifecycle_State
                 // ("cannot be activated") rather than Object_Not_Found; allow retrieval so activate.rs
                 // can emit the correct lifecycle error.
+                // Export of a destroyed object succeeds without key material (KMIP 2.1 §6.1.18).
                 matches!(
                     operation_type,
-                    KmipOperation::Get | KmipOperation::GetAttributes | KmipOperation::Activate
+                    KmipOperation::Get
+                        | KmipOperation::Export
+                        | KmipOperation::GetAttributes
+                        | KmipOperation::Activate
+                        | KmipOperation::Validate
                 )
             }
         };
@@ -162,30 +169,30 @@ pub(crate) async fn retrieve_object_for_operation(
                                 .ok()
                                 .and_then(|attrs| attrs.deactivation_date)
                         });
-                        if let Some(deactivation_date) = deactivation_date {
-                            if deactivation_date <= now {
-                                trace!(
-                                    "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                        if let Some(deactivation_date) = deactivation_date
+                            && deactivation_date <= now
+                        {
+                            trace!(
+                                "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                                owm.id(),
+                                deactivation_date,
+                                now
+                            );
+                            let owm_mut = Arc::make_mut(&mut owm);
+                            owm_mut.attributes_mut().state = Some(State::Deactivated);
+                            if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
+                                attributes.state = Some(State::Deactivated);
+                            }
+                            if let Err(e) = kms
+                                .database
+                                .update_state(owm.id(), State::Deactivated)
+                                .await
+                            {
+                                warn!(
+                                    "Failed to persist auto-deactivation of object {}: {}",
                                     owm.id(),
-                                    deactivation_date,
-                                    now
+                                    e
                                 );
-                                let owm_mut = Arc::make_mut(&mut owm);
-                                owm_mut.attributes_mut().state = Some(State::Deactivated);
-                                if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
-                                    attributes.state = Some(State::Deactivated);
-                                }
-                                if let Err(e) = kms
-                                    .database
-                                    .update_state(owm.id(), State::Deactivated)
-                                    .await
-                                {
-                                    warn!(
-                                        "Failed to persist auto-deactivation of object {}: {}",
-                                        owm.id(),
-                                        e
-                                    );
-                                }
                             }
                         }
                     }
@@ -246,17 +253,15 @@ pub(crate) async fn retrieve_object_for_operation(
                     | KmipOperation::DeleteAttribute
                     | KmipOperation::Activate
             );
-            if !skip_unwrap {
-                if let Some(defaults) = &kms.params.default_unwrap_types {
-                    if defaults.contains(&owm.object().object_type())
-                        && state != State::Destroyed
-                        && state != State::Destroyed_Compromised
-                    {
-                        let unwrapped_object =
-                            Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
-                        Arc::make_mut(&mut owm).set_object(unwrapped_object);
-                    }
-                }
+            if !skip_unwrap
+                && let Some(defaults) = &kms.params.default_unwrap_types
+                && defaults.contains(&owm.object().object_type())
+                && state != State::Destroyed
+                && state != State::Destroyed_Compromised
+            {
+                let unwrapped_object =
+                    Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
+                Arc::make_mut(&mut owm).set_object(unwrapped_object);
             }
 
             return Ok(owm);

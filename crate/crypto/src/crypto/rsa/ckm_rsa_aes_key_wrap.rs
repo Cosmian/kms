@@ -112,13 +112,11 @@ pub fn ckm_rsa_aes_key_unwrap(
     Ok(plaintext)
 }
 
-#[allow(
-    clippy::panic_in_result_fn,
-    clippy::unwrap_used,
-    clippy::unwrap_in_result,
-    clippy::expect_used
-)]
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     #[cfg(not(target_os = "windows"))]
     use std::{fs, path::Path};
@@ -350,7 +348,6 @@ FQIDAQAB
 
     #[cfg(not(target_os = "windows"))]
     #[tokio::test]
-    #[allow(clippy::unwrap_in_result)]
     async fn test_wrap_against_openssl_cli() -> CryptoResult<()> {
         log_init(Some("info"));
         if !assert_openssl3_cli().await {
@@ -476,7 +473,6 @@ FQIDAQAB
 
     #[cfg(not(target_os = "windows"))]
     #[tokio::test]
-    #[allow(clippy::unwrap_in_result)]
     async fn test_unwrap_against_openssl_cli() -> CryptoResult<()> {
         log_init(Some("info"));
         if !assert_openssl3_cli().await {

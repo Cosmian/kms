@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{

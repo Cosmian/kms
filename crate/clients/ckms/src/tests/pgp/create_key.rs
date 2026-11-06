@@ -83,7 +83,7 @@ async fn test_pgp_create_ed25519_and_rsa() -> CosmianResult<()> {
         ..Default::default()
     };
     let uid_ed = create_pgp_key(&cli_conf_path, &action_ed)?;
-    assert!(!uid_ed.is_empty());
+    assert_ne!(uid_ed, "");
 
     // Create RSA-3072 key
     let action_rsa = CreatePgpKeyAction {
@@ -94,7 +94,7 @@ async fn test_pgp_create_ed25519_and_rsa() -> CosmianResult<()> {
         ..Default::default()
     };
     let uid_rsa = create_pgp_key(&cli_conf_path, &action_rsa)?;
-    assert!(!uid_rsa.is_empty());
+    assert_ne!(uid_rsa, "");
     assert_ne!(uid_ed, uid_rsa);
 
     // Create with explicit key_id positional

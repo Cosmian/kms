@@ -46,9 +46,9 @@ Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.y
 
 ## 3. JavaScript (pnpm, `ui/`)
 
-`ui/` is the only npm project of this repository (`"packageManager": "pnpm@10.17.1"`, lockfile `ui/pnpm-lock.yaml`). `crate/clients/wasm/package.json` is the wasm-pack input manifest (only `repository`): never add npm dependencies to it.
+`ui/` is the only npm project of this repository (`"packageManager": "pnpm@10.34.9"`, lockfile `ui/pnpm-lock.yaml`). `crate/clients/wasm/package.json` is the wasm-pack input manifest (only `repository`): never add npm dependencies to it.
 
-No CI gate covers npm yet (open tasks of #1265), so these checks are mandatory for agents. Run them from `ui/`:
+Gates: CI job `npm-dependency-audit` (`.github/workflows/main_base.yml`), pre-commit hooks `npm-policy` and `pnpm-frozen-lockfile`, pre-push hook `npm-audit` (`mise run audit:npm --base origin/develop`: npm policy, OSV-Scanner, registry signatures). On a PR, OSV-Scanner fails only on advisories absent from the base branch, and on any `MAL-*` (malicious package); the daily develop run fails on any advisory. `ui/.npmrc` enforces the 7-day cooldown and `strict-dep-builds`. Run these checks from `ui/`:
 
 - [ ] Release-age cooldown: the version was published at least 7 days ago. List the eligible versions:
 
@@ -57,10 +57,11 @@ No CI gate covers npm yet (open tasks of #1265), so these checks are mandatory f
     ```
 
     Then `pnpm add <pkg>@<version>` (`pnpm add -D` for build and test tooling). Never an unversioned `pnpm add <pkg>` or `@latest`.
-- [ ] Install scripts: pnpm 10 runs dependency lifecycle scripts only for packages listed in `pnpm.onlyBuiltDependencies` of `ui/package.json`. Leave packages reported under "Ignored build scripts" ignored and never run `pnpm approve-builds`; add an allowlist entry only when the feature cannot work without the script, and justify it in the PR.
-- [ ] Fix a vulnerable transitive package with a `pnpm.overrides` entry in the style of the existing ones (`"ws": ">=8.20.1"`) and cite the advisory ID in the commit message.
+- [ ] Skip the cooldown only to fix an advisory that develop already ships and that a human judged urgent: add one `minimum-release-age-exclude[]=<name>@<exact version>` line per too-recent version (the fix and any new dependency it pulls in) to `ui/.npmrc`, under a comment citing the advisory (`npm-policy` hook). Never exclude a package name or pattern. `mise run audit:npm` warns once an exclusion is no longer needed; then remove it.
+- [ ] Install scripts: `pnpm.onlyBuiltDependencies` of `ui/package.json` stays empty (`npm-policy` hook), so pnpm runs no dependency lifecycle script, and `strict-dep-builds` fails the install on any script not listed in `pnpm.ignoredBuiltDependencies`. Never run `pnpm approve-builds`; add an `ignoredBuiltDependencies` entry only when the package works without its script, and justify it in the PR.
+- [ ] Fix a vulnerable transitive package with a `pnpm.overrides` entry in the style of the existing ones (`"ws": "^8.20.1"`; the `npm-policy` hook rejects unbounded `>=` ranges) and cite the advisory ID in the commit message.
 - [ ] `pnpm install --frozen-lockfile` succeeds with the committed `ui/pnpm-lock.yaml`.
-- [ ] `pnpm audit` reports no advisory whose path goes through a package you added or bumped.
+- [ ] OSV-Scanner (`mise run audit:npm --base origin/develop`) reports no advisory on a package you added or bumped. Ignore an advisory in `ui/osv-scanner.toml` only with a reachability reason and an `ignoreUntil` date.
 - [ ] `pnpm run check:dedup` (knip) does not report the new package as unused.
 - [ ] `ui/pnpm-lock.yaml` changed → also `lockfile-hashes.instructions.md` (`ui.pnpm.{linux,darwin}.sha256`).
 
@@ -111,7 +112,6 @@ Gate: pre-commit hook `no-curl-pipe-shell` (workflows, actions, `.mise/`, `scrip
 
 - `.mise/scripts/edb_tde/Dockerfile.edb`: tag-only `FROM` (the digest needs `EDB_SUBSCRIPTION_TOKEN`; excluded from the digest hook).
 - `.mise/scripts/pykmip/setup_pykmip.sh`: unpinned `pip install PyKMIP`, with a `git+https://github.com/OpenKMIP/PyKMIP.git` fallback.
-- `.mise/tasks/build/ui` and `.mise/scripts/windows/windows_ui.ps1`: `pnpm install` without `--frozen-lockfile`.
 - `documentation/theme/scripts/setup-mdbook.sh` (submodule): `curl | sh` rustup fallback when `cargo` is missing; `cargo install` without `--locked` for `mdbook-admonish`, `mdbook-mermaid` and `mdbook-linkcheck`.
 
 > Rule 4.19 of `/kms-sync-rules`. Lock-file hash sync: `lockfile-hashes.instructions.md` (rule 4.11).

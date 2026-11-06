@@ -114,7 +114,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
                 DigitalSignatureAlgorithm::SHA3384WithRSAEncryption => KmipHash::SHA3384,
                 DigitalSignatureAlgorithm::SHA3512WithRSAEncryption => KmipHash::SHA3512,
                 other => {
-                    return Err(CryptoError::Default(format!(
+                    return Err(CryptoError::NotSupported(format!(
                         "sign_rsa_with_pkey: not supported: {other:?}"
                     )));
                 }
@@ -315,7 +315,6 @@ fn map_kmip_hash_to_openssl(kmip_hash: KmipHash) -> MessageDigest {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters;
 
     use super::*;

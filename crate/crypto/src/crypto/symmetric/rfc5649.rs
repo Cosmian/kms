@@ -116,7 +116,6 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
     Ok(plaintext)
 }
 
-#[expect(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use aes_kw::KeyInit;

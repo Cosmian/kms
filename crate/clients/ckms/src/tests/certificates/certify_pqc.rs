@@ -104,7 +104,7 @@ fn certify_pqc_self_signed(
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(certificate_link.to_string(), certificate_id);
     let public_key_id = attributes.get_link(LinkType::PublicKeyLink).unwrap();
-    assert!(!public_key_id.to_string().is_empty());
+    assert_ne!(public_key_id.to_string(), "");
 
     // Validate certificate
     let output = validate_certificate(cli_conf_path, "certificates", vec![certificate_id], None)?;
@@ -394,7 +394,7 @@ fn assert_certify_format_unsupported(
         .to_possible_value()
         .expect("valid Algorithm")
         .get_name()
-        .to_string();
+        .to_owned();
 
     let err = run_ckms_expect_error(
         cli_conf_path,

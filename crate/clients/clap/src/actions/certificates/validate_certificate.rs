@@ -6,7 +6,7 @@ use cosmian_kms_client::{
 
 use crate::{
     actions::{console, labels::CERTIFICATE_ID},
-    error::result::KmsCliResult,
+    error::{KmsCliError, result::KmsCliResult},
 };
 
 /// Validate a certificate.
@@ -36,6 +36,13 @@ impl ValidateCertificatesAction {
             ValidityIndicator::Unknown => "Unknown",
         })
         .write()?;
+        // Scripts rely on the exit code: anything but `Valid` is a failure, as when the server
+        // used to reject an invalid chain.
+        if validity_indicator != ValidityIndicator::Valid {
+            return Err(KmsCliError::Default(format!(
+                "the certificate chain is not valid: {validity_indicator:?}"
+            )));
+        }
         Ok(validity_indicator)
     }
 }

@@ -280,7 +280,7 @@ static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_get_function_list_rejects_null_output() {
     // SAFETY: passing null intentionally verifies the required argument validation.
     assert_eq!(
@@ -294,7 +294,7 @@ fn test_get_function_list_rejects_null_output() {
 /// Not a `#[test]`: `C_GetFunctionList` overwrites the global backend, so running it as an
 /// independent parallel test would redirect a concurrently running `#[serial]` test to the
 /// default `CKMS_CONF` server. It is only called from `#[serial]` tests.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 pub(crate) fn test_init() {
     // export RUST_LOG="cosmian_pkcs11=trace,ckms=trace,cosmian_config_utils=trace"
     log_init(None);
@@ -337,7 +337,7 @@ fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
 
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     // Initialize the backend to create necessary keys
     let _backend = initialize_backend()?;
@@ -374,7 +374,6 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     // get_using_id("vol1") returns the handle for the key imported by initialize_backend().
     let mut label_bytes = b"vol1".to_vec();
     let label_len: CK_ULONG = label_bytes.len().try_into()?;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_LABEL,
         pValue: label_bytes.as_mut_ptr().cast::<std::ffi::c_void>(),
@@ -422,7 +421,7 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
 /// objects so `VeraCrypt` can list and select them.
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
 
@@ -453,7 +452,6 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
 
     // Search for CKO_DATA objects — this is how VeraCrypt discovers keyfiles.
     let mut class: CK_OBJECT_CLASS = CKO_DATA;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_CLASS,
         pValue: std::ptr::from_mut(&mut class).cast::<std::ffi::c_void>(),
@@ -842,7 +840,7 @@ fn test_ssh_key_discovery() -> Pkcs11Result<()> {
 /// null (any interface/version accepted) and when they exactly match.
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -945,7 +943,7 @@ fn test_get_interface_list_and_get_interface() -> Pkcs11Result<()> {
 /// non-zero `flags` request (this module's sole interface makes no special guarantees).
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -1049,7 +1047,7 @@ fn test_get_interface_rejects_mismatches() -> Pkcs11Result<()> {
 /// mode (the default in tests).
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_c_login_user() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -1153,7 +1151,7 @@ fn test_c_login_user() -> Pkcs11Result<()> {
 /// (`CKA_PRIVATE` must be `CK_FALSE`).
 #[test]
 #[serial]
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
     let conf_path = save_pkcs11_client_config();
@@ -1182,7 +1180,6 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
 
     // Search for CKO_PROFILE objects (no login performed on this session).
     let mut class: CK_OBJECT_CLASS = CKO_PROFILE;
-    #[allow(clippy::cast_ptr_alignment)]
     let mut template = [CK_ATTRIBUTE {
         type_: CKA_CLASS,
         pValue: (&raw mut class).cast::<std::ffi::c_void>(),
@@ -1250,7 +1247,6 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
         let mut private_value: pkcs11_sys::CK_BBOOL = 0;
         let mut profile_id_value: CK_PROFILE_ID = 0;
         let mut unique_id_value = [0_u8; 64];
-        #[allow(clippy::cast_ptr_alignment)]
         let mut attr_template = [
             CK_ATTRIBUTE {
                 type_: CKA_CLASS,
@@ -1330,7 +1326,7 @@ fn test_profile_objects_self_declared() -> Pkcs11Result<()> {
     Ok(())
 }
 
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 fn find_profile_count(
     session: pkcs11_sys::CK_SESSION_HANDLE,
     requested_profile: CK_PROFILE_ID,

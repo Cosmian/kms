@@ -15,7 +15,7 @@ use super::{
         bench_hsm_sign_verify, bench_key_creation, bench_sign_verify,
     },
     load::{
-        LoadResult, bench_load, generate_html_output, generate_load_json_output,
+        LoadBenchParams, LoadResult, bench_load, generate_html_output, generate_load_json_output,
         generate_markdown_load_output_combined, parse_concurrency_levels, print_load_results,
     },
     output::{
@@ -95,15 +95,17 @@ impl BenchAction {
                     let results = bench_load(
                         &rt,
                         &client,
-                        mode,
-                        proto,
-                        &concurrency_levels,
-                        warmup,
-                        duration,
-                        cooldown,
-                        load_plaintext_size,
-                        hsm_prefix.as_deref(),
-                        Some(&filter),
+                        &LoadBenchParams {
+                            mode,
+                            protocol: proto,
+                            concurrency_levels: &concurrency_levels,
+                            warmup,
+                            duration,
+                            cooldown,
+                            plaintext_size: load_plaintext_size,
+                            hsm_prefix: hsm_prefix.as_deref(),
+                            filter: Some(&filter),
+                        },
                     );
                     if results.is_empty() {
                         continue;
@@ -159,27 +161,48 @@ impl BenchAction {
             let (saved_stdout_fd, saved_stderr_fd): (Option<i32>, Option<i32>) =
                 match effective_format {
                     BenchFormat::Json => {
-                        #[allow(unsafe_code)]
+                        #[expect(
+                            unsafe_code,
+                            reason = "libc fd redirection to silence criterion output"
+                        )]
                         let s = unsafe { libc::dup(1) };
-                        #[allow(unsafe_code)]
+                        #[expect(
+                            unsafe_code,
+                            reason = "libc fd redirection to silence criterion output"
+                        )]
                         unsafe {
                             libc::dup2(2, 1)
                         };
                         (if s < 0 { None } else { Some(s) }, None)
                     }
                     BenchFormat::Compact => {
-                        #[allow(unsafe_code)]
+                        #[expect(
+                            unsafe_code,
+                            reason = "libc fd redirection to silence criterion output"
+                        )]
                         let devnull = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_WRONLY) };
                         if devnull >= 0 {
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             let se = unsafe { libc::dup(2) };
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             unsafe {
                                 libc::dup2(devnull, 2)
                             };
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             let so = unsafe { libc::dup(1) };
-                            #[allow(unsafe_code)]
+                            #[expect(
+                                unsafe_code,
+                                reason = "libc fd redirection to silence criterion output"
+                            )]
                             unsafe {
                                 libc::dup2(2, 1);
                                 libc::close(devnull);
@@ -255,7 +278,10 @@ impl BenchAction {
 
             // Restore stderr (compact mode silenced criterion's warnings).
             if let Some(saved) = saved_stderr_fd {
-                #[allow(unsafe_code)]
+                #[expect(
+                    unsafe_code,
+                    reason = "libc fd redirection to silence criterion output"
+                )]
                 unsafe {
                     libc::dup2(saved, 2);
                     libc::close(saved);
@@ -264,7 +290,10 @@ impl BenchAction {
 
             // Restore stdout before we emit the report.
             if let Some(saved) = saved_stdout_fd {
-                #[allow(unsafe_code)]
+                #[expect(
+                    unsafe_code,
+                    reason = "libc fd redirection to silence criterion output"
+                )]
                 unsafe {
                     libc::dup2(saved, 1);
                     libc::close(saved);
@@ -350,5 +379,217 @@ fn run_hsm_kmip_benches(
         BenchMode::Batch => {
             eprintln!("[bench] --hsm does not support --mode batch (no HSM bulk-op support)");
         }
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    use std::fs;
+
+    use ::clap::Parser as _;
+    use serial_test::serial;
+    use test_kms_server::start_default_test_kms_server;
+
+    use super::criterion_home;
+    use crate::actions::bench::types::BenchAction;
+
+    #[test]
+    fn characterization_bench_action_defaults() {
+        let a = BenchAction::try_parse_from(["bench"]).unwrap();
+        assert_eq!(
+            format!(
+                "{:?} {:?} {:?} {:?} {:?} {} {:?} {:?} {:?} {:?} {} {} {} {} {} {} {}",
+                a.mode,
+                a.filter,
+                a.protocol,
+                a.format,
+                a.speed,
+                a.time,
+                a.max_group_time,
+                a.save_baseline,
+                a.load_baseline,
+                a.version_label,
+                a.load,
+                a.load_concurrency,
+                a.load_plaintext_size,
+                a.warmup_time,
+                a.cooldown_time,
+                a.hsm,
+                a.hsm_slot
+            ),
+            "All BenchFilter { algorithms: [], key_sizes: [] } All Text Normal 10 Some(30) None None None false 1,2,4,8,16 4096 20 20 false 0"
+        );
+    }
+
+    #[test]
+    fn characterization_bench_action_explicit_flags() {
+        let a = BenchAction::try_parse_from([
+            "bench",
+            "-m",
+            "sign",
+            "-a",
+            "aes-gcm, rsa",
+            "-k",
+            "256,p256",
+            "-p",
+            "jose",
+            "-f",
+            "markdown",
+            "-s",
+            "quick",
+            "-t",
+            "3",
+            "--max-group-time",
+            "7",
+            "--load",
+            "--load-concurrency",
+            "1,2",
+            "--load-plaintext-size",
+            "64",
+            "--warmup-time",
+            "0",
+            "--cooldown-time",
+            "1",
+            "--hsm",
+            "--hsm-slot",
+            "5",
+            "--save-baseline",
+            "b1",
+            "--version-label",
+            "v1",
+        ])
+        .unwrap();
+        assert_eq!(
+            format!(
+                "{:?} {:?} {:?} {:?} {:?} {} {:?} {:?} {:?} {:?} {} {} {} {} {} {} {}",
+                a.mode,
+                a.filter,
+                a.protocol,
+                a.format,
+                a.speed,
+                a.time,
+                a.max_group_time,
+                a.save_baseline,
+                a.load_baseline,
+                a.version_label,
+                a.load,
+                a.load_concurrency,
+                a.load_plaintext_size,
+                a.warmup_time,
+                a.cooldown_time,
+                a.hsm,
+                a.hsm_slot
+            ),
+            "SignVerify BenchFilter { algorithms: [\"aes-gcm\", \" rsa\"], key_sizes: [\"256\", \"p256\"] } Jose Markdown Quick 3 Some(7) Some(\"b1\") None Some(\"v1\") true 1,2 64 0 1 true 5"
+        );
+    }
+
+    /// Real load sweep (1 s per level) against the in-process test server: exercises the
+    /// `bench_load` call from `BenchAction::process`, the JSON report and the HTML report.
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_load_html() {
+        let ctx = start_default_test_kms_server().await;
+        let action = BenchAction::try_parse_from([
+            "bench",
+            "--load",
+            "--mode",
+            "encrypt",
+            "--protocol",
+            "ttlv-json",
+            "-a",
+            "aes-gcm",
+            "--format",
+            "html",
+            "--load-concurrency",
+            "1,2",
+            "--load-plaintext-size",
+            "64",
+            "--time",
+            "1",
+            "--warmup-time",
+            "0",
+            "--cooldown-time",
+            "0",
+        ])
+        .unwrap();
+        action.process(ctx.get_owner_client()).await.unwrap();
+        let json = fs::read_to_string(criterion_home().join("load_ttlv-json.json")).unwrap();
+        let lines: Vec<String> = json
+            .lines()
+            .map(|l| {
+                l.split(",\"throughput_rps\"")
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                "{\"protocol\":\"ttlv-json\",\"operation\":\"encrypt/aes-gcm\",\"concurrency\":1",
+                "{\"protocol\":\"ttlv-json\",\"operation\":\"encrypt/aes-gcm\",\"concurrency\":2"
+            ]
+        );
+        let html =
+            fs::read_to_string(criterion_home().join("load-report").join("index.html")).unwrap();
+        assert!(html.contains("<h2>ttlv-json/encrypt/aes-gcm</h2>"));
+    }
+
+    /// Runs the criterion groups of one `--mode`/`--protocol` pair once at `sanity` speed.
+    async fn run_sanity(mode: &str, protocol: &str, extra: &[&str]) {
+        let ctx = start_default_test_kms_server().await;
+        let mut args = vec![
+            "bench",
+            "--speed",
+            "sanity",
+            "--mode",
+            mode,
+            "--protocol",
+            protocol,
+            "--warmup-time",
+            "0",
+            "--max-group-time",
+            "1",
+        ];
+        args.extend_from_slice(extra);
+        let action = BenchAction::try_parse_from(args).unwrap();
+        action.process(ctx.get_owner_client()).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_sanity_encrypt_ttlv_json() {
+        run_sanity("encrypt", "ttlv-json", &[]).await;
+    }
+
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_sanity_encrypt_ttlv_bytes() {
+        run_sanity("encrypt", "ttlv-bytes", &[]).await;
+    }
+
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_sanity_encrypt_jose() {
+        run_sanity("encrypt", "jose", &[]).await;
+    }
+
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_sanity_batch_ttlv_json() {
+        run_sanity("batch", "ttlv-json", &[]).await;
+    }
+
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_sanity_batch_jose() {
+        run_sanity("batch", "jose", &[]).await;
+    }
+
+    #[tokio::test]
+    #[serial(bench_files)]
+    async fn characterization_bench_process_sanity_key_creation_rsa() {
+        run_sanity("key-creation", "ttlv-json", &["-a", "rsa", "-k", "4096"]).await;
     }
 }

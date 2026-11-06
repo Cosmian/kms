@@ -260,24 +260,8 @@ func TestVersionGating_KMIP12(t *testing.T) {
             }
         })
     }
-
-    // KMIP 1.2+: must be present
-    for _, ver := range []kmip.ProtocolVersion{kmip.V1_2, kmip.V1_3, kmip.V1_4} {
-        ver := ver
-        t.Run(fmt.Sprintf("PresentIn%s", versionName(ver)), func(t *testing.T) {
-            t.Parallel()
-            client := newClient(t, ver)
-            id := createAES256(t, client, "kmip12-"+subtestName(versionName(ver)))
-            activateKey(t, client, id)
-
-            attrs := getAttrList(t, client, id)
-            for _, attrName := range kmip12Attrs {
-                assert.True(t, hasAttr(attrs, attrName),
-                    "KMIP %s: GetAttributeList MUST return %q (introduced in 1.2)",
-                    versionName(ver), attrName)
-            }
-        })
-    }
+    // No "present in 1.2+" check: GetAttributeList lists only attributes actually set on
+    // the object, and a freshly created key has no Alternative Name nor Original Creation Date.
 }
 
 // ─── KMIP 1.3 attribute version-gating ───────────────────────────────────────

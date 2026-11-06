@@ -138,6 +138,11 @@ flowchart TB
 > (AWS XKS — remote server). They are separate jobs
 > because a job-level `if` cannot read the `matrix` context.
 
+**JS-toolchain job**: `test-nix-js` runs the test types that execute `pnpm install` and the
+JS toolchain (`ui`, `wasm`, `spire`). Any npm dependency can read its job environment, so it
+receives no cloud or test secrets, only a read-only `GITHUB_TOKEN` (and Docker Hub login for
+`spire`). See [CONTRIBUTING.md](../CONTRIBUTING.md#supply-chain--dependency-policy).
+
 ---
 
 ## 5. Windows Test Workflow (`test_windows.yml`)
@@ -164,7 +169,7 @@ Builds and packages KMS for multiple platforms using Nix.
 
 - **`workflow_call`**: called by `pr.yml` or other reusable callers (passes `toolchain` input)
 - **`workflow_dispatch`**: manual dispatch from the GitHub UI
-    - Input: `toolchain` — Rust toolchain version (default: `1.97.0`)
+    - Input: `toolchain` — Rust toolchain version (default: `1.99.1`)
 
 > **`packages` job**: runs only on git tags (`refs/tags/*`) or manual dispatch (`workflow_dispatch`).
 > The `docker`, `publish-release`, `publish-sbom`, and `build-monitoring-archive` jobs still

@@ -112,9 +112,51 @@ impl<'de> Deserialize<'de> for Interval {
     }
 }
 
+/// Serialize an `Option<i64>` number of seconds as a TTLV `Interval`, for fields the
+/// specification types as `Interval` but whose public Rust type is `i64` (Re-key,
+/// Re-key Key Pair and Re-certify `Offset`). Deserialization of `i64` already accepts
+/// an `Interval`, as well as the `LongInteger` previously emitted.
+///
+/// # Errors
+/// Fails when the value does not fit the unsigned 32-bit `Interval`.
+pub fn serialize_option_secs<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(secs) => {
+            let secs = u32::try_from(*secs).map_err(|_e| {
+                serde::ser::Error::custom(format!(
+                    "an Interval must be between 0 and {} seconds, got {secs}",
+                    u32::MAX
+                ))
+            })?;
+            serializer.serialize_some(&Interval(secs))
+        }
+        None => serializer.serialize_none(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Interval;
+    use crate::ttlv::{TTLValue, to_ttlv};
+
+    #[test]
+    fn test_option_secs_serializes_as_interval() {
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "PascalCase")]
+        struct S {
+            #[serde(serialize_with = "super::serialize_option_secs")]
+            offset: Option<i64>,
+        }
+        let ttlv = to_ttlv(&S { offset: Some(60) }).ok();
+        assert!(
+            matches!(ttlv.as_ref().map(|t| &t.value), Some(TTLValue::Structure(children))
+                if children.first().map(|c| &c.value) == Some(&TTLValue::Interval(60))),
+            "unexpected TTLV: {ttlv:?}"
+        );
+    }
 
     #[test]
     fn test_interval_conversions() {

@@ -127,4 +127,84 @@ mod inner {
             from_ttlv(ttlv).expect("from_ttlv");
         trace!("Deserialized ResponseMessage: {}", response_message);
     }
+
+    /// KMIP XML `BigInteger` values are padded big-endian two's complement hex, even when every digit
+    /// is decimal (`0000000000010001`) or the top bit of the magnitude is set.
+    #[test]
+    fn xml_big_integer_is_padded_hex() {
+        use crate::ttlv::{TTLValue, kmip_big_int::KmipBigInt};
+
+        for (literal, expected) in [
+            ("0000000000010001", vec![0x01, 0x00, 0x01]),
+            ("0000000000000000930451c9", vec![0x93, 0x04, 0x51, 0xc9]),
+            ("0x10001", vec![0x01, 0x00, 0x01]),
+        ] {
+            let xml = format!(r#"<Modulus type="BigInteger" value="{literal}"/>"#);
+            let ttlv = TTLVXMLDeserializer::from_xml(&xml).expect("xml->ttlv");
+            let TTLValue::BigInteger(value) = ttlv.value else {
+                panic!("{literal}: not a BigInteger");
+            };
+            let mut padded = vec![0_u8];
+            padded.extend_from_slice(&expected);
+            assert_eq!(
+                value,
+                KmipBigInt::from_signed_bytes_be(&padded),
+                "{literal}"
+            );
+        }
+    }
+
+    /// KMIP 1.4 Table 325 `ContentCommitment` usage mask bit (0x400) and the Key Wrap Type
+    /// enumeration names (`NotWrapped`, `AsRegistered`) parse from their XML spellings.
+    #[test]
+    fn xml_content_commitment_and_key_wrap_type() {
+        use crate::ttlv::TTLValue;
+
+        let mask = r#"<CryptographicUsageMask type="Integer" value="Sign ContentCommitment"/>"#;
+        let ttlv = TTLVXMLDeserializer::from_xml(mask).expect("xml->ttlv");
+        assert_eq!(ttlv.value, TTLValue::Integer(0x401));
+        for (name, code) in [("NotWrapped", 1), ("AsRegistered", 2)] {
+            let xml = format!(r#"<KeyWrapType type="Enumeration" value="{name}"/>"#);
+            let ttlv = TTLVXMLDeserializer::from_xml(&xml).expect("xml->ttlv");
+            let TTLValue::Enumeration(e) = ttlv.value else {
+                panic!("{name}: not an Enumeration");
+            };
+            assert_eq!(e.value, code, "{name}");
+        }
+    }
+
+    /// `BigInteger` literals: the KMIP XML profile writes hex padded to a multiple of 8 bytes, so
+    /// an unprefixed all-digit value of 16k characters is hex (a 16-digit decimal is read as
+    /// hex too: write such a decimal unpadded or with another length); other all-digit values
+    /// are decimal; hex letters or `0x` force hex.
+    #[test]
+    fn xml_big_integer_literal_forms() {
+        use crate::ttlv::TTLValue;
+
+        let bytes = |literal: &str| {
+            let xml = format!(r#"<PublicExponent type="BigInteger" value="{literal}"/>"#);
+            let ttlv = TTLVXMLDeserializer::from_xml(&xml).expect("xml->ttlv");
+            let TTLValue::BigInteger(v) = ttlv.value else {
+                panic!("{literal}: not a BigInteger");
+            };
+            v.to_signed_bytes_be()
+        };
+        // padded hex (profile form), also when only digits
+        assert_eq!(bytes("0000000000010001"), vec![0, 0, 0, 0, 0, 1, 0, 1]);
+        assert_eq!(
+            bytes("1234567890123456"),
+            vec![0x12, 0x34, 0x56, 0x78, 0x90, 0x12, 0x34, 0x56]
+        );
+        // a value with the top bit set stays positive thanks to the zero padding
+        assert_eq!(bytes("0000000000000080"), vec![0, 0, 0, 0, 0, 0, 0, 0x80]);
+        // other digit-only values are decimal (65537 = 0x010001)
+        assert_eq!(bytes("65537"), vec![0, 0, 0, 0, 0, 1, 0, 1]);
+        // letters or 0x force hex
+        assert_eq!(bytes("0x010001"), vec![0, 0, 0, 0, 0, 1, 0, 1]);
+        // unpadded hex is two's complement as given: 0x80FF is negative
+        assert_eq!(
+            bytes("80FF"),
+            vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x80, 0xFF]
+        );
+    }
 }

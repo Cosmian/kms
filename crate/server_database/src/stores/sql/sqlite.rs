@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
@@ -482,9 +482,13 @@ impl SqlitePool {
     /// Returns a reader connection using round-robin distribution.
     fn reader(&self) -> &Connection {
         let idx = self.reader_idx.fetch_add(1, Ordering::Relaxed) % self.readers.len();
-        #[allow(clippy::indexing_slicing)]
         // SAFETY: idx is computed modulo readers.len(), which is always >= 1.
-        &self.readers[idx]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "idx is taken modulo readers.len(), which is >= 1"
+        )]
+        let reader = &self.readers[idx];
+        reader
     }
 
     /// Read a value from the `parameters` table by name, or `None` if absent.
@@ -601,24 +605,6 @@ impl ObjectsStore for SqlitePool {
         tags: &HashSet<String>,
     ) -> InterfaceResult<String> {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-        // If an explicit UID already exists, return a clear error matching CLI expectations
-        let exists = self
-            .writer
-            .call({
-                let uid_check = uid.clone();
-                move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
-                    let present = stmt.exists(params_from_iter([&uid_check]))?;
-                    Ok(present)
-                }
-            })
-            .await
-            .map_err(DbError::from)?;
-        if exists {
-            return Err(InterfaceError::Db(
-                "one or more objects already exist".to_owned(),
-            ));
-        }
         let object_json = serde_json::to_string(object)
             .map_err(|e| InterfaceError::Db(format!("failed serializing object: {e}")))?;
         let attributes_json = serde_json::to_string(attributes)
@@ -658,7 +644,17 @@ impl ObjectsStore for SqlitePool {
                 },
             )
             .await
-            .map_err(DbError::from)?;
+            .map_err(|error| match error {
+                tokio_rusqlite::Error::Error(rusqlite::Error::SqliteFailure(sqlite_error, _))
+                    if sqlite_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+                {
+                    InterfaceError::from(DbError::Kmip21Error(
+                        ErrorReason::Object_Already_Exists,
+                        "one or more objects already exist".to_owned(),
+                    ))
+                }
+                other => InterfaceError::from(DbError::from(other)),
+            })?;
         Ok(uid)
     }
 
@@ -1754,7 +1750,8 @@ fn apply_owned_ops(
                 let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
                 let exists = stmt.exists(params_from_iter([uid]))?;
                 if exists {
-                    return Err(DbError::DatabaseError(
+                    return Err(DbError::Kmip21Error(
+                        ErrorReason::Object_Already_Exists,
                         "one or more objects already exist".to_owned(),
                     ));
                 }
@@ -1972,5 +1969,61 @@ mod tests {
         expect_crl_issuers(&SqlitePool::instantiate(&file, false, None).await?, 1).await?;
         // ...clearing removes it.
         expect_crl_issuers(&SqlitePool::instantiate(&file, true, None).await?, 0).await
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests pinning the BASE round-robin reader selection of `SqlitePool`.
+
+    use std::{path::Path, sync::atomic::Ordering};
+
+    use tempfile::TempDir;
+
+    use super::SqlitePool;
+
+    #[tokio::test]
+    async fn characterization_sqlite_reader_round_robin_cycles_over_all_readers() {
+        let tmp = TempDir::new().unwrap();
+        let pool = SqlitePool::instantiate(&tmp.path().join("kms.db"), true, Some(3))
+            .await
+            .unwrap();
+        assert_eq!(pool.readers.len(), 3);
+        pool.reader_idx.store(0, Ordering::Relaxed);
+
+        let expected = [0_usize, 1, 2, 0, 1, 2, 0];
+        for want in expected {
+            let got = pool.reader();
+            assert!(std::ptr::eq(got, std::ptr::from_ref(&pool.readers[want])));
+        }
+        assert_eq!(pool.reader_idx.load(Ordering::Relaxed), 7);
+    }
+
+    #[tokio::test]
+    async fn characterization_sqlite_reader_single_reader_always_selected() {
+        let tmp = TempDir::new().unwrap();
+        let pool = SqlitePool::instantiate(Path::new(&tmp.path().join("kms.db")), true, Some(0))
+            .await
+            .unwrap();
+        // `max_connections = 0` is clamped to one reader
+        assert_eq!(pool.readers.len(), 1);
+        for _ in 0..4 {
+            assert!(std::ptr::eq(pool.reader(), pool.readers.first().unwrap()));
+        }
+    }
+
+    #[tokio::test]
+    async fn characterization_sqlite_reader_counter_wraps_modulo_readers() {
+        let tmp = TempDir::new().unwrap();
+        let pool = SqlitePool::instantiate(&tmp.path().join("kms.db"), true, Some(4))
+            .await
+            .unwrap();
+        // The counter wraps around usize::MAX: usize::MAX % 4 == 3, then wraps to 0.
+        pool.reader_idx.store(usize::MAX, Ordering::Relaxed);
+        assert!(std::ptr::eq(
+            pool.reader(),
+            std::ptr::from_ref(&pool.readers[3])
+        ));
+        assert!(std::ptr::eq(pool.reader(), pool.readers.first().unwrap()));
     }
 }

@@ -245,12 +245,12 @@ impl Backend for CliBackend {
         *b"software        "
     }
 
-    #[expect(clippy::indexing_slicing)]
     fn token_serial_number(&self) -> [u8; 16] {
         let version = env!("CARGO_PKG_VERSION").as_bytes();
-        let len = version.len().min(16);
         let mut sn = [0x20; 16];
-        sn[0..len].copy_from_slice(&version[..len]);
+        for (dst, src) in sn.iter_mut().zip(version) {
+            *dst = *src;
+        }
         sn
     }
 
@@ -324,10 +324,10 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in disk_ids {
-            if seen.insert(id.clone()) {
-                if let Some(private_key) = self.create_private_key_from_id(&id) {
-                    private_keys.push(private_key);
-                }
+            if seen.insert(id.clone())
+                && let Some(private_key) = self.create_private_key_from_id(&id)
+            {
+                private_keys.push(private_key);
             }
         }
 
@@ -338,10 +338,10 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in ssh_ids {
-            if seen.insert(id.clone()) {
-                if let Some(private_key) = self.create_private_key_from_id(&id) {
-                    private_keys.push(private_key);
-                }
+            if seen.insert(id.clone())
+                && let Some(private_key) = self.create_private_key_from_id(&id)
+            {
+                private_keys.push(private_key);
             }
         }
 
@@ -354,10 +354,10 @@ impl Backend for CliBackend {
         )
         .unwrap_or_default();
         for id in gnupg_ids {
-            if seen.insert(id.clone()) {
-                if let Some(private_key) = self.create_private_key_from_id(&id) {
-                    private_keys.push(private_key);
-                }
+            if seen.insert(id.clone())
+                && let Some(private_key) = self.create_private_key_from_id(&id)
+            {
+                private_keys.push(private_key);
             }
         }
 
@@ -496,13 +496,11 @@ impl Backend for CliBackend {
             let kms_ids =
                 locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])?;
             for id in kms_ids {
-                if seen_ids.insert(id.clone()) {
-                    if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
-                        if let Some(object) = Self::create_object_from_attributes(&id, &attributes)
-                        {
-                            objects.push(Arc::new(object));
-                        }
-                    }
+                if seen_ids.insert(id.clone())
+                    && let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id)
+                    && let Some(object) = Self::create_object_from_attributes(&id, &attributes)
+                {
+                    objects.push(Arc::new(object));
                 }
             }
         }
@@ -689,5 +687,32 @@ impl Backend for CliBackend {
             key_algorithm,
         )
         .map_err(Into::into)
+    }
+}
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests for the `cosmian_pkcs11` backend serial number.
+
+    use cosmian_pkcs11_module::traits::Backend;
+
+    use super::CliBackend;
+
+    #[test]
+    fn characterization_token_serial_number_backend_direct_call() {
+        // Construct dummy client without network calls to instantiate CliBackend
+        let kms_rest_client =
+            ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient::new()
+                .unwrap();
+        let backend = CliBackend {
+            kms_rest_client,
+            vendor_id: "cosmian".to_owned(),
+        };
+        let sn = backend.token_serial_number();
+
+        // The serial number is the package version, truncated to 16 bytes and padded with spaces.
+        let version = env!("CARGO_PKG_VERSION").as_bytes();
+        let len = version.len().min(16);
+        assert_eq!(&sn[..len], &version[..len]);
+        assert!(sn[len..].iter().all(|&byte| byte == b' '), "{sn:?}");
     }
 }

@@ -85,19 +85,19 @@ fn resolve_plaintext(request: &Value) -> Vec<u8> {
     if let Some(pt) = request.get("data_plaintext") {
         return pt.as_str().unwrap_or("").as_bytes().to_vec();
     }
-    if let Some(generator) = request.get("data_plaintext_generator") {
-        if generator.as_str() == Some("repeat_pattern") {
-            let pattern = request["pattern"].as_str().unwrap_or("A");
-            let target_bytes = usize::try_from(request["repeat_bytes"].as_u64().unwrap_or(256))
-                .expect("repeat_bytes fits usize");
-            return pattern
-                .as_bytes()
-                .iter()
-                .cycle()
-                .take(target_bytes)
-                .copied()
-                .collect();
-        }
+    if let Some(generator) = request.get("data_plaintext_generator")
+        && generator.as_str() == Some("repeat_pattern")
+    {
+        let pattern = request["pattern"].as_str().unwrap_or("A");
+        let target_bytes = usize::try_from(request["repeat_bytes"].as_u64().unwrap_or(256))
+            .expect("repeat_bytes fits usize");
+        return pattern
+            .as_bytes()
+            .iter()
+            .cycle()
+            .take(target_bytes)
+            .copied()
+            .collect();
     }
     b"default test payload".to_vec()
 }
@@ -306,7 +306,7 @@ where
     // Verify with key B → must fail
     let req = actix_test::TestRequest::post()
         .uri("/v1/crypto/mac")
-        .set_json(&json!({"kid": kid_b, "alg": alg, "data": data_b64, "mac": mac_b64}))
+        .set_json(json!({"kid": kid_b, "alg": alg, "data": data_b64, "mac": mac_b64}))
         .to_request();
     let resp = actix_test::call_service(app, req).await;
     if resp.status() == StatusCode::OK {
@@ -554,7 +554,7 @@ where
 /// Run an unwrap-key round-trip vector:
 /// 1. Provision an RSA key pair
 /// 2. Encrypt with RSA-OAEP (wraps a fresh CEK with the public key)
-/// 3. Call `POST /v1/crypto/keys/unwrap` with the protected header + encrypted_key
+/// 3. Call `POST /v1/crypto/keys/unwrap` with the protected header + `encrypted_key`
 /// 4. Use the unwrapped symmetric key to encrypt/decrypt a payload
 async fn run_unwrap_key_round_trip<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
 where
@@ -771,17 +771,17 @@ where
     let post_delete_req = match operation {
         "mac" => actix_test::TestRequest::post()
             .uri("/v1/crypto/mac")
-            .set_json(&json!({"kid": kid, "alg": alg, "data": data_b64}))
+            .set_json(json!({"kid": kid, "alg": alg, "data": data_b64}))
             .to_request(),
         "sign" => actix_test::TestRequest::post()
             .uri("/v1/crypto/sign")
-            .set_json(&json!({"kid": kid, "alg": alg, "data": data_b64}))
+            .set_json(json!({"kid": kid, "alg": alg, "data": data_b64}))
             .to_request(),
         "encrypt" => {
             let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
             actix_test::TestRequest::post()
                 .uri("/v1/crypto/encrypt")
-                .set_json(&json!({"kid": kid, "alg": alg, "enc": enc_alg, "data": data_b64}))
+                .set_json(json!({"kid": kid, "alg": alg, "enc": enc_alg, "data": data_b64}))
                 .to_request()
         }
         op => panic!("Vector {filename}: unsupported post-delete check for '{op}'"),
@@ -842,14 +842,14 @@ where
     let mut kid_to_cleanup: Option<String> = None;
     let mut kid_public_provisioned: Option<String> = None;
 
-    if let Some(setup_key) = v.get("setup_key") {
-        if !setup_key.is_null() {
-            let (kid, kid_public) = provision_key(app, setup_key).await?;
-            // Inject kid into body where "$KID" / "$KID_PUBLIC" placeholders appear
-            inject_kid(&mut body, &kid, kid_public.as_deref());
-            kid_public_provisioned = kid_public;
-            kid_to_cleanup = Some(kid);
-        }
+    if let Some(setup_key) = v.get("setup_key")
+        && !setup_key.is_null()
+    {
+        let (kid, kid_public) = provision_key(app, setup_key).await?;
+        // Inject kid into body where "$KID" / "$KID_PUBLIC" placeholders appear
+        inject_kid(&mut body, &kid, kid_public.as_deref());
+        kid_public_provisioned = kid_public;
+        kid_to_cleanup = Some(kid);
     }
 
     // Optionally build a base64url-encoded protected header from a JSON template.
@@ -903,13 +903,13 @@ where
     // Optionally check the error code in the response body
     if let Some(expected_error) = v.get("expected_error").and_then(Value::as_str) {
         let resp_body = actix_test::read_body(resp).await;
-        if let Ok(parsed) = serde_json::from_slice::<Value>(&resp_body) {
-            if let Some(got_error) = parsed.get("error").and_then(Value::as_str) {
-                assert_eq!(
-                    got_error, expected_error,
-                    "Vector {filename}: expected error code '{expected_error}', got '{got_error}'"
-                );
-            }
+        if let Ok(parsed) = serde_json::from_slice::<Value>(&resp_body)
+            && let Some(got_error) = parsed.get("error").and_then(Value::as_str)
+        {
+            assert_eq!(
+                got_error, expected_error,
+                "Vector {filename}: expected error code '{expected_error}', got '{got_error}'"
+            );
         }
     }
 
@@ -982,8 +982,10 @@ async fn test_jose_vectors() -> KResult<()> {
     );
 
     let mut passed = 0;
-    #[allow(unused_mut)]
+    #[cfg(not(feature = "non-fips"))]
     let mut skipped: usize = 0;
+    #[cfg(feature = "non-fips")]
+    let skipped: usize = 0;
     let mut errors: Vec<String> = Vec::new();
 
     for path in &vectors {

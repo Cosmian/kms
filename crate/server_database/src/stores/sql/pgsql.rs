@@ -1499,17 +1499,17 @@ impl PermissionsStore for PgPool {
                 .transpose()
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?
                 .unwrap_or_default();
-            if !no_inherited_access && user != "*" {
-                if let Some(row) = client
+            if !no_inherited_access
+                && user != "*"
+                && let Some(row) = client
                     .query_opt(&stmt, &[&uid, &"*"])
                     .await
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?
-                {
-                    let Json(all): Json<HashSet<KmipOperation>> = row
-                        .try_get(0)
-                        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                    perms.extend(all);
-                }
+            {
+                let Json(all): Json<HashSet<KmipOperation>> = row
+                    .try_get(0)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                perms.extend(all);
             }
             Ok(perms)
         })

@@ -53,12 +53,6 @@ run_pnpm() {
   env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
 }
 
-ensure_pnpm() {
-  if ! command -v pnpm &>/dev/null; then
-    npm install -g pnpm@10.17.1
-  fi
-}
-
 # ── 1. Build WASM ────────────────────────────────────────────────────────────
 echo "==> Building WASM (${VARIANT}, web target) …"
 (

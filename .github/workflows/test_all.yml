@@ -29,10 +29,8 @@ jobs:
           - otel
           - redis
           - pykmip
-          - wasm
           - xks
           - azure-ekm
-          - ui
           - gcp-cmek
           - openssh
           - gnupg
@@ -105,9 +103,6 @@ jobs:
           # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
           # google-cse, secret_vault, secret_aws and secret_azure need upstream-only secrets:
           # they run in the `test-nix-upstream` job, which is skipped on forks.
-          # spire relies on the Vault API which is non-fips only
-          - type: spire
-            features: fips
           - type: cef
             features: fips
           # monitoring tests work with both variants, but run non-fips only to avoid
@@ -242,6 +237,56 @@ jobs:
         if: matrix.type == 'ase' && matrix.features == 'non-fips'
         run: |
           mise run test:pkcs11:support --variant non-fips
+
+  # Test types that run pnpm install and the JS toolchain (vite, vitest, playwright):
+  # any npm dependency can read this job's environment, so it gets no cloud/test secrets.
+  test-nix-js:
+    name: Test on ${{ matrix.type }} - ${{ matrix.features }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    strategy:
+      fail-fast: false
+      matrix:
+        type:
+          - wasm
+          - ui
+          - spire
+        features: [fips, non-fips]
+        exclude:
+          # spire relies on the Vault API which is non-fips only
+          - type: spire
+            features: fips
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
+
+      # Only spire pulls images; the stored credential is then readable by later steps.
+      - name: Docker login (Docker Hub)
+        if: ${{ matrix.type == 'spire' && env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Test
+        env:
+          # Read-only (contents: read); lets mise install tools without hitting the rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -ex
+          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
   # Test types that depend on upstream-only secrets / external services. Kept out of
   # `test-nix` because a job-level `if` cannot read the `matrix` context: the whole
@@ -496,7 +541,7 @@ jobs:
     steps:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: 1.97.0
+          toolchain: 1.99.1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -552,7 +597,7 @@ jobs:
     steps:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          toolchain: ${{ inputs.toolchain || '1.97.0' }}
+          toolchain: ${{ inputs.toolchain || '1.99.1' }}
           components: rustfmt, clippy
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -594,13 +639,14 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/cargo-publish.yml
     with:
-      toolchain: 1.97.0
+      toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
   cargo-publish:
     needs:
       - test-nix
+      - test-nix-js
       - test-nix-upstream
       - hsm
       - hsm-upstream
@@ -611,7 +657,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
     uses: ./.github/workflows/cargo-publish.yml
     with:
-      toolchain: 1.97.0
+      toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
@@ -620,6 +666,7 @@ jobs:
       - cargo-publish-dry-run
       - cargo-publish
       - test-nix
+      - test-nix-js
       - test-nix-upstream
       - hsm
       - hsm-upstream

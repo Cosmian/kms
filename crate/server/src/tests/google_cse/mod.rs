@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::print_stdout,
-    clippy::panic_in_result_fn,
-    clippy::unwrap_in_result
-)]
-
 // Base imports used by all tests
 // Imports for Google CSE tests
 use std::{
@@ -24,9 +17,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
         KmipOperation,
-        kmip_attributes::Attributes,
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType, PrivateKey},
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
         kmip_operations::{Get, GetResponse, Import, ImportResponse},
         kmip_types::{KeyFormatType, UniqueIdentifier},
     },
@@ -43,7 +35,6 @@ use openssl::{
     sign::{Signer, Verifier},
     x509::X509,
 };
-use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::routes::google_cse::operations::StatusResponse;
@@ -341,29 +332,6 @@ fn rsa_encrypt(rsa_public_key: Rsa<Public>, dek: &[u8]) -> KResult<String> {
 
     debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
     Ok(general_purpose::STANDARD.encode(encrypted_data_encryption_key))
-}
-
-pub(crate) fn build_private_key_from_der_bytes(
-    key_format_type: KeyFormatType,
-    bytes: Zeroizing<Vec<u8>>,
-) -> Object {
-    Object::PrivateKey(PrivateKey {
-        key_block: KeyBlock {
-            key_format_type,
-            key_compression_type: None,
-            key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Attributes::default()),
-            }),
-            // According to the KMIP spec, the cryptographic algorithm is not required
-            // as long as it can be recovered from the Key Format Type or the Key Value.
-            // Also it should not be specified if the cryptographic length is not specified.
-            cryptographic_algorithm: None,
-            // See comment above
-            cryptographic_length: None,
-            key_wrapping_data: None,
-        },
-    })
 }
 
 async fn test_cse_private_key_decrypt(

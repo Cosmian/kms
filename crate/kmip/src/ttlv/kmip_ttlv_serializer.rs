@@ -216,11 +216,14 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         })?)
     }
 
+    /// `i128` is only used for Date Time Extended values (the deserializer reads `i128` from
+    /// `DateTimeExtended` nodes only); the binary encoding holds 64 bits.
     #[instrument(level = "trace", skip(self))]
     fn serialize_i128(self, v: i128) -> Result<Self::Ok> {
-        i64::try_from(v)
-            .map_err(|_e| TtlvError::custom("i128 is not supported".to_owned()))
-            .and_then(|v64| self.serialize_i64(v64))
+        let v = i64::try_from(v)
+            .map_err(|_e| TtlvError::custom(format!("DateTimeExtended {v} exceeds 64 bits")))?;
+        self.current_mut()?.value = TTLValue::DateTimeExtended(i128::from(v));
+        Ok(())
     }
 
     #[instrument(level = "trace", skip(self, _v))]
@@ -739,14 +742,13 @@ impl SerializeStruct for &mut TtlvSerializer {
                 TtlvError::custom("unexpected end of struct fields: no parent".to_owned())
             })?
         };
-        if key == "Object" {
-            if let TTLValue::Structure(ref mut v) = current_element.value {
-                if v.len() == 1 {
-                    current_element = v.pop().ok_or_else(|| {
-                        TtlvError::custom("unexpected end of struct fields: no child".to_owned())
-                    })?;
-                }
-            }
+        if key == "Object"
+            && let TTLValue::Structure(ref mut v) = current_element.value
+            && v.len() == 1
+        {
+            current_element = v.pop().ok_or_else(|| {
+                TtlvError::custom("unexpected end of struct fields: no child".to_owned())
+            })?;
         }
         let struct_elements = self.current_mut_structure()?;
         if let TTLValue::Structure(ref v) = current_element.value {

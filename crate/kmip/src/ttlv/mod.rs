@@ -1,3 +1,4 @@
+pub(crate) mod asn1_date_time;
 pub(crate) mod date_time;
 mod deserialize;
 pub mod enum_lookup;
@@ -12,7 +13,7 @@ mod ttlv_struct;
 mod wire;
 pub mod xml;
 
-pub use error::TtlvError;
+pub use error::{TtlvError, UNKNOWN_ENUMERATION, UNKNOWN_TAG};
 pub use interval::{INTERVAL_NEWTYPE, Interval};
 pub(crate) use kmip_big_int::KmipBigInt;
 pub use kmip_ttlv_deserializer::{TtlvDeserializer, from_ttlv};
@@ -24,14 +25,5 @@ pub use ttlv_struct::{KmipEnumerationVariant, KmipFlavor, TTLV, TTLValue, TtlvTy
 pub(crate) use wire::MAX_TTLV_DEPTH;
 pub use wire::{TTLVBytesDeserializer, TTLVBytesSerializer};
 
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::as_conversions,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::expect_used
-)]
 #[cfg(test)]
 mod tests;

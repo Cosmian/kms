@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run all HSM tests (softhsm2, kryoptic, utimaco, proteccio, crypt2pay)"
+#MISE description="Run all HSM tests (softhsm2, kryoptic, utimaco, proteccio, crypt2pay, crypt2pay-simulator)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }

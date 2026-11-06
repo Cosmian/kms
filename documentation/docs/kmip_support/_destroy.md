@@ -8,19 +8,23 @@ only be destroyed if they are in either Pre-Active or Deactivated state.
 
 ## Implementation
 
-To destroy a key, it must be revoked using the `Revoke` operation first, unless it belongs to an external store,
-such as an HSM.
+Permission is checked first: objects the caller may not destroy are skipped, and if none is left the server returns
+`Object_Not_Found`.
+
+- An `Active` object returns `Wrong_Key_Lifecycle_State`: revoke it first.
+- An already `Destroyed` object returns `Object_Destroyed`, even with the `Remove` flag.
+- `Pre-Active` and `Deactivated` objects become `Destroyed`; `Compromised` objects become `Destroyed Compromised`.
+- The Destroy Date is set.
 
 Eviden has added an option `Remove` flag to the `Destroy` operation. If the `Remove` flag is set to `true`, the key
 is completely removed from the database. This does not follow the KMIP 2.1 specification, but is useful in scenarios
 where the key was incorrectly created and the ID must ne re-used or for GDPR compliance, when the key is associated
 with personal data.
 
-HSM keys are systematically removed when calling the destroy operation.
+HSM keys can only be deleted by the HSM administrator.
 
-Unless, they are removed, destroyed keys are set in the state `destroyed` on the Eviden KMS Server. They can only be
-retrieved using the`Export` operation. The `Get` operation will return an error. No key material will be returned by the
-`Export` operation, only metadata.
+Unless they are removed, destroyed objects can only be retrieved using the `Export` operation, which returns no key
+material. The `Get` operation returns `Object_Destroyed`.
 
 ## Example - Symmetric key
 

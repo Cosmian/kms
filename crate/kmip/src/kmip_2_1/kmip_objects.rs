@@ -24,9 +24,9 @@ use super::{
     },
 };
 use crate::{
+    creation_time,
     error::KmipError,
     kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType, State},
-    time_normalize,
 };
 
 /// A Managed Cryptographic Object that is a digital certificate.
@@ -509,7 +509,10 @@ impl Object {
         requested_activation_date: Option<time::OffsetDateTime>,
         digest: Option<Digest>,
     ) -> Result<Attributes, KmipError> {
-        let now = time_normalize()?;
+        let initial_date = creation_time()?;
+        let now = initial_date
+            .replace_millisecond(0)
+            .map_err(|e| KmipError::Default(e.to_string()))?;
         let attributes = self.attributes_mut()?;
 
         // KMIP semantics: activation_date present and ≤ now → Active,
@@ -522,9 +525,9 @@ impl Object {
         };
 
         attributes.state = Some(state);
-        attributes.digest = digest;
+        attributes.digest = digest.map(|d| vec![d]);
         attributes.object_type = Some(object_type);
-        attributes.initial_date = Some(now);
+        attributes.initial_date = Some(initial_date);
         attributes.original_creation_date = Some(now);
         attributes.last_change_date = Some(now);
         if state == State::Active {

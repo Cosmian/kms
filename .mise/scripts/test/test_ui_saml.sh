@@ -53,7 +53,7 @@ fi
 run_pnpm() {
   env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
 }
-command -v pnpm >/dev/null 2>&1 || npm install -g pnpm@10.17.1
+ensure_pnpm
 
 # ── 1. Build WASM, KMS server and the UI (real auth_method fetch, same origin) ─
 echo "==> Building WASM (${VARIANT}, web target) …"

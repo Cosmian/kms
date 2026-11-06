@@ -1,17 +1,13 @@
-#![allow(clippy::unwrap_in_result)]
-
 use std::sync::Arc;
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
     RecommendedCurve, UniqueIdentifier,
 };
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_rsa_key_pair_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
     kmip_operations::{Sign, SignResponse, SignatureVerify},
     kmip_types::ValidityIndicator,
-    requests::create_ec_key_pair_request,
+    requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
 };
 use cosmian_logger::log_init;
 use zeroize::Zeroizing;
@@ -161,10 +157,43 @@ async fn test_streaming_signature_verification(
     );
     assert!(final_response.correlation_value.is_none()); // No correlation value in final response
 
+    // Multi-part Sign: the chunks signed in parts verify as one message
+    let mut sign_cv = None;
+    let mut multi_part_signature = None;
+    for (i, chunk) in chunks.iter().enumerate() {
+        let response = kms
+            .sign(
+                Sign {
+                    unique_identifier: Some(private_key_id.clone()),
+                    data: Some(Zeroizing::new(chunk.to_vec())),
+                    correlation_value: sign_cv.clone(),
+                    init_indicator: (i == 0).then_some(true),
+                    final_indicator: (i == chunks.len() - 1).then_some(true),
+                    ..Default::default()
+                },
+                owner,
+            )
+            .await?;
+        sign_cv = response.correlation_value;
+        multi_part_signature = response.signature_data;
+    }
+    assert!(sign_cv.is_none());
+    let verify = kms
+        .signature_verify(
+            SignatureVerify {
+                unique_identifier: Some(public_key_id.clone()),
+                data: Some(TEST_DATA.to_vec()),
+                signature_data: multi_part_signature,
+                ..Default::default()
+            },
+            owner,
+        )
+        .await?;
+    assert_eq!(verify.validity_indicator, Some(ValidityIndicator::Valid));
+
     Ok(())
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_rsa() -> KResult<()> {
     log_init(None);
@@ -239,31 +268,26 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
     .await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_p256() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P256, "p256_rfc6979").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_p384() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P384, "p384").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_eddsa() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::CURVEED25519, "eddsa").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_k256() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::SECP256K1, "k256_rfc6979").await
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_sign_ecdsa_p521() -> KResult<()> {
     test_sign_ec_curve(RecommendedCurve::P521, "p521").await

@@ -108,14 +108,10 @@ unsafe extern "C" {
 
 /// `CMS_NO_SIGNER_CERT_VERIFY` — do not validate the signer certificate chain.
 pub(crate) const CMS_NO_SIGNER_CERT_VERIFY: c_uint = 0x20;
-/// `CMS_DETACHED` — omit the encapsulated content.
-pub(crate) const CMS_DETACHED: c_uint = 0x40;
 /// `CMS_BINARY` — no MIME canonicalisation.
 pub(crate) const CMS_BINARY: c_uint = 0x80;
 /// `CMS_NOSMIMECAP` — do not add the `SMIMECapabilities` signed attribute.
 pub(crate) const CMS_NOSMIMECAP: c_uint = 0x200;
-/// `CMS_PARTIAL` — return a partial structure to be finalised with `CMS_final`.
-pub(crate) const CMS_PARTIAL: c_uint = 0x4000;
 
 /// Read the first value of an `X509_ATTRIBUTE` that holds a string-like ASN.1 type
 /// (`PrintableString`, `UTF8String`, `IA5String` or `OCTET STRING`).

@@ -565,7 +565,9 @@ impl KMS {
     pub(crate) async fn query(&self, request: Query) -> KResult<QueryResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "query");
 
-        operations::query(request, self.vendor_id())
+        // PKCS11 is only served with an HSM and a configured Crypto Officer (see dispatch.rs).
+        let pkcs11_available = self.hsm.is_some() && self.params.crypto_officer.is_configured();
+        operations::query(request, self.vendor_id(), pkcs11_available)
             .instrument(span)
             .await
     }

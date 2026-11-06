@@ -17,7 +17,7 @@ use crate::{
 /// If both are present, the key will be wrapped.
 /// If none are present, the key will be returned as is.
 pub(crate) async fn get(kms: &KMS, request: Get, user: &UserId) -> KResult<GetResponse> {
-    trace!("Get: {}", serde_json::to_string(&request)?);
+    trace!("Get request");
     // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
     let response = Box::pin(export_get(kms, request, KmipOperation::Get, user))
         .await

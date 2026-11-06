@@ -44,7 +44,6 @@ pub fn create_slh_dsa_key_pair(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
     use openssl::pkey::PKey;
@@ -60,7 +59,7 @@ mod tests {
 
         let message = format!("test message for {algorithm_name}");
         let signature = ml_dsa_sign(&priv_key, message.as_bytes()).expect("sign");
-        assert!(!signature.is_empty());
+        assert_ne!(signature.len(), 0);
 
         let valid = ml_dsa_verify(&pub_key, message.as_bytes(), &signature).expect("verify");
         assert!(valid);

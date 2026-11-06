@@ -4,9 +4,12 @@ use actix_web::{
     HttpRequest, post,
     web::{Data, Json},
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::SignatureVerify,
-    kmip_types::{UniqueIdentifier, ValidityIndicator},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_operations::SignatureVerify,
+        kmip_types::{UniqueIdentifier, ValidityIndicator},
+    },
 };
 use cosmian_logger::trace;
 use serde::Deserialize;
@@ -16,7 +19,7 @@ use super::{
     VerifyResponse as CryptoVerifyResponse, b64_decode, ecdsa_coord_size, ecdsa_p1363_to_der,
     ensure_json_object, jose_to_kmip_params, jws_signing_input,
 };
-use crate::core::KMS;
+use crate::{core::KMS, error::KmsError};
 
 #[derive(Deserialize)]
 struct JwsProtectedHeader<'a> {
@@ -103,6 +106,15 @@ pub(crate) async fn verify(
 
     let valid = match kms.signature_verify(verify_req, &user).await {
         Ok(resp) => matches!(resp.validity_indicator, Some(ValidityIndicator::Valid)),
+        // The key cannot verify at all (wrong type or usage mask): a caller error, not a
+        // bad signature.
+        Err(KmsError::Kmip21Error(
+            reason @ (ErrorReason::Invalid_Object_Type
+            | ErrorReason::Incompatible_Cryptographic_Usage_Mask),
+            msg,
+        )) => {
+            return Err(CryptoApiError::from(KmsError::Kmip21Error(reason, msg)));
+        }
         Err(e) => {
             let api_err = CryptoApiError::from(e);
             match api_err {

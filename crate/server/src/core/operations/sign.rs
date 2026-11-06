@@ -15,14 +15,22 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_private_key_to_openssl,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    cosmian_kms_interfaces::{InterfaceError, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
 use super::pgp_ops;
 use crate::{
-    core::{KMS, operations::CryptoOpSpec},
+    core::{
+        KMS,
+        operations::{
+            CryptoOpSpec,
+            key_ops::multi_part::{
+                BoundedBuffer, Part, StreamOwner, append_bounded, reject_multi_part_for_oracle,
+            },
+        },
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -65,11 +73,19 @@ impl CryptoOpSpec for SignOp {
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &UserId,
+        user: &UserId,
     ) -> KResult<Self::Response> {
+        let part = Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?;
         match owm.object() {
-            Object::PrivateKey { .. } => sign_with_private_key(request, owm),
-            Object::PGPKey { .. } => pgp_ops::pgp_sign(owm, request, &kms.rng),
+            Object::PrivateKey { .. } => sign_with_private_key(kms, owm, request, part, user),
+            Object::PGPKey { .. } => {
+                reject_multi_part(part, "PGP keys")?;
+                pgp_ops::pgp_sign(owm, request, &kms.rng)
+            }
             other => Err(KmsError::NotSupported(format!(
                 "signing with keys of type: {} is not supported",
                 other.object_type()
@@ -83,6 +99,14 @@ impl CryptoOpSpec for SignOp {
         uid: &str,
         prefix: &str,
     ) -> KResult<Self::Response> {
+        reject_multi_part_for_oracle(
+            Self::OP_NAME,
+            Part::classify(
+                request.init_indicator,
+                request.final_indicator,
+                request.correlation_value.as_deref(),
+            )?,
+        )?;
         let lock = kms.crypto_oracles.read().await;
         let crypto_oracle = lock.get(prefix).ok_or_else(|| {
             KmsError::InvalidRequest(format!("Sign: unknown crypto oracle prefix: {prefix}"))
@@ -110,18 +134,25 @@ impl CryptoOpSpec for SignOp {
                 input_is_digest,
             )
             .await
-            .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
+            .map_err(|e| {
+                let reason = if matches!(e, InterfaceError::InvalidRequest(_)) {
+                    ErrorReason::Invalid_Field
+                } else {
+                    ErrorReason::Cryptographic_Failure
+                };
+                KmsError::Kmip21Error(reason, format!("Sign: crypto oracle error: {e}"))
+            })?;
         debug!("user signed data via crypto oracle using: {uid}");
         Ok(SignResponse {
             unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
             signature_data: Some(signature),
-            correlation_value: request.correlation_value.clone(),
+            correlation_value: None,
         })
     }
 }
 
 pub(crate) async fn sign(kms: &KMS, request: Sign, user: &UserId) -> KResult<SignResponse> {
-    trace!("{request}");
+    trace!("Sign request");
 
     // KMIP 2.1 §6.30: data and digested_data are mutually exclusive
     if request.data.is_some() && request.digested_data.is_some() {
@@ -133,7 +164,31 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &UserId) -> KResult<Sig
     Box::pin(kms.perform_crypto_operation::<SignOp>(request, user)).await
 }
 
-fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
+/// Multi-part support is optional (KMIP 2.1 §6.1); reject it where the server lacks it.
+fn reject_multi_part(part: Part<'_>, what: &str) -> KResult<()> {
+    if part.is_multi_part() {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            format!("Sign: streaming is not supported for {what} (multi-part signing)"),
+        ));
+    }
+    Ok(())
+}
+
+/// State of a multi-part Sign: the message buffered so far (the signature schemes in use need
+/// the whole message, e.g. `EdDSA` and ML-DSA) and the parameters fixed by the initial part.
+struct SignState {
+    data: BoundedBuffer,
+    cryptographic_parameters: Option<CryptographicParameters>,
+}
+
+fn sign_with_private_key(
+    kms: &KMS,
+    owm: &ObjectWithMetadata,
+    request: &Sign,
+    part: Part<'_>,
+    user: &UserId,
+) -> KResult<SignResponse> {
     // Make sure that the key used to sign can be used to sign.
     if !owm
         .object()
@@ -152,153 +207,127 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
         KeyFormatType::TransparentECPrivateKey
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
-        | KeyFormatType::PKCS8 => {
-            if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
-                kms_bail!(
-                    "Invalid request: init_indicator and final_indicator cannot both be true"
-                );
-            }
-
-            trace!(
-                "matching on key format type: {:?}",
-                key_block.key_format_type
-            );
-            let private_key = kmip_private_key_to_openssl(owm.object())?;
-            trace!("OpenSSL Private Key instantiated before signing");
-
-            // ML-DSA / SLH-DSA: handle PQC signing before the classic dispatch
-            #[cfg(feature = "non-fips")]
-            {
-                if owm
-                    .resolve_key_algorithm()
-                    .is_some_and(|a| a.is_pqc_signature())
-                {
-                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_sign;
-                    let data: &[u8] = if let Some(d) = request.data.as_ref() {
-                        d.as_slice()
-                    } else if let Some(d) = request.digested_data.as_ref() {
-                        d.as_slice()
-                    } else {
-                        return Err(KmsError::InvalidRequest(
-                            "Sign ML-DSA: data must be provided".to_owned(),
-                        ));
-                    };
-                    let signature = ml_dsa_sign(&private_key, data)?;
-                    return Ok(SignResponse {
-                        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        signature_data: Some(signature),
-                        correlation_value: None,
-                    });
-                }
-            }
-
-            // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
-            let effective_cp = CryptographicParameters::merged_with_object(
-                request.cryptographic_parameters.clone(),
-                owm.object(),
-            );
-
-            // Streaming support: if init or a correlation_value is present, accumulate data
-            if request.init_indicator == Some(true) || request.correlation_value.is_some() {
-                let mut req_for_stream = request.clone();
-                req_for_stream.cryptographic_parameters = Some(effective_cp);
-                return handle_streaming_sign(req_for_stream, &private_key, owm.id());
-            }
-
-            // One-shot signing
-            let req_for_sign = Sign {
-                unique_identifier: request.unique_identifier.clone(),
-                cryptographic_parameters: Some(effective_cp),
-                data: request.data.clone(),
-                digested_data: request.digested_data.clone(),
-                correlation_value: request.correlation_value.clone(),
-                init_indicator: request.init_indicator,
-                final_indicator: request.final_indicator,
-            };
-            let signature = sign_with_pkey(&req_for_sign, &private_key)?;
-            Ok(SignResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                signature_data: Some(signature),
-                correlation_value: None,
-            })
+        | KeyFormatType::PKCS8 => {}
+        other => {
+            return Err(KmsError::NotSupported(format!(
+                "signing with private keys of format: {other}"
+            )));
         }
-        other => Err(KmsError::NotSupported(format!(
-            "signing with private keys of format: {other}"
-        ))),
     }
-}
 
-fn handle_streaming_sign(
-    request: Sign,
-    private_key: &PKey<Private>,
-    uid: &str,
-) -> KResult<SignResponse> {
-    // Extract or initialize correlation data
-    let correlation_data = if let Some(corr) = &request.correlation_value {
-        corr.clone()
-    } else if request.init_indicator == Some(true) {
-        Vec::new()
-    } else {
-        return Err(KmsError::InvalidRequest(
-            "Correlation value required for non-initial streaming operations".to_owned(),
-        ));
-    };
-
-    // Determine input chunk
-    let data_to_process = match (&request.data, &request.digested_data) {
-        (Some(data), None) => data.clone(),
-        (None, Some(_)) => {
-            return Err(KmsError::InvalidRequest(
-                "Streaming sign supports non-digested data only".to_owned(),
+    if part == Part::Single {
+        if request.data.is_none() && request.digested_data.is_none() {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                "Sign: Data or Digested Data is required for a single-part operation".to_owned(),
             ));
         }
-        (Some(_), Some(_)) => {
-            return Err(KmsError::InvalidRequest(
-                "Cannot provide both data and digested_data".to_owned(),
-            ));
-        }
-        (None, None) if request.final_indicator == Some(true) => Vec::new().into(),
-        (None, None) => {
-            return Err(KmsError::InvalidRequest(
-                "Must provide data for streaming sign".to_owned(),
-            ));
-        }
-    };
-
-    if request.final_indicator == Some(true) {
-        // Final call: sign accumulated data
-        let mut all_data = correlation_data;
-        all_data.extend_from_slice(data_to_process.as_ref());
-        let mut final_req = request;
-        final_req.data = Some(all_data.into());
-        final_req.digested_data = None;
-        final_req.correlation_value = None;
-        let signature = sign_with_pkey(&final_req, private_key)?;
-        Ok(SignResponse {
-            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        let signature = sign_message(owm, request)?;
+        return Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
             signature_data: Some(signature),
             correlation_value: None,
-        })
-    } else {
-        // Intermediate call: accumulate data and return as correlation_value
-        let mut accumulated = correlation_data;
-        accumulated.extend_from_slice(data_to_process.as_ref());
-        Ok(SignResponse {
-            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            signature_data: None,
-            correlation_value: Some(accumulated),
-        })
+        });
     }
+
+    if request.digested_data.is_some() {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            "Sign: multi-part signing takes Data, not Digested Data".to_owned(),
+        ));
+    }
+    let owner = StreamOwner {
+        op: SignOp::OP_NAME,
+        user,
+        key_uid: owm.id(),
+    };
+    let (signature_data, correlation_value) = kms.multi_part.run(
+        &kms.rng,
+        part,
+        owner,
+        || {
+            Ok(SignState {
+                data: kms.multi_part.buffer(user),
+                cryptographic_parameters: request.cryptographic_parameters.clone(),
+            })
+        },
+        |state, last| {
+            append_bounded(
+                &mut state.data,
+                request.data.as_deref().map_or(&[][..], Vec::as_slice),
+                SignOp::OP_NAME,
+            )?;
+            if !last {
+                return Ok(None);
+            }
+            let whole = Sign {
+                unique_identifier: request.unique_identifier.clone(),
+                cryptographic_parameters: state.cryptographic_parameters.take(),
+                data: Some(state.data.take()),
+                ..Sign::default()
+            };
+            sign_message(owm, &whole).map(Some)
+        },
+    )?;
+    Ok(SignResponse {
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+        signature_data,
+        correlation_value,
+    })
+}
+
+/// Sign a complete message (or digest) with the private key of `owm`.
+fn sign_message(owm: &ObjectWithMetadata, request: &Sign) -> KResult<Vec<u8>> {
+    let private_key = kmip_private_key_to_openssl(owm.object())?;
+    trace!("OpenSSL Private Key instantiated before signing");
+
+    // ML-DSA / SLH-DSA: handle PQC signing before the classic dispatch
+    #[cfg(feature = "non-fips")]
+    {
+        if owm
+            .resolve_key_algorithm()
+            .is_some_and(|a| a.is_pqc_signature())
+        {
+            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_sign;
+            let data: &[u8] = if let Some(d) = request.data.as_ref() {
+                d.as_slice()
+            } else if let Some(d) = request.digested_data.as_ref() {
+                d.as_slice()
+            } else {
+                return Err(KmsError::InvalidRequest(
+                    "Sign ML-DSA: data must be provided".to_owned(),
+                ));
+            };
+            return Ok(ml_dsa_sign(&private_key, data)?);
+        }
+    }
+
+    // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
+    let effective = Sign {
+        unique_identifier: None,
+        cryptographic_parameters: Some(CryptographicParameters::merged_with_object(
+            request.cryptographic_parameters.clone(),
+            owm.object(),
+        )),
+        data: request.data.clone(),
+        digested_data: request.digested_data.clone(),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    sign_with_pkey(&effective, &private_key)
 }
 
 fn sign_with_pkey(request: &Sign, private_key: &PKey<Private>) -> KResult<Vec<u8>> {
     let signature = match private_key.id() {
-        Id::RSA => sign_rsa_with_pkey(request, private_key)
-            .map_err(|e| KmsError::NotSupported(format!("rsa sign error: {e}")))?,
+        Id::RSA => sign_rsa_with_pkey(request, private_key)?,
         Id::EC => ecdsa_sign(request, private_key)?,
         Id::ED25519 | Id::ED448 => eddsa_sign(request, private_key)?,
         other => {
-            kms_bail!("sign_with_pkey: private key type not supported: {other:?}")
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Unsupported_Cryptographic_Parameters,
+                format!("Sign: private key type not supported: {other:?}"),
+            ));
         }
     };
     Ok(signature)

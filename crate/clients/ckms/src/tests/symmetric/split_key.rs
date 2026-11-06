@@ -120,7 +120,7 @@ async fn test_create_split_key_3_of_3_and_join() -> CosmianResult<()> {
     assert_eq!(shares.len(), 3, "expected 3 shares, got: {shares:?}");
 
     let reconstructed_uid = join_split_key(&conf, &shares, &[])?;
-    assert!(!reconstructed_uid.is_empty());
+    assert_ne!(reconstructed_uid, "");
 
     Ok(())
 }

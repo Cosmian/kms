@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#MISE description="Supply-chain checks on the Web UI npm dependencies (npm policy, OSV-Scanner, npm signatures)"
+#USAGE flag "--base <ref>" help="Fail only on advisories absent from the merge base with <ref> (PRs); without it, any advisory fails"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# To bump: update both, taking the hash from the release's osv-scanner_SHA256SUMS.
+OSV_SCANNER_VERSION="v2.7.0"
+OSV_SCANNER_LINUX_AMD64_SHA256="160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
+
+print_header "npm supply-chain audit"
+
+REPO_ROOT="$(get_repo_root)"
+UI_DIR="${REPO_ROOT}/ui"
+
+BASE=""
+if [ -n "${usage_base:-}" ]; then
+  BASE="$(git -C "${REPO_ROOT}" merge-base "${usage_base}" HEAD)" ||
+    print_error "No merge base between '${usage_base}' and HEAD: fetch it first."
+  print_status "Comparing with ${usage_base} (merge base ${BASE:0:12})"
+fi
+
+ensure_pnpm
+require_cmd npm
+require_cmd python3
+
+resolve_osv_scanner() {
+  if has_cmd osv-scanner; then
+    command -v osv-scanner
+    return 0
+  fi
+  if [ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ]; then
+    print_error "osv-scanner not found; install ${OSV_SCANNER_VERSION} (only the linux amd64 binary is fetched automatically)."
+  fi
+  local bin="${TMPDIR:-/tmp}/osv-scanner-${OSV_SCANNER_VERSION}"
+  if [ ! -x "${bin}" ] || [ "$(compute_sha256 "${bin}")" != "${OSV_SCANNER_LINUX_AMD64_SHA256}" ]; then
+    run_isolated curl -fsSL -o "${bin}.download" \
+      "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+    if [ "$(compute_sha256 "${bin}.download")" != "${OSV_SCANNER_LINUX_AMD64_SHA256}" ]; then
+      rm -f "${bin}.download"
+      print_error "osv-scanner ${OSV_SCANNER_VERSION}: SHA-256 mismatch, refusing to run it."
+    fi
+    chmod +x "${bin}.download"
+    mv "${bin}.download" "${bin}"
+  fi
+  echo "${bin}"
+}
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: ${name}"
+  if "$@"; then
+    print_success "${name} passed"
+  else
+    print_warning "${name} FAILED (continuing...)"
+    FAILED+=("${name}")
+  fi
+}
+
+OSV_SCANNER="$(resolve_osv_scanner)"
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+
+# osv-scanner exits 1 when it finds advisories; anything higher is a scanner error.
+osv_report() {
+  local rc=0
+  run_isolated "${OSV_SCANNER}" scan source --lockfile "$1" --config "${UI_DIR}/osv-scanner.toml" \
+    --format json >"$2" || rc=$?
+  [ "${rc}" -le 1 ]
+}
+
+# Both lockfiles use this branch's osv-scanner.toml, so an ignore applies to both alike.
+osv_gate() {
+  local base_args=()
+  osv_report "${UI_DIR}/pnpm-lock.yaml" "${WORK_DIR}/head.json" || return 1
+  if [ -n "${BASE}" ]; then
+    : >"${WORK_DIR}/base.json"
+    if git -C "${REPO_ROOT}" cat-file -e "${BASE}:ui/pnpm-lock.yaml" 2>/dev/null; then
+      mkdir -p "${WORK_DIR}/base"
+      git -C "${REPO_ROOT}" show "${BASE}:ui/pnpm-lock.yaml" >"${WORK_DIR}/base/pnpm-lock.yaml" || return 1
+      osv_report "${WORK_DIR}/base/pnpm-lock.yaml" "${WORK_DIR}/base.json" || return 1
+    fi
+    base_args=(--base "${WORK_DIR}/base.json")
+  fi
+  python3 "${REPO_ROOT}/.mise/scripts/audit/osv_npm_gate.py" "${WORK_DIR}/head.json" ${base_args[@]+"${base_args[@]}"}
+}
+
+cd "${UI_DIR}"
+run_step "npm policy" python3 "${REPO_ROOT}/.mise/scripts/pre-commit/check_npm_policy.py" --warn-stale
+# Reads ui/osv-scanner.toml for documented, time-boxed ignores.
+run_step "osv-scanner" osv_gate
+# Same GitHub advisories as OSV, which decides; kept for the dependency paths it prints.
+run_isolated pnpm audit --prod || print_warning "pnpm audit --prod found advisories (informational: the osv-scanner step decides)"
+# npm audit signatures needs node_modules; --ignore-scripts keeps the install inert.
+run_step "pnpm install (no scripts)" run_isolated pnpm install --frozen-lockfile --ignore-scripts
+run_step "npm audit signatures" run_isolated npm audit signatures
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  print_error "npm supply-chain audit failed: ${FAILED[*]}"
+fi
+print_success "npm supply-chain audit passed"
