@@ -115,6 +115,11 @@ version = "3.20.2"
 criteria = "safe-to-deploy"
 notes = "Actix security updates for RUSTSEC-2026-0446 and RUSTSEC-2026-0448; unaudited, pending review"
 
+[[exemptions.actix-http]]
+version = "3.20.3"
+criteria = "safe-to-deploy"
+notes = "Actix Brotli decompression fix for RUSTSEC-2026-0455; unaudited, pending review"
+
 [[exemptions.actix-rt]]
 version = "2.15.0"
 criteria = "safe-to-deploy"
