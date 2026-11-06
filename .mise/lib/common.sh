@@ -202,7 +202,7 @@ ensure_pnpm() {
   export COREPACK_DEFAULT_TO_LATEST=0
   run_isolated corepack enable --install-directory "${shim_dir}" pnpm
   export PATH="${shim_dir}:${PATH}"
-  (cd "$(get_repo_root)/ui" && run_isolated pnpm --version >/dev/null)
+  (cd "$(get_repo_root "$(pwd)")/ui" && run_isolated pnpm --version >/dev/null)
 }
 
 # Returns success only if every named environment variable is set and non-empty.
