@@ -4,10 +4,12 @@
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file (auto-generated if omitted)"
-#SUITE variants=fips,non-fips needs=docker
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/audit_compat.sh"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+fi
 
 print_header "OpenSearch audit JSONL compatibility test"
 

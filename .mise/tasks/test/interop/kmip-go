@@ -6,11 +6,18 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
-suite_init non-fips WITH_GO
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_GO=1
+ensure_nix_shell
 
 print_header "Running KMIP Go compliance tests (ovh/kmip-go, KMIP 1.0–1.4)"
 

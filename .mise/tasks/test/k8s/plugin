@@ -7,12 +7,18 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--mtls" env="K8S_MTLS" help="Deploy the KMS with TLS + client-certificate (mutual TLS) and drive the plugin over an mTLS channel"
-#SUITE variants=fips,non-fips needs=cmd:kubectl,cmd:helm,cmd:minikube,cmd:openssl,k8s
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 # shellcheck source=.mise/lib/k8s.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+if [ "${CI:-}" != true ]; then
+  has_cmd kubectl || skip_test "kubectl not found on PATH"
+  has_cmd helm || skip_test "helm not found on PATH"
+  has_cmd minikube || skip_test "minikube not found on PATH"
+  has_cmd openssl || skip_test "openssl not found on PATH"
+  kubectl cluster-info --request-timeout=5s >/dev/null 2>&1 || skip_test "no reachable Kubernetes cluster"
+fi
 
 MTLS="${usage_mtls:-${K8S_MTLS:-false}}"
 NAMESPACE="kms-plugin-e2e"

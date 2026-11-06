@@ -6,9 +6,9 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=non-fips
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+[ "${usage_variant:-non-fips}" = non-fips ] || skip_test "non-fips only"
 
 print_header "Running independent PKCS#11 v2/v3 conformance suite (cosmian_pkcs11)"
 

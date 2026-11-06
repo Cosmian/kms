@@ -6,10 +6,14 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix scope=upstream
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
 
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell

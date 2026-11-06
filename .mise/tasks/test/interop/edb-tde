@@ -6,10 +6,18 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix,docker,env:EDB_SUBSCRIPTION_TOKEN
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init non-fips WITH_PYTHON WITH_CURL
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+has_env_vars EDB_SUBSCRIPTION_TOKEN || skip_test "env EDB_SUBSCRIPTION_TOKEN not set"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+  docker_ready || skip_test "Docker is not running"
+fi
+export WITH_PYTHON=1 WITH_CURL=1
+ensure_nix_shell
 
 print_header "Running EDB TDE tests (${VARIANT_NAME})"
 

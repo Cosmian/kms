@@ -9,10 +9,15 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix,os:Linux
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+[ "$(uname -s)" = Linux ] || skip_test "Linux only"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
 
 ensure_nix_shell
 

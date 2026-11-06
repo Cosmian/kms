@@ -6,11 +6,15 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=compose:otel-collector,compose:jaeger
 set -euo pipefail
 
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d otel-collector jaeger || {
+  if [ "${CI:-}" = true ]; then print_error "could not start compose: otel-collector jaeger"; fi
+  skip_test "could not start compose: otel-collector jaeger"
+}
 
 # This script replaces the (ignored) Rust integration test by:
 # - starting the KMS server with `cargo run -p ...`

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="E2E test: KMS Operator — Docker image inject via Kubernetes Job (Minikube)"
-#SUITE variants=fips,non-fips needs=cmd:kubectl,cmd:helm,cmd:minikube,cmd:openssl,k8s
 # The operator is tested exclusively via its published Docker image.
 # A Kubernetes Job runs the image in inject mode (initContainer) and a
 # busybox sidecar reads back the written file to assert the round-trip.
@@ -11,6 +10,13 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 # shellcheck source=.mise/lib/k8s.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+if [ "${CI:-}" != true ]; then
+  has_cmd kubectl || skip_test "kubectl not found on PATH"
+  has_cmd helm || skip_test "helm not found on PATH"
+  has_cmd minikube || skip_test "minikube not found on PATH"
+  has_cmd openssl || skip_test "openssl not found on PATH"
+  kubectl cluster-info --request-timeout=5s >/dev/null 2>&1 || skip_test "no reachable Kubernetes cluster"
+fi
 
 NAMESPACE="kms-operator-e2e"
 RELEASE="op-kms"

@@ -9,11 +9,11 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"
-suite_init fips
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
 setup_db_env "${usage_db:-sqlite}"
 
 print_header "Running Kryoptic HSM tests (${VARIANT_NAME})"

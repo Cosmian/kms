@@ -6,11 +6,17 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=non-fips needs=nix
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
-suite_init non-fips
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+[ "$VARIANT" = non-fips ] || skip_test "non-fips only"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
 
 # JWKS, RSA-OAEP-256 decrypt through an HSM (Kryoptic) and `cek_kid` encryption.
 # Kryoptic does not build inside the nix-shell (no sqlite3 in it), so run this before

@@ -7,9 +7,11 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--e2e" env="HELM_E2E" help="Run full E2E deployment test on a live Kubernetes cluster (requires kubectl + a reachable context)"
-#SUITE variants=fips,non-fips needs=cmd:helm
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+if [ "${CI:-}" != true ]; then
+  has_cmd helm || skip_test "helm not found on PATH"
+fi
 
 CHART_DIR="${MISE_CONFIG_ROOT}/charts/cosmian-kms"
 

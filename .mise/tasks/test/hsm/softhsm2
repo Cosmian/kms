@@ -9,11 +9,18 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
-suite_init fips WITH_HSM
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_HSM=1
+ensure_nix_shell
 setup_db_env "${usage_db:-sqlite}"
 
 print_header "Running SoftHSM2 HSM tests (${VARIANT_NAME})"

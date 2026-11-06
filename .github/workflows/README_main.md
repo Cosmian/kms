@@ -74,7 +74,7 @@ flowchart TB
     TestNix & TestJs & Upstream & Helm --> Publish
 ```
 
-Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `variant` give the cells, `exclude` drops the non-FIPS-only legs (and the FIPS MySQL family on pull requests), and `include` maps each leg to the `mise run test:suites <suites> --variant <variant>` ids it runs, plus its `lock` or `bench`. A suite missing from every `include` runs locally only. The `#SUITE` headers of `.mise/tasks/test/**` keep what runs locally (see `.mise/tasks/test/README.md`).
+Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `variant` give the cells, `exclude` drops the non-FIPS-only legs (and the FIPS MySQL family on pull requests), and `include` maps each leg to the `test:<id>` tasks it runs (`mise run test:<id> --variant <variant>`, one after the other in a shell loop), plus its `lock` or `bench`. A task missing from every `include` runs locally only. Each task checks its own prerequisites and exits 77 when it cannot run, which the loop reports as a `::warning::` (see `.mise/tasks/test/README.md`).
 
 |Job|Legs|
 |---|---|
@@ -82,11 +82,11 @@ Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `var
 |`test-nix-js`|`wasm`, `ui`, `ui-sso`, `spire`|
 |`test-nix-upstream`|`google-cse`, `secrets`, `proteccio`, `crypt2pay`|
 
-`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its job-level `if` skips it on forks and fork pull requests. In this job a suite whose `env:` need is unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its `#SUITE` header has `scope=upstream`, so a green leg proves its suites ran; in the other jobs it is skipped with a `::warning::`, so forks without the secret still pass. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
+`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its job-level `if` skips it on forks and fork pull requests. In this job a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green leg proves its tasks ran. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
 
 ### Grouped legs
 
-Suites whose own test time is under two minutes share one runner (one build, then `mise run test:suites` runs them one after the other and reports every failing suite). Nix-shell suites are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching `OPENSSL_DIR` recompiles the workspace.
+Suites whose own test time is under two minutes share one runner (one build, then a shell loop runs the `test:<id>` tasks one after the other and reports every failing task). Nix-shell suites are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching `OPENSSL_DIR` recompiles the workspace.
 
 |Leg|Suites|
 |---|---|

@@ -28,96 +28,57 @@
 
 ## 1. Master Orchestrator
 
-Every runnable test task is a **suite**. It declares its facts once, in a `#SUITE` header line; that one line drives local runs and the skipping of suites that cannot run on the current machine. The CI matrices live in `.github/workflows/test_all.yml` and name the suites each leg runs. The engine is `.mise/lib/suites.sh`.
+Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip. The CI matrices live in `.github/workflows/test_all.yml`; a leg's `suites` are `test:<id>` tasks run one after the other.
 
 | Command | Effect |
 |---------|--------|
-| `mise run test` | Runs every registered suite (`test:suites @all`) |
-| `mise run test:<group>` | Runs the suites of one group (`test:suites @<group>`): `db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg` |
-| `mise run test:suites <selector>...` | Runs the selected suites; a selector is an id (`db:psql`), a group (`@pki`) or everything (`@all`) |
-| `mise run test:suites <selector>... --list` | Runs nothing: prints which suites would run or be skipped, and why |
+| `mise run test` | Runs every group's `_default` (and `spire`) |
+| `mise run test:<group>` | Runs the leaves listed in that group's `_default`: `db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg` |
+| `mise run test:<group>:<name>` | Runs one leaf; exit 77 means it was skipped |
 
-A suite that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. The exception is CI: a `scope=upstream` suite whose `env:` secret is unset is a `[FAIL]`, so a green upstream leg proves its suites ran. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` suites and the command exits 1 if any suite failed; a failing suite never stops the others. The `docker compose` services needed by the runnable suites are started once, before the first suite.
+A leaf that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. In CI (`CI=true`) the local probes (`nix`, `docker`, `cmd`, `file`, Kubernetes) are not evaluated, so the leaf runs and fails on its own, and a missing secret of an upstream leaf calls `print_error` before the skip, so a green upstream leg proves its leaves ran. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` leaves; `run_test_leaves` returns 1 if any leaf failed, and a failing leaf never stops the others.
 
-Tasks without a `#SUITE` header are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `pki:scep-apple`, `db:upgrade-sqlite`), helpers called by suites (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
-
-### The `#SUITE` header
-
-One line, after the `#USAGE` block and before `set -euo pipefail`; values never contain spaces and lists are comma-separated:
-
-```bash
-#SUITE variants=fips,non-fips needs=nix,compose:postgres
-```
-
-| Key | Meaning | Default |
-|-----|---------|---------|
-| `variants` | Variants the suite supports: `fips`, `non-fips` or both (required) | — |
-| `needs` | Comma list of prerequisites (next table) | none |
-| `scope` | `upstream`: the suite needs repository secrets, so an unset `env:` need is a failure in CI | none |
-
-A local run evaluates every `needs` item. With `CI=true` only the items marked (CI) are evaluated and the suite is otherwise left to run, and fail, on its own.
-
-| `needs` item | Meaning |
-|--------------|---------|
-| `nix`, `docker`, `k8s` | `nix-shell` on `PATH`, a running Docker daemon, a reachable Kubernetes cluster |
-| `cmd:<name>`, `file:<path>` | Command on `PATH`; file under the repository root (for example a submodule) |
-| `os:Linux`, `os:Darwin` (CI) | `uname -s` must match |
-| `env:<VAR>` (CI) | Variable set and non-empty. When it is not: the suite is skipped (CI adds a `::warning::`), except a `scope=upstream` suite under `CI=true`, which fails |
-| `profile` (CI) | Source `~/.cosmian/<suite name>.sh` when it exists (hardware credentials) |
-| `apt:<package>` (CI) | Locally: the command is installed; CI on Linux installs the package first |
-| `compose:<service>` (CI) | `docker compose up -d <service>` once, before the first suite |
+Tasks that no group `_default` lists are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `pki:scep-apple`, `db:upgrade-sqlite`), helpers called by leaves (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
 
 ### Leaf prologue
 
-A suite sources `suites.sh` and calls `suite_init <default-variant> [WITH_FLAG...]` first. It initialises `VARIANT`, `LINK`, `REPO_ROOT` and test logging, rejects a `--variant` or an OS the header does not allow when the task is run directly, and, when `WITH_*` flags are given, exports them and re-enters the pinned nix-shell.
+A leaf starts, in this order, with:
 
-### Adding a suite
-
-1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and a `#SUITE` line.
-2. Start the body with `source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"` and `suite_init <default-variant> [WITH_FLAG...]`.
-3. Check it with `mise run test:suites <group>:<name> --list`.
-4. To run it in CI, add its id to the `suites` of a leg in `.github/workflows/test_all.yml` (`include` of `test-nix`, `test-nix-js` or `test-nix-upstream`). A suite in no leg runs locally only.
-
-### Architecture Overview
-
-```mermaid
-graph TB
-    subgraph Headers["Task files under tasks/test"]
-        SuiteLines["one SUITE header line per task<br/>variants, needs, scope"]
-    end
-
-    subgraph Engine["Engine: .mise/lib/suites.sh"]
-        Main["suites_main<br/>select, gate, run, summarise"]
-        Prologue["suite_init<br/>leaf prologue"]
-    end
-
-    Leaf["leaf task<br/>test body"]
-
-    SuiteLines --> Main
-    Main -- "mise run test:ID" --> Leaf
-    Leaf --> Prologue
+```bash
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"   # only with ensure_nix_shell or WITH_* flags
+kms_init_env "${usage_variant:-<default-variant>}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"       # only when the body or a gate uses it
+# gates: variant, OS, profile, env, local probes, apt, then
+export WITH_X=1   # only when the leaf needs the nix-shell
+ensure_nix_shell
+docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d <service> || { …; skip_test "…"; }
 ```
+
+Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips only"` and `has_env_vars A B || skip_test "env A B not set"`. Probes of the local machine sit in one `if [ "${CI:-}" != true ]; then … fi` block. A leaf that needs repository secrets in CI calls `print_error` (not `skip_test`) when the secret is unset and `CI=true`.
+
+### Adding a leaf
+
+1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
+2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
+3. To run it in CI, add its id to the `suites` of a leg in `.github/workflows/test_all.yml` (`include` of `test-nix`, `test-nix-js` or `test-nix-upstream`); the leaf must declare `-v --variant`. A leaf in no leg runs locally only.
 
 ### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant User as Developer or CI
-    participant Main as suites_main
-    participant Compose as docker compose
-    participant Leaf as test leaf task
+    participant User as Developer
+    participant Group as group _default
+    participant Leaf as leaf script
 
-    User->>Main: mise run test:db --variant fips
-    Main->>Main: select the suites from the SUITE headers
-    loop each selected suite
-        Main->>Main: gate on variant, OS, env, nix, docker, cmd, file, k8s
+    User->>Group: mise run test:db --variant fips
+    loop each listed leaf
+        Group->>Leaf: bash leaf (usage_variant, usage_link)
+        Leaf->>Leaf: gates, then docker compose up and the test body
+        Leaf-->>Group: exit 0 PASS, 77 SKIP, other FAIL
     end
-    Main->>Compose: up -d the services of the runnable suites, once
-    loop each runnable suite
-        Main->>Leaf: mise run test:ID --variant --link
-        Leaf-->>Main: exit 0 or non-zero, the run continues
-    end
-    Main-->>User: PASS, SKIP with reason and FAIL summary, exit 1 if any FAIL
+    Group-->>User: PASS, SKIP and FAIL summary, exit 1 if any FAIL
 ```
 
 ---
@@ -1223,7 +1184,7 @@ sequenceDiagram
 
 ### `test:k8s`
 
-**Description:** Orchestrator (`test:suites @k8s`) that runs the Kubernetes E2E suites (plugin, plugin over mTLS, operator, CSI provider) and the Helm chart checks. Each suite is skipped, with its reason, when `kubectl`, `helm`, `minikube`, `openssl` or a reachable cluster is missing; a failing suite is recorded and the remaining ones still run.
+**Description:** Orchestrator (`test:k8s`) that runs the Kubernetes E2E leaves (plugin, plugin over mTLS, operator, CSI provider) and the Helm chart checks. Each leaf is skipped (exit 77, with its reason) when `kubectl`, `helm`, `minikube`, `openssl` or a reachable cluster is missing; a failing leaf is recorded and the remaining ones still run.
 
 #### Architecture Overview
 

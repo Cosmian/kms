@@ -133,7 +133,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 | `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
 | `.mise/lib/nix_helpers.sh` | Nix shell invocation, hash lookup |
-| `.mise/lib/suites.sh` | Test-suite registry (`#SUITE` header), leaf prologue `suite_init`, runner `suites_main`: see § Test suites |
+| `.mise/lib/common.sh` (`skip_test`, `run_test_leaves`) | Test leaves: `skip_test "<reason>"` exits 77 (SKIP); a group `_default` runs its adjacent leaves with `run_test_leaves`: see § Test leaves |
 | `.mise/lib/package_build.sh` | Deb/RPM build helpers |
 | `.mise/lib/package_smoke.sh` | Smoke-test helpers for packages |
 | `.mise/lib/spire_test.sh` | SPIRE suite helpers: `spire_listener_pids`, `spire_port_listening`, `spire_wait_port_closed`, `spire_stop_port`, `spire_reset_state`, `spire_ensure_certs`, `spire_build_auth_verifier` |
@@ -146,23 +146,18 @@ Never assume `common.sh` is already loaded; always guard the source.
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
 free-port allocation, or SHA-256 computation — all three already exist.
 
-## Test suites — `#SUITE` header, `suite_init`, `suites_main`
+## Test leaves — `skip_test`, `run_test_leaves`
 
-Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg`; `spire/_default` is the single `spire` suite) and declares its facts once, in a `#SUITE` line placed after the `#USAGE` block:
+Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg`; `spire/_default` is the single `spire` leaf). It checks its own prerequisites and calls `skip_test "<reason>"` (exit 77) when it cannot run here.
 
-```bash
-#SUITE variants=fips,non-fips needs=nix,compose:postgres
-```
-
-The same line gives the supported variants (`variants`, required), the prerequisites that make `mise run test` skip the suite with a reason (`needs`) and `scope=upstream` for suites that need repository secrets. CI legs are listed in `.github/workflows/test_all.yml`, not in the header. The full grammar is in `.mise/tasks/test/README.md` § 1.
-
-- Start the body with `source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"` and `suite_init <default-variant> [WITH_FLAG...]`. It replaces `kms_init_env`, `setup_test_logging`, `REPO_ROOT=`, the hand-written non-FIPS/OS gate, `export WITH_*` and `ensure_nix_shell`. Keep `ensure_nix_shell` explicit only when code must run between the exports and the re-entry.
-- Never hand-roll a test aggregator: a group's `_default` is `suites_main @<group>`, and `mise run test:suites <id|@group|@all> [--list]` runs any selection.
-- After adding or editing a header, run `mise run test:suites <id> --list`. To run the suite in CI, add its id to a leg of `.github/workflows/test_all.yml`.
+- Prologue, in order: `source common.sh`, `source nix_helpers.sh` (only with `ensure_nix_shell` or `WITH_*`), `kms_init_env "${usage_variant:-<default>}" "${usage_link:-static}"`, `setup_test_logging`, `REPO_ROOT=` (only if used), gates (variant, OS, profile, env, local probes inside `if [ "${CI:-}" != true ]`, apt), `export WITH_*` + `ensure_nix_shell`, `docker compose up -d` (skip on failure). Snippets are listed in `.mise/tasks/test/README.md` § 1.
+- An upstream leaf (repository secrets) calls `print_error` before `skip_test` when `CI=true` and a secret is unset, so a green upstream CI leg proves it ran.
+- Never hand-roll a test aggregator: a group's `_default` is `run_test_leaves "$(dirname "$0")" <leaf>...`; add the new leaf to that list.
+- To run a leaf in CI, add its id to a leg of `.github/workflows/test_all.yml` (the leaf must declare `-v --variant`).
 
 ## Aggregator tasks — collect failures, report at the end
 
-For non-test tasks that orchestrate multiple sub-steps, collect failures rather than aborting immediately (test suites use `suites_main`, see above):
+For non-test tasks that orchestrate multiple sub-steps, collect failures rather than aborting immediately (test groups use `run_test_leaves`, see above):
 
 ```bash
 FAILED=()
@@ -318,5 +313,5 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 2. Add the standard header (`#!/usr/bin/env bash`, `#MISE description`, `#USAGE …`, `set -euo pipefail`).
 3. Source only the libraries you need; prefer the smallest set.
 4. End with `print_success "…"` on the happy path.
-5. For a test, create it under `.mise/tasks/test/<group>/`, add the `#SUITE` line and start with `suite_init` (see § Test suites).
+5. For a test, create it under `.mise/tasks/test/<group>/`, start with the leaf prologue and list it in the group `_default` (see § Test leaves).
 6. If a non-test task orchestrates sub-tasks, use the `run_step` aggregator pattern.

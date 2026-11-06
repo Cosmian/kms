@@ -78,12 +78,14 @@ jobs:
             'nix/utimaco.nix', '.mise/lib/common.sh') }}
 
   # The test matrices below list their legs explicitly: a leg is a `leg` value, a matrix cell is a leg and a
-  # variant, and `include` maps a leg to the `test:suites` ids it runs (`#SUITE` headers in
-  # .mise/tasks/test/**, see .mise/tasks/test/README.md). A suite missing from every `include` runs locally only.
+  # variant, and `include` maps a leg to the `test:<id>` tasks it runs one after the other (the `suites` list,
+  # see .mise/tasks/test/README.md). Every matrix id declares `-v --variant`; the five tasks without it
+  # (cloud/xks-remote, k8s/csi-provider, k8s/operator, k8s/plugin-mtls, pkg/docker-oracle) are in no leg.
+  # A task missing from every `include` runs locally only.
   # Suites that need neither secrets nor the JS toolchain: databases, black-box suites,
   # software HSMs, PKCS#11 clients. The suites of a leg share one runner and one build; Nix-shell suites
   # are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching OPENSSL_DIR
-  # recompiles the workspace. `test:suites` starts the docker compose services its suites declare.
+  # recompiles the workspace. Each task starts its own docker compose services.
   # Pull requests run only the non-FIPS variant of the MySQL family (mysql, percona, mariadb).
   test-nix:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
@@ -238,7 +240,23 @@ jobs:
           # Provide an authenticated token so mise can install tools from
           # GitHub releases without hitting the unauthenticated rate limit.
           GITHUB_TOKEN: ${{ github.token }}
-        run: mise run test:suites ${{ matrix.suites }} --variant ${{ matrix.variant }}
+          SUITES: ${{ matrix.suites }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          rc=0
+          # shellcheck disable=SC2086 # SUITES is a space-separated id list
+          for id in $SUITES; do
+            echo "::group::test:${id} (${VARIANT})"
+            st=0
+            mise run "test:${id}" --variant "$VARIANT" || st=$?
+            echo "::endgroup::"
+            case "$st" in
+              0) ;;
+              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
+              *) echo "::error::test:${id} failed"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
 
       - name: Bench (PKCS#11 load, HSM-delegated)
         if: matrix.bench && github.event_name != 'pull_request'
@@ -299,13 +317,29 @@ jobs:
         env:
           # Read-only (contents: read); lets mise install tools without hitting the rate limit.
           GITHUB_TOKEN: ${{ github.token }}
-        run: mise run test:suites ${{ matrix.suites }} --variant ${{ matrix.variant }}
+          SUITES: ${{ matrix.suites }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          rc=0
+          # shellcheck disable=SC2086 # SUITES is a space-separated id list
+          for id in $SUITES; do
+            echo "::group::test:${id} (${VARIANT})"
+            st=0
+            mise run "test:${id}" --variant "$VARIANT" || st=$?
+            echo "::endgroup::"
+            case "$st" in
+              0) ;;
+              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
+              *) echo "::error::test:${id} failed"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
 
   # Suites that need repository secrets or hardware. Skipped on forks and fork pull
   # requests, where the secrets are withheld.
   # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
   # Luna (no reachable partition) are not in this matrix. To bring one back, add its leg, its `suites` and its
-  # `lock` below, give its `#SUITE` header `scope=upstream`, and map its secrets in the Test step (names in
+  # `lock` below, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and map its secrets in the Test step (names in
   # crate/hsm/<name>/README.md).
   test-nix-upstream:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
@@ -386,7 +420,23 @@ jobs:
           # Provide an authenticated token so mise can install tools from
           # GitHub releases without hitting the unauthenticated rate limit.
           GITHUB_TOKEN: ${{ github.token }}
-        run: mise run test:suites ${{ matrix.suites }} --variant ${{ matrix.variant }}
+          SUITES: ${{ matrix.suites }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          rc=0
+          # shellcheck disable=SC2086 # SUITES is a space-separated id list
+          for id in $SUITES; do
+            echo "::group::test:${id} (${VARIANT})"
+            st=0
+            mise run "test:${id}" --variant "$VARIANT" || st=$?
+            echo "::endgroup::"
+            case "$st" in
+              0) ;;
+              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
+              *) echo "::error::test:${id} failed"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
 
   helm:
     name: Helm chart E2E (minikube)
@@ -509,7 +559,23 @@ jobs:
       - name: Interop test
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: mise run test:suites pki:scep-interop pki:est-interop --variant fips
+          SUITES: pki:scep-interop pki:est-interop
+          VARIANT: fips
+        run: |
+          rc=0
+          # shellcheck disable=SC2086 # SUITES is a space-separated id list
+          for id in $SUITES; do
+            echo "::group::test:${id} (${VARIANT})"
+            st=0
+            mise run "test:${id}" --variant "$VARIANT" || st=$?
+            echo "::endgroup::"
+            case "$st" in
+              0) ;;
+              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
+              *) echo "::error::test:${id} failed"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
 
   windows-2022:
     # Windows is slow: PRs run the quick suite; tags and nightly run the full one.

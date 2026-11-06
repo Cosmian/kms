@@ -6,11 +6,17 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
-suite_init fips WITH_CURL
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_CURL=1
+ensure_nix_shell
 
 print_header "Running GCP CMEK tests (${VARIANT_NAME})"
 

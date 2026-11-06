@@ -7,10 +7,18 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--marker <marker>" env="PKCS11_CHECK_MARKER" help="pkcs11-check marker (empty runs the full available corpus)" default="smoke"
-#SUITE variants=non-fips needs=nix
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init non-fips WITH_HSM
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+[ "$VARIANT" = non-fips ] || skip_test "non-fips only"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_HSM=1
+ensure_nix_shell
 
 print_header "Running HSM-KEK pkcs11-tool conformance tests"
 

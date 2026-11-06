@@ -6,7 +6,6 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips
 
 # Drives the KMS purely through tooling a real customer/integrator has on hand
 # (the `ckms` CLI to provision a PKI, then the standard `openssl ocsp` client and
@@ -19,10 +18,11 @@
 
 set -euo pipefail
 
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 
-suite_init fips
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
 
 require_cmd cargo
 require_cmd openssl "openssl (with its 'ocsp' client) is required"

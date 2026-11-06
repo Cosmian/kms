@@ -6,15 +6,19 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=docker
 # Starts a dedicated `postgres-audit` container (docker-compose.yml), runs the
 # #[ignore]-gated live unit tests in crate/server_database, crate/clients/clap, and
 # crate/server (the real AuditStore::start_postgres controlling path), then the full
 # end-to-end integration test (real KMS server + ckms CLI against PostgreSQL).
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/test_slots.sh"
-suite_init fips
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+fi
 
 print_header "PostgreSQL audit backend tests (${VARIANT_NAME})"
 

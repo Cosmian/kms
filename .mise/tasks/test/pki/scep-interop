@@ -6,15 +6,20 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix
 
 # Black-box test: starts a live KMS server with SCEP enabled and drives it with the
 # third-party `scepclient` (github.com/micromdm/scep, as used by MicroMDM / Smallstep and
 # Apple-MDM deployments): PKCSReq with challenge, challenge-less RenewalReq, wrong challenge.
 # Apple's native client: see `mise run test:pki:scep-apple` (interactive, macOS).
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
 
 # The scepclient is built with Go: use the Nix shell's Go unless one is already on PATH
 # (the macOS CI job installs it with actions/setup-go and has no Nix).

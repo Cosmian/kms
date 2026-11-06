@@ -4,18 +4,17 @@
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file (auto-generated if omitted)"
-#SUITE variants=fips,non-fips needs=docker,env:SPLUNK_PASSWORD
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/audit_compat.sh"
+has_env_vars SPLUNK_PASSWORD || skip_test "env SPLUNK_PASSWORD not set"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+fi
 
 print_header "Splunk audit JSONL compatibility test"
 
 audit_compat_require_common_cmds "Splunk"
-
-if [ -z "${SPLUNK_PASSWORD:-}" ]; then
-  print_error "SPLUNK_PASSWORD env var must be set (CI secret, 8+ chars, one number/uppercase)"
-fi
 
 REPO_ROOT="$(get_repo_root)"
 if [ -n "${usage_file:-}" ]; then

@@ -9,10 +9,24 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix,os:Linux,profile,env:CRYPT2PAY_PASSWORD,apt:openvpn scope=upstream
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips WITH_HSM
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+[ "$(uname -s)" = Linux ] || skip_test "Linux only"
+# shellcheck source=/dev/null
+if [ -f "${HOME}/.cosmian/crypt2pay.sh" ]; then source "${HOME}/.cosmian/crypt2pay.sh"; fi
+if ! has_env_vars CRYPT2PAY_PASSWORD; then
+  if [ "${CI:-}" = true ]; then print_error "env CRYPT2PAY_PASSWORD not set (CI secret missing)"; fi
+  skip_test "env CRYPT2PAY_PASSWORD not set"
+fi
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+if ! has_cmd openvpn; then if [ "${CI:-}" = true ] && [ "$(uname -s)" = Linux ]; then sudo apt-get update -qq && sudo apt-get install -y -qq openvpn; else skip_test "openvpn not installed"; fi; fi
+export WITH_HSM=1
+ensure_nix_shell
 
 cleanup() {
   if [[ -f /tmp/crypt2pay-openvpn.pid ]]; then

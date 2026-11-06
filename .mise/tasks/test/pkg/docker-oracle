@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Oracle TDE remote upgrade and smoke test (non-fips amd64 only)"
-#SUITE variants=fips,non-fips needs=env:DOCKER_IMAGE_NAME,env:ORACLE_KMS_DEMO_USER_PASS,env:COSMIAN_HSM_PIN
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+has_env_vars DOCKER_IMAGE_NAME ORACLE_KMS_DEMO_USER_PASS COSMIAN_HSM_PIN || skip_test "env DOCKER_IMAGE_NAME ORACLE_KMS_DEMO_USER_PASS COSMIAN_HSM_PIN not set"
 
 print_header "Running Oracle TDE remote upgrade and smoke test"
 

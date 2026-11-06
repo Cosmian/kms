@@ -3,11 +3,11 @@
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-#SUITE variants=fips,non-fips
 set -euo pipefail
 
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
 require_cmd cargo
 
 cargo test -p azure_cloud_hsm_pkcs11_loader \

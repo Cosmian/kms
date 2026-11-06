@@ -9,10 +9,21 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix,os:Linux,profile,env:PROTECCIO_PASSWORD,env:PROTECCIO_SLOT scope=upstream
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+[ "$(uname -s)" = Linux ] || skip_test "Linux only"
+# shellcheck source=/dev/null
+if [ -f "${HOME}/.cosmian/proteccio.sh" ]; then source "${HOME}/.cosmian/proteccio.sh"; fi
+if ! has_env_vars PROTECCIO_PASSWORD PROTECCIO_SLOT; then
+  if [ "${CI:-}" = true ]; then print_error "env PROTECCIO_PASSWORD PROTECCIO_SLOT not set (CI secret missing)"; fi
+  skip_test "env PROTECCIO_PASSWORD PROTECCIO_SLOT not set"
+fi
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 

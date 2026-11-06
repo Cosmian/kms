@@ -6,14 +6,19 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix
 
 # Black-box test: starts a live KMS server over TLS with EST enabled and drives it with a
 # third-party EST client: /cacerts, /csrattrs, /simpleenroll (HTTP Basic bootstrap),
 # /simplereenroll (mutual TLS with the certificate being renewed).
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init fips
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
 
 # The estclient is built with Go: use the Nix shell's Go unless one is already on PATH
 # (the macOS CI job installs it with actions/setup-go and has no Nix).

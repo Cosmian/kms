@@ -6,14 +6,20 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=non-fips needs=docker,file:authentication/Cargo.toml
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
 
-# SPIRE tests require the Vault API, which is non-FIPS only (variants=non-fips is enforced here).
-suite_init non-fips
+# SPIRE tests require the Vault API, which is non-FIPS only.
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+[ "$VARIANT" = non-fips ] || skip_test "non-fips only"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+  [ -f "${REPO_ROOT}/authentication/Cargo.toml" ] || skip_test "authentication/Cargo.toml not found (submodule not checked out?)"
+fi
 
 TEST_DATA="${REPO_ROOT}/test_data/spire"
 AUTH_PID=""

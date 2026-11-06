@@ -3,7 +3,6 @@
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-#SUITE variants=fips,non-fips needs=docker
 # Proves monitoring stack: OTel collector → VictoriaMetrics → Grafana.
 # KMS metrics (kms_server_uptime_seconds_total, kms_database_operations_total)
 # must be queryable from VictoriaMetrics. Grafana /api/health must return 200.
@@ -11,9 +10,14 @@
 #   grafana/grafana.
 # Works with both fips and non-fips (OTLP metrics are not feature-gated).
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
-suite_init non-fips
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+fi
 
 print_header "Running monitoring stack integration test (${VARIANT_NAME})"
 echo "Purpose: prove KMS metrics flow OTel → VictoriaMetrics, Grafana healthy"

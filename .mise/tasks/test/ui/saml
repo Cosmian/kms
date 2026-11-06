@@ -6,9 +6,19 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=non-fips needs=nix,docker,file:authentication/server/auth_verifier.dev.toml
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suite_init non-fips WITH_WASM WITH_CURL
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+[ "$VARIANT" = non-fips ] || skip_test "non-fips only"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+  docker_ready || skip_test "Docker is not running"
+  [ -f "${REPO_ROOT}/authentication/server/auth_verifier.dev.toml" ] || skip_test "authentication/server/auth_verifier.dev.toml not found (submodule not checked out?)"
+fi
+export WITH_WASM=1 WITH_CURL=1
+ensure_nix_shell
 
 bash "${REPO_ROOT}/.mise/scripts/test/test_ui_saml.sh" --variant "${VARIANT}" --link "${LINK}"

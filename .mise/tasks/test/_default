@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Run every test suite that can run here (skipped suites print why)"
+#MISE description="Run every test that can run here (skips print why)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#USAGE flag "--list" help="Print what would run or be skipped, then exit"
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
-suites_main @all
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+run_test_leaves "$(dirname "$0")" cloud/_default db/_default hsm/_default interop/_default k8s/_default obs/_default pkcs11/_default pkg/_default pki/_default spire/_default ui/_default

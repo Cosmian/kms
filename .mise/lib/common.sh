@@ -478,3 +478,34 @@ pkcs11_check_warnings() {
   fi
   return 0
 }
+
+# Exit status of a test task that cannot run on this machine; run_test_leaves counts it as SKIP.
+skip_test() {
+  print_warning "SKIP: $*"
+  exit 77
+}
+
+# Runs the test scripts $2... (paths relative to directory $1) one after the other under VARIANT/LINK,
+# never stopping on a failure, then prints a PASS/SKIP/FAIL summary. Returns 1 if any script failed.
+# Usage: run_test_leaves "$(dirname "$0")" <leaf>...
+run_test_leaves() {
+  local dir="$1" leaf rc
+  local -a pass=() skip=() fail=()
+  shift
+  for leaf in "$@"; do
+    print_header "test ${leaf} (${VARIANT})"
+    if usage_variant="$VARIANT" usage_link="$LINK" bash "${dir}/${leaf}"; then rc=0; else rc=$?; fi
+    case "$rc" in
+      0) pass+=("$leaf") ;;
+      77) skip+=("$leaf") ;;
+      *) fail+=("$leaf") ;;
+    esac
+  done
+  echo ""
+  echo "============================================"
+  for leaf in ${pass[@]+"${pass[@]}"}; do echo "  [PASS] ${leaf}"; done
+  for leaf in ${skip[@]+"${skip[@]}"}; do echo "  [SKIP] ${leaf}"; done
+  for leaf in ${fail[@]+"${fail[@]}"}; do echo "  [FAIL] ${leaf}"; done
+  printf '  PASS: %d  SKIP: %d  FAIL: %d\n' "${#pass[@]}" "${#skip[@]}" "${#fail[@]}"
+  [ "${#fail[@]}" -eq 0 ]
+}

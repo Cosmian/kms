@@ -7,7 +7,6 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--full" help="Run every KMIPKit live family (~2h; matrix runners fail on unsupported cases by design) instead of the fast gate"
-#SUITE variants=non-fips needs=docker
 
 # Runs the external KMIPKit Rust client's live tests against a locally-built KMS
 # over binary KMIP 2.1 TTLV on a mutual-TLS socket (port 5696).
@@ -17,11 +16,17 @@
 
 set -euo pipefail
 
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
 
-suite_init non-fips
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+[ "$VARIANT" = non-fips ] || skip_test "non-fips only"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+fi
 
 KMIPKIT_URL="https://github.com/NeverWe1come/KMIPKit.git"
 # head of PR #56 (feature/KMIPKIT-0015-cosmian-kms-integration)

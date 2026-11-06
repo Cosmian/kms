@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #MISE description="Run AWS XKS tests against the remote test server (no build required)"
-#SUITE variants=fips,non-fips needs=env:KMS_XKS_SIGV4_ACCESS_KEY_ID,env:KMS_XKS_SIGV4_SECRET_ACCESS_KEY
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+has_env_vars KMS_XKS_SIGV4_ACCESS_KEY_ID KMS_XKS_SIGV4_SECRET_ACCESS_KEY || skip_test "env KMS_XKS_SIGV4_ACCESS_KEY_ID KMS_XKS_SIGV4_SECRET_ACCESS_KEY not set"
 setup_test_logging
 
 export WITH_XKS=1 WITH_CURL=1

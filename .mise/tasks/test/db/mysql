@@ -6,11 +6,22 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix,compose:mysql
 set -euo pipefail
-source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
-suite_init fips WITH_HSM
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_HSM=1
+ensure_nix_shell
+docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d mysql || {
+  if [ "${CI:-}" = true ]; then print_error "could not start compose: mysql"; fi
+  skip_test "could not start compose: mysql"
+}
 
 print_header "Running MySQL tests (${VARIANT_NAME})"
 
