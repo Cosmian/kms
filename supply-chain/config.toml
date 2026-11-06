@@ -100,10 +100,15 @@ audit-as-crates-io = false
 [policy.utimaco_pkcs11_loader]
 audit-as-crates-io = false
 
-[[exemptions.actix-http]]
-version = "3.19.0"
+[[exemptions.actix-files]]
+version = "0.7.4"
 criteria = "safe-to-deploy"
-notes = "transitive or direct dependency of the workspace (dependency bump to 3.19.0) — unaudited, pending review"
+notes = "workspace static-file serving; bump fixes RUSTSEC-2026-0443 — unaudited, pending review"
+
+[[exemptions.actix-http]]
+version = "3.20.3"
+criteria = "safe-to-deploy"
+notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
 
 [[exemptions.actix-rt]]
 version = "2.15.0"
@@ -121,12 +126,12 @@ criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 3.6.1) — unaudited, pending review"
 
 [[exemptions.actix-web]]
-version = "4.17.0"
+version = "4.18.2"
 criteria = "safe-to-deploy"
-notes = "transitive or direct dependency of the workspace (dependency bump to 4.17.0) — unaudited, pending review"
+notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
 
 [[exemptions.actix-web-codegen]]
-version = "4.4.0"
+version = "4.5.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
@@ -696,8 +701,9 @@ version = "0.13.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.http-range]]
-version = "0.1.5"
+version = "0.1.6"
 criteria = "safe-to-deploy"
+notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
 
 [[exemptions.hybrid-array]]
 version = "0.4.14"
@@ -1549,10 +1555,15 @@ version = "1.28.0"
 criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 1.28.0) — unaudited, pending review"
 
-[[exemptions.v_htmlescape]]
-version = "0.15.8"
+[[exemptions.v_escape-base]]
+version = "0.1.0"
 criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
+
+[[exemptions.v_htmlescape]]
+version = "0.17.0"
+criteria = "safe-to-deploy"
+notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
 
 [[exemptions.version_check]]
 version = "0.9.5"

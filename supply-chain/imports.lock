@@ -15,13 +15,6 @@ user-id = 56903
 user-login = "robjtede"
 user-name = "Rob Ede"
 
-[[publisher.actix-files]]
-version = "0.6.10"
-when = "2026-02-06"
-user-id = 51017
-user-login = "JohnTitor"
-user-name = "Yuki Okushi"
-
 [[publisher.actix-identity]]
 version = "0.6.0"
 when = "2023-09-16"
