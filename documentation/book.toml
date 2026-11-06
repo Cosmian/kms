@@ -23,6 +23,10 @@ enable = true
 enable = true
 level = 1
 
+[output.linkcheck]
+# CISA blocks automated link checks with HTTP 403; keep all other CISA links checked.
+exclude = ['https://www\.cisa\.gov/quantum']
+
 [preprocessor.admonish_compat]
 command = "python3 ./theme/scripts/mdbook_admonish_compat.py"
 before = ["admonish"]

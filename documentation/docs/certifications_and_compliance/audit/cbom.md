@@ -21,7 +21,7 @@ reflects the running codebase rather than a manual registry.
 
 | File | Format | Description |
 |------|--------|-------------|
-| [`cbom/cbom.cdx.json`](../../../cbom/cbom.cdx.json) | CycloneDX 1.6 JSON | Full cryptographic asset inventory |
+| [`cbom/cbom.cdx.json`](https://github.com/Cosmian/kms/blob/develop/cbom/cbom.cdx.json) | CycloneDX 1.6 JSON | Full cryptographic asset inventory |
 
 The CBOM covers:
 
