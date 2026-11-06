@@ -75,7 +75,7 @@ impl NoiseAction {
             max_bound: self.max_bound,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("noise", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

@@ -11,26 +11,27 @@
 mod pgsql;
 mod row;
 
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 pub use pgsql::{PgAuditReader, PgAuditSink};
 use rawsql::Loader;
 
 const AUDIT_FILE_QUERIES: &str = include_str!("audit.sql");
 
-#[expect(
-    clippy::expect_used,
-    reason = "audit SQL is embedded at compile time; every query is exercised by tests"
-)]
-static AUDIT_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
-    // PANIC: unreachable by construction — the SQL file is embedded at compile time and its
-    // parsing is covered by the tests below.
-    Loader::get_queries_from(AUDIT_FILE_QUERIES).expect("Can't parse the audit SQL file")
-});
+pub(crate) fn audit_queries() -> crate::error::DbResult<&'static Loader> {
+    static CELL: OnceLock<Loader> = OnceLock::new();
+    if let Some(loader) = CELL.get() {
+        return Ok(loader);
+    }
+    let loader = Loader::get_queries_from(AUDIT_FILE_QUERIES).map_err(|e| {
+        crate::error::DbError::DatabaseError(format!("Can't parse the audit SQL file: {e}"))
+    })?;
+    Ok(CELL.get_or_init(|| loader))
+}
 
 #[cfg(test)]
 mod tests {
-    use super::AUDIT_QUERIES;
+    use super::audit_queries;
 
     /// The KMS must only ever append to `kms_audit_events` (or run pure schema-migration
     /// DDL). Any data-mutating verb (`UPDATE`/`DELETE`/`TRUNCATE`) reaching the runtime
@@ -38,7 +39,7 @@ mod tests {
     /// (append-only triggers, `REVOKE`) should be relied upon alone to catch.
     #[test]
     fn runtime_sql_bundle_never_mutates_or_deletes_rows() {
-        for (name, sql) in AUDIT_QUERIES.iter() {
+        for (name, sql) in audit_queries().unwrap().iter() {
             let upper = sql.to_ascii_uppercase();
             assert!(
                 !upper.contains("DELETE FROM"),
@@ -87,7 +88,7 @@ mod tests {
             "select-audit-generation-evidence",
         ] {
             assert!(
-                AUDIT_QUERIES.get(name).is_some(),
+                audit_queries().unwrap().get(name).is_some(),
                 "query '{name}' referenced by pgsql.rs is missing from audit.sql"
             );
         }
@@ -98,13 +99,13 @@ mod tests {
 mod characterization_tests {
     //! Characterization tests pinning that the embedded audit SQL bundle parses.
 
-    use super::AUDIT_QUERIES;
+    use super::audit_queries;
 
     #[test]
     fn characterization_audit_queries_parse_and_expose_queries() {
         for name in ["create-table-audit-events", "insert-audit-event"] {
-            assert_ne!(AUDIT_QUERIES.get(name).unwrap().trim().len(), 0);
+            assert_ne!(audit_queries().unwrap().get(name).unwrap().trim().len(), 0);
         }
-        assert!(AUDIT_QUERIES.get("no-such-query").is_none());
+        assert!(audit_queries().unwrap().get("no-such-query").is_none());
     }
 }

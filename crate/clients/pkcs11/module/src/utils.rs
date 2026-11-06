@@ -1,9 +1,6 @@
 #![expect(
-    clippy::missing_panics_doc,
-    clippy::expect_used,
-    clippy::indexing_slicing,
     unsafe_code,
-    reason = "test harness reused by other crates' tests; compiled outside cfg(test)"
+    reason = "test harness reused by other crates' tests drives the PKCS#11 C ABI"
 )]
 
 use std::ffi::c_void;
@@ -21,7 +18,8 @@ use crate::{
 
 /// Converts a Rust length to the `CK_ULONG` the C API expects.
 pub(crate) fn ck_len(len: usize) -> CK_ULONG {
-    CK_ULONG::try_from(len).expect("length fits in CK_ULONG")
+    // An oversized length makes the C call fail instead of silently truncating.
+    CK_ULONG::try_from(len).unwrap_or(CK_ULONG::MAX)
 }
 
 /// Hands a read-only value to the C API as the untyped pointer `CK_ATTRIBUTE` requires.
@@ -29,6 +27,11 @@ pub(crate) const fn ck_ptr<T>(value: &T) -> CK_VOID_PTR {
     std::ptr::from_ref(value).cast_mut().cast::<c_void>()
 }
 
+/// Key-generation test: call to `C_GenerateKey` for an AES-128 key.
+///
+/// # Panics
+///
+/// Panics if the call does not return `CKR_OK` or yields an invalid handle.
 #[must_use]
 pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
     // The parameter buffer must outlive `mechanism` since `pParameter` only stores a raw
@@ -92,6 +95,10 @@ pub fn test_generate_key(session_h: CK_ULONG) -> CK_OBJECT_HANDLE {
 }
 
 /// Encryption test: call to `C_EncryptInit` and `C_Encrypt`
+///
+/// # Panics
+///
+/// Panics if a PKCS#11 call does not return `CKR_OK`.
 #[must_use]
 pub fn test_encrypt(
     session_h: CK_ULONG,
@@ -137,6 +144,10 @@ pub fn test_encrypt(
 }
 
 /// Decryption test: call to `C_DecryptInit` and `C_Decrypt`
+///
+/// # Panics
+///
+/// Panics if a PKCS#11 call does not return `CKR_OK` or the decrypted length is zero.
 #[must_use]
 pub fn test_decrypt(
     session_h: CK_ULONG,
@@ -178,7 +189,6 @@ pub fn test_decrypt(
 
     // Expect decrypted_data_len to be the length of the decrypted data.
     assert_ne!(decrypted_data_len, 0);
-    let decrypted_len =
-        usize::try_from(decrypted_data_len).expect("decrypted length fits in usize");
-    decrypted_data[..decrypted_len].to_vec()
+    decrypted_data.truncate(usize::try_from(decrypted_data_len).unwrap_or(usize::MAX));
+    decrypted_data
 }

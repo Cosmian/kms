@@ -167,8 +167,12 @@ async fn create_aes_key_non_sensitive(key_uid: &str, owner: &str, kms: &Arc<KMS>
         false, // sensitive = false → CKA_SENSITIVE = false, key material is extractable
         None,
     )?;
-    let response =
-        send_message(kms.clone(), owner, vec![Operation::Create(create_request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
@@ -577,7 +581,12 @@ async fn test_non_admin_create_wrapped_by_kek(kms: &Arc<KMS>, kek_uid: &str) -> 
         false,
         Some(&kek_uid.to_owned()),
     )?;
-    let response = send_message(kms.clone(), USER, vec![Operation::Create(create_request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        USER,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };

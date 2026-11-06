@@ -96,7 +96,7 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
     if truncated {
         warn!(
             "JWKS response truncated: more than {} eligible public keys found",
-            kms.params.jwks_endpoint.jwks_endpoint_max_keys
+            kms.params.jwks_endpoint.max_keys
         );
         response.insert_header(("X-JWKS-Truncated", "true"));
     }
@@ -105,7 +105,7 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
 
 /// Build the JWK Set and a boolean indicating whether the result was truncated.
 async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
-    let max_keys = kms.params.jwks_endpoint.jwks_endpoint_max_keys;
+    let max_keys = kms.params.jwks_endpoint.max_keys;
     let (objects, truncated) = Box::pin(discover_eligible_public_keys(kms, max_keys)).await?;
 
     let mut keys = Vec::with_capacity(objects.len());

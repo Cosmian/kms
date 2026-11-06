@@ -177,10 +177,10 @@ fn characterization_clap_config_flags_and_redaction() {
     assert!(c.print_default_config);
     assert_eq!(c.http.port, 9999);
     assert_eq!(c.http.hostname, "example.org");
-    assert_eq!(c.socket_server.socket_server_port, 6000);
-    assert!(c.socket_server.socket_server_start);
+    assert_eq!(c.socket_server.port, 6000);
+    assert!(c.socket_server.start);
     assert_eq!(c.db.database_type.as_deref(), Some("sqlite"));
-    assert_eq!(c.vault.vault_pki_ca_key_label, "lbl");
+    assert_eq!(c.vault.pki_ca_key_label, "lbl");
     assert_eq!(
         c.proxy.to_string(),
         r#"Proxy URL: http://p:3128, Basic Auth Username: alice, Basic Auth Password: ***, No Custom Auth Header, No Proxy Exclusion List: ["a.com"]"#

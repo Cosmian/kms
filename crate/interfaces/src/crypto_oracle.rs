@@ -224,6 +224,13 @@ pub enum SigningAlgorithm {
     Ed448,
 }
 
+/// Whether RSA signatures over SHA-1 are allowed (non-FIPS builds only).
+#[cfg(feature = "non-fips")]
+const RSA_SHA1_SIGNATURES_ALLOWED: bool = true;
+/// Whether RSA signatures over SHA-1 are allowed (non-FIPS builds only).
+#[cfg(not(feature = "non-fips"))]
+const RSA_SHA1_SIGNATURES_ALLOWED: bool = false;
+
 impl SigningAlgorithm {
     /// Derive a `SigningAlgorithm` from KMIP `CryptographicParameters`.
     ///
@@ -520,27 +527,15 @@ impl SigningAlgorithm {
     /// FIPS: SHA-1 RSA signatures are not approved (SP 800-131A). Checked for both the
     /// hashing mechanism (`CKM_SHA1_RSA_PKCS`) and the pre-hashed `DigestInfo` variant, so a
     /// 20-byte `digested_data` cannot bypass the gate by going through raw `CKM_RSA_PKCS`.
-    #[cfg(not(feature = "non-fips"))]
+    /// Non-FIPS: every hash `rsa_pkcs1_from_hash` otherwise supports is allowed.
     fn check_rsa_signature_hash_allowed(
         hashing_algorithm: HashingAlgorithm,
     ) -> Result<(), InterfaceError> {
-        if hashing_algorithm == HashingAlgorithm::SHA1 {
+        if !RSA_SHA1_SIGNATURES_ALLOWED && hashing_algorithm == HashingAlgorithm::SHA1 {
             return Err(InterfaceError::InvalidRequest(
                 "RSA signatures with SHA-1 are unavailable in FIPS mode".to_owned(),
             ));
         }
-        Ok(())
-    }
-
-    /// Non-FIPS: every hash `rsa_pkcs1_from_hash` otherwise supports is allowed.
-    #[cfg(feature = "non-fips")]
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "signature must match the FIPS variant, which can fail"
-    )]
-    const fn check_rsa_signature_hash_allowed(
-        _hashing_algorithm: HashingAlgorithm,
-    ) -> Result<(), InterfaceError> {
         Ok(())
     }
 

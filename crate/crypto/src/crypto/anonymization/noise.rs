@@ -5,7 +5,10 @@ use rand_distr::{
 };
 
 use super::{AnoError, datetime_to_rfc3339};
-use crate::crypto::KmsRng;
+use crate::crypto::{
+    KmsRng,
+    float_conv::{f64_to_i64_saturating, i64_to_f64},
+};
 
 pub enum NoiseMethod<F>
 where
@@ -243,14 +246,8 @@ impl NoiseGenerator<f64> {
     /// Original data with added noise
     // Noise arithmetic happens in f64; rounding back to i64 is the expected semantics for a
     // noisy integer.
-    #[expect(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::as_conversions,
-        reason = "float arithmetic on bounded values; no lossless std conversion"
-    )]
     pub fn apply_on_int(&mut self, data: i64) -> i64 {
-        self.apply_on_float(data as f64).round() as i64
+        f64_to_i64_saturating(self.apply_on_float(i64_to_f64(data)).round())
     }
 
     /// Applies the selected noise method on a given date string.

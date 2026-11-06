@@ -472,7 +472,7 @@ impl SlotManager {
             debug!("Logging in session {session_handle} with password");
             let mut pwd_bytes = Zeroizing::new(login_password.as_bytes().to_vec());
 
-            #[expect(unsafe_code)]
+            #[expect(unsafe_code, reason = "PKCS#11 slot/token C calls")]
             // SAFETY: `pwd_bytes` is a live owned buffer of exactly `pwd_bytes.len()` bytes (null when
             // empty), outliving the call; `session_handle` was just returned by `C_OpenSession`.
             let mut rv = unsafe {
@@ -495,7 +495,7 @@ impl SlotManager {
             {
                 let mut username_bytes = Zeroizing::new(username.as_bytes().to_vec());
                 let mut password_bytes = Zeroizing::new(password.as_bytes().to_vec());
-                #[expect(unsafe_code)]
+                #[expect(unsafe_code, reason = "PKCS#11 slot/token C calls")]
                 {
                     // SAFETY: both buffers are live owned vectors passed with their exact
                     // lengths (null when empty) and outlive the `C_LoginUser` call.

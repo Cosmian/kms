@@ -86,7 +86,7 @@ where
         >,
     B: actix_web::body::MessageBody,
 {
-    let req = Operation::Create(Create {
+    let req = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -100,7 +100,7 @@ where
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
     let resp: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::CreateResponse =
         post_2_1(app, &req).await?;
     Ok(resp

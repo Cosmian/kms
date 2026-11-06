@@ -5,6 +5,8 @@ use num_traits::{ToPrimitive, identities::Zero};
 use openssl::symm::{Cipher, Crypter, Mode};
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::crypto::float_conv::{f64_to_usize_saturating, usize_to_f64};
+
 /// AES-256 block length in bytes (NIST SP 800-38G mandates a 128-bit block cipher for FF1).
 const BLOCK_LEN: usize = 16;
 /// AES-256 key length in bytes.
@@ -201,14 +203,8 @@ impl Radix {
             Self::Any { radix, .. } => {
                 // NIST SP 800-38G §6.1 step 6: b = ⌈⌈v × log₂(radix)⌉ / 8⌉
                 // Use exact floating-point log2 to match the spec precisely.
-                #[expect(
-                    clippy::cast_precision_loss,
-                    clippy::cast_sign_loss,
-                    clippy::cast_possible_truncation,
-                    clippy::as_conversions,
-                    reason = "float arithmetic on bounded values; no lossless std conversion"
-                )]
-                let bit_count = (v as f64 * f64::from(radix).log2()).ceil() as usize;
+                let bit_count =
+                    f64_to_usize_saturating((usize_to_f64(v) * f64::from(radix).log2()).ceil());
                 bit_count.div_ceil(8)
             }
             Self::PowerTwo { log_radix, .. } => (v * usize::from(log_radix)).div_ceil(8),
@@ -365,13 +361,9 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
 }
 
 impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
-    // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
-    // to allow line-by-line verification against the specification.
-    #[expect(
-        clippy::many_single_char_names,
-        clippy::min_ident_chars,
-        reason = "names follow NIST SP 800-38G §6"
-    )]
+    // NIST SP 800-38G §6 letters: `len_n`=n, `tweak_len_t`=t, `len_u`=u, `len_v`=v,
+    // `bytes_b`=b, `bytes_d`=d, `block_p`=P, `round`=i, `block_r`=R, `block_s`=S, `num_y`=y,
+    // `len_m`=m, `num_c`=c (A/B/C halves are `x_a`/`x_b`/`x_c`).
     pub(crate) fn encrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
@@ -382,54 +374,53 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         }
         self.radix.check_ns_length(x.numeral_count())?;
 
-        let n = x.numeral_count();
-        let t = tweak.len();
+        let len_n = x.numeral_count();
+        let tweak_len_t = tweak.len();
 
-        if t > MAX_NS_LEN {
+        if tweak_len_t > MAX_NS_LEN {
             return Err(NumeralStringError::TweakTooLong);
         }
 
-        let u = n / 2;
-        let v = n - u;
+        let len_u = len_n / 2;
+        let len_v = len_n - len_u;
 
-        let (mut x_a, mut x_b) = x.split(u);
+        let (mut x_a, mut x_b) = x.split(len_u);
 
-        let b = self.radix.calculate_b(v);
-        let d = 4 * b.div_ceil(4) + 4;
+        let bytes_b = self.radix.calculate_b(len_v);
+        let bytes_d = 4 * bytes_b.div_ceil(4) + 4;
 
-        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
-        let [u_byte, ..] = (u & 0xFF).to_le_bytes();
-        let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
-        let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
-        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
-        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
-        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
-        let p: [u8; 16] = [
-            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
-        ];
+        let block_p = self.header_block(len_n, len_u, tweak_len_t);
 
         let mut prf = Prf::new(&self.key);
-        prf.update(&p)?;
+        prf.update(&block_p)?;
         prf.update(tweak)?;
-        let padding = (16 - (t + b + 1) % 16) % 16;
+        let padding = (16 - (tweak_len_t + bytes_b + 1) % 16) % 16;
         for _ in 0..padding {
             prf.update(&[0])?;
         }
-        for i in 0..FEISTEL_ROUNDS {
+        for round in 0..FEISTEL_ROUNDS {
             let mut prf = prf.clone();
-            prf.update(&[i])?;
-            prf.update(x_b.num_radix(self.radix.to_u32()).to_bytes(b).as_ref())?;
-            let r = *prf.output();
+            prf.update(&[round])?;
+            prf.update(
+                x_b.num_radix(self.radix.to_u32())
+                    .to_bytes(bytes_b)
+                    .as_ref(),
+            )?;
+            let block_r = *prf.output();
 
-            let s = generate_s(&self.key, &r, d)?;
-            let y = NS::Num::from_bytes(s.into_iter());
-            let m = if i.is_multiple_of(2) { u } else { v };
+            let block_s = generate_s(&self.key, &block_r, bytes_d)?;
+            let num_y = NS::Num::from_bytes(block_s.into_iter());
+            let len_m = if round.is_multiple_of(2) {
+                len_u
+            } else {
+                len_v
+            };
 
-            let c = x_a
-                .num_radix(self.radix.to_u32())
-                .add_mod_exp(y, self.radix.to_u32(), m);
+            let num_c =
+                x_a.num_radix(self.radix.to_u32())
+                    .add_mod_exp(num_y, self.radix.to_u32(), len_m);
 
-            let x_c = NS::str_radix(c, self.radix.to_u32(), m);
+            let x_c = NS::str_radix(num_c, self.radix.to_u32(), len_m);
 
             x_a = x_b;
             x_b = x_c;
@@ -438,13 +429,21 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         Ok(NS::concat(x_a, x_b))
     }
 
-    // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
-    // to allow line-by-line verification against the specification.
-    #[expect(
-        clippy::many_single_char_names,
-        clippy::min_ident_chars,
-        reason = "names follow NIST SP 800-38G §6"
-    )]
+    /// Builds the 16-byte FF1 header block P (NIST SP 800-38G §6 step 5).
+    fn header_block(&self, len_n: usize, len_u: usize, tweak_len_t: usize) -> [u8; 16] {
+        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
+        let [u_byte, ..] = (len_u & 0xFF).to_le_bytes();
+        let n_u32 = u32::try_from(len_n).unwrap_or(u32::MAX);
+        let t_u32 = u32::try_from(tweak_len_t).unwrap_or(u32::MAX);
+        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
+        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
+        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
+        [
+            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
+        ]
+    }
+
+    // Same NIST SP 800-38G §6 letter mapping as `encrypt`.
     pub(crate) fn decrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
@@ -455,55 +454,53 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         }
         self.radix.check_ns_length(x.numeral_count())?;
 
-        let n = x.numeral_count();
-        let t = tweak.len();
+        let len_n = x.numeral_count();
+        let tweak_len_t = tweak.len();
 
-        if t > MAX_NS_LEN {
+        if tweak_len_t > MAX_NS_LEN {
             return Err(NumeralStringError::TweakTooLong);
         }
 
-        let u = n / 2;
-        let v = n - u;
+        let len_u = len_n / 2;
+        let len_v = len_n - len_u;
 
-        let (mut x_a, mut x_b) = x.split(u);
+        let (mut x_a, mut x_b) = x.split(len_u);
 
-        let b = self.radix.calculate_b(v);
-        let d = 4 * b.div_ceil(4) + 4;
+        let bytes_b = self.radix.calculate_b(len_v);
+        let bytes_d = 4 * bytes_b.div_ceil(4) + 4;
 
-        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
-        let [u_byte, ..] = (u & 0xFF).to_le_bytes();
-        let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
-        let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
-        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
-        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
-        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
-        let p: [u8; 16] = [
-            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
-        ];
+        let block_p = self.header_block(len_n, len_u, tweak_len_t);
 
         let mut prf = Prf::new(&self.key);
-        prf.update(&p)?;
+        prf.update(&block_p)?;
         prf.update(tweak)?;
-        let padding = (16 - (t + b + 1) % 16) % 16;
+        let padding = (16 - (tweak_len_t + bytes_b + 1) % 16) % 16;
         for _ in 0..padding {
             prf.update(&[0])?;
         }
-        for i in 0..FEISTEL_ROUNDS {
-            let i = FEISTEL_ROUNDS - 1 - i;
+        for round in (0..FEISTEL_ROUNDS).rev() {
             let mut prf = prf.clone();
-            prf.update(&[i])?;
-            prf.update(x_a.num_radix(self.radix.to_u32()).to_bytes(b).as_ref())?;
-            let r = *prf.output();
+            prf.update(&[round])?;
+            prf.update(
+                x_a.num_radix(self.radix.to_u32())
+                    .to_bytes(bytes_b)
+                    .as_ref(),
+            )?;
+            let block_r = *prf.output();
 
-            let s = generate_s(&self.key, &r, d)?;
-            let y = NS::Num::from_bytes(s.into_iter());
-            let m = if i.is_multiple_of(2) { u } else { v };
+            let block_s = generate_s(&self.key, &block_r, bytes_d)?;
+            let num_y = NS::Num::from_bytes(block_s.into_iter());
+            let len_m = if round.is_multiple_of(2) {
+                len_u
+            } else {
+                len_v
+            };
 
-            let c = x_b
-                .num_radix(self.radix.to_u32())
-                .sub_mod_exp(y, self.radix.to_u32(), m);
+            let num_c =
+                x_b.num_radix(self.radix.to_u32())
+                    .sub_mod_exp(num_y, self.radix.to_u32(), len_m);
 
-            let x_c = NS::str_radix(c, self.radix.to_u32(), m);
+            let x_c = NS::str_radix(num_c, self.radix.to_u32(), len_m);
 
             x_b = x_a;
             x_a = x_c;

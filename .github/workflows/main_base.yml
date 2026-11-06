@@ -176,6 +176,9 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
+      - name: Check AI instruction consistency
+        run: mise run docs:check-ai
+
       - name: Build documentation
         env:
           # Turns on the combined public docs build; empty on fork PRs

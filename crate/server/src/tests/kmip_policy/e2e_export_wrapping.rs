@@ -47,7 +47,7 @@ where
     ) -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Operation
     {
         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Operation::Create(
-            Create {
+            Box::new(Create {
                 object_type: ObjectType::SymmetricKey,
                 attributes: Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -63,7 +63,7 @@ where
                     ..Default::default()
                 },
                 protection_storage_masks: None,
-            },
+            }),
         )
     }
 

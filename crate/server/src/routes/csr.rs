@@ -159,7 +159,10 @@ pub(crate) async fn post_csr(
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod tests {
     use actix_web::{App, test};
 

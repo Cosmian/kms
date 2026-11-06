@@ -33,7 +33,6 @@ pub fn oid_string(nid: Nid) -> Result<String, ErrorStack> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

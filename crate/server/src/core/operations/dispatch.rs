@@ -35,37 +35,37 @@ use crate::{
 /// `Operation::$Response`.
 macro_rules! op {
     ($ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
+        let req = from_ttlv::<$Req>(&$ttlv)?;
         let resp = $kms.$method(req, $user).await?;
         Operation::$Resp(resp)
     }};
     // Variant for operations returning a boxed response
     (boxed $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
+        let req = from_ttlv::<$Req>(&$ttlv)?;
         let resp = $kms.$method(req, $user).await?;
         Operation::$Resp(Box::new(resp))
     }};
     // Variant for operations that need Box::pin (deep recursion)
     (pin $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
+        let req = from_ttlv::<$Req>(&$ttlv)?;
         let resp = Box::pin($kms.$method(req, $user)).await?;
         Operation::$Resp(resp)
     }};
     // Variant for free functions: fn(kms, req, user) -> Result<Resp>
     (fn $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
+        let req = from_ttlv::<$Req>(&$ttlv)?;
         let resp = $func($kms, req, $user).await?;
         Operation::$Resp(resp)
     }};
     // Variant for free functions with Box::pin
     (pin_fn $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
+        let req = from_ttlv::<$Req>(&$ttlv)?;
         let resp = Box::pin($func($kms, req, $user)).await?;
         Operation::$Resp(resp)
     }};
     // Variant for infallible KMS methods (no `?`)
     (infallible $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
+        let req = from_ttlv::<$Req>(&$ttlv)?;
         let resp = $kms.$method(req, $user).await;
         Operation::$Resp(resp)
     }};
@@ -272,7 +272,7 @@ async fn dispatch_inner(
         }
         Op::Encrypt => op!(ttlv, kms, user, Encrypt, encrypt, EncryptResponse),
         Op::Export => op!(boxed ttlv, kms, user, Export, export, ExportResponse),
-        Op::Get => op!(ttlv, kms, user, Get, get, GetResponse),
+        Op::Get => op!(boxed ttlv, kms, user, Get, get, GetResponse),
         Op::GetAttributeList => {
             op!(pin_fn ttlv, kms, user, GetAttributeList, get_attribute_list, GetAttributeListResponse)
         }
@@ -291,7 +291,7 @@ async fn dispatch_inner(
         Op::RNGSeed => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
         Op::Import => op!(ttlv, kms, user, Import, import, ImportResponse),
         Op::Interop => {
-            drop(from_ttlv::<Interop>(ttlv)?);
+            drop(from_ttlv::<Interop>(&ttlv)?);
             super::message::process_interop_operation()?
         }
         Op::JoinSplitKey => {
@@ -305,26 +305,26 @@ async fn dispatch_inner(
             )
         }
         Op::Locate => op!(ttlv, kms, user, Locate, locate, LocateResponse),
-        Op::Log => super::message::process_log_operation(from_ttlv::<Log>(ttlv)?, user)?,
+        Op::Log => super::message::process_log_operation(from_ttlv::<Log>(&ttlv)?, user)?,
         Op::Login => {
-            Operation::LoginResponse(super::login::login(kms, &from_ttlv::<Login>(ttlv)?, user)?)
+            Operation::LoginResponse(super::login::login(kms, &from_ttlv::<Login>(&ttlv)?, user)?)
         }
         Op::Logout => Operation::LogoutResponse(super::login::logout(
             kms,
-            &from_ttlv::<Logout>(ttlv)?,
+            &from_ttlv::<Logout>(&ttlv)?,
             user,
         )?),
         Op::SetConstraints => Operation::SetConstraintsResponse(
-            super::constraints::set_constraints(kms, from_ttlv::<SetConstraints>(ttlv)?, user)?,
+            super::constraints::set_constraints(kms, from_ttlv::<SetConstraints>(&ttlv)?, user)?,
         ),
         Op::GetConstraints => {
             // The payload is empty: decoding only validates it.
-            from_ttlv::<GetConstraints>(ttlv)?;
+            from_ttlv::<GetConstraints>(&ttlv)?;
             Operation::GetConstraintsResponse(super::constraints::get_constraints(kms))
         }
         Op::Ping => {
             // The payload is empty: decoding only validates it.
-            from_ttlv::<Ping>(ttlv)?;
+            from_ttlv::<Ping>(&ttlv)?;
             Operation::PingResponse(PingResponse)
         }
         Op::MAC => op!(ttlv, kms, user, MAC, mac, MACResponse),
@@ -333,7 +333,7 @@ async fn dispatch_inner(
         }
         Op::PKCS11 => op!(ttlv, kms, user, PKCS11, pkcs11, PKCS11Response),
         Op::Query => {
-            Operation::QueryResponse(Box::new(kms.query(from_ttlv::<Query>(ttlv)?).await?))
+            Operation::QueryResponse(Box::new(kms.query(from_ttlv::<Query>(&ttlv)?).await?))
         }
         Op::ModifyAttribute => {
             op!(

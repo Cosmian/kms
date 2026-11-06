@@ -1498,14 +1498,14 @@ async fn test_derive_key_x25519_validation_failures_create_no_object() -> KResul
                     recommended_curve: RecommendedCurve::CURVE25519,
                     q_string: bob_public.clone(),
                 },
-                attributes: Some(x25519_import_attributes(
+                attributes: Some(Box::new(x25519_import_attributes(
                     "missing-curve-public",
                     ObjectType::PublicKey,
                     None,
                     CryptographicUsageMask::KeyAgreement,
                     KeyFormatType::TransparentECPublicKey,
                     false,
-                )),
+                ))),
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
             cryptographic_length: Some(256),

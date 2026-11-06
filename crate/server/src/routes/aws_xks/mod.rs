@@ -56,17 +56,13 @@ impl TryFrom<AwsXksConfig> for AwsXksParams {
 
     fn try_from(config: AwsXksConfig) -> Result<Self, Self::Error> {
         Ok(Self {
-            region: config
-                .aws_xks_region
-                .context("AWS XKS region is required")?,
-            service: config
-                .aws_xks_service
-                .context("AWS XKS service is required")?,
+            region: config.region.context("AWS XKS region is required")?,
+            service: config.service.context("AWS XKS service is required")?,
             sigv4_access_key_id: config
-                .aws_xks_sigv4_access_key_id
+                .sigv4_access_key_id
                 .context("AWS XKS SigV4 access key ID is required")?,
             sigv4_secret_access_key: config
-                .aws_xks_sigv4_secret_access_key
+                .sigv4_secret_access_key
                 .context("AWS XKS SigV4 secret access key is required")?,
         })
     }
@@ -96,62 +92,38 @@ mod characterization_tests {
     #[test]
     fn characterization_xks_error_reply_status_and_body_per_variant() {
         let cases = [
+            (XksErrorName::Validation, 401_u16, "ValidationException"),
+            (XksErrorName::InvalidState, 401, "InvalidStateException"),
             (
-                XksErrorName::ValidationException,
-                401_u16,
-                "ValidationException",
-            ),
-            (
-                XksErrorName::InvalidStateException,
-                401,
-                "InvalidStateException",
-            ),
-            (
-                XksErrorName::InvalidCiphertextException,
+                XksErrorName::InvalidCiphertext,
                 401,
                 "InvalidCiphertextException",
             ),
             (
-                XksErrorName::InvalidKeyUsageException,
+                XksErrorName::InvalidKeyUsage,
                 401,
                 "InvalidKeyUsageException",
             ),
             (
-                XksErrorName::AuthenticationFailedException,
+                XksErrorName::AuthenticationFailed,
                 401,
                 "AuthenticationFailedException",
             ),
+            (XksErrorName::AccessDenied, 403, "AccessDeniedException"),
+            (XksErrorName::KeyNotFound, 418, "KeyNotFoundException"),
+            (XksErrorName::InvalidUriPath, 404, "InvalidUriPathException"),
+            (XksErrorName::Throttling, 429, "ThrottlingException"),
             (
-                XksErrorName::AccessDeniedException,
-                403,
-                "AccessDeniedException",
-            ),
-            (
-                XksErrorName::KeyNotFoundException,
-                418,
-                "KeyNotFoundException",
-            ),
-            (
-                XksErrorName::InvalidUriPathException,
-                404,
-                "InvalidUriPathException",
-            ),
-            (
-                XksErrorName::ThrottlingException,
-                429,
-                "ThrottlingException",
-            ),
-            (
-                XksErrorName::UnsupportedOperationException,
+                XksErrorName::UnsupportedOperation,
                 501,
                 "UnsupportedOperationException",
             ),
             (
-                XksErrorName::DependencyTimeoutException,
+                XksErrorName::DependencyTimeout,
                 503,
                 "DependencyTimeoutException",
             ),
-            (XksErrorName::InternalException, 500, "InternalException"),
+            (XksErrorName::Internal, 500, "InternalException"),
         ];
         for (name, status, label) in cases {
             let r = reply(name, Some("msg"));
@@ -165,7 +137,7 @@ mod characterization_tests {
                 format!(r#"XksErrorReply {{ errorName: {label}, errorMessage: Some("msg") }}"#)
             );
         }
-        let none = reply(XksErrorName::InternalException, None);
+        let none = reply(XksErrorName::Internal, None);
         assert_eq!(
             serde_json::to_string(&none).unwrap(),
             r#"{"errorName":"InternalException","errorMessage":null}"#
@@ -176,14 +148,14 @@ mod characterization_tests {
     fn characterization_xks_json_error_handler_deserialize_and_other() {
         let req = actix_test::TestRequest::default().to_http_request();
         let de = JsonPayloadError::Deserialize(serde_json::from_str::<u8>("x").unwrap_err());
-        let err = xks_json_error_handler(de, &req);
+        let err = xks_json_error_handler(&de, &req);
         assert_eq!(err.as_response_error().status_code().as_u16(), 500);
         assert_eq!(err.error_response().status().as_u16(), 401);
         assert_eq!(
             err.to_string(),
             r#"XksErrorReply { errorName: ValidationException, errorMessage: Some("JSON deserialize error: expected value at line 1 column 1") }"#
         );
-        let err = xks_json_error_handler(JsonPayloadError::ContentType, &req);
+        let err = xks_json_error_handler(&JsonPayloadError::ContentType, &req);
         assert_eq!(
             err.to_string(),
             r#"XksErrorReply { errorName: ValidationException, errorMessage: Some("Unknown error") }"#
@@ -244,12 +216,12 @@ mod characterization_tests {
         let keys = GetKeyMetadataResponse {
             keySpec: "AES_256".to_owned(),
             keyUsage: vec![
-                KeyUsage::ENCRYPT,
-                KeyUsage::DECRYPT,
-                KeyUsage::SIGN,
-                KeyUsage::VERIFY,
-                KeyUsage::WRAP,
-                KeyUsage::UNWRAP,
+                KeyUsage::Encrypt,
+                KeyUsage::Decrypt,
+                KeyUsage::Sign,
+                KeyUsage::Verify,
+                KeyUsage::Wrap,
+                KeyUsage::Unwrap,
             ],
             keyStatus: "ENABLED".to_owned(),
         };

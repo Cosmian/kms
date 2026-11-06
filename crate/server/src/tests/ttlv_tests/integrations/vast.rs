@@ -83,7 +83,7 @@ fn create_aes_256_key(client: &SocketClient) -> String {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
@@ -102,7 +102,7 @@ fn create_aes_256_key(client: &SocketClient) -> String {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -140,7 +140,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Activate,
                 ephemeral: None,
@@ -150,7 +150,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -183,7 +183,7 @@ fn create_aes_256_key_with_mask(client: &SocketClient, mask: CryptographicUsageM
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
@@ -200,7 +200,7 @@ fn create_aes_256_key_with_mask(client: &SocketClient, mask: CryptographicUsageM
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -242,7 +242,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Revoke,
                 ephemeral: None,
@@ -257,7 +257,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -290,7 +290,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Destroy,
                 ephemeral: None,
@@ -300,7 +300,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     drop(
@@ -325,7 +325,7 @@ fn create_aes_256_key_with_name(client: &SocketClient, key_name: &str) -> String
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
@@ -348,7 +348,7 @@ fn create_aes_256_key_with_name(client: &SocketClient, key_name: &str) -> String
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -400,7 +400,7 @@ fn test_vast_rekey_aes_key() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::ReKey,
                 ephemeral: None,
@@ -412,7 +412,7 @@ fn test_vast_rekey_aes_key() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -484,7 +484,7 @@ fn test_vast_check_aes_key() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Check,
                 ephemeral: None,
@@ -497,7 +497,7 @@ fn test_vast_check_aes_key() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -565,7 +565,7 @@ fn test_vast_derive_key_request_parsed() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OpEnum::DeriveKey,
                 ephemeral: None,
@@ -587,7 +587,7 @@ fn test_vast_derive_key_request_parsed() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -662,7 +662,7 @@ fn test_vast_recertify_request_parsed() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OpEnum::ReCertify,
                 ephemeral: None,
@@ -676,7 +676,7 @@ fn test_vast_recertify_request_parsed() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let ttlv = to_ttlv(&request_message).expect("ReCertify: TTLV serialisation failed");
@@ -687,7 +687,7 @@ fn test_vast_recertify_request_parsed() {
     let response_ttlv =
         TTLV::from_bytes(&raw_response, KmipFlavor::Kmip1).expect("ReCertify: TTLV parse failed");
     let response: ResponseMessage =
-        from_ttlv(response_ttlv).expect("ReCertify: ResponseMessage deserialise failed");
+        from_ttlv(&response_ttlv).expect("ReCertify: ResponseMessage deserialise failed");
     let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
     else {
         panic!("ReCertify: expected V14 batch item");
@@ -768,7 +768,7 @@ fn test_vast_get_dek_wrapped_by_kek() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OpEnum::Get,
                 ephemeral: None,
@@ -795,7 +795,7 @@ fn test_vast_get_dek_wrapped_by_kek() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let wrapped_response = client
@@ -849,7 +849,7 @@ fn test_vast_get_dek_wrapped_by_kek() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OpEnum::Get,
                 ephemeral: None,
@@ -863,7 +863,7 @@ fn test_vast_get_dek_wrapped_by_kek() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let kek_response = client
@@ -977,7 +977,7 @@ fn test_vast_workflow_create_locate_get_attributes() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
@@ -995,7 +995,7 @@ fn test_vast_workflow_create_locate_get_attributes() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let locate_response = client
@@ -1037,7 +1037,7 @@ fn test_vast_workflow_create_locate_get_attributes() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -1048,7 +1048,7 @@ fn test_vast_workflow_create_locate_get_attributes() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let attrs_response = client
@@ -1131,7 +1131,7 @@ fn test_vast_opn_add_attribute_persistence() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
@@ -1142,7 +1142,7 @@ fn test_vast_opn_add_attribute_persistence() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let add_response = client
@@ -1175,7 +1175,7 @@ fn test_vast_opn_add_attribute_persistence() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -1189,7 +1189,7 @@ fn test_vast_opn_add_attribute_persistence() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let attrs_response = client
@@ -1278,7 +1278,7 @@ fn test_vast_opn_survives_rekey() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
@@ -1292,7 +1292,7 @@ fn test_vast_opn_survives_rekey() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let resp = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_name_request)
@@ -1316,7 +1316,7 @@ fn test_vast_opn_survives_rekey() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
@@ -1327,7 +1327,7 @@ fn test_vast_opn_survives_rekey() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let resp = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_opn_request)
@@ -1354,7 +1354,7 @@ fn test_vast_opn_survives_rekey() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::ReKey,
                 ephemeral: None,
@@ -1366,7 +1366,7 @@ fn test_vast_opn_survives_rekey() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let rekey_response = client
@@ -1401,7 +1401,7 @@ fn test_vast_opn_survives_rekey() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -1416,7 +1416,7 @@ fn test_vast_opn_survives_rekey() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let attrs_response = client
@@ -1512,7 +1512,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::AddAttribute,
                     ephemeral: None,
@@ -1526,7 +1526,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                     }),
                     message_extension: None,
                 },
-            )],
+            ))],
         };
         let resp = client
             .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_name_request)
@@ -1554,7 +1554,7 @@ fn test_vast_multi_key_locate_after_rekey() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::ReKey,
                 ephemeral: None,
@@ -1566,7 +1566,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let rekey_response = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &rekey_request)
@@ -1594,7 +1594,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::Locate,
                     ephemeral: None,
@@ -1612,7 +1612,7 @@ fn test_vast_multi_key_locate_after_rekey() {
                     }),
                     message_extension: None,
                 },
-            )],
+            ))],
         };
 
         let locate_response = client
@@ -1690,7 +1690,7 @@ fn test_vast_opn_returned_in_default_get_attributes() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
@@ -1701,7 +1701,7 @@ fn test_vast_opn_returned_in_default_get_attributes() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let resp = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_opn_request)
@@ -1728,7 +1728,7 @@ fn test_vast_opn_returned_in_default_get_attributes() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -1739,7 +1739,7 @@ fn test_vast_opn_returned_in_default_get_attributes() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let attrs_response = client

@@ -52,7 +52,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -66,7 +66,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

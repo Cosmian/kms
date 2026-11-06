@@ -589,7 +589,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey { key },
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -680,7 +680,7 @@ pub(crate) async fn kms_import_object_async(
             key_format_type: KeyFormatType::Raw,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::new(secret_data_value)),
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             }),
             key_compression_type: None,
             cryptographic_algorithm: None,

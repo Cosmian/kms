@@ -128,12 +128,12 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
                 ..Default::default()
             },
             batch_item: vec![
-                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                    Operation::Create(batch_create),
-                )),
-                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                    Operation::Create(Box::new(batch_create)),
+                ))),
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                     Operation::Locate(Box::default()),
-                )),
+                ))),
             ],
         };
         let _batch_resp = post_kmip_json(&app, &batch_request).await?;
@@ -329,9 +329,9 @@ fn single_op_message(op: Operation) -> RequestMessage {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(op),
-        )],
+        ))],
     }
 }
 
@@ -386,7 +386,7 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
         )?;
         let create_response = post_kmip_binary(
             &app,
-            &single_op_message(Operation::Create(create_request)),
+            &single_op_message(Operation::Create(Box::new(create_request))),
             KmipFlavor::Kmip2,
         )
         .await?;
@@ -456,12 +456,12 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
                 ..Default::default()
             },
             batch_item: vec![
-                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                    Operation::Create(batch_create),
-                )),
-                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                    Operation::Create(Box::new(batch_create)),
+                ))),
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                     Operation::Locate(Box::default()),
-                )),
+                ))),
             ],
         };
         let _batch_resp = post_kmip_binary(&app, &batch_request, KmipFlavor::Kmip2).await?;

@@ -234,7 +234,7 @@ impl HsmLib {
     where
         P: AsRef<std::ffi::OsStr>,
     {
-        #[expect(unsafe_code)]
+        #[expect(unsafe_code, reason = "dynamic library loading and PKCS#11 symbol FFI")]
         unsafe {
             let library = Library::new(path)?;
 

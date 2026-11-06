@@ -2199,8 +2199,9 @@ async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
     let kms = ceremony_kms(officers.iter().map(|o| (*o).to_owned()).collect()).await?;
     let key_uid = create_key(&kms, provisioner).await?;
 
-    let item =
-        |operation| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(operation));
+    let item = |operation| {
+        RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(operation)))
+    };
     let response = kms
         .message(
             RequestMessage {
@@ -2214,7 +2215,7 @@ async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
                     ..Default::default()
                 },
                 batch_item: vec![
-                    item(Operation::CreateSplitKey(CreateSplitKey {
+                    item(Operation::CreateSplitKey(Box::new(CreateSplitKey {
                         object_type: ObjectType::SymmetricKey,
                         unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
                         split_key_parts: 3,
@@ -2223,7 +2224,7 @@ async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
                         prime_field_size: None,
                         attributes: None,
                         protection_storage_masks: None,
-                    })),
+                    }))),
                     item(Operation::Get(Get {
                         unique_identifier: Some(UniqueIdentifier::TextString(
                             "undo-ceremony-missing".to_owned(),

@@ -31,16 +31,12 @@ use crate::{
 /// case, the tag is the name of the variant.
 ///
 /// #see `Object::post_fix()`
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "public API taken by value by ~160 call sites; the deserializer borrows it internally"
-)]
-pub fn from_ttlv<'a, T>(s: TTLV) -> Result<T>
+pub fn from_ttlv<'a, T>(s: &TTLV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
     trace!("from_ttlv: {s:?}");
-    let mut deserializer = TtlvDeserializer::from_ttlv(&s);
+    let mut deserializer = TtlvDeserializer::from_ttlv(s);
     T::deserialize(&mut deserializer)
 }
 

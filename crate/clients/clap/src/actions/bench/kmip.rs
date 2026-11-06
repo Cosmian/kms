@@ -1,8 +1,3 @@
-#![expect(
-    clippy::expect_used,
-    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
-)]
-
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 #[cfg(feature = "non-fips")]
@@ -44,7 +39,6 @@ use zeroize::Zeroizing;
 use super::helpers::{
     aes_gcm_siv_params, bench_uid, chacha20_params, kem_params, remove_leftover_key,
     rsa_pkcs15_params, try_create_ec_kp_no_fips, try_create_pqc_kp, try_create_sym_key,
-    with_private_key_uid,
 };
 use super::{
     helpers::{
@@ -52,26 +46,27 @@ use super::{
         create_sym_key, hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
         rsa_kwp_params, rsa_oaep_params, rsa_oaep_sha1_params, try_create_ec_kp,
         try_create_hsm_ec_kp, try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks,
-        with_fips_rsa_masks,
+        with_fips_rsa_masks, with_private_key_uid,
     },
     transport::{Transport, bench_message_id, bench_op, bench_op_id, timed_group},
     types::bench_ko,
 };
+use crate::error::result::{KmsCliResult, KmsCliResultHelper as _};
 
 pub(super) fn bench_encrypt(
     c: &mut Criterion,
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
-    bench_encrypt_aes_gcm(c, client, rt, transport);
-    bench_encrypt_aes_xts(c, client, rt, transport);
+) -> KmsCliResult<()> {
+    bench_encrypt_aes_gcm(c, client, rt, transport)?;
+    bench_encrypt_aes_xts(c, client, rt, transport)?;
 
     #[cfg(feature = "non-fips")]
-    bench_encrypt_aes_gcm_siv(c, client, rt, transport);
+    bench_encrypt_aes_gcm_siv(c, client, rt, transport)?;
 
     #[cfg(feature = "non-fips")]
-    bench_encrypt_chacha20(c, client, rt, transport);
+    bench_encrypt_chacha20(c, client, rt, transport)?;
 
     bench_rsa_encrypt_family(
         c,
@@ -81,7 +76,7 @@ pub(super) fn bench_encrypt(
         "rsa-oaep",
         &rsa_oaep_params(),
         &[4096],
-    );
+    )?;
 
     bench_rsa_encrypt_family(
         c,
@@ -91,7 +86,7 @@ pub(super) fn bench_encrypt(
         "rsa-aes-kwp",
         &rsa_kwp_params(),
         &[4096],
-    );
+    )?;
 
     #[cfg(feature = "non-fips")]
     bench_rsa_encrypt_family(
@@ -102,22 +97,23 @@ pub(super) fn bench_encrypt(
         "rsa-pkcs1v15",
         &rsa_pkcs15_params(),
         &[4096],
-    );
+    )?;
 
     #[cfg(feature = "non-fips")]
-    bench_encrypt_ecies(c, client, rt, transport);
+    bench_encrypt_ecies(c, client, rt, transport)?;
 
     #[cfg(feature = "non-fips")]
-    bench_encrypt_salsa(c, client, rt, transport);
+    bench_encrypt_salsa(c, client, rt, transport)?;
 
     #[cfg(feature = "non-fips")]
-    bench_encrypt_covercrypt(c, client, rt, transport);
+    bench_encrypt_covercrypt(c, client, rt, transport)?;
 
     #[cfg(feature = "non-fips")]
-    bench_kem(c, client, rt, transport);
+    bench_kem(c, client, rt, transport)?;
 
     #[cfg(feature = "non-fips")]
-    bench_pqc_kem(c, client, rt, transport);
+    bench_pqc_kem(c, client, rt, transport)?;
+    Ok(())
 }
 
 pub(super) fn bench_encrypt_aes_gcm(
@@ -125,7 +121,7 @@ pub(super) fn bench_encrypt_aes_gcm(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/encrypt/aes-gcm"));
     let params = aes_gcm_params();
@@ -137,7 +133,7 @@ pub(super) fn bench_encrypt_aes_gcm(
             &format!("encrypt-aes-gcm-{bits}"),
             bits,
             CryptographicAlgorithm::AES,
-        );
+        )?;
 
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
@@ -160,7 +156,7 @@ pub(super) fn bench_encrypt_aes_gcm(
             bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req)),
-        );
+        )?;
 
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
@@ -178,9 +174,10 @@ pub(super) fn bench_encrypt_aes_gcm(
             bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
@@ -189,7 +186,7 @@ pub(super) fn bench_encrypt_chacha20(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let Some(key_id) = try_create_sym_key(
         rt,
@@ -200,7 +197,7 @@ pub(super) fn bench_encrypt_chacha20(
     ) else {
         eprintln!("[bench] ChaCha20 not supported by server, skipping");
         bench_ko(format!("{slug}/encrypt/chacha20-poly1305"));
-        return;
+        return Ok(());
     };
 
     let mut group = timed_group(c, format!("{slug}/encrypt/chacha20-poly1305"));
@@ -219,11 +216,11 @@ pub(super) fn bench_encrypt_chacha20(
         transport,
         "encrypt/256",
         Operation::Encrypt(Box::new(enc_req.clone())),
-    );
+    )?;
 
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
-        .expect("pre-encrypt for decrypt setup");
+        .context("pre-encrypt for decrypt setup")?;
     let dec_req = Decrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(params),
@@ -239,8 +236,9 @@ pub(super) fn bench_encrypt_chacha20(
         transport,
         "decrypt/256",
         Operation::Decrypt(Box::new(dec_req)),
-    );
+    )?;
     group.finish();
+    Ok(())
 }
 
 fn bench_rsa_encrypt_family(
@@ -251,11 +249,12 @@ fn bench_rsa_encrypt_family(
     label: &str,
     params: &CryptographicParameters,
     key_sizes: &[usize],
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/encrypt/{label}"));
     for &bits in key_sizes {
-        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("encrypt-{label}-{bits}"), bits);
+        let (pub_id, priv_id) =
+            create_rsa_kp(rt, client, &format!("encrypt-{label}-{bits}"), bits)?;
         let pub_str = pub_id.to_string();
 
         // Test that the algorithm is actually supported by the server
@@ -267,7 +266,7 @@ fn bench_rsa_encrypt_family(
             None,
             Some(params.clone()),
         )
-        .expect("encrypt request");
+        .context("encrypt request")?;
         if rt.block_on(client.encrypt(test_req)).is_err() {
             eprintln!("[bench] {label}-{bits} not supported by server, skipping");
             bench_ko(format!("{slug}/encrypt/{label}"));
@@ -282,7 +281,7 @@ fn bench_rsa_encrypt_family(
             None,
             Some(params.clone()),
         )
-        .expect("encrypt request");
+        .context("encrypt request")?;
         bench_op_id(
             &mut group,
             client,
@@ -291,11 +290,11 @@ fn bench_rsa_encrypt_family(
             bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req.clone())),
-        );
+        )?;
 
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
-            .expect("pre-encrypt for decrypt");
+            .context("pre-encrypt for decrypt")?;
         let ct = enc_resp.data.unwrap_or_default();
         let dec_req = Decrypt {
             unique_identifier: Some(priv_id),
@@ -311,9 +310,10 @@ fn bench_rsa_encrypt_family(
             bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 pub(super) fn bench_encrypt_aes_xts(
@@ -321,7 +321,7 @@ pub(super) fn bench_encrypt_aes_xts(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/encrypt/aes-xts"));
     let params = aes_xts_params();
@@ -334,7 +334,7 @@ pub(super) fn bench_encrypt_aes_xts(
             &format!("encrypt-aes-xts-{label}"),
             bits,
             CryptographicAlgorithm::AES,
-        );
+        )?;
 
         // AES-XTS needs a 16-byte tweak as IV
         let enc_req = Encrypt {
@@ -360,11 +360,11 @@ pub(super) fn bench_encrypt_aes_xts(
             label,
             BenchmarkId::new("encrypt", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
-        );
+        )?;
 
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
-            .expect("pre-encrypt for decrypt setup");
+            .context("pre-encrypt for decrypt setup")?;
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
@@ -380,9 +380,10 @@ pub(super) fn bench_encrypt_aes_xts(
             label,
             BenchmarkId::new("decrypt", label),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
@@ -391,7 +392,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/encrypt/aes-gcm-siv"));
     let params = aes_gcm_siv_params();
@@ -403,7 +404,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             &format!("encrypt-aes-gcm-siv-{bits}"),
             bits,
             CryptographicAlgorithm::AES,
-        );
+        )?;
 
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
@@ -426,11 +427,11 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             bits.to_string(),
             BenchmarkId::new("encrypt", bits),
             Operation::Encrypt(Box::new(enc_req.clone())),
-        );
+        )?;
 
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
-            .expect("pre-encrypt for decrypt setup");
+            .context("pre-encrypt for decrypt setup")?;
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
@@ -447,9 +448,10 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
             bits.to_string(),
             BenchmarkId::new("decrypt", bits),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
@@ -458,7 +460,7 @@ pub(super) fn bench_encrypt_ecies(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/encrypt/ecies"));
 
@@ -477,7 +479,7 @@ pub(super) fn bench_encrypt_ecies(
         let pub_str = pub_id.to_string();
 
         let enc_req = encrypt_request(&pub_str, None, vec![0x42_u8; 64], None, None, None)
-            .expect("encrypt request");
+            .context("encrypt request")?;
 
         if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
             eprintln!("[bench] ECIES {label} encrypt failed, skipping");
@@ -493,11 +495,11 @@ pub(super) fn bench_encrypt_ecies(
             label,
             BenchmarkId::new("encrypt", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
-        );
+        )?;
 
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
-            .expect("pre-encrypt for decrypt");
+            .context("pre-encrypt for decrypt")?;
         let ct = enc_resp.data.unwrap_or_default();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
@@ -508,9 +510,10 @@ pub(super) fn bench_encrypt_ecies(
             label,
             BenchmarkId::new("decrypt", label),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
@@ -519,24 +522,24 @@ pub(super) fn bench_encrypt_salsa(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let Some((pub_id, priv_id)) =
         try_create_ec_kp_no_fips(rt, client, "encrypt-salsa", RecommendedCurve::CURVE25519)
     else {
         eprintln!("[bench] Salsa Sealed Box (X25519) not supported by server, skipping");
         bench_ko(format!("{slug}/encrypt/salsa-sealed-box"));
-        return;
+        return Ok(());
     };
     let pub_str = pub_id.to_string();
 
     let enc_req = encrypt_request(&pub_str, None, vec![0x42_u8; 64], None, None, None)
-        .expect("encrypt request");
+        .context("encrypt request")?;
 
     if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
         eprintln!("[bench] Salsa Sealed Box encrypt failed, skipping");
         bench_ko(format!("{slug}/encrypt/salsa-sealed-box"));
-        return;
+        return Ok(());
     }
 
     let mut group = timed_group(c, format!("{slug}/encrypt/salsa-sealed-box"));
@@ -547,11 +550,11 @@ pub(super) fn bench_encrypt_salsa(
         transport,
         "encrypt",
         Operation::Encrypt(Box::new(enc_req.clone())),
-    );
+    )?;
 
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
-        .expect("pre-encrypt for decrypt");
+        .context("pre-encrypt for decrypt")?;
     let ct = enc_resp.data.unwrap_or_default();
     let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
     bench_op(
@@ -561,8 +564,9 @@ pub(super) fn bench_encrypt_salsa(
         transport,
         "decrypt",
         Operation::Decrypt(Box::new(dec_req)),
-    );
+    )?;
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
@@ -571,7 +575,7 @@ pub(super) fn bench_encrypt_covercrypt(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let access_structure =
         r#"{"Department": ["RnD", "HR"], "Security Level::<": ["Protected", "Confidential"]}"#;
@@ -626,7 +630,7 @@ pub(super) fn bench_encrypt_covercrypt(
         Err(e) => {
             eprintln!("[bench] Covercrypt not supported by server: {e}, skipping");
             bench_ko(format!("{slug}/encrypt/covercrypt"));
-            return;
+            return Ok(());
         }
     };
 
@@ -644,12 +648,12 @@ pub(super) fn bench_encrypt_covercrypt(
             ..Default::default()
         }),
     )
-    .expect("CC encrypt request");
+    .context("CC encrypt request")?;
 
     if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
         eprintln!("[bench] Covercrypt encrypt failed, skipping");
         bench_ko(format!("{slug}/encrypt/covercrypt"));
-        return;
+        return Ok(());
     }
 
     let mut group = timed_group(c, format!("{slug}/encrypt/covercrypt"));
@@ -660,11 +664,11 @@ pub(super) fn bench_encrypt_covercrypt(
         transport,
         "encrypt",
         Operation::Encrypt(Box::new(enc_req.clone())),
-    );
+    )?;
 
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
-        .expect("pre-encrypt for decrypt");
+        .context("pre-encrypt for decrypt")?;
     let ct = enc_resp.data.unwrap_or_default();
     let dec_req = decrypt_request(
         &usk_str,
@@ -684,12 +688,18 @@ pub(super) fn bench_encrypt_covercrypt(
         transport,
         "decrypt",
         Operation::Decrypt(Box::new(dec_req)),
-    );
+    )?;
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
-fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Transport) {
+fn bench_kem(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    transport: Transport,
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let vid = client.config.vendor_id.clone();
     let params = kem_params();
@@ -741,7 +751,7 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
 
         let pub_str = pub_id.to_string();
         let enc_req = encrypt_request(&pub_str, None, Vec::new(), None, None, Some(params.clone()))
-            .expect("KEM encapsulate request");
+            .context("KEM encapsulate request")?;
 
         if rt.block_on(client.encrypt(enc_req.clone())).is_err() {
             eprintln!("[bench] KEM {label} encapsulate failed, skipping");
@@ -757,11 +767,11 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             label,
             BenchmarkId::new("encapsulate", label),
             Operation::Encrypt(Box::new(enc_req.clone())),
-        );
+        )?;
 
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
-            .expect("pre-encapsulate for decapsulate");
+            .context("pre-encapsulate for decapsulate")?;
         // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
         let Ok((_, ct)) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default()) else {
             eprintln!("[bench] KEM {label} returned a malformed encapsulation, skipping");
@@ -785,13 +795,19 @@ fn bench_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Tra
             label,
             BenchmarkId::new("decapsulate", label),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
-fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Transport) {
+fn bench_pqc_kem(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    transport: Transport,
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let algorithms: &[(&str, CryptographicAlgorithm)] = &[
         ("ML-KEM-512", CryptographicAlgorithm::MLKEM_512),
@@ -813,7 +829,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
 
         let pub_str = pub_id.to_string();
         let enc_req =
-            encrypt_request(&pub_str, None, Vec::new(), None, None, None).expect("KEM request");
+            encrypt_request(&pub_str, None, Vec::new(), None, None, None).context("KEM request")?;
 
         let Ok(enc_resp) = rt.block_on(client.encrypt(enc_req.clone())) else {
             eprintln!("[bench] PQC KEM {label} encapsulate failed, skipping");
@@ -829,7 +845,7 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             label,
             BenchmarkId::new("encapsulate", label),
             Operation::Encrypt(Box::new(enc_req)),
-        );
+        )?;
 
         // Every KEM packs `(shared secret, encapsulation)` in `data`: decapsulate the latter
         let Ok((_, ct)) = unpack_kem_encapsulation(&enc_resp.data.unwrap_or_default()) else {
@@ -847,9 +863,10 @@ fn bench_pqc_kem(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport:
             label,
             BenchmarkId::new("decapsulate", label),
             Operation::Decrypt(Box::new(dec_req)),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 // =============================================================================
@@ -861,7 +878,7 @@ pub(super) fn bench_key_creation(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let vid = client.config.vendor_id.clone();
 
@@ -882,15 +899,15 @@ pub(super) fn bench_key_creation(
                 false,
                 None,
             )
-            .expect("sym key request");
+            .context("sym key request")?;
             bench_op(
                 &mut group,
                 client,
                 rt,
                 transport,
                 label,
-                Operation::Create(req),
-            );
+                Operation::Create(Box::new(req)),
+            )?;
         }
         #[cfg(feature = "non-fips")]
         if try_create_sym_key(
@@ -911,15 +928,15 @@ pub(super) fn bench_key_creation(
                 false,
                 None,
             )
-            .expect("chacha20 key request");
+            .context("chacha20 key request")?;
             bench_op(
                 &mut group,
                 client,
                 rt,
                 transport,
                 "chacha20-256",
-                Operation::Create(req),
-            );
+                Operation::Create(Box::new(req)),
+            )?;
         } else {
             bench_ko(format!("{slug}/key-creation/symmetric"));
         }
@@ -933,7 +950,7 @@ pub(super) fn bench_key_creation(
             let bits = 4096;
             let req = with_fips_rsa_masks(
                 create_rsa_key_pair_request(&vid, None, Vec::<String>::new(), bits, false, None)
-                    .expect("RSA kp request"),
+                    .context("RSA kp request")?,
             );
             bench_op(
                 &mut group,
@@ -942,7 +959,7 @@ pub(super) fn bench_key_creation(
                 transport,
                 format!("rsa-{bits}"),
                 Operation::CreateKeyPair(Box::new(req)),
-            );
+            )?;
         }
         group.finish();
     }
@@ -957,7 +974,7 @@ pub(super) fn bench_key_creation(
         ] {
             let req = with_fips_ec_masks(
                 create_ec_key_pair_request(&vid, None, Vec::<String>::new(), curve, false, None)
-                    .expect("EC kp request"),
+                    .context("EC kp request")?,
             );
             bench_op(
                 &mut group,
@@ -966,7 +983,7 @@ pub(super) fn bench_key_creation(
                 transport,
                 label,
                 Operation::CreateKeyPair(Box::new(req)),
-            );
+            )?;
         }
         #[cfg(feature = "non-fips")]
         for (label, curve) in [
@@ -984,7 +1001,7 @@ pub(super) fn bench_key_creation(
                         false,
                         None,
                     )
-                    .expect("EC kp request"),
+                    .context("EC kp request")?,
                 );
                 bench_op(
                     &mut group,
@@ -993,7 +1010,7 @@ pub(super) fn bench_key_creation(
                     transport,
                     label,
                     Operation::CreateKeyPair(Box::new(req)),
-                );
+                )?;
             } else {
                 bench_ko(format!("{slug}/key-creation/ec"));
             }
@@ -1029,7 +1046,7 @@ pub(super) fn bench_key_creation(
                 false,
                 None,
             )
-            .expect("CC master keypair request");
+            .context("CC master keypair request")?;
             let mut group = timed_group(c, format!("{slug}/key-creation/covercrypt"));
             bench_op(
                 &mut group,
@@ -1038,7 +1055,7 @@ pub(super) fn bench_key_creation(
                 transport,
                 "master-keypair",
                 Operation::CreateKeyPair(Box::new(req)),
-            );
+            )?;
             group.finish();
         } else {
             bench_ko(format!("{slug}/key-creation/covercrypt"));
@@ -1081,7 +1098,7 @@ pub(super) fn bench_key_creation(
                     false,
                     None,
                 )
-                .expect("KEM keypair request");
+                .context("KEM keypair request")?;
                 bench_op(
                     &mut group,
                     client,
@@ -1089,7 +1106,7 @@ pub(super) fn bench_key_creation(
                     transport,
                     label,
                     Operation::CreateKeyPair(Box::new(req)),
-                );
+                )?;
             } else {
                 bench_ko(format!("{slug}/key-creation/kem"));
             }
@@ -1136,7 +1153,7 @@ pub(super) fn bench_key_creation(
             });
             if result.is_some() {
                 let req = create_pqc_key_pair_request(&vid, Vec::<String>::new(), algo, false)
-                    .expect("PQC keypair request");
+                    .context("PQC keypair request")?;
                 bench_op(
                     &mut group,
                     client,
@@ -1144,13 +1161,14 @@ pub(super) fn bench_key_creation(
                     transport,
                     label,
                     Operation::CreateKeyPair(Box::new(req)),
-                );
+                )?;
             } else {
                 bench_ko(format!("{slug}/key-creation/pqc"));
             }
         }
         group.finish();
     }
+    Ok(())
 }
 
 // =============================================================================
@@ -1162,7 +1180,7 @@ pub(super) fn bench_sign_verify(
     client: &KmsClient,
     rt: &Runtime,
     transport: Transport,
-) {
+) -> KmsCliResult<()> {
     // ECDSA - FIPS curves
     for (label, curve, algo) in [
         (
@@ -1181,7 +1199,7 @@ pub(super) fn bench_sign_verify(
             DigitalSignatureAlgorithm::ECDSAWithSHA512,
         ),
     ] {
-        bench_ec_sign(c, client, rt, transport, label, curve, Some(algo));
+        bench_ec_sign(c, client, rt, transport, label, curve, Some(algo))?;
     }
 
     // Non-FIPS EC signature algorithms
@@ -1195,7 +1213,7 @@ pub(super) fn bench_sign_verify(
             "ecdsa-secp256k1",
             RecommendedCurve::SECP256K1,
             Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
-        );
+        )?;
 
         bench_ec_sign(
             c,
@@ -1205,7 +1223,7 @@ pub(super) fn bench_sign_verify(
             "eddsa-ed25519",
             RecommendedCurve::CURVEED25519,
             None,
-        );
+        )?;
 
         bench_ec_sign(
             c,
@@ -1215,11 +1233,11 @@ pub(super) fn bench_sign_verify(
             "eddsa-ed448",
             RecommendedCurve::CURVEED448,
             None,
-        );
+        )?;
     }
 
     // RSA-PSS
-    bench_rsa_pss_sign(c, client, rt, transport);
+    bench_rsa_pss_sign(c, client, rt, transport)?;
 
     // PQC signature algorithms (non-FIPS)
     #[cfg(feature = "non-fips")]
@@ -1234,7 +1252,7 @@ pub(super) fn bench_sign_verify(
             ("65", CryptographicAlgorithm::MLDSA_65),
             ("87", CryptographicAlgorithm::MLDSA_87),
         ],
-    );
+    )?;
 
     #[cfg(feature = "non-fips")]
     bench_pqc_sign(
@@ -1249,7 +1267,8 @@ pub(super) fn bench_sign_verify(
             ("SHAKE-128f", CryptographicAlgorithm::SLHDSA_SHAKE_128f),
             ("SHAKE-256f", CryptographicAlgorithm::SLHDSA_SHAKE_256f),
         ],
-    );
+    )?;
+    Ok(())
 }
 
 fn bench_ec_sign(
@@ -1260,13 +1279,13 @@ fn bench_ec_sign(
     label: &str,
     curve: RecommendedCurve,
     sign_algo: Option<DigitalSignatureAlgorithm>,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let Some((pub_id, priv_id)) = try_create_ec_kp(rt, client, &format!("sign-{label}"), curve)
     else {
         eprintln!("[bench] {label} not supported by server, skipping");
         bench_ko(format!("{slug}/sign-verify/{label}"));
-        return;
+        return Ok(());
     };
 
     let sign_params = sign_algo.map(|a| CryptographicParameters {
@@ -1284,7 +1303,7 @@ fn bench_ec_sign(
     let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
         eprintln!("[bench] {label} sign not supported by server, skipping");
         bench_ko(format!("{slug}/sign-verify/{label}"));
-        return;
+        return Ok(());
     };
     let sample_sig = sign_resp.signature_data.unwrap_or_default();
 
@@ -1304,7 +1323,7 @@ fn bench_ec_sign(
         transport,
         "sign",
         Operation::Sign(sign_req),
-    );
+    )?;
     bench_op(
         &mut group,
         client,
@@ -1312,11 +1331,17 @@ fn bench_ec_sign(
         transport,
         "verify",
         Operation::SignatureVerify(verify_req),
-    );
+    )?;
     group.finish();
+    Ok(())
 }
 
-fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, transport: Transport) {
+fn bench_rsa_pss_sign(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    transport: Transport,
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let sign_params = Some(CryptographicParameters {
         digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
@@ -1326,7 +1351,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
 
     let mut group = timed_group(c, format!("{slug}/sign-verify/rsa-pss"));
     for bits in [4096] {
-        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("sign-rsa-pss-{bits}"), bits);
+        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("sign-rsa-pss-{bits}"), bits)?;
 
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
@@ -1357,7 +1382,7 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
             bits.to_string(),
             BenchmarkId::new("sign", bits),
             Operation::Sign(sign_req),
-        );
+        )?;
         bench_op_id(
             &mut group,
             client,
@@ -1366,9 +1391,10 @@ fn bench_rsa_pss_sign(c: &mut Criterion, client: &KmsClient, rt: &Runtime, trans
             bits.to_string(),
             BenchmarkId::new("verify", bits),
             Operation::SignatureVerify(verify_req),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 #[cfg(feature = "non-fips")]
@@ -1379,7 +1405,7 @@ fn bench_pqc_sign(
     transport: Transport,
     group_name: &str,
     algorithms: &[(&str, CryptographicAlgorithm)],
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let message = Zeroizing::new(vec![0x42_u8; 32]);
     let mut group = timed_group(c, format!("{slug}/{group_name}"));
@@ -1422,7 +1448,7 @@ fn bench_pqc_sign(
             label,
             BenchmarkId::new("sign", label),
             Operation::Sign(sign_req),
-        );
+        )?;
         bench_op_id(
             &mut group,
             client,
@@ -1431,9 +1457,10 @@ fn bench_pqc_sign(
             label,
             BenchmarkId::new("verify", label),
             Operation::SignatureVerify(verify_req),
-        );
+        )?;
     }
     group.finish();
+    Ok(())
 }
 
 // =============================================================================
@@ -1487,7 +1514,7 @@ pub(super) fn bench_hsm_encrypt(
     rt: &Runtime,
     transport: Transport,
     hsm_prefix: &str,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let ledger = HsmKeyLedger::new();
 
@@ -1515,7 +1542,7 @@ pub(super) fn bench_hsm_encrypt(
             transport,
             "encrypt/256",
             Operation::Encrypt(Box::new(enc_req)),
-        );
+        )?;
         group.finish();
     } else {
         eprintln!("[bench] HSM AES-GCM not available, skipping");
@@ -1547,7 +1574,7 @@ pub(super) fn bench_hsm_encrypt(
             transport,
             "encrypt/256",
             Operation::Encrypt(Box::new(enc_req)),
-        );
+        )?;
         group.finish();
     } else {
         eprintln!("[bench] HSM AES-CBC not available, skipping");
@@ -1580,7 +1607,7 @@ pub(super) fn bench_hsm_encrypt(
                 transport,
                 "encrypt/2048",
                 Operation::Encrypt(Box::new(enc_req)),
-            );
+            )?;
             group.finish();
         }
     } else {
@@ -1594,6 +1621,7 @@ pub(super) fn bench_hsm_encrypt(
     if let Err(e) = rt.block_on(ledger.destroy_all(client)) {
         eprintln!("[bench] HSM encrypt cleanup warning: {e}");
     }
+    Ok(())
 }
 
 /// HSM `EdDSA` sign benchmarks (Ed25519/Ed448 are non-FIPS).
@@ -1630,7 +1658,7 @@ pub(super) fn bench_hsm_sign_verify(
     rt: &Runtime,
     transport: Transport,
     hsm_prefix: &str,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let ledger = HsmKeyLedger::new();
     let message = Zeroizing::new(vec![0x42_u8; 32]);
@@ -1655,7 +1683,7 @@ pub(super) fn bench_hsm_sign_verify(
             transport,
             "sign/2048",
             Operation::Sign(sign_req),
-        );
+        )?;
         group.finish();
     } else {
         eprintln!("[bench] HSM RSA-PSS not available, skipping");
@@ -1705,7 +1733,7 @@ pub(super) fn bench_hsm_sign_verify(
                 transport,
                 "sign/2048",
                 Operation::Sign(sign_req),
-            );
+            )?;
             group.finish();
         }
     } else {
@@ -1752,7 +1780,7 @@ pub(super) fn bench_hsm_sign_verify(
             transport,
             "sign",
             Operation::Sign(sign_req),
-        );
+        )?;
         group.finish();
     }
 
@@ -1791,7 +1819,7 @@ pub(super) fn bench_hsm_sign_verify(
             transport,
             "sign",
             Operation::Sign(sign_req),
-        );
+        )?;
         group.finish();
     }
 
@@ -1799,6 +1827,7 @@ pub(super) fn bench_hsm_sign_verify(
     if let Err(e) = rt.block_on(ledger.destroy_all(client)) {
         eprintln!("[bench] HSM sign-verify cleanup warning: {e}");
     }
+    Ok(())
 }
 
 pub(super) fn bench_hsm_key_creation(
@@ -1807,29 +1836,30 @@ pub(super) fn bench_hsm_key_creation(
     rt: &Runtime,
     transport: Transport,
     hsm_prefix: &str,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let vid = client.config.vendor_id.clone();
 
     // AES symmetric key
     {
         let mut group = timed_group(c, format!("{slug}/key-creation/hsm-aes-256"));
+        // The fallible request is built once; each iteration only sets a fresh uid.
+        let template = symmetric_key_create_request(
+            &vid,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            Vec::<String>::new(),
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable keys
+            None,
+        )
+        .context("HSM sym key request")?;
         group.bench_function("create", |b| {
             b.to_async(rt).iter(|| {
-                let vid = vid.clone();
-                let hsm_prefix = hsm_prefix.to_owned();
+                let mut req = template.clone();
+                req.attributes.unique_identifier =
+                    Some(UniqueIdentifier::TextString(hsm_uid(hsm_prefix, "sym")));
                 async move {
-                    let uid = hsm_uid(&hsm_prefix, "sym");
-                    let req = symmetric_key_create_request(
-                        &vid,
-                        Some(UniqueIdentifier::TextString(uid)),
-                        256,
-                        CryptographicAlgorithm::AES,
-                        Vec::<String>::new(),
-                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable keys
-                        None,
-                    )
-                    .expect("HSM sym key request");
                     drop(client.create(req).await);
                 }
             });
@@ -1840,21 +1870,22 @@ pub(super) fn bench_hsm_key_creation(
     // RSA key pair
     {
         let mut group = timed_group(c, format!("{slug}/key-creation/hsm-rsa-2048"));
+        let template = create_rsa_key_pair_request(
+            &vid,
+            None,
+            Vec::<String>::new(),
+            2048,
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
+            None,
+        )
+        .context("HSM RSA kp request")?;
         group.bench_function("create", |b| {
             b.to_async(rt).iter(|| {
-                let vid = vid.clone();
-                let hsm_prefix = hsm_prefix.to_owned();
+                let req = with_private_key_uid(
+                    template.clone(),
+                    UniqueIdentifier::TextString(hsm_uid(hsm_prefix, "rsa")),
+                );
                 async move {
-                    let uid = hsm_uid(&hsm_prefix, "rsa");
-                    let req = create_rsa_key_pair_request(
-                        &vid,
-                        Some(UniqueIdentifier::TextString(uid)),
-                        Vec::<String>::new(),
-                        2048,
-                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
-                        None,
-                    )
-                    .expect("HSM RSA kp request");
                     drop(client.create_key_pair(req).await);
                 }
             });
@@ -1865,21 +1896,22 @@ pub(super) fn bench_hsm_key_creation(
     // EC key pair (P-256)
     {
         let mut group = timed_group(c, format!("{slug}/key-creation/hsm-ec-p256"));
+        let template = create_ec_key_pair_request(
+            &vid,
+            None,
+            Vec::<String>::new(),
+            RecommendedCurve::P256,
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
+            None,
+        )
+        .context("HSM EC kp request")?;
         group.bench_function("create", |b| {
             b.to_async(rt).iter(|| {
-                let vid = vid.clone();
-                let hsm_prefix = hsm_prefix.to_owned();
+                let req = with_private_key_uid(
+                    template.clone(),
+                    UniqueIdentifier::TextString(hsm_uid(hsm_prefix, "ec")),
+                );
                 async move {
-                    let uid = hsm_uid(&hsm_prefix, "ec");
-                    let req = create_ec_key_pair_request(
-                        &vid,
-                        Some(UniqueIdentifier::TextString(uid)),
-                        Vec::<String>::new(),
-                        RecommendedCurve::P256,
-                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
-                        None,
-                    )
-                    .expect("HSM EC kp request");
                     drop(client.create_key_pair(req).await);
                 }
             });
@@ -1891,27 +1923,29 @@ pub(super) fn bench_hsm_key_creation(
     // unconditionally on SoftHSM2 (unlike P-521, see module docs above).
     for (label, curve) in HSM_EDDSA_KEY_CREATION {
         let mut group = timed_group(c, format!("{slug}/key-creation/{label}"));
+        let template = create_ec_key_pair_request(
+            &vid,
+            None,
+            Vec::<String>::new(),
+            curve,
+            true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
+            None,
+        )
+        .context("HSM EdDSA kp request")?;
         group.bench_function("create", |b| {
             b.to_async(rt).iter(|| {
-                let vid = vid.clone();
-                let hsm_prefix = hsm_prefix.to_owned();
+                let req = with_private_key_uid(
+                    template.clone(),
+                    UniqueIdentifier::TextString(hsm_uid(hsm_prefix, "ed")),
+                );
                 async move {
-                    let uid = hsm_uid(&hsm_prefix, "ed");
-                    let req = create_ec_key_pair_request(
-                        &vid,
-                        Some(UniqueIdentifier::TextString(uid)),
-                        Vec::<String>::new(),
-                        curve,
-                        true, // sensitive: HSMs (e.g. Luna) may refuse extractable private keys
-                        None,
-                    )
-                    .expect("HSM EdDSA kp request");
                     drop(client.create_key_pair(req).await);
                 }
             });
         });
         group.finish();
     }
+    Ok(())
 }
 
 // =============================================================================
@@ -1924,8 +1958,8 @@ pub(super) fn bench_batch(
     rt: &Runtime,
     transport: Transport,
     sanity: bool,
-) {
-    bench_batch_aes_bulk(c, client, rt, transport, sanity);
+) -> KmsCliResult<()> {
+    bench_batch_aes_bulk(c, client, rt, transport, sanity)?;
 
     bench_batch_rsa_message(
         c,
@@ -1935,7 +1969,7 @@ pub(super) fn bench_batch(
         "batch/rsa-oaep",
         &rsa_oaep_params(),
         sanity,
-    );
+    )?;
 
     bench_batch_rsa_message(
         c,
@@ -1945,7 +1979,7 @@ pub(super) fn bench_batch(
         "batch/rsa-aes-kwp",
         &rsa_kwp_params(),
         sanity,
-    );
+    )?;
 
     #[cfg(feature = "non-fips")]
     bench_batch_rsa_message(
@@ -1956,7 +1990,8 @@ pub(super) fn bench_batch(
         "batch/rsa-pkcs1v15",
         &rsa_pkcs15_params(),
         sanity,
-    );
+    )?;
+    Ok(())
 }
 
 pub(super) fn bench_batch_aes_bulk(
@@ -1965,7 +2000,7 @@ pub(super) fn bench_batch_aes_bulk(
     rt: &Runtime,
     transport: Transport,
     sanity: bool,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/batch/aes-gcm"));
     let params = aes_gcm_params();
@@ -1983,7 +2018,7 @@ pub(super) fn bench_batch_aes_bulk(
             &format!("batch-aes-{bits}"),
             bits,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let key_str = key_id.to_string();
 
         for n in batch_sizes.iter().copied() {
@@ -1998,7 +2033,7 @@ pub(super) fn bench_batch_aes_bulk(
             } else {
                 BulkData::new(vec![Zeroizing::new(vec![1_u8; 64]); n])
                     .serialize()
-                    .expect("BulkData serialize")
+                    .context("BulkData serialize")?
             };
             let req = encrypt_request(
                 &key_str,
@@ -2008,11 +2043,11 @@ pub(super) fn bench_batch_aes_bulk(
                 None,
                 Some(params.clone()),
             )
-            .expect("encrypt request");
+            .context("encrypt request")?;
 
             let pre_resp = rt
                 .block_on(client.encrypt(req.clone()))
-                .expect("pre-encrypt bulk request");
+                .context("pre-encrypt bulk request")?;
             let ciphertext = pre_resp.data.unwrap_or_default();
             let dec_req =
                 decrypt_request(&key_str, None, ciphertext, None, None, Some(params.clone()));
@@ -2026,7 +2061,7 @@ pub(super) fn bench_batch_aes_bulk(
                 bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key encrypt"), &parameter_name),
                 Operation::Encrypt(Box::new(req)),
-            );
+            )?;
             bench_op_id(
                 &mut group,
                 client,
@@ -2035,10 +2070,11 @@ pub(super) fn bench_batch_aes_bulk(
                 bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key decrypt"), &parameter_name),
                 Operation::Decrypt(Box::new(dec_req)),
-            );
+            )?;
         }
     }
     group.finish();
+    Ok(())
 }
 
 pub(super) fn bench_batch_rsa_message(
@@ -2049,12 +2085,12 @@ pub(super) fn bench_batch_rsa_message(
     group_name: &str,
     params: &CryptographicParameters,
     sanity: bool,
-) {
+) -> KmsCliResult<()> {
     let slug = transport.slug();
     let mut group = timed_group(c, format!("{slug}/{group_name}"));
 
     for bits in [4096] {
-        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("batch-rsa-{bits}"), bits);
+        let (pub_id, priv_id) = create_rsa_kp(rt, client, &format!("batch-rsa-{bits}"), bits)?;
         let pub_str = pub_id.to_string();
         let priv_str = priv_id.to_string();
 
@@ -2067,7 +2103,7 @@ pub(super) fn bench_batch_rsa_message(
             None,
             Some(params.clone()),
         )
-        .expect("test encrypt request");
+        .context("test encrypt request")?;
         if rt.block_on(client.encrypt(test_req)).is_err() {
             eprintln!("[bench] {group_name}-{bits} not supported by server, skipping");
             bench_ko(format!("{slug}/{group_name}"));
@@ -2083,8 +2119,10 @@ pub(super) fn bench_batch_rsa_message(
             None,
             Some(params.clone()),
         )
-        .expect("pre-encrypt request");
-        let pre_resp = rt.block_on(client.encrypt(pre_req)).expect("pre-encrypt");
+        .context("pre-encrypt request")?;
+        let pre_resp = rt
+            .block_on(client.encrypt(pre_req))
+            .context("pre-encrypt")?;
         let ciphertext = pre_resp.data.unwrap_or_default();
 
         let rsa_batch_sizes: &[usize] = if sanity { &[1] } else { &[1, 10, 50, 100] };
@@ -2104,20 +2142,22 @@ pub(super) fn bench_batch_rsa_message(
                 None,
                 Some(params.clone()),
             )
-            .expect("encrypt request");
+            .context("encrypt request")?;
             let enc_msg = RequestMessage {
                 request_header: RequestMessageHeader {
                     protocol_version: ProtocolVersion {
                         protocol_version_major: 2,
                         protocol_version_minor: 1,
                     },
-                    batch_count: i32::try_from(n).expect("batch_count fits i32"),
+                    batch_count: i32::try_from(n).context("batch_count fits i32")?,
                     ..Default::default()
                 },
                 batch_item: (0..n)
                     .map(|_| {
-                        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                            Operation::Encrypt(Box::new(enc_item.clone())),
+                        RequestMessageBatchItemVersioned::V21(Box::new(
+                            RequestMessageBatchItem::new(Operation::Encrypt(Box::new(
+                                enc_item.clone(),
+                            ))),
                         ))
                     })
                     .collect(),
@@ -2132,7 +2172,7 @@ pub(super) fn bench_batch_rsa_message(
                 bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key encrypt"), &parameter_name),
                 &enc_msg,
-            );
+            )?;
 
             // Decrypt batch
             let dec_item = decrypt_request(
@@ -2149,13 +2189,15 @@ pub(super) fn bench_batch_rsa_message(
                         protocol_version_major: 2,
                         protocol_version_minor: 1,
                     },
-                    batch_count: i32::try_from(n).expect("batch_count fits i32"),
+                    batch_count: i32::try_from(n).context("batch_count fits i32")?,
                     ..Default::default()
                 },
                 batch_item: (0..n)
                     .map(|_| {
-                        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                            Operation::Decrypt(Box::new(dec_item.clone())),
+                        RequestMessageBatchItemVersioned::V21(Box::new(
+                            RequestMessageBatchItem::new(Operation::Decrypt(Box::new(
+                                dec_item.clone(),
+                            ))),
                         ))
                     })
                     .collect(),
@@ -2169,8 +2211,9 @@ pub(super) fn bench_batch_rsa_message(
                 bits.to_string(),
                 BenchmarkId::new(format!("{bits}-bit key decrypt"), &parameter_name),
                 &dec_msg,
-            );
+            )?;
         }
     }
     group.finish();
+    Ok(())
 }

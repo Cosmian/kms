@@ -143,12 +143,8 @@ pub(crate) type CryptoResult<T> = Result<Json<T>, CryptoApiError>;
 /// actix-web's default handler returns a plain-text 400. This handler wraps
 /// the error in our standard `CryptoErrorBody` JSON format instead, so clients
 /// get a consistent `{"error": "bad_request", "description": "..."}` response.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "signature imposed by actix-web JsonConfig::error_handler"
-)]
 pub(crate) fn crypto_json_error_handler(
-    err: actix_web::error::JsonPayloadError,
+    err: &actix_web::error::JsonPayloadError,
     _req: &HttpRequest,
 ) -> actix_web::Error {
     CryptoApiError::BadRequest(format!("Invalid request body: {err}")).into()
@@ -219,7 +215,7 @@ mod characterization_tests {
     #[test]
     fn characterization_crypto_json_error_handler_wraps_in_bad_request() {
         let err = crypto_json_error_handler(
-            actix_web::error::JsonPayloadError::Deserialize(
+            &actix_web::error::JsonPayloadError::Deserialize(
                 serde_json::from_str::<u8>("x").unwrap_err(),
             ),
             &actix_test::TestRequest::default().to_http_request(),

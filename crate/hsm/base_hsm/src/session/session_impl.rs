@@ -684,10 +684,6 @@ impl Session {
     /// The filter can be used to narrow down the search to specific types of objects
     /// such as AES keys, RSA keys, etc.
     /// If no filter is provided, all objects are listed.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "public API: the filter is taken by value"
-    )]
     pub fn list_objects(&self, object_filter: HsmObjectFilter) -> HResult<Vec<CK_OBJECT_HANDLE>> {
         let mut template: Vec<CK_ATTRIBUTE> = Vec::new();
         match object_filter {
@@ -2090,7 +2086,7 @@ impl Session {
         let data_len = CK_ULONG::try_from(data.len())?;
         let data_ptr = data.as_mut_ptr();
         let (rv, signature) = Self::call_into_signature_buffer("C_Sign", |sig_ptr, sig_len| {
-            #[expect(unsafe_code)]
+            #[expect(unsafe_code, reason = "PKCS#11 session C calls")]
             // SAFETY: `data_ptr`/`data_len` describe the live `data` slice; `sig_ptr` points to
             // a buffer of `*sig_len` bytes owned by `call_into_signature_buffer`.
             let rv = match self.hsm.C_Sign {

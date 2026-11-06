@@ -291,7 +291,7 @@ pub(super) async fn process_symmetric_key(
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
     {
-        *attrs = Some(attributes.clone());
+        *attrs = Some(Box::new(attributes.clone()));
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -503,7 +503,7 @@ pub(super) async fn process_public_key(
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
     {
-        *attrs = Some(attributes.clone());
+        *attrs = Some(Box::new(attributes.clone()));
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -656,7 +656,7 @@ pub(super) async fn process_private_key(
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
     {
-        *attrs = Some(attributes.clone());
+        *attrs = Some(Box::new(attributes.clone()));
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -783,7 +783,7 @@ async fn process_pkcs12(
             attributes: attrs, ..
         }) = private_key.key_block_mut()?.key_value.as_mut()
         {
-            *attrs = Some(attributes);
+            *attrs = Some(Box::new(attributes));
         }
         private_key
     };
@@ -845,7 +845,7 @@ async fn process_pkcs12(
             if attributes.initial_date.is_none() {
                 attributes.initial_date = Some(creation_time()?);
             }
-            *attrs = Some(attributes);
+            *attrs = Some(Box::new(attributes));
         }
 
         public_key
@@ -884,7 +884,7 @@ async fn process_pkcs12(
     if let Some(KeyValue::Structure { attributes, .. }) =
         private_key.key_block_mut()?.key_value.as_mut()
     {
-        let attributes = attributes.get_or_insert(Attributes::default());
+        let attributes = attributes.get_or_insert(Box::new(Attributes::default()));
         // Note: it is unclear what link type should be used here according to KMIP
         // CertificateLink seems to be for public key only, and there is no description
         // for PKCS12CertificateLink
@@ -1117,7 +1117,7 @@ pub(super) async fn process_secret_data(
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
     {
-        *attrs = Some(attributes.clone());
+        *attrs = Some(Box::new(attributes.clone()));
     }
 
     // Wrap the object if requested by the user or on the server params
@@ -1190,7 +1190,7 @@ pub(super) async fn process_pgp_key(
             attributes: attrs, ..
         }) = key_block.key_value.as_mut()
     {
-        *attrs = Some(attributes.clone());
+        *attrs = Some(Box::new(attributes.clone()));
     }
 
     Box::pin(wrap_and_cache(
@@ -1258,7 +1258,10 @@ pub(super) fn process_opaque_object(
 }
 
 #[cfg(all(test, feature = "non-fips"))]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod tests {
     use cosmian_kms_client_utils::import_utils::build_private_key_from_der_bytes;
     use openssl::{

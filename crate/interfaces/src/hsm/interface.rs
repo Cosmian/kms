@@ -99,7 +99,7 @@ impl EcCurve {
 }
 
 /// Supported object filters on find
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum HsmObjectFilter {
     Any,
     AesKey,
@@ -869,39 +869,39 @@ mod characterization_tests {
     fn assert_filter(
         algorithm: Option<CryptographicAlgorithm>,
         object_type: Option<ObjectType>,
-        expected: &HsmObjectFilter,
+        expected: HsmObjectFilter,
     ) {
         let actual = filter(algorithm, object_type).unwrap();
-        assert!(actual == *expected);
+        assert!(actual == expected);
     }
 
     #[test]
     fn characterization_hsm_object_filter_try_from_algorithm_only() {
-        assert_filter(None, None, &HsmObjectFilter::Any);
+        assert_filter(None, None, HsmObjectFilter::Any);
         assert_filter(
             Some(CryptographicAlgorithm::AES),
             None,
-            &HsmObjectFilter::AesKey,
+            HsmObjectFilter::AesKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::RSA),
             None,
-            &HsmObjectFilter::RsaKey,
+            HsmObjectFilter::RsaKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::EC),
             None,
-            &HsmObjectFilter::EcKey,
+            HsmObjectFilter::EcKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::ECDSA),
             None,
-            &HsmObjectFilter::EcKey,
+            HsmObjectFilter::EcKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::ECDH),
             None,
-            &HsmObjectFilter::EcKey,
+            HsmObjectFilter::EcKey,
         );
     }
 
@@ -911,12 +911,12 @@ mod characterization_tests {
         assert_filter(
             Some(CryptographicAlgorithm::Ed25519),
             None,
-            &HsmObjectFilter::EcKey,
+            HsmObjectFilter::EcKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::Ed448),
             None,
-            &HsmObjectFilter::EcKey,
+            HsmObjectFilter::EcKey,
         );
     }
 
@@ -925,17 +925,17 @@ mod characterization_tests {
         assert_filter(
             None,
             Some(ObjectType::SymmetricKey),
-            &HsmObjectFilter::AesKey,
+            HsmObjectFilter::AesKey,
         );
         assert_filter(
             None,
             Some(ObjectType::PublicKey),
-            &HsmObjectFilter::RsaPublicKey,
+            HsmObjectFilter::RsaPublicKey,
         );
         assert_filter(
             None,
             Some(ObjectType::PrivateKey),
-            &HsmObjectFilter::RsaPrivateKey,
+            HsmObjectFilter::RsaPrivateKey,
         );
     }
 
@@ -944,7 +944,7 @@ mod characterization_tests {
         assert_filter(
             Some(CryptographicAlgorithm::AES),
             Some(ObjectType::SymmetricKey),
-            &HsmObjectFilter::AesKey,
+            HsmObjectFilter::AesKey,
         );
         assert_eq!(
             filter(
@@ -980,17 +980,17 @@ mod characterization_tests {
         assert_filter(
             Some(CryptographicAlgorithm::RSA),
             Some(ObjectType::PublicKey),
-            &HsmObjectFilter::RsaPublicKey,
+            HsmObjectFilter::RsaPublicKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::EC),
             Some(ObjectType::PublicKey),
-            &HsmObjectFilter::EcPublicKey,
+            HsmObjectFilter::EcPublicKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::ECDH),
             Some(ObjectType::PublicKey),
-            &HsmObjectFilter::EcPublicKey,
+            HsmObjectFilter::EcPublicKey,
         );
         assert_eq!(
             filter(
@@ -1008,17 +1008,17 @@ mod characterization_tests {
         assert_filter(
             Some(CryptographicAlgorithm::RSA),
             Some(ObjectType::PrivateKey),
-            &HsmObjectFilter::RsaPrivateKey,
+            HsmObjectFilter::RsaPrivateKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::EC),
             Some(ObjectType::PrivateKey),
-            &HsmObjectFilter::EcPrivateKey,
+            HsmObjectFilter::EcPrivateKey,
         );
         assert_filter(
             Some(CryptographicAlgorithm::ECDSA),
             Some(ObjectType::PrivateKey),
-            &HsmObjectFilter::EcPrivateKey,
+            HsmObjectFilter::EcPrivateKey,
         );
         assert_eq!(
             filter(

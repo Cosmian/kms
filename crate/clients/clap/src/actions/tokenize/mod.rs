@@ -1,3 +1,5 @@
+use std::io::Write as _;
+
 use clap::Parser;
 use cosmian_kms_client::KmsClient;
 use serde::{Deserialize, Serialize};
@@ -30,9 +32,9 @@ pub(super) struct TokenizeResponse {
 }
 
 impl TokenizeResponse {
-    #[expect(clippy::print_stdout, reason = "tokenize writes its result to stdout")]
-    pub(super) fn print(&self) {
-        println!("{}", self.result);
+    pub(super) fn print(&self) -> KmsCliResult<()> {
+        writeln!(std::io::stdout().lock(), "{}", self.result)?;
+        Ok(())
     }
 }
 

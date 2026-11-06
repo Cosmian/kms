@@ -54,7 +54,7 @@ pub(super) fn register_symmetric_key(client: &SocketClient) -> String {
 
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Register,
                 ephemeral: None,
@@ -74,7 +74,7 @@ pub(super) fn register_symmetric_key(client: &SocketClient) -> String {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

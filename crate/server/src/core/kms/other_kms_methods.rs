@@ -354,7 +354,7 @@ impl KMS {
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(KmipAlg::DSA),
                     cryptographic_length: attributes.cryptographic_length,
@@ -479,7 +479,7 @@ impl KMS {
                     key_compression_type: None,
                     key_value: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyValue::Structure {
                         key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::DSA),
                     cryptographic_length: attributes.cryptographic_length,
@@ -523,7 +523,7 @@ impl KMS {
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(secret_data),
-                    attributes: Some(attributes.clone()),
+                    attributes: Some(Box::new(attributes.clone())),
                 }),
                 cryptographic_algorithm: None,
                 cryptographic_length: None,

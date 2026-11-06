@@ -78,16 +78,7 @@ describe.sequential("KMS secret data export/import roundtrip", () => {
         };
 
         try {
-            const locateReq = wasm.locate_ttlv_request(
-                baseTags,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-            );
+            const locateReq = wasm.locate_ttlv_request({ tags: baseTags });
             const locateStr = await sendKmipRequest(locateReq, null, KMS_URL);
             const locateResp = await wasm.parse_locate_ttlv_response(locateStr);
             const locatedIds = Array.isArray((locateResp as { UniqueIdentifier?: string[] }).UniqueIdentifier)
@@ -101,33 +92,18 @@ describe.sequential("KMS secret data export/import roundtrip", () => {
             const exportedBytes = toBytes(exported);
             expect(exportedBytes.byteLength).toBeGreaterThan(0);
 
-            const importReq = wasm.import_ttlv_request(
-                importedId,
-                exportedBytes,
-                "json-ttlv",
-                undefined,
-                undefined,
-                undefined,
-                false,
-                true,
-                importedTags,
-                undefined,
-                undefined,
-            );
+            const importReq = wasm.import_ttlv_request(exportedBytes, {
+                unique_identifier: importedId,
+                key_format: "json-ttlv",
+                unwrap: false,
+                replace_existing: true,
+                tags: importedTags,
+            });
             const importStr = await sendKmipRequest(importReq, null, KMS_URL);
             const importResp = (await wasm.parse_import_ttlv_response(importStr)) as { UniqueIdentifier: string };
             expect(importResp.UniqueIdentifier).toBeTruthy();
 
-            const locateImportedReq = wasm.locate_ttlv_request(
-                importedTags,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-            );
+            const locateImportedReq = wasm.locate_ttlv_request({ tags: importedTags });
             const locateImportedStr = await sendKmipRequest(locateImportedReq, null, KMS_URL);
             const locateImportedResp = await wasm.parse_locate_ttlv_response(locateImportedStr);
             const importedLocatedIds = Array.isArray((locateImportedResp as { UniqueIdentifier?: string[] }).UniqueIdentifier)

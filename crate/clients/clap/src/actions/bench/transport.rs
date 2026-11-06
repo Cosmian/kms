@@ -12,11 +12,6 @@
 //! benchmark bodies be written once and parameterized by the transport, so the
 //! two protocols share the same source except serialization.
 
-#![expect(
-    clippy::expect_used,
-    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
-)]
-
 use std::{
     cell::Cell,
     time::{Duration, Instant},
@@ -40,6 +35,7 @@ use criterion::BenchmarkId;
 use tokio::runtime::Runtime;
 
 use super::types::BenchFilter;
+use crate::error::result::{KmsCliResult, KmsCliResultHelper as _};
 
 thread_local! {
     /// Maximum wall-clock time budget for a single benchmark group.
@@ -137,13 +133,13 @@ impl Transport {
     }
 
     /// Serialize a `RequestMessage` to the wire body for this transport.
-    fn serialize(self, msg: &RequestMessage) -> Vec<u8> {
-        let ttlv = to_ttlv(msg).expect("TTLV serialization");
+    fn serialize(self, msg: &RequestMessage) -> KmsCliResult<Vec<u8>> {
+        let ttlv = to_ttlv(msg).context("TTLV serialization")?;
         match self {
-            Self::Json => serde_json::to_vec(&ttlv).expect("JSON serialization"),
+            Self::Json => serde_json::to_vec(&ttlv).context("JSON serialization"),
             Self::Bytes => ttlv
                 .to_bytes(KmipFlavor::Kmip2)
-                .expect("Binary TTLV serialization"),
+                .context("Binary TTLV serialization"),
         }
     }
 }
@@ -164,17 +160,17 @@ pub(super) fn make_wire_request(op: Operation) -> RequestMessage {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(op),
-        )],
+        ))],
     }
 }
 
 /// Serialize a `RequestMessage` to binary TTLV bytes for the `/kmip` endpoint.
-pub(super) fn to_wire_bytes(msg: &RequestMessage) -> Vec<u8> {
-    let ttlv = to_ttlv(msg).expect("TTLV serialization");
+pub(super) fn to_wire_bytes(msg: &RequestMessage) -> KmsCliResult<Vec<u8>> {
+    let ttlv = to_ttlv(msg).context("TTLV serialization")?;
     ttlv.to_bytes(KmipFlavor::Kmip2)
-        .expect("Binary TTLV serialization")
+        .context("Binary TTLV serialization")
 }
 
 /// Check whether a binary TTLV response from `/kmip` (octet-stream) indicates success.
@@ -210,12 +206,12 @@ fn prepare_op(
     transport: Transport,
     client: &KmsClient,
     op: Operation,
-) -> (String, Bytes, &'static str) {
-    (
+) -> KmsCliResult<(String, Bytes, &'static str)> {
+    Ok((
         transport.url(client),
-        transport.serialize(&make_wire_request(op)).into(),
+        transport.serialize(&make_wire_request(op))?.into(),
         transport.content_type(),
-    )
+    ))
 }
 
 /// Serialize a pre-built `RequestMessage` into `(url, body, content_type)`.
@@ -223,12 +219,12 @@ fn prepare_message(
     transport: Transport,
     client: &KmsClient,
     msg: &RequestMessage,
-) -> (String, Bytes, &'static str) {
-    (
+) -> KmsCliResult<(String, Bytes, &'static str)> {
+    Ok((
         transport.url(client),
-        transport.serialize(msg).into(),
+        transport.serialize(msg)?.into(),
         transport.content_type(),
-    )
+    ))
 }
 
 /// Benchmark a single KMIP operation under a plain (unparameterized) label.
@@ -242,16 +238,17 @@ pub(super) fn bench_op(
     transport: Transport,
     name: impl Into<String>,
     op: Operation,
-) {
+) -> KmsCliResult<()> {
     let name_str = name.into();
     if !bench_filter_matches(&name_str, None) || group_over_budget() {
-        return;
+        return Ok(());
     }
-    let (url, body, content_type) = prepare_op(transport, client, op);
+    let (url, body, content_type) = prepare_op(transport, client, op)?;
     group.bench_function(name_str, |b| {
         b.to_async(rt)
             .iter(|| client.client.post_bytes(&url, body.clone(), content_type));
     });
+    Ok(())
 }
 
 /// Benchmark a single KMIP operation under a parameterized [`BenchmarkId`].
@@ -263,16 +260,17 @@ pub(super) fn bench_op_id(
     param_label: impl AsRef<str>,
     id: BenchmarkId,
     op: Operation,
-) {
+) -> KmsCliResult<()> {
     let param_str = param_label.as_ref();
     if !bench_filter_matches(param_str, Some(param_str)) || group_over_budget() {
-        return;
+        return Ok(());
     }
-    let (url, body, content_type) = prepare_op(transport, client, op);
+    let (url, body, content_type) = prepare_op(transport, client, op)?;
     group.bench_function(id, |b| {
         b.to_async(rt)
             .iter(|| client.client.post_bytes(&url, body.clone(), content_type));
     });
+    Ok(())
 }
 
 /// Benchmark a pre-built `RequestMessage` under a parameterized [`BenchmarkId`].
@@ -284,14 +282,15 @@ pub(super) fn bench_message_id(
     param_label: impl AsRef<str>,
     id: BenchmarkId,
     msg: &RequestMessage,
-) {
+) -> KmsCliResult<()> {
     let param_str = param_label.as_ref();
     if !bench_filter_matches(param_str, Some(param_str)) || group_over_budget() {
-        return;
+        return Ok(());
     }
-    let (url, body, content_type) = prepare_message(transport, client, msg);
+    let (url, body, content_type) = prepare_message(transport, client, msg)?;
     group.bench_function(id, |b| {
         b.to_async(rt)
             .iter(|| client.client.post_bytes(&url, body.clone(), content_type));
     });
+    Ok(())
 }

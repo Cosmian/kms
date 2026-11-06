@@ -92,7 +92,7 @@ macro_rules! match_add_attribute {
                             concat!(stringify!($variant), " already exists").to_owned(),
                         ));
                     }
-                    $attrs.$field = Some(value);
+                    $attrs.$field = Some(value.into());
                 }
             )*
             $($custom)*
@@ -113,7 +113,7 @@ macro_rules! match_set_attribute {
             $(
                 Attribute::$variant(value) => {
                     trace!(concat!($prefix, ": ", stringify!($variant), ": {:?}"), value);
-                    $attrs.$field = Some(value);
+                    $attrs.$field = Some(value.into());
                 }
             )*
             $($custom)*
@@ -132,7 +132,7 @@ macro_rules! match_delete_attribute {
         match $scrutinee {
             $(
                 Attribute::$variant(value) => {
-                    if Some(value) == $attrs.$field {
+                    if Some(value.into()) == $attrs.$field {
                         $attrs.$field = None;
                     }
                 }

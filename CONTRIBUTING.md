@@ -138,14 +138,14 @@ These rules are non-negotiable and apply to every contribution:
 | **No `.unwrap()`**          | Use `?` propagation in production code; never ignore errors in tests                       |
 | **No inline feature flags** | `#[cfg(feature = "non-fips")]` at function/module level only, never inside a function body |
 | **Unsafe code**             | Every `unsafe` block requires a `// SAFETY:` comment explaining the invariant              |
-| **Clippy**                  | Zero warnings — fix them; `#[allow]` requires an inline comment explaining why             |
+| **Clippy**                  | Zero warnings, zero clippy suppressions outside tests — fix the lint instead               |
 | **Tests**                   | Unit tests go in a `#[cfg(test)]` submodule in the same file                               |
 | **Docs**                    | All public items require `///` doc comments                                                |
 | **Pre-commit hooks**        | Must pass — never use `--no-verify`                                                        |
 | **Commit scope**            | Minimal, focused changes — don't refactor unrelated code alongside a bug fix               |
 
-For detailed Rust design patterns and idiomatic conventions specific to this codebase, see
-[`.github/skills/rust-patterns/SKILL.md`](.github/skills/rust-patterns/SKILL.md).
+For idiomatic Rust conventions and KMS design patterns, see
+[`.github/skills/rust-best-practices/SKILL.md`](.github/skills/rust-best-practices/SKILL.md).
 For FIPS gating rules, multi-standard algorithm compliance, and key lifecycle, see
 [`.github/skills/cryptography-review/SKILL.md`](.github/skills/cryptography-review/SKILL.md).
 For React/TypeScript/WASM conventions, see

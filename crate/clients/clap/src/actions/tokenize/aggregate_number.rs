@@ -46,7 +46,7 @@ impl AggregateNumberAction {
             power_of_ten: self.power_of_ten,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("aggregate-number", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

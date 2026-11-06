@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{Data, DeriveInput, parse_macro_input};
 
 /// Serialize a KMIP enum variant with both the variant name and value.
 ///
@@ -173,11 +173,34 @@ pub fn kmip_deserialize_derive(input: TokenStream) -> TokenStream {
 ///    - Common traits: `Copy`, `Clone`, `Debug`, `Eq`, `PartialEq`
 ///    - String conversion: `Display`
 ///    - Strum traits: `EnumString`, `IntoStaticStr`, and `FromRepr` for name/value conversions
+/// 3. Implements `From<Enum> for u32`, mapping each variant to its explicit discriminant
+///    (every variant must declare one).
 ///
 /// This simplifies the definition of KMIP enums by combining all necessary derives into a single attribute.
 #[proc_macro_attribute]
 pub fn kmip_enum(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
+    let name = &input.ident;
+
+    let Data::Enum(data) = &input.data else {
+        return syn::Error::new_spanned(name, "#[kmip_enum] only applies to enums")
+            .to_compile_error()
+            .into();
+    };
+    let mut arms = Vec::with_capacity(data.variants.len());
+    for variant in &data.variants {
+        let ident = &variant.ident;
+        let Some((_, discriminant)) = &variant.discriminant else {
+            return syn::Error::new_spanned(
+                ident,
+                format!("#[kmip_enum] variant `{name}::{ident}` needs an explicit discriminant"),
+            )
+            .to_compile_error()
+            .into();
+        };
+        let cfgs = variant.attrs.iter().filter(|a| a.path().is_ident("cfg"));
+        arms.push(quote! { #(#cfgs)* #name::#ident => #discriminant, });
+    }
 
     // Create the derives
     let expanded = quote! {
@@ -199,6 +222,14 @@ pub fn kmip_enum(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[repr(u32)]
         #[allow(non_camel_case_types, reason = "KMIP enum variant names mirror the spec")]
         #input
+
+        impl ::core::convert::From<#name> for u32 {
+            fn from(value: #name) -> Self {
+                match value {
+                    #(#arms)*
+                }
+            }
+        }
     };
 
     TokenStream::from(expanded)

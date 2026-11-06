@@ -98,6 +98,36 @@ start = "2020-02-25"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.aead]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-05"
+end = "2027-11-06"
+
+[[trusted.aes]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-05"
+end = "2027-11-06"
+
+[[trusted.aes-gcm]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-08-16"
+end = "2027-11-06"
+
+[[trusted.aes-gcm-siv]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-08-16"
+end = "2027-11-06"
+
+[[trusted.aes-kw]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-01-03"
+end = "2027-11-06"
+
 [[trusted.aho-corasick]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
@@ -147,12 +177,30 @@ start = "2019-10-05"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.argon2]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-01-29"
+end = "2027-11-06"
+
 [[trusted.assert_cmd]]
 criteria = "safe-to-deploy"
 user-id = 6743 # Ed Page (epage)
 start = "2019-03-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.async-stream]]
+criteria = "safe-to-deploy"
+user-id = 10 # Carl Lerche (carllerche)
+start = "2019-06-07"
+end = "2027-11-06"
+
+[[trusted.async-stream-impl]]
+criteria = "safe-to-deploy"
+user-id = 10 # Carl Lerche (carllerche)
+start = "2019-08-13"
+end = "2027-11-06"
 
 [[trusted.async-trait]]
 criteria = "safe-to-deploy"
@@ -182,6 +230,48 @@ start = "2026-04-14"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.base16ct]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-01-13"
+end = "2027-11-06"
+
+[[trusted.base64ct]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-01-21"
+end = "2027-11-06"
+
+[[trusted.blake2]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-10"
+end = "2027-11-06"
+
+[[trusted.block-buffer]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-04"
+end = "2027-11-06"
+
+[[trusted.block-buffer]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-02-24"
+end = "2027-11-06"
+
+[[trusted.block-padding]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2023-12-30"
+end = "2027-11-06"
+
+[[trusted.blowfish]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-08"
+end = "2027-11-06"
+
 [[trusted.bstr]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
@@ -210,6 +300,18 @@ start = "2026-04-30"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.camellia]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2026-01-03"
+end = "2027-11-06"
+
+[[trusted.cast5]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-08"
+end = "2027-11-06"
+
 [[trusted.cc]]
 criteria = "safe-to-deploy"
 user-id = 1 # Alex Crichton (alexcrichton)
@@ -231,6 +333,12 @@ start = "2022-10-29"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.cfb-mode]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-08"
+end = "2027-11-06"
+
 [[trusted.cfg-if]]
 criteria = "safe-to-deploy"
 user-id = 55123 # rust-lang-owner
@@ -238,12 +346,48 @@ start = "2025-06-09"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.chacha20]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-06-24"
+end = "2027-11-06"
+
+[[trusted.chacha20poly1305]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-08-30"
+end = "2027-11-06"
+
+[[trusted.chrono]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2022-07-25"
+end = "2027-11-06"
+
+[[trusted.cipher]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-10-15"
+end = "2027-11-06"
+
 [[trusted.clap]]
 criteria = "safe-to-deploy"
 user-id = 6743 # Ed Page (epage)
 start = "2021-12-08"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.clap-config-fallback]]
+criteria = "safe-to-deploy"
+user-id = 93313 # Alexis Le Provost (alekece)
+start = "2026-04-23"
+end = "2027-11-06"
+
+[[trusted.clap-config-fallback-derive]]
+criteria = "safe-to-deploy"
+user-id = 93313 # Alexis Le Provost (alekece)
+start = "2026-04-23"
+end = "2027-11-06"
 
 [[trusted.clap_builder]]
 criteria = "safe-to-deploy"
@@ -273,6 +417,18 @@ start = "2022-10-29"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.cmov]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-02-27"
+end = "2027-11-06"
+
+[[trusted.cmov]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-04-02"
+end = "2027-11-06"
+
 [[trusted.colorchoice]]
 criteria = "safe-to-deploy"
 user-id = 6743 # Ed Page (epage)
@@ -280,12 +436,24 @@ start = "2023-04-13"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.console]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2024-12-16"
+end = "2027-11-06"
+
 [[trusted.console_error_panic_hook]]
 criteria = "safe-to-deploy"
 user-id = 696 # Nick Fitzgerald (fitzgen)
 start = "2021-10-11"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance audit sets"
+
+[[trusted.const-oid]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-08-04"
+end = "2027-11-06"
 
 [[trusted.cosmian_config_utils]]
 criteria = "safe-to-deploy"
@@ -343,11 +511,53 @@ start = "2025-08-06"
 end = "2027-10-15"
 notes = "Cosmian-maintained crate (own organisation)"
 
+[[trusted.cpubits]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-04-28"
+end = "2027-11-06"
+
+[[trusted.cpufeatures]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-04-26"
+end = "2027-11-06"
+
+[[trusted.cpufeatures]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-02-05"
+end = "2027-11-06"
+
+[[trusted.crypto-bigint]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-04-30"
+end = "2027-11-06"
+
 [[trusted.crypto-bigint]]
 criteria = "safe-to-deploy"
 trusted-publisher = "github:RustCrypto/crypto-bigint"
 start = "2026-02-12"
 end = "2027-10-24"
+
+[[trusted.crypto-common]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-04-28"
+end = "2027-11-06"
+
+[[trusted.crypto_box]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-02-25"
+end = "2027-11-06"
+
+[[trusted.crypto_secretbox]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-11-29"
+end = "2027-11-06"
 
 [[trusted.csv]]
 criteria = "safe-to-deploy"
@@ -363,11 +573,29 @@ start = "2019-06-26"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.ctr]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-06"
+end = "2027-11-06"
+
 [[trusted.ctutils]]
 criteria = "safe-to-deploy"
 trusted-publisher = "github:RustCrypto/utils"
 start = "2026-04-02"
 end = "2027-10-24"
+
+[[trusted.der]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-12-17"
+end = "2027-11-06"
+
+[[trusted.der_derive]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-12-18"
+end = "2027-11-06"
 
 [[trusted.derive_more]]
 criteria = "safe-to-deploy"
@@ -383,12 +611,36 @@ start = "2023-07-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
 
+[[trusted.des]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-08"
+end = "2027-11-06"
+
+[[trusted.dialoguer]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2025-08-23"
+end = "2027-11-06"
+
+[[trusted.digest]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-10"
+end = "2027-11-06"
+
 [[trusted.displaydoc]]
 criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2024-06-20"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.dsa]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-05-16"
+end = "2027-11-06"
 
 [[trusted.dyn-clone]]
 criteria = "safe-to-deploy"
@@ -397,12 +649,36 @@ start = "2019-12-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.eax]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-09-17"
+end = "2027-11-06"
+
+[[trusted.ecdsa]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-10-29"
+end = "2027-11-06"
+
+[[trusted.ed25519]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-08-10"
+end = "2027-11-06"
+
 [[trusted.either]]
 criteria = "safe-to-deploy"
 user-id = 539 # Josh Stone (cuviper)
 start = "2019-04-02"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.elliptic-curve]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-12-05"
+end = "2027-11-06"
 
 [[trusted.encoding_rs_io]]
 criteria = "safe-to-deploy"
@@ -445,6 +721,12 @@ start = "2022-11-24"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.ghash]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-09-19"
+end = "2027-11-06"
+
 [[trusted.group]]
 criteria = "safe-to-deploy"
 user-id = 1244 # Sean Bowe (ebfull)
@@ -464,6 +746,30 @@ user-id = 2915 # Amanieu d'Antras (Amanieu)
 start = "2019-04-02"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hashlink]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2025-10-26"
+end = "2027-11-06"
+
+[[trusted.hkdf]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-10-19"
+end = "2027-11-06"
+
+[[trusted.hmac]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-10"
+end = "2027-11-06"
+
+[[trusted.hostname]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2025-04-08"
+end = "2027-11-06"
 
 [[trusted.http]]
 criteria = "safe-to-deploy"
@@ -492,6 +798,12 @@ user-id = 359 # Sean McArthur (seanmonstar)
 start = "2019-07-03"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.hybrid-array]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-05-07"
+end = "2027-11-06"
 
 [[trusted.hyper]]
 criteria = "safe-to-deploy"
@@ -569,6 +881,12 @@ start = "2022-01-31"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
 
+[[trusted.idea]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-05-24"
+end = "2027-11-06"
+
 [[trusted.idna]]
 criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
@@ -631,6 +949,18 @@ user-id = 1 # Alex Crichton (alexcrichton)
 start = "2019-03-04"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.k256]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-12-05"
+end = "2027-11-06"
+
+[[trusted.kem]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-02-09"
+end = "2027-11-06"
 
 [[trusted.lazy_static]]
 criteria = "safe-to-deploy"
@@ -715,6 +1045,12 @@ start = "2019-05-04"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.md-5]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-10"
+end = "2027-11-06"
+
 [[trusted.memchr]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
@@ -743,6 +1079,12 @@ start = "2019-12-17"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.ml-kem]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2024-03-04"
+end = "2027-11-06"
+
 [[trusted.num-bigint]]
 criteria = "safe-to-deploy"
 user-id = 539 # Josh Stone (cuviper)
@@ -756,6 +1098,12 @@ user-id = 539 # Josh Stone (cuviper)
 start = "2019-05-20"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.ocb3]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-05-05"
+end = "2027-11-06"
 
 [[trusted.once_cell_polyfill]]
 criteria = "safe-to-deploy"
@@ -771,12 +1119,36 @@ start = "2020-08-04"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.openssl-probe]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2025-12-29"
+end = "2027-11-06"
+
 [[trusted.ordered-float]]
 criteria = "safe-to-deploy"
 user-id = 2017 # Matt Brubeck (mbrubeck)
 start = "2019-03-13"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.p256]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-01-06"
+end = "2027-11-06"
+
+[[trusted.p384]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-01-06"
+end = "2027-11-06"
+
+[[trusted.p521]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2023-03-04"
+end = "2027-11-06"
 
 [[trusted.parking_lot]]
 criteria = "safe-to-deploy"
@@ -792,6 +1164,12 @@ start = "2019-05-04"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.password-hash]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-01-29"
+end = "2027-11-06"
+
 [[trusted.phf]]
 criteria = "safe-to-deploy"
 user-id = 51017 # Yuki Okushi (JohnTitor)
@@ -806,6 +1184,30 @@ start = "2021-06-17"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.pkcs1]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-12"
+end = "2027-11-06"
+
+[[trusted.pkcs8]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-12"
+end = "2027-11-06"
+
+[[trusted.poly1305]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-08-15"
+end = "2027-11-06"
+
+[[trusted.polyval]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-08-13"
+end = "2027-11-06"
+
 [[trusted.potential_utf]]
 criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
@@ -813,12 +1215,48 @@ start = "2024-11-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
 
+[[trusted.primefield]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2023-12-17"
+end = "2027-11-06"
+
+[[trusted.primeorder]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-06-30"
+end = "2027-11-06"
+
 [[trusted.proc-macro2]]
 criteria = "safe-to-deploy"
 user-id = 3618 # David Tolnay (dtolnay)
 start = "2019-04-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.quinn]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2019-09-09"
+end = "2027-11-06"
+
+[[trusted.quinn-proto]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2019-09-09"
+end = "2027-11-06"
+
+[[trusted.quinn-udp]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2021-10-07"
+end = "2027-11-06"
+
+[[trusted.rcgen]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2024-03-28"
+end = "2027-11-06"
 
 [[trusted.rcgen]]
 criteria = "safe-to-deploy"
@@ -831,6 +1269,12 @@ criteria = "safe-to-deploy"
 user-id = 48
 start = "2019-05-30"
 end = "2027-10-22"
+
+[[trusted.redis]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2022-08-24"
+end = "2027-11-06"
 
 [[trusted.ref-cast]]
 criteria = "safe-to-deploy"
@@ -881,11 +1325,29 @@ start = "2019-03-04"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.rfc6979]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-02-09"
+end = "2027-11-06"
+
 [[trusted.ring]]
 criteria = "safe-to-deploy"
 user-id = 2751 # Joe Birr-Pixton (ctz)
 start = "2025-02-22"
 end = "2027-10-22"
+
+[[trusted.ripemd]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2024-09-22"
+end = "2027-11-06"
+
+[[trusted.rsa]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-03-10"
+end = "2027-11-06"
 
 [[trusted.rustix]]
 criteria = "safe-to-deploy"
@@ -900,17 +1362,41 @@ user-id = 209038 # Daniel McCarney (cpu)
 start = "2023-07-05"
 end = "2027-10-22"
 
+[[trusted.rustls-native-certs]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2023-06-14"
+end = "2027-11-06"
+
 [[trusted.rustls-pki-types]]
 criteria = "safe-to-deploy"
 user-id = 2751 # Joe Birr-Pixton (ctz)
 start = "2023-09-07"
 end = "2027-10-22"
 
+[[trusted.rustls-pki-types]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2023-08-31"
+end = "2027-11-06"
+
 [[trusted.rustls-platform-verifier]]
 criteria = "safe-to-deploy"
 user-id = 2751 # Joe Birr-Pixton (ctz)
 start = "2024-08-23"
 end = "2027-10-22"
+
+[[trusted.rustls-platform-verifier]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2024-12-18"
+end = "2027-11-06"
+
+[[trusted.rustls-platform-verifier-android]]
+criteria = "safe-to-deploy"
+user-id = 209038 # Daniel McCarney (cpu)
+start = "2024-07-29"
+end = "2027-11-06"
 
 [[trusted.rustls-webpki]]
 criteria = "safe-to-deploy"
@@ -932,6 +1418,12 @@ start = "2019-05-02"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.salsa20]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-06-24"
+end = "2027-11-06"
+
 [[trusted.same-file]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
@@ -945,6 +1437,12 @@ user-id = 2915 # Amanieu d'Antras (Amanieu)
 start = "2020-02-16"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.sec1]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-08-26"
+end = "2027-11-06"
 
 [[trusted.serde]]
 criteria = "safe-to-deploy"
@@ -1002,6 +1500,42 @@ start = "2023-01-20"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.serdect]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-03-29"
+end = "2027-11-06"
+
+[[trusted.sha1]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2024-01-08"
+end = "2027-11-06"
+
+[[trusted.sha1-checked]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2026-01-03"
+end = "2027-11-06"
+
+[[trusted.sha2]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-05-24"
+end = "2027-11-06"
+
+[[trusted.sha3]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-10"
+end = "2027-11-06"
+
+[[trusted.signature]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2019-05-25"
+end = "2027-11-06"
+
 [[trusted.slab]]
 criteria = "safe-to-deploy"
 user-id = 6741 # Alice Ryhl (Darksonn)
@@ -1015,6 +1549,12 @@ user-id = 6025 # Thomas de Zeeuw (Thomasdezeeuw)
 start = "2020-09-09"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.spki]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-12-03"
+end = "2027-11-06"
 
 [[trusted.syn]]
 criteria = "safe-to-deploy"
@@ -1064,6 +1604,12 @@ user-id = 6741 # Alice Ryhl (Darksonn)
 start = "2020-10-26"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.tokio-rustls]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2023-06-09"
+end = "2027-11-06"
 
 [[trusted.tokio-stream]]
 criteria = "safe-to-deploy"
@@ -1135,12 +1681,36 @@ start = "2024-09-23"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.tower-layer]]
+criteria = "safe-to-deploy"
+user-id = 10 # Carl Lerche (carllerche)
+start = "2019-04-27"
+end = "2027-11-06"
+
+[[trusted.tracing-opentelemetry]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2024-05-29"
+end = "2027-11-06"
+
+[[trusted.tracing-subscriber]]
+criteria = "safe-to-deploy"
+user-id = 10 # Carl Lerche (carllerche)
+start = "2025-08-29"
+end = "2027-11-06"
+
 [[trusted.try-lock]]
 criteria = "safe-to-deploy"
 user-id = 359 # Sean McArthur (seanmonstar)
 start = "2020-07-10"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
+
+[[trusted.twofish]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-06-08"
+end = "2027-11-06"
 
 [[trusted.ucd-trie]]
 criteria = "safe-to-deploy"
@@ -1399,12 +1969,24 @@ start = "2023-02-22"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by bytecode-alliance, mozilla audit sets"
 
+[[trusted.wnaf]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2026-06-09"
+end = "2027-11-06"
+
 [[trusted.writeable]]
 criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2021-11-01"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.x509-cert]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-03-14"
+end = "2027-11-06"
 
 [[trusted.yoke]]
 criteria = "safe-to-deploy"
@@ -1433,6 +2015,12 @@ user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2022-04-06"
 end = "2027-10-15"
 notes = "Well-known Rust maintainer, also trusted by mozilla audit sets"
+
+[[trusted.zeroize_derive]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-06-12"
+end = "2027-11-06"
 
 [[trusted.zerotrie]]
 criteria = "safe-to-deploy"

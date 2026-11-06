@@ -38,13 +38,9 @@ enum KmipVersion {
 
 #[derive(PartialEq, Eq, Serialize, Clone, Debug)]
 #[serde(untagged)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
-)]
 pub enum RequestMessageBatchItemVersioned {
-    V14(crate::kmip_1_4::kmip_messages::RequestMessageBatchItem),
-    V21(crate::kmip_2_1::kmip_messages::RequestMessageBatchItem),
+    V14(Box<crate::kmip_1_4::kmip_messages::RequestMessageBatchItem>),
+    V21(Box<crate::kmip_2_1::kmip_messages::RequestMessageBatchItem>),
 }
 
 impl Display for RequestMessageBatchItemVersioned {
@@ -70,12 +66,12 @@ impl<'de> DeserializeSeed<'de> for &mut RequestMessageBatchItemVersionedDeserial
         D: serde::Deserializer<'de>,
     {
         match self.kmip_version {
-            KmipVersion::V14 => Ok(RequestMessageBatchItemVersioned::V14(
+            KmipVersion::V14 => Ok(RequestMessageBatchItemVersioned::V14(Box::new(
                 crate::kmip_1_4::kmip_messages::RequestMessageBatchItem::deserialize(deserializer)?,
-            )),
-            KmipVersion::V21 => Ok(RequestMessageBatchItemVersioned::V21(
+            ))),
+            KmipVersion::V21 => Ok(RequestMessageBatchItemVersioned::V21(Box::new(
                 crate::kmip_2_1::kmip_messages::RequestMessageBatchItem::deserialize(deserializer)?,
-            )),
+            ))),
         }
     }
 }
@@ -340,13 +336,9 @@ impl Display for RequestMessageHeader {
 
 #[derive(PartialEq, Eq, Serialize, Debug)]
 #[serde(untagged)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
-)]
 pub enum ResponseMessageBatchItemVersioned {
-    V14(crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem),
-    V21(crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem),
+    V14(Box<crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem>),
+    V21(Box<crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem>),
 }
 
 impl Display for ResponseMessageBatchItemVersioned {
@@ -370,16 +362,16 @@ impl<'de> DeserializeSeed<'de> for &mut ResponseMessageBatchItemVersionedDeseria
         D: serde::Deserializer<'de>,
     {
         match self.kmip_version {
-            KmipVersion::V14 => Ok(ResponseMessageBatchItemVersioned::V14(
+            KmipVersion::V14 => Ok(ResponseMessageBatchItemVersioned::V14(Box::new(
                 crate::kmip_1_4::kmip_messages::ResponseMessageBatchItem::deserialize(
                     deserializer,
                 )?,
-            )),
-            KmipVersion::V21 => Ok(ResponseMessageBatchItemVersioned::V21(
+            ))),
+            KmipVersion::V21 => Ok(ResponseMessageBatchItemVersioned::V21(Box::new(
                 crate::kmip_2_1::kmip_messages::ResponseMessageBatchItem::deserialize(
                     deserializer,
                 )?,
-            )),
+            ))),
         }
     }
 }

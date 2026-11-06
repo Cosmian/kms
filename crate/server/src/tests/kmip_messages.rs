@@ -62,8 +62,8 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     let items_number = 10_000;
     let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
         .map(|_| {
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::MAC(
-                mac_request.clone(),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                Operation::MAC(mac_request.clone()),
             )))
         })
         .collect();
@@ -142,12 +142,12 @@ async fn test_batch_error_continuation() -> KResult<()> {
                     ..Default::default()
                 },
                 batch_item: vec![
-                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                    RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                         failed_check(),
-                    )),
-                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                        Operation::Create(create_request()?),
-                    )),
+                    ))),
+                    RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                        Operation::Create(Box::new(create_request()?)),
+                    ))),
                 ],
             },
             &owner,
@@ -175,12 +175,12 @@ async fn test_batch_error_continuation() -> KResult<()> {
                     ..Default::default()
                 },
                 batch_item: vec![
-                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                    RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                         failed_check(),
-                    )),
-                    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                        Operation::Create(create_request()?),
-                    )),
+                    ))),
+                    RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                        Operation::Create(Box::new(create_request()?)),
+                    ))),
                 ],
             },
             &owner,
@@ -209,14 +209,14 @@ async fn message_rejects_mismatched_batch_count() -> KResult<()> {
                     batch_count: 2,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                     RequestMessageBatchItem::new(Operation::Check(Check {
                         unique_identifier: None,
                         usage_limits_count: None,
                         cryptographic_usage_mask: None,
                         lease_time: None,
                     })),
-                )],
+                ))],
             },
             &owner,
         )
@@ -258,7 +258,7 @@ async fn message_rejects_unsupported_critical_extension() -> KResult<()> {
                     batch_count: 1,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V21(item)],
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(item))],
             },
             &owner,
         )
@@ -320,8 +320,8 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     let items_number = 10_000;
     let items: Vec<RequestMessageBatchItemVersioned> = (0..items_number)
         .map(|_| {
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Encrypt(
-                Box::new(encrypt_request.clone()),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                Operation::Encrypt(Box::new(encrypt_request.clone())),
             )))
         })
         .collect();
@@ -401,7 +401,7 @@ async fn ephemeral_encrypt_omits_ciphertext() -> KResult<()> {
                     batch_count: 1,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V21(batch_item)],
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(batch_item))],
             },
             &owner,
         )
@@ -437,11 +437,11 @@ async fn maximum_response_size_is_ignored_outside_query() -> KResult<()> {
                     batch_count: 1,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                     RequestMessageBatchItem::new(Operation::RNGRetrieve(RNGRetrieve {
                         data_length: 32,
                     })),
-                )],
+                ))],
             },
             &owner,
         )
@@ -478,14 +478,14 @@ async fn negative_maximum_response_size_is_rejected() -> KResult<()> {
                     batch_count: 1,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                     RequestMessageBatchItem::new(Operation::Check(Check {
                         unique_identifier: None,
                         usage_limits_count: None,
                         cryptographic_usage_mask: None,
                         lease_time: None,
                     })),
-                )],
+                ))],
             },
             &owner,
         )
@@ -562,18 +562,18 @@ async fn test_kmip_messages() -> KResult<()> {
 
     // prepare and send the single message
     let batch_item = vec![
-        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+        RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
             Operation::CreateKeyPair(Box::new(ec_create_request)),
-        )),
-        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
-            Box::default(),
         ))),
-        RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Decrypt(
-            Box::new(Decrypt {
+        RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+            Operation::Locate(Box::default()),
+        ))),
+        RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+            Operation::Decrypt(Box::new(Decrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_owned())),
                 data: Some(b"decrypted_data".to_vec()),
                 ..Default::default()
-            }),
+            })),
         ))),
     ];
     let message_request = RequestMessage {

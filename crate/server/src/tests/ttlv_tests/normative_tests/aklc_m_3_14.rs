@@ -84,7 +84,7 @@ fn create_key_pair(client: &SocketClient) -> (String, String) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::CreateKeyPair,
                 ephemeral: None,
@@ -117,7 +117,7 @@ fn create_key_pair(client: &SocketClient) -> (String, String) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -161,7 +161,7 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -184,7 +184,7 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -323,7 +323,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Activate,
                 ephemeral: None,
@@ -333,7 +333,7 @@ fn activate_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -361,7 +361,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -376,7 +376,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -440,7 +440,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Revoke,
                 ephemeral: None,
@@ -458,7 +458,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -486,7 +486,7 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -497,7 +497,7 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -543,7 +543,7 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -554,7 +554,7 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -606,7 +606,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Destroy,
                 ephemeral: None,
@@ -616,7 +616,7 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

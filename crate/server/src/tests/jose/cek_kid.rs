@@ -150,7 +150,7 @@ async fn test_jose_public_import_and_cek_kid_encryption() -> KResult<()> {
 #[tokio::test]
 async fn test_jose_public_import_and_cek_kid_errors() -> KResult<()> {
     let mut clap_config = https_clap_config();
-    clap_config.google_cse_config.google_cse_enable = false;
+    clap_config.google_cse_config.enable = false;
     let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
     let app = test_utils::test_app_with_kms(kms.clone(), None).await;
 
@@ -253,7 +253,7 @@ async fn test_public_only_import_caches_no_cek_and_bounds_exponent() -> KResult<
     use crate::routes::jose::cek_cache::{insert_cek, peek_cek};
 
     let mut clap_config = https_clap_config();
-    clap_config.google_cse_config.google_cse_enable = false;
+    clap_config.google_cse_config.enable = false;
     let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
     let app = test_utils::test_app_with_kms(kms.clone(), None).await;
 
@@ -329,7 +329,7 @@ async fn test_cek_cache_is_bound_to_the_key_uid() -> KResult<()> {
     use crate::routes::jose::cek_cache::{insert_cek, peek_cek};
 
     let mut clap_config = https_clap_config();
-    clap_config.google_cse_config.google_cse_enable = false;
+    clap_config.google_cse_config.enable = false;
     let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
 
     // Same object for both keys: stands in for two same-size sensitive HSM key stubs.
@@ -428,7 +428,7 @@ async fn test_private_import_refused_when_derived_public_uid_exists() -> KResult
 #[tokio::test]
 async fn test_cek_kid_enforces_wrap_usage_and_algorithm_policy() -> KResult<()> {
     let mut clap_config = https_clap_config();
-    clap_config.google_cse_config.google_cse_enable = false;
+    clap_config.google_cse_config.enable = false;
     clap_config.kmip_policy.policy_id = Some("DEFAULT".to_owned());
     let kms = Box::pin(test_kms_with_google_cse(clap_config)).await;
     let app = test_utils::test_app_with_kms(kms, None).await;

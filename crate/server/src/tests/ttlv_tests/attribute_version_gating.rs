@@ -58,7 +58,7 @@ fn kmip1_get_response_bytes(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -72,7 +72,7 @@ fn kmip1_get_response_bytes(
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response: ResponseMessage = client
@@ -152,7 +152,7 @@ fn kmip1_get_attribute_list_names(client: &SocketClient, key_id: &str, minor: i3
 
     let response_ttlv =
         TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip1).expect("Invalid response TTLV");
-    let response: ResponseMessage = from_ttlv(response_ttlv).expect("Invalid response message");
+    let response: ResponseMessage = from_ttlv(&response_ttlv).expect("Invalid response message");
 
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response.batch_item[0] else {
         panic!("Unexpected V21 response for a KMIP 1.x GetAttributeList");
@@ -303,7 +303,7 @@ fn kmip1_get_attributes_names(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -314,7 +314,7 @@ fn kmip1_get_attributes_names(
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response: ResponseMessage = client
@@ -529,7 +529,7 @@ fn kmip14_add_alternative_name(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
@@ -543,7 +543,7 @@ fn kmip14_add_alternative_name(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let response: ResponseMessage = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request)

@@ -73,7 +73,7 @@ fn fetch_pqc_certificate(
     assert_eq!(cn, expected_cn);
 
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("pqc_cert.attributes.json")).unwrap();
-    let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();
+    let cert_attributes: Attributes = from_ttlv(&ttlv).unwrap();
     (cert, cert_attributes, cert_x509_der)
 }
 

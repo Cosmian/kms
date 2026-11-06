@@ -335,22 +335,6 @@ impl TryFrom<kmip_2_1::kmip_objects::ObjectType> for ObjectType {
     }
 }
 
-impl From<ObjectType> for u32 {
-    fn from(object_type: ObjectType) -> Self {
-        match object_type {
-            ObjectType::Certificate => 0x01,
-            ObjectType::SymmetricKey => 0x02,
-            ObjectType::PublicKey => 0x03,
-            ObjectType::PrivateKey => 0x04,
-            ObjectType::SplitKey => 0x05,
-            ObjectType::Template => 0x06,
-            ObjectType::SecretData => 0x07,
-            ObjectType::OpaqueObject => 0x08,
-            ObjectType::PGPKey => 0x09,
-        }
-    }
-}
-
 impl TryFrom<u32> for ObjectType {
     type Error = KmipError;
 

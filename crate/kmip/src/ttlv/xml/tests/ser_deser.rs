@@ -34,7 +34,7 @@ mod inner {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::Query,
                     ephemeral: None,
@@ -47,7 +47,7 @@ mod inner {
                     }),
                     message_extension: None,
                 },
-            )],
+            ))],
         };
         let ttlv = to_ttlv(&request_message).expect("to_ttlv");
         let xml = TTLVXMLSerializer::to_xml(&ttlv).expect("ttlv->xml");
@@ -56,7 +56,7 @@ mod inner {
             ttlv2, ttlv,
             "Round trip TTLV mismatch. XML produced:\n{xml}"
         );
-        let request_message_rt: RequestMessage = from_ttlv(ttlv2).expect("from_ttlv");
+        let request_message_rt: RequestMessage = from_ttlv(&ttlv2).expect("from_ttlv");
         assert!(
             request_message_rt == request_message,
             "Round trip RequestMessage mismatch"
@@ -124,7 +124,7 @@ mod inner {
 "#;
         let ttlv = TTLVXMLDeserializer::from_xml(xml_str).expect("xml->ttlv");
         let response_message: kmip_0::kmip_messages::ResponseMessage =
-            from_ttlv(ttlv).expect("from_ttlv");
+            from_ttlv(&ttlv).expect("from_ttlv");
         trace!("Deserialized ResponseMessage: {}", response_message);
     }
 

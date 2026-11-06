@@ -35,15 +35,12 @@ fn init(
 #[cfg(target_os = "linux")]
 /// For Linux, log to `$COSMIAN_PKCS11_LOGGING_FOLDER` if set,
 /// otherwise fall back to `~/.cosmian/` (user-writable, no root required).
-#[expect(
-    clippy::print_stdout,
-    reason = "the module announces its log file on stdout when the PKCS#11 library is loaded"
-)]
 fn init(
     log_name: &str,
     level: Option<Level>,
     log_home: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write as _;
     let level = level.unwrap_or(Level::INFO);
     let log_folder = match std::env::var("COSMIAN_PKCS11_LOGGING_FOLDER") {
         Ok(folder) => PathBuf::from(folder),
@@ -57,10 +54,11 @@ fn init(
         }
     };
 
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "cosmian-pkcs11 module logging at {level} level to file {}/{log_name}.log",
         log_folder.display()
-    );
+    )?;
     log_to_file(log_name, level, &log_folder)
 }
 

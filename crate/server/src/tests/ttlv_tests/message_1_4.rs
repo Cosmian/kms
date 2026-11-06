@@ -45,7 +45,7 @@ fn header(
 fn item(id: &[u8], operation: Operation) -> RequestMessageBatchItemVersioned {
     let mut item = RequestMessageBatchItem::new(operation);
     item.unique_batch_item_id = Some(id.to_vec());
-    RequestMessageBatchItemVersioned::V14(item)
+    RequestMessageBatchItemVersioned::V14(Box::new(item))
 }
 
 fn v14(response: &ResponseMessage, index: usize) -> &ResponseMessageBatchItem {
@@ -139,7 +139,7 @@ fn test_unsupported_operation_fails_per_item_1_4_binary() {
         .send_raw_request(&request_bytes)
         .expect("Failed to send request");
     let response: ResponseMessage = from_ttlv(
-        TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip1).expect("Invalid response TTLV"),
+        &TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip1).expect("Invalid response TTLV"),
     )
     .expect("Invalid response message");
     assert_eq!(response.batch_item.len(), 2);

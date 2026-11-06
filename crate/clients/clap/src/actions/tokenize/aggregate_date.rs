@@ -30,7 +30,7 @@ impl AggregateDateAction {
             time_unit: &self.time_unit,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("aggregate-date", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

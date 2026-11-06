@@ -465,7 +465,10 @@ fn new_stream<S: Any + Send>(owner: StreamOwner<'_>, created: Instant, state: S)
 }
 
 #[cfg(test)]
-#[expect(clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod tests {
     use super::*;
 

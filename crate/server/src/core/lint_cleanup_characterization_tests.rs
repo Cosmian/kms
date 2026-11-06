@@ -939,7 +939,7 @@ async fn characterization_wrap_object_with_wrapping_key_that_is_itself_wrapped()
     if let Some(KeyValue::Structure { attributes, .. }) =
         &mut plain_wrapping.key_block_mut().unwrap().key_value
     {
-        *attributes = Some(stored.attributes().clone());
+        *attributes = Some(Box::new(stored.attributes().clone()));
     }
     let mut wrapped_block = key_block.clone();
     unwrap_key_block(&mut wrapped_block, &plain_wrapping).unwrap();
@@ -1250,8 +1250,8 @@ mod covercrypt_revoke {
 #[tokio::test]
 async fn characterization_prepare_kms_server_with_vault_auth_verifier_url() {
     let mut config = https_clap_config();
-    config.vault.vault_api_enabled = true;
-    config.vault.vault_auth_verifier_url = Some("http://127.0.0.1:1".to_owned());
+    config.vault.api_enabled = true;
+    config.vault.auth_verifier_url = Some("http://127.0.0.1:1".to_owned());
     let kms = crate::tests::test_utils::test_kms_with_config(config)
         .await
         .unwrap();

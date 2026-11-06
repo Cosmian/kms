@@ -42,7 +42,12 @@ pub(super) async fn create_hsm_aes_key(
         sensitive,
         None,
     )?;
-    let response = send_message(kms.clone(), owner, vec![Operation::Create(request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Create(Box::new(request))],
+    )
+    .await?;
     let Operation::CreateResponse(_) = &response[0] else {
         return Err(KmsError::ServerError("invalid create response".to_owned()));
     };

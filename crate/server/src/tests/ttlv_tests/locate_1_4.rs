@@ -96,7 +96,7 @@ pub(super) fn locate_with_template_attribute(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
@@ -120,7 +120,7 @@ pub(super) fn locate_with_template_attribute(
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -192,7 +192,7 @@ pub(super) fn locate_symmetric_keys(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
@@ -207,7 +207,7 @@ pub(super) fn locate_symmetric_keys(
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

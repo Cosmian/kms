@@ -103,21 +103,19 @@ const CertificateCertifyForm: React.FC = () => {
                 return;
             }
 
-            const request = wasm.certify_ttlv_request(
-                normalize(values.certificateId),
-                values.csrFormat,
-                values.certificateSigningRequest,
-                normalize(values.publicKeyIdToCertify),
-                normalize(values.certificateIdToReCertify),
-                values.generateKeyPair,
-                normalize(values.subjectName),
-                normalize(values.algorithm),
-                normalize(values.issuerPrivateKeyId),
-                normalize(values.issuerCertificateId),
-                values.numberOfDays,
-                values.certificateExtensions,
-                values.tags,
-            );
+            const request = wasm.certify_ttlv_request(values.certificateSigningRequest, values.certificateExtensions, {
+                certificate_id: normalize(values.certificateId),
+                certificate_signing_request_format: values.csrFormat,
+                public_key_id_to_certify: normalize(values.publicKeyIdToCertify),
+                certificate_id_to_re_certify: normalize(values.certificateIdToReCertify),
+                generate_key_pair: values.generateKeyPair,
+                subject_name: normalize(values.subjectName),
+                algorithm: normalize(values.algorithm),
+                issuer_private_key_id: normalize(values.issuerPrivateKeyId),
+                issuer_certificate_id: normalize(values.issuerCertificateId),
+                number_of_days: values.numberOfDays,
+                tags: values.tags,
+            });
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_certify_ttlv_response(result_str);

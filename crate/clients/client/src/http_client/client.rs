@@ -52,7 +52,7 @@ pub struct HttpClientConfig {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS server
     // running an invalid or insecure TLS certificate
     #[serde(default)]
-    #[serde(skip_serializing_if = "not")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub accept_invalid_certs: bool,
     pub server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,15 +120,6 @@ impl Default for HttpClientConfig {
             custom_headers: None,
         }
     }
-}
-
-/// used for serialization
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde `skip_serializing_if` passes a reference"
-)]
-const fn not(b: &bool) -> bool {
-    !*b
 }
 
 /// Intermediate struct used to deserialise `HttpClientConfig` from TOML/JSON.

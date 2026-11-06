@@ -52,7 +52,7 @@ fn test_template_attributes() {
 
     // Deserialize the TTLV back to TemplateAttribute
     let deserialized_template_attribute: TemplateAttribute =
-        from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+        from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!(
         "Deserialized TemplateAttribute: {:#?}",
@@ -86,7 +86,7 @@ fn test_object_raw() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {:#?}", deserialized_object);
     assert_eq!(
@@ -128,7 +128,7 @@ fn test_object_structured_sym() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {:#?}", deserialized_object);
     assert_eq!(
@@ -254,7 +254,7 @@ fn test_kmip_1_0_authentication_fortigate() {
         ]),
     };
 
-    let req: RequestMessage = from_ttlv(ttlv).expect(
+    let req: RequestMessage = from_ttlv(&ttlv).expect(
         "Failed to parse KMIP 1.0 RequestMessage with Authentication — FortiGate regression",
     );
 
@@ -328,7 +328,7 @@ fn test_object_structured_rsa() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {:#?}", deserialized_object);
     assert_eq!(
@@ -391,7 +391,7 @@ fn test_locate_template_attribute_fortigate() {
     // Verify the struct round-trips through TTLV correctly.
     let ttlv = to_ttlv(&locate_1_4).expect("Failed to serialize Locate to TTLV");
     info!("Locate TTLV: {:#?}", ttlv);
-    let deserialized: Locate = from_ttlv(ttlv).expect("Failed to deserialize Locate from TTLV");
+    let deserialized: Locate = from_ttlv(&ttlv).expect("Failed to deserialize Locate from TTLV");
     // KMIP 1.4 Storage Status Mask is an Integer bit mask: a combined value must survive.
     assert_eq!(
         deserialized.storage_status_mask,
@@ -453,7 +453,7 @@ fn test_create_split_key_1_4_serialization_and_conversion() {
     // Serialise to TTLV and back.
     let ttlv = to_ttlv(&req).expect("CreateSplitKey: TTLV serialization failed");
     let roundtrip: CreateSplitKey =
-        from_ttlv(ttlv).expect("CreateSplitKey: TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("CreateSplitKey: TTLV deserialization failed");
     assert_eq!(roundtrip.split_key_parts, 3);
     assert_eq!(roundtrip.split_key_threshold, 2);
     assert_eq!(
@@ -538,7 +538,7 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
 
     let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
     let ttlv_roundtrip: DeriveKey =
-        from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
     assert!(ttlv_roundtrip == request);
 
     let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
@@ -579,7 +579,7 @@ fn test_derive_key_1_4_repeated_identifiers_round_trip_and_conversion_order() {
 
     let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
     let ttlv_roundtrip: DeriveKey =
-        from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
     assert_eq!(ttlv_roundtrip.unique_identifier, request.unique_identifier);
 
     let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
@@ -613,7 +613,7 @@ fn test_join_split_key_1_4_serialization_and_conversion() {
     // Serialise to TTLV and back.
     let ttlv = to_ttlv(&req).expect("JoinSplitKey: TTLV serialization failed");
     let roundtrip: JoinSplitKey =
-        from_ttlv(ttlv).expect("JoinSplitKey: TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("JoinSplitKey: TTLV deserialization failed");
     assert_eq!(roundtrip.unique_identifier.len(), 2);
     assert_eq!(roundtrip.unique_identifier[0], "share-1");
     assert_eq!(roundtrip.unique_identifier[1], "share-2");

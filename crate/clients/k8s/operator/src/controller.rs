@@ -43,7 +43,11 @@ pub async fn run(ctx: Arc<Context>) {
 
     Controller::new(kms_secrets, WatcherConfig::default())
         .shutdown_on_signal()
-        .run(reconcile, error_policy, ctx)
+        .run(
+            reconcile,
+            |obj, err, ctx| error_policy(&obj, err, &ctx),
+            ctx,
+        )
         .for_each(|result| async move {
             match result {
                 Ok((obj, action)) => {
@@ -121,11 +125,7 @@ async fn do_reconcile(
     Ok(Action::requeue(refresh_duration(obj, ctx.default_refresh)))
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "kube Controller::run requires error_policy(Arc<K>, &E, Arc<Ctx>)"
-)]
-fn error_policy(obj: Arc<KMSSecret>, err: &OperatorError, _ctx: Arc<Context>) -> Action {
+fn error_policy(obj: &KMSSecret, err: &OperatorError, _ctx: &Context) -> Action {
     error!(name = %obj.name_any(), error = %err, "reconcile error — retrying in 30s");
     Action::requeue(Duration::from_secs(30))
 }
@@ -324,13 +324,13 @@ mod characterization_tests {
         drop(rustls::crypto::ring::default_provider().install_default());
         let k8s = kube::Client::try_from(kube::Config::new("http://127.0.0.1:1".parse().unwrap()))
             .unwrap();
-        let ctx = Arc::new(Context {
+        let ctx = Context {
             k8s,
             kms: Arc::new(KmsClientWrapper::new(KmsClientConfig::default()).unwrap()),
             default_refresh: Duration::from_secs(3600),
-        });
+        };
         let err = OperatorError::Config("boom".to_owned());
-        let action = error_policy(Arc::new(secret(Some("5s"))), &err, ctx);
+        let action = error_policy(&secret(Some("5s")), &err, &ctx);
         assert_eq!(action, Action::requeue(Duration::from_secs(30)));
     }
 }

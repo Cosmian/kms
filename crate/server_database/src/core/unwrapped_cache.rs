@@ -212,7 +212,7 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
+    use crate::{CacheParams, Database, core::main_db_params::MainDbParams, error::DbResult};
 
     #[tokio::test]
     async fn test_lru_cache() -> DbResult<()> {
@@ -225,10 +225,12 @@ mod tests {
             &main_db_params,
             true,
             HashMap::new(),
-            Duration::from_millis(100),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_millis(100),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None, // recorder
             None, // ceremony_keys
         )

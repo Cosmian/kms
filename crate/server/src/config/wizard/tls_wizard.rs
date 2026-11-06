@@ -2,7 +2,7 @@
 //!
 //! Optionally generates a self-signed PKI or accepts manual PEM paths.
 
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
@@ -26,10 +26,6 @@ pub(crate) struct TlsWizardResult {
     pub(crate) generated_client_key: Option<PathBuf>,
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "the configuration wizard prompts the user on stdout"
-)]
 pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
     let theme = ColorfulTheme::default();
 
@@ -118,7 +114,7 @@ pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
             client_validity_days,
         };
 
-        println!("  Generating self-signed PKI…");
+        writeln!(std::io::stdout().lock(), "  Generating self-signed PKI…")?;
         let paths = generate_self_signed_pki(&opts)?;
 
         let cipher_suites = prompt_cipher_suites(&theme)?;

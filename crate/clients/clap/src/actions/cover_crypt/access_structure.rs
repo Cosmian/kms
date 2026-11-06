@@ -99,7 +99,7 @@ impl ViewAction {
             .1
         } else if let Some(key_file) = &self.key_file {
             let ttlv: TTLV = read_from_json_file(key_file)?;
-            from_ttlv(ttlv).map_err(|e| {
+            from_ttlv(&ttlv).map_err(|e| {
                 CryptoError::Kmip(format!("Failed deserializing the CoverCrypt MPK: {e}"))
             })?
         } else {

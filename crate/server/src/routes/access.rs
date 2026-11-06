@@ -205,10 +205,6 @@ pub(crate) async fn get_privileged_access(
 
 /// Response body for `GET /access/crypto_officer/status`
 #[derive(Serialize)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each bool is a JSON status field of the REST API response"
-)]
 pub(crate) struct CryptoOfficerStatusResponse {
     /// Whether a Crypto Officer role configuration exists on the server.
     pub enabled: bool,

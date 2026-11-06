@@ -237,7 +237,7 @@ async fn post_message(
         Transport::Json => serde_json::from_slice::<TTLV>(response.bytes())
             .map_err(|e| format!("JSON decoding failed: {e}"))?,
     };
-    from_ttlv(ttlv).map_err(|e| format!("response decoding failed: {e}"))
+    from_ttlv(&ttlv).map_err(|e| format!("response decoding failed: {e}"))
 }
 
 /// Run a vector and return the first mismatch as an error. `uid_map` holds the UID

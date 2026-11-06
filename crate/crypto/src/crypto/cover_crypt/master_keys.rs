@@ -106,7 +106,7 @@ pub fn create_msk_object(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(msk_bytes),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -148,7 +148,7 @@ fn create_mpk_object(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
             key_wrapping_data: None,

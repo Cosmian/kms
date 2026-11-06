@@ -192,7 +192,10 @@ fn ecdsa_sign_rfc6979_openssl(
 /// silently ignores unknown parameters), so the caller never mistakes a random-nonce
 /// signature for an RFC 6979 one and falls back to the default OpenSSL signer instead.
 #[cfg(feature = "non-fips")]
-#[allow(unsafe_code)] // reason: raw OSSL_PARAM FFI; openssl's safe `set_nonce_type` is gated on ossl320, off when openssl-sys is built against 3.0.x headers
+#[expect(
+    unsafe_code,
+    reason = "raw OSSL_PARAM FFI; openssl safe set_nonce_type is gated on ossl320"
+)]
 fn set_deterministic_nonce(ctx: &mut PkeyCtxRef<Private>) -> bool {
     let key = c"nonce-type";
     let mut requested: c_uint = 1; // 1 = RFC 6979 deterministic k

@@ -112,10 +112,10 @@ pub(crate) async fn get_proxy_info(
 
     HttpResponse::Ok().json(ProxyInfoResponse {
         api_version: query.api_version.clone(),
-        proxy_vendor: conf.azure_ekm_proxy_vendor,
-        proxy_name: conf.azure_ekm_proxy_name,
-        ekm_vendor: conf.azure_ekm_ekm_vendor,
-        ekm_product: conf.azure_ekm_ekm_product,
+        proxy_vendor: conf.proxy_vendor,
+        proxy_name: conf.proxy_name,
+        ekm_vendor: conf.ekm_vendor,
+        ekm_product: conf.ekm_product,
     })
 }
 

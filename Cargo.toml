@@ -14,8 +14,10 @@ members = [
   "crate/clients/clap",
   "crate/clients/ckms",
   "crate/clients/k8s/plugin",
+  "crate/clients/k8s/plugin_proto",
   "crate/clients/k8s/operator",
   "crate/clients/k8s/csi_provider",
+  "crate/clients/k8s/csi_provider_proto",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
   "crate/clients/cng",
@@ -137,6 +139,8 @@ todo = "deny"
 exit = "deny"
 try_err = "deny"
 large_stack_arrays = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
 
 [workspace.package]
 version = "5.29.0"
@@ -231,7 +235,7 @@ cosmian_sse_memories = "8.0.2"
 
 # External crates
 actix-cors = "0.6"
-actix-files = "0.6"
+actix-files = "0.7"
 actix-http = "3.12"
 actix-identity = "0.6"
 actix-rt = "2.10"

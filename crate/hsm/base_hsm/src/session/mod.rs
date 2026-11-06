@@ -219,7 +219,10 @@ mod tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn, clippy::expect_used)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod message_signature_tests;
 
 mod aes;

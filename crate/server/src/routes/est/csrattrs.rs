@@ -79,13 +79,14 @@ fn csr_attrs(template: &CertTemplate) -> KResult<Vec<u8>> {
 /// The other template constraints (subject, SANs, EKUs) are enforced after submission.
 #[get("/.well-known/est/csrattrs")]
 pub(crate) async fn get_csrattrs(_req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<HttpResponse> {
-    if !kms.params.est_enabled {
+    if !kms.params.est.enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     info!("GET /.well-known/est/csrattrs");
     let template = kms
         .params
-        .est_template
+        .est
+        .template
         .as_ref()
         .ok_or_else(|| KmsError::ServerError("EST enabled without est_template".to_owned()))?;
     Ok(base64_response(

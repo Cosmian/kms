@@ -227,10 +227,10 @@ impl HsmStore {
                 else {
                     continue;
                 };
-                if !filter_accepts(&object_filter, &meta.key_type) || !wanted(uid, Some(&meta)) {
+                if !filter_accepts(object_filter, &meta.key_type) || !wanted(uid, Some(&meta)) {
                     continue;
                 }
-                let attrs = build_find_attributes(&Some(meta), &object_filter);
+                let attrs = build_find_attributes(&Some(meta), object_filter);
                 uids.push((uid.clone(), State::Active, attrs));
                 if uids.len() >= limit {
                     break;
@@ -242,7 +242,7 @@ impl HsmStore {
         for slot_id in self.hsm.get_available_slot_list().await? {
             let found = self
                 .hsm
-                .find(slot_id, object_filter.clone())
+                .find(slot_id, object_filter)
                 .await
                 .unwrap_or(vec![]);
             for object_id in found {
@@ -267,7 +267,7 @@ impl HsmStore {
                 // Populate basic attributes from HSM metadata so callers
                 // (Locate, /access/owned) can display key info without a
                 // separate GetAttributes round-trip.
-                let attrs = build_find_attributes(&object_meta, &object_filter);
+                let attrs = build_find_attributes(&object_meta, object_filter);
                 uids.push((uid, State::Active, attrs));
                 if uids.len() >= limit {
                     return Ok(uids);
@@ -1267,7 +1267,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                         key_material: KmipKeyMaterial::TransparentSymmetricKey {
                             key: zeroize::Zeroizing::new(vec![]),
                         },
-                        attributes: Some(attributes),
+                        attributes: Some(Box::new(attributes)),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     cryptographic_length: Some(length),
@@ -1301,7 +1301,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                         key_material: KmipKeyMaterial::TransparentSymmetricKey {
                             key: zeroize::Zeroizing::new(vec![]),
                         },
-                        attributes: Some(attributes),
+                        attributes: Some(Box::new(attributes)),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(length),
@@ -1337,7 +1337,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                                 recommended_curve,
                                 d: Box::new(SafeBigInt::from_bytes_be(&[])),
                             },
-                            attributes: Some(attributes),
+                            attributes: Some(Box::new(attributes)),
                         }),
                         cryptographic_algorithm: Some(algorithm),
                         cryptographic_length: Some(length),
@@ -1354,7 +1354,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                                 recommended_curve,
                                 q_string: vec![],
                             },
-                            attributes: Some(attributes),
+                            attributes: Some(Box::new(attributes)),
                         }),
                         cryptographic_algorithm: Some(algorithm),
                         cryptographic_length: Some(length),
@@ -1369,14 +1369,14 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
 /// Build an `Attributes` struct populated with keyset metadata from `KeyMetadata`.
 /// Used by `find_by_rotate_name` to return `rotate_name`/`generation`/`latest` to callers.
 fn build_keyset_attributes(meta: &KeyMetadata) -> Attributes {
-    let mut attrs = build_find_attributes(&Some(meta.clone()), &HsmObjectFilter::Any);
+    let mut attrs = build_find_attributes(&Some(meta.clone()), HsmObjectFilter::Any);
     attrs.rotate_name.clone_from(&meta.rotate_name);
     attrs.rotate_generation = meta.rotate_generation;
     attrs
 }
 
 /// Whether a key of `key_type` is one `HSM::find(filter)` would list.
-const fn filter_accepts(filter: &HsmObjectFilter, key_type: &KeyType) -> bool {
+const fn filter_accepts(filter: HsmObjectFilter, key_type: &KeyType) -> bool {
     matches!(
         (filter, key_type),
         (HsmObjectFilter::Any, _)
@@ -1396,7 +1396,7 @@ const fn filter_accepts(filter: &HsmObjectFilter, key_type: &KeyType) -> bool {
     )
 }
 
-fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
+fn build_find_attributes(meta: &Option<KeyMetadata>, filter: HsmObjectFilter) -> Attributes {
     let mut attrs = Attributes::default();
     if let Some(m) = meta {
         attrs.cryptographic_length = Some(i32::try_from(m.key_length_in_bits).unwrap_or_default());
@@ -1749,7 +1749,7 @@ fn to_object_with_metadata(
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     cryptographic_length: Some(
@@ -1817,7 +1817,7 @@ fn to_object_with_metadata(
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(
@@ -1871,7 +1871,7 @@ fn to_object_with_metadata(
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(
@@ -1922,7 +1922,7 @@ fn to_object_with_metadata(
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(algorithm),
                     cryptographic_length: Some(
@@ -1973,7 +1973,7 @@ fn to_object_with_metadata(
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: kmip_key_material,
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(algorithm),
                     cryptographic_length: Some(
@@ -2964,7 +2964,7 @@ mod characterization_tests {
 
     /// Single call site of `build_find_attributes` (its filter parameter shape is the only thing a
     /// refactor may change).
-    fn find_attrs(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
+    fn find_attrs(meta: &Option<KeyMetadata>, filter: HsmObjectFilter) -> Attributes {
         build_find_attributes(meta, filter)
     }
 
@@ -2979,7 +2979,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_aes() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::AesKey, 256, None)),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(attrs.cryptographic_length, Some(256));
         assert_eq!(
@@ -2997,7 +2997,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_ignores_filter() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::AesKey, 128, None)),
-            &HsmObjectFilter::EcPublicKey,
+            HsmObjectFilter::EcPublicKey,
         );
         assert_eq!(attrs.cryptographic_length, Some(128));
         assert_eq!(
@@ -3012,7 +3012,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_rsa_private() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::RsaPrivateKey, 2048, None)),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(attrs.cryptographic_length, Some(2048));
         assert_eq!(
@@ -3028,7 +3028,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_rsa_public() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::RsaPublicKey, 4096, None)),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(attrs.cryptographic_length, Some(4096));
         assert_eq!(
@@ -3044,7 +3044,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_ec_private_with_curve() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::EcPrivateKey, 256, Some(EcCurve::P256))),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(attrs.cryptographic_length, Some(256));
         assert_eq!(
@@ -3071,7 +3071,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_ec_public_with_curve() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::EcPublicKey, 384, Some(EcCurve::P384))),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(attrs.cryptographic_length, Some(384));
         assert_eq!(
@@ -3090,7 +3090,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_ec_without_curve() {
         let private = find_attrs(
             &Some(metadata(KeyType::EcPrivateKey, 521, None)),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(
             private.cryptographic_algorithm,
@@ -3105,7 +3105,7 @@ mod characterization_tests {
 
         let public = find_attrs(
             &Some(metadata(KeyType::EcPublicKey, 521, None)),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(
             public.cryptographic_algorithm,
@@ -3123,14 +3123,14 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_huge_length_defaults_to_zero() {
         let attrs = find_attrs(
             &Some(metadata(KeyType::AesKey, usize::MAX, None)),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(attrs.cryptographic_length, Some(0));
     }
 
     #[test]
     fn characterization_build_find_attributes_no_meta_any() {
-        let attrs = find_attrs(&None, &HsmObjectFilter::Any);
+        let attrs = find_attrs(&None, HsmObjectFilter::Any);
         assert!(attrs.cryptographic_length.is_none());
         assert!(attrs.cryptographic_algorithm.is_none());
         assert!(attrs.object_type.is_none());
@@ -3140,7 +3140,7 @@ mod characterization_tests {
 
     #[test]
     fn characterization_build_find_attributes_no_meta_aes() {
-        let attrs = find_attrs(&None, &HsmObjectFilter::AesKey);
+        let attrs = find_attrs(&None, HsmObjectFilter::AesKey);
         assert!(attrs.cryptographic_length.is_none());
         assert_eq!(
             attrs.cryptographic_algorithm,
@@ -3152,7 +3152,7 @@ mod characterization_tests {
 
     #[test]
     fn characterization_build_find_attributes_no_meta_rsa_variants() {
-        let rsa = find_attrs(&None, &HsmObjectFilter::RsaKey);
+        let rsa = find_attrs(&None, HsmObjectFilter::RsaKey);
         assert_eq!(
             rsa.cryptographic_algorithm,
             Some(CryptographicAlgorithm::RSA)
@@ -3160,7 +3160,7 @@ mod characterization_tests {
         assert!(rsa.object_type.is_none());
         assert!(rsa.key_format_type.is_none());
 
-        let private = find_attrs(&None, &HsmObjectFilter::RsaPrivateKey);
+        let private = find_attrs(&None, HsmObjectFilter::RsaPrivateKey);
         assert_eq!(
             private.cryptographic_algorithm,
             Some(CryptographicAlgorithm::RSA)
@@ -3168,7 +3168,7 @@ mod characterization_tests {
         assert_eq!(private.object_type, Some(ObjectType::PrivateKey));
         assert_eq!(private.key_format_type, Some(KeyFormatType::PKCS1));
 
-        let public = find_attrs(&None, &HsmObjectFilter::RsaPublicKey);
+        let public = find_attrs(&None, HsmObjectFilter::RsaPublicKey);
         assert_eq!(
             public.cryptographic_algorithm,
             Some(CryptographicAlgorithm::RSA)
@@ -3179,12 +3179,12 @@ mod characterization_tests {
 
     #[test]
     fn characterization_build_find_attributes_no_meta_ec_variants() {
-        let ec = find_attrs(&None, &HsmObjectFilter::EcKey);
+        let ec = find_attrs(&None, HsmObjectFilter::EcKey);
         assert_eq!(ec.cryptographic_algorithm, Some(CryptographicAlgorithm::EC));
         assert!(ec.object_type.is_none());
         assert!(ec.key_format_type.is_none());
 
-        let private = find_attrs(&None, &HsmObjectFilter::EcPrivateKey);
+        let private = find_attrs(&None, HsmObjectFilter::EcPrivateKey);
         assert_eq!(
             private.cryptographic_algorithm,
             Some(CryptographicAlgorithm::EC)
@@ -3195,7 +3195,7 @@ mod characterization_tests {
             Some(KeyFormatType::TransparentECPrivateKey)
         );
 
-        let public = find_attrs(&None, &HsmObjectFilter::EcPublicKey);
+        let public = find_attrs(&None, HsmObjectFilter::EcPublicKey);
         assert_eq!(
             public.cryptographic_algorithm,
             Some(CryptographicAlgorithm::EC)
@@ -3212,7 +3212,7 @@ mod characterization_tests {
     fn characterization_build_find_attributes_meta_non_fips_curves() {
         let ed = find_attrs(
             &Some(metadata(KeyType::EcPrivateKey, 256, Some(EcCurve::Ed25519))),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(
             ed.cryptographic_algorithm,
@@ -3222,7 +3222,7 @@ mod characterization_tests {
 
         let x = find_attrs(
             &Some(metadata(KeyType::EcPublicKey, 256, Some(EcCurve::X25519))),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(
             x.cryptographic_algorithm,
@@ -3236,7 +3236,7 @@ mod characterization_tests {
                 256,
                 Some(EcCurve::Secp256k1),
             )),
-            &HsmObjectFilter::Any,
+            HsmObjectFilter::Any,
         );
         assert_eq!(k1.cryptographic_algorithm, Some(CryptographicAlgorithm::EC));
         assert_eq!(recommended_curve(&k1), Some(RecommendedCurve::SECP256K1));

@@ -941,6 +941,14 @@ pub struct CertificateAttributes {
     pub certificate_issuer_dn_qualifier: String,
 }
 
+/// Unbox a `CertificateAttributes` carried by `Attribute::CertificateAttributes`,
+/// so that generic attribute macros can assign every variant payload with `.into()`.
+impl From<Box<Self>> for CertificateAttributes {
+    fn from(value: Box<Self>) -> Self {
+        *value
+    }
+}
+
 impl Display for CertificateAttributes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -2177,13 +2185,8 @@ pub enum ItemType {
 impl TryFrom<ItemType> for i32 {
     type Error = KmipError;
 
-    #[expect(
-        clippy::as_conversions,
-        reason = "fieldless repr enum discriminant cast; no std conversion"
-    )]
     fn try_from(value: ItemType) -> Result<Self, Self::Error> {
-        // This conversion is idiomatic for items marked with #[repr(u32)]
-        Self::try_from(value as u32).map_err(|e| {
+        Self::try_from(u32::from(value)).map_err(|e| {
             KmipError::ConversionError(format!("Failed to convert ItemType to i32: {e}"))
         })
     }
@@ -2263,7 +2266,6 @@ impl From<UsageLimits> for crate::kmip_0::kmip_types::UsageLimits {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod certificate_attributes_wire_tests {
     use super::{CertificateAttributes, Tag};
     use crate::ttlv::{TTLVBytesDeserializer, TTLVBytesSerializer, from_ttlv, to_ttlv};
@@ -2294,7 +2296,7 @@ mod certificate_attributes_wire_tests {
             .read_ttlv::<Tag>()
             .unwrap();
         assert_eq!(
-            from_ttlv::<CertificateAttributes>(ttlv).unwrap(),
+            from_ttlv::<CertificateAttributes>(&ttlv).unwrap(),
             attributes
         );
     }

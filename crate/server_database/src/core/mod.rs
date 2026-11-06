@@ -35,15 +35,15 @@ use crate::stores::{MySqlPool, PgPool, SqlitePool};
 
 /// Sizing and expiry settings shared by the unwrapped-key and object caches.
 #[derive(Clone, Copy, Debug)]
-struct CacheParams {
+pub struct CacheParams {
     /// Time-to-idle of cache entries.
-    max_age: Duration,
+    pub max_age: Duration,
     /// Maximum number of entries before LRU eviction.
-    max_size: NonZeroUsize,
+    pub max_size: NonZeroUsize,
     /// Optional absolute time-to-live of entries.
-    max_ttl: Option<Duration>,
+    pub max_ttl: Option<Duration>,
     /// Disable the unwrapped-key cache.
-    disabled: bool,
+    pub disabled: bool,
 }
 
 /// The `Database` struct represents the core database functionalities, including object management,
@@ -126,30 +126,16 @@ impl Database {
     /// - `main_db_params` is the parameters for the main database.
     /// - `clear_db_on_start` indicates whether to clear the database on startup.
     /// - `object_stores` is a map of object stores with their prefixes.
-    /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
-    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "public API of published crate cosmian_kms_server_database; frozen until next major"
-    )]
+    /// - `cache` holds the unwrapped-object and object cache settings.
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
-        cache_max_age: Duration,
-        cache_max_size: NonZeroUsize,
-        cache_max_ttl: Option<Duration>,
-        disable_unwrapped_cache: bool,
+        cache: CacheParams,
         recorder: Option<Arc<dyn DbMetricsRecorder>>,
         ceremony_keys: Option<Arc<CeremonyKeys>>,
     ) -> DbResult<Self> {
         // main/default database
-        let cache = CacheParams {
-            max_age: cache_max_age,
-            max_size: cache_max_size,
-            max_ttl: cache_max_ttl,
-            disabled: disable_unwrapped_cache,
-        };
         let mut db = Self::instantiate_main_database(
             main_db_params,
             clear_db_on_start,
@@ -439,7 +425,7 @@ mod characterization_tests {
 
     use url::Url;
 
-    use super::{Database, MainDbParams};
+    use super::{CacheParams, Database, MainDbParams};
 
     /// The ONLY place that calls `Database::instantiate` (its signature changes upstream).
     async fn instantiate_err(params: MainDbParams) -> String {
@@ -447,10 +433,12 @@ mod characterization_tests {
             &params,
             false,
             HashMap::new(),
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).unwrap(),
-            None,
-            false,
+            CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).unwrap(),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )

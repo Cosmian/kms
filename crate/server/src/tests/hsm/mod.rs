@@ -238,8 +238,12 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
         false,
         None,
     )?;
-    let response =
-        send_message(kms.clone(), owner, vec![Operation::Create(create_request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
@@ -424,7 +428,9 @@ async fn send_message(
         },
         batch_item: operations
             .into_iter()
-            .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)))
+            .map(|op| {
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+            })
             .collect(),
     };
 

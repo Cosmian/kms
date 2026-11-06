@@ -861,10 +861,12 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -973,10 +975,12 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(), // no HSM stores registered
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None, // recorder
             None, // ceremony_keys
         )
@@ -1079,10 +1083,12 @@ mod tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            Duration::from_secs(1),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             Some(recorder_arc),
             None,
         )
@@ -1309,10 +1315,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_mins(15),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_mins(15),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1324,10 +1332,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_mins(15),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_mins(15),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1393,10 +1403,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_mins(15),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_mins(15),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1407,10 +1419,12 @@ mod tests {
             &db_params,
             false,
             HashMap::new(),
-            Duration::from_mins(15),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,
-            false,
+            crate::core::CacheParams {
+                max_age: Duration::from_mins(15),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
             None,
             None,
         )
@@ -1498,10 +1512,12 @@ mod characterization_tests {
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
-            max_age,
-            NonZeroUsize::new(max_size).unwrap(),
-            max_ttl,
-            disabled,
+            crate::core::CacheParams {
+                max_age,
+                max_size: NonZeroUsize::new(max_size).unwrap(),
+                max_ttl,
+                disabled,
+            },
             None,
             None,
         )

@@ -1,7 +1,3 @@
-#![expect(
-    clippy::as_conversions,
-    reason = "fieldless repr enum discriminant cast; no std conversion"
-)]
 use std::{collections::HashMap, sync::LazyLock};
 
 use strum::IntoEnumIterator;
@@ -54,10 +50,10 @@ pub fn lookup_enum_code(name: &str) -> Option<(u32, &'static str)> {
 pub fn lookup_enum_code_for_tag(name: &str, tag: &str) -> Option<(u32, &'static str)> {
     if matches!(tag, "HashingAlgorithm" | "MaskGeneratorHashingAlgorithm") {
         let resolved = match name {
-            "SHA3224" => Some((k0::HashingAlgorithm::SHA3224 as u32, "SHA3224")),
-            "SHA3256" => Some((k0::HashingAlgorithm::SHA3256 as u32, "SHA3256")),
-            "SHA3384" => Some((k0::HashingAlgorithm::SHA3384 as u32, "SHA3384")),
-            "SHA3512" => Some((k0::HashingAlgorithm::SHA3512 as u32, "SHA3512")),
+            "SHA3224" => Some((u32::from(k0::HashingAlgorithm::SHA3224), "SHA3224")),
+            "SHA3256" => Some((u32::from(k0::HashingAlgorithm::SHA3256), "SHA3256")),
+            "SHA3384" => Some((u32::from(k0::HashingAlgorithm::SHA3384), "SHA3384")),
+            "SHA3512" => Some((u32::from(k0::HashingAlgorithm::SHA3512), "SHA3512")),
             _ => None,
         };
         if resolved.is_some() {
@@ -88,7 +84,7 @@ macro_rules! insert_forward {
         $(
             for variant in <$enum_type>::iter() {
                 let name: &'static str = variant.into();
-                let code = variant as u32;
+                let code = u32::from(variant);
                 $map.entry(name).or_insert((code, name));
             }
         )+
@@ -102,7 +98,7 @@ macro_rules! insert_reverse {
         $(
             for variant in <$enum_type>::iter() {
                 let name: &'static str = variant.into();
-                let code = variant as u32;
+                let code = u32::from(variant);
                 $map.insert(code, name);
             }
         )+
@@ -156,7 +152,7 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
     // This is needed because downstream deserialization expects ErrorReason format.
     for variant in k14::ResultReason::iter() {
         let pascal_name: &'static str = variant.into();
-        let code = variant as u32;
+        let code = u32::from(variant);
         // Find the matching ErrorReason variant by code to get the underscore name
         if let Some(er_variant) = k0::ErrorReason::from_repr(code) {
             let er_name: &'static str = er_variant.into();
@@ -208,7 +204,7 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
     // the Rust variants use underscores (e.g. "Wrong_Key_Lifecycle_State").
     for variant in k0::ErrorReason::iter() {
         let name: &'static str = variant.into();
-        let code = variant as u32;
+        let code = u32::from(variant);
         map.entry(name).or_insert((code, name));
         // Generate PascalCase form by removing underscores
         let pascal: String = name.replace('_', "");
@@ -488,7 +484,7 @@ mod tests {
         ] {
             let variant = k21::DigitalSignatureAlgorithm::iter()
                 .find(|v| <&'static str>::from(*v) == canonical)
-                .map(|v| v as u32);
+                .map(u32::from);
             assert_eq!(
                 lookup_enum_code(alias),
                 variant.map(|code| (code, canonical)),
@@ -511,7 +507,7 @@ mod tests {
         ] {
             assert_eq!(
                 lookup_enum_code(name),
-                Some((variant as u32, <&'static str>::from(variant)))
+                Some((u32::from(variant), <&'static str>::from(variant)))
             );
         }
     }

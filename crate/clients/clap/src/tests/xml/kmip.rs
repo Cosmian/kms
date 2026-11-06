@@ -424,7 +424,7 @@ async fn kmip_3_0_xml_vectors_rejected() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Query,
                 ephemeral: None,
@@ -435,7 +435,7 @@ async fn kmip_3_0_xml_vectors_rejected() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let bytes = to_ttlv(&request)
         .and_then(|t| t.to_bytes(KmipFlavor::Kmip2))

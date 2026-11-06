@@ -1264,7 +1264,6 @@ mod tests {
 /// call site actually recovers content corruption, not just the
 /// `cosmian_kms_server_database` sink underneath it in isolation.
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod live_postgres_tests {
     use cosmian_kms_access::audit::{AuditEventDraft, AuditResult, audit_now};
     use cosmian_kms_interfaces::AuditSink;

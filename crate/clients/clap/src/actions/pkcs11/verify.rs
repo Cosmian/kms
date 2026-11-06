@@ -9,13 +9,9 @@
 //! conformance-profile self-declaration — to verify connectivity and
 //! correctness end to end.
 
-#![expect(
-    unsafe_code,
-    clippy::print_stdout,
-    reason = "dlopen of a PKCS#11 module drives its C ABI; the verify command reports to stdout"
-)]
+#![expect(unsafe_code, reason = "dlopen of a PKCS#11 module drives its C ABI")]
 
-use std::{env, ffi::c_void, mem::size_of, path::Path, ptr, sync::Mutex};
+use std::{env, ffi::c_void, io::Write as _, mem::size_of, path::Path, ptr, sync::Mutex};
 
 use libloading::{Library, Symbol};
 use pkcs11_sys::{
@@ -88,14 +84,18 @@ pub(crate) fn run_verify(
     token: Option<&str>,
 ) -> KmsCliResult<()> {
     // ── Step A: Determine which ckms.toml will be used ──────────────────────
-    describe_config(so_path, conf);
+    describe_config(so_path, conf)?;
 
     if let Some(conf_path) = conf {
         set_ckms_conf(conf_path)?;
     }
 
     // ── Step B: Load the shared library ────────────────────────────────────
-    println!("[load] Opening: {}", so_path.display());
+    writeln!(
+        std::io::stdout().lock(),
+        "[load] Opening: {}",
+        so_path.display()
+    )?;
     // SAFETY: loading runs the library's initializers; the caller explicitly names a
     // PKCS#11 provider, whose initializers are trusted like any loaded Cryptoki module.
     let lib = unsafe { Library::new(so_path) }.map_err(|e| {
@@ -106,8 +106,8 @@ pub(crate) fn run_verify(
             so_path.display()
         ))
     })?;
-    println!("[load] OK: shared library opened");
-    println!();
+    writeln!(std::io::stdout().lock(), "[load] OK: shared library opened")?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step B½: C_GetInterfaceList / C_GetInterface (PKCS#11 v3.0 Interfaces API,
     // §5.2) ──────────────────────────────────────────────────────────────────
@@ -115,16 +115,22 @@ pub(crate) fn run_verify(
     // interface through these two top-level entry points instead of (or in addition
     // to) the legacy `C_GetFunctionList`. Both are mandatory exports of this library.
     call_verify_interfaces(&lib)?;
-    println!("[C_GetInterfaceList/C_GetInterface] OK: v3.0 interface negotiation conformant");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_GetInterfaceList/C_GetInterface] OK: v3.0 interface negotiation conformant"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step C: C_GetFunctionList ───────────────────────────────────────────
     let func_list_ptr = call_get_function_list(&lib)?;
     // SAFETY: `call_get_function_list` returned a non-null pointer to the provider's
     // static function table, valid while `lib` stays loaded (until this function returns).
     let func_list: &CK_FUNCTION_LIST = unsafe { &*func_list_ptr };
-    println!("[C_GetFunctionList] OK: ckms.toml parsed");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_GetFunctionList] OK: ckms.toml parsed"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step D: C_Initialize ────────────────────────────────────────────────
     let c_initialize = func_list.C_Initialize.ok_or_else(|| {
@@ -133,55 +139,74 @@ pub(crate) fn run_verify(
     // SAFETY: `C_Initialize` accepts a null `pInitArgs` (no threading callbacks).
     let rv = unsafe { c_initialize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Initialize")?;
-    println!("[C_Initialize] OK");
-    println!();
+    writeln!(std::io::stdout().lock(), "[C_Initialize] OK")?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step D½: C_GetInfo ──────────────────────────────────────────────────
     call_get_info(func_list)?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step E: C_GetSlotList ───────────────────────────────────────────────
     let slot_id = call_get_slot_list(func_list)?;
-    println!("[C_GetSlotList] OK: using slot ID {slot_id}");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_GetSlotList] OK: using slot ID {slot_id}"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step E½: C_GetMechanismList / C_GetMechanismInfo ─────────────────────
     // PKCS#11 v3.1 §5.2 Table 3: mechanism-capability flags must be accurate — a
     // spec-following client relies on them to decide which operations to attempt.
     call_verify_mechanisms(func_list, slot_id)?;
-    println!("[C_GetMechanismList/C_GetMechanismInfo] OK: v3 mechanism set conformant");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_GetMechanismList/C_GetMechanismInfo] OK: v3 mechanism set conformant"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step F: C_OpenSession ───────────────────────────────────────────────
     let session = call_open_session(func_list, slot_id)?;
-    println!("[C_OpenSession] OK: session opened on slot {slot_id}");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_OpenSession] OK: session opened on slot {slot_id}"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step F½: C_Login (when --token is supplied) ─────────────────────────
     if let Some(tok) = token {
         call_login(func_list, session, tok)?;
-        println!("[C_Login] OK: session authenticated with provided token");
-        println!();
+        writeln!(
+            std::io::stdout().lock(),
+            "[C_Login] OK: session authenticated with provided token"
+        )?;
+        writeln!(std::io::stdout().lock())?;
     }
 
     // ── Steps G–I: Enumerate objects by class ───────────────────────────────
-    let (found_count, error_count) = call_find_objects(func_list, session);
+    let (found_count, error_count) = call_find_objects(func_list, session)?;
     if error_count > 0 {
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "[C_FindObjects] WARN: {error_count} class(es) returned errors — \
              the KMS server may be unreachable or misconfigured"
-        );
+        )?;
     }
-    println!("[C_FindObjects] OK: {found_count} PKCS#11 object(s) visible on KMS");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_FindObjects] OK: {found_count} PKCS#11 object(s) visible on KMS"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step I½: CKO_PROFILE self-declaration (PKCS#11 v3.0 Profiles, §4.5) ──
     // A v3-conformant token/slot MUST self-declare every conformance profile it
     // implements via `CKO_PROFILE` objects, discoverable through `C_FindObjects`
     // even before login.
     call_verify_profiles(func_list, session)?;
-    println!("[CKO_PROFILE] OK: conformance profile(s) self-declared correctly");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "[CKO_PROFILE] OK: conformance profile(s) self-declared correctly"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── Step J: C_CloseSession ──────────────────────────────────────────────
     let c_close_session = func_list.C_CloseSession.ok_or_else(|| {
@@ -190,7 +215,7 @@ pub(crate) fn run_verify(
     // SAFETY: `session` is the open session handle returned by `C_OpenSession` above.
     let rv = unsafe { c_close_session(session) };
     check_rv(rv, "C_CloseSession")?;
-    println!("[C_CloseSession] OK");
+    writeln!(std::io::stdout().lock(), "[C_CloseSession] OK")?;
 
     // ── Step K: C_Finalize ──────────────────────────────────────────────────
     let c_finalize = func_list.C_Finalize.ok_or_else(|| {
@@ -199,18 +224,18 @@ pub(crate) fn run_verify(
     // SAFETY: `C_Finalize` requires a null `pReserved`.
     let rv = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Finalize")?;
-    println!("[C_Finalize] OK");
+    writeln!(std::io::stdout().lock(), "[C_Finalize] OK")?;
 
     if error_count > 0 {
-        println!();
+        writeln!(std::io::stdout().lock())?;
         return Err(KmsCliError::Default(format!(
             "FAIL: {error_count} object class(es) could not be enumerated. \
              The KMS server may be unreachable or misconfigured."
         )));
     }
 
-    println!();
-    println!("All checks passed.");
+    writeln!(std::io::stdout().lock())?;
+    writeln!(std::io::stdout().lock(), "All checks passed.")?;
 
     Ok(())
 }
@@ -557,16 +582,26 @@ fn call_get_info(func_list: &CK_FUNCTION_LIST) -> KmsCliResult<()> {
 
     let manufacturer = trim_padded_ck_string(&info.manufacturerID);
     let description = trim_padded_ck_string(&info.libraryDescription);
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "[C_GetInfo] OK: Cryptoki v{}.{}",
-        info.cryptokiVersion.major, info.cryptokiVersion.minor
-    );
-    println!("  manufacturerID:      {manufacturer}");
-    println!("  libraryDescription:  {description}");
-    println!(
+        info.cryptokiVersion.major,
+        info.cryptokiVersion.minor
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "  manufacturerID:      {manufacturer}"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "  libraryDescription:  {description}"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
         "  libraryVersion:      {}.{}",
-        info.libraryVersion.major, info.libraryVersion.minor
-    );
+        info.libraryVersion.major,
+        info.libraryVersion.minor
+    )?;
 
     Ok(())
 }
@@ -607,7 +642,10 @@ fn call_verify_mechanisms(func_list: &CK_FUNCTION_LIST, slot_id: CK_SLOT_ID) -> 
     let rv = unsafe { c_get_mechanism_list(slot_id, mechanisms.as_mut_ptr(), &raw mut count) };
     check_rv(rv, "C_GetMechanismList (fill)")?;
 
-    println!("[C_GetMechanismList] {mechanism_count} mechanism(s) advertised");
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_GetMechanismList] {mechanism_count} mechanism(s) advertised"
+    )?;
 
     let c_get_mechanism_info = func_list.C_GetMechanismInfo.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_GetMechanismInfo]: not present in function list".to_owned())
@@ -636,7 +674,7 @@ fn call_verify_mechanisms(func_list: &CK_FUNCTION_LIST, slot_id: CK_SLOT_ID) -> 
                  0x{flags:08X}"
             )));
         }
-        println!("  {name}: flags=0x{flags:08X}");
+        writeln!(std::io::stdout().lock(), "  {name}: flags=0x{flags:08X}")?;
     }
 
     Ok(())
@@ -653,25 +691,34 @@ const OBJECT_CLASSES: &[(CK_OBJECT_CLASS, &str)] = &[
 
 const MAX_OBJECTS: usize = 64;
 
-fn call_find_objects(func_list: &CK_FUNCTION_LIST, session: CK_SESSION_HANDLE) -> (usize, usize) {
-    println!("[C_FindObjects] Enumerating objects by class:");
+fn call_find_objects(
+    func_list: &CK_FUNCTION_LIST,
+    session: CK_SESSION_HANDLE,
+) -> KmsCliResult<(usize, usize)> {
+    writeln!(
+        std::io::stdout().lock(),
+        "[C_FindObjects] Enumerating objects by class:"
+    )?;
     let mut grand_total: usize = 0;
     let mut error_count: usize = 0;
 
     for &(class, class_name) in OBJECT_CLASSES {
         match count_objects_by_class(func_list, session, class, class_name) {
             Ok(count) => {
-                println!("  {class_name}: {count}");
+                writeln!(std::io::stdout().lock(), "  {class_name}: {count}")?;
                 grand_total += count;
             }
             Err(e) => {
-                println!("  {class_name}: unavailable — {e}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "  {class_name}: unavailable — {e}"
+                )?;
                 error_count += 1;
             }
         }
     }
 
-    (grand_total, error_count)
+    Ok((grand_total, error_count))
 }
 
 fn count_objects_by_class(
@@ -800,7 +847,7 @@ fn call_verify_profiles(
         check_rv(rv, "C_GetAttributeValue(CKA_PROFILE_ID)")?;
 
         match KNOWN_PROFILES.iter().find(|(id, _)| *id == profile_id) {
-            Some((_, name)) => println!("  profile: {name}"),
+            Some((_, name)) => writeln!(std::io::stdout().lock(), "  profile: {name}")?,
             None => {
                 return Err(KmsCliError::Default(format!(
                     "FAIL [CKO_PROFILE]: object handle {handle} advertises unknown \
@@ -952,11 +999,18 @@ pub(crate) const fn ckr_name(rv: CK_RV) -> &'static str {
 // Step A helper – describe config location
 // ---------------------------------------------------------------------------
 
-fn describe_config(so_path: &Path, conf: Option<&Path>) {
+fn describe_config(so_path: &Path, conf: Option<&Path>) -> KmsCliResult<()> {
     if let Some(p) = conf {
-        println!("[conf] Will use --conf: {}", p.display());
+        writeln!(
+            std::io::stdout().lock(),
+            "[conf] Will use --conf: {}",
+            p.display()
+        )?;
     } else if let Ok(v) = env::var("CKMS_CONF") {
-        println!("[conf] Will use CKMS_CONF env: {v}");
+        writeln!(
+            std::io::stdout().lock(),
+            "[conf] Will use CKMS_CONF env: {v}"
+        )?;
     } else {
         // Check alongside the .so
         let adjacent = so_path
@@ -965,7 +1019,11 @@ fn describe_config(so_path: &Path, conf: Option<&Path>) {
             .filter(|p| p.exists());
 
         if let Some(ref p) = adjacent {
-            println!("[conf] Will use ckms.toml adjacent to .so: {}", p.display());
+            writeln!(
+                std::io::stdout().lock(),
+                "[conf] Will use ckms.toml adjacent to .so: {}",
+                p.display()
+            )?;
         } else {
             // Default search order mirrors ClientConfig::location()
             let home_conf = env::var("HOME").ok().map(|h| {
@@ -976,24 +1034,31 @@ fn describe_config(so_path: &Path, conf: Option<&Path>) {
             let system_conf = std::path::PathBuf::from("/etc/cosmian/ckms.toml");
 
             if home_conf.as_ref().is_some_and(|p| p.exists()) {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "[conf] Will use default home config: {}",
                     home_conf
                         .as_ref()
                         .map_or_else(std::path::PathBuf::new, Clone::clone)
                         .display()
-                );
+                )?;
             } else if system_conf.exists() {
-                println!("[conf] Will use system config: {}", system_conf.display());
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[conf] Will use system config: {}",
+                    system_conf.display()
+                )?;
             } else {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "[conf] WARNING: no ckms.toml found at any standard location \
                      (~/.cosmian/ckms.toml, /etc/cosmian/ckms.toml).\n  \
                      C_GetFunctionList will fail unless CKMS_CONF is set or \
                      a ckms.toml sits next to the .so."
-                );
+                )?;
             }
         }
     }
-    println!();
+    writeln!(std::io::stdout().lock())?;
+    Ok(())
 }

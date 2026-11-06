@@ -87,6 +87,6 @@ fn characterization_ttlv_to_bytes_kmip2_extension_tag() {
 #[test]
 fn characterization_offset_date_time_deserialize() {
     let dt = datetime!(2024-03-05 12:34:56 UTC);
-    let out: OffsetDateTime = from_ttlv(node("ActivationDate", TTLValue::DateTime(dt))).unwrap();
+    let out: OffsetDateTime = from_ttlv(&node("ActivationDate", TTLValue::DateTime(dt))).unwrap();
     assert_eq!(out, dt);
 }

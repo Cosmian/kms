@@ -23,7 +23,7 @@ impl WordMaskAction {
             words: &self.words,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("word-mask", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

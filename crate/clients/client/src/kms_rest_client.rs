@@ -1,4 +1,6 @@
 // re-export the kmip module as kmip
+use std::io::Write as _;
+
 use cosmian_kms_client_utils::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
@@ -630,9 +632,9 @@ impl KmsClient {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                 RequestMessageBatchItem::new(Operation::Sign(request)),
-            )],
+            ))],
         };
         let response = self.post_message_bytes(&request).await?;
         if response.batch_item.len() != 1 {
@@ -956,10 +958,6 @@ impl KmsClient {
     ///
     /// Serialises `request` to TTLV, POSTs it to `endpoint`, deserialises the TTLV
     /// response, and routes errors through [`process_error_response`].
-    #[expect(
-        clippy::print_stdout,
-        reason = "`print_json` asks for the KMIP JSON exchange on stdout"
-    )]
     async fn send_ttlv_request<O, R>(
         &self,
         endpoint: &str,
@@ -972,10 +970,12 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.client.server_url);
         let ttlv = to_ttlv(request)?;
         if self.print_json {
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
                 "\nKMIP Request ==>\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-            );
+            )
+            .map_err(|e| KmsClientError::UnexpectedError(format!("cannot write to stdout: {e}")))?;
         }
         trace!(
             "==>\n{}",
@@ -987,16 +987,20 @@ impl KmsClient {
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>()?;
             if self.print_json {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "\nKMIP Response <==\n{}\n",
                     serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-                );
+                )
+                .map_err(|e| {
+                    KmsClientError::UnexpectedError(format!("cannot write to stdout: {e}"))
+                })?;
             }
             trace!(
                 "<==\n{}",
                 serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
+            return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
         }
 
         Err(process_error_response(endpoint, status_code, &response))
@@ -1034,7 +1038,7 @@ impl KmsClient {
             return Err(process_error_response("/kmip", response.status, &response));
         }
         let response_ttlv = TTLV::from_bytes(response.bytes(), KmipFlavor::Kmip2)?;
-        from_ttlv(response_ttlv).map_err(|error| KmsClientError::ResponseFailed(error.to_string()))
+        from_ttlv(&response_ttlv).map_err(|error| KmsClientError::ResponseFailed(error.to_string()))
     }
 }
 

@@ -330,7 +330,7 @@ pub fn import_rsa_private_key(
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: KeyMaterial::ByteString(Zeroizing::new(pkcs8_der.to_vec())),
-                        attributes: Some(attributes.clone()),
+                        attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: None,

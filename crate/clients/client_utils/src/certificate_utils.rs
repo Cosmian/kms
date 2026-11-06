@@ -473,13 +473,13 @@ pub fn build_certify_request(
 /// - `issuer_certificate_id` — optional UID of the issuer's certificate
 /// - `number_of_days` — requested validity period for the new certificate
 /// - `tags` — tags to associate with the new certificate
-pub fn build_re_certify_request(
+pub fn build_re_certify_request<T: IntoIterator<Item = impl AsRef<str>>>(
     vendor_id: &str,
     certificate_id_to_re_certify: &str,
     issuer_private_key_id: &Option<String>,
     issuer_certificate_id: &Option<String>,
     number_of_days: usize,
-    tags: &[String],
+    tags: T,
 ) -> Result<ReCertify, UtilsError> {
     let mut attributes = Attributes {
         object_type: Some(ObjectType::Certificate),
@@ -576,7 +576,6 @@ fn configurable_kem_algorithm(
 
 #[cfg(test)]
 // test-only: every `ValueEnum` variant has a possible value, and the requests are built with an id
-#[allow(clippy::unwrap_used)]
 mod tests {
     use clap::ValueEnum;
     use cosmian_kmip::kmip_2_1::{

@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::{
@@ -223,7 +221,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -232,9 +230,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
-                Box::default(),
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                Operation::Locate(Box::default()),
             ))),
         ],
     };
@@ -254,7 +252,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -263,8 +261,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -273,8 +271,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -283,8 +281,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -293,7 +291,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
+            ))),
         ],
     };
 

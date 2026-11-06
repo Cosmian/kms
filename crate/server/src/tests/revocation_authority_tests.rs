@@ -6,8 +6,6 @@
 //! the CA's CRL, and keeping one active must not make OCSP answer `good` for a revoked
 //! certificate.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::{collections::HashSet, sync::Arc};
 
 use actix_web::{App, test, web::Data};

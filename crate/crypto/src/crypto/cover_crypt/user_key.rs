@@ -136,7 +136,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
-                    attributes: Some(attributes),
+                    attributes: Some(Box::new(attributes)),
                 }),
                 cryptographic_length,
                 key_wrapping_data: None,
@@ -179,7 +179,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
-                    attributes: Some(usk_attributes),
+                    attributes: Some(Box::new(usk_attributes)),
                 }),
                 cryptographic_length,
                 key_wrapping_data: None,

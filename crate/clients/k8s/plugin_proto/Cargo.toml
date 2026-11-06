@@ -1,0 +1,35 @@
+[package]
+name = "cosmian_kms_k8s_plugin_proto"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["kms", "kubernetes", "k8s", "cosmian", "grpc"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Generated gRPC bindings for the Kubernetes KMS v2 API"
+readme = "../../../../README.md"
+
+# prost is a false positive: it is used by the generated code in src/v2.rs
+[package.metadata.cargo-machete]
+ignored = ["prost"]
+
+[lints.rust]
+non_camel_case_types = "allow"
+
+[lints.clippy]
+derive_partial_eq_without_eq = "allow"
+empty_structs_with_brackets = "allow"
+missing_const_for_fn = "allow"
+default_trait_access = "allow"
+as_conversions = "allow"
+use_self = "allow"
+doc_markdown = "allow"
+result_large_err = "allow"
+allow_attributes = "allow"
+allow_attributes_without_reason = "allow"
+
+[dependencies]
+prost = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }

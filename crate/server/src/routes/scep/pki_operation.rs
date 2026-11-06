@@ -155,7 +155,7 @@ pub(super) async fn pki_operation(
         if message_type != MESSAGE_TYPE_PKCS_REQ && message_type != MESSAGE_TYPE_RENEWAL_REQ {
             Some("unsupported SCEP messageType")
         } else if message_type == MESSAGE_TYPE_RENEWAL_REQ
-            && !kms.params.scep_allow_renewal_without_challenge
+            && !kms.params.scep.allow_renewal_without_challenge
         {
             Some("RenewalReq is not accepted by this CA")
         } else {
@@ -180,7 +180,8 @@ pub(super) async fn pki_operation(
 
     let ca_uid = kms
         .params
-        .scep_ca_uid
+        .scep
+        .ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("SCEP enabled without scep_ca_uid".to_owned()))?;
     let (ca_cert, ca_key) = match load_ca_signing_material(kms, ca_uid).await {
@@ -332,7 +333,7 @@ async fn enroll(
         // The signer key is not required to be the CSR key (RFC 8894 §2.3 says SHOULD): the
         // native macOS client signs with a separate "MDM SCEP SIGNER" key. A re-signed
         // captured envelope is caught by the envelope replay key instead.
-        let expected = kms.params.scep_challenge_password.as_deref();
+        let expected = kms.params.scep.challenge_password.as_deref();
         let supplied = csr_challenge_password(&csr);
         let authorised = matches!((expected, supplied.as_deref()),
             (Some(expected), Some(supplied)) if secrets_equal(expected, supplied));
@@ -365,7 +366,7 @@ async fn enroll(
         return Err(Rejection::new(FAIL_INFO_BAD_REQUEST, "replayed SCEP message").counted());
     }
 
-    let template = kms.params.scep_template.as_ref().ok_or_else(|| {
+    let template = kms.params.scep.template.as_ref().ok_or_else(|| {
         Rejection::new(FAIL_INFO_BAD_REQUEST, "SCEP enabled without scep_template")
     })?;
     issue_from_csr(kms, ca_uid, &csr, template)

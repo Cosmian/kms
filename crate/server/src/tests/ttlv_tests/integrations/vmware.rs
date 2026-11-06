@@ -81,7 +81,7 @@ fn discover_versions_1(client: &SocketClient) {
     )
     .expect("Failed to parse TTLV");
     let request_message: RequestMessage =
-        from_ttlv(ttlv_request).expect("Failed to parse DiscoverVersions");
+        from_ttlv(&ttlv_request).expect("Failed to parse DiscoverVersions");
 
     info!("Discovering KMIP versions with request: {request_message}",);
 
@@ -92,7 +92,7 @@ fn discover_versions_1(client: &SocketClient) {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse DiscoverVersions response");
+        from_ttlv(&ttlv_response).expect("Failed to parse DiscoverVersions response");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -133,7 +133,7 @@ fn query(client: &SocketClient) {
         KmipFlavor::Kmip1,
     )
     .expect("Failed to parse TTLV");
-    let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Query");
+    let request_message: RequestMessage = from_ttlv(&ttlv_request).expect("Failed to parse Query");
 
     info!("Querying with request: {request_message}",);
 
@@ -144,7 +144,7 @@ fn query(client: &SocketClient) {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse Query response");
+        from_ttlv(&ttlv_response).expect("Failed to parse Query response");
 
     info!("Query response: {response}");
 
@@ -163,7 +163,7 @@ fn create_symmetric_key(client: &SocketClient) -> String {
         KmipFlavor::Kmip1,
     )
     .expect("Failed to parse TTLV");
-    let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Create");
+    let request_message: RequestMessage = from_ttlv(&ttlv_request).expect("Failed to parse Create");
 
     info!("Creating symmetric key with request: {request_message}",);
 
@@ -174,7 +174,7 @@ fn create_symmetric_key(client: &SocketClient) -> String {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse Create response");
+        from_ttlv(&ttlv_response).expect("Failed to parse Create response");
 
     info!("Create response: {response}");
 
@@ -212,7 +212,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
     )
     .expect("Failed to parse TTLV");
     let mut request_message: RequestMessage =
-        from_ttlv(ttlv_request).expect("Failed to parse GetAttributes");
+        from_ttlv(&ttlv_request).expect("Failed to parse GetAttributes");
     let Some(RequestMessageBatchItemVersioned::V14(batch_item)) =
         request_message.batch_item.get_mut(0)
     else {
@@ -234,7 +234,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse GetAttributes response");
+        from_ttlv(&ttlv_response).expect("Failed to parse GetAttributes response");
 
     info!("GetAttributes response: {response}");
 
@@ -272,7 +272,7 @@ fn add_attributes(client: &SocketClient, uid: &str) {
     .expect("Failed to parse TTLV");
     info!("Adding attributes with request: {ttlv_request:#?}");
     let mut request_message: RequestMessage =
-        from_ttlv(ttlv_request).expect("Failed to parse AddAttribute");
+        from_ttlv(&ttlv_request).expect("Failed to parse AddAttribute");
     for batch_item in &mut request_message.batch_item {
         if let RequestMessageBatchItemVersioned::V14(batch_item) = batch_item {
             if let Operation::AddAttribute(add_attribute_request) = &mut batch_item.request_payload
@@ -297,7 +297,7 @@ fn add_attributes(client: &SocketClient, uid: &str) {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse AddAttribute response");
+        from_ttlv(&ttlv_response).expect("Failed to parse AddAttribute response");
 
     info!("AddAttribute response: {response}");
 
@@ -333,7 +333,8 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) {
         KmipFlavor::Kmip1,
     )
     .expect("Failed to parse TTLV");
-    let mut request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Get");
+    let mut request_message: RequestMessage =
+        from_ttlv(&ttlv_request).expect("Failed to parse Get");
     let Some(RequestMessageBatchItemVersioned::V14(batch_item)) =
         request_message.batch_item.get_mut(0)
     else {
@@ -357,7 +358,8 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) {
 
     info!("Get response: {ttlv_response:#?}");
 
-    let response: ResponseMessage = from_ttlv(ttlv_response).expect("Failed to parse Get response");
+    let response: ResponseMessage =
+        from_ttlv(&ttlv_response).expect("Failed to parse Get response");
 
     info!("Get response: {response}");
 

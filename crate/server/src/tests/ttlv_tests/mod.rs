@@ -97,7 +97,7 @@ fn start_test_server() -> &'static TestServerCtx {
 
     SERVER_HANDLES.get_or_init(|| {
         let mut https_config = https_clap_config();
-        https_config.socket_server.socket_server_hostname = TEST_HOST.to_owned();
+        https_config.socket_server.hostname = TEST_HOST.to_owned();
         https_config.http.hostname = TEST_HOST.to_owned();
 
         // Pre-bind the HTTP listener on an OS-assigned free port and hand it
@@ -123,7 +123,7 @@ fn start_test_server() -> &'static TestServerCtx {
             .local_addr()
             .expect("Failed to read the allocated socket port")
             .port();
-        https_config.socket_server.socket_server_port = socket_port;
+        https_config.socket_server.port = socket_port;
 
         let server_params = ServerParams::try_from(https_config).unwrap();
 
@@ -172,8 +172,8 @@ fn start_test_server() -> &'static TestServerCtx {
 fn start_test_server_with_fixed_port(socket_port: u16) -> &'static TestServerCtx {
     static SERVER_HANDLES: OnceLock<TestServerCtx> = OnceLock::new();
     let mut https_config = https_clap_config();
-    https_config.socket_server.socket_server_port = socket_port;
-    https_config.socket_server.socket_server_hostname = TEST_HOST.to_owned();
+    https_config.socket_server.port = socket_port;
+    https_config.socket_server.hostname = TEST_HOST.to_owned();
     https_config.http.port = socket_port - 1;
     https_config.http.hostname = TEST_HOST.to_owned();
 

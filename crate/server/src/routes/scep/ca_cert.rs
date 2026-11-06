@@ -10,7 +10,8 @@ use crate::{core::KMS, error::KmsError, result::KResult, routes::enrollment::loa
 pub(super) async fn get_ca_cert(kms: &KMS) -> KResult<HttpResponse> {
     let ca_uid = kms
         .params
-        .scep_ca_uid
+        .scep
+        .ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("SCEP enabled without scep_ca_uid".to_owned()))?;
     let chain = load_ca_chain(kms, ca_uid).await?;

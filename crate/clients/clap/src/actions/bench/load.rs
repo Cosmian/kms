@@ -1,11 +1,7 @@
-#![expect(
-    clippy::expect_used,
-    reason = "criterion benchmark closures cannot return Result; a failed setup must abort the run"
-)]
-
 use std::{
     fmt::Write as _,
     fs,
+    io::Write as _,
     time::{Duration, Instant},
 };
 
@@ -23,6 +19,7 @@ use cosmian_kms_client::{
         requests::{create_rsa_key_pair_request, encrypt_request, symmetric_key_create_request},
     },
 };
+use num_traits::ToPrimitive as _;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
@@ -42,7 +39,10 @@ use super::{
     transport::{make_wire_request, to_wire_bytes, wire_response_ok},
     types::{BenchMode, BenchProtocol},
 };
-use crate::error::{KmsCliError, result::KmsCliResult};
+use crate::error::{
+    KmsCliError,
+    result::{KmsCliResult, KmsCliResultHelper as _},
+};
 
 // LOAD TESTING
 // =============================================================================
@@ -221,23 +221,40 @@ impl PreparedLoadOp {
 /// binary wire path — so both protocols exercise the same server-side code path
 /// (`from_ttlv::<RequestMessage>` + `message()` dispatch) and the load numbers
 /// are directly comparable.
-fn preserialized_op(name: &'static str, client: &KmsClient, op: Operation) -> PreparedLoadOp {
+fn preserialized_op(
+    name: &'static str,
+    client: &KmsClient,
+    op: Operation,
+) -> KmsCliResult<PreparedLoadOp> {
     use cosmian_kms_client::cosmian_kmip::ttlv::to_ttlv;
     let req = make_wire_request(op);
-    let ttlv = to_ttlv(&req).expect("TTLV serialization");
+    let ttlv = to_ttlv(&req).context("TTLV serialization")?;
     let body = serde_json::to_vec(&ttlv)
-        .expect("JSON serialization")
+        .context("JSON serialization")?
         .into();
     let url = format!("{}/kmip/2_1", client.client.server_url);
-    PreparedLoadOp::PreSerialized { name, url, body }
+    Ok(PreparedLoadOp::PreSerialized { name, url, body })
 }
 
 /// Serialize a KMIP operation to binary TTLV wire bytes (one-time cost at preparation).
 /// Wraps the operation in a `RequestMessage` as required by the binary wire endpoint.
-fn preserialized_wire_op(name: &'static str, client: &KmsClient, op: Operation) -> PreparedLoadOp {
-    let body = to_wire_bytes(&make_wire_request(op)).into();
+fn preserialized_wire_op(
+    name: &'static str,
+    client: &KmsClient,
+    op: Operation,
+) -> KmsCliResult<PreparedLoadOp> {
+    let body = to_wire_bytes(&make_wire_request(op))?.into();
     let url = format!("{}/kmip", client.client.server_url);
-    PreparedLoadOp::PreSerializedBinary { name, url, body }
+    Ok(PreparedLoadOp::PreSerializedBinary { name, url, body })
+}
+
+/// Push a prepared optional op, or skip it with a notice when it cannot be serialized.
+#[cfg(feature = "non-fips")]
+fn push_op(ops: &mut Vec<PreparedLoadOp>, op: KmsCliResult<PreparedLoadOp>) {
+    match op {
+        Ok(op) => ops.push(op),
+        Err(e) => eprintln!("[load] cannot prepare operation, skipping: {e}"),
+    }
 }
 
 fn load_percentile(sorted: &[f64], p: f64) -> f64 {
@@ -246,14 +263,10 @@ fn load_percentile(sorted: &[f64], p: f64) -> f64 {
     }
     let last = sorted.len() - 1;
     // `p` is in [0, 1]: the rounded rank is a non-negative index below `len`.
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "float arithmetic on bounded values; no lossless std conversion"
-    )]
-    let idx = (last as f64 * p).round() as usize;
+    let idx = (last.to_f64().unwrap_or(f64::NAN) * p)
+        .round()
+        .to_usize()
+        .unwrap_or(0);
     sorted.get(idx.min(last)).copied().unwrap_or(0.0)
 }
 
@@ -288,7 +301,7 @@ fn prepare_load_ops(
     hsm_prefix: Option<&str>,
     spec: &LoadOpSpec<'_>,
     ledger: &HsmKeyLedger,
-) -> Vec<PreparedLoadOp> {
+) -> KmsCliResult<Vec<PreparedLoadOp>> {
     if let Some(hsm_prefix) = hsm_prefix {
         return prepare_hsm_load_ops(rt, client, hsm_prefix, spec, ledger);
     }
@@ -317,7 +330,7 @@ fn prepare_load_ops(
             "load-json-encrypt-aes-128",
             128,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -328,7 +341,7 @@ fn prepare_load_ops(
             "ttlv-json/encrypt/aes-gcm",
             client,
             Operation::Encrypt(Box::new(req)),
-        ));
+        )?);
     }
 
     if run_json && needs_key_create {
@@ -358,7 +371,7 @@ fn prepare_load_ops(
                 "ttlv-json/sign-verify/ecdsa-p256",
                 client,
                 Operation::Sign(req),
-            ));
+            )?);
         } else {
             eprintln!("[load] ECDSA P-256 key creation failed, skipping sign load test");
         }
@@ -373,11 +386,11 @@ fn prepare_load_ops(
             "load-json-batch-aes-128",
             128,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let key_str = key_id.to_string();
         let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; plaintext_size]); 10])
             .serialize()
-            .expect("BulkData serialize");
+            .context("BulkData serialize")?;
         let req = encrypt_request(
             &key_str,
             None,
@@ -386,12 +399,12 @@ fn prepare_load_ops(
             None,
             Some(aes_gcm_params()),
         )
-        .expect("batch encrypt request");
+        .context("batch encrypt request")?;
         ops.push(preserialized_op(
             "ttlv-json/batch/aes-gcm-10",
             client,
             Operation::Encrypt(Box::new(req)),
-        ));
+        )?);
     }
 
     // ── TTLV Bytes load ops ───────────────────────────────────────────────
@@ -402,7 +415,7 @@ fn prepare_load_ops(
             "load-bytes-encrypt-aes-128",
             128,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -413,7 +426,7 @@ fn prepare_load_ops(
             "ttlv-bytes/encrypt/aes-gcm",
             client,
             Operation::Encrypt(Box::new(req)),
-        ));
+        )?);
     }
 
     if run_wire && needs_sign {
@@ -436,7 +449,7 @@ fn prepare_load_ops(
                 "ttlv-bytes/sign-verify/ecdsa-p256",
                 client,
                 Operation::Sign(req),
-            ));
+            )?);
         }
 
         push_non_fips_wire_sign_ops(rt, client, &mut ops);
@@ -452,7 +465,8 @@ fn prepare_load_ops(
                 data: b64url(&vec![1_u8; plaintext_size]),
                 aad: None,
             };
-            let body = serde_json::to_vec(&jose_enc_req).expect("JOSE encrypt JSON serialization");
+            let body =
+                serde_json::to_vec(&jose_enc_req).context("JOSE encrypt JSON serialization")?;
             let url = format!("{}/v1/crypto/encrypt", client.client.server_url);
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/encrypt/aes-gcm",
@@ -471,7 +485,8 @@ fn prepare_load_ops(
                 alg: "ES256",
                 data: b64url(&[0x42_u8; 32]),
             };
-            let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
+            let body =
+                serde_json::to_vec(&jose_sign_req).context("JOSE sign JSON serialization")?;
             let url = format!("{}/v1/crypto/sign", client.client.server_url);
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/sign-verify/ecdsa-p256",
@@ -488,7 +503,7 @@ fn prepare_load_ops(
     if let Some(filter) = filter {
         ops.retain(|op| filter.matches(op.name(), None));
     }
-    ops
+    Ok(ops)
 }
 
 /// TTLV-JSON sign load ops on the non-FIPS curves (Ed25519, secp256k1).
@@ -507,11 +522,14 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_op(
-            "ttlv-json/sign-verify/eddsa-ed25519",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_op(
+                "ttlv-json/sign-verify/eddsa-ed25519",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     } else {
         eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
     }
@@ -531,11 +549,14 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_op(
-            "ttlv-json/sign-verify/ecdsa-secp256k1",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_op(
+                "ttlv-json/sign-verify/ecdsa-secp256k1",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     } else {
         eprintln!("[load] secp256k1 key creation failed, skipping sign load test");
     }
@@ -564,11 +585,14 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_wire_op(
-            "ttlv-bytes/sign-verify/eddsa-ed25519",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_wire_op(
+                "ttlv-bytes/sign-verify/eddsa-ed25519",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     }
 
     if let Some((_, priv_id)) = try_create_ec_kp(
@@ -586,11 +610,14 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_wire_op(
-            "ttlv-bytes/sign-verify/ecdsa-secp256k1",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_wire_op(
+                "ttlv-bytes/sign-verify/ecdsa-secp256k1",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     }
 }
 
@@ -612,13 +639,14 @@ fn push_jose_eddsa_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<Prepa
             alg: "EdDSA",
             data: b64url(&[0x42_u8; 32]),
         };
-        let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
-        let url = format!("{}/v1/crypto/sign", client.client.server_url);
-        ops.push(PreparedLoadOp::PreSerialized {
-            name: "jose/sign-verify/eddsa-ed25519",
-            url,
-            body: body.into(),
-        });
+        match serde_json::to_vec(&jose_sign_req) {
+            Ok(body) => ops.push(PreparedLoadOp::PreSerialized {
+                name: "jose/sign-verify/eddsa-ed25519",
+                url: format!("{}/v1/crypto/sign", client.client.server_url),
+                body: body.into(),
+            }),
+            Err(e) => eprintln!("[load] JOSE EdDSA sign request not serializable, skipping: {e}"),
+        }
     } else {
         eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");
     }
@@ -651,7 +679,7 @@ fn prepare_hsm_load_ops(
     hsm_prefix: &str,
     spec: &LoadOpSpec<'_>,
     ledger: &HsmKeyLedger,
-) -> Vec<PreparedLoadOp> {
+) -> KmsCliResult<Vec<PreparedLoadOp>> {
     let LoadOpSpec {
         mode,
         protocol,
@@ -721,7 +749,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/encrypt/aes-gcm",
                     client,
                     Operation::Encrypt(Box::new(req)),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM AES-GCM not available, skipping HSM encrypt load test");
@@ -751,7 +779,7 @@ fn prepare_hsm_load_ops(
                         Box::leak(format!("ttlv-json/hsm/encrypt/{label}").into_boxed_str()),
                         client,
                         Operation::Encrypt(Box::new(req)),
-                    ));
+                    )?);
                 }
             }
         } else {
@@ -780,7 +808,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/encrypt/aes-cbc",
                     client,
                     Operation::Encrypt(Box::new(req)),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM AES-CBC not available, skipping HSM encrypt load test");
@@ -811,7 +839,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/sign-verify/rsa-pss",
                     client,
                     Operation::Sign(req),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM RSA-PSS not available, skipping HSM sign load test");
@@ -856,7 +884,7 @@ fn prepare_hsm_load_ops(
                         Box::leak(format!("ttlv-json/hsm/sign-verify/{label}").into_boxed_str()),
                         client,
                         Operation::Sign(req),
-                    ));
+                    )?);
                 }
             }
         } else {
@@ -887,7 +915,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/sign-verify/ecdsa-p256",
                     client,
                     Operation::Sign(req),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM ECDSA P-256 not available, skipping HSM sign load test");
@@ -899,7 +927,7 @@ fn prepare_hsm_load_ops(
     if let Some(filter) = filter {
         ops.retain(|op| filter.matches(op.name(), None));
     }
-    ops
+    Ok(ops)
 }
 
 /// HSM `EdDSA` (Ed25519/Ed448) sign load ops — pure, un-hashed `CKM_EDDSA`. See
@@ -947,7 +975,7 @@ fn push_hsm_eddsa_sign_ops(
                 ..Default::default()
             };
             if run_json {
-                ops.push(preserialized_op(op_name, client, Operation::Sign(req)));
+                push_op(ops, preserialized_op(op_name, client, Operation::Sign(req)));
             }
         } else {
             eprintln!("[load] HSM {label} not available, skipping HSM sign load test");
@@ -1018,13 +1046,13 @@ fn run_load_level(
             let client_config = client.config.clone();
             let op = shared_op.clone();
             let barrier = barrier.clone();
-            std::thread::spawn(move || {
+            std::thread::spawn(move || -> KmsCliResult<(Vec<f64>, usize)> {
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
-                    .expect("per-thread runtime");
+                    .context("per-thread runtime")?;
                 let task_client =
-                    KmsClient::new_with_config(client_config).expect("per-thread KmsClient");
+                    KmsClient::new_with_config(client_config).context("per-thread KmsClient")?;
 
                 // Warmup: run the exact same operation at target concurrency.
                 // This warms HTTP/TLS connections AND server-side caches.
@@ -1057,7 +1085,7 @@ fn run_load_level(
                         error_count += 1;
                     }
                 }
-                (timings, error_count)
+                Ok((timings, error_count))
             })
         })
         .collect();
@@ -1066,9 +1094,14 @@ fn run_load_level(
     let mut total_errors: usize = 0;
     for handle in handles {
         match handle.join() {
-            Ok((timings, error_count)) => {
+            Ok(Ok((timings, error_count))) => {
                 all_timings.extend(timings);
                 total_errors += error_count;
+            }
+            Ok(Err(e)) => {
+                eprintln!(
+                    "[load] Warning: a worker thread could not start ({e}); benchmark results may be incomplete"
+                );
             }
             Err(_) => {
                 eprintln!(
@@ -1080,13 +1113,7 @@ fn run_load_level(
 
     let samples = all_timings.len();
     let throughput_rps = if duration.as_secs_f64() > 0.0 {
-        #[expect(
-            clippy::as_conversions,
-            clippy::cast_precision_loss,
-            reason = "float arithmetic on bounded values; no lossless std conversion"
-        )]
-        let s = samples as f64;
-        s / duration.as_secs_f64()
+        samples.to_f64().unwrap_or(f64::NAN) / duration.as_secs_f64()
     } else {
         0.0
     };
@@ -1122,7 +1149,7 @@ pub(super) fn bench_load(
     rt: &Runtime,
     client: &KmsClient,
     params: &LoadBenchParams<'_>,
-) -> Vec<LoadResult> {
+) -> KmsCliResult<Vec<LoadResult>> {
     let LoadBenchParams {
         mode,
         protocol,
@@ -1135,7 +1162,7 @@ pub(super) fn bench_load(
         filter,
     } = *params;
     let ledger = HsmKeyLedger::new();
-    let ops = prepare_load_ops(
+    let ops = match prepare_load_ops(
         rt,
         client,
         hsm_prefix,
@@ -1146,7 +1173,16 @@ pub(super) fn bench_load(
             filter,
         },
         &ledger,
-    );
+    ) {
+        Ok(ops) => ops,
+        Err(e) => {
+            // Do not leak the HSM keys created before the failure.
+            if let Err(cleanup) = rt.block_on(ledger.destroy_all(client)) {
+                eprintln!("[load] Cleanup warning: {cleanup}");
+            }
+            return Err(e);
+        }
+    };
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
     }
@@ -1203,16 +1239,12 @@ pub(super) fn bench_load(
         eprintln!("[load] Cleanup warning: {e}");
     }
 
-    results
+    Ok(results)
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "this command writes its result to stdout"
-)]
-pub(super) fn print_load_results(results: &[LoadResult]) {
+pub(super) fn print_load_results(results: &[LoadResult]) -> KmsCliResult<()> {
     if results.is_empty() {
-        return;
+        return Ok(());
     }
     let mut seen: Vec<&str> = Vec::new();
     for r in results {
@@ -1222,19 +1254,32 @@ pub(super) fn print_load_results(results: &[LoadResult]) {
     }
     for op in seen {
         let op_rows: Vec<&LoadResult> = results.iter().filter(|r| r.operation == op).collect();
-        println!("\n── {op} ──");
-        println!(
+        writeln!(std::io::stdout().lock(), "\n── {op} ──")?;
+        writeln!(
+            std::io::stdout().lock(),
             "{:<14} {:>12}  {:>10} {:>10} {:>10}  {:>8}",
-            "Concurrency", "Throughput", "p50", "p95", "p99", "Samples"
-        );
-        println!("{}", "─".repeat(70));
+            "Concurrency",
+            "Throughput",
+            "p50",
+            "p95",
+            "p99",
+            "Samples"
+        )?;
+        writeln!(std::io::stdout().lock(), "{}", "─".repeat(70))?;
         for r in op_rows {
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
                 "{:<14} {:>10.1}/s  {:>8.1}ms {:>8.1}ms {:>8.1}ms  {:>8}",
-                r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-            );
+                r.concurrency,
+                r.throughput_rps,
+                r.p50_ms,
+                r.p95_ms,
+                r.p99_ms,
+                r.samples
+            )?;
         }
     }
+    Ok(())
 }
 
 /// Write `target/criterion/load_{protocol_slug}.json` — one JSON object per line.

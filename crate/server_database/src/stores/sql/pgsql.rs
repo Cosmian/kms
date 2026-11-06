@@ -28,11 +28,11 @@ use crate::{
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
-        PGSQL_QUERIES,
         migrate::{
             CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
             certificate_serial_tag,
         },
+        pgsql_queries,
         sql::{
             crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
@@ -366,7 +366,7 @@ macro_rules! pg_retry_tx {
 
 macro_rules! get_pgsql_query {
     ($name:literal) => {
-        PGSQL_QUERIES
+        pgsql_queries()?
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
@@ -660,8 +660,8 @@ impl PgPool {
 }
 
 impl SqlDatabase for PgPool {
-    fn get_loader(&self) -> &Loader {
-        &PGSQL_QUERIES
+    fn get_loader(&self) -> DbResult<&'static Loader> {
+        pgsql_queries()
     }
 }
 

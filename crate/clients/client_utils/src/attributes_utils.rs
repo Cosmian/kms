@@ -387,7 +387,7 @@ pub const LOCATE_ENRICH_ATTRIBUTE_KEYS: &[&str] = &[
 pub fn parse_selected_attributes_flatten(
     vendor_id: &str,
     attributes: &Attributes,
-    selected_attributes: &[&str],
+    selected_attributes: Vec<String>,
 ) -> Result<HashMap<String, Value>, UtilsError> {
     /// Insert a serializable value into the results map if it is `Some`.
     macro_rules! insert_if_some {
@@ -410,7 +410,8 @@ pub fn parse_selected_attributes_flatten(
         }
         return Ok(results);
     }
-    for &selected_attribute_name in selected_attributes {
+    for name in selected_attributes {
+        let selected_attribute_name = name.as_str();
         match selected_attribute_name {
             "activation_date" => {
                 if let Some(v) = attributes.activation_date.as_ref() {

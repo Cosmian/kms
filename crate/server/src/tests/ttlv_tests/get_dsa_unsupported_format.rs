@@ -36,12 +36,12 @@ fn test_get_dsa_unsupported_format() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"dsa-get-uf-create".to_vec()),
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Create(Box::new(Create {
                     object_type: ObjectType::PrivateKey,
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::DSA),
@@ -49,10 +49,10 @@ fn test_get_dsa_unsupported_format() {
                         ..Default::default()
                     },
                     protection_storage_masks: None,
-                }),
+                })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let create_resp = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &create_req)
@@ -84,7 +84,7 @@ fn test_get_dsa_unsupported_format() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -98,7 +98,7 @@ fn test_get_dsa_unsupported_format() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let get_resp = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &get_req)

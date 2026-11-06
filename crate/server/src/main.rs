@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{io::Write as _, sync::Arc};
 
 use cosmian_kms_server::{
     config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
@@ -119,13 +119,7 @@ async fn run() -> KResult<()> {
 
     if clap_config.print_default_config {
         let commented = ClapConfig::default_config_with_comments()?;
-        #[expect(
-            clippy::print_stdout,
-            reason = "--print-default-config writes the default configuration to stdout"
-        )]
-        {
-            println!("{commented}");
-        }
+        writeln!(std::io::stdout().lock(), "{commented}")?;
         return Ok(());
     }
 
@@ -295,9 +289,9 @@ mod tests {
                 disable_unwrapped_cache: false,
             },
             socket_server: SocketServerConfig {
-                socket_server_start: false,
-                socket_server_port: 5696,
-                socket_server_hostname: "0.0.0.0".to_owned(),
+                start: false,
+                port: 5696,
+                hostname: "0.0.0.0".to_owned(),
             },
             tls: TlsConfig {
                 tls_p12_file: Some(PathBuf::from("[tls p12 file]")),
@@ -316,11 +310,11 @@ mod tests {
                 jwks_enabled: false,
             },
             proxy: ProxyConfig {
-                proxy_url: Some("https://proxy.example.com:8080".to_owned()),
-                proxy_basic_auth_username: Some("[proxy username]".to_owned()),
-                proxy_basic_auth_password: Some("[proxy password]".to_owned()),
-                proxy_custom_auth_header: None,
-                proxy_exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
+                url: Some("https://proxy.example.com:8080".to_owned()),
+                basic_auth_username: Some("[proxy username]".to_owned()),
+                basic_auth_password: Some("[proxy password]".to_owned()),
+                custom_auth_header: None,
+                exclusion_list: Some(vec!["domain1".to_owned(), "domain2".to_owned()]),
             },
             idp_auth: IdpAuthConfig {
                 jwt_auth_provider: Some(vec![
@@ -334,32 +328,32 @@ mod tests {
             auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig {
                 enable: true,
-                ui_index_html_folder: Some("[ui index html folder]".to_owned()),
-                ui_session_salt: None,
-                ui_oidc_auth: OidcConfig {
-                    ui_oidc_client_id: Some("[client id]".to_owned()),
-                    ui_oidc_client_secret: Some("[client secret]".to_owned()),
-                    ui_oidc_issuer_url: Some("[issuer url]".to_owned()),
-                    ui_oidc_logout_url: Some("[logout url]".to_owned()),
+                index_html_folder: Some("[ui index html folder]".to_owned()),
+                session_salt: None,
+                oidc_auth: OidcConfig {
+                    client_id: Some("[client id]".to_owned()),
+                    client_secret: Some("[client secret]".to_owned()),
+                    issuer_url: Some("[issuer url]".to_owned()),
+                    logout_url: Some("[logout url]".to_owned()),
                 },
             },
             google_cse_config: GoogleCseConfig {
-                google_cse_enable: false,
-                google_cse_disable_tokens_validation: false,
-                google_cse_incoming_url_whitelist: Some(vec![
+                enable: false,
+                disable_tokens_validation: false,
+                incoming_url_whitelist: Some(vec![
                     "[kacls_url_1]".to_owned(),
                     "[kacls_url_2]".to_owned(),
                 ]),
-                google_cse_migration_key: None,
+                migration_key: None,
             },
             azure_ekm_config: AzureEkmConfig {
-                azure_ekm_enable: false,
-                azure_ekm_path_prefix: None,
-                azure_ekm_disable_client_auth: false,
-                azure_ekm_proxy_vendor: String::new(),
-                azure_ekm_proxy_name: String::new(),
-                azure_ekm_ekm_vendor: String::new(),
-                azure_ekm_ekm_product: String::new(),
+                enable: false,
+                path_prefix: None,
+                disable_client_auth: false,
+                proxy_vendor: String::new(),
+                proxy_name: String::new(),
+                ekm_vendor: String::new(),
+                ekm_product: String::new(),
             },
             jwks_endpoint: JwksEndpointConfig::default(),
             kms_public_url: Some("[kms_public_url]".to_owned()),
@@ -394,11 +388,11 @@ mod tests {
             },
             hsm_instances: vec![],
             aws_xks_config: AwsXksConfig {
-                aws_xks_enable: true,
-                aws_xks_region: Some("us-east-1".to_owned()),
-                aws_xks_service: Some("kms-xks-proxy".to_owned()),
-                aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
-                aws_xks_sigv4_secret_access_key: Some(
+                enable: true,
+                region: Some("us-east-1".to_owned()),
+                service: Some("kms-xks-proxy".to_owned()),
+                sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
+                sigv4_secret_access_key: Some(
                     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
                 ),
             },

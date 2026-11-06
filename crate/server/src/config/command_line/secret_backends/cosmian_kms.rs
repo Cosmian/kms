@@ -76,7 +76,7 @@ impl CosmianKmsBackend {
         let ttlv: TTLV = resp.json().await.map_err(|e| {
             KmsError::ServerError(format!("Cosmian KMS response parse error for {uri}: {e}"))
         })?;
-        let get_resp: GetResponse = from_ttlv(ttlv).map_err(|e| {
+        let get_resp: GetResponse = from_ttlv(&ttlv).map_err(|e| {
             KmsError::ServerError(format!("Cosmian KMS deserialise error for {uri}: {e}"))
         })?;
         Self::extract_secret(get_resp.object, uri)

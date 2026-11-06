@@ -1396,11 +1396,11 @@ mod injection_tests {
                 server_correlation_value: None,
                 time_stamp: None,
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                 kmip_2_1::kmip_messages::RequestMessageBatchItem::new(Operation::Decrypt(
                     Box::new(dec),
                 )),
-            )],
+            ))],
         }
     }
 

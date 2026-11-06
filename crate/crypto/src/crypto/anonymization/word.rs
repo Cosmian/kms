@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::LazyLock,
-};
+use std::collections::{HashMap, HashSet};
 
 use regex::Regex;
 
@@ -66,16 +63,10 @@ impl WordTokenizer {
 pub struct WordMasker {
     /// A set of words to be masked in the text.
     word_list: HashSet<String>,
+    /// Pre-compiled pattern used to extract word tokens from text.
+    pattern: Regex,
 }
 const MASK: &str = "XXXX";
-
-/// Pattern used by [`WordMasker`] to extract word tokens from text.
-#[expect(
-    clippy::expect_used,
-    reason = "regex literal is valid; exercised by anonymization tests"
-)]
-static MASKER_WORD_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\w+\b").expect("hardcoded regex is valid"));
 
 impl WordMasker {
     /// Creates a new `WordMasker` instance.
@@ -84,11 +75,11 @@ impl WordMasker {
     ///
     /// * `words_to_block`: A slice of string references containing the words to
     ///   be masked in the text.
-    #[must_use]
-    pub fn new(words_to_block: &[&str]) -> Self {
-        Self {
+    pub fn new(words_to_block: &[&str]) -> Result<Self, AnoError> {
+        Ok(Self {
             word_list: words_to_block.iter().map(|s| s.to_lowercase()).collect(),
-        }
+            pattern: Regex::new(r"\b\w+\b")?,
+        })
     }
 
     /// Masks the specified words in the given text.
@@ -102,7 +93,7 @@ impl WordMasker {
     /// Text without the sensitive words.
     #[must_use]
     pub fn apply(&self, data: &str) -> String {
-        let result = MASKER_WORD_PATTERN.replace_all(data, |caps: &regex::Captures| {
+        let result = self.pattern.replace_all(data, |caps: &regex::Captures| {
             if self.word_list.contains(&caps[0].to_lowercase()) {
                 MASK.to_owned()
             } else {

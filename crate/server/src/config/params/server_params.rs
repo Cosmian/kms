@@ -48,14 +48,174 @@ pub struct HsmInstanceParams {
     pub prefix: String,
 }
 
+/// Web UI parameters.
+#[derive(Clone, Debug, Default)]
+pub struct UiParams {
+    /// The UI distribution folder
+    pub index_html_folder: PathBuf,
+
+    /// Whether the embedded web UI is enabled
+    pub enable: bool,
+
+    /// A secret salt used to derive the session cookie encryption key.
+    /// This MUST be identical across all KMS instances behind the same load balancer.
+    /// This is mandatory only if the UI is configured.
+    pub session_salt: Option<String>,
+
+    /// The OIDC config used to handle login from the UI
+    pub oidc_auth: OidcConfig,
+}
+
+/// Vault-compatible API parameters.
+#[derive(Clone, Debug, Default)]
+pub struct VaultParams {
+    /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
+    /// are registered at startup.  Defaults to `false`.
+    pub api_enabled: bool,
+
+    /// Base URL of the auth-verifier server used for token validation.
+    ///
+    /// Required when `api_enabled = true`.
+    /// Example: `"https://auth.example.com"`
+    pub auth_verifier_url: Option<url::Url>,
+
+    /// Path to a PEM-encoded CA certificate for verifying the auth-verifier's TLS cert.
+    ///
+    /// When set, the reqwest client used by `spire_token_middleware` will trust this CA.
+    pub auth_verifier_ca_cert: Option<std::path::PathBuf>,
+
+    /// When `true`, TLS certificate verification is disabled for auth-verifier connections.
+    ///
+    /// **Security warning**: only use in test/dev environments.
+    pub auth_verifier_accept_invalid_certs: bool,
+
+    /// Vault transit mount name.  Defaults to `"transit"`.
+    /// Transit keys are served at `/v1/<transit_mount>/keys/<name>`.
+    pub transit_mount: String,
+
+    /// Vault PKI mount name.  Defaults to `"pki"`.
+    /// PKI sign-intermediate is served at `/v1/<pki_mount>/root/sign-intermediate`.
+    pub pki_mount: String,
+
+    /// KMIP Label of the KMS key to use as the intermediate CA signing key.
+    /// The key must already exist in the KMS (create it with `ckms ec create` or similar).
+    pub pki_ca_key_label: String,
+
+    /// Lifetime of vault token validation cache entries in seconds.
+    /// The KMS caches successful `lookup-self` responses for this duration
+    /// to avoid a round-trip to auth-verifier on every transit/PKI request.
+    /// Defaults to `30`.
+    pub token_cache_ttl_secs: u64,
+}
+
+/// OCSP responder parameters.
+#[derive(Clone, Debug, Default)]
+pub struct OcspParams {
+    /// Enable the OCSP responder at `GET/POST /ocsp/`.
+    pub enabled: bool,
+
+    /// UID of the CA certificate used for issuer hash verification and status lookup.
+    pub ca_uid: Option<String>,
+
+    /// UID of the delegated OCSP signing certificate (RFC 6960 §4.2.2.2).
+    ///
+    /// When set, responses are signed with this key; when `None` the CA key is used.
+    pub responder_cert_uid: Option<String>,
+
+    /// Response validity period in seconds (`thisUpdate` → `nextUpdate`).
+    pub cache_ttl_secs: u64,
+
+    /// Nonce handling policy (RFC 9654 §3): optional / required / ignore.
+    pub nonce_policy: crate::config::command_line::NoncePolicyConfig,
+
+    /// Include the signing certificate chain in `BasicResponse`s.
+    pub include_cert_chain: bool,
+
+    /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
+    pub archive_cutoff_secs: u64,
+}
+
+/// EST (RFC 7030) parameters.
+#[derive(Clone, Default)]
+pub struct EstParams {
+    /// Enable the EST endpoints under `/.well-known/est/`.
+    pub enabled: bool,
+
+    /// UID of the CA certificate that signs EST-enrolled certificates.
+    pub ca_uid: Option<String>,
+
+    /// Require TLS client-certificate authentication for `/simpleenroll`.
+    pub require_client_cert: bool,
+
+    /// HTTP Basic bootstrap username for `/simpleenroll`.
+    pub bootstrap_username: Option<String>,
+
+    /// HTTP Basic bootstrap password for `/simpleenroll`.
+    pub bootstrap_password: Option<String>,
+
+    /// Validated certificate template applied to EST enrollments.
+    pub template: Option<CertTemplate>,
+}
+
+// Manual impl: `bootstrap_password` must never reach a log line.
+impl fmt::Debug for EstParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EstParams")
+            .field("enabled", &self.enabled)
+            .field("ca_uid", &self.ca_uid)
+            .field("require_client_cert", &self.require_client_cert)
+            .field("bootstrap_username", &self.bootstrap_username)
+            .field(
+                "bootstrap_password",
+                &self.bootstrap_password.as_ref().map(|_| "[****]"),
+            )
+            .field("template", &self.template)
+            .finish()
+    }
+}
+
+/// SCEP (RFC 8894) parameters.
+#[derive(Clone, Default)]
+pub struct ScepParams {
+    /// Enable the SCEP endpoint at `/scep`.
+    pub enabled: bool,
+
+    /// UID of the CA certificate that signs SCEP-enrolled certificates.
+    pub ca_uid: Option<String>,
+
+    /// Shared challenge password for initial SCEP enrollments.
+    pub challenge_password: Option<String>,
+
+    /// Accept `RenewalReq` without the challenge password.
+    pub allow_renewal_without_challenge: bool,
+
+    /// Validated certificate template applied to SCEP enrollments.
+    pub template: Option<CertTemplate>,
+}
+
+// Manual impl: `challenge_password` must never reach a log line.
+impl fmt::Debug for ScepParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScepParams")
+            .field("enabled", &self.enabled)
+            .field("ca_uid", &self.ca_uid)
+            .field(
+                "challenge_password",
+                &self.challenge_password.as_ref().map(|_| "[****]"),
+            )
+            .field(
+                "allow_renewal_without_challenge",
+                &self.allow_renewal_without_challenge,
+            )
+            .field("template", &self.template)
+            .finish()
+    }
+}
+
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 #[derive(Default)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each bool mirrors a server configuration flag"
-)]
 pub struct ServerParams {
     /// The JWT Config if Auth is enabled
     pub identity_provider_configurations: Option<Vec<IdpConfig>>,
@@ -65,19 +225,8 @@ pub struct ServerParams {
     /// `spiffe://` (SPIFFE JWT-SVID support). See `IdpAuthConfig::jwt_svid_auth`.
     pub jwt_svid_auth_enabled: bool,
 
-    /// The UI distribution folder
-    pub ui_index_html_folder: PathBuf,
-
-    /// Whether the embedded web UI is enabled
-    pub ui_enable: bool,
-
-    /// A secret salt used to derive the session cookie encryption key.
-    /// This MUST be identical across all KMS instances behind the same load balancer.
-    /// This is mandatory only if the UI is configured.
-    pub ui_session_salt: Option<String>,
-
-    /// The OIDC config used to handle login from the UI
-    pub ui_oidc_auth: OidcConfig,
+    /// Web UI parameters.
+    pub ui: UiParams,
 
     /// The Google CSE config
     pub google_cse: GoogleCseConfig,
@@ -233,44 +382,8 @@ pub struct ServerParams {
     /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
     pub jwks_endpoint: JwksEndpointConfig,
 
-    // ── Vault-compatible API ──────────────────────────────────────────────────
-    /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
-    /// are registered at startup.  Defaults to `false`.
-    pub vault_api_enabled: bool,
-
-    /// Base URL of the auth-verifier server used for token validation.
-    ///
-    /// Required when `vault_api_enabled = true`.
-    /// Example: `"https://auth.example.com"`
-    pub vault_auth_verifier_url: Option<url::Url>,
-
-    /// Path to a PEM-encoded CA certificate for verifying the auth-verifier's TLS cert.
-    ///
-    /// When set, the reqwest client used by `spire_token_middleware` will trust this CA.
-    pub vault_auth_verifier_ca_cert: Option<std::path::PathBuf>,
-
-    /// When `true`, TLS certificate verification is disabled for auth-verifier connections.
-    ///
-    /// **Security warning**: only use in test/dev environments.
-    pub vault_auth_verifier_accept_invalid_certs: bool,
-
-    /// Vault transit mount name.  Defaults to `"transit"`.
-    /// Transit keys are served at `/v1/<vault_transit_mount>/keys/<name>`.
-    pub vault_transit_mount: String,
-
-    /// Vault PKI mount name.  Defaults to `"pki"`.
-    /// PKI sign-intermediate is served at `/v1/<vault_pki_mount>/root/sign-intermediate`.
-    pub vault_pki_mount: String,
-
-    /// KMIP Label of the KMS key to use as the intermediate CA signing key.
-    /// The key must already exist in the KMS (create it with `ckms ec create` or similar).
-    pub vault_pki_ca_key_label: String,
-
-    /// Lifetime of vault token validation cache entries in seconds.
-    /// The KMS caches successful `lookup-self` responses for this duration
-    /// to avoid a round-trip to auth-verifier on every transit/PKI request.
-    /// Defaults to `30`.
-    pub vault_token_cache_ttl_secs: u64,
+    /// Vault-compatible API parameters.
+    pub vault: VaultParams,
 
     /// Configuration for the Auth Verifier server.
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
@@ -313,64 +426,14 @@ pub struct ServerParams {
     /// expires, preventing relying parties from seeing a stale CRL.
     pub crl_refresh_overlap_hours: u32,
 
-    // ── OCSP responder ────────────────────────────────────────────────────────────
-    /// Enable the OCSP responder at `GET/POST /ocsp/`.
-    pub ocsp_enabled: bool,
+    /// OCSP responder parameters.
+    pub ocsp: OcspParams,
 
-    /// UID of the CA certificate used for issuer hash verification and status lookup.
-    pub ocsp_ca_uid: Option<String>,
+    /// EST (RFC 7030) parameters.
+    pub est: EstParams,
 
-    /// UID of the delegated OCSP signing certificate (RFC 6960 §4.2.2.2).
-    ///
-    /// When set, responses are signed with this key; when `None` the CA key is used.
-    pub ocsp_responder_cert_uid: Option<String>,
-
-    /// Response validity period in seconds (`thisUpdate` → `nextUpdate`).
-    pub ocsp_cache_ttl_secs: u64,
-
-    /// Nonce handling policy (RFC 9654 §3): optional / required / ignore.
-    pub ocsp_nonce_policy: crate::config::command_line::NoncePolicyConfig,
-
-    /// Include the signing certificate chain in `BasicResponse`s.
-    pub ocsp_include_cert_chain: bool,
-
-    /// Archive-cutoff extension retention in seconds (0 = disabled, RFC 6960 §4.4.4).
-    pub ocsp_archive_cutoff_secs: u64,
-
-    // ── EST (RFC 7030) ────────────────────────────────────────────────────────────
-    /// Enable the EST endpoints under `/.well-known/est/`.
-    pub est_enabled: bool,
-
-    /// UID of the CA certificate that signs EST-enrolled certificates.
-    pub est_ca_uid: Option<String>,
-
-    /// Require TLS client-certificate authentication for `/simpleenroll`.
-    pub est_require_client_cert: bool,
-
-    /// HTTP Basic bootstrap username for `/simpleenroll`.
-    pub est_bootstrap_username: Option<String>,
-
-    /// HTTP Basic bootstrap password for `/simpleenroll`.
-    pub est_bootstrap_password: Option<String>,
-
-    /// Validated certificate template applied to EST enrollments.
-    pub est_template: Option<CertTemplate>,
-
-    // ── SCEP (RFC 8894) ───────────────────────────────────────────────────────────
-    /// Enable the SCEP endpoint at `/scep`.
-    pub scep_enabled: bool,
-
-    /// UID of the CA certificate that signs SCEP-enrolled certificates.
-    pub scep_ca_uid: Option<String>,
-
-    /// Shared challenge password for initial SCEP enrollments.
-    pub scep_challenge_password: Option<String>,
-
-    /// Accept `RenewalReq` without the challenge password.
-    pub scep_allow_renewal_without_challenge: bool,
-
-    /// Validated certificate template applied to SCEP enrollments.
-    pub scep_template: Option<CertTemplate>,
+    /// SCEP (RFC 8894) parameters.
+    pub scep: ScepParams,
 }
 
 /// Resolved audit storage backend — one variant per backend, all values already
@@ -577,8 +640,7 @@ impl ServerParams {
         }
 
         // Validate session_salt: it should only be provided when ui_index_html_folder is explicitly defined
-        if conf.ui_config.ui_session_salt.is_some() && conf.ui_config.ui_index_html_folder.is_none()
-        {
+        if conf.ui_config.session_salt.is_some() && conf.ui_config.index_html_folder.is_none() {
             return Err(KmsError::ServerError(
                 "ui_session_salt should only be provided when ui_index_html_folder is configured. \
                  Please either provide --ui-index-html-folder or remove --session-salt."
@@ -649,8 +711,8 @@ impl ServerParams {
                     .map_err(|e| KmsError::ServerError(format!("[templates.{name}]: {e}")))?;
                 Ok(Some(template))
             };
-        let est_template = resolve_template("est_template", conf.est.est_template.as_deref())?;
-        let scep_template = resolve_template("scep_template", conf.scep.scep_template.as_deref())?;
+        let est_template = resolve_template("est_template", conf.est.template.as_deref())?;
+        let scep_template = resolve_template("scep_template", conf.scep.template.as_deref())?;
         // A shared enrollment secret is an online-guessable credential: refuse empty or very
         // short ones (lockout and the optional rate limiter slow guessing down, they do not
         // make a weak secret safe).
@@ -661,9 +723,7 @@ impl ServerParams {
         };
         let is_blank =
             |secret: &Option<String>| secret.as_deref().is_none_or(|s| s.trim().is_empty());
-        if (conf.est.est_enabled || conf.scep.scep_enabled)
-            && conf.http.rate_limit_per_second.is_none()
-        {
+        if (conf.est.enabled || conf.scep.enabled) && conf.http.rate_limit_per_second.is_none() {
             warn!(
                 "SECURITY: EST/SCEP is enabled but rate_limit_per_second is not set. The \
                  enrollment endpoints are reachable before authentication; set \
@@ -671,8 +731,8 @@ impl ServerParams {
                  (failed authentications are also locked out per client address)."
             );
         }
-        if conf.est.est_enabled {
-            if conf.est.est_ca_uid.is_none() {
+        if conf.est.enabled {
+            if conf.est.ca_uid.is_none() {
                 return Err(KmsError::ServerError(
                     "est_enabled = true requires est_ca_uid".to_owned(),
                 ));
@@ -684,10 +744,8 @@ impl ServerParams {
                         .to_owned(),
                 ));
             }
-            if !conf.est.est_require_client_cert {
-                if is_blank(&conf.est.est_bootstrap_username)
-                    || is_weak(&conf.est.est_bootstrap_password)
-                {
+            if !conf.est.require_client_cert {
+                if is_blank(&conf.est.bootstrap_username) || is_weak(&conf.est.bootstrap_password) {
                     return Err(KmsError::ServerError(format!(
                         "est_require_client_cert = false requires a non-empty \
                          est_bootstrap_username and an est_bootstrap_password of at least \
@@ -696,7 +754,7 @@ impl ServerParams {
                 }
                 if conf
                     .est
-                    .est_bootstrap_username
+                    .bootstrap_username
                     .as_deref()
                     .is_some_and(|u| u.contains(':'))
                 {
@@ -718,8 +776,8 @@ impl ServerParams {
                 ));
             }
         }
-        if conf.scep.scep_enabled {
-            if conf.scep.scep_ca_uid.is_none() || is_weak(&conf.scep.scep_challenge_password) {
+        if conf.scep.enabled {
+            if conf.scep.ca_uid.is_none() || is_weak(&conf.scep.challenge_password) {
                 return Err(KmsError::ServerError(format!(
                     "scep_enabled = true requires scep_ca_uid and a scep_challenge_password of \
                      at least {MIN_ENROLLMENT_SECRET_LEN} characters"
@@ -747,9 +805,12 @@ impl ServerParams {
         let res = Self {
             identity_provider_configurations,
             jwt_svid_auth_enabled,
-            ui_index_html_folder,
-            ui_enable: conf.ui_config.enable,
-            ui_oidc_auth: conf.ui_config.ui_oidc_auth,
+            ui: UiParams {
+                index_html_folder: ui_index_html_folder,
+                enable: conf.ui_config.enable,
+                session_salt: conf.ui_config.session_salt,
+                oidc_auth: conf.ui_config.oidc_auth,
+            },
             main_db_params,
             clear_db_on_start: conf.db.clear_database,
             unwrapped_cache_max_age: if conf.db.unwrapped_cache_max_age == 0 {
@@ -785,9 +846,9 @@ impl ServerParams {
                 }
             },
             disable_unwrapped_cache: conf.db.disable_unwrapped_cache,
-            start_socket_server: conf.socket_server.socket_server_start,
-            socket_server_hostname: conf.socket_server.socket_server_hostname,
-            socket_server_port: conf.socket_server.socket_server_port,
+            start_socket_server: conf.socket_server.start,
+            socket_server_hostname: conf.socket_server.hostname,
+            socket_server_port: conf.socket_server.port,
             http_hostname: conf.http.hostname,
             http_port: conf.http.port,
             tls_params,
@@ -906,10 +967,9 @@ impl ServerParams {
                 }
             },
             ceremony_key_id: conf.roles.ceremony_key_id.clone(),
-            ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
-            aws_xks_params: if conf.aws_xks_config.aws_xks_enable {
+            aws_xks_params: if conf.aws_xks_config.enable {
                 Some(conf.aws_xks_config.try_into()?)
             } else {
                 None
@@ -965,27 +1025,27 @@ impl ServerParams {
             metrics_count_interval_secs: conf.metrics_count_interval_secs,
             jwks_endpoint: conf.jwks_endpoint,
             // Vault-compatible API — opt-in via config file or CLI flags.
-            vault_api_enabled: conf.vault.vault_api_enabled,
-            vault_auth_verifier_url: conf
-                .vault
-                .vault_auth_verifier_url
-                .as_deref()
-                .map(url::Url::parse)
-                .transpose()
-                .map_err(|e| {
-                    KmsError::InvalidRequest(format!("invalid vault_auth_verifier_url: {e}"))
-                })?,
-            vault_auth_verifier_ca_cert: conf
-                .vault
-                .vault_auth_verifier_ca_cert
-                .map(std::path::PathBuf::from),
-            vault_auth_verifier_accept_invalid_certs: conf
-                .vault
-                .vault_auth_verifier_accept_invalid_certs,
-            vault_transit_mount: conf.vault.vault_transit_mount,
-            vault_pki_mount: conf.vault.vault_pki_mount,
-            vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
-            vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
+            vault: VaultParams {
+                api_enabled: conf.vault.api_enabled,
+                auth_verifier_url: conf
+                    .vault
+                    .auth_verifier_url
+                    .as_deref()
+                    .map(url::Url::parse)
+                    .transpose()
+                    .map_err(|e| {
+                        KmsError::InvalidRequest(format!("invalid vault_auth_verifier_url: {e}"))
+                    })?,
+                auth_verifier_ca_cert: conf
+                    .vault
+                    .auth_verifier_ca_cert
+                    .map(std::path::PathBuf::from),
+                auth_verifier_accept_invalid_certs: conf.vault.auth_verifier_accept_invalid_certs,
+                transit_mount: conf.vault.transit_mount,
+                pki_mount: conf.vault.pki_mount,
+                pki_ca_key_label: conf.vault.pki_ca_key_label,
+                token_cache_ttl_secs: conf.vault.token_cache_ttl_secs,
+            },
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
             audit_backend,
             audit_channel_capacity: conf.audit.audit_channel_capacity,
@@ -994,24 +1054,30 @@ impl ServerParams {
             crl_default_validity_days: conf.crl.crl_default_validity_days,
             crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
             crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
-            ocsp_enabled: conf.ocsp.ocsp_enabled,
-            ocsp_ca_uid: conf.ocsp.ocsp_ca_uid,
-            ocsp_responder_cert_uid: conf.ocsp.ocsp_responder_cert_uid,
-            ocsp_cache_ttl_secs: conf.ocsp.ocsp_cache_ttl_secs,
-            ocsp_nonce_policy: conf.ocsp.ocsp_nonce_policy,
-            ocsp_include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
-            ocsp_archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
-            est_enabled: conf.est.est_enabled,
-            est_ca_uid: conf.est.est_ca_uid,
-            est_require_client_cert: conf.est.est_require_client_cert,
-            est_bootstrap_username: conf.est.est_bootstrap_username,
-            est_bootstrap_password: conf.est.est_bootstrap_password,
-            est_template,
-            scep_enabled: conf.scep.scep_enabled,
-            scep_ca_uid: conf.scep.scep_ca_uid,
-            scep_challenge_password: conf.scep.scep_challenge_password,
-            scep_allow_renewal_without_challenge: conf.scep.scep_allow_renewal_without_challenge,
-            scep_template,
+            ocsp: OcspParams {
+                enabled: conf.ocsp.ocsp_enabled,
+                ca_uid: conf.ocsp.ocsp_ca_uid,
+                responder_cert_uid: conf.ocsp.ocsp_responder_cert_uid,
+                cache_ttl_secs: conf.ocsp.ocsp_cache_ttl_secs,
+                nonce_policy: conf.ocsp.ocsp_nonce_policy,
+                include_cert_chain: conf.ocsp.ocsp_include_cert_chain,
+                archive_cutoff_secs: conf.ocsp.ocsp_archive_cutoff_secs,
+            },
+            est: EstParams {
+                enabled: conf.est.enabled,
+                ca_uid: conf.est.ca_uid,
+                require_client_cert: conf.est.require_client_cert,
+                bootstrap_username: conf.est.bootstrap_username,
+                bootstrap_password: conf.est.bootstrap_password,
+                template: est_template,
+            },
+            scep: ScepParams {
+                enabled: conf.scep.enabled,
+                ca_uid: conf.scep.ca_uid,
+                challenge_password: conf.scep.challenge_password,
+                allow_renewal_without_challenge: conf.scep.allow_renewal_without_challenge,
+                template: scep_template,
+            },
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -1043,7 +1109,7 @@ impl ServerParams {
 
         // EST/SCEP issue certificates as the reserved enrollment service identity: no
         // configured principal may share its name.
-        if res.est_enabled || res.scep_enabled {
+        if res.est.enabled || res.scep.enabled {
             let reserved = crate::routes::enrollment::ENROLLMENT_SERVICE_USER;
             let is_reserved =
                 |name: &str| crate::middlewares::names_reserved_identity(name, reserved);
@@ -1322,27 +1388,27 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("ms_dke_service_url", dke_url);
         }
 
-        if self.google_cse.google_cse_enable {
+        if self.google_cse.enable {
             debug_struct
-                .field("google_cse_enable", &self.google_cse.google_cse_enable)
+                .field("google_cse_enable", &self.google_cse.enable)
                 .field(
                     "google_cse_disable_tokens_validation",
-                    &self.google_cse.google_cse_disable_tokens_validation,
+                    &self.google_cse.disable_tokens_validation,
                 )
                 .field(
                     "google_cse_incoming_url_whitelist",
-                    &self.google_cse.google_cse_incoming_url_whitelist,
+                    &self.google_cse.incoming_url_whitelist,
                 )
                 .field(
                     "google_cse_migration_key",
                     &self
                         .google_cse
-                        .google_cse_migration_key
+                        .migration_key
                         .as_ref()
                         .map(|_| "[PEM key provided]"),
                 );
         } else {
-            debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
+            debug_struct.field("google_cse_enable", &self.google_cse.enable);
         }
 
         if let Some(aws_xks_params) = &self.aws_xks_params {
@@ -1359,29 +1425,20 @@ impl fmt::Debug for ServerParams {
         }
 
         // Azure EKM configuration
-        if self.azure_ekm.azure_ekm_enable {
+        if self.azure_ekm.enable {
             debug_struct
-                .field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable)
-                .field(
-                    "azure_ekm_path_prefix",
-                    &self.azure_ekm.azure_ekm_path_prefix,
-                )
+                .field("azure_ekm_enable", &self.azure_ekm.enable)
+                .field("azure_ekm_path_prefix", &self.azure_ekm.path_prefix)
                 .field(
                     "azure_ekm_disable_client_auth",
-                    &self.azure_ekm.azure_ekm_disable_client_auth,
+                    &self.azure_ekm.disable_client_auth,
                 )
-                .field(
-                    "azure_ekm_proxy_vendor",
-                    &self.azure_ekm.azure_ekm_proxy_vendor,
-                )
-                .field("azure_ekm_proxy_name", &self.azure_ekm.azure_ekm_proxy_name)
-                .field("azure_ekm_ekm_vendor", &self.azure_ekm.azure_ekm_ekm_vendor)
-                .field(
-                    "azure_ekm_ekm_product",
-                    &self.azure_ekm.azure_ekm_ekm_product,
-                );
+                .field("azure_ekm_proxy_vendor", &self.azure_ekm.proxy_vendor)
+                .field("azure_ekm_proxy_name", &self.azure_ekm.proxy_name)
+                .field("azure_ekm_ekm_vendor", &self.azure_ekm.ekm_vendor)
+                .field("azure_ekm_ekm_product", &self.azure_ekm.ekm_product);
         } else {
-            debug_struct.field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable);
+            debug_struct.field("azure_ekm_enable", &self.azure_ekm.enable);
         }
 
         if self.hsm_instances.is_empty() {
@@ -1432,21 +1489,21 @@ impl fmt::Debug for ServerParams {
         }
 
         // Mask the session salt for security (it's a secret)
-        if self.ui_session_salt.is_some() {
+        if self.ui.session_salt.is_some() {
             debug_struct.field("ui_session_salt", &"***");
         }
 
         // if one of these UI fields is some, add debug information
-        if self.ui_oidc_auth.ui_oidc_client_id.is_some()
-            || self.ui_oidc_auth.ui_oidc_client_secret.is_some()
-            || self.ui_oidc_auth.ui_oidc_issuer_url.is_some()
-            || self.ui_oidc_auth.ui_oidc_logout_url.is_some()
+        if self.ui.oidc_auth.client_id.is_some()
+            || self.ui.oidc_auth.client_secret.is_some()
+            || self.ui.oidc_auth.issuer_url.is_some()
+            || self.ui.oidc_auth.logout_url.is_some()
         {
-            debug_struct.field("ui_oidc_auth", &self.ui_oidc_auth);
+            debug_struct.field("ui_oidc_auth", &self.ui.oidc_auth);
         }
 
-        debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
-        debug_struct.field("ui_enable", &self.ui_enable);
+        debug_struct.field("ui_index_html_folder", &self.ui.index_html_folder);
+        debug_struct.field("ui_enable", &self.ui.enable);
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
         debug_struct.field("http_workers", &self.http_workers);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
@@ -1460,25 +1517,13 @@ impl fmt::Debug for ServerParams {
             &self.metrics_count_interval_secs,
         );
         debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
-        if self.jwks_endpoint.jwks_endpoint_enabled {
+        if self.jwks_endpoint.enabled {
             debug_struct
-                .field(
-                    "jwks_endpoint_enabled",
-                    &self.jwks_endpoint.jwks_endpoint_enabled,
-                )
-                .field(
-                    "jwks_endpoint_max_keys",
-                    &self.jwks_endpoint.jwks_endpoint_max_keys,
-                )
-                .field(
-                    "jwks_endpoint_auto_tag",
-                    &self.jwks_endpoint.jwks_endpoint_auto_tag,
-                );
+                .field("jwks_endpoint_enabled", &self.jwks_endpoint.enabled)
+                .field("jwks_endpoint_max_keys", &self.jwks_endpoint.max_keys)
+                .field("jwks_endpoint_auto_tag", &self.jwks_endpoint.auto_tag);
         } else {
-            debug_struct.field(
-                "jwks_endpoint_enabled",
-                &self.jwks_endpoint.jwks_endpoint_enabled,
-            );
+            debug_struct.field("jwks_endpoint_enabled", &self.jwks_endpoint.enabled);
         }
         debug_struct.field("audit_backend", &self.audit_backend);
         debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
@@ -1486,24 +1531,24 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("audit_failure_mode", &self.audit_failure_mode);
 
         // Vault API fields
-        debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
-        if self.vault_api_enabled {
+        debug_struct.field("vault_api_enabled", &self.vault.api_enabled);
+        if self.vault.api_enabled {
             debug_struct
-                .field("vault_auth_verifier_url", &self.vault_auth_verifier_url)
+                .field("vault_auth_verifier_url", &self.vault.auth_verifier_url)
                 .field(
                     "vault_auth_verifier_ca_cert",
-                    &self.vault_auth_verifier_ca_cert,
+                    &self.vault.auth_verifier_ca_cert,
                 )
                 .field(
                     "vault_auth_verifier_accept_invalid_certs",
-                    &self.vault_auth_verifier_accept_invalid_certs,
+                    &self.vault.auth_verifier_accept_invalid_certs,
                 )
-                .field("vault_transit_mount", &self.vault_transit_mount)
-                .field("vault_pki_mount", &self.vault_pki_mount)
-                .field("vault_pki_ca_key_label", &self.vault_pki_ca_key_label)
+                .field("vault_transit_mount", &self.vault.transit_mount)
+                .field("vault_pki_mount", &self.vault.pki_mount)
+                .field("vault_pki_ca_key_label", &self.vault.pki_ca_key_label)
                 .field(
                     "vault_token_cache_ttl_secs",
-                    &self.vault_token_cache_ttl_secs,
+                    &self.vault.token_cache_ttl_secs,
                 );
         }
 

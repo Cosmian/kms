@@ -130,10 +130,12 @@ pub(super) fn parse_all_xml_vectors_with_skip(
         for original in ttlvs {
             let original_tags = tag_names(&original);
             let again = match original.tag.as_ref() {
-                "RequestMessage" => from_ttlv::<RequestMessage>(original.clone())
-                    .and_then(|message| to_ttlv(&message)),
-                "ResponseMessage" => from_ttlv::<ResponseMessage>(original.clone())
-                    .and_then(|message| to_ttlv(&message)),
+                "RequestMessage" => {
+                    from_ttlv::<RequestMessage>(&original).and_then(|message| to_ttlv(&message))
+                }
+                "ResponseMessage" => {
+                    from_ttlv::<ResponseMessage>(&original).and_then(|message| to_ttlv(&message))
+                }
                 tag => {
                     failures.push(format!(
                         "{}: unexpected top-level tag {tag}",

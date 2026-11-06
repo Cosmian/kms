@@ -157,7 +157,7 @@ pub(crate) async fn decrypt(
             | KmsError::Kmip21Error(ErrorReason::Cryptographic_Failure, msg)
             | KmsError::Kmip14Error(ResultReason::CryptographicFailure, msg),
         ) => XksErrorReply {
-            errorName: XksErrorName::InvalidCiphertextException,
+            errorName: XksErrorName::InvalidCiphertext,
             errorMessage: Some(msg),
         }
         .into(),

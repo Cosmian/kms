@@ -202,7 +202,7 @@ fn test_noise_uniform_date() -> Result<(), AnoError> {
 fn test_mask_word() {
     let input_str = String::from("Confidential: contains -secret- documents");
     let block_words = vec!["confidential", "SECRET"];
-    let word_masker = WordMasker::new(&block_words);
+    let word_masker = WordMasker::new(&block_words).unwrap();
 
     let safe_str = word_masker.apply(&input_str);
 

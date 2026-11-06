@@ -75,7 +75,6 @@ fn is_fresh(binary_path: &Path, marker_path: &Path) -> bool {
     marker_newer_than_test_exe && fs::read_to_string(marker_path).is_ok_and(|s| s == stamp)
 }
 
-#[allow(clippy::print_stdout)]
 fn build_ckms_binary() {
     // Get the path where the binary should be
     let manifest_dir = env!("CARGO_MANIFEST_DIR");

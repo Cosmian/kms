@@ -4,7 +4,7 @@ mod migrate;
 mod redis;
 mod sql;
 
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 pub use audit::{PgAuditReader, PgAuditSink};
 use rawsql::Loader;
@@ -20,47 +20,52 @@ const PGSQL_FILE_QUERIES: &str = include_str!("sql/query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("sql/query_mysql.sql");
 const SQLITE_FILE_QUERIES: &str = include_str!("sql/query_sqlite.sql");
 
-#[expect(
-    clippy::expect_used,
-    reason = "embedded SQL is embedded at compile time; every query is exercised by tests"
-)]
-pub(crate) static PGSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
-    // SAFETY: SQL files are included at compile time and should be valid
-    Loader::get_queries_from(PGSQL_FILE_QUERIES).expect("Can't parse the SQL file")
-});
-#[expect(
-    clippy::expect_used,
-    reason = "embedded SQL is embedded at compile time; every query is exercised by tests"
-)]
-static MYSQL_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
-    // SAFETY: SQL files are included at compile time and should be valid
-    Loader::get_queries_from(MYSQL_FILE_QUERIES).expect("Can't parse the SQL file")
-});
-/// SQLite-specific query overrides.  Loaded before `PGSQL_QUERIES` so that
+/// Parse an embedded SQL bundle once and cache it.
+fn load_queries(
+    cell: &'static OnceLock<Loader>,
+    file: &'static str,
+) -> crate::error::DbResult<&'static Loader> {
+    if let Some(loader) = cell.get() {
+        return Ok(loader);
+    }
+    let loader = Loader::get_queries_from(file).map_err(|e| {
+        crate::error::DbError::DatabaseError(format!("Can't parse the SQL file: {e}"))
+    })?;
+    Ok(cell.get_or_init(|| loader))
+}
+
+pub(crate) fn pgsql_queries() -> crate::error::DbResult<&'static Loader> {
+    static CELL: OnceLock<Loader> = OnceLock::new();
+    load_queries(&CELL, PGSQL_FILE_QUERIES)
+}
+
+pub(crate) fn mysql_queries() -> crate::error::DbResult<&'static Loader> {
+    static CELL: OnceLock<Loader> = OnceLock::new();
+    load_queries(&CELL, MYSQL_FILE_QUERIES)
+}
+
+/// SQLite-specific query overrides.  Loaded before `pgsql_queries` so that
 /// SQLite-divergent SQL (e.g. JSON functions) takes precedence.
-#[expect(
-    clippy::expect_used,
-    reason = "embedded SQL is embedded at compile time; every query is exercised by tests"
-)]
-pub(crate) static SQLITE_QUERIES: LazyLock<Loader> = LazyLock::new(|| {
-    // SAFETY: SQL files are included at compile time and should be valid
-    Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQLite SQL file")
-});
+pub(crate) fn sqlite_queries() -> crate::error::DbResult<&'static Loader> {
+    static CELL: OnceLock<Loader> = OnceLock::new();
+    load_queries(&CELL, SQLITE_FILE_QUERIES)
+}
 
 #[cfg(test)]
 mod characterization_tests {
     //! Characterization tests pinning that the embedded SQL bundles parse and expose the queries.
 
-    use super::{MYSQL_QUERIES, PGSQL_QUERIES, SQLITE_QUERIES};
+    use super::{mysql_queries, pgsql_queries, sqlite_queries};
 
     #[test]
     fn characterization_embedded_sql_bundles_parse_and_expose_queries() {
         for name in ["select-parameter", "has-row-objects"] {
-            assert_ne!(PGSQL_QUERIES.get(name).unwrap().trim().len(), 0);
-            assert_ne!(MYSQL_QUERIES.get(name).unwrap().trim().len(), 0);
+            assert_ne!(pgsql_queries().unwrap().get(name).unwrap().trim().len(), 0);
+            assert_ne!(mysql_queries().unwrap().get(name).unwrap().trim().len(), 0);
         }
         assert_ne!(
-            SQLITE_QUERIES
+            sqlite_queries()
+                .unwrap()
                 .get("count-non-destroyed-keys")
                 .unwrap()
                 .trim()
@@ -71,8 +76,8 @@ mod characterization_tests {
 
     #[test]
     fn characterization_embedded_sql_unknown_query_is_absent() {
-        assert!(PGSQL_QUERIES.get("no-such-query").is_none());
-        assert!(MYSQL_QUERIES.get("no-such-query").is_none());
-        assert!(SQLITE_QUERIES.get("no-such-query").is_none());
+        assert!(pgsql_queries().unwrap().get("no-such-query").is_none());
+        assert!(mysql_queries().unwrap().get("no-such-query").is_none());
+        assert!(sqlite_queries().unwrap().get("no-such-query").is_none());
     }
 }

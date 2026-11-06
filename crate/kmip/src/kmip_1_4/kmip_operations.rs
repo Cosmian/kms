@@ -2892,19 +2892,19 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
 
             Operation::Certify(certify) => Self::Certify(Box::new(certify.into())),
             // Operation::Check(check) => Self::Check(check.into()),
-            Operation::Create(create) => Self::Create(create.into()),
+            Operation::Create(create) => Self::Create(Box::new(create.into())),
             Operation::CreateKeyPair(create_key_pair) => {
                 Self::CreateKeyPair(Box::new(create_key_pair.into()))
             }
             Operation::Check(check) => Self::Check(check.into()),
             Operation::CreateSplitKey(create_split_key) => {
-                Self::CreateSplitKey(create_split_key.into())
+                Self::CreateSplitKey(Box::new(create_split_key.into()))
             }
             Operation::Decrypt(decrypt) => Self::Decrypt(Box::new((*decrypt).into())),
             Operation::DeleteAttribute(delete_attribute) => {
                 Self::DeleteAttribute(delete_attribute.into())
             }
-            Operation::DeriveKey(derive_key) => Self::DeriveKey(derive_key.into()),
+            Operation::DeriveKey(derive_key) => Self::DeriveKey(Box::new(derive_key.into())),
             Operation::Destroy(destroy) => Self::Destroy(destroy.into()),
             Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
@@ -2922,7 +2922,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::GetUsageAllocation(get_usage_allocation.into())
             // }
             Operation::Import(import) => Self::Import(Box::new((*import).into())),
-            Operation::JoinSplitKey(join_split_key) => Self::JoinSplitKey(join_split_key.into()),
+            Operation::JoinSplitKey(join_split_key) => {
+                Self::JoinSplitKey(Box::new(join_split_key.into()))
+            }
             Operation::Locate(locate) => Self::Locate(Box::new(locate.into())),
             Operation::MAC(mac) => Self::MAC(mac.into()),
             Operation::MACVerify(mac_verify) => Self::MACVerify(mac_verify.into()),
@@ -2939,7 +2941,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::Recover(recover.into())
             // }
             Operation::Register(register) => Self::Register(Box::new(register.into())),
-            Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
+            Operation::ReKey(rekey) => Self::ReKey(Box::new(rekey.into())),
             Operation::ReKeyKeyPair(rekey_key_pair) => {
                 Self::ReKeyKeyPair(Box::new(rekey_key_pair.into()))
             }
@@ -3044,7 +3046,7 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                     .context("GetAttributeListResponse")?,
             ),
             kmip_2_1::kmip_operations::Operation::GetResponse(get_response) => {
-                Self::GetResponse(get_response.try_into()?)
+                Self::GetResponse((*get_response).try_into()?)
             }
             // Operation::GetUsageAllocationResponse(get_usage_allocation_response) => {
             //     Self::GetUsageAllocationResponse(

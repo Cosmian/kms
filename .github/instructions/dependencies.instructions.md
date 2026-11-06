@@ -31,7 +31,7 @@ Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.y
 - [ ] crates.io only: no `git =`, no `path =` outside the workspace, no `[patch.crates-io]` (`deny.toml` `[sources]` has `allow-git = []`).
 - [ ] FIPS-mode cryptography goes through OpenSSL (`rust-crypto.instructions.md`). A crate implementing a cryptographic primitive needs `/cryptography-review` first and, unless that review approves it for FIPS builds, is `optional = true` and enabled only through `dep:<crate>` in the member crate's `non-fips` feature (pattern: `crate/crypto/Cargo.toml`).
 - [ ] The crate's license is in the `allow` list of `deny.toml` `[licenses]`. Never extend that list, add a `[[licenses.clarify]]`, or add an advisory ignore without explicit user approval; an approved ignore is `{ id = "RUSTSEC-…", reason = "…" }` in `deny.toml` plus the same ID in `.cargo/audit.toml`.
-- [ ] `cargo deny check` passes. Run it yourself: its pre-commit hook only fires when `.rs` files change.
+- [ ] `cargo deny check` passes. Its pre-commit hook fires when `Cargo.toml`, `Cargo.lock` or `deny.toml` changes.
 - [ ] `cargo machete` reports no unused dependency; a false positive goes into `[package.metadata.cargo-machete] ignored = [...]` of that crate's `Cargo.toml`.
 - [ ] `cargo vet check --locked` prints `Vetting Succeeded`. For each `<crate>:<version> missing ["<criteria>"]` line it prints instead:
     1. Run `cargo vet check` once without `--locked`: it fetches newer Mozilla, Google and Bytecode Alliance audits into `supply-chain/imports.lock` and prunes exemptions they make unused. Keep the resulting `supply-chain/` changes either way; never revert them with `git checkout`.

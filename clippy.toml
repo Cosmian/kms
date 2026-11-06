@@ -76,3 +76,6 @@ allow-panic-in-tests = true
 allow-print-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-dbg-in-tests = true
+
+# DTOs mirror CLI/TOML/JSON flags
+max-struct-bools = 5

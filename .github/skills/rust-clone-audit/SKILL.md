@@ -5,6 +5,8 @@ description: 'Detect and eliminate abusive cloning in Rust: treat every `.clone(
 
 # Rust Clone Audit
 
+Baseline: [`rust-best-practices`](../rust-best-practices/SKILL.md) (§3 ownership) and [`rust.instructions.md`](../../instructions/rust.instructions.md).
+
 Companion to [`rust-signature-design`](../rust-signature-design/SKILL.md) (parameter identity/count)
 and [`rust-refactor`](../rust-refactor/SKILL.md) (duplicated code blocks): this skill targets a
 different axis — the **owned-vs-borrowed decision for a single value** at the call site where a
@@ -67,14 +69,14 @@ rg -n 'fn \w+\([^)]*: (String|Vec<\w+>|HashMap<[^)]+>)[^)]*\)' --type rust <path
 ```rust
 // Before — caller forced to clone because the function takes ownership it never needs.
 fn log_message(msg: String) {
-    println!("[LOG] {msg}");
+    tracing::info!("{msg}");
 }
 log_message(message.clone());
 log_message(message);
 
 // After — borrow; zero allocation, callable repeatedly.
 fn log_message(msg: &str) {
-    println!("[LOG] {msg}");
+    tracing::info!("{msg}");
 }
 log_message(&message);
 log_message(&message);
@@ -87,8 +89,7 @@ log_message(&message);
 - Do not replace a single clone with `Arc`/`Rc`/`RefCell` wrapping across a type with no
   concurrent or shared-ownership requirement — that trades one allocation for a bigger runtime
   cost (atomic ops, interior-mutability panics) and a wider API change.
-- Do not silence `clippy::redundant_clone` / `clippy::clone_on_copy` with a bare `#[allow]`
-  instead of fixing the call site — forbidden on new code per `rust.instructions.md`.
+- Do not silence `clippy::redundant_clone` / `clippy::clone_on_copy`: fix the call site (see `rust.instructions.md` § Clippy and lint suppression).
 - Do not change a `crate/kmip` wire struct's field from owned to borrowed — KMIP structs are
   spec-bound value types serialized independently of caller lifetimes.
 - Do not flag `Arc::clone`/`Rc::clone` as defects — they are O(1) ref-count bumps, never a data

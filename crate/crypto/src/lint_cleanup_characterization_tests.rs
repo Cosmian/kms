@@ -154,7 +154,7 @@ fn characterization_ecies_standard_curves_p521_known_ciphertext() {
 #[cfg(feature = "non-fips")]
 fn characterization_word_masker() {
     let words = vec!["Secret", "DATA"];
-    let masker = WordMasker::new(&words);
+    let masker = WordMasker::new(&words).unwrap();
     let output = masker.apply("my secret data, secretive DATA!");
     assert_eq!(output, "my XXXX XXXX, secretive XXXX!");
 }

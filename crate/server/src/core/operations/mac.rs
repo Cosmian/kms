@@ -530,7 +530,6 @@ mod tests {
         }
     }
 
-    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_mac_operation() -> KResult<()> {
         let kms = test_kms().await?;

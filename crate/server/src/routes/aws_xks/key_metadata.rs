@@ -51,7 +51,7 @@ fn time_normalize() -> Result<OffsetDateTime, XksErrorReply> {
     OffsetDateTime::now_utc()
         .replace_millisecond(0)
         .map_err(|e| XksErrorReply {
-            errorName: XksErrorName::InternalException,
+            errorName: XksErrorName::Internal,
             errorMessage: Some(format!("Failed to normalize time: {e}")),
         })
 }
@@ -137,17 +137,14 @@ pub(crate) struct GetKeyMetadataRequest {
 
 // Defined per XKS Proxy API spec.
 #[derive(Serialize, Debug, PartialEq, Deserialize)]
-#[expect(
-    clippy::upper_case_acronyms,
-    reason = "AWS XKS proxy API enum value names"
-)]
+#[serde(rename_all = "UPPERCASE")]
 pub(crate) enum KeyUsage {
-    ENCRYPT,
-    DECRYPT,
-    SIGN,
-    VERIFY,
-    WRAP,
-    UNWRAP,
+    Encrypt,
+    Decrypt,
+    Sign,
+    Verify,
+    Wrap,
+    Unwrap,
 }
 
 /// The HTTP response body contains the keySpec, keyUsage, and keyStatus fields.
@@ -203,7 +200,7 @@ pub(crate) async fn get_key_metadata(
             .map(Json),
         "CreateKey" => create_key(req_http, request, key_id, &kms).await.map(Json),
         x => Err(XksErrorReply {
-            errorName: XksErrorName::UnsupportedOperationException,
+            errorName: XksErrorName::UnsupportedOperation,
             errorMessage: Some(format!("Unsupported kmsOperation: {x}")),
         }),
     };
@@ -235,7 +232,7 @@ pub(crate) async fn get_key_metadata_inner(
         )
         .await
         .map_err(|e| XksErrorReply {
-            errorName: XksErrorName::KeyNotFoundException,
+            errorName: XksErrorName::KeyNotFound,
             errorMessage: Some(e.to_string()),
         })?;
     let cryptographic_algorithm =
@@ -243,24 +240,24 @@ pub(crate) async fn get_key_metadata_inner(
             .attributes
             .cryptographic_algorithm
             .ok_or_else(|| XksErrorReply {
-                errorName: XksErrorName::InternalException,
+                errorName: XksErrorName::Internal,
                 errorMessage: Some("No cryptographic algorithm found".to_owned()),
             })?;
     let key_size = response
         .attributes
         .cryptographic_length
         .ok_or_else(|| XksErrorReply {
-            errorName: XksErrorName::InternalException,
+            errorName: XksErrorName::Internal,
             errorMessage: Some("No cryptographic length found".to_owned()),
         })?;
     let (key_spec, key_usage) = match cryptographic_algorithm {
         CryptographicAlgorithm::AES => (
             format!("AES_{key_size}"),
             vec![
-                KeyUsage::ENCRYPT,
-                KeyUsage::DECRYPT,
-                KeyUsage::WRAP,
-                KeyUsage::UNWRAP,
+                KeyUsage::Encrypt,
+                KeyUsage::Decrypt,
+                KeyUsage::Wrap,
+                KeyUsage::Unwrap,
             ],
         ),
         CryptographicAlgorithm::RSA => {
@@ -273,18 +270,18 @@ pub(crate) async fn get_key_metadata_inner(
                 // a private key
                 (
                     key_spec,
-                    vec![KeyUsage::DECRYPT, KeyUsage::SIGN, KeyUsage::UNWRAP],
+                    vec![KeyUsage::Decrypt, KeyUsage::Sign, KeyUsage::Unwrap],
                 )
             } else {
                 (
                     key_spec,
-                    vec![KeyUsage::ENCRYPT, KeyUsage::VERIFY, KeyUsage::WRAP],
+                    vec![KeyUsage::Encrypt, KeyUsage::Verify, KeyUsage::Wrap],
                 )
             }
         }
         xc => {
             return Err(XksErrorReply {
-                errorName: XksErrorName::UnsupportedOperationException,
+                errorName: XksErrorName::UnsupportedOperation,
                 errorMessage: Some(format!("Unsupported cryptographic algorithm: {xc:?}")),
             });
         }
@@ -313,7 +310,7 @@ pub(crate) async fn create_key(
     let uid = UniqueIdentifier::TextString(key_id);
     // Set the activation date  in the past to have the key immediately active
     let activation_date = time_normalize().map_err(|e| XksErrorReply {
-        errorName: XksErrorName::InternalException,
+        errorName: XksErrorName::Internal,
         errorMessage: Some(format!("Failed to get current time: {e}")),
     })? - time::Duration::minutes(1);
 
@@ -335,7 +332,7 @@ pub(crate) async fn create_key(
     attributes
         .set_tags(&kms.params.vendor_identification, ["aws-xks"])
         .map_err(|e| XksErrorReply {
-            errorName: XksErrorName::InternalException,
+            errorName: XksErrorName::Internal,
             errorMessage: Some(format!("Failed to set tags: {e}")),
         })?;
     let create = Create {
@@ -359,7 +356,7 @@ pub(crate) async fn create_key(
             )
             .await
             .map_err(|e| XksErrorReply {
-                errorName: XksErrorName::InternalException,
+                errorName: XksErrorName::Internal,
                 errorMessage: Some(format!("Failed to check prior existence of key {uid}: {e}")),
             })?;
         let is_xks_key = get_att_response
@@ -370,14 +367,14 @@ pub(crate) async fn create_key(
             warn!("AWS XKS create: key {uid} already exists (ignoring creation).");
         } else if get_att_response.attributes.object_type == Some(ObjectType::SymmetricKey) {
             return Err(XksErrorReply {
-                errorName: XksErrorName::InternalException,
+                errorName: XksErrorName::Internal,
                 errorMessage: Some(format!(
                     "Key {uid} already exists and is not an AWS XKS key; refusing to grant XKS access"
                 )),
             });
         } else {
             return Err(XksErrorReply {
-                errorName: XksErrorName::InternalException,
+                errorName: XksErrorName::Internal,
                 errorMessage: Some(format!("Failed to create XKS key {uid}: {e}")),
             });
         }
@@ -404,7 +401,7 @@ pub(crate) async fn create_key(
     )
     .await
     .map_err(|e| XksErrorReply {
-        errorName: XksErrorName::InternalException,
+        errorName: XksErrorName::Internal,
         errorMessage: Some(format!(
             "Failed to grant XKS usage on key {uid} to `{AWS_XKS_SERVICE_USER}`: {e}"
         )),
@@ -413,10 +410,10 @@ pub(crate) async fn create_key(
     // Return the key metadata
     let key_spec = "AES_256".to_owned();
     let key_usage = vec![
-        KeyUsage::ENCRYPT,
-        KeyUsage::DECRYPT,
-        KeyUsage::WRAP,
-        KeyUsage::UNWRAP,
+        KeyUsage::Encrypt,
+        KeyUsage::Decrypt,
+        KeyUsage::Wrap,
+        KeyUsage::Unwrap,
     ];
     let key_status = "ENABLED".to_owned();
     Ok(GetKeyMetadataResponse {

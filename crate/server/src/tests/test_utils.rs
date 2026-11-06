@@ -77,7 +77,7 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
 
     ClapConfig {
         socket_server: SocketServerConfig {
-            socket_server_start: true,
+            start: true,
             ..Default::default()
         },
         tls: tls_config,
@@ -90,14 +90,14 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
         },
         kms_public_url,
         google_cse_config: GoogleCseConfig {
-            google_cse_enable: true,
-            google_cse_disable_tokens_validation: true,
-            google_cse_incoming_url_whitelist: None,
-            google_cse_migration_key: None,
+            enable: true,
+            disable_tokens_validation: true,
+            incoming_url_whitelist: None,
+            migration_key: None,
         },
         http: HttpConfig::default(),
         jwks_endpoint: crate::config::JwksEndpointConfig {
-            jwks_endpoint_enabled: true,
+            enabled: true,
             ..Default::default()
         },
         ..Default::default()
@@ -229,7 +229,7 @@ pub(crate) async fn test_app(
     );
 
     // Handle Google RSA Keypair for CSE Kacls migration
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
@@ -334,7 +334,7 @@ pub(crate) async fn test_kms_with_google_cse(clap_config: ClapConfig) -> Arc<KMS
             .expect("cannot instantiate KMS server"),
     );
 
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
@@ -449,7 +449,7 @@ pub(crate) async fn test_app_with_audit(
             .expect("cannot instantiate KMS server"),
     );
 
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
@@ -574,7 +574,7 @@ where
     // Tests historically deserialize `LocateResponse` directly into `Vec<UniqueIdentifier>`.
     // Prefer decoding the proper response type and extracting the list.
     if std::any::TypeId::of::<R>() == std::any::TypeId::of::<Vec<UniqueIdentifier>>() {
-        let locate: LocateResponse = from_ttlv(ttlv)?;
+        let locate: LocateResponse = from_ttlv(&ttlv)?;
         // Safety: guarded by TypeId check.
         let v: Vec<UniqueIdentifier> = locate.unique_identifier.unwrap_or_default();
         // Convert Vec<UniqueIdentifier> -> R without requiring R: From<_>
@@ -582,7 +582,7 @@ where
         return Ok(*boxed.downcast::<R>().expect("TypeId matched"));
     }
 
-    Ok(from_ttlv(ttlv)?)
+    Ok(from_ttlv(&ttlv)?)
 }
 
 /// Post a full `RequestMessage` as JSON to `/kmip` and return the parsed `ResponseMessage`.
@@ -610,7 +610,7 @@ where
     }
     let body = read_body(res).await;
     let ttlv: TTLV = serde_json::from_slice(&body)?;
-    Ok(from_ttlv(ttlv)?)
+    Ok(from_ttlv(&ttlv)?)
 }
 
 /// Post a full `RequestMessage` as binary TTLV (`application/octet-stream`) to `/kmip`
@@ -642,7 +642,7 @@ where
     }
     let body = read_body(res).await;
     let ttlv = TTLV::from_bytes(&body, flavor)?;
-    Ok(from_ttlv(ttlv)?)
+    Ok(from_ttlv(&ttlv)?)
 }
 
 pub(crate) async fn post_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>

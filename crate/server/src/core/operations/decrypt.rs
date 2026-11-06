@@ -919,7 +919,10 @@ fn decrypt_with_rsa(
 }
 
 #[cfg(test)]
-#[expect(clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::{BlockCipherMode, ErrorReason},

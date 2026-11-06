@@ -31,14 +31,14 @@ fn test_rng_retrieve_and_seed_2_1_binary() {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::RNGRetrieve,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"rng-retrieve".to_vec()),
                 request_payload: Operation::RNGRetrieve(RNGRetrieve { data_length: 32 }),
                 message_extension: None,
-            }),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            })),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::RNGSeed,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"rng-seed".to_vec()),
@@ -46,7 +46,7 @@ fn test_rng_retrieve_and_seed_2_1_binary() {
                     data: vec![0x5A; 32],
                 }),
                 message_extension: None,
-            }),
+            })),
         ],
     };
 
@@ -94,7 +94,7 @@ fn test_invalid_payload_echoes_operation_2_1() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::RNGRetrieve,
                 ephemeral: None,
@@ -102,7 +102,7 @@ fn test_invalid_payload_echoes_operation_2_1() {
                 request_payload: Operation::RNGRetrieve(RNGRetrieve { data_length: 32 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let mut ttlv = to_ttlv(&request_message).expect("Failed to serialize RNG request");
     let TTLValue::Structure(children) = &mut ttlv.value else {
@@ -130,7 +130,7 @@ fn test_invalid_payload_echoes_operation_2_1() {
         .expect("Failed to send invalid request");
     let response_ttlv =
         TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV");
-    let response: ResponseMessage = from_ttlv(response_ttlv).expect("Invalid response message");
+    let response: ResponseMessage = from_ttlv(&response_ttlv).expect("Invalid response message");
 
     assert_eq!(response.batch_item.len(), 1);
     let ResponseMessageBatchItemVersioned::V21(batch_item) = &response.batch_item[0] else {

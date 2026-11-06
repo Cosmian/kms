@@ -18,13 +18,11 @@ Resolve the simplification scope in this order:
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
-## Step 2: Launch 3 review agents in parallel
+## Step 2: Review for reuse, quality and efficiency
 
-Spawn the three reviewer agents below in a single message via the platform's subagent dispatch primitive — `Agent`/`Task` in Claude Code, `spawn_agent` in Codex — where available; otherwise run the work inline or serially. Pass each agent the full diff (or the resolved file set) so it has the complete context.
+Run the three reviews below over the full diff (or the resolved file set). Delegate only genuinely independent slices, via the harness's supported mechanism; otherwise run them inline. Omit any model or permission override so the user's configured settings apply.
 
-**Model selection.** Use the platform's mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class; in Codex use the current mini/mid-tier model exposed by `spawn_agent` when known. On platforms where the model-override parameter is unavailable or the model name is unknown or unrecognized, omit the override -- a working pass on the parent model beats a broken dispatch.
-
-**Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
+**Rust scope.** For Rust, reuse completed Rust findings (`/kms-caveman`, `/rust-refactor`, `/rust-best-practices`); invoke the baseline or a specialist only for gaps, and never start a second Rust pipeline.
 
 ### Agent 1: Code Reuse Reviewer
 
@@ -65,7 +63,7 @@ Review the same changes for efficiency:
 
 ## Step 3: Fix issues
 
-Wait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on. Do not argue with the finding or raise questions to the user, just skip it.
+Once the three reviews complete, aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on. Do not argue with the finding or raise questions to the user, just skip it.
 
 Before applying each fix, confirm it preserves behavior: same output for every input, same error behavior, and same side effects and ordering. If a fix can't clear that test, skip it — automated checks in Step 4 don't cover every behavior.
 

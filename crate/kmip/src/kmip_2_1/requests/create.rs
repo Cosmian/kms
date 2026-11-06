@@ -140,7 +140,7 @@ pub fn create_symmetric_key_kmip_object(
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes.to_vec()),
                 },
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -221,7 +221,7 @@ pub fn create_secret_data_kmip_object(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(secret_bytes.to_vec())),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             key_wrapping_data: None,
             cryptographic_algorithm: None,

@@ -71,7 +71,12 @@ async fn test_multi_hsm_routing() -> KResult<()> {
         true,
         None,
     )?;
-    let response = send_message(kms.clone(), &owner, vec![Operation::Create(create_req)]).await?;
+    let response = send_message(
+        kms.clone(),
+        &owner,
+        vec![Operation::Create(Box::new(create_req))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
         panic!("Expected CreateResponse");
     };
@@ -96,7 +101,12 @@ async fn test_multi_hsm_routing() -> KResult<()> {
         true,
         None,
     )?;
-    let response2 = send_message(kms.clone(), &owner, vec![Operation::Create(create_req2)]).await?;
+    let response2 = send_message(
+        kms.clone(),
+        &owner,
+        vec![Operation::Create(Box::new(create_req2))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response2) = &response2[0] else {
         panic!("Expected CreateResponse for hsm::softhsm2_1");
     };
