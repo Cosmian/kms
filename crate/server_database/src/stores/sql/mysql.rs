@@ -16,7 +16,7 @@ use cosmian_kms_interfaces::{
 use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
 use mysql_async::ClientIdentity;
-use mysql_async::{Pool, SslOpts, Transaction, prelude::*};
+use mysql_async::{Conn, Pool, SslOpts, Transaction, prelude::*};
 use rawsql::Loader;
 use serde_json::Value;
 use url::Url;
@@ -29,8 +29,8 @@ use crate::{
     stores::{
         MYSQL_QUERIES,
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState,
-            WRAPPING_KEY_BACKFILL_PARAM, certificate_serial_tag,
+            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
+            wait_for_migration_lock,
         },
         sql::{
             crl_number_from_sql, crl_number_to_sql,
@@ -47,6 +47,52 @@ use crate::{
 
 // Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
 const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
+
+fn validate_client_identity_parameters(
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<()> {
+    if identity_path.is_none() && identity_password.is_some() {
+        return Err(DbError::DatabaseError(
+            "ssl-client-identity-password requires ssl-client-identity".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+fn configure_client_identity(
+    mut ssl_opts: SslOpts,
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<SslOpts> {
+    validate_client_identity_parameters(identity_path, identity_password)?;
+    if let Some(path) = identity_path {
+        let mut identity = ClientIdentity::new(PathBuf::from(path).into());
+        if let Some(password) = identity_password {
+            identity = identity.with_password(password.to_owned());
+        }
+        ssl_opts = ssl_opts.with_client_identity(Some(identity));
+    }
+    Ok(ssl_opts)
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn configure_client_identity(
+    ssl_opts: SslOpts,
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<SslOpts> {
+    validate_client_identity_parameters(identity_path, identity_password)?;
+    if identity_path.is_some() || identity_password.is_some() {
+        return Err(DbError::DatabaseError(
+            "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure \
+             MySQL without client identity."
+                .to_owned(),
+        ));
+    }
+    Ok(ssl_opts)
+}
 
 fn is_mysql_deadlock(msg: &str) -> bool {
     // Match common forms from MySQL/MariaDB drivers and servers
@@ -103,12 +149,36 @@ pub(crate) struct MySqlPool {
     pool: Pool,
 }
 
+/// Dropping the dedicated connection disconnects it: the server rolls back the open
+/// transaction, which releases the lock row.
+pub(crate) struct MySqlMigrationLock {
+    _conn: Conn,
+}
+
 impl MySqlPool {
+    /// Do not expose connections until schema initialization and migrations have completed.
     pub(crate) async fn instantiate(
         connection_url: &str,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
+        Self::instantiate_at_version(
+            connection_url,
+            clear_database,
+            max_connections,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        .map(|(pool, _)| pool)
+    }
+
+    /// Explicit targets and applied steps make intermediate upgrades observable in scenario tests.
+    pub(crate) async fn instantiate_at_version(
+        connection_url: &str,
+        clear_database: bool,
+        max_connections: Option<u32>,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         // Parse URL for TLS parameters first
         let url = Url::parse(connection_url)
             .map_err(|e| DbError::DatabaseError(format!("Invalid MySQL URL: {e}")))?;
@@ -170,44 +240,17 @@ impl MySqlPool {
                         }
                     }
 
-                    // For mTLS client authentication:
-                    // In non-fips builds with native-tls backend, support PKCS12 identity via ssl-client-identity
-                    #[cfg(feature = "non-fips")]
-                    {
-                        if let Some(p12_path) = query_params
+                    ssl_opts = configure_client_identity(
+                        ssl_opts,
+                        query_params
                             .get("ssl-client-identity")
                             .or_else(|| query_params.get("ssl_client_identity"))
-                        {
-                            let password = query_params
-                                .get("ssl-client-identity-password")
-                                .or_else(|| query_params.get("ssl_client_identity_password"))
-                                .map(std::string::ToString::to_string);
-
-                            let mut identity =
-                                ClientIdentity::new(PathBuf::from(p12_path.as_ref()).into());
-                            if let Some(pass) = password {
-                                identity = identity.with_password(pass);
-                            }
-                            ssl_opts = ssl_opts.with_client_identity(Some(identity));
-                        }
-                    }
-                    // In FIPS builds, reject PKCS12 client identity parameters explicitly
-                    #[cfg(not(feature = "non-fips"))]
-                    {
-                        if query_params
-                            .get("ssl-client-identity")
-                            .or_else(|| query_params.get("ssl_client_identity"))
-                            .is_some()
-                            || query_params
-                                .get("ssl-client-identity-password")
-                                .or_else(|| query_params.get("ssl_client_identity_password"))
-                                .is_some()
-                        {
-                            return Err(DbError::DatabaseError(
-                                "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure MySQL without client identity.".to_owned(),
-                            ));
-                        }
-                    }
+                            .map(AsRef::as_ref),
+                        query_params
+                            .get("ssl-client-identity-password")
+                            .or_else(|| query_params.get("ssl_client_identity_password"))
+                            .map(AsRef::as_ref),
+                    )?;
 
                     opts = mysql_async::OptsBuilder::from_opts(opts)
                         .ssl_opts(Some(ssl_opts))
@@ -243,214 +286,62 @@ impl MySqlPool {
 
         let pool = Pool::new(opts_builder);
 
-        // Bootstrap: create tables if they don't exist
-        let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-        for name in [
-            "create-table-parameters",
-            "create-table-objects",
-            "create-table-read_access",
-            "create-table-tags",
-            "create-table-crypto_officer_activations",
-            "create-table-crls",
-        ] {
-            let sql = MYSQL_QUERIES
-                .get(name)
-                .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
-            conn.query_drop(sql).await.map_err(DbError::from)?;
-        }
+        let pool = Self { pool };
+        let applied = pool.bootstrap(clear_database, target).await?;
+        Ok((pool, applied))
+    }
 
-        // Optional: clear database content for tests to ensure isolation
-        if clear_database {
-            for name in [
-                "clean-table-objects",
-                "clean-table-read_access",
-                "clean-table-tags",
-                "clean-table-crls",
-            ] {
-                if let Some(sql) = MYSQL_QUERIES.get(name) {
-                    conn.query_drop(sql).await.map_err(DbError::from)?;
-                }
-            }
-        }
-
-        // Add wrapping_key_id column if not present.
-        // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
-        // so we check with SHOW COLUMNS first.
-        let has_col_sql = MYSQL_QUERIES
-            .get("has-column-wrapping-key-id")
-            .ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
-            })?;
-        let rows: Vec<mysql_async::Row> = conn.query(has_col_sql).await.map_err(DbError::from)?;
-        if rows.is_empty() {
-            let add_col = MYSQL_QUERIES
-                .get("add-column-wrapping-key-id")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: add-column-wrapping-key-id".to_owned(),
-                    )
-                })?;
-            conn.query_drop(add_col).await.map_err(DbError::from)?;
-        }
-
-        // Add activated_by column to crypto_officer_activations if not present.
-        // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
-        let has_co_col_sql = MYSQL_QUERIES
-            .get("has-column-co-activated-by")
-            .ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
-            })?;
-        let co_col_rows: Vec<mysql_async::Row> =
-            conn.query(has_co_col_sql).await.map_err(DbError::from)?;
-        if co_col_rows.is_empty() {
-            let add_co_col = MYSQL_QUERIES
-                .get("add-column-co-activated-by")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: add-column-co-activated-by".to_owned(),
-                    )
-                })?;
-            conn.query_drop(add_co_col).await.map_err(DbError::from)?;
-        }
-        // Note: MySQL does not support partial (filtered) unique indexes.
-        // Uniqueness of active activations per user is enforced at the application
-        // layer in database_permissions.rs::activate_crypto_officer_ceremony, which
-        // revokes any existing active record for the same user before inserting.
-
-        // Ensure the read-path indexes exist. MySQL 8.0 has no
-        // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
-        let has_index_sql = MYSQL_QUERIES
-            .get("has-index")
-            .ok_or_else(|| DbError::DatabaseError("Missing SQL query: has-index".to_owned()))?;
-        for (table, index_name, create_name) in [
-            ("objects", "idx_objects_owner", "create-index-objects-owner"),
-            ("objects", "idx_objects_state", "create-index-objects-state"),
-            (
-                "read_access",
-                "idx_read_access_userid",
-                "create-index-read_access-userid",
-            ),
-            (
-                "objects",
-                "idx_objects_wrapping_key_id",
-                "create-index-objects-wrapping-key-id",
-            ),
-            ("tags", "idx_tags_tag_id", "create-index-tags-tag-id"),
-        ] {
-            let existing: Vec<mysql_async::Row> = conn
-                .exec(has_index_sql, (table, index_name))
-                .await
-                .map_err(DbError::from)?;
-            if existing.is_empty() {
-                let create_sql = MYSQL_QUERIES.get(create_name).ok_or_else(|| {
-                    DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
-                })?;
-                conn.query_drop(create_sql).await.map_err(DbError::from)?;
-            }
-        }
-
-        // One-time `wrapping_key_id` backfill, gated by a completion marker so the
-        // O(N) scan runs at most once per database instead of on every startup.
-        // MySQL has no transactional DDL, but the column is already ensured above;
-        // if the process dies mid-backfill the marker stays unset and the scan
-        // re-runs cleanly on the next boot.
-        let select_param = MYSQL_QUERIES.get("select-parameter").ok_or_else(|| {
-            DbError::DatabaseError("Missing SQL query: select-parameter".to_owned())
-        })?;
-        let backfill_marker: Option<String> = conn
-            .exec_first(select_param, (WRAPPING_KEY_BACKFILL_PARAM,))
+    /// `MySQL` has no transactional DDL and the scan runs in autocommit: an interrupted run
+    /// leaves its marker unset, and the idempotent scan re-runs cleanly on the next start.
+    async fn backfill_wrapping_key_id(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let update_sql = get_mysql_query!("update-wrapping-key-id");
+        let null_rows: Vec<(String, String)> = conn
+            .query(get_mysql_query!("select-objects-null-wrapping-key"))
             .await
             .map_err(DbError::from)?;
-        if backfill_marker.as_deref() != Some("true") {
-            let select_sql = MYSQL_QUERIES
-                .get("select-objects-null-wrapping-key")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: select-objects-null-wrapping-key".to_owned(),
-                    )
-                })?;
-            let update_sql = MYSQL_QUERIES.get("update-wrapping-key-id").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: update-wrapping-key-id".to_owned())
-            })?;
-            let null_rows: Vec<(String, String)> =
-                conn.query(select_sql).await.map_err(DbError::from)?;
-            for (id, object_json) in &null_rows {
-                match serde_json::from_str::<Object>(object_json) {
-                    Ok(obj) => {
-                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                            conn.exec_drop(update_sql, (&wrapping_uid, id))
-                                .await
-                                .map_err(DbError::from)?;
-                        }
+        for (id, object_json) in &null_rows {
+            match serde_json::from_str::<Object>(object_json) {
+                Ok(obj) => {
+                    if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                        conn.exec_drop(update_sql, (&wrapping_uid, id))
+                            .await
+                            .map_err(DbError::from)?;
                     }
-                    Err(e) => warn!(
-                        "wrapping_key_id backfill: skipping object {id} that failed to \
-                         deserialize: {e}"
-                    ),
                 }
+                Err(e) => warn!(
+                    "wrapping_key_id backfill: skipping object {id} that failed to \
+                     deserialize: {e}"
+                ),
             }
-            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
-            })?;
-            conn.exec_drop(upsert_param, (WRAPPING_KEY_BACKFILL_PARAM, "true"))
-                .await
-                .map_err(DbError::from)?;
         }
+        Ok(())
+    }
 
-        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
-        // existed, gated by a completion marker (same shape as above).
-        let serial_marker: Option<String> = conn
-            .exec_first(select_param, (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,))
+    /// Same autocommit shape as the wrapping-key backfill; `INSERT IGNORE` keeps it idempotent.
+    async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let insert_sql = get_mysql_query!("insert-tags-if-absent");
+        let missing_rows: Vec<(String, String)> = conn
+            .query(get_mysql_query!("select-certificates-missing-serial-tag"))
             .await
             .map_err(DbError::from)?;
-        if serial_marker.as_deref() != Some("true") {
-            let select_sql = MYSQL_QUERIES
-                .get("select-certificates-missing-serial-tag")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: select-certificates-missing-serial-tag".to_owned(),
-                    )
-                })?;
-            let insert_sql = MYSQL_QUERIES.get("insert-tags-if-absent").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: insert-tags-if-absent".to_owned())
-            })?;
-            let missing_rows: Vec<(String, String)> =
-                conn.query(select_sql).await.map_err(DbError::from)?;
-            for (id, object_json) in &missing_rows {
-                match serde_json::from_str::<Object>(object_json) {
-                    Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&obj) {
-                            conn.exec_drop(insert_sql, (id, &tag))
-                                .await
-                                .map_err(DbError::from)?;
-                        }
+        for (id, object_json) in &missing_rows {
+            match serde_json::from_str::<Object>(object_json) {
+                Ok(obj) => {
+                    if let Some(tag) = certificate_serial_tag(&obj) {
+                        conn.exec_drop(insert_sql, (id, &tag))
+                            .await
+                            .map_err(DbError::from)?;
                     }
-                    Err(e) => warn!(
-                        "serial tag backfill: skipping object {id} that failed to \
-                         deserialize: {e}"
-                    ),
                 }
+                Err(e) => warn!(
+                    "serial tag backfill: skipping object {id} that failed to \
+                     deserialize: {e}"
+                ),
             }
-            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
-            })?;
-            conn.exec_drop(
-                upsert_param,
-                (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true"),
-            )
-            .await
-            .map_err(DbError::from)?;
         }
-
-        let this = Self { pool };
-
-        // On clear or first boot, update metadata (non-fips only)
-        if clear_database {
-            this.set_db_version(env!("CARGO_PKG_VERSION")).await?;
-            this.set_db_state(DbState::Ready).await?;
-        }
-
-        Ok(this)
+        Ok(())
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
@@ -982,6 +873,14 @@ impl ObjectsStore for MySqlPool {
 impl DbParameters for MySqlPool {
     async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
         let mut conn = self.get_configured_conn().await?;
+        if conn
+            .query_first::<mysql_async::Row, _>(get_mysql_query!("has-table-parameters"))
+            .await
+            .map_err(DbError::from)?
+            .is_none()
+        {
+            return Ok(None);
+        }
         conn.exec_first(get_mysql_query!("select-parameter"), (name,))
             .await
             .map_err(DbError::from)
@@ -994,6 +893,189 @@ impl DbParameters for MySqlPool {
             .await
             .map_err(DbError::from)?;
         Ok(())
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for MySqlPool {
+    type MigrationLock = MySqlMigrationLock;
+
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+
+    async fn has_data(&self) -> DbResult<bool> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        Ok(conn
+            .query_first::<mysql_async::Row, _>(get_mysql_query!("has-objects"))
+            .await
+            .map_err(DbError::from)?
+            .is_some())
+    }
+
+    async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
+        // Unpooled (same options, TLS included), so the pool slot is freed while the
+        // session (and the row lock) lives on.
+        let pooled = self.pool.get_conn().await.map_err(DbError::from)?;
+        let mut conn = Conn::new(pooled.opts().clone())
+            .await
+            .map_err(DbError::from)?;
+        drop(pooled);
+        conn.query_drop(get_mysql_query!("create-table-migration-lock"))
+            .await
+            .map_err(DbError::from)?;
+        let has_row = get_mysql_query!("has-migration-lock-row");
+        let insert_row = get_mysql_query!("insert-migration-lock-row");
+        let lock_row = get_mysql_query!("select-migration-lock");
+        wait_for_migration_lock(
+            "MySQL table kms_migration_lock",
+            MIGRATION_LOCK_TIMEOUT,
+            async || {
+                let attempt = async {
+                    // Only insert when a plain read misses the row: `INSERT IGNORE` on a row
+                    // another instance holds waits out `innodb_lock_wait_timeout`.
+                    if conn
+                        .query_first::<mysql_async::Row, _>(has_row)
+                        .await?
+                        .is_none()
+                    {
+                        conn.query_drop(insert_row).await?;
+                    }
+                    conn.query_drop("START TRANSACTION").await?;
+                    conn.query_first::<mysql_async::Row, _>(lock_row).await
+                }
+                .await;
+                match attempt {
+                    Ok(row) => Ok(row.is_some()),
+                    // ER_LOCK_NOWAIT (MySQL, Percona) or ER_LOCK_WAIT_TIMEOUT (MariaDB NOWAIT,
+                    // or a first-start insert racing another instance): held elsewhere.
+                    Err(mysql_async::Error::Server(e)) if matches!(e.code, 1205 | 3572) => {
+                        conn.query_drop("ROLLBACK").await.map_err(DbError::from)?;
+                        Ok(false)
+                    }
+                    Err(e) => Err(DbError::from(e)),
+                }
+            },
+        )
+        .await?;
+        Ok(MySqlMigrationLock { _conn: conn })
+    }
+
+    async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        // Bootstrap: create tables if they don't exist
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+            "create-table-crypto_officer_activations",
+            "create-table-crls",
+        ] {
+            let sql = MYSQL_QUERIES
+                .get(name)
+                .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
+            conn.query_drop(sql).await.map_err(DbError::from)?;
+        }
+
+        // Add wrapping_key_id column if not present.
+        // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
+        // so we check with SHOW COLUMNS first.
+        let has_col_sql = MYSQL_QUERIES
+            .get("has-column-wrapping-key-id")
+            .ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
+            })?;
+        let rows: Vec<mysql_async::Row> = conn.query(has_col_sql).await.map_err(DbError::from)?;
+        if rows.is_empty() {
+            let add_col = MYSQL_QUERIES
+                .get("add-column-wrapping-key-id")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: add-column-wrapping-key-id".to_owned(),
+                    )
+                })?;
+            conn.query_drop(add_col).await.map_err(DbError::from)?;
+        }
+
+        // Add activated_by column to crypto_officer_activations if not present.
+        // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
+        let has_co_col_sql = MYSQL_QUERIES
+            .get("has-column-co-activated-by")
+            .ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
+            })?;
+        let co_col_rows: Vec<mysql_async::Row> =
+            conn.query(has_co_col_sql).await.map_err(DbError::from)?;
+        if co_col_rows.is_empty() {
+            let add_co_col = MYSQL_QUERIES
+                .get("add-column-co-activated-by")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: add-column-co-activated-by".to_owned(),
+                    )
+                })?;
+            conn.query_drop(add_co_col).await.map_err(DbError::from)?;
+        }
+        // Note: MySQL does not support partial (filtered) unique indexes.
+        // Uniqueness of active activations per user is enforced at the application
+        // layer in database_permissions.rs::activate_crypto_officer_ceremony, which
+        // revokes any existing active record for the same user before inserting.
+
+        // Ensure the read-path indexes exist. MySQL 8.0 has no
+        // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
+        let has_index_sql = MYSQL_QUERIES
+            .get("has-index")
+            .ok_or_else(|| DbError::DatabaseError("Missing SQL query: has-index".to_owned()))?;
+        for (table, index_name, create_name) in [
+            ("objects", "idx_objects_owner", "create-index-objects-owner"),
+            ("objects", "idx_objects_state", "create-index-objects-state"),
+            (
+                "read_access",
+                "idx_read_access_userid",
+                "create-index-read_access-userid",
+            ),
+            (
+                "objects",
+                "idx_objects_wrapping_key_id",
+                "create-index-objects-wrapping-key-id",
+            ),
+            ("tags", "idx_tags_tag_id", "create-index-tags-tag-id"),
+        ] {
+            let existing: Vec<mysql_async::Row> = conn
+                .exec(has_index_sql, (table, index_name))
+                .await
+                .map_err(DbError::from)?;
+            if existing.is_empty() {
+                let create_sql = MYSQL_QUERIES.get(create_name).ok_or_else(|| {
+                    DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
+                })?;
+                conn.query_drop(create_sql).await.map_err(DbError::from)?;
+            }
+        }
+
+        // Optional: clear database content for tests to ensure isolation
+        if clear_database {
+            for name in [
+                "clean-table-objects",
+                "clean-table-read_access",
+                "clean-table-tags",
+                "clean-table-crls",
+            ] {
+                if let Some(sql) = MYSQL_QUERIES.get(name) {
+                    conn.query_drop(sql).await.map_err(DbError::from)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
+        match step {
+            MigrationStep::AttributesJsonb => Ok(()),
+            MigrationStep::WrappingKeyIdBackfill => self.backfill_wrapping_key_id().await,
+            MigrationStep::CertificateSerialTagBackfill => {
+                self.backfill_certificate_serial_tags().await
+            }
+        }
     }
 }
 
@@ -1694,3 +1776,19 @@ pub(super) async fn atomic_(
 }
 
 // impl_sql_migrate!(MySqlPool, get_mysql_query);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_identity_password_requires_identity() -> DbResult<()> {
+        validate_client_identity_parameters(None, None)?;
+        if validate_client_identity_parameters(None, Some("password")).is_ok() {
+            return Err(DbError::DatabaseError(
+                "A client-identity password without an identity must be rejected".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
