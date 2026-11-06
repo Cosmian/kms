@@ -737,33 +737,44 @@ pub fn is_fips_mode() -> bool {
     cfg!(not(feature = "non-fips")).then_some(()).is_some()
 }
 
+/// Deserializes an option field, treating an explicit JS `undefined`/`null` like a missing key.
+///
+/// `serde_wasm_bindgen` reads `undefined` as a unit value, which a plain `bool`/`Vec` field rejects.
+fn undefined_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 // Locate request
 /// Options for [`locate_ttlv_request`]; field names match the former positional parameters.
 #[derive(Deserialize, Serialize)]
 pub struct LocateTtlvRequestOptions {
     /// Tags.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub tags: Option<Vec<String>>,
     /// Cryptographic algorithm.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub cryptographic_algorithm: Option<String>,
     /// Cryptographic length.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub cryptographic_length: Option<usize>,
     /// Key format type.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub key_format_type: Option<String>,
     /// Object type.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub object_type: Option<String>,
     /// Public key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub public_key_id: Option<String>,
     /// Private key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub private_key_id: Option<String>,
     /// Certificate id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub certificate_id: Option<String>,
 }
 
@@ -1802,33 +1813,33 @@ pub fn get_ec_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsV
 #[derive(Deserialize, Serialize)]
 pub struct ImportTtlvRequestOptions {
     /// Unique identifier.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub unique_identifier: Option<String>,
     /// Key format.
     pub key_format: String,
     /// Public key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub public_key_id: Option<String>,
     /// Private key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub private_key_id: Option<String>,
     /// Certificate id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub certificate_id: Option<String>,
     /// Unwrap on import.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub unwrap: bool,
     /// Replace existing object.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub replace_existing: bool,
     /// Tags.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub tags: Vec<String>,
     /// Key usages.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub key_usage: Option<Vec<String>>,
     /// Wrapping key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub wrapping_key_id: Option<String>,
 }
 
@@ -2147,30 +2158,30 @@ pub fn add_cc_dimension_ttlv_request(
 #[derive(Deserialize, Serialize)]
 pub struct ImportCertificateTtlvRequestOptions {
     /// Certificate id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub certificate_id: Option<String>,
     /// Input format.
     pub input_format: String,
     /// Private key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub private_key_id: Option<String>,
     /// Public key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub public_key_id: Option<String>,
     /// Issuer certificate id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub issuer_certificate_id: Option<String>,
     /// PKCS12 password.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub pkcs12_password: Option<String>,
     /// Replace existing object.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub replace_existing: bool,
     /// Tags.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub tags: Vec<String>,
     /// Key usages.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub key_usage: Option<Vec<String>>,
 }
 
@@ -2455,36 +2466,36 @@ pub fn decrypt_certificate_ttlv_request(
 #[derive(Deserialize, Serialize)]
 pub struct CertifyTtlvRequestOptions {
     /// Certificate id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub certificate_id: Option<String>,
     /// CSR format.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub certificate_signing_request_format: Option<String>,
     /// Public key to certify.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub public_key_id_to_certify: Option<String>,
     /// Certificate to re-certify.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub certificate_id_to_re_certify: Option<String>,
     /// Generate a key pair.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub generate_key_pair: bool,
     /// Subject name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub subject_name: Option<String>,
     /// Key algorithm.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub algorithm: Option<String>,
     /// Issuer private key id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub issuer_private_key_id: Option<String>,
     /// Issuer certificate id.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub issuer_certificate_id: Option<String>,
     /// Validity in days.
     pub number_of_days: usize,
     /// Tags.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub tags: Vec<String>,
 }
 
@@ -2870,7 +2881,7 @@ pub struct DeriveKeyTtlvRequestOptions {
     /// Output key length in bits.
     pub cryptographic_length: usize,
     /// Optional unique identifier for the derived key.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "undefined_as_default")]
     pub derived_key_id: Option<String>,
 }
 

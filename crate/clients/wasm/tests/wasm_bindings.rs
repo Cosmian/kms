@@ -21,6 +21,19 @@ fn test_init_panic_hook() {
     w::init_panic_hook();
 }
 
+/// A JS caller passing `undefined` for a `bool`/`Vec` option must get the default, not an error.
+#[wasm_bindgen_test]
+fn test_certify_options_accept_undefined_fields() {
+    let options = js_sys::Object::new();
+    js_sys::Reflect::set(&options, &"generate_key_pair".into(), &JsValue::UNDEFINED).unwrap();
+    js_sys::Reflect::set(&options, &"tags".into(), &JsValue::UNDEFINED).unwrap();
+    js_sys::Reflect::set(&options, &"public_key_id_to_certify".into(), &"pk-1".into()).unwrap();
+    js_sys::Reflect::set(&options, &"subject_name".into(), &"CN=test".into()).unwrap();
+    js_sys::Reflect::set(&options, &"number_of_days".into(), &30.into()).unwrap();
+    let result = w::certify_ttlv_request(None, None, options.into());
+    assert!(result.is_ok(), "{:?}", result.err());
+}
+
 #[wasm_bindgen_test]
 fn test_locate_ttlv_request() {
     let r = w::locate_ttlv_request(
