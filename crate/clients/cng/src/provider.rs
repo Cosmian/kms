@@ -1175,28 +1175,19 @@ unsafe extern "system" fn enum_algorithms(
         return ERROR_SUCCESS;
     }
 
-    // Allocate array (callers free via NCryptFreeBuffer)
+    // Allocate array (callers free via NCryptFreeBuffer). A boxed slice allocates with the
+    // `Layout::array::<NCryptAlgorithmName>` layout and the slice-to-element cast keeps its alignment.
     let count = filtered.len();
-    let layout = std::alloc::Layout::array::<NCryptAlgorithmName>(count)
-        .unwrap_or(std::alloc::Layout::new::<NCryptAlgorithmName>());
-    #[allow(
-        clippy::cast_ptr_alignment,
-        reason = "allocated with the Layout of NCryptAlgorithmName, so the cast is aligned"
-    )]
-    let ptr = unsafe { std::alloc::alloc_zeroed(layout).cast::<NCryptAlgorithmName>() };
-    if ptr.is_null() {
-        return NTE_FAIL;
-    }
-
-    for (i, alg) in filtered.iter().enumerate() {
-        unsafe {
-            let entry = &mut *ptr.add(i);
-            entry.pszName = alg.name.as_ptr().cast_mut();
-            entry.dwClass = alg.ops;
-            entry.dwAlgOperations = alg.ops;
-            entry.dwFlags = 0;
-        }
-    }
+    let entries: Box<[NCryptAlgorithmName]> = filtered
+        .iter()
+        .map(|alg| NCryptAlgorithmName {
+            pszName: alg.name.as_ptr().cast_mut(),
+            dwClass: alg.ops,
+            dwAlgOperations: alg.ops,
+            dwFlags: 0,
+        })
+        .collect();
+    let ptr = Box::into_raw(entries).cast::<NCryptAlgorithmName>();
 
     unsafe {
         *pdw_alg_count = u32::try_from(count).unwrap_or(u32::MAX);

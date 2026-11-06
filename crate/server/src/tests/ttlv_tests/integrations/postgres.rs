@@ -68,7 +68,7 @@ fn register_symmetric_key(client: &SocketClient) -> String {
     )
     .expect("Failed to parse TTLV");
     let request_message: RequestMessage =
-        from_ttlv(ttlv_request).expect("Failed to parse Register");
+        from_ttlv(&ttlv_request).expect("Failed to parse Register");
     info!("Registering symmetric key with request: {request_message}",);
 
     // Use the raw request to send the Register operation
@@ -78,7 +78,7 @@ fn register_symmetric_key(client: &SocketClient) -> String {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse Register response");
+        from_ttlv(&ttlv_response).expect("Failed to parse Register response");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -116,7 +116,7 @@ fn locate_symmetric_key(client: &SocketClient) -> Vec<String> {
         KmipFlavor::Kmip1,
     )
     .expect("Failed to parse TTLV");
-    let request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Locate");
+    let request_message: RequestMessage = from_ttlv(&ttlv_request).expect("Failed to parse Locate");
 
     info!("Locating symmetric key with request: {request_message}",);
 
@@ -127,7 +127,7 @@ fn locate_symmetric_key(client: &SocketClient) -> Vec<String> {
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
     let response: ResponseMessage =
-        from_ttlv(ttlv_response).expect("Failed to parse Locate response");
+        from_ttlv(&ttlv_response).expect("Failed to parse Locate response");
 
     assert_eq!(
         response.response_header.protocol_version,
@@ -166,7 +166,8 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) -> Object {
         KmipFlavor::Kmip1,
     )
     .expect("Failed to parse TTLV");
-    let mut request_message: RequestMessage = from_ttlv(ttlv_request).expect("Failed to parse Get");
+    let mut request_message: RequestMessage =
+        from_ttlv(&ttlv_request).expect("Failed to parse Get");
 
     let Some(RequestMessageBatchItemVersioned::V14(batch_item)) =
         request_message.batch_item.get_mut(0)
@@ -190,7 +191,8 @@ fn get_symmetric_key(client: &SocketClient, uid: &str) -> Object {
         .expect("Failed to send request");
     let ttlv_response =
         TTLV::from_bytes(&response, KmipFlavor::Kmip1).expect("Failed to parse TTLV response");
-    let response: ResponseMessage = from_ttlv(ttlv_response).expect("Failed to parse Get response");
+    let response: ResponseMessage =
+        from_ttlv(&ttlv_response).expect("Failed to parse Get response");
 
     assert_eq!(
         response.response_header.protocol_version,

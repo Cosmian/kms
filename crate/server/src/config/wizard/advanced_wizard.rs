@@ -4,9 +4,12 @@
 //! DKE, KMS public URL, KMIP policy, Google CSE, Azure EKM, AWS XKS, and UI
 //! settings.
 
-#![allow(unreachable_pub)]
+#![expect(
+    unreachable_pub,
+    reason = "wizard items are pub for sibling modules; narrowing deferred"
+)]
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, io::Write as _, path::PathBuf};
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN, kmip_objects::ObjectType,
@@ -263,7 +266,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         .default(crate::config::get_default_ui_dist_path())
         .interact_text()
         .prompt_err()?;
-    ui.ui_index_html_folder = Some(ui_dist);
+    ui.index_html_folder = Some(ui_dist);
 
     let session_salt: String = Input::with_theme(&theme)
         .with_prompt(
@@ -273,7 +276,7 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         .allow_empty(true)
         .interact_text()
         .prompt_err()?;
-    ui.ui_session_salt = if session_salt.trim().is_empty() {
+    ui.session_salt = if session_salt.trim().is_empty() {
         None
     } else {
         Some(session_salt)
@@ -347,10 +350,10 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         .prompt_err()?;
 
     Ok(GoogleCseConfig {
-        google_cse_enable: true,
-        google_cse_disable_tokens_validation: disable_validation,
-        google_cse_incoming_url_whitelist,
-        google_cse_migration_key: if migration_key.trim().is_empty() {
+        enable: true,
+        disable_tokens_validation: disable_validation,
+        incoming_url_whitelist: google_cse_incoming_url_whitelist,
+        migration_key: if migration_key.trim().is_empty() {
             None
         } else {
             Some(migration_key)
@@ -361,10 +364,6 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
 /// EST / SCEP device enrollment. The CA must already exist in the KMS (create it with
 /// `ckms certificates certify`, then delegate it to `[enrollment-service]`, see the PKI
 /// enrollment guide); the server re-validates every value at startup.
-#[expect(
-    clippy::print_stdout,
-    reason = "the configuration wizard prompts the user on stdout"
-)]
 fn configure_enrollment(
     theme: &ColorfulTheme,
     tls: &TlsConfig,
@@ -373,37 +372,38 @@ fn configure_enrollment(
     let mut scep = ScepConfig::default();
     let mut templates = HashMap::new();
 
-    est.est_enabled = Confirm::with_theme(theme)
+    est.enabled = Confirm::with_theme(theme)
         .with_prompt("Enable EST (RFC 7030) device enrollment endpoints?")
         .default(false)
         .interact()
         .prompt_err()?;
-    scep.scep_enabled = Confirm::with_theme(theme)
+    scep.enabled = Confirm::with_theme(theme)
         .with_prompt("Enable SCEP (RFC 8894) device enrollment endpoint?")
         .default(false)
         .interact()
         .prompt_err()?;
-    if est.est_enabled && !tls.is_tls_enabled() {
-        println!(
+    if est.enabled && !tls.is_tls_enabled() {
+        writeln!(
+            std::io::stdout().lock(),
             "  ⚠  EST requires TLS (RFC 7030 §3.3) but no TLS certificate is configured: \
              EST is left disabled. Configure TLS, then enable it in the config file."
-        );
-        est.est_enabled = false;
+        )?;
+        est.enabled = false;
     }
-    if !est.est_enabled && !scep.scep_enabled {
+    if !est.enabled && !scep.enabled {
         return Ok((est, scep, templates));
     }
-    if est.est_enabled {
+    if est.enabled {
         let ca: String = Input::with_theme(theme)
             .with_prompt(
                 "EST: unique identifier of the CA certificate that signs enrolled certificates",
             )
             .interact_text()
             .prompt_err()?;
-        est.est_ca_uid = Some(ca.trim().to_owned());
+        est.ca_uid = Some(ca.trim().to_owned());
         // Mutual TLS needs a client CA to validate the presented certificate.
         if tls.clients_ca_cert_file.is_some() {
-            est.est_require_client_cert = Confirm::with_theme(theme)
+            est.require_client_cert = Confirm::with_theme(theme)
                 .with_prompt(
                     "EST: require a TLS client certificate for initial enrollment? \
                      (no = HTTP Basic bootstrap credentials)",
@@ -412,12 +412,13 @@ fn configure_enrollment(
                 .interact()
                 .prompt_err()?;
         } else {
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
                 "  ℹ  No clients CA certificate is configured: EST uses HTTP Basic bootstrap credentials."
-            );
-            est.est_require_client_cert = false;
+            )?;
+            est.require_client_cert = false;
         }
-        if !est.est_require_client_cert {
+        if !est.require_client_cert {
             let user: String = Input::with_theme(theme)
                 .with_prompt("EST: bootstrap username (must not contain ':')")
                 .validate_with(|u: &String| -> Result<(), &str> {
@@ -441,15 +442,15 @@ fn configure_enrollment(
                 })
                 .interact()
                 .prompt_err()?;
-            est.est_bootstrap_username = Some(user.trim().to_owned());
-            est.est_bootstrap_password = Some(password);
+            est.bootstrap_username = Some(user.trim().to_owned());
+            est.bootstrap_password = Some(password);
         }
     }
-    if scep.scep_enabled {
+    if scep.enabled {
         let ca: String = Input::with_theme(theme)
             .with_prompt("SCEP: unique identifier of the RSA CA certificate that signs enrolled certificates")
             .interact_text().prompt_err()?;
-        scep.scep_ca_uid = Some(ca.trim().to_owned());
+        scep.ca_uid = Some(ca.trim().to_owned());
         let challenge: String = dialoguer::Password::with_theme(theme)
             .with_prompt("SCEP: challenge password devices must present (at least 8 characters)")
             .with_confirmation("Confirm password", "Passwords do not match")
@@ -462,7 +463,7 @@ fn configure_enrollment(
             })
             .interact()
             .prompt_err()?;
-        scep.scep_challenge_password = Some(challenge);
+        scep.challenge_password = Some(challenge);
     }
 
     // The enrollment secret authenticates a class of devices, not the name a device asks for:
@@ -500,23 +501,25 @@ fn configure_enrollment(
             ..CertTemplate::default()
         },
     );
-    if est.est_enabled {
-        est.est_template = Some(ENROLLMENT_TEMPLATE.to_owned());
+    if est.enabled {
+        est.template = Some(ENROLLMENT_TEMPLATE.to_owned());
     }
-    if scep.scep_enabled {
-        scep.scep_template = Some(ENROLLMENT_TEMPLATE.to_owned());
+    if scep.enabled {
+        scep.template = Some(ENROLLMENT_TEMPLATE.to_owned());
     }
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "  ℹ  The enrollment endpoints are reachable before authentication: set \
          rate_limit_per_second in the configuration file for production. The file is written \
          readable by its owner only because it contains the enrollment secrets."
-    );
-    println!(
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
         "  Next: grant the CA to the enrollment service identity:\n    \
          ckms access-rights grant \"[enrollment-service]\" -i <ca uid> certify\n  \
          (and the same for the CA private key; plus `create` when Crypto Officers are \
          configured)."
-    );
+    )?;
     Ok((est, scep, templates))
 }
 
@@ -568,17 +571,17 @@ fn configure_azure_ekm(theme: &ColorfulTheme) -> KResult<AzureEkmConfig> {
         .prompt_err()?;
 
     Ok(AzureEkmConfig {
-        azure_ekm_enable: true,
-        azure_ekm_path_prefix: if path_prefix.trim().is_empty() {
+        enable: true,
+        path_prefix: if path_prefix.trim().is_empty() {
             None
         } else {
             Some(path_prefix)
         },
-        azure_ekm_disable_client_auth: disable_client_auth,
-        azure_ekm_proxy_vendor: proxy_vendor,
-        azure_ekm_proxy_name: proxy_name,
-        azure_ekm_ekm_vendor: ekm_vendor,
-        azure_ekm_ekm_product: ekm_product,
+        disable_client_auth,
+        proxy_vendor,
+        proxy_name,
+        ekm_vendor,
+        ekm_product,
     })
 }
 
@@ -615,10 +618,10 @@ fn configure_aws_xks(theme: &ColorfulTheme) -> KResult<AwsXksConfig> {
         .prompt_err()?;
 
     Ok(AwsXksConfig {
-        aws_xks_enable: true,
-        aws_xks_region: Some(region),
-        aws_xks_service: Some(service),
-        aws_xks_sigv4_access_key_id: Some(access_key_id),
-        aws_xks_sigv4_secret_access_key: Some(secret_access_key),
+        enable: true,
+        region: Some(region),
+        service: Some(service),
+        sigv4_access_key_id: Some(access_key_id),
+        sigv4_secret_access_key: Some(secret_access_key),
     })
 }

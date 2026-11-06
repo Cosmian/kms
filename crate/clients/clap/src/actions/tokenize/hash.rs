@@ -61,7 +61,7 @@ impl HashAction {
             salt,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("hash", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

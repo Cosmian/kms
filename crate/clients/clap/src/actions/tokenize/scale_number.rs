@@ -64,7 +64,7 @@ impl ScaleNumberAction {
             translate: self.translate,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("scale-number", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

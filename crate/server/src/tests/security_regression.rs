@@ -857,9 +857,9 @@ async fn test_request_work_limits() -> KResult<()> {
         },
         batch_item: (0..=MAX_BATCH_ITEMS)
             .map(|_| {
-                RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                     Operation::Query(Query::default()),
-                ))
+                )))
             })
             .collect(),
     };
@@ -965,9 +965,9 @@ async fn test_rng_seed_is_restricted_to_crypto_officers() -> KResult<()> {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(Operation::RNGSeed(RNGSeed { data: vec![0; 32] })),
-        )],
+        ))],
     };
     let response = kms.message(seed_message(), &UserId::from(bob)).await?;
     let ResponseMessageBatchItemVersioned::V21(item) = &response.batch_item[0] else {
@@ -1089,7 +1089,7 @@ async fn test_default_kmip_policy_applies_to_batched_request_messages() -> KResu
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(Operation::CreateKeyPair(Box::new(
                 create_rsa_key_pair_request(
                     VENDOR_ID_COSMIAN,
@@ -1100,7 +1100,7 @@ async fn test_default_kmip_policy_applies_to_batched_request_messages() -> KResu
                     None,
                 )?,
             ))),
-        )],
+        ))],
     };
     let response = kms
         .message(message, &UserId::from("alice@example.com"))

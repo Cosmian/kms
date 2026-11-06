@@ -130,7 +130,6 @@ mod tests {
         }
     }
 
-    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation() -> KResult<()> {
         let kms = test_kms().await?;
@@ -214,7 +213,6 @@ mod tests {
         Ok(())
     }
 
-    #[allow(clippy::unwrap_in_result)]
     #[tokio::test]
     async fn test_server_hash_operation_with_correlation() -> KResult<()> {
         let kms = test_kms().await?;

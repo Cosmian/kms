@@ -113,7 +113,7 @@ mod imp {
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(armored_secret),
-                    attributes: Some(attributes),
+                    attributes: Some(Box::new(attributes)),
                 }),
                 cryptographic_algorithm: alg,
                 cryptographic_length: len,
@@ -248,7 +248,7 @@ mod imp {
 
         key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(armored),
-            attributes: Some(attributes.clone()),
+            attributes: Some(Box::new(attributes.clone())),
         });
 
         if let Object::PGPKey(pgp) = object {

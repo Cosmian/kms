@@ -85,7 +85,7 @@ describe.sequential("KMS key flows (create → use → revoke → destroy)", () 
         const keyId = createResp.UniqueIdentifier;
 
         try {
-            const locateReq = wasm.locate_ttlv_request(tags, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
+            const locateReq = wasm.locate_ttlv_request({ tags });
             const locateStr = await sendKmipRequest(locateReq, null, KMS_URL);
             const locateResp = await wasm.parse_locate_ttlv_response(locateStr);
             const located = getStringArrayField(locateResp, "UniqueIdentifier", "UniqueIdentifiers");
@@ -152,7 +152,7 @@ describe.sequential("KMS key flows (create → use → revoke → destroy)", () 
         const pubId = createResp.PublicKeyUniqueIdentifier;
 
         try {
-            const locateReq = wasm.locate_ttlv_request(tags, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
+            const locateReq = wasm.locate_ttlv_request({ tags });
             const locateStr = await sendKmipRequest(locateReq, null, KMS_URL);
             const locateResp = await wasm.parse_locate_ttlv_response(locateStr);
             const located = getStringArrayField(locateResp, "UniqueIdentifier", "UniqueIdentifiers");
@@ -213,7 +213,7 @@ describe.sequential("KMS key flows (create → use → revoke → destroy)", () 
         const pubId = createResp.PublicKeyUniqueIdentifier;
 
         try {
-            const locateReq = wasm.locate_ttlv_request(tags, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
+            const locateReq = wasm.locate_ttlv_request({ tags });
             const locateStr = await sendKmipRequest(locateReq, null, KMS_URL);
             const locateResp = await wasm.parse_locate_ttlv_response(locateStr);
             const located = getStringArrayField(locateResp, "UniqueIdentifier", "UniqueIdentifiers");
@@ -282,16 +282,7 @@ describe.sequential("KMS key flows (create → use → revoke → destroy)", () 
             masterPrivId = createMasterResp.PrivateKeyUniqueIdentifier;
             masterPubId = createMasterResp.PublicKeyUniqueIdentifier;
 
-            const locateMasterReq = wasm.locate_ttlv_request(
-                masterTags,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-            );
+            const locateMasterReq = wasm.locate_ttlv_request({ tags: masterTags });
             const locateMasterStr = await sendKmipRequest(locateMasterReq, null, KMS_URL);
             const locateMasterResp = await wasm.parse_locate_ttlv_response(locateMasterStr);
             const locatedMaster = getStringArrayField(locateMasterResp, "UniqueIdentifier", "UniqueIdentifiers");
@@ -302,16 +293,7 @@ describe.sequential("KMS key flows (create → use → revoke → destroy)", () 
             const createUserResp = (await wasm.parse_create_ttlv_response(createUserStr)) as { UniqueIdentifier: string };
             userKeyId = createUserResp.UniqueIdentifier;
 
-            const locateUserReq = wasm.locate_ttlv_request(
-                userTags,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-            );
+            const locateUserReq = wasm.locate_ttlv_request({ tags: userTags });
             const locateUserStr = await sendKmipRequest(locateUserReq, null, KMS_URL);
             const locateUserResp = await wasm.parse_locate_ttlv_response(locateUserStr);
             const locatedUser = getStringArrayField(locateUserResp, "UniqueIdentifier", "UniqueIdentifiers");

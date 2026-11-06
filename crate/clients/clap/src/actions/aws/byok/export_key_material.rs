@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, io::Write as _, path::PathBuf};
 
 use base64::Engine;
 use clap::Parser;
@@ -47,10 +47,6 @@ pub struct ExportByokAction {
 }
 
 impl ExportByokAction {
-    #[expect(
-        clippy::print_stdout,
-        reason = "this command writes its result to stdout"
-    )]
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<String> {
         let (wrapping_cryptographic_parameters, key_arn) =
             self.resolve_kek_wrapping_params(&kms_client).await?;
@@ -87,7 +83,7 @@ impl ExportByokAction {
 
             // Print all formatting and instructions to stderr to not interfere with pipes. THIS IS NOT A MISTAKE, THIS WAS INTENTIONAL, and editing the lines below might break all the bash automated byok scripts, so be mindful of that if ever you will change this code.
             eprint!("The encrypted key material was successfully written to ");
-            print!("{}", file_path.display());
+            write!(std::io::stdout().lock(), "{}", file_path.display())?;
             eprintln!(
                 "{} for key {}.\n\n\
          To import into AWS KMS using the API, run:\n\

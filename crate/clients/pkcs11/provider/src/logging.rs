@@ -1,4 +1,4 @@
-use std::{fs, fs::OpenOptions, path::PathBuf, sync::Once};
+use std::{fs, fs::OpenOptions, io::Write as _, path::PathBuf, sync::Once};
 
 use cosmian_logger::reexport::tracing::Level;
 use tracing_error::ErrorLayer;
@@ -35,10 +35,6 @@ fn init(
 #[cfg(target_os = "linux")]
 /// For Linux, log to `$COSMIAN_PKCS11_LOGGING_FOLDER` if set,
 /// otherwise fall back to `~/.cosmian/` (user-writable, no root required).
-#[expect(
-    clippy::print_stdout,
-    reason = "the module announces its log file on stdout when the PKCS#11 library is loaded"
-)]
 fn init(
     log_name: &str,
     level: Option<Level>,
@@ -57,10 +53,11 @@ fn init(
         }
     };
 
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "cosmian-pkcs11 module logging at {level} level to file {}/{log_name}.log",
         log_folder.display()
-    );
+    )?;
     log_to_file(log_name, level, &log_folder)
 }
 

@@ -38,9 +38,9 @@ fn send(operation: Operation) -> ResponseMessage {
                     batch_count: 1,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V21(
+                batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                     RequestMessageBatchItem::new(operation),
-                )],
+                ))],
             },
         )
         .expect("Failed to send request")
@@ -58,7 +58,7 @@ fn test_export_destroyed_key_returns_no_key_material() {
     log_init(option_env!("RUST_LOG"));
 
     // A freshly created key is Pre-Active, which can be destroyed directly.
-    let create = send(Operation::Create(Create {
+    let create = send(Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -69,7 +69,7 @@ fn test_export_destroyed_key_returns_no_key_material() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    }));
+    })));
     let Some(Operation::CreateResponse(created)) = &first_item(&create).response_payload else {
         panic!("Expected a CreateResponse");
     };

@@ -316,7 +316,7 @@ pub fn openssl_private_key_to_kmip(
                         c_r_t_coefficient: crt_coefficient
                             .map(|crt_coeff| Box::new(SafeBigInt::from(crt_coeff))),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
@@ -327,7 +327,7 @@ pub fn openssl_private_key_to_kmip(
                             ..CryptographicParameters::default()
                         }),
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
@@ -401,7 +401,7 @@ pub fn openssl_private_key_to_kmip(
                         recommended_curve,
                         d: Box::new(SafeBigInt::from(d)),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         activation_date: None,
                         certificate_attributes: None,
                         certificate_type: None,
@@ -422,7 +422,7 @@ pub fn openssl_private_key_to_kmip(
                         }),
                         cryptographic_usage_mask,
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(cryptographic_algorithm),
                 cryptographic_length,
@@ -445,7 +445,7 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         private_key.private_key_to_pkcs8()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS8),
@@ -456,7 +456,7 @@ pub fn openssl_private_key_to_kmip(
                             ..CryptographicParameters::default()
                         }),
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm,
                 cryptographic_length,
@@ -475,14 +475,14 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         ec_key.private_key_to_der()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::ECPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                 cryptographic_length,
@@ -500,14 +500,14 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_private_key.private_key_to_der()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,

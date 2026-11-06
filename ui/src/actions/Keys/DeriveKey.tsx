@@ -130,17 +130,15 @@ const DeriveKeyForm: React.FC = () => {
             const ivBytes =
                 values.initializationVector && values.initializationVector.length > 0 ? hexToBytes(values.initializationVector) : undefined;
 
-            const request = derive_key_ttlv_request(
-                baseKeyId,
-                values.derivationMethod,
-                saltBytes,
-                values.iterationCount,
-                ivBytes,
-                values.hashingAlgorithm,
-                values.symmetricAlgorithm,
-                values.cryptographicLength,
-                values.derivedKeyId || null,
-            );
+            const request = derive_key_ttlv_request(saltBytes, ivBytes, {
+                base_key_id: baseKeyId,
+                derivation_method: values.derivationMethod,
+                iteration_count: values.iterationCount,
+                hashing_algorithm: values.hashingAlgorithm,
+                symmetric_algorithm: values.symmetricAlgorithm,
+                cryptographic_length: values.cryptographicLength,
+                derived_key_id: values.derivedKeyId || null,
+            });
 
             const resultStr = await sendKmipRequest(request, serverUrl);
             if (resultStr) {

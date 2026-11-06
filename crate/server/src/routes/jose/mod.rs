@@ -270,7 +270,6 @@ pub(crate) fn audit(req: &actix_web::HttpRequest, kid: Option<&str>) {
     }
 }
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
 mod lenient_str_tests {
     use std::borrow::Cow;
 

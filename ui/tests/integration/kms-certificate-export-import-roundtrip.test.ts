@@ -47,21 +47,12 @@ describe.sequential("KMS certificate/export/import roundtrip", () => {
     test("certificate: certify, export json-ttlv, import under new ID, revoke and destroy imported, then cleanup", async () => {
         const baseTags = ["vitest", "roundtrip", `t-${randomUUID()}`];
         const importedTags = [...baseTags, "imported"];
-        const createReq = wasm.certify_ttlv_request(
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            true,
-            "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US",
-            undefined,
-            undefined,
-            undefined,
-            365,
-            undefined,
-            [],
-        );
+        const createReq = wasm.certify_ttlv_request(undefined, undefined, {
+            generate_key_pair: true,
+            subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US",
+            number_of_days: 365,
+            tags: [],
+        });
         const createStr = await sendKmipRequest(createReq, null, KMS_URL);
         const createResp = (await wasm.parse_certify_ttlv_response(createStr)) as { UniqueIdentifier: string };
         const certId = createResp.UniqueIdentifier;
@@ -92,19 +83,13 @@ describe.sequential("KMS certificate/export/import roundtrip", () => {
             const exportedBytes = toBytes(exported);
             expect(exportedBytes.byteLength).toBeGreaterThan(0);
 
-            const importReq = wasm.import_ttlv_request(
-                importedCertId,
-                exportedBytes,
-                "json-ttlv",
-                undefined,
-                undefined,
-                undefined,
-                false,
-                true,
-                importedTags,
-                undefined,
-                undefined,
-            );
+            const importReq = wasm.import_ttlv_request(exportedBytes, {
+                unique_identifier: importedCertId,
+                key_format: "json-ttlv",
+                unwrap: false,
+                replace_existing: true,
+                tags: importedTags,
+            });
             const importStr = await sendKmipRequest(importReq, null, KMS_URL);
             const importResp = (await wasm.parse_import_ttlv_response(importStr)) as { UniqueIdentifier: string };
             expect(importResp.UniqueIdentifier).toBeTruthy();

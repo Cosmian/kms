@@ -55,7 +55,7 @@ pub(super) fn encrypt(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Encrypt,
                 ephemeral: None,
@@ -76,7 +76,7 @@ pub(super) fn encrypt(
                 })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

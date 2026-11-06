@@ -326,7 +326,7 @@ async fn create_key_rejects_existing_non_xks_symmetric_key() -> KResult<()> {
 
     assert!(matches!(
         err.errorName,
-        super::error::XksErrorName::InternalException
+        super::error::XksErrorName::Internal
     ));
     assert_eq!(
         err.errorMessage.as_deref(),
@@ -502,8 +502,8 @@ async fn get_key_metadata_works_for_any_arn() -> KResult<()> {
 
     assert_eq!(md.keySpec, "AES_256");
     assert_eq!(md.keyStatus, "ENABLED");
-    assert!(md.keyUsage.contains(&KeyUsage::ENCRYPT));
-    assert!(md.keyUsage.contains(&KeyUsage::DECRYPT));
+    assert!(md.keyUsage.contains(&KeyUsage::Encrypt));
+    assert!(md.keyUsage.contains(&KeyUsage::Decrypt));
     Ok(())
 }
 

@@ -126,7 +126,7 @@ fn test_discover_versions_(
     if major == 1 {
         request_message
             .batch_item
-            .push(RequestMessageBatchItemVersioned::V14(
+            .push(RequestMessageBatchItemVersioned::V14(Box::new(
                 kmip_1_4::kmip_messages::RequestMessageBatchItem {
                     operation: kmip_1_4::kmip_types::OperationEnumeration::DiscoverVersions,
                     ephemeral: None,
@@ -134,11 +134,11 @@ fn test_discover_versions_(
                     request_payload: kmip_1_4::kmip_operations::Operation::DiscoverVersions(dv),
                     message_extension: None,
                 },
-            ));
+            )));
     } else {
         request_message
             .batch_item
-            .push(RequestMessageBatchItemVersioned::V21(
+            .push(RequestMessageBatchItemVersioned::V21(Box::new(
                 kmip_2_1::kmip_messages::RequestMessageBatchItem {
                     operation: kmip_2_1::kmip_types::OperationEnumeration::DiscoverVersions,
                     ephemeral: None,
@@ -146,7 +146,7 @@ fn test_discover_versions_(
                     request_payload: kmip_2_1::kmip_operations::Operation::DiscoverVersions(dv),
                     message_extension: None,
                 },
-            ));
+            )));
     }
 
     let response = client

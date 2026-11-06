@@ -17,7 +17,7 @@
 //!
 //! This module is intentionally allowed to use `unsafe` code: it is the FFI
 //! boundary layer and cannot be expressed without `unsafe extern` blocks.
-#![allow(unsafe_code)]
+#![expect(unsafe_code, reason = "OpenSSL CMS FFI boundary")]
 
 use std::ffi::{c_int, c_uint, c_void};
 
@@ -27,7 +27,7 @@ use openssl_sys::{
 };
 
 /// An opaque pointer to `CMS_SignerInfo` (not exposed by openssl-sys).
-#[allow(non_camel_case_types)]
+#[expect(non_camel_case_types, reason = "mirrors the OpenSSL C type name")]
 pub(crate) enum CMS_SignerInfo {}
 
 unsafe extern "C" {

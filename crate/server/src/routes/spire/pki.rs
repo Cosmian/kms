@@ -236,7 +236,7 @@ pub(crate) async fn sign_intermediate(
         ));
     }
 
-    let ca_label = &kms.params.vault_pki_ca_key_label;
+    let ca_label = &kms.params.vault.pki_ca_key_label;
     if ca_label.is_empty() {
         return Err(SpireApiError::InternalError(
             "vault_pki_ca_key_label is not configured on this KMS server".to_owned(),
@@ -663,7 +663,7 @@ mod characterization_tests {
     /// linked to the public key.
     async fn kms_without_key() -> KResult<Arc<KMS>> {
         let mut config = https_clap_config();
-        config.vault.vault_pki_ca_key_label = LABEL.to_owned();
+        config.vault.pki_ca_key_label = LABEL.to_owned();
         crate::tests::test_utils::test_kms_with_config(config).await
     }
 

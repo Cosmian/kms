@@ -43,7 +43,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
+            Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
@@ -68,7 +68,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
                     },
                 }),
                 message_extension: None,
-            },
+            }),
         )],
     };
 

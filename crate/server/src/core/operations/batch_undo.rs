@@ -534,7 +534,7 @@ mod tests {
             ),
             (
                 &owner,
-                Operation::CreateSplitKey(CreateSplitKey {
+                Operation::CreateSplitKey(Box::new(CreateSplitKey {
                     object_type: ObjectType::SymmetricKey,
                     unique_identifier: uid(&key),
                     split_key_parts: 3,
@@ -543,17 +543,17 @@ mod tests {
                     prime_field_size: None,
                     attributes: None,
                     protection_storage_masks: None,
-                }),
+                })),
             ),
             (
                 &owner,
-                Operation::JoinSplitKey(JoinSplitKey {
+                Operation::JoinSplitKey(Box::new(JoinSplitKey {
                     unique_identifier: vec![],
                     object_type: ObjectType::SymmetricKey,
                     secret_data_type: None,
                     attributes: None,
                     protection_storage_masks: None,
-                }),
+                })),
             ),
         ];
         for (index, (user, operation)) in cases.into_iter().enumerate() {
@@ -606,8 +606,8 @@ mod tests {
                     },
                     batch_item: (0..items)
                         .map(|_| {
-                            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
-                                Operation::Query(Query::default()),
+                            RequestMessageBatchItemVersioned::V21(Box::new(
+                                RequestMessageBatchItem::new(Operation::Query(Query::default())),
                             ))
                         })
                         .collect(),

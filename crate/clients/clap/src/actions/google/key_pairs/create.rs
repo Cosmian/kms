@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use base64::{Engine, engine::general_purpose};
 use clap::Parser;
@@ -206,10 +206,6 @@ impl CreateKeyPairsAction {
     }
 
     /// Resolve or create the RSA key pair and export the wrapped private key.
-    #[expect(
-        clippy::print_stdout,
-        reason = "this command writes its result to stdout"
-    )]
     async fn resolve_key_pair(
         &self,
         kms_rest_client: &KmsClient,
@@ -255,10 +251,11 @@ impl CreateKeyPairsAction {
             )
         };
 
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "[{email}] - RSA keypair ID used: private_key {private_key_id} - public_key \
              {public_key_id}"
-        );
+        )?;
 
         // Export wrapped private key with google CSE key
         let (_, wrapped_private_key, _attributes) = export_object(
@@ -284,10 +281,6 @@ impl CreateKeyPairsAction {
     }
 
     /// Resolve the leaf certificate: use an existing one, create from extensions, or import PKCS12.
-    #[expect(
-        clippy::print_stdout,
-        reason = "this command writes its result to stdout"
-    )]
     async fn resolve_certificate(
         &self,
         kms_rest_client: &KmsClient,
@@ -352,7 +345,10 @@ impl CreateKeyPairsAction {
                     })?
                     .unique_identifier;
 
-                println!("[{email}] - certificate ID: {certificate_unique_identifier}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[{email}] - certificate ID: {certificate_unique_identifier}"
+                )?;
                 Ok(certificate_unique_identifier)
             }
             (None, None, None, Some(p12_file), Some(p12_password)) => {
@@ -380,11 +376,17 @@ impl CreateKeyPairsAction {
 
                 let certificate_unique_identifier =
                     private_unique_identifier.replace(SYSTEM_TAG_PRIVATE_KEY, "");
-                println!("[{email}] - certificate ID: {certificate_unique_identifier}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[{email}] - certificate ID: {certificate_unique_identifier}"
+                )?;
                 Ok(UniqueIdentifier::TextString(certificate_unique_identifier))
             }
             (Some(leaf_cert_id), None, None, None, None) => {
-                println!("[{email}] - Using existing leaf certificate ID: {leaf_cert_id}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[{email}] - Using existing leaf certificate ID: {leaf_cert_id}"
+                )?;
                 Ok(UniqueIdentifier::TextString(leaf_cert_id.clone()))
             }
             _ => Err(KmsCliError::InvalidRequest(
@@ -398,10 +400,6 @@ impl CreateKeyPairsAction {
     }
 
     /// Export the PKCS7 certificate chain and push the key pair to Gmail.
-    #[expect(
-        clippy::print_stdout,
-        reason = "this command writes its result to stdout"
-    )]
     async fn push_to_gmail(
         &self,
         kms_rest_client: &KmsClient,
@@ -435,14 +433,20 @@ impl CreateKeyPairsAction {
         }
 
         if self.dry_run {
-            println!("Dry run mode - key pair not pushed to Gmail API");
+            writeln!(
+                std::io::stdout().lock(),
+                "Dry run mode - key pair not pushed to Gmail API"
+            )?;
         } else {
-            println!("[{email}] - Pushing new keypair to Gmail API");
+            writeln!(
+                std::io::stdout().lock(),
+                "[{email}] - Pushing new keypair to Gmail API"
+            )?;
             if let Object::Certificate(Certificate {
                 certificate_value, ..
             }) = pkcs7_object
             {
-                println!("Processing {email:?}.");
+                writeln!(std::io::stdout().lock(), "Processing {email:?}.")?;
                 let gmail_client =
                     GmailClient::new(kms_rest_client.config.clone(), &self.user_id).await?;
                 let kacls_url = kms_rest_client.google_cse_status().await?.kacls_url;
@@ -453,7 +457,7 @@ impl CreateKeyPairsAction {
                     kacls_url,
                 )
                 .await?;
-                println!("Key pair inserted for {email:?}.");
+                writeln!(std::io::stdout().lock(), "Key pair inserted for {email:?}.")?;
             } else {
                 return Err(KmsCliError::ServerError(format!(
                     "Error inserting key pair for {email:?} - exported object is not a Certificate"

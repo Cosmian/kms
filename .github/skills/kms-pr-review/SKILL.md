@@ -5,7 +5,7 @@ description: 'Two-pass PR/diff review per .github/skills/shared/orchestrator-con
 
 # KMS PR Review — two-pass diff gate
 
-Diff-scoped review gate, following `.github/skills/shared/orchestrator-contract.md` (phase order, report schema, sub-agent routing). It is lighter than `/rust-review-all` and `/meta-security` and **does not replace them** for release or security-audit requests.
+Diff-scoped review gate, following `.github/skills/shared/orchestrator-contract.md` (phase order, report schema, delegation). It is lighter than `/rust-review-all` and `/meta-security` and **does not replace them** for release or security-audit requests.
 
 ## Step 0 — Anti-hallucination
 
@@ -25,7 +25,7 @@ Never treat an empty or failed diff as clean: report it and stop.
 
 ## Step 2 — Phase 1: Structural Scan
 
-Run as a sub-agent with cheap/fast routing (contract §6), or inline when the harness has no sub-agent tool. Scan file scope, imports, naming, obvious anti-patterns, hardcoded values, missing error handling, surface risks.
+Run inline, or delegate only if the slice is genuinely independent, via the harness's supported mechanism (contract §6). Scan file scope, imports, naming, obvious anti-patterns, hardcoded values, missing error handling, surface risks.
 
 If `/kms-caveman` already ran this session on overlapping scope, feed its findings in instead of re-scanning.
 
@@ -43,7 +43,7 @@ Write `review-YYYY-MM-DD/01-structural.md`. Each claim has an ID `S<n>`, file:li
 
 ## Step 3 — Phase 2: Semantic Verification
 
-Run as a sub-agent with reasoning routing (contract §6), or inline when the harness has no sub-agent tool. Inputs: `review-YYYY-MM-DD/01-structural.md`, the live diff and source, `AGENTS.md`, and the applicable `.github/instructions/*.instructions.md`.
+Run inline, or delegate only if the slice is genuinely independent, via the harness's supported mechanism (contract §6). Inputs: `review-YYYY-MM-DD/01-structural.md`, the live diff and source, `AGENTS.md`, and the applicable `.github/instructions/*.instructions.md`.
 
 - Give every `S<n>` exactly one disposition: `confirmed`, `rejected` (with reason), `adjusted` (with corrected severity/line/fix), `[UNVERIFIED]`, or `needs-human`.
   Use `needs-human` when the fix needs a design decision, changes public API or behavior outside the task, or needs external access.
@@ -54,7 +54,7 @@ If the disposition table is missing, the report is invalid: redo Step 3.
 
 ## Step 4 — Final report
 
-Write `review-YYYY-MM-DD/final.md` using the Unified Report Schema (contract §4). It adds no new findings, links `review-YYYY-MM-DD/01-structural.md` and `review-YYYY-MM-DD/02-semantic.md`, and records `Cycle: <k>` (0 = first review).
+Write `review-YYYY-MM-DD/final.md` using the Unified Report Schema ([contract §4](../shared/orchestrator-contract.md)): header with scope, mode, revision, applicable instruction paths and selected skills; per-phase `PASS | FAIL | SKIPPED | INCOMPLETE` with command/artifact/source evidence; a **Verification performed** section listing commands actually run. A missing required check or unresolved conflict is `INCOMPLETE`, never `PASS`; no GO with blockers or incomplete required proof. It adds no new findings, links `review-YYYY-MM-DD/01-structural.md` and `review-YYYY-MM-DD/02-semantic.md`, and records `Cycle: <k>` (0 = first review).
 
 ## Step 5 — Auto-fix loop (self-review mode only)
 

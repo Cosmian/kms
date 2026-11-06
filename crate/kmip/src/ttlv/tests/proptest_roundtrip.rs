@@ -102,7 +102,7 @@ fn arb_query_request() -> impl Strategy<Value = RequestMessage> {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::Query,
                     ephemeral: None,
@@ -112,7 +112,7 @@ fn arb_query_request() -> impl Strategy<Value = RequestMessage> {
                     }),
                     message_extension: None,
                 },
-            )],
+            ))],
         }
     })
 }
@@ -131,7 +131,7 @@ fn arb_create_request() -> impl Strategy<Value = RequestMessage> {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::Create,
                     ephemeral: None,
@@ -148,7 +148,7 @@ fn arb_create_request() -> impl Strategy<Value = RequestMessage> {
                     }),
                     message_extension: None,
                 },
-            )],
+            ))],
         })
 }
 
@@ -165,7 +165,7 @@ fn arb_create_key_pair_request() -> impl Strategy<Value = RequestMessage> {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::CreateKeyPair,
                     ephemeral: None,
@@ -190,7 +190,7 @@ fn arb_create_key_pair_request() -> impl Strategy<Value = RequestMessage> {
                     }),
                     message_extension: None,
                 },
-            )],
+            ))],
         })
 }
 
@@ -211,7 +211,7 @@ proptest! {
         let ttlv = to_ttlv(&msg).unwrap();
         let bytes = ttlv.to_bytes(KmipFlavor::Kmip1).unwrap();
         let ttlv2 = crate::ttlv::TTLV::from_bytes(&bytes, KmipFlavor::Kmip1).unwrap();
-        let msg2: RequestMessage = from_ttlv(ttlv2).unwrap();
+        let msg2: RequestMessage = from_ttlv(&ttlv2).unwrap();
         prop_assert_eq!(msg, msg2);
     }
 }

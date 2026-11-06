@@ -167,7 +167,7 @@ where
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes),
                 },
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(key_len_bits),

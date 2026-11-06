@@ -103,7 +103,7 @@ pub(crate) async fn collect_attributes(
                 ..
             }) = key_block.key_value.as_ref()
             {
-                let mut attributes = attributes.clone();
+                let mut attributes = Attributes::clone(attributes);
                 attributes.merge(owm.attributes(), false);
                 // Filter out internal vendor tag here as well to avoid leaking into comparisons
                 if let Some(vendor_attributes) = attributes.vendor_attributes.as_mut() {

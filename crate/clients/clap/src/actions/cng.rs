@@ -2,7 +2,10 @@
 ///
 /// These commands are Windows-only and allow registering, unregistering, and
 /// listing keys managed by the CNG KSP.
-use std::path::{Path, PathBuf};
+use std::{
+    io::Write as _,
+    path::{Path, PathBuf},
+};
 
 use clap::Subcommand;
 
@@ -58,10 +61,7 @@ impl CngCommands {
         match self {
             Self::Register { dll } => register(dll),
             Self::Unregister => unregister(),
-            Self::Status => {
-                status();
-                Ok(())
-            }
+            Self::Status => status(),
             Self::ListKeys => list_keys(kms_rest_client).await,
             Self::Verify { dll } => verify(dll),
         }
@@ -75,10 +75,6 @@ const CNG_KSP_TAG: &str = "cng-ksp";
 // ─── Register ─────────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
-#[allow(
-    clippy::print_stdout,
-    reason = "register writes its result to stdout; cfg(windows)-only"
-)]
 fn register(dll: &Path) -> KmsCliResult<()> {
     if !dll.exists() {
         return Err(KmsCliError::Default(format!(
@@ -87,8 +83,11 @@ fn register(dll: &Path) -> KmsCliResult<()> {
         )));
     }
     bcrypt_register_ksp(dll).map_err(KmsCliError::Default)?;
-    println!("Cosmian KMS CNG KSP registered successfully.");
-    println!("DLL: {}", dll.display());
+    writeln!(
+        std::io::stdout().lock(),
+        "Cosmian KMS CNG KSP registered successfully."
+    )?;
+    writeln!(std::io::stdout().lock(), "DLL: {}", dll.display())?;
     Ok(())
 }
 
@@ -102,13 +101,12 @@ fn register(_dll: &Path) -> KmsCliResult<()> {
 // ─── Unregister ───────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
-#[allow(
-    clippy::print_stdout,
-    reason = "unregister writes its result to stdout; cfg(windows)-only"
-)]
 fn unregister() -> KmsCliResult<()> {
     bcrypt_unregister_ksp().map_err(KmsCliError::Default)?;
-    println!("Cosmian KMS CNG KSP unregistered successfully.");
+    writeln!(
+        std::io::stdout().lock(),
+        "Cosmian KMS CNG KSP unregistered successfully."
+    )?;
     Ok(())
 }
 
@@ -122,30 +120,29 @@ fn unregister() -> KmsCliResult<()> {
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
-#[allow(
-    clippy::print_stdout,
-    reason = "status writes its result to stdout; cfg(windows)-only"
-)]
-fn status() {
+fn status() -> KmsCliResult<()> {
     if bcrypt_is_ksp_registered() {
-        println!("Cosmian KMS CNG KSP: REGISTERED");
+        writeln!(std::io::stdout().lock(), "Cosmian KMS CNG KSP: REGISTERED")?;
     } else {
-        println!("Cosmian KMS CNG KSP: NOT registered");
+        writeln!(
+            std::io::stdout().lock(),
+            "Cosmian KMS CNG KSP: NOT registered"
+        )?;
     }
+    Ok(())
 }
 
 #[cfg(not(windows))]
-#[expect(clippy::print_stdout, reason = "status writes its result to stdout")]
-fn status() {
-    println!("CNG KSP status is only available on Windows");
+fn status() -> KmsCliResult<()> {
+    writeln!(
+        std::io::stdout().lock(),
+        "CNG KSP status is only available on Windows"
+    )?;
+    Ok(())
 }
 
 // ─── List-keys ────────────────────────────────────────────────────────────────
 
-#[allow(
-    clippy::print_stdout,
-    reason = "list-keys writes its result to stdout; cfg(windows)-only"
-)]
 async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResult<()> {
     use cosmian_kmip::kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
@@ -169,9 +166,12 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
 
     let ids = resp.unique_identifier.unwrap_or_default();
     if ids.is_empty() {
-        println!("No CNG KSP keys found in the KMS.");
+        writeln!(
+            std::io::stdout().lock(),
+            "No CNG KSP keys found in the KMS."
+        )?;
     } else {
-        println!("CNG KSP keys in the KMS:");
+        writeln!(std::io::stdout().lock(), "CNG KSP keys in the KMS:")?;
         for id in &ids {
             // Try to resolve the CNG key name from tags
             let key_name = match kms_rest_client
@@ -190,9 +190,9 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
                 Err(_) => None,
             };
             if let Some(name) = key_name {
-                println!("  {id}  (name: {name})");
+                writeln!(std::io::stdout().lock(), "  {id}  (name: {name})")?;
             } else {
-                println!("  {id}");
+                writeln!(std::io::stdout().lock(), "  {id}")?;
             }
         }
     }
@@ -228,23 +228,9 @@ const CRYPT_PRIORITY_BOTTOM: u32 = 0xFFFF_FFFF;
 const NCRYPT_KEY_STORAGE_INTERFACE: u32 = 0x0001_0001;
 
 #[cfg(windows)]
-#[allow(
-    clippy::as_conversions,
-    reason = "u8->u16 widening in a const context (From is not const); cfg(windows)-only"
-)]
+// "KEY_STORAGE\0" as UTF-16 code units.
 const NCRYPT_KEY_STORAGE_ALGORITHM: &[u16] = &[
-    b'K' as u16,
-    b'E' as u16,
-    b'Y' as u16,
-    b'_' as u16,
-    b'S' as u16,
-    b'T' as u16,
-    b'O' as u16,
-    b'R' as u16,
-    b'A' as u16,
-    b'G' as u16,
-    b'E' as u16,
-    0,
+    0x4B, 0x45, 0x59, 0x5F, 0x53, 0x54, 0x4F, 0x52, 0x41, 0x47, 0x45, 0,
 ];
 
 #[cfg(windows)]
@@ -275,7 +261,10 @@ struct CryptProviderReg {
 
 #[cfg(windows)]
 #[link(name = "bcrypt", kind = "raw-dylib")]
-#[allow(unsafe_code, reason = "Win32 CNG FFI; cfg(windows)-only")]
+#[expect(
+    unsafe_code,
+    reason = "bcrypt FFI declarations (BCryptRegisterProvider and friends)"
+)]
 unsafe extern "system" {
     fn BCryptRegisterProvider(
         pszProvider: Pcwstr,
@@ -308,7 +297,7 @@ unsafe extern "system" {
 }
 
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "Win32 CNG FFI; cfg(windows)-only")]
+#[expect(unsafe_code, reason = "BCrypt/NCrypt registration FFI calls")]
 fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
     let dll_abs = dll
         .canonicalize()
@@ -411,7 +400,10 @@ fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "Win32 CNG FFI; cfg(windows)-only")]
+#[expect(
+    unsafe_code,
+    reason = "BCryptRemoveContextFunctionProvider/BCryptUnregisterProvider FFI calls"
+)]
 fn bcrypt_unregister_ksp() -> Result<(), String> {
     let provider_name_w = to_wide(KSP_PROVIDER_NAME);
     unsafe {
@@ -441,7 +433,7 @@ fn bcrypt_unregister_ksp() -> Result<(), String> {
 }
 
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "Win32 CNG FFI; cfg(windows)-only")]
+#[expect(unsafe_code, reason = "RegOpenKeyExW registry FFI calls")]
 fn bcrypt_is_ksp_registered() -> bool {
     use windows_sys::Win32::System::Registry::{
         HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegOpenKeyExW,
@@ -477,12 +469,12 @@ fn to_wide(s: &str) -> Vec<u16> {
 /// `MoveFileExW(path, NULL, MOVEFILE_DELAY_UNTIL_REBOOT)`.
 /// Failure is non-fatal — the leftover `.dll.old` is harmless.
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "Win32 CNG FFI; cfg(windows)-only")]
+#[expect(unsafe_code, reason = "MoveFileExW FFI call")]
 fn schedule_delete_on_reboot_cng(path: &std::path::Path) {
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "kernel32")]
-    #[allow(unsafe_code, reason = "Win32 CNG FFI; cfg(windows)-only")]
+    #[expect(unsafe_code, reason = "MoveFileExW FFI declaration")]
     unsafe extern "system" {
         fn MoveFileExW(
             lpExistingFileName: *const u16,
@@ -538,7 +530,7 @@ mod characterization_tests {
     #[cfg(not(windows))]
     #[test]
     fn characterization_cng_status_not_windows() {
-        status();
+        status().unwrap();
     }
 
     #[cfg(not(windows))]

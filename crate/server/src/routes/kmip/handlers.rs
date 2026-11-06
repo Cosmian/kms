@@ -105,11 +105,7 @@ fn error_response_ttlv_with_reason(
                     TTLV {
                         tag: "ResultReason".into(),
                         value: TTLValue::Enumeration(KmipEnumerationVariant {
-                            #[expect(
-                                clippy::as_conversions,
-                                reason = "ErrorReason has a repr(u32) KMIP wire value"
-                            )]
-                            value: reason as u32,
+                            value: u32::from(reason),
                             name: reason.to_string().into(),
                         }),
                     },
@@ -196,7 +192,7 @@ fn invalid_response_message_with_reason(
 
     macro_rules! error_batch_item {
         ($variant:ident, $mod:ident, $op:expr, $id:expr) => {
-            ResponseMessageBatchItemVersioned::$variant(
+            ResponseMessageBatchItemVersioned::$variant(Box::new(
                 cosmian_kmip::$mod::kmip_messages::ResponseMessageBatchItem {
                     operation: $op.and_then(|value: &KmipEnumerationVariant| {
                         cosmian_kmip::$mod::kmip_types::OperationEnumeration::from_repr(value.value)
@@ -211,7 +207,7 @@ fn invalid_response_message_with_reason(
                     response_payload: None,
                     message_extension: None,
                 },
-            )
+            ))
         };
     }
 
@@ -760,7 +756,7 @@ mod tests {
             cosmian_kmip::kmip_0::kmip_types::ErrorReason::Feature_Not_Supported,
             "unsupported operation",
         );
-        let response: ResponseMessage = cosmian_kmip::ttlv::from_ttlv(ttlv)?;
+        let response: ResponseMessage = cosmian_kmip::ttlv::from_ttlv(&ttlv)?;
 
         if !matches!(
             response.batch_item.first(),
@@ -936,14 +932,14 @@ mod local_tests {
     #[test]
     fn test_error_response_message_ttlv() {
         let ttlv = super::error_response_ttlv(2, 1, "error message");
-        let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
+        let _response: ResponseMessage = from_ttlv(&ttlv).expect("Failed to parse response");
     }
 
     #[test]
     fn test_error_response_message_binary() {
         let ttlv = TTLV::from_bytes(&TTLV_ERROR_RESPONSE, KmipFlavor::Kmip1)
             .expect("Failed to parse response");
-        let _response: ResponseMessage = from_ttlv(ttlv).expect("Failed to parse response");
+        let _response: ResponseMessage = from_ttlv(&ttlv).expect("Failed to parse response");
     }
 }
 

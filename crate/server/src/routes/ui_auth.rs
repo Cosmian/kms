@@ -50,7 +50,7 @@ pub(crate) async fn login(
             .body("OIDC is not configured or discovery failed at startup");
     };
 
-    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
@@ -164,12 +164,12 @@ pub(crate) async fn callback(
         None => return HttpResponse::BadRequest().body("Missing authorization code"),
     };
 
-    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
-    let issuer = match &oidc_runtime.config.ui_oidc_issuer_url {
+    let issuer = match &oidc_runtime.config.issuer_url {
         Some(url) => url.clone(),
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
@@ -192,7 +192,7 @@ pub(crate) async fn callback(
         ("client_id".to_owned(), client_id.clone()),
         ("code_verifier".to_owned(), pkce_verifier),
     ];
-    if let Some(secret) = oidc_runtime.config.ui_oidc_client_secret.clone() {
+    if let Some(secret) = oidc_runtime.config.client_secret.clone() {
         form.push(("client_secret".to_owned(), secret));
     }
 
@@ -699,7 +699,7 @@ pub(crate) async fn logout(
     // Auth Verifier server, or OIDC simply isn't set up), there is no external
     // IdP session to terminate: just drop the local session (done above) and send the
     // browser back to the login page.
-    let Some(url) = &oidc_runtime.config.ui_oidc_logout_url else {
+    let Some(url) = &oidc_runtime.config.logout_url else {
         return response.append_header(("Location", "/ui/login")).finish();
     };
     let mut logout_url = match Url::parse(url) {
@@ -709,7 +709,7 @@ pub(crate) async fn logout(
         }
     };
 
-    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };

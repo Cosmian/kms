@@ -37,12 +37,12 @@ fn test_create_2_1() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Create(Box::new(Create {
                     object_type: ObjectType::SymmetricKey,
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -53,10 +53,10 @@ fn test_create_2_1() {
                         ..Default::default()
                     },
                     protection_storage_masks: None,
-                }),
+                })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -105,11 +105,11 @@ fn test_create_then_check_uses_id_placeholder() {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: None,
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Create(Box::new(Create {
                     object_type: ObjectType::SymmetricKey,
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -120,10 +120,10 @@ fn test_create_then_check_uses_id_placeholder() {
                         ..Default::default()
                     },
                     protection_storage_masks: None,
-                }),
+                })),
                 message_extension: None,
-            }),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            })),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::Check,
                 ephemeral: None,
                 unique_batch_item_id: None,
@@ -134,7 +134,7 @@ fn test_create_then_check_uses_id_placeholder() {
                     lease_time: None,
                 }),
                 message_extension: None,
-            }),
+            })),
         ],
     };
 
@@ -175,12 +175,12 @@ fn test_create_2_1_protection_storage_masks_feature_not_supported() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: None,
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Create(Box::new(Create {
                     object_type: ObjectType::SymmetricKey,
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -188,10 +188,10 @@ fn test_create_2_1_protection_storage_masks_feature_not_supported() {
                         ..Default::default()
                     },
                     protection_storage_masks: Some(ProtectionStorageMasks::Software),
-                }),
+                })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

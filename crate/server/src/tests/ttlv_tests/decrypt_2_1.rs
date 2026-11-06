@@ -62,7 +62,7 @@ pub(super) fn decrypt(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Decrypt,
                 ephemeral: None,
@@ -84,7 +84,7 @@ pub(super) fn decrypt(
                 })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

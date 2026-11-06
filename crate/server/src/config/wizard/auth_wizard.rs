@@ -3,6 +3,8 @@
 //! Covers: API key, JWT / OIDC, client certificate (mTLS), default username and
 //! UI OIDC settings.
 
+use std::io::Write as _;
+
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
 use super::PromptResultExt;
@@ -35,10 +37,6 @@ pub(crate) struct AuthWizardResult {
     pub(crate) force_default_username: bool,
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "the configuration wizard prompts the user on stdout"
-)]
 pub(crate) fn configure_auth(
     http: &mut HttpConfig,
     ui: &mut UiConfig,
@@ -80,8 +78,11 @@ pub(crate) fn configure_auth(
     let mut auth_verifier = AuthVerifierConfig::default();
 
     if selected.contains(&1) {
-        println!("  Configure JWT/OIDC providers.");
-        println!("  Format: ISSUER_URI[,JWKS_URI[,AUDIENCE1,AUDIENCE2,...]]");
+        writeln!(std::io::stdout().lock(), "  Configure JWT/OIDC providers.")?;
+        writeln!(
+            std::io::stdout().lock(),
+            "  Format: ISSUER_URI[,JWKS_URI[,AUDIENCE1,AUDIENCE2,...]]"
+        )?;
         loop {
             let provider: String = Input::with_theme(&theme)
                 .with_prompt("Provider config string (leave blank to stop)")
@@ -156,10 +157,10 @@ pub(crate) fn configure_auth(
                 .prompt_err()?;
 
             ui_oidc = OidcConfig {
-                ui_oidc_client_id: Some(client_id),
-                ui_oidc_client_secret: Some(client_secret),
-                ui_oidc_issuer_url: Some(issuer_url),
-                ui_oidc_logout_url: if logout_url.trim().is_empty() {
+                client_id: Some(client_id),
+                client_secret: Some(client_secret),
+                issuer_url: Some(issuer_url),
+                logout_url: if logout_url.trim().is_empty() {
                     None
                 } else {
                     Some(logout_url)
@@ -169,7 +170,10 @@ pub(crate) fn configure_auth(
     }
 
     if selected.contains(&2) {
-        println!("  Configure the Auth Verifier server.");
+        writeln!(
+            std::io::stdout().lock(),
+            "  Configure the Auth Verifier server."
+        )?;
         let server_url: String = Input::with_theme(&theme)
             .with_prompt("Auth Verifier server URL (e.g. https://auth.example.com)")
             .validate_with(|input: &String| -> Result<(), &str> {
@@ -237,10 +241,11 @@ pub(crate) fn configure_auth(
     }
 
     if selected.contains(&3) {
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "  Client certificate (mTLS) authentication is controlled by the \
              '--clients-ca-cert-file' option configured in the TLS section."
-        );
+        )?;
     }
 
     // Default username
@@ -256,7 +261,7 @@ pub(crate) fn configure_auth(
         .interact()
         .prompt_err()?;
 
-    ui.ui_oidc_auth = ui_oidc;
+    ui.oidc_auth = ui_oidc;
 
     Ok(AuthWizardResult {
         idp_auth: IdpAuthConfig {

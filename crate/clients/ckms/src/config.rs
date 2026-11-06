@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use cosmian_config_utils::{ConfigUtils, location};
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClientConfig;
@@ -17,10 +17,6 @@ pub struct ClientConfig {
     pub kms_config: KmsClientConfig,
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "config loading reports its location on stdout"
-)]
 impl ClientConfig {
     /// Load the default location of the configuration file.
     ///
@@ -60,7 +56,11 @@ impl ClientConfig {
     /// not a valid toml file.
     pub fn save(&self, conf_path: Option<PathBuf>) -> Result<(), CosmianError> {
         let conf_path_buf = Self::location(conf_path)?;
-        println!("Saving configuration to: {}", conf_path_buf.display());
+        writeln!(
+            std::io::stdout().lock(),
+            "Saving configuration to: {}",
+            conf_path_buf.display()
+        )?;
 
         Ok(self.to_toml(conf_path_buf.to_str().ok_or_else(|| {
             CosmianError::Default("Unable to convert the configuration path to a string".to_owned())

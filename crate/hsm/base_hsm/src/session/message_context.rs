@@ -74,7 +74,7 @@ impl MessageContextKey {
         let parameter = if parameter_ptr.is_null() || parameter_len == 0 {
             Vec::new()
         } else {
-            #[expect(unsafe_code)]
+            #[expect(unsafe_code, reason = "PKCS#11 message-based API C calls")]
             // SAFETY: callers build `pParameter` from a live parameter struct of exactly
             // `ulParameterLen` bytes (`sign_with_pss_mechanism`/`verify_with_pss_mechanism`).
             let bytes =
@@ -173,7 +173,7 @@ impl Session {
         }
         let hsm = self.hsm();
         let handle = self.session_handle();
-        #[expect(unsafe_code)]
+        #[expect(unsafe_code, reason = "PKCS#11 message-based API C calls")]
         // SAFETY: `handle` is this session's live PKCS#11 session handle; the final functions
         // take no other argument.
         let rv = match family {
@@ -199,7 +199,7 @@ impl Session {
         self.end_message_context(MessageFamily::Verify);
     }
 
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-based API C calls")]
     fn raw_message_init(
         &self,
         family: MessageFamily,

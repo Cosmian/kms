@@ -1,7 +1,3 @@
-// Field names intentionally share a `scep_` prefix for disambiguation in
-// flat CLI / env-var / TOML namespaces.
-#![allow(clippy::struct_field_names)]
-
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
@@ -26,8 +22,15 @@ pub struct ScepConfig {
     /// Enable the SCEP endpoint at `/scep`.
     ///
     /// When `false` (default) the `/scep` route returns 404.
-    #[clap(long, default_value = "false", verbatim_doc_comment)]
-    pub scep_enabled: bool,
+    #[clap(
+        long = "scep-enabled",
+        id = "scep_enabled",
+        value_name = "SCEP_ENABLED",
+        default_value = "false",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "scep_enabled")]
+    pub enabled: bool,
 
     /// UID of the CA certificate object in the KMS that signs SCEP-enrolled certificates.
     ///
@@ -36,8 +39,14 @@ pub struct ScepConfig {
     /// Certificates are issued as the reserved `[enrollment-service]` identity: the CA owner
     /// must grant it `certify` on this certificate and on its private key (plus `create` when
     /// `crypto_officer_users` is set). Issued certificates are owned by the CA owner.
-    #[clap(long, verbatim_doc_comment)]
-    pub scep_ca_uid: Option<String>,
+    #[clap(
+        long = "scep-ca-uid",
+        id = "scep_ca_uid",
+        value_name = "SCEP_CA_UID",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "scep_ca_uid")]
+    pub ca_uid: Option<String>,
 
     /// Shared secret a device must put in the PKCS#10 `challengePassword` attribute for an
     /// initial enrollment (`PKCSReq`). Must be set when `scep_enabled = true`.
@@ -45,19 +54,23 @@ pub struct ScepConfig {
     /// At least 8 characters. Prefer the `KMS_SCEP_CHALLENGE_PASSWORD` environment variable (or
     /// the configuration file) to the command line, where it is visible in the process list.
     #[clap(
-        long,
+        long = "scep-challenge-password",
+        id = "scep_challenge_password",
+        value_name = "SCEP_CHALLENGE_PASSWORD",
         env = "KMS_SCEP_CHALLENGE_PASSWORD",
         hide_env_values = true,
         verbatim_doc_comment
     )]
-    pub scep_challenge_password: Option<String>,
+    #[serde(rename = "scep_challenge_password")]
+    pub challenge_password: Option<String>,
 
     /// Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
     /// CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
     ///
     /// When `false`, renewal requests are rejected with `badRequest`.
-    #[clap(long, default_value_t = true, action = clap::ArgAction::Set, verbatim_doc_comment)]
-    pub scep_allow_renewal_without_challenge: bool,
+    #[clap(long = "scep-allow-renewal-without-challenge", id = "scep_allow_renewal_without_challenge", value_name = "SCEP_ALLOW_RENEWAL_WITHOUT_CHALLENGE", default_value_t = true, action = clap::ArgAction::Set, verbatim_doc_comment)]
+    #[serde(rename = "scep_allow_renewal_without_challenge")]
+    pub allow_renewal_without_challenge: bool,
 
     /// Name of the `[templates.<name>]` section whose issuance policy (key type and size,
     /// EKU, Subject/SAN patterns, validity) is enforced on SCEP enrollments.
@@ -65,25 +78,31 @@ pub struct ScepConfig {
     /// Required when `scep_enabled = true`. The template must set `subject_cn_regex` (or
     /// `allow_any_identity = true`): the enrollment secret authenticates a class of devices,
     /// not the name a device asks for.
-    #[clap(long, verbatim_doc_comment)]
-    pub scep_template: Option<String>,
+    #[clap(
+        long = "scep-template",
+        id = "scep_template",
+        value_name = "SCEP_TEMPLATE",
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "scep_template")]
+    pub template: Option<String>,
 }
 
 // Manual impl: `scep_challenge_password` must never reach a log line.
 impl std::fmt::Debug for ScepConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScepConfig")
-            .field("scep_enabled", &self.scep_enabled)
-            .field("scep_ca_uid", &self.scep_ca_uid)
+            .field("scep_enabled", &self.enabled)
+            .field("scep_ca_uid", &self.ca_uid)
             .field(
                 "scep_challenge_password",
-                &self.scep_challenge_password.as_ref().map(|_| "[****]"),
+                &self.challenge_password.as_ref().map(|_| "[****]"),
             )
             .field(
                 "scep_allow_renewal_without_challenge",
-                &self.scep_allow_renewal_without_challenge,
+                &self.allow_renewal_without_challenge,
             )
-            .field("scep_template", &self.scep_template)
+            .field("scep_template", &self.template)
             .finish()
     }
 }
@@ -91,11 +110,11 @@ impl std::fmt::Debug for ScepConfig {
 impl Default for ScepConfig {
     fn default() -> Self {
         Self {
-            scep_enabled: false,
-            scep_ca_uid: None,
-            scep_challenge_password: None,
-            scep_allow_renewal_without_challenge: true,
-            scep_template: None,
+            enabled: false,
+            ca_uid: None,
+            challenge_password: None,
+            allow_renewal_without_challenge: true,
+            template: None,
         }
     }
 }

@@ -32,12 +32,12 @@ fn test_create_dsa_invalid_size() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"dsa-invalid".to_vec()),
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Create(Box::new(Create {
                     object_type: ObjectType::PrivateKey,
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::DSA),
@@ -45,10 +45,10 @@ fn test_create_dsa_invalid_size() {
                         ..Default::default()
                     },
                     protection_storage_masks: None,
-                }),
+                })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let response = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)

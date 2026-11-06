@@ -315,10 +315,10 @@ fn to_versioned(
     flavor: KmipFlavor,
 ) -> KResult<ResponseMessageBatchItemVersioned> {
     Ok(match flavor {
-        KmipFlavor::Kmip1 => ResponseMessageBatchItemVersioned::V14(
+        KmipFlavor::Kmip1 => ResponseMessageBatchItemVersioned::V14(Box::new(
             item.try_into().context("conversion to KMIP 1 failed")?,
-        ),
-        KmipFlavor::Kmip2 => ResponseMessageBatchItemVersioned::V21(item),
+        )),
+        KmipFlavor::Kmip2 => ResponseMessageBatchItemVersioned::V21(Box::new(item)),
     })
 }
 
@@ -537,11 +537,11 @@ pub(crate) async fn process_message(
         let kmip_version = input.flavor();
         let batch_item = match input {
             BatchItemInput::Item(item) => match *item {
-                RequestMessageBatchItemVersioned::V21(item) => Ok(item),
+                RequestMessageBatchItemVersioned::V21(item) => Ok(*item),
                 RequestMessageBatchItemVersioned::V14(item) => {
                     let operation = item.operation.into();
                     let unique_batch_item_id = item.unique_batch_item_id.clone();
-                    V21RequestMessageBatchItem::try_from(item)
+                    V21RequestMessageBatchItem::try_from(*item)
                         .map_err(|e| (operation, unique_batch_item_id, KmsError::from(e)))
                 }
             },
@@ -736,21 +736,19 @@ pub(crate) async fn process_message(
 }
 
 #[cfg(feature = "interop")]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "the feature-disabled implementation returns Operation_Not_Supported"
-)]
-pub(super) const fn process_interop_operation() -> KResult<Operation> {
+const INTEROP_ENABLED: bool = true;
+#[cfg(not(feature = "interop"))]
+const INTEROP_ENABLED: bool = false;
+
+pub(super) fn process_interop_operation() -> KResult<Operation> {
+    if !INTEROP_ENABLED {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Operation_Not_Supported,
+            "Interop is disabled".to_owned(),
+        ));
+    }
     Ok(Operation::InteropResponse(
         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::InteropResponse,
-    ))
-}
-
-#[cfg(not(feature = "interop"))]
-pub(super) fn process_interop_operation() -> KResult<Operation> {
-    Err(KmsError::Kmip21Error(
-        ErrorReason::Operation_Not_Supported,
-        "Interop is disabled".to_owned(),
     ))
 }
 
@@ -875,7 +873,7 @@ async fn process_operation(
                     .await?,
             ),
             Operation::Create(kmip_request) => Operation::CreateResponse(
-                kms.create(kmip_request, user)
+                kms.create(*kmip_request, user)
                     .await?,
             ),
             Operation::CreateKeyPair(kmip_request) => Operation::CreateKeyPairResponse(
@@ -891,7 +889,7 @@ async fn process_operation(
                 kms.delete_attribute(kmip_request, user).await?,
             ),
             Operation::DeriveKey(kmip_request) => Operation::DeriveKeyResponse(
-                Box::pin(kms.derive_key(kmip_request, user)).await?,
+                Box::pin(kms.derive_key(*kmip_request, user)).await?,
             ),
             Operation::Destroy(kmip_request) => {
                 Operation::DestroyResponse(kms.destroy(kmip_request, user).await?)
@@ -909,7 +907,7 @@ async fn process_operation(
                 Operation::ExportResponse(Box::new(kms.export(kmip_request, user).await?))
             }
             Operation::Get(kmip_request) => {
-                Operation::GetResponse(kms.get(kmip_request, user).await?)
+                Operation::GetResponse(Box::new(kms.get(kmip_request, user).await?))
             }
             Operation::GetAttributes(kmip_request) => Operation::GetAttributesResponse(Box::new(
                 kms.get_attributes(kmip_request, user).await?,
@@ -965,7 +963,7 @@ async fn process_operation(
                     .await?,
             ),
             Operation::ReKey(kmip_request) => {
-                Operation::ReKeyResponse(kms.rekey(kmip_request, user).await?)
+                Operation::ReKeyResponse(kms.rekey(*kmip_request, user).await?)
             }
             Operation::ReKeyKeyPair(kmip_request) => Operation::ReKeyKeyPairResponse(
                 kms.rekey_keypair(*kmip_request, user)
@@ -1028,10 +1026,10 @@ async fn process_operation(
                 ));
             }
             Operation::CreateSplitKey(req) => {
-                Operation::CreateSplitKeyResponse(Box::pin(kms.create_split_key(req, user)).await?)
+                Operation::CreateSplitKeyResponse(Box::pin(kms.create_split_key(*req, user)).await?)
             }
             Operation::JoinSplitKey(req) => {
-                Operation::JoinSplitKeyResponse(Box::pin(kms.join_split_key(req, user)).await?)
+                Operation::JoinSplitKeyResponse(Box::pin(kms.join_split_key(*req, user)).await?)
             }
         })
     })
@@ -1325,7 +1323,7 @@ mod tests {
     #[test]
     fn marks_only_successes_undone() {
         let item = |result_status| {
-            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
+            ResponseMessageBatchItemVersioned::V21(Box::new(ResponseMessageBatchItem {
                 operation: None,
                 unique_batch_item_id: None,
                 result_status,
@@ -1334,7 +1332,7 @@ mod tests {
                 asynchronous_correlation_value: None,
                 response_payload: None,
                 message_extension: None,
-            })
+            }))
         };
         let mut success = item(ResultStatusEnumeration::Success);
         let mut failed = item(ResultStatusEnumeration::OperationFailed);
@@ -1540,7 +1538,10 @@ mod tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod batch_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::{
@@ -1662,7 +1663,9 @@ mod batch_tests {
             })),
             Operation::Get(Get::default()),
         ]
-        .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)));
+        .map(|op| {
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+        });
 
         let response = message(&kms, batch(2, 1, items.into())?, &owner).await?;
         let [
@@ -1745,7 +1748,9 @@ mod batch_tests {
             })),
             Operation::Get(Get::default()),
         ]
-        .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)));
+        .map(|op| {
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+        });
 
         let response = message(&kms, batch(2, 1, items.into())?, &owner).await?;
         let [
@@ -1842,13 +1847,13 @@ mod batch_tests {
         csr.sign(&csr_key, MessageDigest::sha256())?;
 
         let item = |operation, request_payload| {
-            RequestMessageBatchItemVersioned::V14(Item14 {
+            RequestMessageBatchItemVersioned::V14(Box::new(Item14 {
                 operation,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload,
                 message_extension: None,
-            })
+            }))
         };
         let items = vec![
             // Sets the ID Placeholder to a symmetric key.

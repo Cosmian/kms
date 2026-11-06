@@ -1667,6 +1667,7 @@ dependencies = [
  "leb128",
  "libc",
  "libloading",
+ "num-traits",
  "openssl",
  "pem 3.0.6",
  "pkcs11-sys",
@@ -1808,9 +1809,9 @@ version = "5.29.0"
 dependencies = [
  "clap",
  "cosmian_kms_client",
+ "cosmian_kms_csi_provider_proto",
  "cosmian_logger",
  "hex",
- "prost 0.13.5",
  "serde",
  "serde-saphyr 1.3.0",
  "serde_json",
@@ -1821,6 +1822,14 @@ dependencies = [
  "tonic 0.12.3",
  "tracing",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_csi_provider_proto"
+version = "5.29.0"
+dependencies = [
+ "prost 0.13.5",
+ "tonic 0.12.3",
 ]
 
 [[package]]
@@ -1876,9 +1885,9 @@ version = "5.29.0"
 dependencies = [
  "clap",
  "cosmian_kms_client",
+ "cosmian_kms_k8s_plugin_proto",
  "cosmian_logger",
  "hyper-util",
- "prost 0.13.5",
  "serde",
  "serde-saphyr 1.3.0",
  "test_kms_server",
@@ -1890,6 +1899,14 @@ dependencies = [
  "tracing",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_kms_k8s_plugin_proto"
+version = "5.29.0"
+dependencies = [
+ "prost 0.13.5",
+ "tonic 0.12.3",
 ]
 
 [[package]]

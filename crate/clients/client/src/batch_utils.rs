@@ -34,7 +34,9 @@ pub(crate) async fn batch_operations(
         },
         batch_item: operations
             .into_iter()
-            .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)))
+            .map(|op| {
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+            })
             .collect(),
     };
     let response = kms_rest_client.message(request).await?;

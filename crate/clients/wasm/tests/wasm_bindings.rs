@@ -23,7 +23,19 @@ fn test_init_panic_hook() {
 
 #[wasm_bindgen_test]
 fn test_locate_ttlv_request() {
-    let r = w::locate_ttlv_request(None, None, None, None, None, None, None, None);
+    let r = w::locate_ttlv_request(
+        serde_wasm_bindgen::to_value(&w::LocateTtlvRequestOptions {
+            tags: None,
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_format_type: None,
+            object_type: None,
+            public_key_id: None,
+            private_key_id: None,
+            certificate_id: None,
+        })
+        .unwrap(),
+    );
     assert!(r.is_ok() || r.is_err());
 }
 
@@ -197,17 +209,20 @@ fn test_get_key_requests() {
 #[wasm_bindgen_test]
 fn test_import_ttlv_request() {
     let r = w::import_ttlv_request(
-        None,
-        vec![0u8; 16],
-        "RawPrivateKeyDer",
-        None,
-        None,
-        None,
-        false,
-        false,
-        vec![],
-        None,
-        None,
+        &[0u8; 16],
+        serde_wasm_bindgen::to_value(&w::ImportTtlvRequestOptions {
+            unique_identifier: None,
+            key_format: "RawPrivateKeyDer".to_owned(),
+            public_key_id: None,
+            private_key_id: None,
+            certificate_id: None,
+            unwrap: false,
+            replace_existing: false,
+            tags: vec![],
+            key_usage: None,
+            wrapping_key_id: None,
+        })
+        .unwrap(),
     );
     assert!(r.is_ok() || r.is_err());
 }
@@ -391,29 +406,35 @@ fn test_cc_rekey_requests() {
 fn test_certificate_requests() {
     assert!(
         w::import_certificate_ttlv_request(
-            None,
-            vec![],
-            "Pem",
-            None,
-            None,
-            None,
-            None,
-            false,
-            vec![],
-            None,
+            &[],
+            serde_wasm_bindgen::to_value(&w::ImportCertificateTtlvRequestOptions {
+                certificate_id: None,
+                input_format: "Pem".to_owned(),
+                private_key_id: None,
+                public_key_id: None,
+                issuer_certificate_id: None,
+                pkcs12_password: None,
+                replace_existing: false,
+                tags: vec![],
+                key_usage: None,
+            })
+            .unwrap(),
         )
         .is_ok()
             || w::import_certificate_ttlv_request(
-                None,
-                vec![],
-                "Pem",
-                None,
-                None,
-                None,
-                None,
-                false,
-                vec![],
-                None,
+                &[],
+                serde_wasm_bindgen::to_value(&w::ImportCertificateTtlvRequestOptions {
+                    certificate_id: None,
+                    input_format: "Pem".to_owned(),
+                    private_key_id: None,
+                    public_key_id: None,
+                    issuer_certificate_id: None,
+                    pkcs12_password: None,
+                    replace_existing: false,
+                    tags: vec![],
+                    key_usage: None,
+                })
+                .unwrap(),
             )
             .is_err()
     );
@@ -453,17 +474,20 @@ fn test_certify_ttlv_request() {
     let r = w::certify_ttlv_request(
         None,
         None,
-        None,
-        None,
-        None,
-        false,
-        None,
-        None,
-        None,
-        None,
-        365,
-        None,
-        vec![],
+        serde_wasm_bindgen::to_value(&w::CertifyTtlvRequestOptions {
+            certificate_id: None,
+            certificate_signing_request_format: None,
+            public_key_id_to_certify: None,
+            certificate_id_to_re_certify: None,
+            generate_key_pair: false,
+            subject_name: None,
+            algorithm: None,
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            tags: vec![],
+        })
+        .unwrap(),
     );
     assert!(r.is_ok() || r.is_err());
 }
@@ -546,34 +570,40 @@ fn test_certify_ttlv_request_empty_strings_treated_as_none() {
     // All Option<String> params set to empty string — should succeed the same
     // as passing None (produces a self-signed certify request with generated keypair).
     let with_empty = w::certify_ttlv_request(
-        Some(String::new()),         // certificate_id
-        Some("  ".to_string()),      // certificate_signing_request_format (whitespace)
-        None,                        // certificate_signing_request (Vec<u8>, not String)
-        Some(String::new()),         // public_key_id_to_certify
-        Some(String::new()),         // certificate_id_to_re_certify
-        true,                        // generate_key_pair (must be true for valid request)
-        Some("CN=Test".to_string()), // subject_name (required when generating keypair)
-        Some(String::new()),         // algorithm (empty → defaults to rsa4096)
-        Some(String::new()),         // issuer_private_key_id
-        Some(String::new()),         // issuer_certificate_id
-        365,                         // number_of_days
-        None,                        // certificate_extensions (Vec<u8>, not String)
-        vec![],                      // tags
+        None,
+        None,
+        serde_wasm_bindgen::to_value(&w::CertifyTtlvRequestOptions {
+            certificate_id: Some(String::new()),
+            certificate_signing_request_format: Some("  ".to_string()),
+            public_key_id_to_certify: Some(String::new()),
+            certificate_id_to_re_certify: Some(String::new()),
+            generate_key_pair: true,
+            subject_name: Some("CN=Test".to_string()),
+            algorithm: Some(String::new()),
+            issuer_private_key_id: Some(String::new()),
+            issuer_certificate_id: Some(String::new()),
+            number_of_days: 365,
+            tags: vec![],
+        })
+        .unwrap(),
     );
     let with_none = w::certify_ttlv_request(
         None,
         None,
-        None,
-        None,
-        None,
-        true,
-        Some("CN=Test".to_string()),
-        None,
-        None,
-        None,
-        365,
-        None,
-        vec![],
+        serde_wasm_bindgen::to_value(&w::CertifyTtlvRequestOptions {
+            certificate_id: None,
+            certificate_signing_request_format: None,
+            public_key_id_to_certify: None,
+            certificate_id_to_re_certify: None,
+            generate_key_pair: true,
+            subject_name: Some("CN=Test".to_string()),
+            algorithm: None,
+            issuer_private_key_id: None,
+            issuer_certificate_id: None,
+            number_of_days: 365,
+            tags: vec![],
+        })
+        .unwrap(),
     );
     // Both should produce Ok results (valid TTLV request generation)
     assert!(with_empty.is_ok(), "empty-string params should not fail");
@@ -737,15 +767,18 @@ fn test_hash_requests() {
 #[wasm_bindgen_test]
 fn test_derive_key_requests() {
     let r = w::derive_key_ttlv_request(
-        "kid",
-        "HKDF",
-        vec![1, 2, 3],
-        1,
+        &[1, 2, 3],
         None,
-        "SHA256",
-        "aes",
-        256,
-        None,
+        serde_wasm_bindgen::to_value(&w::DeriveKeyTtlvRequestOptions {
+            base_key_id: "kid".to_owned(),
+            derivation_method: "HKDF".to_owned(),
+            iteration_count: 1,
+            hashing_algorithm: "SHA256".to_owned(),
+            symmetric_algorithm: "aes".to_owned(),
+            cryptographic_length: 256,
+            derived_key_id: None,
+        })
+        .unwrap(),
     );
     assert!(r.is_ok() || r.is_err());
     let r = w::parse_derive_key_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
@@ -782,7 +815,7 @@ fn test_certify_and_locate_enrich_requests() {
     assert!(r.is_ok());
     let r = w::parse_certify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
     assert!(r.is_ok() || r.is_err());
-    let r = w::re_certify_ttlv_request("cert_kid".to_string(), None, None, 365, vec![]);
+    let r = w::re_certify_ttlv_request("cert_kid", None, None, 365, vec![]);
     assert!(r.is_ok() || r.is_err());
     let r = w::parse_re_certify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
     assert!(r.is_ok() || r.is_err());

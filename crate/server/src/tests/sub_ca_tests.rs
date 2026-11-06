@@ -1,8 +1,6 @@
 //! Sub-CA flow: a CSR is generated for a key that stays in the KMS, signed by a root CA
 //! (as an offline root would do), and the resulting certificate is tagged by serial.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kms_server_database::reexport::{

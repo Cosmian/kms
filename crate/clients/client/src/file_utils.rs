@@ -49,7 +49,7 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, KmsClien
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .context("failed parsing the object from the bytes")?;
     // Deserialize the object
-    let object: Object = from_ttlv(ttlv)?;
+    let object: Object = from_ttlv(&ttlv)?;
     Ok(object)
 }
 

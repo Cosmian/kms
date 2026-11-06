@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, io::Write, str::FromStr};
 
 use cosmian_kms_client::{
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::UniqueIdentifier},
@@ -128,11 +128,8 @@ impl Stdout {
     /// # Errors
     ///
     /// Returns an error if there is an issue with writing to the console.
-    #[expect(
-        clippy::print_stdout,
-        reason = "this command writes its result to stdout"
-    )]
     pub fn write(&self) -> KmsCliResult<()> {
+        let mut out = std::io::stdout().lock();
         // Check if the output format should be JSON
         let output_format = match std::env::var(COSMIAN_KMS_CLI_FORMAT) {
             Ok(output_format_var_env) => output_format_var_env.parse::<OutputFormat>()?,
@@ -143,61 +140,61 @@ impl Stdout {
             OutputFormat::Text => {
                 // Print the output in text format
                 if !self.str_out.is_empty() {
-                    println!("{}", self.str_out);
+                    writeln!(out, "{}", self.str_out)?;
                 }
 
                 // Print the unique identifier if present
                 if let Some(id) = &self.unique_identifier {
-                    println!("\tUnique identifier: {id}");
+                    writeln!(out, "\tUnique identifier: {id}")?;
                 }
 
                 // Print the list of unique identifiers if present
                 if let Some(ids) = &self.unique_identifiers {
                     for id in ids {
-                        println!("{id}");
+                        writeln!(out, "{id}")?;
                     }
                 }
 
                 // Print the public key unique identifier if present
                 if let Some(id) = &self.public_key_unique_identifier {
-                    println!("\tPublic key unique identifier: {id}");
+                    writeln!(out, "\tPublic key unique identifier: {id}")?;
                 }
 
                 // Print the private key unique identifier if present
                 if let Some(id) = &self.private_key_unique_identifier {
-                    println!("\tPrivate key unique identifier: {id}");
+                    writeln!(out, "\tPrivate key unique identifier: {id}")?;
                 }
 
                 // Print the attribute if present: attribute is a single element
                 if let Some(attribute) = &self.attribute {
                     let json = serde_json::to_string_pretty(attribute)?;
-                    println!("{json}");
+                    writeln!(out, "{json}")?;
                 }
 
                 // Print the attributes if present: attributes are a hashmap of key-value pairs
                 if let Some(attributes) = &self.attributes {
                     let json = serde_json::to_string_pretty(attributes)?;
-                    println!("{json}");
+                    writeln!(out, "{json}")?;
                 }
 
                 // Print the list of accesses if present
                 if let Some(accesses) = &self.accesses {
                     for access in accesses {
-                        println!(" - {}: {:?}", access.user_id, access.operations);
+                        writeln!(out, " - {}: {:?}", access.user_id, access.operations)?;
                     }
                 }
 
                 // Print the list of access rights obtained if present
                 if let Some(access_rights_obtained) = &self.access_rights_obtained {
                     for access in access_rights_obtained {
-                        println!("{access}");
+                        writeln!(out, "{access}")?;
                     }
                 }
 
                 // Print the list of objects owned if present
                 if let Some(object_owned) = &self.object_owned {
                     for obj in object_owned {
-                        println!("{obj}");
+                        writeln!(out, "{obj}")?;
                     }
                 }
 
@@ -205,17 +202,17 @@ impl Stdout {
                 if let Some(t) = &self.tags
                     && !t.is_empty()
                 {
-                    println!("\tTags:");
+                    writeln!(out, "\tTags:")?;
                     for tag in t {
-                        println!("\t\t- {tag}");
+                        writeln!(out, "\t\t- {tag}")?;
                     }
                 }
-                println!(); // consecutive calls feel cluttered and become hard to read
+                writeln!(out)?; // consecutive calls feel cluttered and become hard to read
             }
             OutputFormat::Json => {
                 // Serialize the output as JSON and print it
                 let console_stdout = serde_json::to_string_pretty(&self)?;
-                println!("{console_stdout}");
+                writeln!(out, "{console_stdout}")?;
             }
             OutputFormat::Quiet => {
                 // Print nothing

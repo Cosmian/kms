@@ -83,7 +83,7 @@ fn test_mysql_kmip_11_create_request() -> KmipResult<()> {
     "#;
 
     let ttlv: TTLV = serde_json::from_str(json)?;
-    from_ttlv::<RequestMessage>(ttlv)?;
+    from_ttlv::<RequestMessage>(&ttlv)?;
     Ok(())
 }
 
@@ -147,6 +147,6 @@ fn test_mysql_kmip_11_storage_status_mask_integer() -> KmipResult<()> {
         "#;
 
     let ttlv: TTLV = serde_json::from_str(json)?;
-    from_ttlv::<RequestMessage>(ttlv)?;
+    from_ttlv::<RequestMessage>(&ttlv)?;
     Ok(())
 }

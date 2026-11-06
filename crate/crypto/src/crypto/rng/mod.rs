@@ -28,7 +28,7 @@ const REQUIRED_STRENGTH_BITS: c_uint = 256;
 /// `RAND_priv_bytes_ex` / `RAND_bytes_ex` signature.
 type RandBytesEx = unsafe extern "C" fn(*mut c_void, *mut u8, usize, c_uint) -> c_int;
 
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "volatile zeroization / libc entropy FFI")]
 unsafe extern "C" {
     /// `RAND_priv_bytes_ex(3)`: generate from the *private* DRBG of the default library context.
     fn RAND_priv_bytes_ex(ctx: *mut c_void, buf: *mut u8, num: usize, strength: c_uint) -> c_int;
@@ -214,16 +214,19 @@ impl KmsRng {
 pub struct SeededCsRng(CsRng);
 
 impl Drop for SeededCsRng {
-    #[expect( // false positive: CsRng is plain data and this volatile write is the zeroization itself
+    #[expect(
         unsafe_code,
-        clippy::volatile_composites,
-        reason = "the store only has to survive dead-store elimination; tearing is irrelevant"
+        reason = "volatile zeroization of the RNG state must survive dead-store elimination"
     )]
     fn drop(&mut self) {
-        // SAFETY: `self.0` is valid, aligned and initialised. `CsRng` has no `Drop` and owns no heap
-        // memory, so overwriting it without dropping the old value releases nothing. The write is
-        // volatile so that it is not removed as a dead store.
-        unsafe { std::ptr::write_volatile(&raw mut self.0, CsRng::from_seed([0; 32])) };
+        let base = (&raw mut self.0).cast::<u8>();
+        for offset in 0..size_of::<CsRng>() {
+            // SAFETY: `base..base + size_of::<CsRng>()` is the valid, writable storage of `self.0`.
+            // `CsRng` (`ChaCha12Rng`) is integer/array data without niches, references or `Drop`, so
+            // all-zero bytes are a valid value and overwriting it releases nothing; nothing reads it
+            // after drop. The writes are volatile so that they are not removed as dead stores.
+            unsafe { base.add(offset).write_volatile(0) };
+        }
         compiler_fence(Ordering::SeqCst);
     }
 }
@@ -250,7 +253,7 @@ impl CryptoRng for SeededCsRng {}
 
 /// Generate `dest.len()` bytes at [`REQUIRED_STRENGTH_BITS`] with `RAND_priv_bytes_ex` or
 /// `RAND_bytes_ex`.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "volatile zeroization / libc entropy FFI")]
 fn generate(rand_bytes_ex: RandBytesEx, dest: &mut [u8]) -> Result<(), CryptoError> {
     // SAFETY: `dest` is a valid, exclusively borrowed slice, so `dest.as_mut_ptr()` is valid for
     // writes of `dest.len()` bytes (a dangling non-null pointer with length 0 is allowed by
@@ -333,16 +336,20 @@ mod tests {
     }
 
     #[test]
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "volatile zeroization / libc entropy FFI")]
     fn seeded_csrng_state_is_overwritten_on_drop() -> Result<(), CryptoError> {
         let mut rng = ManuallyDrop::new(KmsRng::new().seeded_csrng()?);
         rng.next_u64();
         assert_ne!(rng.0.get_seed(), [0; 32]);
-        // SAFETY: `rng` is not dropped again; the drop only overwrites `rng.0` with another valid
-        // `CsRng`, so reading it afterwards reads initialised memory.
+        // SAFETY: `rng` is not dropped again; the drop only overwrites `rng.0` with all-zero bytes,
+        // a valid `CsRng` (integer/array data), so reading it afterwards reads initialised memory.
         unsafe { ManuallyDrop::drop(&mut rng) };
         assert_eq!(rng.0.get_seed(), [0; 32]);
-        assert_eq!(rng.0.get_word_pos(), 0);
+        // SAFETY: `rng.0` is `size_of::<CsRng>()` initialised bytes, all written by the drop.
+        let state = unsafe {
+            std::slice::from_raw_parts((&raw const rng.0).cast::<u8>(), size_of::<CsRng>())
+        };
+        assert!(state.iter().all(|byte| *byte == 0));
         Ok(())
     }
 

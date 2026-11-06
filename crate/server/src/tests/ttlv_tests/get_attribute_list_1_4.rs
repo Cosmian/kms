@@ -84,7 +84,7 @@ fn test_get_attribute_list_1_4_advertises_fresh_attribute() {
         .expect("Failed to send GetAttributeList request bytes");
     let response_ttlv =
         TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip1).expect("Invalid response TTLV");
-    let response: ResponseMessage = from_ttlv(response_ttlv).expect("Invalid response message");
+    let response: ResponseMessage = from_ttlv(&response_ttlv).expect("Invalid response message");
 
     info!("GetAttributeList ResponseMessage: {response}");
 

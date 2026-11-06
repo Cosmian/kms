@@ -1122,10 +1122,6 @@ impl Display for Attributes {
 /// Structure used in various operations to provide the New Attribute value in the request.
 /// Each variant corresponds to a field in the Attributes struct.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, strum::VariantNames, Display, Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
-)]
 pub enum Attribute {
     /// The Activation Date attribute contains the date and time when the
     /// Managed Object MAY begin to be used. This time corresponds to state
@@ -1163,7 +1159,7 @@ pub enum Attribute {
 
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
-    CertificateAttributes(CertificateAttributes),
+    CertificateAttributes(Box<CertificateAttributes>),
 
     /// The Certificate Type attribute is a type of certificate (e.g., X.509).
     /// The Certificate Type value SHALL be set by the server when the certificate
@@ -1532,7 +1528,9 @@ impl From<Attributes> for Vec<Attribute> {
             vec.push(Attribute::AttributeIndex(attribute_index));
         }
         if let Some(certificate_attributes) = attributes.certificate_attributes {
-            vec.push(Attribute::CertificateAttributes(certificate_attributes));
+            vec.push(Attribute::CertificateAttributes(Box::new(
+                certificate_attributes,
+            )));
         }
         if let Some(certificate_type) = attributes.certificate_type {
             vec.push(Attribute::CertificateType(certificate_type));
@@ -1743,7 +1741,7 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::ArchiveDate(value) => attrs.archive_date = Some(value),
                 Attribute::AttributeIndex(value) => attrs.attribute_index = Some(value),
                 Attribute::CertificateAttributes(value) => {
-                    attrs.certificate_attributes = Some(value);
+                    attrs.certificate_attributes = Some(*value);
                 }
                 Attribute::CertificateType(value) => attrs.certificate_type = Some(value),
                 Attribute::CertificateLength(value) => attrs.certificate_length = Some(value),
@@ -2185,7 +2183,7 @@ mod tests {
             ..Attributes::default()
         };
         let ttlv = to_ttlv(&attributes).map_err(|e| e.to_string())?;
-        let decoded: Attributes = from_ttlv(ttlv).map_err(|e| e.to_string())?;
+        let decoded: Attributes = from_ttlv(&ttlv).map_err(|e| e.to_string())?;
         let json = serde_json::to_string(&attributes).map_err(|e| e.to_string())?;
         let from_json: Attributes = serde_json::from_str(&json).map_err(|e| e.to_string())?;
         if decoded != attributes || from_json != attributes {
@@ -2228,7 +2226,7 @@ mod tests {
         };
         let ttlv = to_ttlv(&attributes).map_err(|e| e.to_string())?;
         same(
-            &from_ttlv(ttlv).map_err(|e| e.to_string())?,
+            &from_ttlv(&ttlv).map_err(|e| e.to_string())?,
             &attributes,
             "TTLV",
         )?;
@@ -2245,7 +2243,7 @@ mod tests {
         };
         let ttlv = to_ttlv(&single).map_err(|e| e.to_string())?;
         same(
-            &from_ttlv(ttlv).map_err(|e| e.to_string())?,
+            &from_ttlv(&ttlv).map_err(|e| e.to_string())?,
             &single,
             "TTLV single",
         )?;
@@ -2279,7 +2277,7 @@ mod tests {
             .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
             .map_err(|e| e.to_string())?;
         let ttlv = TTLV::from_bytes(&bytes, KmipFlavor::Kmip2).map_err(|e| e.to_string())?;
-        let decoded: Attributes = from_ttlv(ttlv).map_err(|e| e.to_string())?;
+        let decoded: Attributes = from_ttlv(&ttlv).map_err(|e| e.to_string())?;
         if decoded != attributes {
             return Err(format!("binary TTLV: {decoded:?}"));
         }

@@ -28,8 +28,8 @@ use std::{path::PathBuf, ptr::addr_of_mut};
 
 pub mod backend;
 #[cfg_attr(
-    not(windows),
-    allow(
+    all(not(windows), not(test)),
+    expect(
         dead_code,
         reason = "only the Windows-only `provider` module uses every item"
     )
@@ -38,7 +38,7 @@ mod blob;
 pub mod error;
 #[cfg_attr(
     not(windows),
-    allow(
+    expect(
         dead_code,
         reason = "only the Windows-only `provider` module uses every item"
     )

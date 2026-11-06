@@ -37,7 +37,7 @@ fn override_allowlists_can_tighten_policy() {
 
     let params = params_with_allowlists(conf);
 
-    let create_aes = Operation::Create(Create {
+    let create_aes = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -45,7 +45,7 @@ fn override_allowlists_can_tighten_policy() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
     assert_policy_denied(enforce(&params, "Create", &create_aes));
 
     let op_hash = Operation::Hash(Hash {
@@ -72,7 +72,7 @@ fn override_allowlists_can_tighten_policy() {
     assert_policy_denied(enforce(&params, "MAC", &op_mac));
 
     // Sanity: curve also restricted.
-    let create_ec = Operation::Create(Create {
+    let create_ec = Operation::Create(Box::new(Create {
         object_type: ObjectType::PublicKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
@@ -83,7 +83,7 @@ fn override_allowlists_can_tighten_policy() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
     assert_policy_denied(enforce(&params, "Create", &create_ec));
 }
 
@@ -106,7 +106,7 @@ async fn e2e_override_allowlists_can_tighten_policy() {
 
     let app = Box::pin(test_app_with_clap_config(conf)).await;
 
-    let create_aes = Operation::Create(Create {
+    let create_aes = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -114,7 +114,7 @@ async fn e2e_override_allowlists_can_tighten_policy() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
     let err = post_2_1::<_, _, CreateResponse, _>(&app, &create_aes)
         .await
         .unwrap_err();

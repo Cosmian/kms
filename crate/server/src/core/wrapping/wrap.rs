@@ -467,7 +467,7 @@ async fn wrap_using_kms(
     {
         // copy object-with-metadata attributes into the unwrapped key value
         let attrs = wrapping_key.attributes().clone();
-        *attributes = Some(attrs);
+        *attributes = Some(Box::new(attrs));
     }
 
     // Check usage mask for non Certificate objects (after potential unwrap)

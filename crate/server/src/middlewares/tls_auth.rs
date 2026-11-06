@@ -216,7 +216,6 @@ pub(crate) fn user_from_client_certificate(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use std::{
         net::{TcpListener, TcpStream},

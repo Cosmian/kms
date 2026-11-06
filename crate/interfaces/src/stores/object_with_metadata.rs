@@ -301,7 +301,7 @@ mod tests {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
-                    attributes: Some(Attributes::default()),
+                    attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -408,7 +408,7 @@ mod tests {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
-                    attributes: Some(kb_attrs),
+                    attributes: Some(Box::new(kb_attrs)),
                 }),
                 key_compression_type: None,
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

@@ -615,7 +615,7 @@ fn create_pqc_key_pair(
             key_format_type,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(private_key_der.clone()),
-                attributes: Some(priv_attrs),
+                attributes: Some(Box::new(priv_attrs)),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(cryptographic_length),
@@ -648,7 +648,7 @@ fn create_pqc_key_pair(
             key_format_type,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(public_key_der.to_vec())),
-                attributes: Some(pub_attrs),
+                attributes: Some(Box::new(pub_attrs)),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(cryptographic_length),

@@ -5,6 +5,8 @@ description: 'Detect sequential .await chains that could be parallelized with to
 
 # Rust Async Refactor
 
+Baseline: [`rust-best-practices`](../rust-best-practices/SKILL.md) (§7 concurrency and async) and [`rust.instructions.md`](../../instructions/rust.instructions.md).
+
 Find optimization opportunities in async Rust code: parallelizable
 sequential `.await` chains, unnecessary heap allocations, and blocking
 calls on the async runtime.

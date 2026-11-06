@@ -1420,7 +1420,7 @@ mod tests {
         let ttlv = to_ttlv(&rr).unwrap();
         let json = serde_json::to_string(&ttlv).unwrap();
         let ttlv2: TTLV = serde_json::from_str(&json).unwrap();
-        let rr2: RevocationReason = from_ttlv(ttlv2).unwrap();
+        let rr2: RevocationReason = from_ttlv(&ttlv2).unwrap();
         assert_eq!(
             rr2.revocation_reason_code,
             RevocationReasonCode::KeyCompromise
@@ -1431,7 +1431,7 @@ mod tests {
         let ttlv = to_ttlv(&attr).unwrap();
         let json = serde_json::to_string_pretty(&ttlv).unwrap();
         let ttlv2: TTLV = serde_json::from_str(&json).unwrap();
-        let attr2: Attribute = from_ttlv(ttlv2).unwrap();
+        let attr2: Attribute = from_ttlv(&ttlv2).unwrap();
         assert_eq!(attr2, Attribute::RevocationReason(rr));
     }
 }

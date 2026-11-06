@@ -25,7 +25,7 @@ fn register() {
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("TTLV: {ttlv:#?}");
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     info!("REQUEST MESSAGE: {request_message}");
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {

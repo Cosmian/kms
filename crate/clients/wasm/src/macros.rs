@@ -20,7 +20,7 @@ pub(crate) fn parse_ttlv_to_jsvalue<T: serde::de::DeserializeOwned + serde::Seri
 ) -> Result<JsValue, JsValue> {
     use cosmian_kms_client_utils::reexport::cosmian_kmip::ttlv::{TTLV, from_ttlv};
     let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
-    let parsed: T = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+    let parsed: T = from_ttlv(&ttlv).map_err(|e| JsValue::from(e.to_string()))?;
     serde_wasm_bindgen::to_value(&parsed).map_err(|e| JsValue::from(e.to_string()))
 }
 

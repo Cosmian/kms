@@ -126,10 +126,6 @@ macro_rules! impl_display {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(untagged)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "KMIP wire type in cosmian_kmip public API; boxing breaks downstream matches"
-)]
 pub enum Operation {
     Activate(Activate),
     ActivateResponse(ActivateResponse),
@@ -139,17 +135,17 @@ pub enum Operation {
     CertifyResponse(CertifyResponse),
     Check(Check),
     CheckResponse(CheckResponse),
-    Create(Create),
+    Create(Box<Create>),
     CreateKeyPair(Box<CreateKeyPair>),
     CreateKeyPairResponse(CreateKeyPairResponse),
     CreateResponse(CreateResponse),
-    CreateSplitKey(CreateSplitKey),
+    CreateSplitKey(Box<CreateSplitKey>),
     CreateSplitKeyResponse(CreateSplitKeyResponse),
     Decrypt(Box<Decrypt>),
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
     DeleteAttributeResponse(DeleteAttributeResponse),
-    DeriveKey(DeriveKey),
+    DeriveKey(Box<DeriveKey>),
     DeriveKeyResponse(DeriveKeyResponse),
     Destroy(Destroy),
     DestroyResponse(DestroyResponse),
@@ -166,7 +162,7 @@ pub enum Operation {
     GetAttributesResponse(Box<GetAttributesResponse>),
     GetConstraints(GetConstraints),
     GetConstraintsResponse(GetConstraintsResponse),
-    GetResponse(GetResponse),
+    GetResponse(Box<GetResponse>),
     Hash(Hash),
     HashResponse(HashResponse),
     Import(Box<Import>),
@@ -175,7 +171,7 @@ pub enum Operation {
     Interop(Interop),
     #[cfg(feature = "interop")]
     InteropResponse(InteropResponse),
-    JoinSplitKey(JoinSplitKey),
+    JoinSplitKey(Box<JoinSplitKey>),
     JoinSplitKeyResponse(JoinSplitKeyResponse),
     Locate(Box<Locate>),
     LocateResponse(LocateResponse),
@@ -199,7 +195,7 @@ pub enum Operation {
     QueryResponse(Box<QueryResponse>),
     ReCertify(Box<ReCertify>),
     ReCertifyResponse(ReCertifyResponse),
-    ReKey(ReKey),
+    ReKey(Box<ReKey>),
     ReKeyKeyPair(Box<ReKeyKeyPair>),
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
     ReKeyResponse(ReKeyResponse),

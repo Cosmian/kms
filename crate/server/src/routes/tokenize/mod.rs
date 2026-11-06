@@ -155,7 +155,7 @@ pub(crate) struct WordListRequest {
 #[post("/word-mask")]
 pub(crate) async fn word_mask(body: Json<WordListRequest>) -> HttpResponse {
     let word_refs: Vec<&str> = body.words.iter().map(String::as_str).collect();
-    let masker = WordMasker::new(&word_refs);
+    let masker = try_ano!(WordMasker::new(&word_refs));
     let result = masker.apply(&body.data);
     HttpResponse::Ok().json(TokenizeResponse {
         result: Value::String(result),

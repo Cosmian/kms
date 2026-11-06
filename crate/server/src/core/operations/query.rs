@@ -193,7 +193,6 @@ pub(crate) async fn query(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     #[cfg(feature = "non-fips")]
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;

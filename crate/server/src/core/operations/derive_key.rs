@@ -78,9 +78,14 @@ pub(crate) async fn derive_key(
         DerivationMethod::HASH | DerivationMethod::HMAC => {
             Box::pin(derive_key_symmetric(kms, request, user)).await
         }
+        #[cfg(feature = "non-fips")]
         DerivationMethod::Asymmetric_Key => {
             Box::pin(derive_key_asymmetric(kms, request, user)).await
         }
+        #[cfg(not(feature = "non-fips"))]
+        DerivationMethod::Asymmetric_Key => kms_bail!(KmsError::NotSupported(
+            "DeriveKey: asymmetric derivation is not supported in FIPS mode".to_owned(),
+        )),
         _ => kms_bail!(KmsError::Kmip21Error(
             ErrorReason::Feature_Not_Supported,
             format!(
@@ -349,7 +354,7 @@ async fn derive_key_symmetric(
                     key_material: KeyMaterial::TransparentSymmetricKey {
                         key: derived_key_bytes,
                     },
-                    attributes: Some(attributes.clone()),
+                    attributes: Some(Box::new(attributes.clone())),
                 }),
                 cryptographic_algorithm: attributes.cryptographic_algorithm,
                 cryptographic_length: attributes.cryptographic_length,
@@ -363,7 +368,7 @@ async fn derive_key_symmetric(
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(derived_key_bytes),
-                    attributes: Some(attributes.clone()),
+                    attributes: Some(Box::new(attributes.clone())),
                 }),
                 cryptographic_algorithm: None,
                 cryptographic_length: Some(cryptographic_length_bits),
@@ -619,21 +624,6 @@ fn decrement_usage_limits_in_attributes(attributes: &mut Attributes, data_len: u
             }
         }
     }
-}
-
-#[cfg(not(feature = "non-fips"))]
-#[expect(
-    clippy::unused_async,
-    reason = "signature must match the non-fips async variant of this function"
-)]
-async fn derive_key_asymmetric(
-    _kms: &KMS,
-    _request: DeriveKey,
-    _user: &UserId,
-) -> KResult<DeriveKeyResponse> {
-    Err(KmsError::NotSupported(
-        "DeriveKey: asymmetric derivation is not supported in FIPS mode".to_owned(),
-    ))
 }
 
 fn requested_derived_object_id(attributes: &Attributes) -> String {
@@ -916,7 +906,7 @@ fn build_x25519_shared_secret_object(shared_secret: &[u8], attributes: &Attribut
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(shared_secret.to_vec().into()),
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: Some(256),

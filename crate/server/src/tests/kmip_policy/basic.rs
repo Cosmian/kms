@@ -105,7 +105,7 @@ async fn e2e_default_policy_allows_aes_gcm_encrypt_params() {
 fn default_policy_denies_deprecated_algorithm_des() {
     let params = params_with_default_policy();
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::DES),
@@ -113,7 +113,7 @@ fn default_policy_denies_deprecated_algorithm_des() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     assert_policy_denied(enforce(&params, "Create", &op));
 }
@@ -125,7 +125,7 @@ async fn e2e_default_policy_denies_deprecated_algorithm_des() {
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
     let app = Box::pin(test_app_with_clap_config(conf)).await;
 
-    let req = Operation::Create(Create {
+    let req = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::DES),
@@ -133,7 +133,7 @@ async fn e2e_default_policy_denies_deprecated_algorithm_des() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     let _err = post_2_1::<_, _, CreateResponse, _>(&app, &req)
         .await
@@ -144,7 +144,7 @@ async fn e2e_default_policy_denies_deprecated_algorithm_des() {
 fn default_policy_denies_aes_invalid_key_size() {
     let params = params_with_default_policy();
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -152,7 +152,7 @@ fn default_policy_denies_aes_invalid_key_size() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     assert_policy_denied(enforce(&params, "Create", &op));
 }
@@ -164,7 +164,7 @@ async fn e2e_default_policy_denies_aes_invalid_key_size() {
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
     let app = Box::pin(test_app_with_clap_config(conf)).await;
 
-    let req = Operation::Create(Create {
+    let req = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -172,7 +172,7 @@ async fn e2e_default_policy_denies_aes_invalid_key_size() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     let err = post_2_1::<_, _, CreateResponse, _>(&app, &req)
         .await
@@ -191,7 +191,7 @@ fn aes_key_sizes_allowlist_denies_non_standard_size() {
     ]);
     let params = params_with_allowlists(conf);
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -199,7 +199,7 @@ fn aes_key_sizes_allowlist_denies_non_standard_size() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     assert_policy_denied(enforce(&params, "Create", &op));
 }
@@ -208,7 +208,7 @@ fn aes_key_sizes_allowlist_denies_non_standard_size() {
 fn default_policy_denies_rsa_too_small() {
     let params = params_with_default_policy();
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::PublicKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -216,7 +216,7 @@ fn default_policy_denies_rsa_too_small() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     assert_policy_denied(enforce(&params, "Create", &op));
 }
@@ -232,7 +232,7 @@ fn rsa_key_sizes_allowlist_denies_non_standard_size() {
     ]);
     let params = params_with_allowlists(conf);
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::PublicKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -240,7 +240,7 @@ fn rsa_key_sizes_allowlist_denies_non_standard_size() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     assert_policy_denied(enforce(&params, "Create", &op));
 }
@@ -319,7 +319,7 @@ async fn e2e_message_policy_denies_disallowed_block_cipher_mode_ecb() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(Operation::Encrypt(Box::new(Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
                 cryptographic_parameters: Some(CryptographicParameters {
@@ -330,7 +330,7 @@ async fn e2e_message_policy_denies_disallowed_block_cipher_mode_ecb() {
                 data: Some(Zeroizing::new(b"hello".to_vec())),
                 ..Default::default()
             }))),
-        )],
+        ))],
     };
 
     let response = post_kmip_json(&app, &request)
@@ -347,7 +347,7 @@ async fn e2e_message_policy_denies_disallowed_block_cipher_mode_ecb() {
 fn default_policy_allows_signature_algorithm_rsa_sha256() {
     let params = params_with_default_policy();
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::PrivateKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -356,7 +356,7 @@ fn default_policy_allows_signature_algorithm_rsa_sha256() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     enforce(&params, "Create", &op)
         .expect("RSA+SHA256 signature algorithm should be allowed by default policy");
@@ -372,7 +372,7 @@ async fn e2e_default_policy_allows_signature_algorithm_rsa_sha256() {
 fn default_policy_allows_curve_p256() {
     let params = params_with_default_policy();
 
-    let op = Operation::Create(Create {
+    let op = Operation::Create(Box::new(Create {
         object_type: ObjectType::PublicKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
@@ -383,7 +383,7 @@ fn default_policy_allows_curve_p256() {
             ..Default::default()
         },
         protection_storage_masks: None,
-    });
+    }));
 
     enforce(&params, "Create", &op).expect("P256 should be allowed by default policy");
 }
@@ -484,7 +484,7 @@ fn enforced_policy_with_empty_allowlists_denies_all_operations() {
     let params = params_with_allowlists(conf);
 
     for alg in CryptographicAlgorithm::iter() {
-        let create = Operation::Create(Create {
+        let create = Operation::Create(Box::new(Create {
             object_type: ObjectType::SymmetricKey,
             attributes: Attributes {
                 cryptographic_algorithm: Some(alg),
@@ -492,7 +492,7 @@ fn enforced_policy_with_empty_allowlists_denies_all_operations() {
                 ..Default::default()
             },
             protection_storage_masks: None,
-        });
+        }));
         assert_policy_denied(enforce(&params, "Create", &create));
     }
 
@@ -528,7 +528,7 @@ fn enforced_policy_with_empty_allowlists_denies_all_operations() {
 // Helpers used by e2e_export_wrapping
 #[cfg(feature = "non-fips")]
 fn _create_aes_key_request_for_export(tag: &str) -> Operation {
-    Operation::Create(Create {
+    Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -543,5 +543,5 @@ fn _create_aes_key_request_for_export(tag: &str) -> Operation {
             ..Default::default()
         },
         protection_storage_masks: None,
-    })
+    }))
 }

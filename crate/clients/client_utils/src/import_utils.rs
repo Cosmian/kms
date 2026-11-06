@@ -108,7 +108,7 @@ pub fn build_private_key_from_der_bytes(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Attributes::default()),
+                attributes: Some(Box::new(Attributes::default())),
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -133,7 +133,7 @@ fn build_public_key_from_der_bytes(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(bytes),
-                attributes: Some(Attributes::default()),
+                attributes: Some(Box::new(Attributes::default())),
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required
             // as long as it can be recovered from the Key Format Type or the Key Value.
@@ -177,7 +177,7 @@ fn build_symmetric_key_from_bytes(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
-                attributes: Some(Attributes::default()),
+                attributes: Some(Box::new(Attributes::default())),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
             cryptographic_length: Some(len),
@@ -218,7 +218,7 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, UtilsErr
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)?;
     // Deserialize the object
-    let object: Object = from_ttlv(ttlv)?;
+    let object: Object = from_ttlv(&ttlv)?;
     Ok(object)
 }
 
@@ -336,7 +336,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
             key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
-            attributes: Some(Attributes::default()),
+            attributes: Some(Box::new(Attributes::default())),
         }),
         // According to the KMIP spec, the cryptographic algorithm is not required
         // as long as it can be recovered from the Key Format Type or the Key Value.

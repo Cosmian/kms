@@ -51,6 +51,18 @@ pub const AES_GCM_MAX_AAD_SIZE: usize = 1 << 20; // 1 MiB
 /// in `crate/crypto`.
 pub const AES_GCM_TAG_BITS: pkcs11_sys::CK_ULONG = 128;
 
+/// `CK_ULONG` is `u32` on Windows and `u64` elsewhere; widen it to `u64`.
+#[cfg(windows)]
+fn ck_ulong_to_u64(value: pkcs11_sys::CK_ULONG) -> u64 {
+    u64::from(value)
+}
+
+/// `CK_ULONG` is `u32` on Windows and `u64` elsewhere; widen it to `u64`.
+#[cfg(not(windows))]
+const fn ck_ulong_to_u64(value: pkcs11_sys::CK_ULONG) -> u64 {
+    value
+}
+
 pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_RSA_PKCS,
     CKM_SHA1_RSA_PKCS,
@@ -268,12 +280,7 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             Ok(Mechanism::RsaPss {
                 digest_algorithm: hash_alg,
                 mask_generation_function: mgf,
-                // CK_ULONG is u32 on Windows, u64 on Linux; the conversion is needed for Windows
-                #[allow(
-                    clippy::useless_conversion,
-                    reason = "CK_ULONG is u32 on Windows, u64 on Unix"
-                )]
-                salt_length: u64::from(salt_len),
+                salt_length: ck_ulong_to_u64(salt_len),
             })
         }
         CKM_RSA_PKCS_OAEP => {

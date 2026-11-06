@@ -69,7 +69,7 @@ impl BenchAction {
             // Warmup phase for criterion benchmarks (load tests handle warmup
             // per-level using the actual operation at target concurrency).
             if !load {
-                run_warmup(&rt, &client, warmup_time);
+                run_warmup(&rt, &client, warmup_time)?;
             }
 
             // Reset KO accumulator for this run
@@ -106,11 +106,11 @@ impl BenchAction {
                             hsm_prefix: hsm_prefix.as_deref(),
                             filter: Some(&filter),
                         },
-                    );
+                    )?;
                     if results.is_empty() {
                         continue;
                     }
-                    print_load_results(&results);
+                    print_load_results(&results)?;
                     // Always write per-protocol JSON (used by plot_version_compare.py).
                     generate_load_json_output(&results, proto.slug())?;
                     if effective_format == BenchFormat::Html {
@@ -227,51 +227,54 @@ impl BenchAction {
             set_max_group_time(max_group_time.map(Duration::from_secs));
             set_bench_filter(Some(filter.clone()));
 
-            if run_json {
-                if let Some(ref hsm_prefix) = hsm_prefix {
-                    run_hsm_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, hsm_prefix);
-                } else {
-                    run_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, is_sanity);
+            let bench_result = (|| -> KmsCliResult<()> {
+                if run_json {
+                    if let Some(ref hsm_prefix) = hsm_prefix {
+                        run_hsm_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, hsm_prefix)?;
+                    } else {
+                        run_kmip_benches(&mut c, &client, &rt, mode, Transport::Json, is_sanity)?;
+                    }
                 }
-            }
 
-            if run_wire {
-                if hsm_prefix.is_some() {
+                if run_wire {
+                    if hsm_prefix.is_some() {
+                        eprintln!(
+                            "[bench] --hsm only benchmarks the ttlv-json transport for delegated \
+                             crypto operations: a ttlv-bytes run measured strictly after the \
+                             ttlv-json group on the same HSM token would be contaminated by \
+                             cumulative SoftHSM2 load from that group, invalidating the comparison, \
+                             skipping ttlv-bytes"
+                        );
+                    } else {
+                        run_kmip_benches(&mut c, &client, &rt, mode, Transport::Bytes, is_sanity)?;
+                    }
+                }
+
+                if run_jose && hsm_prefix.is_some() {
                     eprintln!(
-                        "[bench] --hsm only benchmarks the ttlv-json transport for delegated \
-                         crypto operations: a ttlv-bytes run measured strictly after the \
-                         ttlv-json group on the same HSM token would be contaminated by \
-                         cumulative SoftHSM2 load from that group, invalidating the comparison, \
-                         skipping ttlv-bytes"
+                        "[bench] --hsm does not support the jose protocol (no way to request a \
+                         caller-chosen kid via POST /v1/crypto/keys), skipping"
                     );
-                } else {
-                    run_kmip_benches(&mut c, &client, &rt, mode, Transport::Bytes, is_sanity);
-                }
-            }
-
-            if run_jose && hsm_prefix.is_some() {
-                eprintln!(
-                    "[bench] --hsm does not support the jose protocol (no way to request a \
-                     caller-chosen kid via POST /v1/crypto/keys), skipping"
-                );
-            } else if run_jose {
-                match mode {
-                    BenchMode::All => {
-                        bench_jose_encrypt(&mut c, &client, &rt);
-                        bench_jose_sign_verify(&mut c, &client, &rt);
-                        bench_jose_mac(&mut c, &client, &rt);
-                        bench_jose_key_creation(&mut c, &client, &rt);
-                        bench_jose_batch(&mut c, &client, &rt, is_sanity);
+                } else if run_jose {
+                    match mode {
+                        BenchMode::All => {
+                            bench_jose_encrypt(&mut c, &client, &rt);
+                            bench_jose_sign_verify(&mut c, &client, &rt);
+                            bench_jose_mac(&mut c, &client, &rt);
+                            bench_jose_key_creation(&mut c, &client, &rt);
+                            bench_jose_batch(&mut c, &client, &rt, is_sanity);
+                        }
+                        BenchMode::Encrypt => bench_jose_encrypt(&mut c, &client, &rt),
+                        BenchMode::KeyCreation => bench_jose_key_creation(&mut c, &client, &rt),
+                        BenchMode::SignVerify => {
+                            bench_jose_sign_verify(&mut c, &client, &rt);
+                            bench_jose_mac(&mut c, &client, &rt);
+                        }
+                        BenchMode::Batch => bench_jose_batch(&mut c, &client, &rt, is_sanity),
                     }
-                    BenchMode::Encrypt => bench_jose_encrypt(&mut c, &client, &rt),
-                    BenchMode::KeyCreation => bench_jose_key_creation(&mut c, &client, &rt),
-                    BenchMode::SignVerify => {
-                        bench_jose_sign_verify(&mut c, &client, &rt);
-                        bench_jose_mac(&mut c, &client, &rt);
-                    }
-                    BenchMode::Batch => bench_jose_batch(&mut c, &client, &rt, is_sanity),
                 }
-            }
+                Ok(())
+            })();
 
             // Drop criterion to finalize reports
             drop(c);
@@ -299,6 +302,8 @@ impl BenchAction {
                     libc::close(saved);
                 }
             }
+
+            bench_result?;
 
             if let Some(ref name) = save_baseline {
                 let home = criterion_home();
@@ -339,19 +344,20 @@ fn run_kmip_benches(
     mode: BenchMode,
     transport: Transport,
     is_sanity: bool,
-) {
+) -> KmsCliResult<()> {
     match mode {
         BenchMode::All => {
-            bench_encrypt(c, client, rt, transport);
-            bench_key_creation(c, client, rt, transport);
-            bench_sign_verify(c, client, rt, transport);
-            bench_batch(c, client, rt, transport, is_sanity);
+            bench_encrypt(c, client, rt, transport)?;
+            bench_key_creation(c, client, rt, transport)?;
+            bench_sign_verify(c, client, rt, transport)?;
+            bench_batch(c, client, rt, transport, is_sanity)?;
         }
-        BenchMode::Encrypt => bench_encrypt(c, client, rt, transport),
-        BenchMode::KeyCreation => bench_key_creation(c, client, rt, transport),
-        BenchMode::SignVerify => bench_sign_verify(c, client, rt, transport),
-        BenchMode::Batch => bench_batch(c, client, rt, transport, is_sanity),
+        BenchMode::Encrypt => bench_encrypt(c, client, rt, transport)?,
+        BenchMode::KeyCreation => bench_key_creation(c, client, rt, transport)?,
+        BenchMode::SignVerify => bench_sign_verify(c, client, rt, transport)?,
+        BenchMode::Batch => bench_batch(c, client, rt, transport, is_sanity)?,
     }
+    Ok(())
 }
 
 /// HSM counterpart of [`run_kmip_benches`]: keys are created with an
@@ -366,20 +372,21 @@ fn run_hsm_kmip_benches(
     mode: BenchMode,
     transport: Transport,
     hsm_prefix: &str,
-) {
+) -> KmsCliResult<()> {
     match mode {
         BenchMode::All => {
-            bench_hsm_encrypt(c, client, rt, transport, hsm_prefix);
-            bench_hsm_key_creation(c, client, rt, transport, hsm_prefix);
-            bench_hsm_sign_verify(c, client, rt, transport, hsm_prefix);
+            bench_hsm_encrypt(c, client, rt, transport, hsm_prefix)?;
+            bench_hsm_key_creation(c, client, rt, transport, hsm_prefix)?;
+            bench_hsm_sign_verify(c, client, rt, transport, hsm_prefix)?;
         }
-        BenchMode::Encrypt => bench_hsm_encrypt(c, client, rt, transport, hsm_prefix),
-        BenchMode::KeyCreation => bench_hsm_key_creation(c, client, rt, transport, hsm_prefix),
-        BenchMode::SignVerify => bench_hsm_sign_verify(c, client, rt, transport, hsm_prefix),
+        BenchMode::Encrypt => bench_hsm_encrypt(c, client, rt, transport, hsm_prefix)?,
+        BenchMode::KeyCreation => bench_hsm_key_creation(c, client, rt, transport, hsm_prefix)?,
+        BenchMode::SignVerify => bench_hsm_sign_verify(c, client, rt, transport, hsm_prefix)?,
         BenchMode::Batch => {
             eprintln!("[bench] --hsm does not support --mode batch (no HSM bulk-op support)");
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
     sync::{
-        Arc, LazyLock,
+        Arc, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -38,28 +38,34 @@ use crate::{
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
-        PGSQL_QUERIES, SQLITE_QUERIES,
         migrate::{
             CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
             certificate_serial_tag,
         },
+        pgsql_queries,
         sql::database::SqlDatabase,
+        sqlite_queries,
     },
 };
-static SQLITE_CONVERTED_QUERIES: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+/// `SQLite` flavour of the shared queries (`$n` placeholders rewritten to `?n`).
+fn sqlite_converted_queries() -> DbResult<&'static HashMap<String, String>> {
+    static CELL: OnceLock<HashMap<String, String>> = OnceLock::new();
+    if let Some(map) = CELL.get() {
+        return Ok(map);
+    }
     let mut map = HashMap::new();
-    for (k, v) in PGSQL_QUERIES.iter() {
+    for (k, v) in pgsql_queries()?.iter() {
         map.insert(k.clone(), replace_dollars_with_qn(v));
     }
-    for (k, v) in SQLITE_QUERIES.iter() {
+    for (k, v) in sqlite_queries()?.iter() {
         map.insert(k.clone(), replace_dollars_with_qn(v));
     }
-    map
-});
+    Ok(CELL.get_or_init(|| map))
+}
 
 macro_rules! get_sqlite_query {
     ($name:literal) => {
-        SQLITE_CONVERTED_QUERIES
+        sqlite_converted_queries()?
             .get($name)
             .map(|s| s.as_str())
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
@@ -482,13 +488,7 @@ impl SqlitePool {
     /// Returns a reader connection using round-robin distribution.
     fn reader(&self) -> &Connection {
         let idx = self.reader_idx.fetch_add(1, Ordering::Relaxed) % self.readers.len();
-        // SAFETY: idx is computed modulo readers.len(), which is always >= 1.
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "idx is taken modulo readers.len(), which is >= 1"
-        )]
-        let reader = &self.readers[idx];
-        reader
+        self.readers.get(idx).unwrap_or(&self.writer)
     }
 
     /// Read a value from the `parameters` table by name, or `None` if absent.
@@ -541,8 +541,8 @@ impl SqlitePool {
 }
 
 impl SqlDatabase for SqlitePool {
-    fn get_loader(&self) -> &Loader {
-        &PGSQL_QUERIES
+    fn get_loader(&self) -> DbResult<&'static Loader> {
+        pgsql_queries()
     }
 }
 

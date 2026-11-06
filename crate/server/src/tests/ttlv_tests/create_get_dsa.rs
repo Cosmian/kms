@@ -34,12 +34,12 @@ fn test_create_get_dsa_roundtrip() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"dsa-rt-create".to_vec()),
-                request_payload: Operation::Create(Create {
+                request_payload: Operation::Create(Box::new(Create {
                     object_type: ObjectType::PrivateKey,
                     attributes: Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::DSA),
@@ -47,10 +47,10 @@ fn test_create_get_dsa_roundtrip() {
                         ..Default::default()
                     },
                     protection_storage_masks: None,
-                }),
+                })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let create_response = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &create_request)
@@ -86,7 +86,7 @@ fn test_create_get_dsa_roundtrip() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -100,7 +100,7 @@ fn test_create_get_dsa_roundtrip() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let get_response = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &get_request)

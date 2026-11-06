@@ -56,12 +56,12 @@ pub(crate) async fn scep_get(
     kms: Data<Arc<KMS>>,
     query: Query<ScepQuery>,
 ) -> KResult<HttpResponse> {
-    if !kms.params.scep_enabled {
+    if !kms.params.scep.enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     match query.operation.as_deref() {
         Some("GetCACaps") => Ok(ca_caps::get_ca_caps(
-            kms.params.scep_allow_renewal_without_challenge,
+            kms.params.scep.allow_renewal_without_challenge,
         )),
         Some("GetCACert") => ca_cert::get_ca_cert(&kms).await,
         Some("PKIOperation") => match query.message.as_deref() {
@@ -87,7 +87,7 @@ pub(crate) async fn scep_post(
     query: Query<ScepQuery>,
     payload: Payload,
 ) -> KResult<HttpResponse> {
-    if !kms.params.scep_enabled {
+    if !kms.params.scep.enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     match query.operation.as_deref() {

@@ -79,7 +79,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
     }
     // Deserialize the *operation payload* (the struct), then wrap it into the `Operation` enum.
     let op = match operation {
-        Op::Create => Operation::Create(deserialize_op!(Create, "Create")?),
+        Op::Create => Operation::Create(Box::new(deserialize_op!(Create, "Create")?)),
         Op::CreateKeyPair => Operation::CreateKeyPair(Box::new(deserialize_op!(CreateKeyPair, "CreateKeyPair")?)),
         Op::Encrypt => Operation::Encrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Encrypt, "Encrypt")?)),
         Op::Decrypt => Operation::Decrypt(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Decrypt, "Decrypt")?)),
@@ -88,7 +88,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
         Op::MACVerify => Operation::MACVerify(deserialize_op!(MACVerify, "MACVerify")?),
         Op::Sign => Operation::Sign(deserialize_op!(Sign, "Sign")?),
         Op::SignatureVerify => Operation::SignatureVerify(deserialize_op!(SignatureVerify, "SignatureVerify")?),
-        Op::DeriveKey => Operation::DeriveKey(deserialize_op!(DeriveKey, "DeriveKey")?),
+        Op::DeriveKey => Operation::DeriveKey(Box::new(deserialize_op!(DeriveKey, "DeriveKey")?)),
         Op::Import => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
         Op::Register => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
         Op::Export => Operation::Export(deserialize_op!(Export, "Export")?),
@@ -110,7 +110,6 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_request(
     }
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
 
-    #[allow(clippy::match_same_arms)]
     // arms bind distinct request types; merging with `|` would lose the typed `req` binding
     match op {
         Operation::Create(req) => validate_create(req, &wl),
@@ -1277,7 +1276,10 @@ fn validate_domain_qlength(alg: CryptographicAlgorithm, q: i32) -> KResult<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod tests {
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{

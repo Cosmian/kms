@@ -36,7 +36,7 @@ impl WordPatternMaskAction {
             replace: &self.replace,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("word-pattern-mask", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

@@ -14,7 +14,10 @@ mod subject;
 pub(crate) mod template;
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod hsm_subject_tests;
 #[cfg(test)]
 mod tests;

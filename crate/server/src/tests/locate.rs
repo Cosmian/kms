@@ -53,7 +53,7 @@ async fn test_locate() -> KResult<()> {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(Operation::CreateKeyPair(Box::new(
                 create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
@@ -64,7 +64,7 @@ async fn test_locate() -> KResult<()> {
                     None,
                 )?,
             ))),
-        )],
+        ))],
     };
 
     let response = kms.message(request, &owner).await?;

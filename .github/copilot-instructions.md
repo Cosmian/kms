@@ -89,7 +89,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - No `.unwrap()` in production code — use `?` propagation.
 - `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm; never on statements/blocks inside a function body, never `cfg!(..)` at runtime.
 - Every `unsafe` block requires a `// SAFETY:` comment.
-- Zero Clippy warnings — fix warnings; `#[allow]` / `#[expect]` is forbidden on new code (see `rust.instructions.md` § Clippy and lint suppression).
+- Zero Clippy warnings and zero clippy suppressions in non-test source; tests may use only `#[expect(<lint>, reason = "…")]` — fix the lint instead (see `rust.instructions.md` § Clippy and lint suppression; idioms: `.github/skills/rust-best-practices/SKILL.md`).
 - Unit tests go in a `#[cfg(test)]` submodule in the same file.
 - All public items require `///` doc comments.
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
@@ -124,16 +124,15 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse/create complete fixtures in `test_data` |
 | `/kms-docs-verify` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |
-| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` |
-| `/kms-caveman` | One read-only mechanical Rust triage pass before deeper Rust reviews; not a substitute for semantic or security review |
-| `/rust-panic-audit` | Scan for panics, `.unwrap()`, `process::exit`, brutal exits |
+| `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` (report schema: `.github/skills/shared/orchestrator-contract.md` §4) |
+| `/kms-caveman [path]` | One read-only mechanical Rust triage pass before deeper Rust reviews; also the dedicated panic/brutal-exit scan. Not a substitute for semantic or security review |
 | `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
 | `/security-review` | Before PRs affecting security-sensitive flows; only verified static UI/assets or documentation may use the incremental skip gate |
 | `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
 | `/standards-review` | Verify code against exact text of applicable standards |
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
-| `/rust-patterns` | Rust design patterns for this codebase |
-| `/rust-simplify` | Find simplification opportunities in Rust code |
+| `/rust-best-practices` | Generic Rust idiom baseline (adapted from BeautifulRust) plus KMS patterns reference |
+| `/rust-refactor` | Rust duplication and structural-complexity review, behavior-preserving |
 | `/rust-error-propagation` | Audit `Result` propagation chains |
 | `/react-ant-patterns` | UI coding conventions |
 | `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
@@ -171,3 +170,4 @@ When a prompt matches a trigger below, read `.github/skills/<skill>/SKILL.md` an
 - Full, release, and pre-release gates override focused-scope skips. State why any skill was inapplicable.
 - Skills cannot select a model or guarantee latency. Do not claim token/percentage savings without observed usage data.
 - `/kms-pr-review` Phase 1 overlaps `/kms-caveman`; if `/kms-caveman` already ran this session, feed its findings into `/kms-pr-review` instead of re-scanning.
+- Review and audit reports follow the schema in `.github/skills/shared/orchestrator-contract.md` §4: per-phase `PASS | FAIL | SKIPPED | INCOMPLETE` with evidence; a missing required check is `INCOMPLETE`, never `PASS`.

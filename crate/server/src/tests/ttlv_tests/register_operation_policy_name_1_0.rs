@@ -77,7 +77,7 @@ fn register_key_with_policy_name(client: &SocketClient, policy_name: &str) -> St
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Register,
                 ephemeral: None,
@@ -98,7 +98,7 @@ fn register_key_with_policy_name(client: &SocketClient, policy_name: &str) -> St
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -147,7 +147,7 @@ fn check_operation_policy_name(client: &SocketClient, key_id: &str, expected_pol
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -158,7 +158,7 @@ fn check_operation_policy_name(client: &SocketClient, key_id: &str, expected_pol
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

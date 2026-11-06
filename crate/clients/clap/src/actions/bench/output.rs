@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     fmt::Write as _,
     fs,
+    io::Write as _,
     path::{Path, PathBuf},
 };
 
@@ -89,10 +90,6 @@ pub(crate) fn criterion_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("target/criterion"))
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "this command writes its result to stdout"
-)]
 pub(crate) fn collect_json_output(
     version_label: Option<&str>,
     protocol_slug: &str,
@@ -109,7 +106,7 @@ pub(crate) fn collect_json_output(
         let line = serde_json::to_string(entry)
             .map_err(|e| KmsCliError::Default(format!("JSON serialization: {e}")))?;
         {
-            println!("{line}");
+            writeln!(std::io::stdout().lock(), "{line}")?;
         }
     }
 
@@ -572,10 +569,6 @@ fn group_updated_since(dir: &Path, since: std::time::SystemTime) -> bool {
     false
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "this command writes its result to stdout"
-)]
 pub(super) fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCliResult<()> {
     let home = criterion_home();
     let mut results: BTreeMap<String, bool> = BTreeMap::new();
@@ -613,7 +606,7 @@ pub(super) fn generate_compact_output(run_start: std::time::SystemTime) -> KmsCl
     for (name, ok) in &results {
         let status = if *ok { "OK" } else { "KO" };
         {
-            println!("{name:<width$} {status}");
+            writeln!(std::io::stdout().lock(), "{name:<width$} {status}")?;
         }
     }
 

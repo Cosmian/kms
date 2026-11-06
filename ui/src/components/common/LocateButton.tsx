@@ -114,16 +114,10 @@ const LocateButton: React.FC<LocateButtonProps> = ({ onSelect, buttonText, objec
     const runSearch = async () => {
         setLoading(true);
         try {
-            const req = wasm.locate_ttlv_request(
-                searchTags.length > 0 ? searchTags : undefined,
-                undefined as unknown as string | undefined,
-                undefined,
-                undefined as unknown as string | undefined,
-                objectType,
-                undefined,
-                undefined,
-                undefined,
-            );
+            const req = wasm.locate_ttlv_request({
+                tags: searchTags.length > 0 ? searchTags : undefined,
+                object_type: objectType,
+            });
             const respStr = await sendKmipRequest(req, serverUrl);
             if (respStr) {
                 const resp = await wasm.parse_locate_ttlv_response(respStr);

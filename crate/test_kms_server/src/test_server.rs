@@ -422,7 +422,7 @@ pub async fn start_isolated_test_kms_server(owner: &str) -> Result<TestsContext,
             config.db.clear_database = false;
             owner.clone_into(&mut config.default_username);
             // The shared server owns the Google CSE keypair; another owner cannot recreate it.
-            config.google_cse_config.google_cse_enable = false;
+            config.google_cse_config.enable = false;
         },
         TestClientOptions::default(),
     )
@@ -875,7 +875,7 @@ pub async fn start_default_test_kms_server_with_hsm_for_vectors()
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
     // No key_encryption_key — this is the plain HSM server (no KEK wrapping).
-    config.google_cse_config.google_cse_enable = false;
+    config.google_cse_config.enable = false;
     let ctx = start_server_from_config(config, &config_path, listeners).await?;
     Ok(ctx)
 }
@@ -923,7 +923,7 @@ pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
     config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
     // Disable Google CSE: starting with an empty workspace means no Google CSE
     // RSA keypair exists yet, and this test does not need that feature.
-    config.google_cse_config.google_cse_enable = false;
+    config.google_cse_config.enable = false;
     start_server_from_config(config, &config_path, listeners).await
 }
 
@@ -1284,7 +1284,7 @@ fn allocate_dynamic_port(config: &mut ClapConfig) -> Result<TestServerListeners,
     // Same TOCTOU concern as the HTTP listener above: keep the socket-server
     // listener bound and hand it directly to `start_kms_server` instead of
     // probing a free port, dropping it, and re-binding by port number later.
-    let socket = if config.socket_server.socket_server_start {
+    let socket = if config.socket_server.start {
         let socket_listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
             KmsClientError::UnexpectedError(format!(
                 "Failed to allocate socket server port for test server: {e}"
@@ -1298,7 +1298,7 @@ fn allocate_dynamic_port(config: &mut ClapConfig) -> Result<TestServerListeners,
                 ))
             })?
             .port();
-        config.socket_server.socket_server_port = socket_port;
+        config.socket_server.port = socket_port;
         Some(socket_listener)
     } else {
         None

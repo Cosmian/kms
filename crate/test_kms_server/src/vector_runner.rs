@@ -200,7 +200,6 @@ pub struct CaptureNthEntry {
 
 /// A single request–response step in a test vector.
 #[derive(Debug, Deserialize)]
-#[allow(clippy::struct_excessive_bools)] // one independent TOML flag per assertion mode
 pub struct TestStep {
     /// KMIP operation name (informational; included in error messages).
     ///

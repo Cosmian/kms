@@ -45,7 +45,7 @@ const STUB_SIGNATURE: [u8; 64] = [0x5A; 64];
 /// image, so the counters read through this handle are the ones the `HsmLib` increments.
 fn stub() -> HResult<(PathBuf, Library)> {
     let path = compile_fixture("minimal_pkcs11.c", &["-DWITH_MESSAGE_SIGNATURE"])?;
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-signature C calls")]
     // SAFETY: loading a freshly compiled test fixture whose initializers are trivial.
     let library = unsafe { Library::new(&path) }
         .map_err(|e| HError::Default(format!("failed to load the stub fixture: {e}")))?;
@@ -54,7 +54,7 @@ fn stub() -> HResult<(PathBuf, Library)> {
 
 fn read_counts(library: &Library, symbol: &[u8]) -> HResult<[CK_ULONG; 8]> {
     let mut out = [0; 8];
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-signature C calls")]
     // SAFETY: the fixture's counts function writes exactly 8 `CK_ULONG`s into `out`.
     unsafe {
         let f = library
@@ -70,7 +70,7 @@ fn counts(library: &Library) -> HResult<[CK_ULONG; 8]> {
 }
 
 fn fail_next(library: &Library, mode: CK_ULONG) -> HResult<()> {
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-signature C calls")]
     // SAFETY: `fixture_fail_next_message` only stores its argument.
     unsafe {
         let f = library
@@ -341,7 +341,7 @@ fn softhsm2_v3_adapter_message_signature() -> HResult<()> {
         &["-ldl", "-lpthread"]
     };
     let adapter = compile_fixture("v3_message_adapter.c", extra)?;
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-signature C calls")]
     // SAFETY: loading a freshly compiled test fixture whose initializers are trivial.
     let library = unsafe { Library::new(&adapter) }
         .map_err(|e| HError::Default(format!("failed to load the v3 adapter: {e}")))?;
@@ -354,7 +354,7 @@ fn softhsm2_v3_adapter_message_signature() -> HResult<()> {
     }
     let target = CString::new(target)
         .map_err(|e| HError::Default(format!("invalid SoftHSM2 library path: {e}")))?;
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-signature C calls")]
     // SAFETY: `v3_adapter_set_target` takes a NUL-terminated path and returns a `CK_RV`.
     let rv = unsafe {
         let f = library
@@ -401,7 +401,7 @@ fn softhsm2_v3_adapter_message_signature() -> HResult<()> {
     // A mechanism the token rejects at message init: one probe, then classic calls.
     let before = c;
     let rejected: [CK_ULONG; 1] = [CKM_ECDSA];
-    #[expect(unsafe_code)]
+    #[expect(unsafe_code, reason = "PKCS#11 message-signature C calls")]
     // SAFETY: `v3_adapter_set_rejected` copies `n` mechanism types from the pointer.
     unsafe {
         let f = library

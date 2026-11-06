@@ -102,7 +102,7 @@ mod tests {
                 "Validity Date was not serialized as DateTime".to_owned(),
             ));
         }
-        let decoded: Validate = from_ttlv(ttlv)?;
+        let decoded: Validate = from_ttlv(&ttlv)?;
         if decoded.validity_time.as_deref() == Some("20500101000000Z") {
             Ok(())
         } else {
@@ -131,7 +131,7 @@ mod tests {
             unique_identifier: None,
             validity_time: Some("2026-10-19T09:00:00.250Z".to_owned()),
         })?;
-        let decoded: Validate = from_ttlv(ttlv)?;
+        let decoded: Validate = from_ttlv(&ttlv)?;
         if decoded.validity_time.as_deref() == Some("20261019090000Z") {
             Ok(())
         } else {

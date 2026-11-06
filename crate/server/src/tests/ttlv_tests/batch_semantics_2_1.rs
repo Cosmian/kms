@@ -45,7 +45,7 @@ fn header(
 }
 
 fn item(operation: Operation) -> RequestMessageBatchItemVersioned {
-    RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(operation))
+    RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(operation)))
 }
 
 fn query() -> Operation {
@@ -56,7 +56,7 @@ fn query() -> Operation {
 }
 
 fn create_aes() -> Operation {
-    Operation::Create(Create {
+    Operation::Create(Box::new(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -67,7 +67,7 @@ fn create_aes() -> Operation {
             ..Default::default()
         },
         protection_storage_masks: None,
-    })
+    }))
 }
 
 fn send(
@@ -141,7 +141,7 @@ fn test_critical_message_extension_2_1_binary() {
     }]);
     let response = send(
         header(1, None),
-        vec![RequestMessageBatchItemVersioned::V21(batch_item)],
+        vec![RequestMessageBatchItemVersioned::V21(Box::new(batch_item))],
     );
     assert_eq!(response.batch_item.len(), 1);
     let batch_item = v21(&response, 0);
@@ -196,7 +196,7 @@ fn test_omitted_unique_identifier_uses_id_placeholder_2_1_binary() {
         .send_raw_request(&request_bytes)
         .expect("Failed to send request");
     let response: ResponseMessage = from_ttlv(
-        TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV"),
+        &TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV"),
     )
     .expect("Invalid response message");
     assert_eq!(response.batch_item.len(), 2);
@@ -239,7 +239,7 @@ fn test_ephemeral_encrypt_2_1_binary() {
     batch_item.ephemeral = Some(true);
     let response = send(
         header(1, None),
-        vec![RequestMessageBatchItemVersioned::V21(batch_item)],
+        vec![RequestMessageBatchItemVersioned::V21(Box::new(batch_item))],
     );
     let batch_item = v21(&response, 0);
     assert_eq!(batch_item.result_status, ResultStatusEnumeration::Success);
@@ -282,7 +282,7 @@ fn test_batch_count_mismatch_2_1_binary() {
         .send_raw_request(&request_bytes)
         .expect("Failed to send request");
     let response: ResponseMessage = from_ttlv(
-        TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV"),
+        &TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV"),
     )
     .expect("Invalid response message");
     let batch_item = v21(&response, 0);
@@ -297,7 +297,7 @@ fn send_bytes(request_bytes: &[u8]) -> ResponseMessage {
     let response_bytes = get_client()
         .send_raw_request(request_bytes)
         .expect("Failed to send request");
-    from_ttlv(TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV"))
+    from_ttlv(&TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip2).expect("Invalid response TTLV"))
         .expect("Invalid response message")
 }
 

@@ -334,7 +334,7 @@ pub(super) async fn validate_cse_authorization_token(
     authorization_token: &str,
     google_cse_kacls_url: &str,
     cse_config: &Option<GoogleCseConfig>,
-    #[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))] roles: Option<&[Role]>,
+    roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     debug!("entering");
 
@@ -384,6 +384,9 @@ pub(super) async fn validate_cse_authorization_token(
 
     #[cfg(all(not(test), not(feature = "insecure")))]
     check_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
+    // Roles are only enforced in production builds.
+    #[cfg(any(test, feature = "insecure"))]
+    let _ = roles;
 
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(

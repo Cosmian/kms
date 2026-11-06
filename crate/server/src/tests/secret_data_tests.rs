@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{KeyWrapType, SecretDataType},
     kmip_2_1::{
@@ -246,11 +244,11 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(key_material.clone()),
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::SecretData),
                     unique_identifier: Some(secret_id.clone()),
                     ..Default::default()
-                }),
+                })),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,

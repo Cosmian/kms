@@ -13,13 +13,14 @@ use crate::{core::KMS, error::KmsError, result::KResult, routes::enrollment::loa
 /// (RFC 7030 §4.1.3). No client authentication is required (§4.1.2).
 #[get("/.well-known/est/cacerts")]
 pub(crate) async fn get_cacerts(_req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<HttpResponse> {
-    if !kms.params.est_enabled {
+    if !kms.params.est.enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     info!("GET /.well-known/est/cacerts");
     let ca_uid = kms
         .params
-        .est_ca_uid
+        .est
+        .ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("EST enabled without est_ca_uid".to_owned()))?;
     let chain = load_ca_chain(&kms, ca_uid).await?;

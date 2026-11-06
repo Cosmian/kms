@@ -19,17 +19,17 @@ impl MarkdownAction {
     ///
     /// Returns an error if there is an issue creating or writing to the
     /// markdown file.
-    #[expect(
-        clippy::print_stdout,
-        reason = "markdown command writes its result to stdout"
-    )]
     pub fn process(&self, cmd: &Command) -> CosmianResult<()> {
         let mut output = String::new();
         writeln!(output)?;
         write_command(&mut output, "", "", cmd)?;
         let mut f = File::create(&self.markdown_file)?;
         f.write_all(output.as_bytes())?;
-        println!("Markdown generated to {}", self.markdown_file.display());
+        writeln!(
+            std::io::stdout().lock(),
+            "Markdown generated to {}",
+            self.markdown_file.display()
+        )?;
         Ok(())
     }
 }

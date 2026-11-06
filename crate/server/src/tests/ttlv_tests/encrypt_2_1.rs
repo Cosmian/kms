@@ -54,7 +54,7 @@ fn test_encrypt_2_1_iv_length_is_in_bits() {
                 batch_count: 1,
                 ..Default::default()
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                 RequestMessageBatchItem {
                     operation: OperationEnumeration::Encrypt,
                     ephemeral: None,
@@ -72,7 +72,7 @@ fn test_encrypt_2_1_iv_length_is_in_bits() {
                     })),
                     message_extension: None,
                 },
-            )],
+            ))],
         };
         client
             .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request_message)
@@ -117,7 +117,7 @@ pub(super) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Encrypt,
                 ephemeral: None,
@@ -138,7 +138,7 @@ pub(super) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
                 })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

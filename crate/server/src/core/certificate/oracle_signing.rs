@@ -504,7 +504,6 @@ pub(crate) async fn sign_ocsp_response_with_oracle(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::{
         crl::build_crl,

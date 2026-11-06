@@ -380,7 +380,12 @@ pub fn export_aes_key_bytes(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-#[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
+#[expect(
+    clippy::panic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "tests: a panic is the failure signal"
+)]
 pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let sk_id = test_object_id();

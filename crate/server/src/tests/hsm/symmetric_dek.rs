@@ -110,8 +110,12 @@ async fn create_symmetric_dek(
         false,
         Some(&kek_uid.to_owned()),
     )?;
-    let response =
-        send_message(kms.clone(), owner, vec![Operation::Create(create_request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };

@@ -19,13 +19,8 @@ impl KmipTag for kmip_1_4::kmip_types::Tag {
             .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
     }
 
-    // This conversion is idiomatic for items marked with #[repr(u32)]
-    #[expect(
-        clippy::as_conversions,
-        reason = "fieldless repr enum discriminant cast; no std conversion"
-    )]
     fn to_u32(&self) -> u32 {
-        *self as u32
+        u32::from(*self)
     }
 }
 
@@ -35,13 +30,8 @@ impl KmipTag for kmip_2_1::kmip_types::Tag {
             .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
     }
 
-    // This conversion is idiomatic for items marked with #[repr(u32)]
-    #[expect(
-        clippy::as_conversions,
-        reason = "fieldless repr enum discriminant cast; no std conversion"
-    )]
     fn to_u32(&self) -> u32 {
-        *self as u32
+        u32::from(*self)
     }
 }
 #[cfg(test)]

@@ -256,7 +256,7 @@ where
 
 fn authentication_failed_error(message: impl Into<String>) -> Error {
     XksErrorReply {
-        errorName: XksErrorName::AuthenticationFailedException,
+        errorName: XksErrorName::AuthenticationFailed,
         errorMessage: Some(message.into()),
     }
     .into()

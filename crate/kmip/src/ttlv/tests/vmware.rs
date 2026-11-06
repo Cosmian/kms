@@ -50,7 +50,7 @@ fn discover_versions_1() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -68,7 +68,7 @@ fn discover_versions_1() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
@@ -134,7 +134,7 @@ fn discover_versions_2() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -152,7 +152,7 @@ fn discover_versions_2() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
@@ -217,7 +217,7 @@ fn query() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -238,7 +238,7 @@ fn query() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
@@ -288,7 +288,7 @@ fn create() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -319,7 +319,7 @@ fn create() {
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
 
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     info!("response_message: {}", response_message);
 
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
@@ -369,7 +369,7 @@ fn get_attributes() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -390,7 +390,7 @@ fn get_attributes() {
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     info!("response_message: {}", response_message);
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");
@@ -428,7 +428,7 @@ fn add_attribute() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     assert_eq!(request_message.batch_item.len(), 3);
 
     let RequestMessageBatchItemVersioned::V14(batch_item) = &request_message.batch_item[0] else {
@@ -502,7 +502,7 @@ fn get() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -526,7 +526,7 @@ fn get() {
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     info!("response_message: {}", response_message);
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");

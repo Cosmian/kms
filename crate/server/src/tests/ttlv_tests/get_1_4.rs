@@ -50,7 +50,7 @@ fn test_get_missing_1_4_maps_to_item_not_found() {
                     batch_count: 1,
                     ..Default::default()
                 },
-                batch_item: vec![RequestMessageBatchItemVersioned::V14(
+                batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
                     RequestMessageBatchItem {
                         operation: OperationEnumeration::Get,
                         ephemeral: None,
@@ -64,7 +64,7 @@ fn test_get_missing_1_4_maps_to_item_not_found() {
                         }),
                         message_extension: None,
                     },
-                )],
+                ))],
             },
         )
         .expect("Failed to send request");
@@ -98,7 +98,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -112,7 +112,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -134,7 +134,7 @@ pub(super) fn get_symmetric_key(client: &SocketClient, key_id: &str) {
     // Safety: ensure the TTLV roundtrip decoding still works.
     let decoded_ttlv = TTLV::from_bytes(&response_bytes, kmip_flavor)
         .expect("Failed to decode serialized response TTLV");
-    let _decoded: ResponseMessage = from_ttlv(decoded_ttlv).expect("Failed to decode response");
+    let _decoded: ResponseMessage = from_ttlv(&decoded_ttlv).expect("Failed to decode response");
 
     assert_eq!(
         response.response_header.protocol_version,

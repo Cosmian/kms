@@ -373,7 +373,7 @@ impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
                 attribute,
             } => Self::Structure {
                 key_material: key_material.into(),
-                attributes: attribute.map(Into::into),
+                attributes: attribute.map(|attr| Box::new(attr.into())),
             },
         }
     }
@@ -393,7 +393,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
             } => {
                 let attributes_1_4 = attributes
                     .map(|attr| {
-                        let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = attr.into();
+                        let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = (*attr).into();
                         attrs
                             .into_iter()
                             .map(TryInto::try_into)
@@ -758,24 +758,20 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
             }
 
-            #[expect(
-                clippy::many_single_char_names,
-                reason = "names follow the KMIP DH/RSA key-value fields (p, q, g, j, y, x)"
-            )]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
             {
                 let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
-                // Here `p` and `q` describes either a public value for DH or
+                // Here `prime_p` and `prime_q` describe either a public value for DH or
                 // a prime secret factor for RSA. Kept as `BigInt`` and wrapped
                 // as `SafeBigInt` in RSA.
-                let mut p: Option<Box<BigInt>> = None;
-                let mut q: Option<Box<BigInt>> = None;
-                let mut g: Option<Box<BigInt>> = None;
-                let mut j: Option<Box<BigInt>> = None;
-                let mut y: Option<Box<BigInt>> = None;
-                let mut x: Option<Box<SafeBigInt>> = None;
+                let mut prime_p: Option<Box<BigInt>> = None;
+                let mut prime_q: Option<Box<BigInt>> = None;
+                let mut generator_g: Option<Box<BigInt>> = None;
+                let mut factor_j: Option<Box<BigInt>> = None;
+                let mut public_y: Option<Box<BigInt>> = None;
+                let mut private_x: Option<Box<SafeBigInt>> = None;
                 let mut key: Option<Zeroizing<Vec<u8>>> = None;
                 let mut modulus: Option<Box<BigInt>> = None;
                 let mut public_exponent: Option<Box<BigInt>> = None;
@@ -802,40 +798,40 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                             d = Some(Box::new(map.next_value()?));
                         }
                         Field::P => {
-                            if p.is_some() {
+                            if prime_p.is_some() {
                                 return Err(de::Error::duplicate_field("P"));
                             }
-                            p = Some(Box::new(map.next_value()?));
+                            prime_p = Some(Box::new(map.next_value()?));
                         }
                         Field::Q => {
-                            if q.is_some() {
+                            if prime_q.is_some() {
                                 return Err(de::Error::duplicate_field("Q"));
                             }
-                            q = Some(Box::new(map.next_value()?));
+                            prime_q = Some(Box::new(map.next_value()?));
                         }
                         Field::G => {
-                            if g.is_some() {
+                            if generator_g.is_some() {
                                 return Err(de::Error::duplicate_field("G"));
                             }
-                            g = Some(Box::new(map.next_value()?));
+                            generator_g = Some(Box::new(map.next_value()?));
                         }
                         Field::J => {
-                            if j.is_some() {
+                            if factor_j.is_some() {
                                 return Err(de::Error::duplicate_field("J"));
                             }
-                            j = Some(Box::new(map.next_value()?));
+                            factor_j = Some(Box::new(map.next_value()?));
                         }
                         Field::X => {
-                            if x.is_some() {
+                            if private_x.is_some() {
                                 return Err(de::Error::duplicate_field("X"));
                             }
-                            x = Some(Box::new(map.next_value()?));
+                            private_x = Some(Box::new(map.next_value()?));
                         }
                         Field::Y => {
-                            if y.is_some() {
+                            if public_y.is_some() {
                                 return Err(de::Error::duplicate_field("Y"));
                             }
-                            y = Some(Box::new(map.next_value()?));
+                            public_y = Some(Box::new(map.next_value()?));
                         }
                         Field::Key => {
                             if key.is_some() {
@@ -900,29 +896,56 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     Ok(match &self.key_format_type {
                         KeyFormatType::TransparentDHPublicKey
                         | KeyFormatType::TransparentDHPrivateKey => {
-                            let p = p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
-                            let g = g.ok_or_else(|| de::Error::missing_field("G for DH key"))?;
-                            if let Some(x) = x {
-                                KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x }
+                            let prime_p =
+                                prime_p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
+                            let generator_g = generator_g
+                                .ok_or_else(|| de::Error::missing_field("G for DH key"))?;
+                            if let Some(private_x) = private_x {
+                                KeyMaterial::TransparentDHPrivateKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    j: factor_j,
+                                    x: private_x,
+                                }
                             } else {
-                                let y = y.ok_or_else(|| {
+                                let public_y = public_y.ok_or_else(|| {
                                     de::Error::missing_field("Y for DH public key")
                                 })?;
-                                KeyMaterial::TransparentDHPublicKey { p, q, g, j, y }
+                                KeyMaterial::TransparentDHPublicKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    j: factor_j,
+                                    y: public_y,
+                                }
                             }
                         }
                         KeyFormatType::TransparentDSAPublicKey
                         | KeyFormatType::TransparentDSAPrivateKey => {
-                            let p = p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
-                            let g = g.ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
-                            let q = q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
-                            if let Some(x) = x {
-                                KeyMaterial::TransparentDSAPrivateKey { p, q, g, x }
+                            let prime_p =
+                                prime_p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
+                            let generator_g = generator_g
+                                .ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
+                            let prime_q =
+                                prime_q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
+                            if let Some(private_x) = private_x {
+                                KeyMaterial::TransparentDSAPrivateKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    x: private_x,
+                                }
                             } else {
-                                let y = y.ok_or_else(|| {
+                                let public_y = public_y.ok_or_else(|| {
                                     de::Error::missing_field("Y for DSA public key")
                                 })?;
-                                KeyMaterial::TransparentDSAPublicKey { p, q, g, y }
+                                KeyMaterial::TransparentDSAPublicKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    y: public_y,
+                                }
                             }
                         }
                         KeyFormatType::TransparentRSAPublicKey => {
@@ -945,8 +968,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                                 modulus,
                                 public_exponent,
                                 private_exponent,
-                                p: p.map(|p| Box::new(SafeBigInt::from(*p))),
-                                q: q.map(|q| Box::new(SafeBigInt::from(*q))),
+                                p: prime_p.map(|p| Box::new(SafeBigInt::from(*p))),
+                                q: prime_q.map(|q| Box::new(SafeBigInt::from(*q))),
                                 prime_exponent_p,
                                 prime_exponent_q,
                                 crt_coefficient,

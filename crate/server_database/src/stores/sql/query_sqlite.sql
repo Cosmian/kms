@@ -2,7 +2,7 @@
 --
 -- These queries override entries from query.sql when SQLite JSON syntax diverges
 -- from the PostgreSQL / shared syntax.  The `get_sqlite_query!` macro checks this
--- file first and falls back to `PGSQL_QUERIES` (query.sql) for any name not found here.
+-- file first and falls back to `pgsql_queries()` (query.sql) for any name not found here.
 
 -- name: count-non-destroyed-keys
 SELECT COUNT(*) FROM objects

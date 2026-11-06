@@ -182,27 +182,34 @@ pub(crate) async fn verify_auth_verifier_jwt_subject(
 ///
 /// In test / insecure builds the signature check is skipped (same behaviour
 /// as the existing `JwtAuth` middleware).
-#[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))]
-#[cfg_attr(any(test, feature = "insecure"), allow(clippy::unused_async))]
-async fn verify_auth_verifier_jwt(
-    jwks_manager: &Arc<JwksManager>,
+#[cfg(any(test, feature = "insecure"))]
+fn verify_auth_verifier_jwt(
+    _jwks_manager: &Arc<JwksManager>,
     token: &str,
-) -> KResult<AuthVerifierClaims> {
-    // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here, in every build
-    // (the signature check below is skipped in test/insecure builds).
-    JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
-
-    // In test/insecure builds skip signature validation — decode only.
-    #[cfg(any(test, feature = "insecure"))]
-    {
+) -> std::future::Ready<KResult<AuthVerifierClaims>> {
+    // Synchronous body in a `Ready` so the async signature of the production build is kept
+    // without an `.await`-less `async fn`.
+    fn decode_only(token: &str) -> KResult<AuthVerifierClaims> {
+        // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here, in every build.
+        JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
         let token_data = dangerous::insecure_decode::<AuthVerifierClaims>(token).map_err(|e| {
             KmsError::Unauthorized(format!("Auth Verifier: cannot decode token: {e}"))
         })?;
         Ok(token_data.claims)
     }
+    std::future::ready(decode_only(token))
+}
+
+/// Production variant of [`verify_auth_verifier_jwt`]: full signature validation.
+#[cfg(all(not(test), not(feature = "insecure")))]
+async fn verify_auth_verifier_jwt(
+    jwks_manager: &Arc<JwksManager>,
+    token: &str,
+) -> KResult<AuthVerifierClaims> {
+    // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here, in every build.
+    JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
 
     // Production: full validation.
-    #[cfg(all(not(test), not(feature = "insecure")))]
     {
         let header = decode_header(token).map_err(|e| {
             KmsError::Unauthorized(format!("Auth Verifier: cannot decode token header: {e}"))
@@ -279,7 +286,6 @@ async fn verify_auth_verifier_jwt(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 pub(crate) mod tests {
     use std::sync::{
         Arc,

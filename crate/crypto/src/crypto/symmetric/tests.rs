@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 use cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
 use openssl::provider::Provider;
 

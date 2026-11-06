@@ -43,19 +43,18 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
 
     const onFinish = async (values: ImportKeyFormData) => {
         await execute(async () => {
-            const request = import_ttlv_request(
-                values.keyId,
-                values.keyFile,
-                values.keyFormat,
-                values.publicKeyId,
-                values.privateKeyId,
-                values.certificateId,
-                values.unwrap,
-                values.replaceExisting,
-                values.tags,
-                values.keyUsage,
-                values.wrappingKeyId,
-            );
+            const request = import_ttlv_request(values.keyFile, {
+                unique_identifier: values.keyId,
+                key_format: values.keyFormat,
+                public_key_id: values.publicKeyId,
+                private_key_id: values.privateKeyId,
+                certificate_id: values.certificateId,
+                unwrap: values.unwrap,
+                replace_existing: values.replaceExisting,
+                tags: values.tags,
+                key_usage: values.keyUsage,
+                wrapping_key_id: values.wrappingKeyId,
+            });
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);

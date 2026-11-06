@@ -1,46 +1,22 @@
 ---
 name: code-quality
-description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/skills/shared/orchestrator-contract.md (KMS Caveman first, then MISE, Clippy, error-prop, refactor + simplify, patterns, async, CI efficiency). Each phase is a sub-agent (contract §6). One ranked report deduplicating overlapping findings. Use before PRs or when improving code quality.'
+description: 'Scoped code-quality audit orchestrator: runs 8 phases per .github/skills/shared/orchestrator-contract.md (KMS Caveman first, then MISE, Clippy, error-prop, refactor, best practices, async, CI efficiency). One ranked report with one owner per finding. Use before PRs or when improving code quality.'
 ---
 
 # Code Quality Audit
 
-Orchestrates six Rust-focused audit skills, MISE Bash checks, Clippy, and CI efficiency in one ranked report. The read-only KMS Caveman pass runs first; findings from deeper reviews are deduplicated.
+Orchestrates the Rust-focused audit skills, MISE Bash checks, Clippy, and CI efficiency in one ranked report. The read-only KMS Caveman pass runs first; each finding has one owner.
 
 **Usage**: `/code-quality` (full workspace) or `/code-quality crate/server/src/`
-> **Canonical Reference**: This orchestrator's phase ordering, skip gates, and deduplication rules follow `.github/skills/shared/orchestrator-contract.md`. Each phase runs as a sub-agent per contract §6 (cheap routing for mechanical phases, reasoning routing for judgment phases where the harness supports it).
+> **Canonical Reference**: This orchestrator's phase ordering, skip gates, finding ownership and report schema follow `.github/skills/shared/orchestrator-contract.md` (§1 Code Quality Order, §3, §4). Delegate only genuinely independent phases via the harness's supported mechanism; otherwise run inline (contract §6). Baseline: [`rust-best-practices`](../rust-best-practices/SKILL.md).
 
 ## Orchestration rationale
 
-The Rust review skills overlap; this orchestrator orders them and deduplicates findings.
+1. **Orders for efficiency** — cheap, high-signal scans first; expensive analysis later; skips irrelevant skills.
+2. **One owner per finding** — when two phases flag the same issue it appears once, at the maximum confirmed severity, with cross-references.
+3. **Conditions execution** — KMS Caveman runs once first. `mise` runs only when `.mise/` changed. Async review runs only when changed code or call paths are relevant; CI review runs only for full-workspace audits.
 
-1. **Orders for efficiency** — cheap, high-signal scans first; expensive
-   analysis later; skips irrelevant skills.
-2. **Deduplicates findings** — when two skills flag the same issue (e.g. a long
-   function), it appears once under the highest-severity category.
-3. **Conditions execution** — KMS Caveman runs once first. `mise` runs only when `.mise/` changed.
-   Async review runs only when changed code or call paths are relevant; CI review runs only for full-workspace audits.
-
-### Skill overlap map
-
-| Finding                        | Clippy | rust-refactor | rust-simplify | rust-patterns | rust-err-prop | rust-async |
-| ------------------------------ | :----: | :-----------: | :-----------: | :-----------: | :-----------: | :--------: |
-| `.unwrap()` / `.expect()`      |   ✓    |               |       ✓       |               |               |            |
-| Long functions (> 50 lines)    |   ✓    |       ✓       |       ✓       |               |               |            |
-| Deep nesting                   |   ✓    |               |       ✓       |               |               |            |
-| Bool parameter traps           |        |               |       ✓       |               |               |            |
-| Duplicate code blocks          |        |       ✓       |               |               |               |            |
-| Repeated `match` arms          |        |       ✓       |               |       ✓       |               |            |
-| Missed `?` propagation         |        |               |               |               |       ✓       |            |
-| `.to_string()` on errors       |        |               |               |               |       ✓       |            |
-| Pattern violations             |        |               |               |       ✓       |               |            |
-| Sequential independent awaits  |        |               |               |               |               |     ✓      |
-| Blocking I/O on async runtime  |        |               |               |               |               |     ✓      |
-| Unnecessary `Arc`              |        |               |               |               |               |     ✓      |
-
-**Overlap resolution rule**: when the same issue is found by multiple skills,
-report it under the *first* skill in pipeline order (Clippy > err-prop > refactor
-> simplify > patterns > async). List cross-references in the detail column.
+Phase 1 is the single owner of mechanical findings; later phases add evidence and cross-references rather than re-reporting (contract §3).
 
 ---
 
@@ -63,8 +39,8 @@ diffs, use these conservative gates and state every skip in the report:
 |`/mise`|`.mise/` files in scope|No `.mise/` files changed|
 |`/rust-async-refactor`|Changed code/callers async or may block runtime|Inspected changes and callers have no async/blocking relevance|
 |`/rust-error-propagation`|Changed code affects fallible operations/errors|Inspected changes cannot affect error paths|
-|`/rust-simplify`|Full audit or focused structural change|Inspected changes do not affect complexity|
-|`/rust-refactor`|Full audit or focused code has repeated behavior|Inspected code unrelated to duplication; regex misses are insufficient|
+|`/rust-refactor`|Full audit, or focused code with repeated behavior or structural change|Inspected code unrelated to duplication and complexity; regex misses are insufficient|
+|`/rust-best-practices`|Rust files in scope|Never for Rust scope; not applicable when no Rust is in scope|
 |`/ci-efficiency`|Full-workspace audit|Focused sub-path is the complete requested scope|
 
 This skill does not replace security, cryptographic, or standards reviews. Run those when their
@@ -156,165 +132,39 @@ Categorize every warning:
 > **BLOCKING**. List each with file:line and suggested replacement (`?` or
 > `.ok_or_else(|| kms_error!(...))?`).
 
-**Flags to save for dedup**: unwrap/expect, cognitive_complexity, too_many_lines,
-too_many_arguments.
+**Suppressions**: reuse the Phase 1 `#[allow]` / `#[expect]` evidence and classify it against `rust.instructions.md` § Clippy and lint suppression (zero clippy suppressions outside tests; tests use `expect` with `reason`); do not re-scan. Clippy findings seed finding ownership for the later phases (contract §3).
 
 ---
 
-## Step 4 — Error propagation audit (conditional)
+## Step 4 — Error propagation (conditional)
 
-For a full-workspace audit, run `/rust-error-propagation`. For a focused diff, run it when the
-changed code or affected callers modify fallible operations, `Result` propagation, error conversion,
-or error context. Skip only after inspecting the changes and confirming none of those paths are
-affected; record the reason. Do not infer irrelevance from the absence of the word `Result` in a
-search of the entire containing file.
+**Invoke**: `/rust-error-propagation [path]`. **Eligibility**: full-workspace audit, or a focused diff whose changed code or affected callers modify fallible operations, `Result` propagation, error conversion, or error context. Skip only after inspecting the changes and confirming none of those paths are affected; record the reason. Do not infer irrelevance from the absence of the word `Result` in a search of the whole containing file.
 
-### Pass A — Missed `?`
-
-```bash
-# Find verbose match on Result that could be ?
-rg -n "match .*\\b(Ok|Err)\\b" --type rust <path> | head -30
-```
-
-### Pass B — `.to_string()` anti-pattern
-
-```bash
-rg -n '\.to_string\(\)' --type rust <path> | grep -i "err\|map_err" | head -20
-```
-
-### Pass C — Silent error discard
-
-```bash
-rg -n 'map_err\(\s*\|_\|' --type rust <path> | head -20
-```
-
-**Output**: ranked list (🔴 Critical → 🟢 Low) per the rust-error-propagation
-severity scale. Merge with Clippy findings — if Clippy already flagged the same
-line, append "(also flagged by Clippy)" instead of duplicating.
+**Input scope**: the Step 1 scope. **Report**: `./review-YYYY-MM-DD/rust-error-propagation.md` when persisted. If Clippy already flagged the same line, add a cross-reference (contract §3).
 
 ---
 
-## Step 5 — Structural analysis: duplication + simplification
+## Step 5 — Structural and duplication review
 
-For a full-workspace audit, run both skills. For a focused diff, use the scope gate in Step 1;
-`/kms-caveman` can identify literal duplicate candidates but cannot rule out semantically duplicated
-behavior. Do not skip `/rust-refactor` based only on a negative regex/search result.
+**Invoke**: `/rust-refactor [path]` once; it covers duplication and structural complexity in one review. **Eligibility**: full-workspace audit, or focused code with repeated behavior or structural change. `/kms-caveman` can identify literal duplicate candidates but cannot rule out semantically duplicated behavior; do not skip based on a negative regex result.
 
-### 4a — Duplication scan (rust-refactor)
-
-```bash
-# Find clone-heavy code
-rg "\.clone\(\)" --type rust <path> --stats 2>/dev/null | tail -5
-
-# Spot repeated function patterns across KMIP operations
-rg -l "fn (create|get|locate|activate|revoke|destroy)_" <path> 2>/dev/null | head -10
-```
-
-Checklist:
-- [ ] Functions with near-identical signatures/bodies
-- [ ] `match` arms repeating the same multi-line logic
-- [ ] `impl` blocks repeating methods on different types
-- [ ] Repeated `#[cfg(feature = "...")]` guards
-- [ ] Repeated access-control check sequences in KMIP operation handlers
-
-### 4b — Complexity scan (rust-simplify)
-
-```bash
-# Long functions (> 50 lines) — approximate via indented fn bodies
-rg -c "^\\s+(pub |pub\\(crate\\) )?fn " --type rust <path>
-
-# Deep nesting (≥ 5 levels = 20 spaces)
-rg -n "^ {20,}" --type rust <path> | head -30
-
-# Bool param traps
-rg -n "fn [a-z_]+\\([^)]*bool[^)]*bool" --type rust <path>
-
-# Iterator anti-patterns
-rg -n "for .+ in .+\.(iter|iter_mut)\(\)" --type rust <path> | head -20
-```
-
-### 4c — Classify & dedup
-
-Merge 4a + 4b findings. When both flag the same function (e.g. long + duplicated),
-list once with both tags.
-
-| Smell | Pattern | Severity |
-|-------|---------|----------|
-| Duplicate function bodies | Generic / Trait / macro | HIGH |
-| Near-identical KMIP handlers | `macro_rules!` dispatch helper | HIGH |
-| Repeated access-control blocks | Shared `check_access` helper | HIGH |
-| Function > 100 lines | Extract named helper(s) | HIGH |
-| Nesting depth ≥ 5 | Early return / `let-else` / `?` | HIGH |
-| Multiple `bool` params | Replace with `pub(crate) enum` | MEDIUM |
-| Dead / unused item | Delete (cross-crate check first) | MEDIUM |
-| Manual `for` → iterator chain | `map` / `filter` / `fold` | LOW |
-| `#[cfg(feature)]` inside fn body | Hoist to fn/module level | LOW |
+**Input scope**: the Step 1 scope. **Report**: `./review-YYYY-MM-DD/rust-refactor.md` when persisted.
 
 ---
 
-## Step 6 — Design pattern compliance (always run)
+## Step 6 — Best practices and KMS patterns
 
-Invoke `/rust-patterns` as a reference. Evaluate the scoped code against the
-8 KMS-specific patterns:
+**Invoke**: `/rust-best-practices`, with [`references/kms-patterns.md`](../rust-best-practices/references/kms-patterns.md) as a non-normative reference. **Eligibility**: always when Rust is in scope. Evaluate the scoped code semantically against the baseline; KMS instruction files win on any conflict.
 
-- [ ] **Newtype wrappers** — raw strings crossing API boundaries? (`KeyUid`, `UserId`, `UniqueIdentifier`)
-- [ ] **Builder for complex config** — any constructor with > 4 args?
-- [ ] **Command pattern for KMIP ops** — operations hold their own state correctly?
-- [ ] **Trait-based abstraction for DB/HSM** — concrete types leaking into callers?
-- [ ] **Key lifecycle state machine** — state transitions using `can_transition_to()`?
-- [ ] **Error macro** — errors constructed ad-hoc instead of `kms_error!`?
-- [ ] **Extension traits** — repeated utility methods on foreign types?
-- [ ] **`macro_rules!` for dispatch** — repeated match arms in dispatch.rs?
-
-**Output**: pattern violations with file:line, severity (BLOCKING / HIGH / ADVISORY),
-and the pattern reference. Cross-reference with Step 5 findings — a "repeated
-match arms" finding in Step 5 is likely a Pattern 8 violation.
+**Input scope**: the Step 1 scope. **Report**: `./review-YYYY-MM-DD/rust-best-practices.md` when persisted.
 
 ---
 
 ## Step 7 — Async optimization (conditional)
 
-**Only run if** Step 1 detected async code in scope.
+**Invoke**: `/rust-async-refactor [path]`. **Eligibility**: Step 1 found changed code or affected callers on async paths or that may block the runtime; otherwise record the inspected skip reason.
 
-Invoke `/rust-async-refactor` logic:
-
-### Pass A — Sequential independent awaits
-
-```bash
-rg -n "let .+ = .+\.await;" --type rust <path> | head -40
-```
-
-For each file with ≥ 3 consecutive independent `.await` calls, flag as
-candidate for `tokio::try_join!`.
-
-### Pass B — Unnecessary Arc
-
-```bash
-rg -n "Arc::new" --type rust <path> | head -20
-```
-
-Flag `Arc::new(...)` where the value is only used within a single async task.
-Exempt: `Arc<ServerParams>`, `Arc<reqwest::Client>`, `web::Data<Arc<KMS>>`.
-
-### Pass C — Blocking calls on async runtime
-
-```bash
-rg -n "std::fs::(read|write)|std::thread::sleep" --type rust <path> | head -20
-```
-
-### Output
-
-| Priority | Pattern | Example |
-|----------|---------|---------|
-| 🔴 Critical | Blocking I/O on async runtime | `std::fs::read` in `async fn` |
-| 🟠 High | Sequential DB calls that could be parallelized | Two independent `.find()` + `.retrieve()` |
-| 🟡 Medium | Unnecessary `Arc` allocation | Local config wrapped in `Arc` |
-
-**KMS safety notes**:
-- HSM calls are inherently sequential — never flag for parallelization.
-- SQLite is single-writer — parallel reads safe, writes not.
-- PostgreSQL/MySQL support concurrent reads within pool limits.
-- `kms.database` methods use internal sync — concurrent calls from same `KMS` reference are safe.
+**Input scope**: the Step 1 scope. **Report**: `./review-YYYY-MM-DD/rust-async-refactor.md` when persisted.
 
 ---
 
@@ -322,7 +172,7 @@ rg -n "std::fs::(read|write)|std::thread::sleep" --type rust <path> | head -20
 
 **Skip** if a sub-path was provided (CI audit always covers the full repo).
 
-Invoke `/ci-efficiency`. Check:
+**Invoke**: `/ci-efficiency`. Check:
 
 - Missing caches (Nix store, Cargo registry, pnpm store)
 - Over-broad workflow triggers (`on: push` without path filters)
@@ -335,24 +185,23 @@ Invoke `/ci-efficiency`. Check:
 
 ## Step 9 — Consolidated report
 
-Produce a single detailed report. **All findings from all skills merged and
-deduplicated:**
+Produce a single detailed report. **All findings from all skills merged under one owner per finding (contract §3):**
 
 ```markdown
 ## Code Quality Report — <scope> — <date>
 
-> Skills run: KMS Caveman, Clippy, rust-error-propagation, rust-refactor, rust-simplify,
-> rust-patterns[, mise][, rust-async-refactor][, ci-efficiency]
+> Skills run: KMS Caveman, Clippy, rust-error-propagation, rust-refactor,
+> rust-best-practices[, mise][, rust-async-refactor][, ci-efficiency]
 > Scope: <path or "full workspace">
 > KMS Caveman: [PASS / BLOCK / NOT APPLICABLE / INCOMPLETE]; verified findings are not repeated below
 > Async / MISE / CI eligibility: [run or skipped, with reason]
+> Per-phase status: PASS | FAIL | SKIPPED | INCOMPLETE with evidence (contract §4)
 
 ### BLOCKING — Must fix before merge
 
 | # | Category | File:Line | Issue | Fix | Cross-ref |
 |---|----------|-----------|-------|-----|-----------|
 | 1 | Unwrap   | `crate/foo/src/bar.rs:42` | `.unwrap()` in production | Replace with `?` | Clippy |
-| 2 | Pattern  | `crate/server/src/ops/create.rs:18` | Raw String for UID | Wrap in `UniqueIdentifier` | rust-patterns #1 |
 
 ### HIGH — Fix before next release
 
@@ -373,7 +222,6 @@ deduplicated:**
 ### ADVISORY — Style & polish
 
 - `crate/server/src/routes/kmip.rs:30`: `needless_return` — remove explicit `return`
-- `crate/kmip/src/types.rs:215`: iterator `.iter().map().collect()` → direct `.into_iter()`
 
 ### MISE Scripts (if Step 2 ran)
 
@@ -395,29 +243,19 @@ deduplicated:**
 2. ...
 3. ...
 
-### Pattern Compliance Summary
+### Verification performed
 
-| Pattern | Status | Violations |
-|---------|--------|------------|
-| #1 Newtype | ✅ / ⚠️ / ❌ | ... |
-| #2 Builder | ✅ / ⚠️ / ❌ | ... |
-| #3 Command | ✅ / ⚠️ / ❌ | ... |
-| #4 Trait abstraction | ✅ / ⚠️ / ❌ | ... |
-| #5 Key lifecycle SM | ✅ / ⚠️ / ❌ | ... |
-| #6 Error macro | ✅ / ⚠️ / ❌ | ... |
-| #7 Extension traits | ✅ / ⚠️ / ❌ | ... |
-| #8 Macro dispatch | ✅ / ⚠️ / ❌ | ... |
+Commands actually run with outcome, behavior exercised, and unverified surfaces (contract §4).
 
 ### Next Steps
 
 1. Fix all **BLOCKING** items — `cargo clippy-all` must pass with zero warnings,
    and MISE tasks must pass `shellcheck`.
-2. For HIGH duplication: run `/refactor-plan <area>` before implementing consolidations.
-3. For HIGH complexity (long functions): run `/rust-simplify <file>` for detailed refactoring.
-4. For pattern violations: run `/rust-patterns` for full examples.
-5. For error propagation fixes: run `/rust-error-propagation <file>` for detailed rewrite.
-6. For MISE convention/LOC issues: run `/mise` for full conventions reference.
-7. For async optimization: run `/rust-async-refactor <file>` for detailed analysis.
+2. For HIGH duplication or complexity: run `/refactor-plan <area>` before multi-file consolidations; `/rust-refactor <file>` for the detailed review.
+3. For idiom/API findings: run `/rust-best-practices`.
+4. For error propagation fixes: run `/rust-error-propagation <file>` for detailed rewrite.
+5. For MISE convention/LOC issues: run `/mise` for full conventions reference.
+6. For async optimization: run `/rust-async-refactor <file>` for detailed analysis.
 ```
 
 ---
@@ -430,7 +268,7 @@ After presenting the report, ask:
 > should I address first? For any multi-file change, I will run `/refactor-plan`
 > before touching code."
 
-Do **not** implement any changes until the user confirms scope.
+Do **not** implement any changes until the user confirms scope. An already-approved implementation does not stop for this prompt; it proceeds with the approved scope and records the findings.
 
 ---
 
@@ -438,9 +276,9 @@ Do **not** implement any changes until the user confirms scope.
 
 1. **Never skip a skill silently.** State the evidence-based scope reason in the report; do not use
    a negative mechanical scan as proof that a semantic audit is unnecessary.
-2. **Dedup always.** Before adding a finding to the report, check if the same
-   file:line already appears. If yes, merge under the more severe category and
-   add a cross-reference.
+2. **One owner per finding.** Follow contract §3: the first executed phase owns a finding, severity is
+   the maximum confirmed severity, later detections add cross-references. Findings are advisory;
+   preserve behavior, errors, authorization and serialization when acting on them.
 3. **Estimate LOC impact** for duplication findings. Count the duplicated lines
    across all occurrences, not just one instance.
 4. **Respect cardinal rules.** `unwrap_used` and `expect_used` in production
@@ -450,3 +288,6 @@ Do **not** implement any changes until the user confirms scope.
    `rg "item_name" --type rust` across the full workspace.
 6. **Shellcheck is authoritative.** Never disable a shellcheck warning without
    an inline `# shellcheck disable=SCxxxx` comment explaining why.
+7. **Report schema.** Status per phase, evidence and the verification-performed section follow
+   [`orchestrator-contract.md` §4](../shared/orchestrator-contract.md). A phase that could not run is
+   `INCOMPLETE`, never `PASS`.

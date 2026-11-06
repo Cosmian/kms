@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_config_utils::ConfigUtils;
@@ -136,14 +136,10 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "public enum of published crate ckms; frozen until next major"
-)]
 pub enum CliCommands {
     /// Handle KMS actions
     #[clap(flatten)]
-    Kms(KmsActions),
+    Kms(Box<KmsActions>),
     /// Regenerate the CLI documentation in Markdown format.
     ///
     /// Writes a Markdown file documenting all subcommands and their options.
@@ -174,7 +170,9 @@ pub async fn ckms_main() -> CosmianResult<()> {
 
     // Short-circuit: audit commands read the file directly — no server connection
     // or ckms.toml needed.
-    if let CliCommands::Kms(KmsActions::Audit(audit_action)) = &cli.command {
+    if let CliCommands::Kms(kms) = &cli.command
+        && let KmsActions::Audit(audit_action) = kms.as_ref()
+    {
         return audit_action.process().map_err(Into::into);
     }
 
@@ -243,12 +241,8 @@ impl AuthChoice {
     }
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "configure wizard writes its prompts to stdout"
-)]
 fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()> {
-    println!("-- {label} HTTP settings --");
+    writeln!(std::io::stdout().lock(), "-- {label} HTTP settings --")?;
 
     http.server_url = Input::new()
         .with_prompt("Server URL")
@@ -480,10 +474,6 @@ fn prompt_optional_password(prompt: &str) -> CosmianResult<Option<String>> {
     Ok(if pw.is_empty() { None } else { Some(pw) })
 }
 
-#[expect(
-    clippy::print_stdout,
-    reason = "configure wizard writes its result to stdout"
-)]
 fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
     use cosmian_config_utils::get_default_conf_path;
 
@@ -576,10 +566,11 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
             .map_err(|e| cli_error!("Cannot create directory '{}': {e}", parent.display()))?;
     }
 
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "\nWriting configuration to default path: {}",
         default_path.display()
-    );
+    )?;
     config
         .to_toml(
             default_path
@@ -589,7 +580,10 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
         .map_err(|e| cli_error!("Failed to write configuration: {e}"))?;
 
     info!("Configuration saved at {}", default_path.display());
-    println!("Configuration saved. You're ready to go.");
+    writeln!(
+        std::io::stdout().lock(),
+        "Configuration saved. You're ready to go."
+    )?;
     Ok(())
 }
 

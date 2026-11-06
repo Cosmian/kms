@@ -492,7 +492,7 @@ async fn post_process_private_key(
         let attributes = key_block.attributes().ok().cloned();
         key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-            attributes,
+            attributes: attributes.map(Box::new),
         });
         key_block.key_format_type = KeyFormatType::Opaque;
     } else {
@@ -742,21 +742,21 @@ async fn post_process_active_private_key(
             Some(KeyValue::Structure {
                 attributes: attrs, ..
             }) => {
-                *attrs = Some(attributes.clone());
+                *attrs = Some(Box::new(attributes.clone()));
             }
             Some(KeyValue::ByteString(bytes)) => {
                 // Preserve existing key material and create a structured KeyValue with attributes
                 let km = KeyMaterial::ByteString(bytes.clone());
                 key_block.key_value = Some(KeyValue::Structure {
                     key_material: km,
-                    attributes: Some(attributes.clone()),
+                    attributes: Some(Box::new(attributes.clone())),
                 });
             }
             None => {
                 // No key value present: create an empty structure with attributes
                 key_block.key_value = Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-                    attributes: Some(attributes.clone()),
+                    attributes: Some(Box::new(attributes.clone())),
                 });
             }
         }
@@ -793,19 +793,19 @@ async fn post_process_active_private_key(
         Some(KeyValue::Structure {
             attributes: attrs, ..
         }) => {
-            *attrs = Some(attributes.clone());
+            *attrs = Some(Box::new(attributes.clone()));
         }
         Some(KeyValue::ByteString(bytes)) => {
             let km = KeyMaterial::ByteString(bytes.clone());
             key_block.key_value = Some(KeyValue::Structure {
                 key_material: km,
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             });
         }
         None => {
             key_block.key_value = Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             });
         }
     }
@@ -940,7 +940,7 @@ async fn process_public_key(
             ref mut attributes, ..
         }) = key_block.key_value.as_mut()
         {
-            *attributes = Some(new_attributes);
+            *attributes = Some(Box::new(new_attributes));
         }
 
         // wrap the key
@@ -1085,7 +1085,7 @@ async fn unwrap_if_requested(
         {
             // if the attributes are None, we need to set them to the existing
             // attributes
-            *attributes = Some(object_with_metadata.attributes().clone());
+            *attributes = Some(Box::new(object_with_metadata.attributes().clone()));
         }
         object_with_metadata.set_object(object);
     }
@@ -1257,7 +1257,7 @@ async fn process_symmetric_key(
                     }) = kb.key_value.as_mut()
                     && attrs.is_none()
                 {
-                    *attrs = Some(object_with_metadata.attributes().clone());
+                    *attrs = Some(Box::new(object_with_metadata.attributes().clone()));
                 }
 
                 // Replace the object with the unwrapped representation and continue processing
@@ -2059,7 +2059,10 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "non-fips"))]
-#[allow(clippy::panic_in_result_fn)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a panic is the failure signal"
+)]
 mod pgp_export_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::ErrorReason,

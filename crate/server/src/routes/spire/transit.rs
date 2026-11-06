@@ -419,18 +419,16 @@ async fn create_nonfips_transit_key(
 
 /// FIPS-build stub: no non-FIPS transit key types exist.
 #[cfg(not(feature = "non-fips"))]
-#[expect(
-    clippy::unused_async,
-    reason = "async required to match the non-fips signature awaited by the caller"
-)]
-async fn create_nonfips_transit_key(
+// Not `async`: `std::future::Ready` keeps the signature awaitable by the caller without a
+// state machine, so no `unused_async` suppression is needed.
+fn create_nonfips_transit_key(
     _kms: &KMS,
     _user: &UserId,
     _name: &str,
     _body: &CreateTransitKeyRequest,
     _tags: [&str; 1],
-) -> SpireResult<Option<Json<TransitKeyInfoWrapper>>> {
-    Ok(None)
+) -> std::future::Ready<SpireResult<Option<Json<TransitKeyInfoWrapper>>>> {
+    std::future::ready(Ok(None))
 }
 
 /// `POST /keys/{name}` — create a new transit signing key.

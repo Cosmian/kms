@@ -1446,7 +1446,7 @@ mod tests {
         let decoded: Option<Credential> = ttlv
             .and_then(|t| t.to_bytes(KmipFlavor::Kmip2).ok())
             .and_then(|b| TTLV::from_bytes(&b, KmipFlavor::Kmip2).ok())
-            .and_then(|t| from_ttlv(t).ok());
+            .and_then(|t| from_ttlv(&t).ok());
         assert_eq!(decoded, Some(credential));
 
         let extension = TTLV {
@@ -1474,7 +1474,7 @@ mod tests {
             .ok()
             .and_then(|b| TTLV::from_bytes(&b, KmipFlavor::Kmip2).ok());
         assert_eq!(decoded.as_ref(), Some(&extension));
-        let extension: Option<MessageExtension> = decoded.and_then(|t| from_ttlv(t).ok());
+        let extension: Option<MessageExtension> = decoded.and_then(|t| from_ttlv(&t).ok());
         assert_eq!(
             extension,
             Some(MessageExtension {
@@ -1501,7 +1501,7 @@ mod tests {
             }),
         };
         assert!(matches!(
-            from_ttlv::<State>(ttlv),
+            from_ttlv::<State>(&ttlv),
             Err(e) if e.to_string().contains(UNKNOWN_ENUMERATION)
         ));
     }
