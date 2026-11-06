@@ -2087,7 +2087,7 @@ Possible values:  `"ed25519", "rsa"` [default: `"ed25519"`]
 
 `--size_in_bits [-s] <KEY_SIZE>` RSA modulus size in bits: 2048, 3072 or 4096. Ignored unless `--algorithm rsa`
 
-`--user-id [-u] <USER_ID>` The `OpenPGP` User ID packet, e.g. "Alice <alice@example.com>"
+`--user-id [-u] <USER_ID>` The `OpenPGP` User ID packet, e.g. "Alice Example"
 
 `--tag [-t] <TAG>` The tag to associate with the key. Repeat for multiple tags
 

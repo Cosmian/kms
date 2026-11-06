@@ -36,7 +36,7 @@ pub struct CreatePgpKeyAction {
     #[clap(long = "size_in_bits", short = 's', default_value = "3072")]
     pub key_size: usize,
 
-    /// The `OpenPGP` User ID packet, e.g. "Alice <alice@example.com>"
+    /// The `OpenPGP` User ID packet, e.g. "Alice Example"
     #[clap(long = "user-id", short = 'u')]
     pub user_id: Option<String>,
 
