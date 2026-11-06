@@ -37,4 +37,6 @@ runs:
       shell: bash
       env:
         SCCACHE_IDLE_TIMEOUT: '0' # default 600 s: the server would exit during long test phases
+        SCCACHE_ERROR_LOG: ${{ runner.temp }}/sccache-error.log # TEMP diagnostic: 600 cache write errors
+        SCCACHE_LOG: info
       run: '"${SCCACHE_PATH}" --start-server'

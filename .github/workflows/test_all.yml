@@ -254,6 +254,10 @@ jobs:
           done
           exit "$rc"
 
+      - name: sccache errors (TEMP diagnostic)
+        if: always()
+        run: grep -i -E 'error|fail|denied|conflict|exist' "$RUNNER_TEMP/sccache-error.log" | cut -c1-300 | sort | uniq -c | sort -rn | head -15
+
       - name: Bench (PKCS#11 load, HSM-delegated)
         if: matrix.bench && github.event_name != 'pull_request'
         run: |
