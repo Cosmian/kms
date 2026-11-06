@@ -82,7 +82,11 @@ _kryoptic_ensure_repo_openssl() {
 
   local repo_root target_dir
   repo_root="$(get_repo_root "${MISE_CONFIG_ROOT:-.}")"
+  # build.rs puts the prefix in the host target dir; inside nix-shell CARGO_TARGET_DIR is that
+  # dir plus a per-variant suffix (shell.nix) and build.rs skips its own OpenSSL build.
   target_dir="${CARGO_TARGET_DIR:-${repo_root}/target}"
+  target_dir="${target_dir%/nix-fips}"
+  target_dir="${target_dir%/nix-non-fips}"
 
   print_status "Building this workspace's non-FIPS OpenSSL 3.6.5 (cargo build -p cosmian_kms_crypto \
 --features non-fips), if not already built"
