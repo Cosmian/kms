@@ -31,3 +31,9 @@ runs:
           echo "SCCACHE_GHA_ENABLED=on"
           echo "SCCACHE_GHA_VERSION=${NAMESPACE}"
         } >> "$GITHUB_ENV"
+
+    # Start the server now: a server auto-started inside a nix-shell keeps that shell's TMPDIR,
+    # which nix removes on exit, so the next nix-shell of the job fails every rustc call.
+    - name: Start sccache server
+      shell: bash
+      run: '"${SCCACHE_PATH}" --start-server'
