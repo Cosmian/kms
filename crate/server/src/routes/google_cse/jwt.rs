@@ -382,11 +382,7 @@ pub(super) async fn validate_cse_authorization_token(
 
     trace!("authorization token validated successfully");
 
-    #[cfg(all(not(test), not(feature = "insecure")))]
-    check_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
-    // Roles are only enforced in production builds.
-    #[cfg(any(test, feature = "insecure"))]
-    let _ = roles;
+    enforce_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
 
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(
@@ -504,10 +500,27 @@ fn check_authentication_kacls_url(
     Ok(())
 }
 
+/// Whether authorization claims are enforced: production builds only (tests and `insecure` skip it).
+#[cfg(all(not(test), not(feature = "insecure")))]
+const ENFORCE_AUTHORIZATION_CLAIMS: bool = true;
+/// Whether authorization claims are enforced: production builds only (tests and `insecure` skip it).
+#[cfg(any(test, feature = "insecure"))]
+const ENFORCE_AUTHORIZATION_CLAIMS: bool = false;
+
+/// Run [`check_authorization_claims`] when [`ENFORCE_AUTHORIZATION_CLAIMS`] is set.
+fn enforce_authorization_claims(
+    token: &UserClaim,
+    google_cse_kacls_url: &str,
+    roles: Option<&[Role]>,
+) -> KResult<()> {
+    if ENFORCE_AUTHORIZATION_CLAIMS {
+        check_authorization_claims(token, google_cse_kacls_url, roles)
+    } else {
+        Ok(())
+    }
+}
+
 /// Check the role, resource name and KACLS URL claims of an authorization token.
-///
-/// Compiled out of `insecure` builds, but kept in test builds so it can be unit-tested.
-#[cfg(any(test, not(feature = "insecure")))]
 fn check_authorization_claims(
     token: &UserClaim,
     google_cse_kacls_url: &str,
