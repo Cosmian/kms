@@ -335,6 +335,14 @@ pkgs.mkShell {
       fi
     fi
 
+    # One cargo target dir per Nix OpenSSL: openssl-sys reruns its build script whenever OPENSSL_DIR
+    # changes, so a target dir shared by fips and non-fips rebuilds the whole workspace at each switch.
+    _kms_target_base="''${CARGO_TARGET_DIR:-${toString ./.}/target}"
+    _kms_target_base="''${_kms_target_base%/nix-fips}"
+    _kms_target_base="''${_kms_target_base%/nix-non-fips}"
+    export CARGO_TARGET_DIR="$_kms_target_base/nix-$VARIANT_MODE"
+    unset _kms_target_base
+
     # Skip local OpenSSL build since Nix provides it
     export SERVER_SKIP_OPENSSL_BUILD=1
     export RUST_TEST_THREADS=1

@@ -74,7 +74,7 @@ fi
 # shellcheck disable=SC2086
 cargo build -p cosmian_kms_server ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} --bin cosmian_kms
 
-KMS_BIN="${REPO_ROOT}/target/debug/cosmian_kms"
+KMS_BIN="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/cosmian_kms"
 
 rm -f "${LOG_PATH}"
 

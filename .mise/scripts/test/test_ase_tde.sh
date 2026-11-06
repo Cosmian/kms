@@ -114,7 +114,7 @@ trap cleanup EXIT INT TERM
 echo "==> Building KMS server (${VARIANT_NAME})…"
 pushd "${REPO_ROOT}" >/dev/null
 cargo build --bin cosmian_kms --bin ckms "${FEATURES_FLAG[@]}"
-CKMS_BIN="${REPO_ROOT}/target/debug/ckms"
+CKMS_BIN="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/ckms"
 CKMS_URL="https://127.0.0.1:${KMS_HTTP_PORT}"
 
 CKMS_CONF="${KMS_SQLITE_DIR}/ckms.toml"

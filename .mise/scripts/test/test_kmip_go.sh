@@ -78,7 +78,7 @@ free_port "${KMIP_PORT}"
 # ── Start KMS server ───────────────────────────────────────────────────────────
 print_status "Starting KMS server (HTTP=:${KMS_PORT} KMIP=:${KMIP_PORT})…"
 RUST_LOG="${RUST_LOG:-warn}" COSMIAN_KMS_CONF="${KMS_CONF}" \
-  "${REPO_ROOT}/target/debug/cosmian_kms" &
+  "${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/cosmian_kms" &
 KMS_PID=$!
 
 # shellcheck disable=SC2329
