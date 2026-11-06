@@ -109,9 +109,9 @@ jobs:
         run: mise run ci:plan --event "$EVENT" --upstream "$UPSTREAM"
 
   # Suites that need neither secrets nor the JS toolchain (`scope=public`): databases, black-box suites,
-  # software HSMs, PKCS#11 clients. The suites of a leg share one runner and one build; suites that
-  # re-enter the Nix shell sit in their own `-nix` leg (switching OPENSSL_DIR recompiles the workspace).
-  # `test:suites` starts the docker compose services its suites declare.
+  # software HSMs, PKCS#11 clients. The suites of a leg share one runner and one build; Nix-shell suites
+  # are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching OPENSSL_DIR
+  # recompiles the workspace. `test:suites` starts the docker compose services its suites declare.
   test-nix:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
     runs-on: ubuntu-24.04
@@ -284,7 +284,8 @@ jobs:
           cleanup-runner: 'true'
           dev-shell-cache: 'true'
 
-      # A suite whose `env:` need is unset is skipped with a warning, not failed.
+      # An upstream suite fails, never skips, when an `env:` need is unset (deleted or renamed secret, typo in
+      # the mapping below): a green leg proves its suites ran.
       - name: Test
         env:
           # Google variables (cloud:google-cse)

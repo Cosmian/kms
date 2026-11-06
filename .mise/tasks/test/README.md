@@ -38,7 +38,7 @@ Every runnable test task is a **suite**. It declares its facts once, in a `#SUIT
 | `mise run test:suites <selector>... --list` | Runs nothing: prints which suites would run or be skipped, and why |
 | `mise run ci:plan --event <event> [--upstream true]` | Runs nothing: prints the `public`, `js` and `upstream` CI matrices built from the `#SUITE` headers, and fails on inconsistent headers |
 
-A suite that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` suites and the command exits 1 if any suite failed; a failing suite never stops the others. The `docker compose` services needed by the runnable suites are started once, before the first suite.
+A suite that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. The exception is CI: a `scope=upstream` suite whose `env:` secret is unset is a `[FAIL]`, so a green upstream leg proves its suites ran. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` suites and the command exits 1 if any suite failed; a failing suite never stops the others. The `docker compose` services needed by the runnable suites are started once, before the first suite.
 
 Tasks without a `#SUITE` header are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `pki:scep-apple`, `db:upgrade-sqlite`), helpers called by suites (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
 
@@ -68,7 +68,7 @@ A local run evaluates every `needs` item. With `CI=true` only the items marked (
 | `nix`, `docker`, `k8s` | `nix-shell` on `PATH`, a running Docker daemon, a reachable Kubernetes cluster |
 | `cmd:<name>`, `file:<path>` | Command on `PATH`; file under the repository root (for example a submodule) |
 | `os:Linux`, `os:Darwin` (CI) | `uname -s` must match |
-| `env:<VAR>` (CI) | Variable set and non-empty; CI also emits a `::warning::` when it is not |
+| `env:<VAR>` (CI) | Variable set and non-empty. When it is not: the suite is skipped (CI adds a `::warning::`), except a `scope=upstream` suite under `CI=true`, which fails |
 | `profile` (CI) | Source `~/.cosmian/<suite name>.sh` when it exists (hardware credentials) |
 | `apt:<package>` (CI) | Locally: the command is installed; CI on Linux installs the package first |
 | `compose:<service>` (CI) | `docker compose up -d <service>` once, before the first suite |

@@ -20,7 +20,8 @@
 # ignores the others, so the suite runs and fails on its own there.
 #   nix | docker | k8s | cmd:<c> | file:<repo path>   probe: unmet => the suite is skipped
 #   os:<Linux|Darwin>   (CI) probe on `uname -s`
-#   env:<VAR>           (CI) probe: VAR set and non-empty (CI also emits a ::warning::)
+#   env:<VAR>           (CI) probe: VAR set and non-empty. Unset => skipped with a ::warning::, except for a
+#                       `scope=upstream` suite under CI=true, which FAILS: its secrets must exist there
 #   profile             (CI) action: source ~/.cosmian/<last id segment>.sh when it exists
 #   apt:<pkg>           (CI) probe locally; CI on Linux installs the package before the suite
 #   compose:<service>   (CI) `docker compose up -d <service>` once, before the first suite
@@ -197,12 +198,15 @@ _suite_unset_env() {
   done
 }
 
-# Sets SKIP_REASON to why a suite cannot run here (empty when it can). Reads VARIANT and REPO_ROOT;
-# CI=true skips the probes that only make sense on a developer machine.
-# Usage: _suite_skip_reason <id> <variants> <needs>
+# Sets SKIP_REASON to why a suite cannot run here (empty when it can) and SKIP_FATAL to 1 when that is a
+# misconfiguration, not a skip: an unset `env:` need of a `scope=upstream` suite in CI, where its secrets
+# must exist and a green run has to prove the suite ran. Reads VARIANT and REPO_ROOT; CI=true skips the
+# probes that only make sense on a developer machine.
+# Usage: _suite_skip_reason <id> <variants> <needs> <scope>
 _suite_skip_reason() {
-  local id="$1" variants="$2" needs="$3" item var
+  local id="$1" variants="$2" needs="$3" scope="$4" item var
   SKIP_REASON=''
+  SKIP_FATAL=0
   case ",${variants}," in
     *",${VARIANT},"*) ;;
     *)
@@ -221,6 +225,7 @@ _suite_skip_reason() {
   var="$(_suite_unset_env "$id" "$needs")"
   if [ -n "$var" ]; then
     SKIP_REASON="env ${var} not set"
+    if [ "$scope" = upstream ] && [ "${CI:-}" = "true" ]; then SKIP_FATAL=1; fi
     return 0
   fi
   if [ "${CI:-}" = "true" ]; then return 0; fi
@@ -299,8 +304,8 @@ _suite_run() {
 # only prints what would run or be skipped.
 # Usage: suites_main <selector...>
 suites_main() {
-  local sel id file variants needs hit matched ok item i n list=0 services=''
-  local -a sel_id=() sel_file=() sel_needs=() sel_reason=() pass=() skip=() fail=()
+  local sel id file variants needs scope hit matched ok item i n list=0 services=''
+  local -a sel_id=() sel_file=() sel_needs=() sel_reason=() sel_fatal=() pass=() skip=() fail=()
 
   [ "$#" -gt 0 ] || print_error "no suite selected"
   kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
@@ -320,7 +325,7 @@ suites_main() {
   done
 
   # Pass 1 — gate: why can't each selected suite run here? Collect the compose services of those that can.
-  while IFS='|' read -r id file variants needs _; do
+  while IFS='|' read -r id file variants needs _ _ _ scope _; do
     matched=0
     for sel in "$@"; do
       if _suite_match "$id" "$sel"; then
@@ -329,18 +334,19 @@ suites_main() {
       fi
     done
     [ "$matched" = 1 ] || continue
-    _suite_skip_reason "$id" "$variants" "$needs"
+    _suite_skip_reason "$id" "$variants" "$needs" "$scope"
     sel_id+=("$id")
     sel_file+=("$file")
     sel_needs+=("$needs")
     sel_reason+=("$SKIP_REASON")
+    sel_fatal+=("$SKIP_FATAL")
     if [ -z "$SKIP_REASON" ]; then
       for item in ${needs//,/ }; do
         case "$item" in
           compose:*) case " ${services} " in *" ${item#compose:} "*) ;; *) services="${services:+${services} }${item#compose:}" ;; esac ;;
         esac
       done
-    elif [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    elif [ "${GITHUB_ACTIONS:-}" = "true" ] && [ "$SKIP_FATAL" = 0 ]; then
       case "$SKIP_REASON" in "env "*) echo "::warning::test:${id} skipped: ${SKIP_REASON}" ;; esac
     fi
   done <<<"$SUITES_INDEX"
@@ -349,7 +355,9 @@ suites_main() {
   if [ "$list" = 1 ]; then
     i=0
     while [ "$i" -lt "$n" ]; do
-      if [ -n "${sel_reason[$i]}" ]; then
+      if [ "${sel_fatal[$i]}" = 1 ]; then
+        printf '  %-28s %s\n' "${sel_id[$i]}" "FAIL: ${sel_reason[$i]}"
+      elif [ -n "${sel_reason[$i]}" ]; then
         printf '  %-28s %s\n' "${sel_id[$i]}" "skip: ${sel_reason[$i]}"
       else
         printf '  %-28s %s\n' "${sel_id[$i]}" "run"
@@ -380,7 +388,10 @@ suites_main() {
   i=0
   while [ "$i" -lt "$n" ]; do
     id="${sel_id[$i]}"
-    if [ -n "${sel_reason[$i]}" ]; then
+    if [ "${sel_fatal[$i]}" = 1 ]; then
+      fail+=("${id} — ${sel_reason[$i]}")
+      if [ "${GITHUB_ACTIONS:-}" = "true" ]; then echo "::error::test:${id} not run: ${sel_reason[$i]}"; fi
+    elif [ -n "${sel_reason[$i]}" ]; then
       skip+=("${id} — ${sel_reason[$i]}")
     else
       if [ "${GITHUB_ACTIONS:-}" = "true" ]; then

@@ -83,11 +83,11 @@ flowchart TB
 |`test-nix-js`|`js`|`wasm`, `ui`, `ui-sso`, `spire`|
 |`test-nix-upstream`|`upstream`|`google-cse`, `secrets`, `proteccio`, `crypt2pay`|
 
-`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its plan is empty on forks and fork pull requests, which skips the job. A suite whose `env:` need is unset is skipped with a `::warning::`, not failed. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
+`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its plan is empty on forks and fork pull requests, which skips the job. In this job a suite whose `env:` need is unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, so a green leg proves its suites ran; in the other jobs it is skipped with a `::warning::`, so forks without the secret still pass. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
 
 ### Grouped legs
 
-Suites whose own test time is under two minutes share one runner (one build, then `mise run test:suites` runs them one after the other and reports every failing suite). Suites that re-enter the Nix shell sit in their own `-nix` leg, because switching `OPENSSL_DIR` recompiles the workspace.
+Suites whose own test time is under two minutes share one runner (one build, then `mise run test:suites` runs them one after the other and reports every failing suite). Nix-shell suites are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching `OPENSSL_DIR` recompiles the workspace.
 
 |Leg|Suites|
 |---|---|
