@@ -182,6 +182,10 @@ jobs:
         with:
           variant: ${{ matrix.variant }}
 
+      - uses: ./.github/actions/setup-sccache
+        with:
+          namespace: test-nix
+
       - uses: ./.github/actions/setup-nix-mise
         with:
           cleanup-runner: 'true'
@@ -300,6 +304,10 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ matrix.variant }}
+
       - uses: ./.github/actions/setup-nix-mise
         with:
           cleanup-runner: 'true'
@@ -381,6 +389,10 @@ jobs:
       - uses: ./.github/actions/cache-openssl-buildrs
         with:
           variant: ${{ matrix.variant }}
+
+      - uses: ./.github/actions/setup-sccache
+        with:
+          namespace: test-nix-upstream
 
       - uses: ./.github/actions/setup-nix-mise
         with:
@@ -494,6 +506,14 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: non-fips
+
+      - uses: ./.github/actions/setup-sccache
+        with:
+          namespace: xks-remote
+
       - uses: ./.github/actions/setup-nix-mise
         with:
           cleanup-runner: 'true'
@@ -548,6 +568,10 @@ jobs:
       - uses: ./.github/actions/cache-openssl-buildrs
         with:
           variant: fips
+
+      - uses: ./.github/actions/setup-sccache
+        with:
+          namespace: interop-macos
 
       - uses: ./.github/actions/install-mise
 

@@ -1,0 +1,33 @@
+---
+name: Setup sccache
+description: >
+  Install sccache and route every rustc call of the job through it, with the GitHub Actions cache
+  as storage. nix-shell inherits the environment, so builds inside it are cached too. Never use it
+  in a job that runs npm/pnpm or other unvetted code: the sccache action exports
+  ACTIONS_RUNTIME_TOKEN to later steps, which lets any process of the job write cache entries.
+
+inputs:
+  namespace:
+    description: >
+      Cache namespace (SCCACHE_GHA_VERSION). A job that holds secrets gets its own namespace,
+      so no other job can write entries it compiles from.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: v0.19.0
+        disable_annotations: 'true'
+
+    - name: Route rustc through sccache
+      shell: bash
+      env:
+        NAMESPACE: ${{ inputs.namespace }}
+      run: |
+        {
+          echo "RUSTC_WRAPPER=${SCCACHE_PATH}"
+          echo "SCCACHE_GHA_ENABLED=on"
+          echo "SCCACHE_GHA_VERSION=${NAMESPACE}"
+        } >> "$GITHUB_ENV"
