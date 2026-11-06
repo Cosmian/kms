@@ -29,7 +29,7 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_kms_client = { workspace = true }
-cosmian_kms_k8s_plugin_proto = { path = "../plugin_proto" }
+cosmian_kms_k8s_plugin_proto = { path = "../plugin_proto", version = "5.29.0" }
 cosmian_logger = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde-saphyr = { workspace = true }

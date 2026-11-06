@@ -29,7 +29,7 @@ clap = { workspace = true, features = [
   "cargo",
 ] }
 cosmian_kms_client = { workspace = true }
-cosmian_kms_csi_provider_proto = { path = "../csi_provider_proto" }
+cosmian_kms_csi_provider_proto = { path = "../csi_provider_proto", version = "5.29.0" }
 cosmian_logger = { workspace = true }
 hex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -1,4 +1,4 @@
-use std::{fs, fs::OpenOptions, io::Write as _, path::PathBuf, sync::Once};
+use std::{fs, fs::OpenOptions, path::PathBuf, sync::Once};
 
 use cosmian_logger::reexport::tracing::Level;
 use tracing_error::ErrorLayer;
@@ -40,6 +40,7 @@ fn init(
     level: Option<Level>,
     log_home: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write as _;
     let level = level.unwrap_or(Level::INFO);
     let log_folder = match std::env::var("COSMIAN_PKCS11_LOGGING_FOLDER") {
         Ok(folder) => PathBuf::from(folder),
