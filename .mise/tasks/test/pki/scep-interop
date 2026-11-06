@@ -6,7 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix ci=blackbox
+#SUITE variants=fips,non-fips needs=nix
 
 # Black-box test: starts a live KMS server with SCEP enabled and drives it with the
 # third-party `scepclient` (github.com/micromdm/scep, as used by MicroMDM / Smallstep and

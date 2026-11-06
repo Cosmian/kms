@@ -9,7 +9,7 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips ci=kryoptic ci_variants=non-fips bench=kryoptic
+#SUITE variants=fips,non-fips
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kryoptic.sh"

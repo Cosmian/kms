@@ -9,7 +9,7 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix,os:Linux,profile,env:CRYPT2PAY_PASSWORD,apt:openvpn ci=crypt2pay ci_variants=non-fips scope=upstream lock=hsm-crypt2pay
+#SUITE variants=fips,non-fips needs=nix,os:Linux,profile,env:CRYPT2PAY_PASSWORD,apt:openvpn scope=upstream
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 suite_init fips WITH_HSM

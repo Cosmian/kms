@@ -3,7 +3,7 @@
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-#SUITE variants=fips,non-fips ci=audit
+#SUITE variants=fips,non-fips
 # Proves tamper-evident JSONL single-writer log + HTTP audit middleware capture.
 # No Nix shell needed. Uses Cargo to build KMS binary.
 set -euo pipefail

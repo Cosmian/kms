@@ -4,7 +4,7 @@
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-f --file <file>" env="AUDIT_FILE" help="Path to the KMS JSONL audit file (auto-generated if omitted)"
-#SUITE variants=fips,non-fips needs=docker,env:SPLUNK_PASSWORD ci=audit
+#SUITE variants=fips,non-fips needs=docker,env:SPLUNK_PASSWORD
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/audit_compat.sh"

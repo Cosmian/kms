@@ -6,7 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=compose:otel-collector,compose:jaeger ci=blackbox
+#SUITE variants=fips,non-fips needs=compose:otel-collector,compose:jaeger
 set -euo pipefail
 
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"

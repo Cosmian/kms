@@ -3,7 +3,7 @@
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-#SUITE variants=fips,non-fips ci=blackbox
+#SUITE variants=fips,non-fips
 set -euo pipefail
 
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"

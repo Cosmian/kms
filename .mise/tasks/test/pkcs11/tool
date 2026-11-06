@@ -7,7 +7,7 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--marker <marker>" env="PKCS11_CHECK_MARKER" help="pkcs11-check marker (empty runs the full available corpus)" default="smoke"
-#SUITE variants=non-fips needs=nix ci=pkcs11
+#SUITE variants=non-fips needs=nix
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 suite_init non-fips WITH_HSM

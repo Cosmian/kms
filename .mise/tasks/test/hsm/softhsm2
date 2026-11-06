@@ -9,7 +9,7 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix ci=softhsm2 bench=softhsm2
+#SUITE variants=fips,non-fips needs=nix
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"

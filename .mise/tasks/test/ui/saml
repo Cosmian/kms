@@ -6,7 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=non-fips needs=nix,docker,file:authentication/server/auth_verifier.dev.toml ci=ui-sso scope=js
+#SUITE variants=non-fips needs=nix,docker,file:authentication/server/auth_verifier.dev.toml
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 suite_init non-fips WITH_WASM WITH_CURL

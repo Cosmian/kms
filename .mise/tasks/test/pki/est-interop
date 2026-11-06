@@ -6,7 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix ci=blackbox
+#SUITE variants=fips,non-fips needs=nix
 
 # Black-box test: starts a live KMS server over TLS with EST enabled and drives it with a
 # third-party EST client: /cacerts, /csrattrs, /simpleenroll (HTTP Basic bootstrap),

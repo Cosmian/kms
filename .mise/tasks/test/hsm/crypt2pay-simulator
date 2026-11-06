@@ -9,7 +9,7 @@
 #USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
 #USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
 #USAGE }
-#SUITE variants=fips,non-fips needs=nix ci=crypt2pay-simulator bench=crypt2pay-simulator
+#SUITE variants=fips,non-fips needs=nix
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 suite_init fips WITH_HSM

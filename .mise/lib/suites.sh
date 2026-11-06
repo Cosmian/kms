@@ -8,13 +8,7 @@
 #
 #   variants      REQUIRED  fips | non-fips | fips,non-fips
 #   needs         comma list of probes and actions (below)                      default: none
-#   ci            CI leg name; suites with the same `ci` share a runner per variant  default: not in CI
-#   ci_variants   variants CI runs (subset of variants)                          default: variants
-#   pr_variants   variants CI runs on pull_request events (subset of ci_variants) default: ci_variants
-#   scope         public (secret-free) | js (no secrets, JS toolchain) | upstream (secrets, skipped on forks)
-#                                                                                default: public
-#   lock          concurrency group shared with hardware users                   default: none
-#   bench         HSM model for the nightly bench steps                          default: none
+#   scope         upstream: the suite needs repository secrets (an unset `env:` need is fatal in CI)   default: none
 #
 # `needs` items. A local run evaluates all of them; CI=true evaluates only those marked (CI) and
 # ignores the others, so the suite runs and fails on its own there.
@@ -31,7 +25,7 @@
 #
 # Provides:
 #   suite_id_of <file>                            task file -> suite id (db/psql -> db:psql, spire/_default -> spire)
-#   suites_index                                  `id|file|variants|needs|ci|ci_variants|pr_variants|scope|lock|bench` per suite
+#   suites_index                                  `id|file|variants|needs|scope` per suite
 #   suite_field <key> <file>                      one #SUITE field of <file> (empty if absent)
 #   suite_init <default-variant> [WITH_FLAG...]   standard leaf prologue (variant/os gate, optional nix entry)
 #   suites_main <selector...>                     run or --list suites: ids, @<group>, @all
@@ -63,12 +57,12 @@ suite_id_of() {
 # Prints the `#SUITE` line of <file> without its prefix (nothing when the file has none).
 _suite_line() { sed -n '/^#SUITE /{s/^#SUITE //p;q;}' "$1"; }
 
-# Parses the #SUITE line of <file> into the globals S_VARIANTS S_NEEDS S_CI S_CI_VARIANTS
-# S_PR_VARIANTS S_SCOPE S_LOCK S_BENCH. Returns 1 when the file has no #SUITE line; a malformed
-# line is fatal. Call it in the current shell, never in a command substitution.
+# Parses the #SUITE line of <file> into the globals S_VARIANTS S_NEEDS S_SCOPE. Returns 1 when the
+# file has no #SUITE line; a malformed line is fatal. Call it in the current shell, never in a
+# command substitution.
 _suite_parse() {
   local file="$1" line kv key val item
-  S_VARIANTS='' S_NEEDS='' S_CI='' S_CI_VARIANTS='' S_PR_VARIANTS='' S_SCOPE=public S_LOCK='' S_BENCH=''
+  S_VARIANTS='' S_NEEDS='' S_SCOPE=''
   line="$(_suite_line "$file")"
   [ -n "$line" ] || return 1
   [[ $line =~ $_SUITE_RE ]] || print_error "${file}: invalid #SUITE line"
@@ -78,16 +72,12 @@ _suite_parse() {
     case "$key" in
       variants) S_VARIANTS="$val" ;;
       needs) S_NEEDS="$val" ;;
-      ci) S_CI="$val" ;;
-      ci_variants) S_CI_VARIANTS="$val" ;;
-      pr_variants) S_PR_VARIANTS="$val" ;;
       scope) S_SCOPE="$val" ;;
-      lock) S_LOCK="$val" ;;
-      bench) S_BENCH="$val" ;;
       *) print_error "${file}: unknown #SUITE key ${key}" ;;
     esac
   done
   [ -n "$S_VARIANTS" ] || print_error "${file}: #SUITE needs variants="
+  case "$S_SCOPE" in '' | upstream) ;; *) print_error "${file}: unknown #SUITE scope '${S_SCOPE}'" ;; esac
   for item in ${S_VARIANTS//,/ }; do
     case "$item" in fips | non-fips) ;; *) print_error "${file}: unknown variant '${item}' in #SUITE variants=" ;; esac
   done
@@ -110,15 +100,13 @@ suite_field() {
   done
 }
 
-# Prints one `id|file|variants|needs|ci|ci_variants|pr_variants|scope|lock|bench` line per suite,
-# sorted by id; absent fields stay empty (scope defaults to public). Fatal on a malformed header,
-# so capture it as `x="$(suites_index)" || exit 1`.
+# Prints one `id|file|variants|needs|scope` line per suite, sorted by id; absent fields stay empty.
+# Fatal on a malformed header, so capture it as `x="$(suites_index)" || exit 1`.
 suites_index() {
   local file
   while IFS= read -r file; do
     _suite_parse "$file" || continue
-    printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$(suite_id_of "$file")" "$file" "$S_VARIANTS" "$S_NEEDS" \
-      "$S_CI" "$S_CI_VARIANTS" "$S_PR_VARIANTS" "$S_SCOPE" "$S_LOCK" "$S_BENCH"
+    printf '%s|%s|%s|%s|%s\n' "$(suite_id_of "$file")" "$file" "$S_VARIANTS" "$S_NEEDS" "$S_SCOPE"
   done < <(find "$SUITES_TASK_DIR" -type f ! -name '*.md') | LC_ALL=C sort -t'|' -k1,1
 }
 
@@ -325,7 +313,7 @@ suites_main() {
   done
 
   # Pass 1 — gate: why can't each selected suite run here? Collect the compose services of those that can.
-  while IFS='|' read -r id file variants needs _ _ _ scope _; do
+  while IFS='|' read -r id file variants needs scope; do
     matched=0
     for sel in "$@"; do
       if _suite_match "$id" "$sel"; then

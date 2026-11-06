@@ -151,14 +151,14 @@ free-port allocation, or SHA-256 computation — all three already exist.
 Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg`; `spire/_default` is the single `spire` suite) and declares its facts once, in a `#SUITE` line placed after the `#USAGE` block:
 
 ```bash
-#SUITE variants=fips,non-fips needs=nix,compose:postgres ci=psql pr_variants=non-fips
+#SUITE variants=fips,non-fips needs=nix,compose:postgres
 ```
 
-The same line gives the supported variants (`variants`, required), the prerequisites that make `mise run test` skip the suite with a reason (`needs`) and its CI placement (`ci`, `ci_variants`, `pr_variants`, `scope`, `lock`, `bench`). The full grammar is in `.mise/tasks/test/README.md` § 1.
+The same line gives the supported variants (`variants`, required), the prerequisites that make `mise run test` skip the suite with a reason (`needs`) and `scope=upstream` for suites that need repository secrets. CI legs are listed in `.github/workflows/test_all.yml`, not in the header. The full grammar is in `.mise/tasks/test/README.md` § 1.
 
 - Start the body with `source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"` and `suite_init <default-variant> [WITH_FLAG...]`. It replaces `kms_init_env`, `setup_test_logging`, `REPO_ROOT=`, the hand-written non-FIPS/OS gate, `export WITH_*` and `ensure_nix_shell`. Keep `ensure_nix_shell` explicit only when code must run between the exports and the re-entry.
 - Never hand-roll a test aggregator: a group's `_default` is `suites_main @<group>`, and `mise run test:suites <id|@group|@all> [--list]` runs any selection.
-- After adding or editing a header, run `mise run test:suites <id> --list` and `mise run ci:plan --event push --upstream true` (it rejects inconsistent headers).
+- After adding or editing a header, run `mise run test:suites <id> --list`. To run the suite in CI, add its id to a leg of `.github/workflows/test_all.yml`.
 
 ## Aggregator tasks — collect failures, report at the end
 

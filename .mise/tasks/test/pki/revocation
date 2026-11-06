@@ -6,7 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips ci=blackbox
+#SUITE variants=fips,non-fips
 
 # Drives the KMS purely through tooling a real customer/integrator has on hand
 # (`ckms` to provision the PKI and drive KMIP Validate/Revoke/Generate-CRL, plus

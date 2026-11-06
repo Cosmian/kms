@@ -59,13 +59,12 @@ flowchart TB
 ```mermaid
 flowchart TB
     Cache["nix-dev-shell-cache<br/>OpenSSL 3.1.2 / 3.6.5 + SoftHSM2 built once per Nix input hash"]
-    Plan["plan<br/>mise run ci:plan: one matrix per scope, from the SUITE headers"]
     subgraph NixJobs["Jobs importing the Nix dev shell"]
-        TestNix["test-nix (public)<br/>DB backends · black-box suites · pkcs11 clients · software HSMs"]
-        TestJs["test-nix-js (js)<br/>WASM · UI standard · UI SSO · SPIRE"]
-        Upstream["test-nix-upstream (upstream)<br/>google-cse · secrets · proteccio · crypt2pay"]
+        TestNix["test-nix<br/>DB backends · black-box suites · pkcs11 clients · software HSMs"]
+        TestJs["test-nix-js<br/>WASM · UI standard · UI SSO · SPIRE"]
+        Upstream["test-nix-upstream<br/>google-cse · secrets · proteccio · crypt2pay"]
     end
-    Cache & Plan --> TestNix & TestJs & Upstream
+    Cache --> TestNix & TestJs & Upstream
     Helm["helm (minikube)"]
     Xks["xks-remote<br/>not on schedule"]
     Mac["interop-macos<br/>scep + est"]
@@ -75,15 +74,15 @@ flowchart TB
     TestNix & TestJs & Upstream & Helm --> Publish
 ```
 
-`plan` runs `mise run ci:plan` and publishes one matrix per scope, built from the `#SUITE` headers of `.mise/tasks/test/**` (see `.mise/tasks/test/README.md`). The three test jobs only expand their matrix and run `mise run test:suites <suites> --variant <variant>`, so adding, moving or re-scoping a suite never edits `test_all.yml`. A leg is a `ci=` name; a matrix cell is a leg and a variant.
+Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `variant` give the cells, `exclude` drops the non-FIPS-only legs (and the FIPS MySQL family on pull requests), and `include` maps each leg to the `mise run test:suites <suites> --variant <variant>` ids it runs, plus its `lock` or `bench`. A suite missing from every `include` runs locally only. The `#SUITE` headers of `.mise/tasks/test/**` keep what runs locally (see `.mise/tasks/test/README.md`).
 
-|Job|`scope`|Legs|
-|---|---|---|
-|`test-nix`|`public`|databases (`sqlite`, `psql`, `mysql`, `percona`, `mariadb`, `redis`), software HSMs (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`), `gcp-cmek`, `jose`, `db2`, `ase`, `audit`, `veracrypt` and the grouped legs below|
-|`test-nix-js`|`js`|`wasm`, `ui`, `ui-sso`, `spire`|
-|`test-nix-upstream`|`upstream`|`google-cse`, `secrets`, `proteccio`, `crypt2pay`|
+|Job|Legs|
+|---|---|
+|`test-nix`|databases (`sqlite`, `psql`, `mysql`, `percona`, `mariadb`, `redis`), software HSMs (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`), `gcp-cmek`, `jose`, `db2`, `ase`, `audit`, `veracrypt` and the grouped legs below|
+|`test-nix-js`|`wasm`, `ui`, `ui-sso`, `spire`|
+|`test-nix-upstream`|`google-cse`, `secrets`, `proteccio`, `crypt2pay`|
 
-`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its plan is empty on forks and fork pull requests, which skips the job. In this job a suite whose `env:` need is unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, so a green leg proves its suites ran; in the other jobs it is skipped with a `::warning::`, so forks without the secret still pass. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
+`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its job-level `if` skips it on forks and fork pull requests. In this job a suite whose `env:` need is unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its `#SUITE` header has `scope=upstream`, so a green leg proves its suites ran; in the other jobs it is skipped with a `::warning::`, so forks without the secret still pass. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
 
 ### Grouped legs
 
@@ -100,7 +99,7 @@ Suites whose own test time is under two minutes share one runner (one build, the
 |`ui-sso` non-fips (in `test-nix-js`)|`ui:auth`, `ui:oidc`, `ui:saml`|
 |`secrets` non-fips (in `test-nix-upstream`)|`cloud:secret-vault`, `cloud:secret-aws`, `cloud:secret-azure`|
 
-A suite that fails only when grouped (port, Docker or environment leak) moves to a `ci=` leg of its own: edit its `#SUITE` header.
+A suite that fails only when grouped (port, Docker or environment leak) moves to a leg of its own: add the leg to the `matrix.leg` list and the `include` of its job in `test_all.yml`.
 
 ## PR versus nightly
 

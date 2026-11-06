@@ -7,7 +7,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=non-fips needs=nix,docker ci=db2
+#SUITE variants=non-fips needs=nix,docker
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"
 suite_init non-fips

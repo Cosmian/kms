@@ -6,7 +6,7 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
-#SUITE variants=fips,non-fips needs=docker ci=audit
+#SUITE variants=fips,non-fips needs=docker
 # Starts a dedicated `postgres-audit` container (docker-compose.yml), runs the
 # #[ignore]-gated live unit tests in crate/server_database, crate/clients/clap, and
 # crate/server (the real AuditStore::start_postgres controlling path), then the full

@@ -28,7 +28,7 @@
 
 ## 1. Master Orchestrator
 
-Every runnable test task is a **suite**. It declares its facts once, in a `#SUITE` header line; that one line drives local runs, the skipping of suites that cannot run on the current machine, and the CI matrices. The engine is `.mise/lib/suites.sh`.
+Every runnable test task is a **suite**. It declares its facts once, in a `#SUITE` header line; that one line drives local runs and the skipping of suites that cannot run on the current machine. The CI matrices live in `.github/workflows/test_all.yml` and name the suites each leg runs. The engine is `.mise/lib/suites.sh`.
 
 | Command | Effect |
 |---------|--------|
@@ -36,7 +36,6 @@ Every runnable test task is a **suite**. It declares its facts once, in a `#SUIT
 | `mise run test:<group>` | Runs the suites of one group (`test:suites @<group>`): `db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg` |
 | `mise run test:suites <selector>...` | Runs the selected suites; a selector is an id (`db:psql`), a group (`@pki`) or everything (`@all`) |
 | `mise run test:suites <selector>... --list` | Runs nothing: prints which suites would run or be skipped, and why |
-| `mise run ci:plan --event <event> [--upstream true]` | Runs nothing: prints the `public`, `js` and `upstream` CI matrices built from the `#SUITE` headers, and fails on inconsistent headers |
 
 A suite that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. The exception is CI: a `scope=upstream` suite whose `env:` secret is unset is a `[FAIL]`, so a green upstream leg proves its suites ran. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` suites and the command exits 1 if any suite failed; a failing suite never stops the others. The `docker compose` services needed by the runnable suites are started once, before the first suite.
 
@@ -47,19 +46,14 @@ Tasks without a `#SUITE` header are not part of `test`: manual or hardware-bound
 One line, after the `#USAGE` block and before `set -euo pipefail`; values never contain spaces and lists are comma-separated:
 
 ```bash
-#SUITE variants=fips,non-fips needs=nix,compose:postgres ci=psql pr_variants=non-fips
+#SUITE variants=fips,non-fips needs=nix,compose:postgres
 ```
 
 | Key | Meaning | Default |
 |-----|---------|---------|
 | `variants` | Variants the suite supports: `fips`, `non-fips` or both (required) | — |
 | `needs` | Comma list of prerequisites (next table) | none |
-| `ci` | CI leg name; suites with the same leg share one job per variant | not run in CI |
-| `ci_variants` | Variants CI runs (subset of `variants`) | `variants` |
-| `pr_variants` | Variants CI runs on pull requests (subset of `ci_variants`) | `ci_variants` |
-| `scope` | `public` (no secrets), `js` (no secrets, JS toolchain) or `upstream` (needs repository secrets, skipped on forks) | `public` |
-| `lock` | Concurrency group shared with the hardware users of the same device | none |
-| `bench` | HSM model of the nightly benchmark steps | none |
+| `scope` | `upstream`: the suite needs repository secrets, so an unset `env:` need is a failure in CI | none |
 
 A local run evaluates every `needs` item. With `CI=true` only the items marked (CI) are evaluated and the suite is otherwise left to run, and fail, on its own.
 
@@ -81,14 +75,15 @@ A suite sources `suites.sh` and calls `suite_init <default-variant> [WITH_FLAG..
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and a `#SUITE` line.
 2. Start the body with `source "${MISE_CONFIG_ROOT}/.mise/lib/suites.sh"` and `suite_init <default-variant> [WITH_FLAG...]`.
-3. Check it with `mise run test:suites <group>:<name> --list` and `mise run ci:plan --event push --upstream true`.
+3. Check it with `mise run test:suites <group>:<name> --list`.
+4. To run it in CI, add its id to the `suites` of a leg in `.github/workflows/test_all.yml` (`include` of `test-nix`, `test-nix-js` or `test-nix-upstream`). A suite in no leg runs locally only.
 
 ### Architecture Overview
 
 ```mermaid
 graph TB
     subgraph Headers["Task files under tasks/test"]
-        SuiteLines["one SUITE header line per task<br/>variants, needs, ci, scope, lock, bench"]
+        SuiteLines["one SUITE header line per task<br/>variants, needs, scope"]
     end
 
     subgraph Engine["Engine: .mise/lib/suites.sh"]
@@ -96,11 +91,9 @@ graph TB
         Prologue["suite_init<br/>leaf prologue"]
     end
 
-    Plan["ci:plan<br/>CI matrices"]
     Leaf["leaf task<br/>test body"]
 
     SuiteLines --> Main
-    SuiteLines --> Plan
     Main -- "mise run test:ID" --> Leaf
     Leaf --> Prologue
 ```

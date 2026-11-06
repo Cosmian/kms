@@ -3,7 +3,7 @@
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
-#SUITE variants=fips,non-fips needs=docker ci=blackbox ci_variants=non-fips
+#SUITE variants=fips,non-fips needs=docker
 # Proves monitoring stack: OTel collector → VictoriaMetrics → Grafana.
 # KMS metrics (kms_server_uptime_seconds_total, kms_database_operations_total)
 # must be queryable from VictoriaMetrics. Grafana /api/health must return 200.
