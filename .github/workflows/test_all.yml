@@ -174,10 +174,6 @@ jobs:
         with:
           variant: ${{ matrix.variant }}
 
-      - uses: ./.github/actions/setup-sccache
-        with:
-          namespace: test-nix
-
       - uses: ./.github/actions/setup-nix-mise
         with:
           cleanup-runner: 'true'
@@ -253,10 +249,6 @@ jobs:
             esac
           done
           exit "$rc"
-
-      - name: sccache errors (TEMP diagnostic)
-        if: always()
-        run: grep -i -E 'error|fail|denied|conflict|exist' "$RUNNER_TEMP/sccache-error.log" | cut -c1-300 | sort | uniq -c | sort -rn | head -15
 
       - name: Bench (PKCS#11 load, HSM-delegated)
         if: matrix.bench && github.event_name != 'pull_request'
@@ -375,10 +367,6 @@ jobs:
         with:
           variant: ${{ matrix.variant }}
 
-      - uses: ./.github/actions/setup-sccache
-        with:
-          namespace: test-nix-upstream
-
       - uses: ./.github/actions/setup-nix-mise
         with:
           cleanup-runner: 'true'
@@ -459,10 +447,6 @@ jobs:
       - uses: ./.github/actions/cache-openssl-buildrs
         with:
           variant: ${{ matrix.variant }}
-
-      - uses: ./.github/actions/setup-sccache
-        with:
-          namespace: test-hsm-hardware
 
       - uses: ./.github/actions/setup-nix-mise
         with:
@@ -561,10 +545,6 @@ jobs:
         with:
           variant: non-fips
 
-      - uses: ./.github/actions/setup-sccache
-        with:
-          namespace: xks-remote
-
       - uses: ./.github/actions/setup-nix-mise
         with:
           cleanup-runner: 'true'
@@ -619,10 +599,6 @@ jobs:
       - uses: ./.github/actions/cache-openssl-buildrs
         with:
           variant: fips
-
-      - uses: ./.github/actions/setup-sccache
-        with:
-          namespace: interop-macos
 
       - uses: ./.github/actions/install-mise
 
