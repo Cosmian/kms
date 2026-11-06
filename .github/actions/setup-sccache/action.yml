@@ -36,4 +36,6 @@ runs:
     # which nix removes on exit, so the next nix-shell of the job fails every rustc call.
     - name: Start sccache server
       shell: bash
+      env:
+        SCCACHE_IDLE_TIMEOUT: '0' # default 600 s: the server would exit during long test phases
       run: '"${SCCACHE_PATH}" --start-server'
