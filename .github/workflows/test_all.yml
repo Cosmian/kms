@@ -241,12 +241,12 @@ jobs:
         run: mise run test:suites ${{ matrix.suites }} --variant ${{ matrix.variant }}
 
       - name: Bench (PKCS#11 load, HSM-delegated)
-        if: matrix.bench != '' && github.event_name != 'pull_request'
+        if: matrix.bench && github.event_name != 'pull_request'
         run: |
           mise run bench:pkcs11 --delegated --hsm-model ${{ matrix.bench }} --variant ${{ matrix.variant }} -s
 
       - name: Bench (HSM-delegated)
-        if: matrix.bench != '' && github.event_name != 'pull_request'
+        if: matrix.bench && github.event_name != 'pull_request'
         run: |
           mise run bench:hsm --delegated --hsm-model ${{ matrix.bench }} --variant ${{ matrix.variant }} -s
 
