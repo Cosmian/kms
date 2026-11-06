@@ -255,6 +255,11 @@ fn test_config_toml_round_trip_preserves_values() {
         },
         kms_public_url: Some("https://kms.example.com".to_owned()),
         ms_dke_service_url: Some("https://kms.example.com/ms_dke".to_owned()),
+        kv: crate::config::KvConfig {
+            kv_enabled: true,
+            kv_mount: "secrets".to_owned(),
+            kv_ttl_check_interval_secs: 15,
+        },
         ..ClapConfig::default()
     };
 
@@ -294,6 +299,9 @@ fn test_config_toml_round_trip_preserves_values() {
         restored.ms_dke_service_url.as_deref(),
         Some("https://kms.example.com/ms_dke")
     );
+    assert!(restored.kv.kv_enabled);
+    assert_eq!(restored.kv.kv_mount, "secrets");
+    assert_eq!(restored.kv.kv_ttl_check_interval_secs, 15);
 }
 
 /// Default `ClapConfig` must also round-trip cleanly (no panics, no data loss

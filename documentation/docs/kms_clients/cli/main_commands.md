@@ -1122,6 +1122,8 @@ key.
 
 **`rename-attribute`** [[7.2.5]](#725-ckms-cc-access-structure-rename-attribute)  Rename an attribute in the access structure of an existing private master key.
 
+**`add-dimension`** [[7.2.6]](#726-ckms-cc-access-structure-add-dimension)  Add an anarchical dimension to the access structure of an existing private master key.
+
 ---
 
 ## 7.2.1 ckms cc access-structure view
@@ -1213,6 +1215,30 @@ Rename an attribute in the access structure of an existing private master key.
 ` <NEW_NAME>` The new name for the attribute. Example: `marketing`
 
 `--key-id [-k] <MASTER_SECRET_KEY_ID>` The master secret key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 7.2.6 ckms cc access-structure add-dimension
+
+Add an anarchical dimension to the access structure of an existing private master key.
+
+### Usage
+`ckms cc access-structure add-dimension [options] <DIMENSION>
+`
+### Arguments
+` <DIMENSION>` The name of the dimension to create
+
+`--attributes <ATTRIBUTES>` The name associated to each attributes of the new dimension. In case this dimension is hierarchical, the attributes are listed in increasing order
+
+`--hierarchical <HIERARCHICAL>` Is this dimension hierarchical?
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--key-id [-k] <SECRET_KEY_ID>` The master secret key unique identifier stored in the KMS. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 

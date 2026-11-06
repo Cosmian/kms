@@ -49,6 +49,20 @@ async fn test_openapi_yaml_endpoint() -> Result<(), String> {
     if !body.contains("title: Cosmian KMS") {
         return Err("missing title".to_owned());
     }
+    for path in [
+        "/{kv_mount}/data/{path}:",
+        "/{kv_mount}/metadata/{path}:",
+        "/v1/{kv_mount}/data/{path}:",
+        "/v1/{kv_mount}/metadata/{path}:",
+        "/v1/sys/internal/ui/mounts/{path}:",
+    ] {
+        if !body.contains(path) {
+            return Err(format!("missing OpenAPI path: {path}"));
+        }
+    }
+    if !body.contains("operationId: kvPutSecretPut") {
+        return Err("missing OpenAPI PUT operation for KV secrets".to_owned());
+    }
     if body.len() <= 50_000 {
         return Err(format!("spec body too small: {} bytes", body.len()));
     }
