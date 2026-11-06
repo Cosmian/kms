@@ -15,7 +15,7 @@ use std::{
 };
 
 use hyper::Uri;
-use hyper_util::rt::TokioIo;
+use hyper_util::{client::legacy::connect::HttpConnector, rt::TokioIo};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -33,18 +33,27 @@ use super::ProxyParams;
 #[derive(Clone)]
 pub(crate) struct SmartConnector {
     proxy_params: Option<ProxyParams>,
+    direct: HttpConnector,
 }
 
 impl SmartConnector {
     /// Create a connector that always connects directly (no proxy).
-    pub(crate) const fn direct() -> Self {
-        Self { proxy_params: None }
+    pub(crate) fn direct() -> Self {
+        Self::new(None)
     }
 
     /// Create a connector that tunnels through the given proxy.
-    pub(crate) const fn with_proxy(proxy_params: ProxyParams) -> Self {
+    pub(crate) fn with_proxy(proxy_params: ProxyParams) -> Self {
+        Self::new(Some(proxy_params))
+    }
+
+    fn new(proxy_params: Option<ProxyParams>) -> Self {
+        let mut direct = HttpConnector::new();
+        // TLS is layered on top by the caller, so the URI scheme is not necessarily `http`.
+        direct.enforce_http(false);
         Self {
-            proxy_params: Some(proxy_params),
+            proxy_params,
+            direct,
         }
     }
 
@@ -84,11 +93,11 @@ impl Service<Uri> for SmartConnector {
         });
 
         if self.should_bypass(&host) {
-            // Direct connection
-            return Box::pin(async move {
-                let stream = TcpStream::connect(format!("{host}:{port}")).await?;
-                Ok(TokioIo::new(stream))
-            });
+            // Direct connection. `HttpConnector` races IPv6/IPv4 (happy eyeballs); a plain
+            // `TcpStream::connect("localhost:port")` waits ~2 s per `::1` attempt on Windows
+            // when the server only listens on IPv4.
+            let mut direct = self.direct.clone();
+            return Box::pin(async move { Ok(direct.call(req).await?) });
         }
 
         // CONNECT tunnel through proxy
