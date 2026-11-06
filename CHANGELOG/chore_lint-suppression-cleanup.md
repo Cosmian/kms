@@ -35,3 +35,4 @@
 ## CI
 
 - Run `mise run docs:check-ai` (AI-docs validator, including its self-test) in the `build-documentation` job; the validator now also checks skill index rows, routing targets, shared contract phase entries and shell fences.
+- Run the `Benchmark` workflow nightly on `develop` (02:00 UTC); a new `compare` job finds the highest released version that has a published `ckms_bench` report on package.cosmian.com and runs `mise run bench:compare <version> <ref> 5 --fail`, adding the report to the job summary.
