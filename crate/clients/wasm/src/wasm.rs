@@ -748,6 +748,47 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// A JS integer, a numeric string (form inputs) or `undefined`/`null`.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum LenientInt {
+    Int(i64),
+    Text(String),
+    Missing(()),
+}
+
+/// Reads a number the way the former positional `wasm_bindgen` parameters did: numeric strings are
+/// parsed and `undefined`/`null`/empty give `None`.
+fn lenient_option_number<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: TryFrom<i64>,
+    T::Error: std::fmt::Display,
+{
+    let value = match LenientInt::deserialize(deserializer)? {
+        LenientInt::Int(value) => value,
+        LenientInt::Text(text) if text.trim().is_empty() => return Ok(None),
+        LenientInt::Text(text) => text
+            .trim()
+            .parse::<i64>()
+            .map_err(serde::de::Error::custom)?,
+        LenientInt::Missing(()) => return Ok(None),
+    };
+    T::try_from(value)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
+}
+
+/// Like [`lenient_option_number`], with `0` for a missing value (the former `wasm_bindgen` default).
+fn lenient_number<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: TryFrom<i64> + Default,
+    T::Error: std::fmt::Display,
+{
+    Ok(lenient_option_number(deserializer)?.unwrap_or_default())
+}
+
 // Locate request
 /// Options for [`locate_ttlv_request`]; field names match the former positional parameters.
 #[derive(Deserialize, Serialize)]
@@ -759,7 +800,7 @@ pub struct LocateTtlvRequestOptions {
     #[serde(default, deserialize_with = "undefined_as_default")]
     pub cryptographic_algorithm: Option<String>,
     /// Cryptographic length.
-    #[serde(default, deserialize_with = "undefined_as_default")]
+    #[serde(default, deserialize_with = "lenient_option_number")]
     pub cryptographic_length: Option<usize>,
     /// Key format type.
     #[serde(default, deserialize_with = "undefined_as_default")]
@@ -2493,6 +2534,7 @@ pub struct CertifyTtlvRequestOptions {
     #[serde(default, deserialize_with = "undefined_as_default")]
     pub issuer_certificate_id: Option<String>,
     /// Validity in days.
+    #[serde(default, deserialize_with = "lenient_number")]
     pub number_of_days: usize,
     /// Tags.
     #[serde(default, deserialize_with = "undefined_as_default")]
@@ -2873,12 +2915,14 @@ pub struct DeriveKeyTtlvRequestOptions {
     /// `PBKDF2` or `HKDF`.
     pub derivation_method: String,
     /// PBKDF2 iteration count.
+    #[serde(default, deserialize_with = "lenient_number")]
     pub iteration_count: i32,
     /// Hashing algorithm, e.g. `SHA256`.
     pub hashing_algorithm: String,
     /// Output key algorithm, e.g. `aes`.
     pub symmetric_algorithm: String,
     /// Output key length in bits.
+    #[serde(default, deserialize_with = "lenient_number")]
     pub cryptographic_length: usize,
     /// Optional unique identifier for the derived key.
     #[serde(default, deserialize_with = "undefined_as_default")]

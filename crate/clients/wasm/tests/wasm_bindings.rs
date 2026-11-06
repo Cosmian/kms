@@ -34,6 +34,29 @@ fn test_certify_options_accept_undefined_fields() {
     assert!(result.is_ok(), "{:?}", result.err());
 }
 
+/// Form inputs give numeric strings and unset numbers are `undefined`; both used to be coerced.
+#[wasm_bindgen_test]
+fn test_numeric_options_accept_strings_and_undefined() {
+    let locate = js_sys::Object::new();
+    js_sys::Reflect::set(&locate, &"cryptographic_length".into(), &"256".into()).unwrap();
+    let result = w::locate_ttlv_request(locate.into());
+    assert!(result.is_ok(), "{:?}", result.err());
+
+    let derive = js_sys::Object::new();
+    for (key, value) in [
+        ("base_key_id", JsValue::from("key-1")),
+        ("derivation_method", "HKDF".into()),
+        ("hashing_algorithm", "SHA256".into()),
+        ("symmetric_algorithm", "Aes".into()),
+        ("cryptographic_length", "256".into()),
+        ("iteration_count", JsValue::UNDEFINED),
+    ] {
+        js_sys::Reflect::set(&derive, &key.into(), &value).unwrap();
+    }
+    let result = w::derive_key_ttlv_request(&[1, 2, 3], None, derive.into());
+    assert!(result.is_ok(), "{:?}", result.err());
+}
+
 #[wasm_bindgen_test]
 fn test_locate_ttlv_request() {
     let r = w::locate_ttlv_request(
