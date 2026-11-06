@@ -62,27 +62,29 @@ flowchart TB
     subgraph NixJobs["Jobs importing the Nix dev shell"]
         TestNix["test-nix<br/>DB backends · black-box suites · pkcs11 clients · software HSMs"]
         TestJs["test-nix-js<br/>WASM · UI standard · UI SSO · SPIRE"]
-        Upstream["test-nix-upstream<br/>google-cse · secrets · proteccio · crypt2pay"]
+        Upstream["test-nix-upstream<br/>google-cse · secrets"]
+        Hsm["test-hsm-hardware<br/>proteccio · crypt2pay<br/>not on PR"]
     end
-    Cache --> TestNix & TestJs & Upstream
+    Cache --> TestNix & TestJs & Upstream & Hsm
     Helm["helm (minikube)"]
     Xks["xks-remote<br/>not on schedule"]
     Mac["interop-macos<br/>scep + est"]
     Win["windows-2022<br/>test_windows.yml"]
     DryRun["cargo-publish-dry-run<br/>PR: no-verify · nightly: full"]
     Publish["cargo-publish<br/>tags only"]
-    TestNix & TestJs & Upstream & Helm --> Publish
+    TestNix & TestJs & Upstream & Hsm & Helm --> Publish
 ```
 
-Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `variant` give the cells, `exclude` drops the non-FIPS-only legs (and the FIPS MySQL family on pull requests), and `include` maps each leg to the `test:<id>` tasks it runs (`mise run test:<id> --variant <variant>`, one after the other in a shell loop), plus its `lock` or `bench`. A task missing from every `include` runs locally only. Each task checks its own prerequisites and exits 77 when it cannot run, which the loop reports as a `::warning::` (see `.mise/tasks/test/README.md`).
+Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `variant` give the cells, `exclude` drops the non-FIPS-only legs, and `include` maps each leg to the `test:<id>` tasks it runs (`mise run test:<id> --variant <variant>`, one after the other in a shell loop), plus its `lock` or `bench`. A task missing from every `include` runs locally only. Each task checks its own prerequisites and exits 77 when it cannot run, which the loop reports as a `::warning::` (see `.mise/tasks/test/README.md`).
 
 |Job|Legs|
 |---|---|
 |`test-nix`|databases (`sqlite`, `psql`, `mysql`, `percona`, `mariadb`, `redis`), software HSMs (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`), `gcp-cmek`, `jose`, `db2`, `ase`, `audit`, `veracrypt` and the grouped legs below|
 |`test-nix-js`|`wasm`, `ui`, `ui-sso`, `spire`|
-|`test-nix-upstream`|`google-cse`, `secrets`, `proteccio`, `crypt2pay`|
+|`test-nix-upstream`|`google-cse`, `secrets`|
+|`test-hsm-hardware`|real HSMs `proteccio`, `crypt2pay` (never on pull requests)|
 
-`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` needs repository secrets and the hardware HSMs: its job-level `if` skips it on forks and fork pull requests. In this job a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green leg proves its tasks ran. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests.
+`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` and `test-hsm-hardware` need repository secrets: `test-nix-upstream` skips on forks and fork pull requests, `test-hsm-hardware` never runs on pull requests and only in the upstream repository. In both jobs a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green leg proves its tasks ran. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` (also never on pull requests) shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests. Pull requests cover the HSM code paths with the software simulators of `test-nix` (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`).
 
 ### Grouped legs
 
@@ -90,10 +92,10 @@ Suites whose own test time is under two minutes share one runner (one build, the
 
 |Leg|Suites|
 |---|---|
-|`blackbox` fips|`pki:ocsp`, `pki:revocation`, `pki:scep-interop`, `pki:est-interop`, `obs:otel`, `cloud:secret-cosmian-kms`, `hsm:azure-cloud-hsm-build`|
-|`blackbox` non-fips|the fips list plus `obs:cef-format`, `obs:cef-syslog`, `obs:cef-tcp-syslog`, `obs:filebeat`, `obs:fluent-bit`, `obs:monitoring`|
-|`blackbox-nix` fips|`interop:kmip-go`|
-|`blackbox-nix` non-fips|`interop:kmip-go`, `cloud:xks`, `cloud:azure-ekm`, `interop:pykmip`, `interop:iris`|
+|`pki-obs` fips|`pki:ocsp`, `pki:revocation`, `pki:scep-interop`, `pki:est-interop`, `obs:otel`, `cloud:secret-cosmian-kms`, `hsm:azure-cloud-hsm-build`|
+|`pki-obs` non-fips|the fips list plus `obs:cef-format`, `obs:cef-syslog`, `obs:cef-tcp-syslog`, `obs:filebeat`, `obs:fluent-bit`, `obs:monitoring`|
+|`interop-cloud` fips|`interop:kmip-go`|
+|`interop-cloud` non-fips|`interop:kmip-go`, `cloud:xks`, `cloud:azure-ekm`, `interop:pykmip`, `interop:iris`|
 |`pkcs11` non-fips|`pkcs11:openssh`, `pkcs11:luks`, `pkcs11:gnupg`, `pkcs11:support`, `pkcs11:tool`|
 |`audit`|`obs:audit`, `obs:audit-opensearch`, `obs:audit-postgres`, `obs:audit-splunk`|
 |`ui-sso` non-fips (in `test-nix-js`)|`ui:auth`, `ui:oidc`, `ui:saml`|
@@ -108,7 +110,7 @@ A suite that fails only when grouped (port, Docker or environment leak) moves to
 |Item|PR|Nightly / tags|
 |---|---|---|
 |`test_all.yml` (via `main_base.yml` `test`)|yes (not dependabot)|yes|
-|fips legs of mysql, percona, mariadb|skipped (sqlite and psql keep fips)|run|
+|real HSMs (`test-hsm-hardware`, `test-k8s-hsm`)|skipped (software simulators run)|run|
 |DB jobs other than sqlite|`cosmian_kms_server_database` DB tests plus the lib tests of the six crates that start `test_kms_server`|same|
 |sqlite job|whole workspace `--lib --bins` once per variant|same|
 |HSM benches (`bench:pkcs11`, `bench:hsm`)|skipped|run|

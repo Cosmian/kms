@@ -84,9 +84,8 @@ jobs:
   # A task missing from every `include` runs locally only.
   # Suites that need neither secrets nor the JS toolchain: databases, black-box suites,
   # software HSMs, PKCS#11 clients. The suites of a leg share one runner and one build; Nix-shell suites
-  # are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching OPENSSL_DIR
+  # are grouped apart from the others (`interop-cloud`, `pkcs11`, `ui-sso`), because switching OPENSSL_DIR
   # recompiles the workspace. Each task starts its own docker compose services.
-  # Pull requests run only the non-FIPS variant of the MySQL family (mysql, percona, mariadb).
   test-nix:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
     runs-on: ubuntu-24.04
@@ -117,8 +116,8 @@ jobs:
           - jose
           - gcp-cmek
           - audit
-          - blackbox
-          - blackbox-nix
+          - pki-obs
+          - interop-cloud
         variant: [fips, non-fips]
         exclude:
           # non-FIPS only
@@ -129,13 +128,6 @@ jobs:
           - {leg: ase, variant: fips}
           - {leg: db2, variant: fips}
           - {leg: jose, variant: fips}
-          # pull requests: MySQL family in non-FIPS only (`'none'` matches no leg)
-          - leg: ${{ github.event_name == 'pull_request' && 'mysql' || 'none' }}
-            variant: fips
-          - leg: ${{ github.event_name == 'pull_request' && 'percona' || 'none' }}
-            variant: fips
-          - leg: ${{ github.event_name == 'pull_request' && 'mariadb' || 'none' }}
-            variant: fips
         include:
           - {leg: sqlite, suites: db:sqlite}
           - {leg: psql, suites: db:psql}
@@ -155,21 +147,21 @@ jobs:
           - {leg: gcp-cmek, suites: cloud:gcp-cmek}
           - {leg: audit, suites: obs:audit obs:audit-opensearch obs:audit-postgres obs:audit-splunk}
           # Legs whose suites differ per variant get one entry per variant.
-          - leg: blackbox
+          - leg: pki-obs
             variant: fips
             suites: >-
               cloud:secret-cosmian-kms hsm:azure-cloud-hsm-build obs:otel pki:est-interop pki:ocsp
               pki:revocation pki:scep-interop
-          - leg: blackbox
+          - leg: pki-obs
             variant: non-fips
             suites: >-
               cloud:secret-cosmian-kms hsm:azure-cloud-hsm-build obs:cef-format obs:cef-syslog
               obs:cef-tcp-syslog obs:filebeat obs:fluent-bit obs:monitoring obs:otel pki:est-interop
               pki:ocsp pki:revocation pki:scep-interop
-          - leg: blackbox-nix
+          - leg: interop-cloud
             variant: fips
             suites: interop:kmip-go
-          - leg: blackbox-nix
+          - leg: interop-cloud
             variant: non-fips
             suites: cloud:azure-ekm cloud:xks interop:iris interop:kmip-go interop:pykmip
 
@@ -343,12 +335,12 @@ jobs:
           done
           exit "$rc"
 
-  # Suites that need repository secrets or hardware. Skipped on forks and fork pull
-  # requests, where the secrets are withheld.
+  # Suites that need repository secrets. Skipped on forks and fork pull requests, where the secrets are
+  # withheld. The real HSMs are in `test-hsm-hardware`, which pull requests never run.
   # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
-  # Luna (no reachable partition) are not in this matrix. To bring one back, add its leg, its `suites` and its
-  # `lock` below, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and map its secrets in the Test step (names in
-  # crate/hsm/<name>/README.md).
+  # Luna (no reachable partition). To bring one back, add its leg to `test-hsm-hardware` with its `suites`
+  # and its `lock`, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and
+  # map its secrets in the Test step (names in crate/hsm/<name>/README.md).
   test-nix-upstream:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
     runs-on: ubuntu-24.04
@@ -358,27 +350,16 @@ jobs:
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository)
-    # The hardware HSMs refuse concurrent connections from several CI runs: the legs with a `lock` share one
-    # group across all runs and queue (test-k8s-hsm in packaging-docker.yml uses the same groups); the other
-    # legs get a group of their own.
-    concurrency:
-      group: ${{ matrix.lock || format('{0}-{1}-{2}', github.run_id, github.job, strategy.job-index) }}
-      queue: max
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
-        leg: [crypt2pay, google-cse, proteccio, secrets]
+        leg: [google-cse, secrets]
         variant: [fips, non-fips]
         exclude:
           # non-FIPS only
-          - {leg: crypt2pay, variant: fips}
-          - {leg: proteccio, variant: fips}
           - {leg: secrets, variant: fips}
         include:
-          - {leg: crypt2pay, suites: hsm:crypt2pay, lock: hsm-crypt2pay}
           - {leg: google-cse, suites: cloud:google-cse}
-          - {leg: proteccio, suites: hsm:proteccio, lock: hsm-proteccio}
           - {leg: secrets, suites: cloud:secret-aws cloud:secret-azure cloud:secret-vault}
 
     steps:
@@ -420,6 +401,72 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
           AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
 
+          # Provide an authenticated token so mise can install tools from
+          # GitHub releases without hitting the unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
+          SUITES: ${{ matrix.suites }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          rc=0
+          # shellcheck disable=SC2086 # SUITES is a space-separated id list
+          for id in $SUITES; do
+            echo "::group::test:${id} (${VARIANT})"
+            st=0
+            mise run "test:${id}" --variant "$VARIANT" || st=$?
+            echo "::endgroup::"
+            case "$st" in
+              0) ;;
+              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
+              *) echo "::error::test:${id} failed"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
+
+  # The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
+  # dispatch runs only; pull requests cover the HSM code with the software simulators of `test-nix`. Upstream
+  # repository only, where the secrets exist. The HSMs refuse concurrent connections from several CI runs:
+  # each leg's `lock` is one concurrency group shared by all runs, queued (test-k8s-hsm in packaging-docker.yml
+  # uses the same groups). A task fails, never skips, when an `env:` need is unset: a green leg proves its
+  # suites ran.
+  test-hsm-hardware:
+    name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
+    runs-on: ubuntu-24.04
+    needs:
+      - nix-dev-shell-cache
+    if: github.repository == 'Cosmian/kms' && github.event_name != 'pull_request'
+    concurrency:
+      group: ${{ matrix.lock }}
+      queue: max
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [crypt2pay, proteccio]
+        variant: [non-fips]
+        include:
+          - {leg: crypt2pay, suites: hsm:crypt2pay, lock: hsm-crypt2pay}
+          - {leg: proteccio, suites: hsm:proteccio, lock: hsm-proteccio}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ matrix.variant }}
+
+      - uses: ./.github/actions/setup-sccache
+        with:
+          namespace: test-hsm-hardware
+
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
+
+      - name: Test
+        env:
           # Proteccio network HSM (hsm:proteccio)
           PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
           PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
@@ -632,6 +679,7 @@ jobs:
       - test-nix
       - test-nix-js
       - test-nix-upstream
+      - test-hsm-hardware
       - helm
     # Real publish, tags only: a skipped dependency (upstream-only jobs on forks) must not skip
     # it, but any failed or cancelled dependency blocks it.

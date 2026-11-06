@@ -62,7 +62,7 @@ Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips o
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
 2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
-3. To run it in CI, add its id to the `suites` of a leg in `.github/workflows/test_all.yml` (`include` of `test-nix`, `test-nix-js` or `test-nix-upstream`); the leaf must declare `-v --variant`. A leaf in no leg runs locally only.
+3. To run it in CI, add its id to the `suites` of a leg in `.github/workflows/test_all.yml` (`include` of `test-nix`, `test-nix-js`, `test-nix-upstream` or `test-hsm-hardware`); the leaf must declare `-v --variant`. A leaf in no leg runs locally only.
 
 ### Sequence Diagram
 
