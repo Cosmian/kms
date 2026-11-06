@@ -77,54 +77,99 @@ jobs:
           key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
             'nix/utimaco.nix', '.mise/lib/common.sh') }}
 
-  # Reads the test matrices from the `#SUITE` headers of .mise/tasks/test/** (see .mise/tasks/test/README.md):
-  # a leg is a `ci=` name, a matrix cell is a leg and a variant. Adding, moving or re-scoping a suite never
-  # touches this file.
-  plan:
-    name: Plan test matrices
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    outputs:
-      public: ${{ steps.plan.outputs.public }}
-      js: ${{ steps.plan.outputs.js }}
-      upstream: ${{ steps.plan.outputs.upstream }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/install-mise
-
-      - name: Plan
-        id: plan
-        env:
-          EVENT: ${{ github.event_name }}
-          # The upstream suites need repository secrets: no upstream plan on forks and fork pull requests.
-          UPSTREAM: >-
-            ${{ github.repository == 'Cosmian/kms' &&
-            (github.event_name != 'pull_request' ||
-            github.event.pull_request.head.repo.full_name == github.repository) }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: mise run ci:plan --event "$EVENT" --upstream "$UPSTREAM"
-
-  # Suites that need neither secrets nor the JS toolchain (`scope=public`): databases, black-box suites,
+  # The test matrices below list their legs explicitly: a leg is a `leg` value, a matrix cell is a leg and a
+  # variant, and `include` maps a leg to the `test:suites` ids it runs (`#SUITE` headers in
+  # .mise/tasks/test/**, see .mise/tasks/test/README.md). A suite missing from every `include` runs locally only.
+  # Suites that need neither secrets nor the JS toolchain: databases, black-box suites,
   # software HSMs, PKCS#11 clients. The suites of a leg share one runner and one build; Nix-shell suites
   # are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching OPENSSL_DIR
   # recompiles the workspace. `test:suites` starts the docker compose services its suites declare.
+  # Pull requests run only the non-FIPS variant of the MySQL family (mysql, percona, mariadb).
   test-nix:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
     runs-on: ubuntu-24.04
     needs:
       - nix-dev-shell-cache
-      - plan
     env:
       # The `secrets` context is unavailable in step-level `if:`; expose via env instead.
       # Empty on fork pull requests (secrets withheld) -> login is skipped, pulls stay anonymous.
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.public) }}
+      matrix:
+        leg:
+          - sqlite
+          - psql
+          - mysql
+          - percona
+          - mariadb
+          - redis
+          - softhsm2
+          - utimaco
+          - kryoptic
+          - crypt2pay-simulator
+          - pkcs11
+          - veracrypt
+          - ase
+          - db2
+          - jose
+          - gcp-cmek
+          - audit
+          - blackbox
+          - blackbox-nix
+        variant: [fips, non-fips]
+        exclude:
+          # non-FIPS only
+          - {leg: redis, variant: fips}
+          - {leg: kryoptic, variant: fips}
+          - {leg: pkcs11, variant: fips}
+          - {leg: veracrypt, variant: fips}
+          - {leg: ase, variant: fips}
+          - {leg: db2, variant: fips}
+          - {leg: jose, variant: fips}
+          # pull requests: MySQL family in non-FIPS only (`'none'` matches no leg)
+          - leg: ${{ github.event_name == 'pull_request' && 'mysql' || 'none' }}
+            variant: fips
+          - leg: ${{ github.event_name == 'pull_request' && 'percona' || 'none' }}
+            variant: fips
+          - leg: ${{ github.event_name == 'pull_request' && 'mariadb' || 'none' }}
+            variant: fips
+        include:
+          - {leg: sqlite, suites: db:sqlite}
+          - {leg: psql, suites: db:psql}
+          - {leg: mysql, suites: db:mysql}
+          - {leg: percona, suites: db:percona}
+          - {leg: mariadb, suites: db:mariadb}
+          - {leg: redis, suites: db:redis}
+          - {leg: softhsm2, suites: hsm:softhsm2, bench: softhsm2}
+          - {leg: utimaco, suites: hsm:utimaco, bench: utimaco}
+          - {leg: kryoptic, suites: hsm:kryoptic, bench: kryoptic}
+          - {leg: crypt2pay-simulator, suites: hsm:crypt2pay-simulator, bench: crypt2pay-simulator}
+          - {leg: pkcs11, suites: pkcs11:gnupg pkcs11:luks pkcs11:openssh pkcs11:support pkcs11:tool}
+          - {leg: veracrypt, suites: pkcs11:veracrypt}
+          - {leg: ase, suites: interop:ase}
+          - {leg: db2, suites: interop:db2}
+          - {leg: jose, suites: interop:jose}
+          - {leg: gcp-cmek, suites: cloud:gcp-cmek}
+          - {leg: audit, suites: obs:audit obs:audit-opensearch obs:audit-postgres obs:audit-splunk}
+          # Legs whose suites differ per variant get one entry per variant.
+          - leg: blackbox
+            variant: fips
+            suites: >-
+              cloud:secret-cosmian-kms hsm:azure-cloud-hsm-build obs:otel pki:est-interop pki:ocsp
+              pki:revocation pki:scep-interop
+          - leg: blackbox
+            variant: non-fips
+            suites: >-
+              cloud:secret-cosmian-kms hsm:azure-cloud-hsm-build obs:cef-format obs:cef-syslog
+              obs:cef-tcp-syslog obs:filebeat obs:fluent-bit obs:monitoring obs:otel pki:est-interop
+              pki:ocsp pki:revocation pki:scep-interop
+          - leg: blackbox-nix
+            variant: fips
+            suites: interop:kmip-go
+          - leg: blackbox-nix
+            variant: non-fips
+            suites: cloud:azure-ekm cloud:xks interop:iris interop:kmip-go interop:pykmip
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -205,21 +250,31 @@ jobs:
         run: |
           mise run bench:hsm --delegated --hsm-model ${{ matrix.bench }} --variant ${{ matrix.variant }} -s
 
-  # Suites that run pnpm install and the JS toolchain (vite, vitest, playwright) (`scope=js`):
+  # Suites that run pnpm install and the JS toolchain (vite, vitest, playwright):
   # any npm dependency can read this job's environment, so it gets no cloud/test secrets.
   test-nix-js:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
     runs-on: ubuntu-24.04
     needs:
       - nix-dev-shell-cache
-      - plan
     permissions:
       contents: read
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.js) }}
+      matrix:
+        leg: [spire, ui, ui-sso, wasm]
+        variant: [fips, non-fips]
+        exclude:
+          # non-FIPS only
+          - {leg: spire, variant: fips}
+          - {leg: ui-sso, variant: fips}
+        include:
+          - {leg: spire, suites: spire}
+          - {leg: ui, suites: ui:standard}
+          - {leg: ui-sso, suites: ui:auth ui:oidc ui:saml}
+          - {leg: wasm, suites: ui:wasm}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -246,19 +301,21 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: mise run test:suites ${{ matrix.suites }} --variant ${{ matrix.variant }}
 
-  # Suites that need repository secrets or hardware (`scope=upstream`). The whole job is skipped when the
-  # plan has none (forks, fork pull requests): a job-level `if` cannot read the `matrix` context.
+  # Suites that need repository secrets or hardware. Skipped on forks and fork pull
+  # requests, where the secrets are withheld.
   # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
-  # Luna (no reachable partition) have no `#SUITE` header. To bring one back, add `ci=<name> scope=upstream
-  # ci_variants=non-fips lock=hsm-<name>` and its `env:` and `apt:` needs to that header, then map its
-  # secrets below (names in crate/hsm/<name>/README.md).
+  # Luna (no reachable partition) are not in this matrix. To bring one back, add its leg, its `suites` and its
+  # `lock` below, give its `#SUITE` header `scope=upstream`, and map its secrets in the Test step (names in
+  # crate/hsm/<name>/README.md).
   test-nix-upstream:
     name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
     runs-on: ubuntu-24.04
     needs:
       - nix-dev-shell-cache
-      - plan
-    if: needs.plan.outputs.upstream != ''
+    if: >-
+      github.repository == 'Cosmian/kms' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     # The hardware HSMs refuse concurrent connections from several CI runs: the legs with a `lock` share one
     # group across all runs and queue (test-k8s-hsm in packaging-docker.yml uses the same groups); the other
     # legs get a group of their own.
@@ -268,7 +325,19 @@ jobs:
       cancel-in-progress: false
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.upstream) }}
+      matrix:
+        leg: [crypt2pay, google-cse, proteccio, secrets]
+        variant: [fips, non-fips]
+        exclude:
+          # non-FIPS only
+          - {leg: crypt2pay, variant: fips}
+          - {leg: proteccio, variant: fips}
+          - {leg: secrets, variant: fips}
+        include:
+          - {leg: crypt2pay, suites: hsm:crypt2pay, lock: hsm-crypt2pay}
+          - {leg: google-cse, suites: cloud:google-cse}
+          - {leg: proteccio, suites: hsm:proteccio, lock: hsm-proteccio}
+          - {leg: secrets, suites: cloud:secret-aws cloud:secret-azure cloud:secret-vault}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
