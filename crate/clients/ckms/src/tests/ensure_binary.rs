@@ -95,16 +95,14 @@ fn build_ckms_binary() {
         "fips"
     };
 
-    let binary_path = workspace_root
-        .join("target")
+    // Honour CARGO_TARGET_DIR (set per variant inside nix-shell, see shell.nix).
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map_or_else(|| workspace_root.join("target"), std::path::PathBuf::from);
+    let binary_path = target_dir
         .join(profile)
         .join(format!("ckms{}", std::env::consts::EXE_SUFFIX));
-    let lock_path = workspace_root
-        .join("target")
-        .join(format!(".ckms-build-{profile}-{variant}.lock"));
-    let marker_path = workspace_root
-        .join("target")
-        .join(format!(".ckms-build-{profile}-{variant}.ready"));
+    let lock_path = target_dir.join(format!(".ckms-build-{profile}-{variant}.lock"));
+    let marker_path = target_dir.join(format!(".ckms-build-{profile}-{variant}.ready"));
 
     // Reuse the binary only if it is exactly the one our last build of this
     // variant produced; a plain `cargo build` (FIPS) overwrites the same path.
