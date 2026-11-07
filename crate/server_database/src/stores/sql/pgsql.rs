@@ -553,7 +553,7 @@ impl PgPool {
                 let object_json: String = row.get(1);
                 match serde_json::from_str::<Object>(&object_json) {
                     Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&obj) {
+                        if let Some(tag) = certificate_serial_tag(&id, &obj) {
                             tx.execute(&insert_tag_stmt, &[&id, &tag])
                                 .await
                                 .map_err(DbError::from)?;

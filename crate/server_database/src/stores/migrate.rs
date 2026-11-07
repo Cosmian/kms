@@ -114,10 +114,16 @@ pub(crate) async fn wait_for_migration_lock(
 }
 
 /// `_serial=<HEX>` tag for a certificate object (same value as `set_certificate_serial_tag`),
-/// `None` for any other object or an unparsable certificate.
-pub(crate) fn certificate_serial_tag(object: &Object) -> Option<String> {
-    extract_serial_hex_from_object(object)
-        .map(|hex| format!("{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{hex}"))
+/// `None` (with a warning) for any other object or an unparsable certificate.
+pub(crate) fn certificate_serial_tag(uid: &str, object: &Object) -> Option<String> {
+    let Some(hex) = extract_serial_hex_from_object(object) else {
+        tracing::warn!(
+            %uid,
+            "serial tag backfill: skipping object with unparsable certificate DER or non-certificate payload"
+        );
+        return None;
+    };
+    Some(format!("{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{hex}"))
 }
 
 /// Persisted as JSON strings (`"ready"` and `"upgrading"`) on every backend.
@@ -628,6 +634,89 @@ mod tests {
         db_ensure!(
             error.to_string() == "Database Error: Backend lock acquisition failed",
             "Backend error was not propagated: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_certificate_serial_tag_rejects_invalid_der_and_non_certificates() -> DbResult<()> {
+        use std::sync::{Arc, Mutex};
+
+        use tracing::{
+            Event, Level, Metadata, Subscriber,
+            field::{Field, Visit},
+            span::{Attributes, Id, Record},
+        };
+
+        struct WarnVisitor(String);
+        impl Visit for WarnVisitor {
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                use std::fmt::Write;
+                let _ = write!(self.0, "{}={value:?} ", field.name());
+            }
+        }
+        struct WarnSubscriber(Arc<Mutex<Vec<String>>>);
+        impl Subscriber for WarnSubscriber {
+            fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+                metadata.level() == &Level::WARN
+            }
+
+            fn new_span(&self, _span: &Attributes<'_>) -> Id {
+                Id::from_u64(1)
+            }
+
+            fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+            fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+            fn event(&self, event: &Event<'_>) {
+                if event.metadata().level() == &Level::WARN {
+                    let mut visitor = WarnVisitor(String::new());
+                    event.record(&mut visitor);
+                    if let Ok(mut guard) = self.0.lock() {
+                        guard.push(visitor.0);
+                    }
+                }
+            }
+
+            fn enter(&self, _span: &Id) {}
+
+            fn exit(&self, _span: &Id) {}
+        }
+
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let bad_der: Object = serde_json::from_str(
+            r#"{"Certificate":{"CertificateType":"X509","CertificateValue":[222,173,190,239]}}"#,
+        )?;
+        let non_cert: Object = serde_json::from_str(
+            r#"{"OpaqueObject":{"OpaqueDataType":"Unknown","OpaqueDataValue":[1,2,3,4]}}"#,
+        )?;
+        tracing::subscriber::with_default(
+            WarnSubscriber(Arc::clone(&warnings)),
+            || -> DbResult<()> {
+                db_ensure!(
+                    certificate_serial_tag("junk_bad_cert_der", &bad_der).is_none(),
+                    "Garbage DER must not produce a certificate serial tag"
+                );
+                db_ensure!(
+                    certificate_serial_tag("junk_non_cert_tagged_cert", &non_cert).is_none(),
+                    "A non-certificate object must not produce a certificate serial tag"
+                );
+                Ok(())
+            },
+        )?;
+        let recorded = warnings
+            .lock()
+            .map_err(|error| db_error!("Warn log mutex poisoned: {error}"))?;
+        db_ensure!(
+            recorded.len() == 2
+                && recorded
+                    .iter()
+                    .any(|line| line.contains("junk_bad_cert_der"))
+                && recorded
+                    .iter()
+                    .any(|line| line.contains("junk_non_cert_tagged_cert")),
+            "Expected warnings for both invalid certificate objects, got {recorded:?}"
         );
         Ok(())
     }

@@ -4,7 +4,7 @@ set -euo pipefail
 
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
-REPO_ROOT="$(get_repo_root)"
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
 require_cmd docker
 require_cmd python3
 require_cmd curl
@@ -43,7 +43,174 @@ fixture_ckms() {
   docker exec "${CONTAINER_ID}" /usr/local/bin/ckms --url http://127.0.0.1:9998 "$@"
 }
 
+populate_bulk_kmip() {
+  python3 - "$1" <<'PY'
+import json
+import sys
+import urllib.request
+
+url = f"http://127.0.0.1:{sys.argv[1]}/kmip/2_1"
+
+
+def kmip(payload: dict) -> dict:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+
+def tag_attr(tags: list[str]) -> dict:
+    return {
+        "tag": "Attribute",
+        "value": [
+            {"tag": "VendorIdentification", "type": "TextString", "value": "cosmian"},
+            {"tag": "AttributeName", "type": "TextString", "value": "tag"},
+            {"tag": "AttributeValue", "type": "TextString", "value": json.dumps(tags)},
+        ],
+    }
+
+
+active_date = {"tag": "ActivationDate", "type": "DateTime", "value": "2024-01-01T00:00:00Z"}
+
+for uid, bits, tags in [
+    ("bulk_aes_128", 128, ["bulk"]),
+    ("bulk_aes_192", 192, ["bulk"]),
+    ("bulk_aes_256", 256, ["bulk", "env:prod/eu", "émoji-🔐"]),
+]:
+    kmip({
+        "tag": "Create",
+        "value": [
+            {"tag": "ObjectType", "type": "Enumeration", "value": "SymmetricKey"},
+            {"tag": "Attributes", "value": [
+                {"tag": "UniqueIdentifier", "type": "TextString", "value": uid},
+                {"tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "AES"},
+                {"tag": "CryptographicLength", "type": "Integer", "value": bits},
+                {"tag": "CryptographicUsageMask", "type": "Integer", "value": 2108},
+                active_date,
+                tag_attr(tags),
+            ]},
+        ],
+    })
+
+for uid, curve in [("bulk_ec_p256", "P256"), ("bulk_ec_p384", "P384")]:
+    kmip({
+        "tag": "CreateKeyPair",
+        "value": [
+            {"tag": "CommonAttributes", "value": [
+                 {"tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "ECDSA"},
+                 {"tag": "CryptographicDomainParameters", "value": [
+                     {"tag": "RecommendedCurve", "type": "Enumeration", "value": curve}
+                 ]},
+                 {"tag": "CryptographicUsageMask", "type": "Integer", "value": 12},
+                 active_date,
+                 tag_attr(["bulk"]),
+            ]},
+            {"tag": "PrivateKeyAttributes", "value": [
+                 {"tag": "UniqueIdentifier", "type": "TextString", "value": uid},
+                 active_date,
+            ]},
+            {"tag": "PublicKeyAttributes", "value": [
+                 active_date,
+            ]},
+        ],
+    })
+
+kmip({
+    "tag": "Import",
+    "value": [
+        {"tag": "UniqueIdentifier", "type": "TextString", "value": "bulk_secret_data"},
+        {"tag": "ObjectType", "type": "Enumeration", "value": "SecretData"},
+        {"tag": "ReplaceExisting", "type": "Boolean", "value": False},
+        {"tag": "Attributes", "value": [
+            {"tag": "ObjectType", "type": "Enumeration", "value": "SecretData"},
+            {"tag": "CryptographicUsageMask", "type": "Integer", "value": 2},
+            active_date,
+            tag_attr(["bulk"]),
+        ]},
+        {"tag": "SecretData", "value": [
+            {"tag": "SecretDataType", "type": "Enumeration", "value": "Password"},
+            {"tag": "KeyBlock", "value": [
+                {"tag": "KeyFormatType", "type": "Enumeration", "value": "Opaque"},
+                {"tag": "KeyValue", "value": [
+                    {"tag": "KeyMaterial", "type": "ByteString", "value": "DEADBEEFCAFE0123456789ABCDEF"}
+                ]},
+            ]},
+        ]},
+    ],
+})
+
+kmip({
+    "tag": "Import",
+    "value": [
+        {"tag": "UniqueIdentifier", "type": "TextString", "value": "bulk_opaque"},
+        {"tag": "ObjectType", "type": "Enumeration", "value": "OpaqueObject"},
+        {"tag": "ReplaceExisting", "type": "Boolean", "value": False},
+        {"tag": "Attributes", "value": [
+            {"tag": "ObjectType", "type": "Enumeration", "value": "OpaqueObject"},
+            active_date,
+            tag_attr(["bulk"]),
+        ]},
+        {"tag": "OpaqueObject", "value": [
+            {"tag": "OpaqueDataType", "type": "Enumeration", "value": "Unknown"},
+            {"tag": "OpaqueDataValue", "type": "ByteString", "value": "48656C6C6F204F7061717565"},
+        ]},
+    ],
+})
+
+kmip({
+    "tag": "Create",
+    "value": [
+        {"tag": "ObjectType", "type": "Enumeration", "value": "SymmetricKey"},
+        {"tag": "Attributes", "value": [
+            {"tag": "UniqueIdentifier", "type": "TextString", "value": "bulk_preactive"},
+            {"tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "AES"},
+            {"tag": "CryptographicLength", "type": "Integer", "value": 256},
+            {"tag": "CryptographicUsageMask", "type": "Integer", "value": 12},
+            {"tag": "ActivationDate", "type": "DateTime", "value": "2099-01-01T00:00:00Z"},
+            tag_attr(["bulk"]),
+        ]},
+    ],
+})
+
+for uid, reason in [("bulk_compromised", "KeyCompromise"), ("bulk_destroyed", "Superseded")]:
+    kmip({
+        "tag": "Create",
+        "value": [
+            {"tag": "ObjectType", "type": "Enumeration", "value": "SymmetricKey"},
+            {"tag": "Attributes", "value": [
+                {"tag": "UniqueIdentifier", "type": "TextString", "value": uid},
+                {"tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "AES"},
+                {"tag": "CryptographicLength", "type": "Integer", "value": 256},
+                {"tag": "CryptographicUsageMask", "type": "Integer", "value": 12},
+                tag_attr(["bulk"]),
+            ]},
+        ],
+    })
+    kmip({
+        "tag": "Revoke",
+        "value": [
+            {"tag": "UniqueIdentifier", "type": "TextString", "value": uid},
+            {"tag": "RevocationReason", "value": [
+                {"tag": "RevocationReasonCode", "type": "Enumeration", "value": reason}
+            ]},
+        ],
+    })
+
+kmip({
+    "tag": "Destroy",
+    "value": [
+        {"tag": "UniqueIdentifier", "type": "TextString", "value": "bulk_destroyed"},
+    ],
+})
+PY
+}
+
 populate_fixture() {
+  local port="$1"
   fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag mig mig_kek
   fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag mig --wrapping-key-id mig_kek mig_wrapped
   fixture_ckms rsa keys create --size_in_bits 2048 --tag mig mig_rsa
@@ -52,6 +219,15 @@ populate_fixture() {
   fixture_ckms certificates certify --generate-key-pair --algorithm rsa2048 \
     --certificate-id mig_cert --subject-name "CN=Migration fixture" --tag mig
   fixture_ckms access-rights grant --object-uid mig_kek mig_user get encrypt decrypt
+
+  populate_bulk_kmip "${port}"
+  fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag bulk --wrapping-key-id mig_kek bulk_sym_wrapped
+  fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag bulk --wrapping-key-id bulk_aes_256 bulk_wrapped_2
+  fixture_ckms rsa keys create --size_in_bits 3072 --tag bulk bulk_rsa_3072
+  fixture_ckms certificates certify --generate-key-pair --algorithm rsa2048 \
+    --certificate-id bulk_cert_2 --subject-name "CN=Bulk fixture secondary" --tag bulk
+  fixture_ckms access-rights grant --object-uid bulk_aes_256 mig_user encrypt decrypt
+  fixture_ckms access-rights grant --object-uid bulk_aes_256 bulk_auditor get locate
 }
 
 # Docker can accept TCP connections before the KMS endpoint is ready.
@@ -82,22 +258,103 @@ from pathlib import Path
 
 source, destination = map(Path, sys.argv[1:3])
 version = sys.argv[3]
+has_wrapping_col = version in {"5.28.0", "5.29.0"}
+
+dangling_wrapped_json = (
+    '{"SymmetricKey":{"KeyBlock":{"KeyFormatType":"TransparentSymmetricKey",'
+    '"KeyValue":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],'
+    '"CryptographicAlgorithm":"AES","CryptographicLength":128,'
+    '"KeyWrappingData":{"WrappingMethod":"Encrypt",'
+    '"EncryptionKeyInformation":{"UniqueIdentifier":"junk_missing_kek"},'
+    '"EncodingOption":"NoEncoding"}}}}'
+)
+junk_objects = [
+    ("junk_bad_json", "{not valid json", None, ["junk", "_cert"]),
+    ("junk_wrong_shape_json", '{"NotAKmipObject":{"foo":123}}', None, ["junk"]),
+    (
+        "junk_bad_cert_der",
+        '{"Certificate":{"CertificateType":"X509","CertificateValue":[222,173,190,239]}}',
+        None,
+        ["junk", "_cert"],
+    ),
+    (
+        "junk_non_cert_tagged_cert",
+        '{"OpaqueObject":{"OpaqueDataType":"Unknown","OpaqueDataValue":[1,2,3,4]}}',
+        None,
+        ["junk", "_cert"],
+    ),
+    ("junk_dangling_wrapped", dangling_wrapped_json, "junk_missing_kek", ["junk", "_kk"]),
+]
+
 with sqlite3.connect(source) as connection:
+    for uid, obj_json, wrap_uid, tags in junk_objects:
+        if has_wrapping_col:
+            connection.execute(
+                "INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) "
+                "VALUES (?, ?, '{}', 'Active', 'admin', ?)",
+                (uid, obj_json, wrap_uid),
+            )
+        else:
+            connection.execute(
+                "INSERT INTO objects (id, object, attributes, state, owner) "
+                "VALUES (?, ?, '{}', 'Active', 'admin')",
+                (uid, obj_json),
+            )
+        for tag in tags:
+            connection.execute("INSERT INTO tags (id, tag) VALUES (?, ?)", (uid, tag))
+    connection.execute(
+        "INSERT INTO tags (id, tag) VALUES ('junk_orphan_object', 'junk_orphan_tag')"
+    )
+    connection.execute(
+        "INSERT INTO read_access (id, userid, permissions) "
+        "VALUES ('junk_orphan_object', 'mig_user', '[\"get\"]')"
+    )
+    connection.commit()
     connection.execute("VACUUM INTO ?", (str(destination),))
+
 with sqlite3.connect(destination) as connection:
     columns = {row[1] for row in connection.execute("PRAGMA table_info(objects)")}
     parameters = dict(connection.execute("SELECT name, value FROM parameters"))
     objects = dict(connection.execute("SELECT id, state FROM objects"))
-    expected = {"mig_kek", "mig_wrapped", "mig_rsa", "mig_rsa_pk", "mig_revoked", "mig_cert"}
-    if not expected <= objects.keys() or len(objects) != 8:
-        raise RuntimeError(f"Missing fixture objects: {expected - objects.keys()}")
-    if objects["mig_revoked"] != "Deactivated":
-        raise RuntimeError("The revoked fixture key must be deactivated")
-    if ("wrapping_key_id" in columns) != (version in {"5.28.0", "5.29.0"}):
+    expected_mig = {"mig_kek", "mig_wrapped", "mig_rsa", "mig_rsa_pk", "mig_revoked", "mig_cert"}
+    expected_bulk = {
+        "bulk_aes_128",
+        "bulk_aes_192",
+        "bulk_aes_256",
+        "bulk_sym_wrapped",
+        "bulk_rsa_3072",
+        "bulk_rsa_3072_pk",
+        "bulk_wrapped_2",
+        "bulk_ec_p256",
+        "bulk_ec_p256_pk",
+        "bulk_ec_p384",
+        "bulk_ec_p384_pk",
+        "bulk_secret_data",
+        "bulk_opaque",
+        "bulk_cert_2",
+        "bulk_preactive",
+        "bulk_compromised",
+        "bulk_destroyed",
+    }
+    expected_junk = {row[0] for row in junk_objects}
+    expected_named = expected_mig | expected_bulk | expected_junk
+    if not expected_named <= objects.keys() or len(objects) != 32:
+        raise RuntimeError(
+            f"Unexpected fixture objects (count={len(objects)}, missing={expected_named - objects.keys()})"
+        )
+    expected_states = {
+        "mig_revoked": "Deactivated",
+        "bulk_preactive": "PreActive",
+        "bulk_compromised": "Compromised",
+        "bulk_destroyed": "Destroyed",
+    }
+    for uid, state in objects.items():
+        want = expected_states.get(uid, "Active")
+        if state != want:
+            raise RuntimeError(f"Unexpected state for {uid}: got {state}, expected {want}")
+    if ("wrapping_key_id" in columns) != has_wrapping_col:
         raise RuntimeError(f"Unexpected wrapping_key_id column for {version}")
-    if parameters.get("wrapping_key_id_backfilled") != (
-        "true" if version in {"5.28.0", "5.29.0"} else None
-    ):
+    if parameters.get("wrapping_key_id_backfilled") != ("true" if has_wrapping_col else None):
         raise RuntimeError(f"Unexpected wrapping backfill marker for {version}")
     if "db_version" in parameters:
         raise RuntimeError(f"Unexpected database version for {version}")
@@ -105,19 +362,29 @@ with sqlite3.connect(destination) as connection:
         "true" if version == "5.29.0" else None
     ):
         raise RuntimeError(f"Unexpected serial-tag marker for {version}")
-    tagged = {row[0] for row in connection.execute("SELECT id FROM tags WHERE tag='mig'")}
-    if tagged != objects.keys():
-        raise RuntimeError("Every fixture object must carry the mig tag")
+    mig_tagged = {row[0] for row in connection.execute("SELECT id FROM tags WHERE tag='mig'")}
+    bulk_tagged = {row[0] for row in connection.execute("SELECT id FROM tags WHERE tag='bulk'")}
+    junk_tagged = {row[0] for row in connection.execute("SELECT id FROM tags WHERE tag='junk'")}
+    if len(mig_tagged) != 8 or not expected_mig <= mig_tagged:
+        raise RuntimeError(f"Unexpected mig-tagged objects: {mig_tagged}")
+    if len(bulk_tagged) != 19 or not expected_bulk <= bulk_tagged:
+        raise RuntimeError(f"Unexpected bulk-tagged objects: {bulk_tagged}")
+    if junk_tagged != expected_junk:
+        raise RuntimeError(f"Unexpected junk-tagged objects: {junk_tagged}")
+    if (mig_tagged | bulk_tagged | junk_tagged) != objects.keys():
+        raise RuntimeError("Every fixture object must carry mig, bulk, or junk tag")
     grant = connection.execute(
         "SELECT permissions FROM read_access WHERE id='mig_kek' AND userid='mig_user'"
     ).fetchone()
     if grant is None or set(json.loads(grant[0])) != {"get", "encrypt", "decrypt"}:
         raise RuntimeError("Missing or incorrect mig_user grant")
-    serial_tags = connection.execute(
-        "SELECT count(*) FROM tags WHERE id='mig_cert' AND tag GLOB '_serial=*'"
-    ).fetchone()[0]
-    if serial_tags != (1 if version == "5.29.0" else 0):
-        raise RuntimeError(f"Unexpected certificate serial tag count for {version}")
+    for cert_id in ("mig_cert", "bulk_cert_2"):
+        serial_tags = connection.execute(
+            "SELECT count(*) FROM tags WHERE id=? AND tag GLOB '_serial=*'",
+            (cert_id,),
+        ).fetchone()[0]
+        if serial_tags != (1 if version == "5.29.0" else 0):
+            raise RuntimeError(f"Unexpected certificate serial tag count for {cert_id} in {version}")
     if connection.execute("PRAGMA integrity_check").fetchone() != ("ok",):
         raise RuntimeError(f"Invalid SQLite fixture for {version}")
     print(f"{version}: verified {len(objects)} objects, unversioned SQLite fixture")
@@ -142,7 +409,7 @@ generate_fixture() {
     print_error "Release ${version} did not start."
   fi
   fixture_ckms --version
-  populate_fixture
+  populate_fixture "${port}"
   docker exec "${CONTAINER_ID}" chown -R "$(id -u):$(id -g)" /data
   docker stop "${CONTAINER_ID}" >/dev/null
   docker rm "${CONTAINER_ID}" >/dev/null

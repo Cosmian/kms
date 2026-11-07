@@ -70,7 +70,11 @@ fn preserved_data(path: &Path) -> DbResult<[TableRows; 3]> {
 
 fn complete_data(path: &Path) -> DbResult<[TableRows; 4]> {
     Ok([
-        query_rows(path, "SELECT * FROM objects ORDER BY id")?,
+        query_rows(
+            path,
+            "SELECT id, object, attributes, state, owner, wrapping_key_id \
+             FROM objects ORDER BY id",
+        )?,
         query_rows(path, "SELECT * FROM tags ORDER BY id, tag")?,
         query_rows(path, "SELECT * FROM read_access ORDER BY id, userid")?,
         query_rows(path, "SELECT * FROM parameters ORDER BY name")?,
@@ -132,6 +136,16 @@ fn assert_lock_released(path: &Path) -> DbResult<()> {
     Ok(())
 }
 
+fn expected_state(id: &str) -> State {
+    match id {
+        "mig_revoked" => State::Deactivated,
+        "bulk_preactive" => State::PreActive,
+        "bulk_compromised" => State::Compromised,
+        "bulk_destroyed" => State::Destroyed,
+        _ => State::Active,
+    }
+}
+
 async fn assert_fixture_preserved(
     pool: &SqlitePool,
     path: &Path,
@@ -150,20 +164,25 @@ async fn assert_fixture_preserved(
             .collect::<Result<_, _>>()?
     };
     db_ensure!(
-        objects.len() == 8,
-        "Expected eight fixture objects, got {}",
+        objects.len() == 32,
+        "Expected 32 fixture objects, got {}",
         objects.len()
     );
     for (id, state) in objects {
-        let expected = if id == "mig_revoked" {
-            "Deactivated"
-        } else {
-            "Active"
-        };
+        let want_state = expected_state(&id);
         db_ensure!(
-            state == expected,
+            state == want_state.to_string(),
             "Unexpected stored state for {id}: {state}"
         );
+        let tags = pool.retrieve_tags(&id).await?;
+        if id == "junk_bad_json" || id == "junk_wrong_shape_json" {
+            db_ensure!(
+                pool.retrieve(&id).await.is_err(),
+                "Corrupt fixture object {id} unexpectedly deserialized"
+            );
+            db_ensure!(tags.contains("junk"), "Junk object {id} lost its junk tag");
+            continue;
+        }
         let object = pool
             .retrieve(&id)
             .await?
@@ -172,19 +191,32 @@ async fn assert_fixture_preserved(
             object.owner() == "admin",
             "Fixture object {id} changed owner"
         );
-        let expected = if id == "mig_revoked" {
-            State::Deactivated
-        } else {
-            State::Active
-        };
         db_ensure!(
-            object.state() == expected,
+            object.state() == want_state,
             "Unexpected retrieved state for {id}: {:?}",
             object.state()
         );
+        let expected_tag = if id.starts_with("junk_") {
+            "junk"
+        } else if id.starts_with("mig_") {
+            "mig"
+        } else if id.starts_with("bulk_") {
+            "bulk"
+        } else if tags.contains("mig") {
+            "mig"
+        } else {
+            "bulk"
+        };
         db_ensure!(
-            pool.retrieve_tags(&id).await?.contains("mig"),
-            "Fixture object {id} lost its tag"
+            tags.contains(expected_tag),
+            "Fixture object {id} lost its {expected_tag} tag"
+        );
+    }
+    let aes_256_tags = pool.retrieve_tags("bulk_aes_256").await?;
+    for tag in ["bulk", "env:prod/eu", "émoji-🔐"] {
+        db_ensure!(
+            aes_256_tags.contains(tag),
+            "bulk_aes_256 lost tag {tag}: {aes_256_tags:?}"
         );
     }
     let expected = HashSet::from([
@@ -197,38 +229,78 @@ async fn assert_fixture_preserved(
         grants.get("mig_user") == Some(&expected),
         "The mig_user permission grant changed"
     );
+    let bulk_grants = pool.list_object_operations_granted("bulk_aes_256").await?;
+    db_ensure!(
+        bulk_grants.get("mig_user")
+            == Some(&HashSet::from([
+                KmipOperation::Encrypt,
+                KmipOperation::Decrypt,
+            ])),
+        "The mig_user grant on bulk_aes_256 changed"
+    );
+    db_ensure!(
+        bulk_grants.get("bulk_auditor")
+            == Some(&HashSet::from([KmipOperation::Get, KmipOperation::Locate])),
+        "The bulk_auditor grant on bulk_aes_256 changed"
+    );
     Ok(())
 }
 
 async fn assert_wrapped_key_found(pool: &SqlitePool) -> DbResult<()> {
-    let found = pool
-        .find_wrapped_by("mig_kek", &UserId::from("admin"))
-        .await?;
-    let ids: Vec<_> = found.iter().map(|(id, _, _)| id.as_str()).collect();
-    db_ensure!(ids == ["mig_wrapped"], "Expected mig_wrapped, got {ids:?}");
+    for (kek, expected) in [
+        ("mig_kek", &["bulk_sym_wrapped", "mig_wrapped"][..]),
+        ("bulk_aes_256", &["bulk_wrapped_2"][..]),
+        ("junk_missing_kek", &["junk_dangling_wrapped"][..]),
+    ] {
+        let found = pool.find_wrapped_by(kek, &UserId::from("admin")).await?;
+        let mut ids: Vec<_> = found.iter().map(|(id, _, _)| id.as_str()).collect();
+        ids.sort_unstable();
+        db_ensure!(
+            ids == expected,
+            "For {kek}: expected {expected:?}, got {ids:?}"
+        );
+    }
     Ok(())
 }
 
 async fn assert_serial_tag(pool: &SqlitePool, present: bool) -> DbResult<()> {
-    let tags = pool.retrieve_tags("mig_cert").await?;
-    let serial_tags: Vec<_> = tags
-        .iter()
-        .filter(|tag| tag.starts_with("_serial="))
-        .collect();
-    db_ensure!(
-        serial_tags.len() == usize::from(present),
-        "Expected serial tag present={present}, got {serial_tags:?}"
-    );
-    if let Some(tag) = serial_tags.first() {
-        let serial = tag
-            .strip_prefix("_serial=")
-            .ok_or_else(|| db_error!("Missing certificate serial tag prefix"))?;
+    let mut seen_serials = HashSet::new();
+    for cert_id in ["mig_cert", "bulk_cert_2"] {
+        let tags = pool.retrieve_tags(cert_id).await?;
+        let serial_tags: Vec<_> = tags
+            .iter()
+            .filter(|tag| tag.starts_with("_serial="))
+            .collect();
         db_ensure!(
-            !serial.is_empty()
-                && serial
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'A'..=b'F')),
-            "Expected a nonempty uppercase hexadecimal serial tag"
+            serial_tags.len() == usize::from(present),
+            "For {cert_id}: expected serial tag present={present}, got {serial_tags:?}"
+        );
+        if let Some(tag) = serial_tags.first() {
+            let serial = tag
+                .strip_prefix("_serial=")
+                .ok_or_else(|| db_error!("Missing certificate serial tag prefix"))?;
+            db_ensure!(
+                !serial.is_empty()
+                    && serial
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || matches!(byte, b'A'..=b'F')),
+                "Expected a nonempty uppercase hexadecimal serial tag for {cert_id}"
+            );
+            db_ensure!(
+                seen_serials.insert(serial.to_owned()),
+                "Duplicate certificate serial tag across fixture certificates: {serial}"
+            );
+        }
+    }
+    for junk_cert in [
+        "junk_bad_json",
+        "junk_bad_cert_der",
+        "junk_non_cert_tagged_cert",
+    ] {
+        let tags = pool.retrieve_tags(junk_cert).await?;
+        db_ensure!(
+            !tags.iter().any(|tag| tag.starts_with("_serial=")),
+            "Junk row {junk_cert} must not receive a _serial= tag: {tags:?}"
         );
     }
     Ok(())

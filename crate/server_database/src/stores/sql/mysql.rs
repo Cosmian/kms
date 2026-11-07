@@ -420,7 +420,7 @@ impl MySqlPool {
             for (id, object_json) in &missing_rows {
                 match serde_json::from_str::<Object>(object_json) {
                     Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&obj) {
+                        if let Some(tag) = certificate_serial_tag(id, &obj) {
                             conn.exec_drop(insert_sql, (id, &tag))
                                 .await
                                 .map_err(DbError::from)?;
