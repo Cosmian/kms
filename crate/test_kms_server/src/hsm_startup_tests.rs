@@ -60,27 +60,27 @@ async fn test_startup_with_hsm_kek_utimaco() {
 }
 
 #[tokio::test]
-#[ignore = "Requires SoftHSM2 — invoked by mise run test:hsm-softhsm2"]
+#[ignore = "Requires SoftHSM2 — invoked by mise run test:hsm:softhsm2"]
 async fn test_startup_with_hsm_kek_softhsm2() {
     test_hsm_kek_startup("softhsm2").await;
 }
 
 #[tokio::test]
-#[ignore = "Requires Kryoptic — invoked by mise run test:hsm-kryoptic"]
+#[ignore = "Requires Kryoptic — invoked by mise run test:hsm:kryoptic"]
 async fn test_startup_with_hsm_kek_kryoptic() {
     test_hsm_kek_startup("kryoptic").await;
 }
 
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-#[ignore = "Requires Proteccio — invoked by mise run test:hsm-proteccio"]
+#[ignore = "Requires Proteccio — invoked by mise run test:hsm:proteccio"]
 async fn test_startup_with_hsm_kek_proteccio() {
     test_hsm_kek_startup("proteccio").await;
 }
 
 #[cfg(not(feature = "non-fips"))]
 #[tokio::test]
-#[ignore = "Requires Proteccio — invoked by mise run test:hsm-proteccio"]
+#[ignore = "Requires Proteccio — invoked by mise run test:hsm:proteccio"]
 async fn test_startup_with_hsm_kek_proteccio() {
     require_hsm_env("proteccio");
     let result = start_default_test_kms_server_with_hsm_and_kek_for_vectors().await;
@@ -122,7 +122,7 @@ async fn test_startup_with_hsm_kek_crypt2pay_simulator() {
 /// `hsm_model = "other"` with a library that refuses caller AES-GCM IVs: the KMS must boot
 /// with an HSM-backed KEK by letting the module generate the IV itself.
 #[tokio::test]
-#[ignore = "Requires a PKCS#11 library refusing caller GCM IVs — invoked by mise run test:hsm-other"]
+#[ignore = "Requires a PKCS#11 library refusing caller GCM IVs — invoked by mise run test:hsm:other"]
 async fn test_startup_with_hsm_kek_other() {
     test_hsm_kek_startup("other").await;
 }

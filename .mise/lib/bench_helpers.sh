@@ -560,7 +560,7 @@ EOF
 }
 
 # Prepare the host once for HSM-resident benchmarks on <hsm_model>, reusing the
-# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm-<model>`
+# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm:<model>`
 # tasks (library install, simulator start, VPN tunnel). Call it after
 # bench_register_cleanup so any VPN it opens is torn down on exit.
 #
