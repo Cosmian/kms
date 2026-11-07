@@ -84,6 +84,12 @@ ALTER TABLE crypto_officer_activations ADD COLUMN activated_by VARCHAR(255);
 -- name: exists-object
 SELECT 1 FROM objects WHERE id=$1 LIMIT 1;
 
+-- name: has-table-parameters
+SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'parameters');
+
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
+
 -- ── Per-connection tuning ──
 -- WAL mode: readers and the single writer never block each other.
 -- cache_size=-65536 -> 64 MiB page cache per connection (negative means KiB).
