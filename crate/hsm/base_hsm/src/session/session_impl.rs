@@ -4115,12 +4115,10 @@ const NO_GENERATED_GCM_IV: &str =
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::unwrap_in_result,
-        clippy::panic_in_result_fn
-    )] // tests: a panic is the failure signal
+    #![expect(
+        clippy::panic_in_result_fn,
+        reason = "tests: a panic is the failure signal"
+    )]
 
     use super::*;
 
