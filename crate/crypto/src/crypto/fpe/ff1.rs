@@ -338,12 +338,6 @@ pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8> {
     radix: Radix,
 }
 
-impl<const FEISTEL_ROUNDS: u8> Drop for FF1fr<FEISTEL_ROUNDS> {
-    fn drop(&mut self) {
-        // Zeroizing<> handles the key; nothing else to explicitly wipe.
-    }
-}
-
 impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
     pub(crate) fn new(key: &[u8], radix: u32) -> Result<Self, FF1Error> {
         if FEISTEL_ROUNDS < 8 {
