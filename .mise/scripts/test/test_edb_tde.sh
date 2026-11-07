@@ -88,11 +88,12 @@ cargo build --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
 
 KMS_PORT=$(kms_pick_free_port)
 KMIP_PORT=$(kms_pick_free_port)
+KMS_SQLITE_DIR="$(mktemp -d -t kms-edb-XXXXXX)"
 
 # Start server
 RUST_LOG=${RUST_LOG:-warn} \
   "$(get_cargo_target_dir)/debug/cosmian_kms" \
-  --database-type sqlite --clear-database \
+  --database-type sqlite --sqlite-path "${KMS_SQLITE_DIR}" --clear-database \
   --port "$KMS_PORT" --hostname 127.0.0.1 \
   --socket-server-start --socket-server-port "$KMIP_PORT" \
   &
@@ -109,6 +110,7 @@ cleanup() {
       kill -9 "$KMS_PID" >/dev/null 2>&1 || true
     fi
   fi
+  rm -rf "${KMS_SQLITE_DIR}" 2>/dev/null || true
   # Stop EDB container — no-op if not started yet.
   docker compose --project-directory "$REPO_ROOT" stop edb-tde 2>/dev/null || true
   docker compose --project-directory "$REPO_ROOT" rm -f edb-tde 2>/dev/null || true
