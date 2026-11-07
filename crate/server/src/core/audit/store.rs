@@ -689,7 +689,8 @@ mod tests {
             .write(true)
             .open(&lock_path)
             .unwrap();
-        fs4::fs_std::FileExt::try_lock_exclusive(&held).unwrap();
+        held.try_lock()
+            .expect("peer lock must be free before the writer starts");
 
         let store = AuditStore::start(&path, TEST_CAPACITY)
             .expect("start() must always succeed even when the lock is held by a peer");
@@ -703,7 +704,7 @@ mod tests {
         );
 
         // Release the peer's lock — the writer should acquire it and flush the buffer.
-        fs4::fs_std::FileExt::unlock(&held).ok();
+        held.unlock().expect("release peer lock");
         drop(held);
 
         store.flush().await;

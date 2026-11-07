@@ -3,8 +3,8 @@
     reason = "Result-returning tests assert with assert!/assert_eq!"
 )]
 
-use num_bigint::BigUint;
-use num_traits::{Num, ToPrimitive};
+use num_bigint_dig::BigUint;
+use num_traits::{Num, Pow, ToPrimitive};
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use rand_distr::Alphanumeric;
@@ -165,6 +165,60 @@ fn test_readme_examples() {
         assert_eq!(1.170_438_892_319_619e91_f64.to_bits(), ciphertext.to_bits());
         assert_eq!(123_456.789_f64.to_bits(), plaintext.to_bits());
     }
+}
+
+#[test]
+fn alphabet_normalization_preserves_ciphertext_mapping() -> Result<(), FPEError> {
+    let mut alphabet: Alphabet = "ébaéa".parse()?;
+    assert_eq!(alphabet.to_string(), "abé");
+    alphabet.extend_with("中bé");
+    assert_eq!(alphabet.to_string(), "abé中");
+
+    let canonical: Alphabet = "abé中".parse()?;
+    let key = [0_u8; 32];
+    let tweak = b"dependency-reuse";
+    let plaintext = "abé中abé中abé中";
+    let ciphertext = alphabet.encrypt(&key, tweak, plaintext)?;
+    assert_eq!(ciphertext, canonical.encrypt(&key, tweak, plaintext)?);
+    assert_eq!(alphabet.decrypt(&key, tweak, &ciphertext)?, plaintext);
+    for invalid in ["", "ééé"] {
+        assert!(matches!(
+            invalid.parse::<Alphabet>(),
+            Err(FPEError::AlphabetError(_))
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn big_integer_boundaries_roundtrip() -> Result<(), FPEError> {
+    let key = [0_u8; 32];
+    let tweak = b"dependency-reuse";
+    for radix in [2_u32, 10, 16] {
+        let integer = Integer::instantiate(radix, 80)?;
+        let maximum = BigUint::from_str_radix(&format!("{:x}", radix - 1).repeat(80), radix)
+            .map_err(|e| FPEError::ConversionError(e.to_string()))?;
+        assert_eq!(integer.max_value(), maximum);
+        for value in [
+            BigUint::from(0_u32),
+            maximum.clone(),
+            BigUint::from(1_u32) << 64_usize,
+        ] {
+            let ciphertext = integer.encrypt_big(&key, tweak, &value)?;
+            assert!(ciphertext <= maximum);
+            assert_eq!(integer.decrypt_big(&key, tweak, &ciphertext)?, value);
+        }
+        let too_large = maximum + BigUint::from(1_u32);
+        assert!(matches!(
+            integer.encrypt_big(&key, tweak, &too_large),
+            Err(FPEError::OutOfBounds(_))
+        ));
+        assert!(matches!(
+            integer.decrypt_big(&key, tweak, &too_large),
+            Err(FPEError::OutOfBounds(_))
+        ));
+    }
+    Ok(())
 }
 
 #[test]
@@ -336,7 +390,11 @@ fn fpe_number_big_uint() -> Result<(), FPEError> {
             let number = Integer::instantiate(radix, digits)?;
             for _j in 0..10 {
                 let exponent = rng.random_range(0..digits - 1);
-                let value = base.pow(exponent.to_u32().unwrap());
+                let value = (&base).pow(
+                    exponent
+                        .to_u32()
+                        .expect("exponent is below 32 and fits in u32"),
+                );
                 let ciphertext = number.encrypt_big(&key, &[], &value)?;
                 assert!(ciphertext <= number.max_value());
                 assert_eq!(number.decrypt_big(&key, &[], &ciphertext)?, value);

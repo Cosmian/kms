@@ -24,7 +24,7 @@ fn init(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let log_home = match log_home {
         None => {
-            let log_home = etcetera::home_dir().map_err(|e| format!("No home directory {e:?}"))?;
+            let log_home = std::env::home_dir().ok_or("No home directory HomeDirError")?;
             log_home.join(".cosmian")
         }
         Some(log_home) => PathBuf::from(log_home),
@@ -48,7 +48,7 @@ fn init(
             if let Some(path) = log_home {
                 PathBuf::from(path)
             } else {
-                let home = etcetera::home_dir().map_err(|e| format!("No home directory {e:?}"))?;
+                let home = std::env::home_dir().ok_or("No home directory HomeDirError")?;
                 home.join(".cosmian")
             }
         }

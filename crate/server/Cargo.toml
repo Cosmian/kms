@@ -69,7 +69,6 @@ interop = ["cosmian_kms_server_database/interop"]
 actix-cors = { workspace = true }
 actix-files = { workspace = true }
 actix-identity = { workspace = true }
-actix-rt = { workspace = true }
 actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
 actix-web = { workspace = true, features = ["cookies", "macros", "openssl"] }
@@ -99,7 +98,6 @@ dashmap = { workspace = true }
 der = { workspace = true, features = ["alloc", "derive", "oid"] }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
-fs4 = { workspace = true }
 futures = { workspace = true }
 gcp_cloud_hsm_pkcs11_loader = { workspace = true }
 governor = { workspace = true, features = ["std"] }

@@ -1,6 +1,6 @@
 use core::{cmp, fmt};
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use num_traits::{ToPrimitive, identities::Zero};
 use openssl::symm::{Cipher, Crypter, Mode};
 use zeroize::{Zeroize, Zeroizing};

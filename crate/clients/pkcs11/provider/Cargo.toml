@@ -34,7 +34,6 @@ non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 ckms = { workspace = true }
 cosmian_logger = { workspace = true }
 cosmian_pkcs11_module = { workspace = true }
-etcetera = { workspace = true }
 hex = { workspace = true, features = ["std"] }
 p256 = { workspace = true, features = [
   "arithmetic",

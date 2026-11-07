@@ -35,8 +35,6 @@ non-fips = [
   "dep:rand_distr",
   "dep:sha2",
   "dep:k256",
-  "dep:itertools",
-  "dep:num-bigint",
   "dep:num-traits",
   "dep:pgp",
   "dep:cosmian_kms_client_utils",
@@ -55,9 +53,7 @@ cosmian_kms_client_utils = { workspace = true, optional = true }
 cosmian_logger = { workspace = true }
 foreign-types = { workspace = true }
 hex = { workspace = true }
-itertools = { workspace = true, optional = true }
 k256 = { workspace = true, features = ["ecdsa"], optional = true }
-num-bigint = { workspace = true, optional = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",
