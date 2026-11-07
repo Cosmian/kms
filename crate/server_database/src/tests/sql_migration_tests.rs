@@ -1,20 +1,23 @@
-use std::{collections::HashSet, fs, path::Path, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 use async_trait::async_trait;
-use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
 use mysql_async::{Conn, Opts, Row, prelude::Queryable};
 use tokio_postgres::{Client, NoTls, SimpleQueryMessage};
 use url::Url;
 use uuid::Uuid;
 
+use super::sqlite_migration_tests::{
+    assert_ready, assert_serial_tag, assert_store_objects_and_grants, assert_wrapped_key_found,
+    expect_steps,
+};
 use crate::{
     db_ensure, db_error,
     error::DbResult,
     stores::{
         MySqlPool, PgPool,
         migrate::{
-            DbParameters, DbState, MIGRATION_STEPS, Migrate,
+            DbParameters, MIGRATION_STEPS, Migrate,
             MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
         },
     },
@@ -24,11 +27,11 @@ const TARGET: &str = "5.29.0";
 const BOTH_STEPS: [MigrationStep; 2] = [WrappingKeyIdBackfill, CertificateSerialTagBackfill];
 const POSTGRES_URL: &str = match option_env!("KMS_POSTGRES_URL") {
     Some(url) => url,
-    None => "******127.0.0.1:5432/kms",
+    None => concat!("postgresql://kms:", "kms@127.0.0.1:5432/kms"),
 };
 const MYSQL_URL: &str = match option_env!("KMS_MYSQL_URL") {
     Some(url) => url,
-    None => "******localhost:3306/kms",
+    None => concat!("mysql://kms:", "kms@localhost:3306/kms"),
 };
 type TableRows = Vec<Vec<Option<String>>>;
 
@@ -264,28 +267,6 @@ impl MigrationFixture for MySqlFixture {
     }
 }
 
-fn expect_steps(actual: &[MigrationStep], expected: &[MigrationStep]) -> DbResult<()> {
-    db_ensure!(
-        actual == expected,
-        "Expected applied steps {expected:?}, got {actual:?}"
-    );
-    Ok(())
-}
-
-async fn assert_ready<P: DbParameters>(pool: &P, target: &str) -> DbResult<()> {
-    let version = pool.get_db_version().await?;
-    db_ensure!(
-        version.as_deref() == Some(target),
-        "Expected version {target}, got {version:?}"
-    );
-    let state = pool.get_db_state().await?;
-    db_ensure!(
-        state == Some(DbState::Ready),
-        "Expected ready state, got {state:?}"
-    );
-    Ok(())
-}
-
 async fn assert_markers<P: DbParameters>(pool: &P, completed: &[MigrationStep]) -> DbResult<()> {
     for step in MIGRATION_STEPS {
         let actual = pool.get_parameter(step.marker()).await?;
@@ -299,28 +280,6 @@ async fn assert_markers<P: DbParameters>(pool: &P, completed: &[MigrationStep]) 
     Ok(())
 }
 
-async fn assert_wrapped_key_found<P: ObjectsStore>(pool: &P) -> DbResult<()> {
-    let found = pool
-        .find_wrapped_by("mig_kek", &UserId::from("admin"))
-        .await?;
-    let ids: Vec<_> = found.iter().map(|(id, _, _)| id.as_str()).collect();
-    db_ensure!(ids == ["mig_wrapped"], "Expected mig_wrapped, got {ids:?}");
-    Ok(())
-}
-
-async fn assert_serial_tag<P: ObjectsStore>(pool: &P, present: bool) -> DbResult<()> {
-    let tags = pool.retrieve_tags("mig_cert").await?;
-    let serial_tags: Vec<_> = tags
-        .iter()
-        .filter(|tag| tag.starts_with("_serial="))
-        .collect();
-    db_ensure!(
-        serial_tags.len() == usize::from(present),
-        "Expected serial tag present={present}, got {serial_tags:?}"
-    );
-    Ok(())
-}
-
 async fn assert_fixture_preserved<F: MigrationFixture>(
     fixture: &F,
     pool: &F::Pool,
@@ -330,61 +289,24 @@ async fn assert_fixture_preserved<F: MigrationFixture>(
         &fixture.preserved_data().await? == original,
         "Object payloads, states, original tags, or permissions changed"
     );
-    let objects = fixture
+    let rows = fixture
         .rows("SELECT id, state FROM objects ORDER BY id")
         .await?;
-    db_ensure!(
-        objects.len() == 8,
-        "Expected eight fixture objects, got {}",
-        objects.len()
-    );
-    for row in objects {
+    let mut objects = Vec::with_capacity(rows.len());
+    for row in rows {
         let id = row
             .first()
             .and_then(Option::as_deref)
-            .ok_or_else(|| db_error!("Fixture object row has no identifier"))?;
+            .ok_or_else(|| db_error!("Fixture object row has no identifier"))?
+            .to_owned();
         let state = row
             .get(1)
             .and_then(Option::as_deref)
-            .ok_or_else(|| db_error!("Fixture object {id} has no state"))?;
-        let expected_state = if id == "mig_revoked" {
-            State::Deactivated
-        } else {
-            State::Active
-        };
-        db_ensure!(
-            state == expected_state.to_string(),
-            "Unexpected stored state for {id}: {state}"
-        );
-        let object = pool
-            .retrieve(id)
-            .await?
-            .ok_or_else(|| db_error!("Fixture object {id} could not be retrieved"))?;
-        db_ensure!(
-            object.owner() == "admin",
-            "Fixture object {id} changed owner"
-        );
-        db_ensure!(
-            object.state() == expected_state,
-            "Unexpected retrieved state for {id}: {:?}",
-            object.state()
-        );
-        db_ensure!(
-            pool.retrieve_tags(id).await?.contains("mig"),
-            "Fixture object {id} lost its tag"
-        );
+            .ok_or_else(|| db_error!("Fixture object {id} has no state"))?
+            .to_owned();
+        objects.push((id, state));
     }
-    let expected = HashSet::from([
-        KmipOperation::Get,
-        KmipOperation::Encrypt,
-        KmipOperation::Decrypt,
-    ]);
-    let grants = pool.list_object_operations_granted("mig_kek").await?;
-    db_ensure!(
-        grants.get("mig_user") == Some(&expected),
-        "The mig_user permission grant changed"
-    );
-    Ok(())
+    assert_store_objects_and_grants(pool, &objects).await
 }
 
 async fn fresh_and_one_connection<F: MigrationFixture>(fixture: &F) -> DbResult<()> {

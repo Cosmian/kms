@@ -36,19 +36,31 @@ readonly MYSQL_IMAGE="mysql:8.0@sha256:99d774bf02a48a1bb1c599920d2571946d31e5940
 readonly DB_PASSWORD="kms-fixture"
 
 # One line of facts per restored dump; expected_facts spells out the required values.
+readonly NAMED_IDS="('mig_kek', 'mig_wrapped', 'mig_rsa', 'mig_rsa_pk', 'mig_revoked', 'mig_cert',
+  'bulk_aes_128', 'bulk_aes_192', 'bulk_aes_256', 'bulk_sym_wrapped', 'bulk_rsa_3072',
+  'bulk_rsa_3072_pk', 'bulk_wrapped_2', 'bulk_ec_p256', 'bulk_ec_p256_pk', 'bulk_ec_p384',
+  'bulk_ec_p384_pk', 'bulk_secret_data', 'bulk_opaque', 'bulk_cert_2', 'bulk_preactive',
+  'bulk_compromised', 'bulk_destroyed', 'junk_bad_json', 'junk_wrong_shape_json',
+  'junk_bad_cert_der', 'junk_non_cert_tagged_cert', 'junk_dangling_wrapped')"
 PG_FACTS="$(
-  cat <<'SQL'
+  cat <<SQL
 SELECT concat_ws(' ',
   'objects=' || (SELECT count(*) FROM objects),
-  'named=' || (SELECT count(*) FROM objects WHERE id IN
-    ('mig_kek', 'mig_wrapped', 'mig_rsa', 'mig_rsa_pk', 'mig_revoked', 'mig_cert')),
+  'named=' || (SELECT count(*) FROM objects WHERE id IN ${NAMED_IDS}),
   'revoked=' || (SELECT state FROM objects WHERE id = 'mig_revoked'),
+  'preactive=' || (SELECT state FROM objects WHERE id = 'bulk_preactive'),
+  'compromised=' || (SELECT state FROM objects WHERE id = 'bulk_compromised'),
+  'destroyed=' || (SELECT state FROM objects WHERE id = 'bulk_destroyed'),
   'untagged=' || (SELECT count(*) FROM objects o
-    WHERE NOT EXISTS (SELECT 1 FROM tags t WHERE t.id = o.id AND t.tag = 'mig')),
+    WHERE NOT EXISTS (SELECT 1 FROM tags t WHERE t.id = o.id AND t.tag IN ('mig', 'bulk', 'junk'))),
+  'orphans=' || (
+    (SELECT count(*) FROM tags t WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = t.id)) +
+    (SELECT count(*) FROM read_access r WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = r.id))
+  ),
   'grant=' || (SELECT string_agg(p, ',' ORDER BY p)
     FROM read_access, json_array_elements_text(permissions) p
     WHERE id = 'mig_kek' AND userid = 'mig_user'),
-  'serial_tags=' || (SELECT count(*) FROM tags WHERE id = 'mig_cert' AND tag LIKE '_serial=%'),
+  'serial_tags=' || (SELECT count(*) FROM tags WHERE id IN ('mig_cert', 'bulk_cert_2') AND tag LIKE '_serial=%'),
   'wrapping_column=' || (SELECT count(*) FROM information_schema.columns
     WHERE table_name = 'objects' AND column_name = 'wrapping_key_id'),
   'parameters=' || (SELECT coalesce(string_agg(name || ':' || value, ',' ORDER BY name), '')
@@ -59,18 +71,24 @@ SQL
 )"
 readonly PG_FACTS
 MYSQL_FACTS="$(
-  cat <<'SQL'
+  cat <<SQL
 SELECT CONCAT_WS(' ',
   CONCAT('objects=', (SELECT COUNT(*) FROM objects)),
-  CONCAT('named=', (SELECT COUNT(*) FROM objects WHERE id IN
-    ('mig_kek', 'mig_wrapped', 'mig_rsa', 'mig_rsa_pk', 'mig_revoked', 'mig_cert'))),
+  CONCAT('named=', (SELECT COUNT(*) FROM objects WHERE id IN ${NAMED_IDS})),
   CONCAT('revoked=', (SELECT state FROM objects WHERE id = 'mig_revoked')),
+  CONCAT('preactive=', (SELECT state FROM objects WHERE id = 'bulk_preactive')),
+  CONCAT('compromised=', (SELECT state FROM objects WHERE id = 'bulk_compromised')),
+  CONCAT('destroyed=', (SELECT state FROM objects WHERE id = 'bulk_destroyed')),
   CONCAT('untagged=', (SELECT COUNT(*) FROM objects o
-    WHERE NOT EXISTS (SELECT 1 FROM tags t WHERE t.id = o.id AND t.tag = 'mig'))),
+    WHERE NOT EXISTS (SELECT 1 FROM tags t WHERE t.id = o.id AND t.tag IN ('mig', 'bulk', 'junk')))),
+  CONCAT('orphans=', (
+    (SELECT COUNT(*) FROM tags t WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = t.id)) +
+    (SELECT COUNT(*) FROM read_access r WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = r.id))
+  )),
   CONCAT('grant=', (SELECT GROUP_CONCAT(j.p ORDER BY j.p)
-    FROM read_access, JSON_TABLE(permissions, '$[*]' COLUMNS (p VARCHAR(32) PATH '$')) j
+    FROM read_access, JSON_TABLE(permissions, '\$[*]' COLUMNS (p VARCHAR(32) PATH '\$')) j
     WHERE id = 'mig_kek' AND userid = 'mig_user')),
-  CONCAT('serial_tags=', (SELECT COUNT(*) FROM tags WHERE id = 'mig_cert' AND tag LIKE '_serial=%')),
+  CONCAT('serial_tags=', (SELECT COUNT(*) FROM tags WHERE id IN ('mig_cert', 'bulk_cert_2') AND tag LIKE '_serial=%')),
   CONCAT('wrapping_column=', (SELECT COUNT(*) FROM information_schema.columns
     WHERE table_schema = DATABASE() AND table_name = 'objects' AND column_name = 'wrapping_key_id')),
   CONCAT('parameters=', COALESCE((SELECT GROUP_CONCAT(name, ':', value ORDER BY name)
@@ -112,7 +130,7 @@ fixture_ckms() {
 # Start a release server on the fixture network; the arguments follow `docker run`.
 # docker-proxy accepts TCP before the server listens, so readiness is an actual KMS call.
 start_kms() {
-  docker run --detach --name "${KMS_NAME}" --network "${NETWORK}" "$@" >/dev/null
+  docker run --detach --name "${KMS_NAME}" --network "${NETWORK}" --publish 127.0.0.1::9998 "$@" >/dev/null
   if wait_for_command 60 fixture_ckms server version >/dev/null 2>&1; then
     return 0
   fi
@@ -330,7 +348,8 @@ PY
 }
 
 populate_fixture() {
-  local port="$1"
+  local address
+  address="$(docker port "${KMS_NAME}" 9998/tcp)"
   fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag mig mig_kek
   fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag mig --wrapping-key-id mig_kek mig_wrapped
   fixture_ckms rsa keys create --size_in_bits 2048 --tag mig mig_rsa
@@ -340,7 +359,7 @@ populate_fixture() {
     --certificate-id mig_cert --subject-name "CN=Migration fixture" --tag mig
   fixture_ckms access-rights grant --object-uid mig_kek mig_user get encrypt decrypt
 
-  populate_bulk_kmip "${port}"
+  populate_bulk_kmip "${address##*:}"
   fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag bulk --wrapping-key-id mig_kek bulk_sym_wrapped
   fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag bulk --wrapping-key-id bulk_aes_256 bulk_wrapped_2
   fixture_ckms rsa keys create --size_in_bits 3072 --tag bulk bulk_rsa_3072
@@ -492,10 +511,45 @@ with sqlite3.connect(destination) as connection:
 PY
 }
 
+seed_sql_junk() {
+  local backend="$1" version="$2"
+  local dangling_json='{"SymmetricKey":{"KeyBlock":{"KeyFormatType":"TransparentSymmetricKey","KeyValue":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],"CryptographicAlgorithm":"AES","CryptographicLength":128,"KeyWrappingData":{"WrappingMethod":"Encrypt","EncryptionKeyInformation":{"UniqueIdentifier":"junk_missing_kek"},"EncodingOption":"NoEncoding"}}}}'
+  local cert_json='{"Certificate":{"CertificateType":"X509","CertificateValue":[222,173,190,239]}}'
+  local opaque_json='{"OpaqueObject":{"OpaqueDataType":"Unknown","OpaqueDataValue":[1,2,3,4]}}'
+  {
+    cat <<SQL
+INSERT INTO objects (id, object, attributes, state, owner) VALUES
+  ('junk_bad_json', '{not valid json', '{}', 'Active', 'admin'),
+  ('junk_wrong_shape_json', '{"NotAKmipObject":{"foo":123}}', '{}', 'Active', 'admin'),
+  ('junk_bad_cert_der', '${cert_json}', '{}', 'Active', 'admin'),
+  ('junk_non_cert_tagged_cert', '${opaque_json}', '{}', 'Active', 'admin'),
+  ('junk_dangling_wrapped', '${dangling_json}', '{}', 'Active', 'admin');
+SQL
+    if [ "${version}" = 5.28.0 ]; then
+      echo "UPDATE objects SET wrapping_key_id = 'junk_missing_kek' WHERE id = 'junk_dangling_wrapped';"
+    fi
+    cat <<'SQL'
+INSERT INTO tags (id, tag) VALUES
+  ('junk_bad_json', 'junk'),
+  ('junk_bad_json', '_cert'),
+  ('junk_wrong_shape_json', 'junk'),
+  ('junk_bad_cert_der', 'junk'),
+  ('junk_bad_cert_der', '_cert'),
+  ('junk_non_cert_tagged_cert', 'junk'),
+  ('junk_non_cert_tagged_cert', '_cert'),
+  ('junk_dangling_wrapped', 'junk'),
+  ('junk_dangling_wrapped', '_kk'),
+  ('junk_orphan_object', 'junk_orphan_tag');
+INSERT INTO read_access (id, userid, permissions) VALUES
+  ('junk_orphan_object', 'mig_user', '["get"]');
+SQL
+  } | db_client "${backend}" restore >/dev/null
+}
+
 # 5.14.0 is versioned and stores attributes as json; 5.28.0 ran the wrapping backfill.
 expected_facts() {
   local backend="$1" version="$2"
-  local facts="objects=8 named=6 revoked=Deactivated untagged=0 grant=decrypt,encrypt,get serial_tags=0"
+  local facts="objects=32 named=28 revoked=Deactivated preactive=PreActive compromised=Compromised destroyed=Destroyed untagged=0 orphans=2 grant=decrypt,encrypt,get serial_tags=0"
   case "${version}" in
     5.14.0) facts+=' wrapping_column=0 parameters=db_state:"ready",db_version:5.14.0' ;;
     5.28.0) facts+=" wrapping_column=1 parameters=wrapping_key_id_backfilled:true" ;;
@@ -513,6 +567,7 @@ expected_facts() {
 write_sql_fixture() {
   local backend="$1" version="$2" output="$3"
   local dump="${WORK_DIR}/dump.sql" facts expected
+  seed_sql_junk "${backend}" "${version}"
   # pg_dump 18 brackets the dump in psql-only \restrict meta-commands.
   db_client "${backend}" dump | grep -v -E '^\\(un)?restrict ' >"${dump}"
   if grep -q '^[\]' "${dump}"; then
