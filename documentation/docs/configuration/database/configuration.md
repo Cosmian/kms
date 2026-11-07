@@ -237,7 +237,7 @@ All use the same configuration with `database-type=mysql`.
     --database-url=mysql://kms_user:kms_password@mysql-server:3306/kms
     ```
 
-For certificate authentication, see [MySQL / MariaDB TLS / mTLS](#mysql-mariadb-tls-mtls).
+For certificate authentication, see [MySQL / MariaDB TLS / mTLS](#mysql--mariadb-tls--mtls).
 
 ### Redis with Findex
 
