@@ -755,6 +755,7 @@
         "title": "Destruction : {{label}} {{typeString}}",
         "warningTitle": "Avertissement : ceci est une action destructive.",
         "mustRevoked": "{{label}} doit d'abord être révoqué(e)",
+        "revokeFirst": "Veuillez d'abord révoquer cet objet ({{label}}).",
         "destroyKeyPair": "Détruire la clé publique ou la clé privée détruira l'ensemble de la paire de clés",
         "hsmRemoved": "Les clés dans les magasins externes (HSM) sont automatiquement supprimées",
         "certNotDestroy": "Détruire un certificat ne détruit pas sa clé privée associée",
