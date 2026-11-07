@@ -10,7 +10,7 @@ applyTo: '**/*.rs'
 
 - Never use `.unwrap()` in production code — use `?` propagation with context.
 - Use `thiserror`-based error types; each crate defines its own `Error` enum.
-- In tests, return `KResult<()>` / `Result` and use `?`. Where a panic is unavoidable use `.expect("<why this cannot fail>")`; never a bare `.unwrap()`.
+- In tests, prefer returning `KResult<()>` / `Result` and using `?`. `.unwrap()` and `.expect("…")` are both allowed in test code (`clippy.toml` sets `allow-unwrap-in-tests` and `allow-expect-in-tests`); prefer `.expect("<why this cannot fail>")` when the reason is not obvious from the line.
 
 ## Panics and brutal exits — FORBIDDEN in production code
 

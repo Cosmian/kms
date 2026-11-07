@@ -19,16 +19,7 @@ ignored = ["prost"]
 non_camel_case_types = "allow"
 
 [lints.clippy]
-derive_partial_eq_without_eq = "allow"
-empty_structs_with_brackets = "allow"
-missing_const_for_fn = "allow"
-default_trait_access = "allow"
-as_conversions = "allow"
-use_self = "allow"
-doc_markdown = "allow"
 result_large_err = "allow"
-allow_attributes = "allow"
-allow_attributes_without_reason = "allow"
 
 [dependencies]
 prost = { workspace = true }
