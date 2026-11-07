@@ -76,9 +76,9 @@ Each test job runs one group of `.mise/tasks/test` (`mise run test:<group> --var
 |Job|Group|
 |---|---|
 |`test-cloud`|`cloud` (upstream only: needs the Google, AWS and Azure secrets)|
-|`test-db`|`db`, with the database environment variables|
+|`test-db`|`test-db.yml`: one `test-group.yml` job per `db` leaf and variant (`sqlite`, `psql`, `mysql`, `mariadb`, `percona`, `redis` non-FIPS only), with the database environment variables|
 |`test-hsm`|`hsm` without the real HSMs (`skip: hsm:crypt2pay hsm:proteccio`), then the `bench` models|
-|`test-interop`|`interop`|
+|`test-interop`|`test-interop.yml`: one `test-group.yml` job per `interop` leaf (`ase`, `db2`, `edb-tde`, `iris`, `jose`, `kmipkit`, `pykmip` non-FIPS only; `kmip-go` both variants), so a hang or leftover state in one leaf stays in its own job|
 |`test-obs`|`obs`|
 |`test-pkcs11`|`pkcs11`|
 |`test-pki`|`pki`|
