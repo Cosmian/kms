@@ -1,7 +1,7 @@
 # CI workflows: `main.yml`
 
-`main.yml` is the PR / tag / nightly test pipeline. It only calls other workflows:
-`main.yml` -> `main_base.yml` -> `supply-chain.yml`, `no-nix.yml`, `forward_proxy.yml`, `test_windows.yml`, `test_all.yml` -> `cargo-publish.yml`.
+`main.yml` is the PR / tag / nightly test pipeline. Its jobs are direct callers, so the run page groups them by area (`test / …`, `supply-chain / …`, `no-nix / …`):
+`main.yml` -> `supply-chain.yml`, `no-nix.yml`, `forward_proxy.yml`, `test_windows.yml`, `test_all.yml` -> `test-db.yml`, `test-interop.yml`, `test-group.yml` / `cargo-publish.yml`.
 Packaging and releases are described in [README_nightly.md](README_nightly.md).
 
 ## Triggers and concurrency
@@ -18,7 +18,7 @@ Only PRs share a concurrency group (`ci-CI-<head_ref>`). Every other event gets 
 ```mermaid
 flowchart LR
     Main["main.yml<br/>pull_request · tags · schedule 03:00 UTC · dispatch"]
-    Base["main_base.yml"]
+    Static["static checks and docs jobs"]
     Cla["cla.yml<br/>external PRs"]
     Proxy["forward_proxy.yml"]
     Supply["supply-chain.yml<br/>cargo vet · pip-audit · govulncheck · npm audit"]
@@ -26,16 +26,16 @@ flowchart LR
     TestAll["test_all.yml<br/>PR (non-dependabot) · tags · schedule · dispatch"]
     Win["test_windows.yml<br/>same gating as test_all.yml, minus fork PRs"]
     Pub["cargo-publish.yml"]
-    Main --> Base
-    Base --> Cla & Supply & NoNixWf & Proxy & Win & TestAll
+    Main --> Static
+    Main --> Cla & Supply & NoNixWf & Proxy & Win & TestAll
     TestAll --> Pub
 ```
 
-## `main_base.yml`
+## Jobs of `main.yml`
 
 ```mermaid
 flowchart TB
-    Base["main_base.yml"]
+    Main["main.yml"]
     subgraph Static["Static checks"]
         Clippy["cargo-clippy"]
         Deny["Security Audit (cargo-deny)"]
@@ -51,7 +51,7 @@ flowchart TB
     Proxy["forward-proxy"]
     Win["windows (test_windows.yml)<br/>cargo test · UI E2E · CNG KSP · EST interop"]
     TestAll["test (test_all.yml)"]
-    Base --> Static & Docs & NoNix & Proxy & Win & TestAll
+    Main --> Static & Docs & NoNix & Proxy & Win & TestAll
 ```
 
 ## `test_all.yml`
@@ -96,7 +96,7 @@ A leaf that fails only when grouped (port, Docker or environment leak) or only i
 
 |Item|PR|Nightly / tags|
 |---|---|---|
-|`test_all.yml` (via `main_base.yml` `test`)|yes (not dependabot)|yes|
+|`test_all.yml` (job `test` of `main.yml`)|yes (not dependabot)|yes|
 |real HSMs (`test-hsm-hardware`, `test-k8s-hsm`)|skipped (software simulators run)|run|
 |DB jobs other than sqlite|`cosmian_kms_server_database` DB tests plus the lib tests of the six crates that start `test_kms_server`|same|
 |sqlite job|whole workspace `--lib --bins` once per variant|same|
@@ -140,7 +140,7 @@ from that PR's merge ref.
 |`setup-nix`|`extra-nix-config`, `dev-shell-cache`|Installs Nix, warms the pinned nixpkgs, optionally imports the cached dev-shell closure|`setup-nix-mise`, `nix-dev-shell-cache`, `benchmark.yml`|
 |`install-mise`|none|Installs the pinned, checksum-verified mise binary|`setup-nix-mise`, several jobs|
 |`setup-nix-mise`|`cleanup-runner`, `extra-nix-config`, `dev-shell-cache`|Optional cleanup, then Nix, then mise (requires a prior checkout)|`test_all.yml`, packaging workflows, `nix-update-hashes.yml`|
-|`cache-openssl-buildrs`|`variant`|Caches `target/openssl-*` built by `crate/crypto/build.rs`|`main_base.yml`, `forward_proxy.yml`, `test_all.yml`|
+|`cache-openssl-buildrs`|`variant`|Caches `target/openssl-*` built by `crate/crypto/build.rs`|`forward_proxy.yml`, `test_all.yml`, `test-group.yml`, `no-nix.yml`|
 |`build-static-openssl`|none|Windows vcpkg static OpenSSL with retries and a vcpkg binary cache|`test_windows.yml`, `build_windows.yml`|
 |`windows-vs-ninja`|none|Puts Visual Studio's Ninja on PATH so vcpkg does not download it|`test_windows.yml`|
 |`docker-login-ghcr`|`github-token`|Logs in to ghcr.io|`packaging-docker.yml`|

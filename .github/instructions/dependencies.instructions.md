@@ -25,7 +25,7 @@ crate, package, module, base image, action and installer as untrusted code.
 
 ## 2. Rust (Cargo)
 
-Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.yml`, pre-commit hook `cargo-deny`), `cargo machete` (CI job `cargo-machete`, pre-commit hook `cargo-machete`), `cargo vet check --locked` (CI job `cargo-vet` in `.github/workflows/supply-chain.yml`, pre-commit hook `cargo-vet`).
+Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main.yml`, pre-commit hook `cargo-deny`), `cargo machete` (CI job `cargo-machete`, pre-commit hook `cargo-machete`), `cargo vet check --locked` (CI job `cargo-vet` in `.github/workflows/supply-chain.yml`, pre-commit hook `cargo-vet`).
 
 - [ ] Declare the crate once in `[workspace.dependencies]` of the root `Cargo.toml` with an explicit version (`default-features = false` when it has default features); member crates use `<crate> = { workspace = true }`, adding `features = [...]` as needed (`toml.instructions.md`).
 - [ ] crates.io only: no `git =`, no `path =` outside the workspace, no `[patch.crates-io]` (`deny.toml` `[sources]` has `allow-git = []`).

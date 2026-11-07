@@ -19,8 +19,122 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  main:
+  cla-assistant:
+    if: (github.event.pull_request.head.repo.full_name != github.repository) && ((github.event.comment.body == 'recheck' || github.event.comment.body ==
+      'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target')
+    uses: ./.github/workflows/cla.yml
     secrets: inherit
-    uses: ./.github/workflows/main_base.yml
+
+  cargo-clippy:
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
     with:
       toolchain: 1.99.1
+
+  cargo-deny:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
+    name: Security Audit
+    with:
+      toolchain: 1.99.1
+
+  cargo-machete:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
+    with:
+      toolchain: 1.99.1
+
+  supply-chain:
+    uses: ./.github/workflows/supply-chain.yml
+    with:
+      toolchain: 1.99.1
+
+  forward-proxy:
+    uses: ./.github/workflows/forward_proxy.yml
+    with:
+      toolchain: 1.99.1
+
+  no-nix:
+    uses: ./.github/workflows/no-nix.yml
+
+  windows:
+    # Same gating as `test` (no dependabot PRs) plus no fork PRs. Windows is slow: PRs run the
+    # quick suite; tags and nightly run the full one.
+    if: >-
+      ((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/test_windows.yml
+    with:
+      toolchain: 1.99.1
+      archive-name: windows
+      # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off-PR only.
+      full-suite: ${{ github.event_name != 'pull_request' }}
+
+  test: # Run all tests (PRs, tags and the nightly schedule / manual dispatch)
+    if: (github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]') || startsWith(github.ref,
+      'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/test_all.yml
+    secrets: inherit
+    with:
+      toolchain: 1.99.1
+
+  build-documentation:
+    name: Build documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Check AI instruction consistency
+        run: mise run docs:check-ai
+
+      - name: Build documentation
+        env:
+          # Turns on the combined public docs build; empty on fork PRs
+          PUBLIC_DOCS_TOKEN: ${{ github.event_name == 'pull_request' && secrets.PAT_TOKEN || '' }}
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          mise run docs:mdbook-build
+
+  linkcheck:
+    name: Check documentation links
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Link check
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
+        with:
+          args: --config lychee.toml 'documentation/docs/**/*.md'
+          fail: false
+
+  public_documentation:
+    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+      || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Deploy documentation in staging
+        if: ${{ github.ref_name == 'develop' }}
+        uses: benc-uk/workflow-dispatch@d004979be141727c7a17c28f603e2facc40d0855 # v1
+        with:
+          workflow: staging.yml
+          repo: Cosmian/public_documentation
+          ref: develop
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Deploy documentation in prod
+        if: startsWith(github.ref, 'refs/tags')
+        uses: benc-uk/workflow-dispatch@d004979be141727c7a17c28f603e2facc40d0855 # v1
+        with:
+          workflow: prod.yml
+          repo: Cosmian/public_documentation
+          ref: main
+          token: ${{ secrets.PAT_TOKEN }}
