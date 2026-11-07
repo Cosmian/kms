@@ -436,7 +436,7 @@ impl RedisWithFindex {
             {
                 continue;
             }
-            let Some(tag) = certificate_serial_tag(&db_object.object) else {
+            let Some(tag) = certificate_serial_tag(&uid, &db_object.object) else {
                 continue;
             };
             tags.insert(tag);

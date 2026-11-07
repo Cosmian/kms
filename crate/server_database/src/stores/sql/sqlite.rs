@@ -455,7 +455,7 @@ impl SqlitePool {
                         for (id, object_json) in &rows {
                             match serde_json::from_str::<Object>(object_json) {
                                 Ok(obj) => {
-                                    if let Some(tag) = certificate_serial_tag(&obj) {
+                                    if let Some(tag) = certificate_serial_tag(id, &obj) {
                                         tx.execute(insert_tag, rusqlite::params![id, tag])?;
                                     }
                                 }
@@ -1036,17 +1036,14 @@ impl ObjectsStore for SqlitePool {
 #[async_trait(?Send)]
 impl DbParameters for SqlitePool {
     async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+        let has_parameters = get_sqlite_query!("has-table-parameters");
         let select_param = get_sqlite_query!("select-parameter");
         let name = name.to_owned();
         self.reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let parameters_exist: bool = c.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM sqlite_master \
-                         WHERE type = 'table' AND name = 'parameters')",
-                        [],
-                        |row| row.get(0),
-                    )?;
+                    let parameters_exist: bool =
+                        c.query_row(has_parameters, [], |row| row.get(0))?;
                     if !parameters_exist {
                         return Ok(None);
                     }
@@ -1086,11 +1083,9 @@ impl Migrate for SqlitePool {
     const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
 
     async fn has_data(&self) -> DbResult<bool> {
+        let has_objects = get_sqlite_query!("has-objects");
         self.reader()
-            .call(|c| {
-                c.prepare_cached("SELECT 1 FROM objects LIMIT 1")?
-                    .exists([])
-            })
+            .call(move |c| c.prepare_cached(has_objects)?.exists([]))
             .await
     }
 
