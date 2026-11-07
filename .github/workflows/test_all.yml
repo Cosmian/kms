@@ -77,269 +77,12 @@ jobs:
           key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
             'nix/utimaco.nix', '.mise/lib/common.sh') }}
 
-  # The test matrices below list their legs explicitly: a leg is a `leg` value, a matrix cell is a leg and a
-  # variant, and `include` maps a leg to the `test:<id>` tasks it runs one after the other (the `suites` list,
-  # see .mise/tasks/test/README.md). Every matrix id declares `-v --variant`; the five tasks without it
-  # (cloud/xks-remote, k8s/csi-provider, k8s/operator, k8s/plugin-mtls, pkg/docker-oracle) are in no leg.
-  # A task missing from every `include` runs locally only.
-  # Suites that need neither secrets nor the JS toolchain: databases, black-box suites,
-  # software HSMs, PKCS#11 clients. The suites of a leg share one runner and one build; Nix-shell suites
-  # are grouped apart from the others (`interop-cloud`, `pkcs11`, `ui-sso`), because switching OPENSSL_DIR
-  # recompiles the workspace. Each task starts its own docker compose services.
-  test-nix:
-    name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
-    runs-on: ubuntu-24.04
-    needs:
-      - nix-dev-shell-cache
-    env:
-      # The `secrets` context is unavailable in step-level `if:`; expose via env instead.
-      # Empty on fork pull requests (secrets withheld) -> login is skipped, pulls stay anonymous.
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-    strategy:
-      fail-fast: false
-      matrix:
-        leg:
-          - sqlite
-          - psql
-          - mysql
-          - percona
-          - mariadb
-          - redis
-          - softhsm2
-          - utimaco
-          - kryoptic
-          - crypt2pay-simulator
-          - pkcs11
-          - veracrypt
-          - ase
-          - db2
-          - jose
-          - gcp-cmek
-          - audit
-          - pki-obs
-          - interop-cloud
-        variant: [fips, non-fips]
-        exclude:
-          # non-FIPS only
-          - {leg: redis, variant: fips}
-          - {leg: kryoptic, variant: fips}
-          - {leg: pkcs11, variant: fips}
-          - {leg: veracrypt, variant: fips}
-          - {leg: ase, variant: fips}
-          - {leg: db2, variant: fips}
-          - {leg: jose, variant: fips}
-        include:
-          - {leg: sqlite, suites: db:sqlite}
-          - {leg: psql, suites: db:psql}
-          - {leg: mysql, suites: db:mysql}
-          - {leg: percona, suites: db:percona}
-          - {leg: mariadb, suites: db:mariadb}
-          - {leg: redis, suites: db:redis}
-          - {leg: softhsm2, suites: hsm:softhsm2, bench: softhsm2}
-          - {leg: utimaco, suites: hsm:utimaco, bench: utimaco}
-          - {leg: kryoptic, suites: hsm:kryoptic, bench: kryoptic}
-          - {leg: crypt2pay-simulator, suites: hsm:crypt2pay-simulator, bench: crypt2pay-simulator}
-          - {leg: pkcs11, suites: pkcs11:gnupg pkcs11:luks pkcs11:openssh pkcs11:support pkcs11:tool}
-          - {leg: veracrypt, suites: pkcs11:veracrypt}
-          - {leg: ase, suites: interop:ase}
-          - {leg: db2, suites: interop:db2}
-          - {leg: jose, suites: interop:jose}
-          - {leg: gcp-cmek, suites: cloud:gcp-cmek}
-          - {leg: audit, suites: obs:audit obs:audit-opensearch obs:audit-postgres obs:audit-splunk}
-          # Legs whose suites differ per variant get one entry per variant.
-          - leg: pki-obs
-            variant: fips
-            suites: >-
-              cloud:secret-cosmian-kms hsm:azure-cloud-hsm-build obs:otel pki:est-interop pki:ocsp
-              pki:revocation pki:scep-interop
-          - leg: pki-obs
-            variant: non-fips
-            suites: >-
-              cloud:secret-cosmian-kms hsm:azure-cloud-hsm-build obs:cef-format obs:cef-syslog
-              obs:cef-tcp-syslog obs:filebeat obs:fluent-bit obs:monitoring obs:otel pki:est-interop
-              pki:ocsp pki:revocation pki:scep-interop
-          - leg: interop-cloud
-            variant: fips
-            suites: interop:kmip-go
-          - leg: interop-cloud
-            variant: non-fips
-            suites: cloud:azure-ekm cloud:xks interop:iris interop:kmip-go interop:pykmip
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: ${{ matrix.variant }}
-
-      - uses: ./.github/actions/setup-nix-mise
-        with:
-          cleanup-runner: 'true'
-          dev-shell-cache: 'true'
-
-      - name: Docker login (Docker Hub)
-        if: ${{ env.DOCKERHUB_USERNAME != '' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Test
-        env:
-          POSTGRES_USER: kms
-          PGUSER: kms
-          POSTGRES_PASSWORD: kms
-          POSTGRES_DB: kms
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          KMS_POSTGRES_URL: postgresql://kms:kms@127.0.0.1:5432/kms
-
-          MYSQL_DATABASE: kms
-          MYSQL_ROOT_PASSWORD: kms
-          MYSQL_HOST: localhost
-          MYSQL_PORT: 3306
-          KMS_MYSQL_URL: mysql://root:kms@localhost:3306/kms
-
-          PERCONA_HOST: localhost
-          PERCONA_PORT: 3307
-          KMS_PERCONA_URL: mysql://root:kms@localhost:3307/kms
-
-          MARIADB_HOST: localhost
-          MARIADB_PORT: 3308
-          KMS_MARIADB_URL: mysql://root:kms@localhost:3308/kms
-
-          KMS_SQLITE_PATH: data/shared
-
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          KMS_REDIS_URL: redis://localhost:6379
-
-          # EDB Postgres Advanced Server TDE variables.
-          # When EDB_SUBSCRIPTION_TOKEN is set the test suite starts the real
-          # EDB Postgres 17 container (edb-tde service in docker-compose.yml)
-          # and runs a live end-to-end TDE scenario.  Without it the Docker
-          # test is skipped and only the PyKMIP/Thales KMIP simulations run.
-          # Register for a free token: https://www.enterprisedb.com/accounts/register
-          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
-
-          # InterSystems IRIS mTLS integration test
-          IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
-
-          # Splunk audit JSONL compatibility test password
-          SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
-          # Provide an authenticated token so mise can install tools from
-          # GitHub releases without hitting the unauthenticated rate limit.
-          GITHUB_TOKEN: ${{ github.token }}
-          SUITES: ${{ matrix.suites }}
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          rc=0
-          # shellcheck disable=SC2086 # SUITES is a space-separated id list
-          for id in $SUITES; do
-            echo "::group::test:${id} (${VARIANT})"
-            st=0
-            mise run "test:${id}" --variant "$VARIANT" || st=$?
-            echo "::endgroup::"
-            case "$st" in
-              0) ;;
-              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
-              *) echo "::error::test:${id} failed"; rc=1 ;;
-            esac
-          done
-          exit "$rc"
-
-      - name: Bench (PKCS#11 load, HSM-delegated)
-        if: matrix.bench && github.event_name != 'pull_request'
-        run: |
-          mise run bench:pkcs11 --delegated --hsm-model ${{ matrix.bench }} --variant ${{ matrix.variant }} -s
-
-      - name: Bench (HSM-delegated)
-        if: matrix.bench && github.event_name != 'pull_request'
-        run: |
-          mise run bench:hsm --delegated --hsm-model ${{ matrix.bench }} --variant ${{ matrix.variant }} -s
-
-  # Suites that run pnpm install and the JS toolchain (vite, vitest, playwright):
-  # any npm dependency can read this job's environment, so it gets no cloud/test secrets.
-  test-nix-js:
-    name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
-    runs-on: ubuntu-24.04
-    needs:
-      - nix-dev-shell-cache
-    permissions:
-      contents: read
-    env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-    strategy:
-      fail-fast: false
-      matrix:
-        leg: [spire, ui, ui-sso, wasm]
-        variant: [fips, non-fips]
-        exclude:
-          # non-FIPS only
-          - {leg: spire, variant: fips}
-          - {leg: ui-sso, variant: fips}
-        include:
-          - {leg: spire, suites: spire}
-          - {leg: ui, suites: ui:standard}
-          - {leg: ui-sso, suites: ui:auth ui:oidc ui:saml}
-          - {leg: wasm, suites: ui:wasm}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-          persist-credentials: false
-
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: ${{ matrix.variant }}
-
-      - uses: ./.github/actions/setup-nix-mise
-        with:
-          cleanup-runner: 'true'
-          dev-shell-cache: 'true'
-
-      # Only spire pulls images; the stored credential is then readable by later steps.
-      - name: Docker login (Docker Hub)
-        if: ${{ matrix.leg == 'spire' && env.DOCKERHUB_USERNAME != '' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Test
-        env:
-          # Read-only (contents: read); lets mise install tools without hitting the rate limit.
-          GITHUB_TOKEN: ${{ github.token }}
-          SUITES: ${{ matrix.suites }}
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          rc=0
-          # shellcheck disable=SC2086 # SUITES is a space-separated id list
-          for id in $SUITES; do
-            echo "::group::test:${id} (${VARIANT})"
-            st=0
-            mise run "test:${id}" --variant "$VARIANT" || st=$?
-            echo "::endgroup::"
-            case "$st" in
-              0) ;;
-              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
-              *) echo "::error::test:${id} failed"; rc=1 ;;
-            esac
-          done
-          exit "$rc"
-
-  # Suites that need repository secrets. Skipped on forks and fork pull requests, where the secrets are
-  # withheld. The real HSMs are in `test-hsm-hardware`, which pull requests never run.
-  # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
-  # Luna (no reachable partition). To bring one back, add its leg to `test-hsm-hardware` with its `suites`
-  # and its `lock`, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and
-  # map its secrets in the Test step (names in crate/hsm/<name>/README.md).
-  test-nix-upstream:
-    name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
-    runs-on: ubuntu-24.04
+  # One job per group of .mise/tasks/test (`mise run test:<group>`, i.e. its `_default`), each cell run by
+  # test-group.yml. `skip` lists `<group>:<leaf>` ids a job must not run. `k8s` and `pkg` run in
+  # packaging-docker.yml; a leaf no group lists runs locally only.
+  # Upstream only (not on forks or fork pull requests): the Google, AWS and Azure secrets are withheld there.
+  test-cloud:
+    name: Test cloud (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
     if: >-
@@ -349,80 +92,198 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        leg: [google-cse, secrets]
         variant: [fips, non-fips]
-        exclude:
-          # non-FIPS only
-          - {leg: secrets, variant: fips}
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: cloud
+      variant: ${{ matrix.variant }}
+    secrets:
+      TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+      TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+      KMS_CI_AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+      KMS_CI_AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+      KMS_CI_AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+      KMS_CI_AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+      KMS_CI_AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+      KMS_CI_AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+      KMS_CI_AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
+
+  test-db:
+    name: Test db (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [fips, non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: db
+      variant: ${{ matrix.variant }}
+      extra-env: |
+        POSTGRES_USER=kms
+        PGUSER=kms
+        POSTGRES_PASSWORD=kms
+        POSTGRES_DB=kms
+        POSTGRES_HOST=localhost
+        POSTGRES_PORT=5432
+        KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms
+        MYSQL_DATABASE=kms
+        MYSQL_ROOT_PASSWORD=kms
+        MYSQL_HOST=localhost
+        MYSQL_PORT=3306
+        KMS_MYSQL_URL=mysql://root:kms@localhost:3306/kms
+        PERCONA_HOST=localhost
+        PERCONA_PORT=3307
+        KMS_PERCONA_URL=mysql://root:kms@localhost:3307/kms
+        MARIADB_HOST=localhost
+        MARIADB_PORT=3308
+        KMS_MARIADB_URL=mysql://root:kms@localhost:3308/kms
+        KMS_SQLITE_PATH=data/shared
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        KMS_REDIS_URL=redis://localhost:6379
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  test-hsm:
+    name: Test hsm (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
         include:
-          - {leg: google-cse, suites: cloud:google-cse}
-          - {leg: secrets, suites: cloud:secret-aws cloud:secret-azure cloud:secret-vault}
+          - {variant: fips, bench: softhsm2 utimaco crypt2pay-simulator}
+          - {variant: non-fips, bench: softhsm2 utimaco crypt2pay-simulator kryoptic}
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: hsm
+      variant: ${{ matrix.variant }}
+      # real HSMs: test-hsm-hardware
+      skip: hsm:crypt2pay hsm:proteccio
+      bench: ${{ matrix.bench }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
+  test-interop:
+    name: Test interop (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [fips, non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: interop
+      variant: ${{ matrix.variant }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+      IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
 
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: ${{ matrix.variant }}
+  test-obs:
+    name: Test obs (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [fips, non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: obs
+      variant: ${{ matrix.variant }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      AUDIT_COMPAT_SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
 
-      - uses: ./.github/actions/setup-nix-mise
-        with:
-          cleanup-runner: 'true'
-          dev-shell-cache: 'true'
+  # Every pkcs11 leaf is non-FIPS only.
+  test-pkcs11:
+    name: Test pkcs11 (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: pkcs11
+      variant: ${{ matrix.variant }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # An upstream suite fails, never skips, when an `env:` need is unset (deleted or renamed secret, typo in
-      # the mapping below): a green leg proves its suites ran.
-      - name: Test
-        env:
-          # Google variables (cloud:google-cse)
-          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+  test-pki:
+    name: Test pki (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [fips, non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: pki
+      variant: ${{ matrix.variant }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-          # AWS secret backend variables (cloud:secret-aws)
-          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+  # Only spire pulls images among the JS-toolchain groups, so it alone gets the Docker Hub login.
+  test-spire:
+    name: Test spire (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: spire
+      variant: ${{ matrix.variant }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-          # Azure Key Vault secret backend variables (cloud:secret-azure)
-          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
-          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
-
-          # Provide an authenticated token so mise can install tools from
-          # GitHub releases without hitting the unauthenticated rate limit.
-          GITHUB_TOKEN: ${{ github.token }}
-          SUITES: ${{ matrix.suites }}
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          rc=0
-          # shellcheck disable=SC2086 # SUITES is a space-separated id list
-          for id in $SUITES; do
-            echo "::group::test:${id} (${VARIANT})"
-            st=0
-            mise run "test:${id}" --variant "$VARIANT" || st=$?
-            echo "::endgroup::"
-            case "$st" in
-              0) ;;
-              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
-              *) echo "::error::test:${id} failed"; rc=1 ;;
-            esac
-          done
-          exit "$rc"
+  # Runs pnpm install and the JS toolchain (vite, vitest, playwright): any npm dependency can read the
+  # job's environment, so it gets no cloud/test secrets.
+  test-ui:
+    name: Test ui (${{ matrix.variant }})
+    needs:
+      - nix-dev-shell-cache
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [fips, non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: ui
+      variant: ${{ matrix.variant }}
 
   # The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
-  # dispatch runs only; pull requests cover the HSM code with the software simulators of `test-nix`. Upstream
+  # dispatch runs only; pull requests cover the HSM code with the software simulators of `test-hsm`. Upstream
   # repository only, where the secrets exist. The HSMs refuse concurrent connections from several CI runs:
-  # each leg's `lock` is one concurrency group shared by all runs, queued (test-k8s-hsm in packaging-docker.yml
-  # uses the same groups). A task fails, never skips, when an `env:` need is unset: a green leg proves its
-  # suites ran.
+  # each cell's `lock` is one concurrency group shared by all runs, queued (test-k8s-hsm in packaging-docker.yml
+  # uses the same groups). A task fails, never skips, when an `env:` need is unset: a green cell proves its
+  # suite ran.
+  # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
+  # Luna (no reachable partition). To bring one back, add its cell to `test-hsm-hardware` with its `suite`
+  # and its `lock`, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and
+  # pass its secrets through test-group.yml (names in crate/hsm/<name>/README.md).
   test-hsm-hardware:
-    name: Test on ${{ matrix.leg }} - ${{ matrix.variant }}
-    runs-on: ubuntu-24.04
+    name: Test ${{ matrix.suite }} (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
     if: github.repository == 'Cosmian/kms' && github.event_name != 'pull_request'
@@ -433,57 +294,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        leg: [crypt2pay, proteccio]
-        variant: [non-fips]
         include:
-          - {leg: crypt2pay, suites: hsm:crypt2pay, lock: hsm-crypt2pay}
-          - {leg: proteccio, suites: hsm:proteccio, lock: hsm-proteccio}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: ${{ matrix.variant }}
-
-      - uses: ./.github/actions/setup-nix-mise
-        with:
-          cleanup-runner: 'true'
-          dev-shell-cache: 'true'
-
-      - name: Test
-        env:
-          # Proteccio network HSM (hsm:proteccio)
-          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
-          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
-          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
-
-          # Crypt2Pay (hsm:crypt2pay), reached through OpenVPN
-          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
-          OVPN_CONF: ${{ secrets.OVPN_CONF }}
-
-          # Provide an authenticated token so mise can install tools from
-          # GitHub releases without hitting the unauthenticated rate limit.
-          GITHUB_TOKEN: ${{ github.token }}
-          SUITES: ${{ matrix.suites }}
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          rc=0
-          # shellcheck disable=SC2086 # SUITES is a space-separated id list
-          for id in $SUITES; do
-            echo "::group::test:${id} (${VARIANT})"
-            st=0
-            mise run "test:${id}" --variant "$VARIANT" || st=$?
-            echo "::endgroup::"
-            case "$st" in
-              0) ;;
-              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
-              *) echo "::error::test:${id} failed"; rc=1 ;;
-            esac
-          done
-          exit "$rc"
+          - {suite: hsm:crypt2pay, variant: non-fips, lock: hsm-crypt2pay}
+          - {suite: hsm:proteccio, variant: non-fips, lock: hsm-proteccio}
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: ${{ matrix.suite }}
+      variant: ${{ matrix.variant }}
+    secrets:
+      PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+      PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+      PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+      CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+      OVPN_CONF: ${{ secrets.OVPN_CONF }}
 
   helm:
     name: Helm chart E2E (minikube)
@@ -577,10 +400,10 @@ jobs:
           AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
         run: bash .mise/scripts/test/test_xks_aws_e2e.sh
 
-  # EST / SCEP interoperability against third-party clients (micromdm scepclient, globalsign
-  # estclient) on macOS; Linux runs them in the `test-nix` matrix.
+  # PKI group (EST / SCEP third-party clients, OCSP, revocation) on macOS; Linux runs it in `test-pki`.
+  # Inline, not test-group.yml: macOS has no Nix.
   interop-macos:
-    name: Interop (macOS) - scep + est
+    name: Test pki (macOS)
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
@@ -607,26 +430,16 @@ jobs:
         with:
           go-version-file: .mise/scripts/kmip-go/go.mod
 
-      - name: Interop test
+      - name: Test
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          SUITES: pki:scep-interop pki:est-interop
+          SUITE: pki
           VARIANT: fips
         run: |
-          rc=0
-          # shellcheck disable=SC2086 # SUITES is a space-separated id list
-          for id in $SUITES; do
-            echo "::group::test:${id} (${VARIANT})"
-            st=0
-            mise run "test:${id}" --variant "$VARIANT" || st=$?
-            echo "::endgroup::"
-            case "$st" in
-              0) ;;
-              77) echo "::warning::test:${id} skipped (see its SKIP line)" ;;
-              *) echo "::error::test:${id} failed"; rc=1 ;;
-            esac
-          done
-          exit "$rc"
+          st=0
+          mise run "test:${SUITE}" --variant "$VARIANT" || st=$?
+          if [ "$st" -eq 77 ]; then echo "::warning::test:${SUITE} skipped (see its SKIP line)"; st=0; fi
+          exit "$st"
 
   windows-2022:
     # Windows is slow: PRs run the quick suite; tags and nightly run the full one.
@@ -656,10 +469,16 @@ jobs:
 
   cargo-publish:
     needs:
-      - test-nix
-      - test-nix-js
-      - test-nix-upstream
+      - test-cloud
+      - test-db
+      - test-hsm
       - test-hsm-hardware
+      - test-interop
+      - test-obs
+      - test-pkcs11
+      - test-pki
+      - test-spire
+      - test-ui
       - helm
     # Real publish, tags only: a skipped dependency (upstream-only jobs on forks) must not skip
     # it, but any failed or cancelled dependency blocks it.

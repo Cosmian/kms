@@ -861,8 +861,8 @@ mise run test:hsm:kryoptic --variant fips
 (`crate/hsm/base_hsm/src/tests_shared.rs`) against it, including the v3.0 checks: a populated
 `C_GetInterfaceList` result, an EdDSA sign/verify round trip, an HKDF key derivation, and a
 message-based AES-GCM round trip. The task then runs the KMS server HSM tests against the same
-token. It runs in CI as the `kryoptic` leg of the `test-nix` job in
-`.github/workflows/test_all.yml`, for the non-fips variant.
+token. It runs in CI with the `hsm` group (`test-hsm` job in
+`.github/workflows/test_all.yml`).
 
 Craton HSM (`craton-co/craton-hsm-core`) was also evaluated as a candidate v3.0 conformance
 oracle: it is a pure-Rust PKCS#11 v3.0 library with post-quantum algorithm support, but as of

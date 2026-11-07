@@ -151,13 +151,13 @@ where
     get_slot(&hsm, cfg)
 }
 
-pub fn get_info<P>(cfg: &HsmTestConfig) -> HResult<()>
+/// Reads the library info of an already-instantiated HSM.
+pub fn get_info<P>(hsm: &BaseHsm<P>) -> HResult<()>
 where
     P: crate::hsm_capabilities::HsmProvider,
     BaseHsm<P>: Sized,
 {
     log_init(None);
-    let hsm = BaseHsm::<P>::instantiate(&cfg.lib_path, HashMap::new())?;
     let info = hsm.hsm_lib().get_info_struct()?;
     info!("Connected to the HSM: {info}");
     Ok(())
@@ -183,14 +183,13 @@ pub fn get_mechanisms_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-pub fn get_supported_algorithms<P>(cfg: &HsmTestConfig) -> HResult<()>
+/// Lists the algorithms the HSM reports for the configured test slot.
+pub fn get_supported_algorithms<P>(hsm: &BaseHsm<P>, cfg: &HsmTestConfig) -> HResult<()>
 where
     P: crate::hsm_capabilities::HsmProvider,
     BaseHsm<P>: Sized,
 {
     log_init(None);
-    info!("Config: {cfg:#?}");
-    let hsm = BaseHsm::<P>::instantiate(&cfg.lib_path, cfg.slot_ids_and_passwords.clone())?;
     let supported_algorithms = hsm.get_algorithms(cfg.slot_id_for_tests)?;
     info!("{:?}", supported_algorithms);
     Ok(())

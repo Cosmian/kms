@@ -59,49 +59,38 @@ flowchart TB
 ```mermaid
 flowchart TB
     Cache["nix-dev-shell-cache<br/>OpenSSL 3.1.2 / 3.6.5 + SoftHSM2 built once per Nix input hash"]
-    subgraph NixJobs["Jobs importing the Nix dev shell"]
-        TestNix["test-nix<br/>DB backends · black-box suites · pkcs11 clients · software HSMs"]
-        TestJs["test-nix-js<br/>WASM · UI standard · UI SSO · SPIRE"]
-        Upstream["test-nix-upstream<br/>google-cse · secrets"]
+    subgraph NixJobs["One job per test group, each run by test-group.yml (Nix dev shell)"]
+        Groups["test-cloud (upstream only) · test-db · test-hsm · test-interop · test-obs<br/>test-pkcs11 · test-pki · test-spire · test-ui"]
         Hsm["test-hsm-hardware<br/>proteccio · crypt2pay<br/>not on PR"]
     end
-    Cache --> TestNix & TestJs & Upstream & Hsm
+    Cache --> Groups & Hsm
     Helm["helm (minikube)"]
     Xks["xks-remote<br/>not on schedule"]
-    Mac["interop-macos<br/>scep + est"]
+    Mac["interop-macos<br/>pki group"]
     Win["windows-2022<br/>test_windows.yml"]
     DryRun["cargo-publish-dry-run<br/>PR: no-verify · nightly: full"]
     Publish["cargo-publish<br/>tags only"]
-    TestNix & TestJs & Upstream & Hsm & Helm --> Publish
+    Groups & Hsm & Helm --> Publish
 ```
 
-Each test job lists its legs explicitly in its `strategy.matrix`: `leg` and `variant` give the cells, `exclude` drops the non-FIPS-only legs, and `include` maps each leg to the `test:<id>` tasks it runs (`mise run test:<id> --variant <variant>`, one after the other in a shell loop), plus its `lock` or `bench`. A task missing from every `include` runs locally only. Each task checks its own prerequisites and exits 77 when it cannot run, which the loop reports as a `::warning::` (see `.mise/tasks/test/README.md`).
+Each test job runs one group of `.mise/tasks/test` (`mise run test:<group> --variant <variant>`, i.e. the group's `_default`, which runs its listed leaves through `run_test_leaves` and reports every failing leaf) through the reusable `test-group.yml`, which holds the checkout, caches, Nix setup, Docker Hub login, test and bench steps. A leaf checks its own prerequisites and exits 77 when it cannot run, which counts as a skip (see `.mise/tasks/test/README.md`). `matrix.variant` gives the cells; groups whose leaves are all non-FIPS only (`pkcs11`, `spire`) run `non-fips` only. The `skip` input exports `TEST_SKIP_LEAVES`, a list of `<group>:<leaf>` ids the group must not run. The `k8s` and `pkg` groups run in `packaging-docker.yml`. A leaf no group lists runs locally only.
 
-|Job|Legs|
+|Job|Group|
 |---|---|
-|`test-nix`|databases (`sqlite`, `psql`, `mysql`, `percona`, `mariadb`, `redis`), software HSMs (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`), `gcp-cmek`, `jose`, `db2`, `ase`, `audit`, `veracrypt` and the grouped legs below|
-|`test-nix-js`|`wasm`, `ui`, `ui-sso`, `spire`|
-|`test-nix-upstream`|`google-cse`, `secrets`|
-|`test-hsm-hardware`|real HSMs `proteccio`, `crypt2pay` (never on pull requests)|
+|`test-cloud`|`cloud` (upstream only: needs the Google, AWS and Azure secrets)|
+|`test-db`|`db`, with the database environment variables|
+|`test-hsm`|`hsm` without the real HSMs (`skip: hsm:crypt2pay hsm:proteccio`), then the `bench` models|
+|`test-interop`|`interop`|
+|`test-obs`|`obs`|
+|`test-pkcs11`|`pkcs11`|
+|`test-pki`|`pki`|
+|`test-spire`|`spire`|
+|`test-ui`|`ui`|
+|`test-hsm-hardware`|real HSMs `hsm:proteccio`, `hsm:crypt2pay`, one leaf per cell (never on pull requests)|
 
-`test-nix-js` runs without cloud or test secrets, because it executes `pnpm install`. It also imports the Nix dev shell. `test-nix-upstream` and `test-hsm-hardware` need repository secrets: `test-nix-upstream` skips on forks and fork pull requests, `test-hsm-hardware` never runs on pull requests and only in the upstream repository. In both jobs a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green leg proves its tasks ran. A leg's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` (also never on pull requests) shares the groups. A leg's `bench` is the HSM model whose benchmarks run after its suites, off pull requests. Pull requests cover the HSM code paths with the software simulators of `test-nix` (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`).
+`test-ui` runs without cloud or test secrets, because it executes `pnpm install`; `test-spire` receives only the Docker Hub login. Each caller passes `test-group.yml` only the secrets its leaves use. `test-cloud` skips on forks and fork pull requests, `test-hsm-hardware` never runs on pull requests and only in the upstream repository. In both jobs a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green cell proves its tasks ran. A cell's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` (also never on pull requests) shares the groups. A cell's `bench` is the list of HSM models whose benchmarks run after its tests, off pull requests. Pull requests cover the HSM code paths with the software simulators of `test-hsm` (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`).
 
-### Grouped legs
-
-Suites whose own test time is under two minutes share one runner (one build, then a shell loop runs the `test:<id>` tasks one after the other and reports every failing task). Nix-shell suites are grouped apart from the others (`blackbox-nix`, `pkcs11`, `ui-sso`), because switching `OPENSSL_DIR` recompiles the workspace.
-
-|Leg|Suites|
-|---|---|
-|`pki-obs` fips|`pki:ocsp`, `pki:revocation`, `pki:scep-interop`, `pki:est-interop`, `obs:otel`, `cloud:secret-cosmian-kms`, `hsm:azure-cloud-hsm-build`|
-|`pki-obs` non-fips|the fips list plus `obs:cef-format`, `obs:cef-syslog`, `obs:cef-tcp-syslog`, `obs:filebeat`, `obs:fluent-bit`, `obs:monitoring`|
-|`interop-cloud` fips|`interop:kmip-go`|
-|`interop-cloud` non-fips|`interop:kmip-go`, `cloud:xks`, `cloud:azure-ekm`, `interop:pykmip`, `interop:iris`|
-|`pkcs11` non-fips|`pkcs11:openssh`, `pkcs11:luks`, `pkcs11:gnupg`, `pkcs11:support`, `pkcs11:tool`|
-|`audit`|`obs:audit`, `obs:audit-opensearch`, `obs:audit-postgres`, `obs:audit-splunk`|
-|`ui-sso` non-fips (in `test-nix-js`)|`ui:auth`, `ui:oidc`, `ui:saml`|
-|`secrets` non-fips (in `test-nix-upstream`)|`cloud:secret-vault`, `cloud:secret-aws`, `cloud:secret-azure`|
-
-A suite that fails only when grouped (port, Docker or environment leak) moves to a leg of its own: add the leg to the `matrix.leg` list and the `include` of its job in `test_all.yml`.
+A leaf that fails only when grouped (port, Docker or environment leak) or only in one variant: add its `<group>:<leaf>` id to the `skip` input of its job, with a one-line reason comment.
 
 ## PR versus nightly
 

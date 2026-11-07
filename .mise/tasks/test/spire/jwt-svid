@@ -16,6 +16,14 @@ fi
 
 kms_init_env "non-fips" "${usage_link:-static}"
 setup_test_logging
+# ensure_pnpm needs corepack: host Node >= 25 no longer bundles it. Take it from the pinned Nix nodejs_23
+# (the one shell.nix gives WITH_WASM=1) without entering nix-shell, whose older rustc cannot build auth_verifier.
+if ! has_cmd corepack; then
+  require_cmd nix-build "Nix is required to provide corepack (host Node >= 25 has none)."
+  NODE23_LINK="$(get_repo_root)/target/nix-nodejs-23"
+  env -u LD_LIBRARY_PATH -u LD_PRELOAD nix-build -I "nixpkgs=${PIN_URL}" '<nixpkgs>' -A nodejs_23 -o "${NODE23_LINK}" >/dev/null
+  export PATH="${NODE23_LINK}/bin:${PATH}"
+fi
 
 REPO_ROOT="$(get_repo_root)"
 TEST_DATA="${REPO_ROOT}/test_data/spire"

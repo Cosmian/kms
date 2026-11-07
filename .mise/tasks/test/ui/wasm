@@ -20,8 +20,9 @@ fi
 # Must be exported before ensure_nix_shell so builtins.getEnv sees it.
 export WITH_WASM=1
 
-# WASM requires Node >= 22 and wasm-pack; enter nix-shell if not available
-if ! command -v wasm-pack >/dev/null 2>&1; then
+# WASM requires Node >= 22, wasm-pack and corepack (Node >= 25 no longer bundles it, the Nix nodejs_23 does);
+# enter nix-shell if one is missing
+if ! command -v wasm-pack >/dev/null 2>&1 || ! command -v corepack >/dev/null 2>&1; then
   ensure_nix_shell
 fi
 node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
@@ -42,14 +43,14 @@ require_cmd corepack
 # Its openssl.cnf references fips.so at /usr/local/cosmian/lib/ossl-modules/fips.so.
 # Create a symlink so node can initialize OpenSSL without error.
 if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
-  sudo mkdir -p /usr/local/cosmian/lib/ossl-modules
+  sudo -n mkdir -p /usr/local/cosmian/lib/ossl-modules 2>/dev/null || true
   for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
-    [ -f "$f" ] && sudo ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+    [ -f "$f" ] && sudo -n ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
   done
   # Also link the openssl.cnf so the baked-in default works
   if [ -f "${OPENSSL_CONF:-}" ]; then
-    sudo mkdir -p /usr/local/cosmian/lib/ssl
-    sudo ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+    sudo -n mkdir -p /usr/local/cosmian/lib/ssl 2>/dev/null || true
+    sudo -n ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
   fi
 fi
 unset RUSTFLAGS LDFLAGS OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH

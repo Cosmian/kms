@@ -44,10 +44,10 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
     let cfg = cfg()?;
     let hsm = shared::instantiate::<SofthsmCapabilityProvider>(&cfg)?;
-    drop(hsm.hsm_lib().get_info_struct()?);
+    shared::get_info(&hsm)?;
     let slot = shared::get_slot::<SofthsmCapabilityProvider>(&hsm, &cfg)?;
     shared::get_mechanisms_and_hashes(&slot)?;
-    drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
+    shared::get_supported_algorithms(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
@@ -117,32 +117,6 @@ fn test_hsm_softhsm2_pkcs11_v3_capability_probe_is_additive() -> HResult<()> {
     Ok(())
 }
 
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_get_info() -> HResult<()> {
-    shared::get_info::<SofthsmCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_get_mechanisms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::get_mechanisms_and_hashes(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_get_supported_algorithms() -> HResult<()> {
-    shared::get_supported_algorithms::<SofthsmCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_generate_aes_key() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::generate_aes_key(&slot)
-}
-
 /// `SoftHSM2` posing as an HSM that rejects `CKA_SENSITIVE` (AWS/Azure/GCP Cloud HSM, Luna).
 struct SofthsmWithoutAesSensitiveProvider;
 
@@ -165,121 +139,10 @@ fn test_hsm_softhsm2_sensitive_aes_key_without_sensitive_attribute() -> HResult<
 
 #[test]
 #[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_generate_rsa_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::generate_rsa_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_rsa_key_wrap() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_key_wrap(&slot, shared::TEST_RSA_OAEP_DIGEST)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_rsa_pkcs_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_encrypt(&slot)
-}
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
 fn test_hsm_softhsm2_rsa_oaep_encrypt() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_oaep_encrypt(&slot, shared::TEST_RSA_OAEP_DIGEST)
 }
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_aes_gcm_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_gcm_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_aes_cbc_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_aes_cbc_multi_round_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_multi_round(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_aes_cbc_multi_part_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_multi_part(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_rsa_pkcs_v15_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_v15_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_rsa_sha256_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sha256_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_rsa_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sign_all_algorithms(&slot)
-}
-
-/// HSM-delegated RSA-PSS signing (issue #1154). Additive: exercises only the new
-/// `HsmSigningAlgorithm::RsaPssSha{256,384,512}` variants without touching any of the
-/// pre-existing PKCS#1 v1.5 signing coverage above.
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_rsa_pss_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pss_sign_all_algorithms(&slot)
-}
-
-/// HSM-delegated EC key generation (issue #1154). Additive: exercises the new
-/// `HsmKeypairAlgorithm::EC` keygen path for all 4 FIPS-approved NIST curves
-/// (P-224/P-256/P-384/P-521), for both exportable and sensitive (non-extractable) keys.
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_generate_ec_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::generate_ec_keypair(&slot)
-}
-
-/// HSM-delegated ECDSA signing (issue #1154). Additive: exercises the new
-/// `HsmSigningAlgorithm::EcdsaSha{256,384,512}` variants across all 4 FIPS-approved NIST
-/// curves, verifying each HSM-produced DER signature independently with OpenSSL.
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::ecdsa_sign_all_curves_and_hashes(&slot)
-}
-
-/// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
-/// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms without touching any of
-/// the pre-existing ECDSA/RSA signing coverage above. `SoftHSM2` 2.6.1 was verified (via
-/// `pkcs11-tool -M`) to support both mechanisms; run with `--features non-fips,softhsm2`.
-#[cfg(feature = "non-fips")]
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_eddsa_sign_all_curves() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::eddsa_sign_all_curves(&slot)
-}
-
 // SoftHSM2 FIPS rejects RSA-OAEP-SHA256 (multi_threaded_rsa uses
 // TEST_RSA_OAEP_DIGEST = SHA256 in FIPS), so gate behind non-fips where the
 // digest is SHA1 (supported).
@@ -289,20 +152,6 @@ fn test_hsm_softhsm2_eddsa_sign_all_curves() -> HResult<()> {
 fn test_hsm_softhsm2_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, shared::TEST_RSA_OAEP_DIGEST, 4)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_list_objects() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::list_objects(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_get_key_metadata() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
 }
 
 #[test]
@@ -318,11 +167,4 @@ fn test_hsm_softhsm2_search_incompatible_key() -> HResult<()> {
 fn test_hsm_softhsm2_destroy_all() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
     shared::destroy_all(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, SoftHSM2 library, and HSM environment"]
-fn test_hsm_softhsm2_concurrent_sign_does_not_degrade() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<SofthsmCapabilityProvider>(&cfg()?)?;
-    shared::concurrent_sign_does_not_degrade(&slot)
 }

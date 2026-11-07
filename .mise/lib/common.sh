@@ -485,8 +485,23 @@ skip_test() {
   exit 77
 }
 
+# Prints the first python3 >= 3.12 on PATH. The hash-pinned requirements-*.txt are pip-compiled for 3.12,
+# but the first python3 can be older (macOS Command Line Tools ships 3.9), so never use bare python3 -m venv.
+# Usage: "$(pick_python312)" -m venv "${VENV_DIR}"
+pick_python312() {
+  local cand
+  for cand in python3 python3.12 python3.13 python3.14; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import sys; sys.exit(sys.version_info < (3, 12))'; then
+      echo "$cand"
+      return 0
+    fi
+  done
+  print_error "Python >= 3.12 is required (found: $(python3 --version 2>&1))"
+}
+
 # Runs the test scripts $2... (paths relative to directory $1) one after the other under VARIANT/LINK,
 # never stopping on a failure, then prints a PASS/SKIP/FAIL summary. Returns 1 if any script failed.
+# Leaves named <group>:<leaf> in the space-separated TEST_SKIP_LEAVES count as SKIP without running.
 # Usage: run_test_leaves "$(dirname "$0")" <leaf>...
 run_test_leaves() {
   local dir="$1" leaf rc
@@ -494,6 +509,11 @@ run_test_leaves() {
   shift
   for leaf in "$@"; do
     print_header "test ${leaf} (${VARIANT})"
+    if [[ " ${TEST_SKIP_LEAVES:-} " == *" $(basename "$dir"):${leaf} "* ]]; then
+      print_warning "SKIP: listed in TEST_SKIP_LEAVES"
+      skip+=("$leaf")
+      continue
+    fi
     if usage_variant="$VARIANT" usage_link="$LINK" bash "${dir}/${leaf}"; then rc=0; else rc=$?; fi
     case "$rc" in
       0) pass+=("$leaf") ;;

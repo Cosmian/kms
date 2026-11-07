@@ -58,10 +58,10 @@ fn crypt2pay_all(aes_gcm_check: fn(&Arc<SlotManager>) -> HResult<()>) -> HResult
     // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
     let cfg = cfg()?;
     let hsm = shared::instantiate::<Crypt2payCapabilityProvider>(&cfg)?;
-    drop(hsm.hsm_lib().get_info_struct()?);
+    shared::get_info(&hsm)?;
     let slot = shared::get_slot::<Crypt2payCapabilityProvider>(&hsm, &cfg)?;
     shared::get_mechanisms_and_hashes(&slot)?;
-    drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
+    shared::get_supported_algorithms(&hsm, &cfg)?;
     let before = shared::object_handles(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
@@ -121,73 +121,12 @@ fn test_hsm_crypt2pay_low_level_test() -> HResult<()> {
     shared::low_level_init_test(&cfg()?)
 }
 
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_get_info() -> HResult<()> {
-    shared::get_info::<Crypt2payCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_get_mechanisms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::get_mechanisms_and_hashes(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_get_supported_algorithms() -> HResult<()> {
-    shared::get_supported_algorithms::<Crypt2payCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_generate_aes_key() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::generate_aes_key(&slot)
-}
-
 /// Prove real-C2P wrapped export yields usable AES bytes, without requiring clear `CKA_VALUE`.
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and a real Crypt2pay HSM"]
 fn test_hsm_crypt2pay_exportable_aes_key() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::export_aes_key_bytes(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_generate_rsa_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::generate_rsa_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_generate_ec_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::generate_ec_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_key_wrap() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_pkcs_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_oaep_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)
 }
 
 #[test]
@@ -199,87 +138,9 @@ fn test_hsm_crypt2pay_aes_gcm_encrypt() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_aes_cbc_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_aes_cbc_multi_round_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_multi_round(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_pkcs_v15_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_v15_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_sha256_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sha256_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sign_all_algorithms(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_rsa_pss_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pss_sign_all_algorithms(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::ecdsa_sign_all_curves_and_hashes(&slot)
-}
-
-#[cfg(feature = "non-fips")]
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_eddsa_sign_all_curves() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::eddsa_sign_all_curves(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_concurrent_sign_does_not_degrade() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::concurrent_sign_does_not_degrade(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_list_objects() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::list_objects(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
-fn test_hsm_crypt2pay_get_key_metadata() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
 }
 
 #[test]

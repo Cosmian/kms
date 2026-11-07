@@ -177,6 +177,8 @@ mise test:obs --suite filebeat      # Filebeat → Elasticsearch
 | Task | Description |
 |------|-------------|
 | `dev:vectors-rekey` | Generate ReKey and ReKeyKeyPair test vectors into `test_data/` |
+| `dev:ci-uncovered-tasks` | Inventory the mise tasks no CI workflow runs, directly or through another task (`--strict` exits 1 if any) |
+| `dev:ci-ignored-tests` | Inventory the `#[ignore]` Rust tests no `cargo test --ignored` in any MISE task, script or lib runs (`--ci`: only those a CI workflow reaches; `--strict` exits 1 if any) |
 | `test` / `test:_default` | Run all tests sequentially |
 
 ---

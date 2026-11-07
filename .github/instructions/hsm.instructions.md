@@ -15,6 +15,6 @@ matrix.
 - [ ] HSM model enum updated in `crate/server/src/config/` or `crate/hsm/base_hsm/`
 - [ ] Wizard step in `crate/server/src/config/wizard/hsm_wizard.rs`
 - [ ] Test vectors in `test_data/vectors/hsm/<model>/`
-- [ ] CI leg added to `.github/workflows/test_all.yml` (`test-nix` for software HSMs with `bench`; `test-hsm-hardware` with `lock` for shared hardware (never on pull requests), plus the secret mapping), and the upstream `env:` gate (`print_error` when `CI=true` and a secret is unset, then `skip_test`) in `.mise/tasks/test/hsm/<model>` for hardware HSMs
+- [ ] CI added to `.github/workflows/test_all.yml` (software HSMs: list the leaf in `.mise/tasks/test/hsm/_default` and add the model to `test-hsm`'s `bench`; real hardware: add a `test-hsm-hardware` cell with `lock` and its secrets in `test-group.yml`, plus `skip` it in `test-hsm`), and the upstream `env:` gate (`print_error` when `CI=true` and a secret is unset, then `skip_test`) in `.mise/tasks/test/hsm/<model>` for hardware HSMs
 
 > Rule 4.13 of `/kms-sync-rules`.

@@ -391,7 +391,7 @@ jobs:
   # Deploys the images built above (FIPS and non-FIPS) with the documented Helm values
   # (documentation/docs/hsm_support/<model>.md), so they are not built a second time. The vendor
   # libraries are x86_64 only, hence amd64. The HSMs refuse concurrent CI runs, hence the same
-  # per-HSM concurrency group as the `test-nix-upstream` job of test_all.yml. Upstream repository only,
+  # per-HSM concurrency group as the `test-hsm-hardware` job of test_all.yml. Upstream repository only,
   # never on pull requests (real HSMs: nightly, tag and dispatch runs).
 
   test-k8s-hsm:

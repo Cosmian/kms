@@ -24,7 +24,6 @@ else
   mise run test:obs:audit-fixture --output "${AUDIT_FILE}"
 fi
 OPENSEARCH_HOST=127.0.0.1
-OPENSEARCH_PORT="${KMS_SLOT_ES_PORT:-9200}"
 CONTAINER_NAME="kms-audit-compat-opensearch-$$"
 audit_compat_container_cleanup_trap "${CONTAINER_NAME}"
 
@@ -33,11 +32,14 @@ print_status "Starting ephemeral OpenSearch container (no volume, --rm)"
 # bump deliberately when a new OpenSearch major/minor ships, see release notes:
 # https://github.com/opensearch-project/OpenSearch/releases
 docker run -d --rm --name "${CONTAINER_NAME}" \
-  -p "${OPENSEARCH_PORT}:9200" \
+  -p "127.0.0.1::9200" \
   -e "discovery.type=single-node" \
   -e "DISABLE_SECURITY_PLUGIN=true" \
   -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
   opensearchproject/opensearch:3.8.0 >/dev/null
+
+# Docker picks a free host port: the compose elasticsearch service (filebeat leaf) already binds KMS_SLOT_ES_PORT.
+OPENSEARCH_PORT="$(docker port "${CONTAINER_NAME}" 9200/tcp | head -n1 | sed 's/.*://')"
 
 print_status "Waiting for OpenSearch to accept connections"
 if ! wait_for_port "${OPENSEARCH_HOST}" "${OPENSEARCH_PORT}" 90; then

@@ -23,6 +23,15 @@ docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d percona || {
   skip_test "could not start compose: percona"
 }
 
+# PXC opens port 3306 before Galera is synced, so a TCP probe is not enough, and the entrypoint's temporary init server answers on the socket only: wait for wsrep_ready over TCP.
+if [ -z "${KMS_PERCONA_URL:-}" ]; then
+  print_status "Waiting for Percona to accept queries (Galera sync)"
+  for _ in $(seq 1 180); do
+    docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T percona mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_ready'" 2>/dev/null | grep -q ON && break
+    sleep 1
+  done
+fi
+
 print_header "Running Percona tests (${VARIANT_NAME})"
 
 # CI sets KMS_PERCONA_URL; fall back to slot-aware port default
