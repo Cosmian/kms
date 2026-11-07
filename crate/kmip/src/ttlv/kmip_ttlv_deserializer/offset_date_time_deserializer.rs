@@ -370,13 +370,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn offset_date_time_rejects_unsupported_type() {
-        let mut de = OffsetDateTimeDeserializer::new("DateTime", OffsetDateTime::UNIX_EPOCH);
-        let error = bool::deserialize(&mut de).expect_err("bool is not an OffsetDateTime field");
-        assert_eq!(
-            error.to_string(),
-            "deserialize_bool: Unsupported deserialization for OffsetDateTime"
-        );
+    fn offset_date_time_rejects_every_unsupported_method() {
+        use serde::{Deserializer, de::IgnoredAny};
+
+        let de = || OffsetDateTimeDeserializer::new("DateTime", OffsetDateTime::UNIX_EPOCH);
+        let results = [
+            ("any", (&mut de()).deserialize_any(IgnoredAny)),
+            ("bool", (&mut de()).deserialize_bool(IgnoredAny)),
+            ("i64", (&mut de()).deserialize_i64(IgnoredAny)),
+            ("u64", (&mut de()).deserialize_u64(IgnoredAny)),
+            ("f32", (&mut de()).deserialize_f32(IgnoredAny)),
+            ("f64", (&mut de()).deserialize_f64(IgnoredAny)),
+            ("char", (&mut de()).deserialize_char(IgnoredAny)),
+            ("str", (&mut de()).deserialize_str(IgnoredAny)),
+            ("string", (&mut de()).deserialize_string(IgnoredAny)),
+            ("bytes", (&mut de()).deserialize_bytes(IgnoredAny)),
+            ("byte_buf", (&mut de()).deserialize_byte_buf(IgnoredAny)),
+            ("option", (&mut de()).deserialize_option(IgnoredAny)),
+            ("unit", (&mut de()).deserialize_unit(IgnoredAny)),
+            (
+                "unit_struct",
+                (&mut de()).deserialize_unit_struct("X", IgnoredAny),
+            ),
+            (
+                "newtype_struct",
+                (&mut de()).deserialize_newtype_struct("X", IgnoredAny),
+            ),
+            ("seq", (&mut de()).deserialize_seq(IgnoredAny)),
+            ("tuple", (&mut de()).deserialize_tuple(1, IgnoredAny)),
+            (
+                "tuple_struct",
+                (&mut de()).deserialize_tuple_struct("X", 1, IgnoredAny),
+            ),
+            ("map", (&mut de()).deserialize_map(IgnoredAny)),
+            (
+                "struct",
+                (&mut de()).deserialize_struct("X", &[], IgnoredAny),
+            ),
+            ("enum", (&mut de()).deserialize_enum("X", &[], IgnoredAny)),
+            ("identifier", (&mut de()).deserialize_identifier(IgnoredAny)),
+            (
+                "ignored_any",
+                (&mut de()).deserialize_ignored_any(IgnoredAny),
+            ),
+        ];
+        for (name, result) in results {
+            let error = result.expect_err("method is not an OffsetDateTime field");
+            assert_eq!(
+                error.to_string(),
+                format!("deserialize_{name}: Unsupported deserialization for OffsetDateTime")
+            );
+        }
     }
 
     #[test]
