@@ -130,6 +130,9 @@ TEST_FILTERS=(cosmian_kms_ lifecycle::)
 if [ "${usage_full:-false}" = "true" ]; then
   TEST_FILTERS=()
 fi
+# Known mismatch, not a server bug: #1317 makes Revoke follow the KMIP 2.1 state table, and an Opaque Object stays
+# Pre-Active (Activate rejects it), so the pinned fixture's Revoke of a fresh one gets Wrong Key Lifecycle State.
+SKIP_CASES=(--skip lifecycle::cosmian_528_revoke_opaqueobject)
 
 print_status "Running KMIPKit live tests..."
 if ! (cd "${KMIPKIT_DIR}" &&
@@ -137,7 +140,7 @@ if ! (cd "${KMIPKIT_DIR}" &&
   CARGO_TARGET_DIR="$(get_cargo_target_dir)/kmipkit" \
   KMIPKIT_COSMIAN_CERT_DIR="${CERTS_DIR}" \
     cargo test --locked -p kmipkit-client --test cosmian_kms -- --ignored --test-threads=1 \
-    "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}"); then
+    "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}" "${SKIP_CASES[@]}"); then
   tail -n 100 "${KMS_LOG_FILE}" || true
   print_error "KMIPKit live tests failed"
 fi
