@@ -22,7 +22,7 @@ updates:
 
   - package-ecosystem: cargo
     directory: /
-    # Security updates only: `cargo vet check --locked` (main_base.yml) is a human gate and
+    # Security updates only: `cargo vet check --locked` (supply-chain.yml) is a human gate and
     # Dependabot cannot add the per-version exemptions in supply-chain/, so version-bump PRs
     # always fail it. 0 disables version updates; security updates are unaffected (issue #1265).
     open-pull-requests-limit: 0

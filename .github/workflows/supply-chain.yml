@@ -1,0 +1,99 @@
+---
+name: Supply chain
+
+# Dependency audits: Rust (cargo vet), Python (pip-audit), Go (govulncheck), UI (npm audit).
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+jobs:
+  cargo-vet:
+    name: Supply chain — cargo vet
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - name: Install cargo-vet
+        run: cargo install --locked cargo-vet@0.10.2
+
+      - name: cargo vet check
+        run: cargo vet check --locked
+
+  python-dependency-audit:
+    name: Supply chain — pip-audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Audit Python requirements
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/pip-audit-venv
+          source /tmp/pip-audit-venv/bin/activate
+          pip install --quiet pip-audit==2.10.1
+          for f in \
+            .mise/scripts/test/requirements-pkcs11-check.txt \
+            .mise/scripts/test/requirements-jose.txt \
+            .mise/scripts/test/requirements-cef.txt \
+            .mise/scripts/test/requirements-audit-compat.txt \
+            .mise/scripts/docs/requirements.txt; do
+            echo "::group::pip-audit $f"
+            pip-audit -r "$f"
+            echo "::endgroup::"
+          done
+
+  govulncheck:
+    name: Supply chain — govulncheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+      - name: Run govulncheck
+        working-directory: .mise/scripts/kmip-go
+        run: govulncheck -test ./...
+
+  npm-dependency-audit:
+    name: Supply chain — npm audit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # On pull_request the checkout is the test merge commit, whose first parent is the base branch tip.
+          fetch-depth: 2
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+
+      - uses: ./.github/actions/install-mise
+
+      # PRs fail only on advisories they add; the daily develop run and tags fail on any advisory.
+      - name: Audit UI npm dependencies
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            mise run audit:npm --base HEAD^1
+          else
+            mise run audit:npm
+          fi

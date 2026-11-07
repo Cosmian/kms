@@ -31,136 +31,32 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
-  cargo-vet:
-    name: Supply chain — cargo vet
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-
-      - name: Install cargo-vet
-        run: cargo install --locked cargo-vet@0.10.2
-
-      - name: cargo vet check
-        run: cargo vet check --locked
-
-  python-dependency-audit:
-    name: Supply chain — pip-audit
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Audit Python requirements
-        run: |
-          set -euo pipefail
-          python3 -m venv /tmp/pip-audit-venv
-          source /tmp/pip-audit-venv/bin/activate
-          pip install --quiet pip-audit==2.10.1
-          for f in \
-            .mise/scripts/test/requirements-pkcs11-check.txt \
-            .mise/scripts/test/requirements-jose.txt \
-            .mise/scripts/test/requirements-cef.txt \
-            .mise/scripts/test/requirements-audit-compat.txt \
-            .mise/scripts/docs/requirements.txt; do
-            echo "::group::pip-audit $f"
-            pip-audit -r "$f"
-            echo "::endgroup::"
-          done
-
-  govulncheck:
-    name: Supply chain — govulncheck
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: .mise/scripts/kmip-go/go.mod
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-
-      - name: Run govulncheck
-        working-directory: .mise/scripts/kmip-go
-        run: govulncheck -test ./...
-
-  npm-dependency-audit:
-    name: Supply chain — npm audit
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          # On pull_request the checkout is the test merge commit, whose first parent is the base branch tip.
-          fetch-depth: 2
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: '22'
-
-      - uses: ./.github/actions/install-mise
-
-      # PRs fail only on advisories they add; the daily develop run and tags fail on any advisory.
-      - name: Audit UI npm dependencies
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "${EVENT_NAME}" = "pull_request" ]; then
-            mise run audit:npm --base HEAD^1
-          else
-            mise run audit:npm
-          fi
+  supply-chain:
+    uses: ./.github/workflows/supply-chain.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
 
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
     with:
       toolchain: ${{ inputs.toolchain }}
 
-  cargo-test:
-    name: No Nix - ${{ matrix.runner }} - ${{ matrix.type }} - ${{ matrix.features }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        type:
-          - sqlite
-        features: [fips, non-fips]
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+  no-nix:
+    uses: ./.github/workflows/no-nix.yml
 
-    steps:
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: 1.99.1
-          components: rustfmt, clippy
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: ${{ matrix.features }}
-
-      - name: With cargo only
-        run: |
-          set -ex
-          if [ "${{ matrix.features }}" = "non-fips" ]; then
-            export FEATURES_FLAG="--features non-fips";
-            # Build the PKCS#11 cdylib so that `ckms pkcs11 verify` and
-            # integration tests can dynamically load it at runtime.
-            # `cargo test --lib` does not produce cdylib artifacts.
-            cargo build -p cosmian_pkcs11 --features non-fips
-          else
-            export FEATURES_FLAG="";
-          fi
-          cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
+  windows:
+    # Same gating as `test` (no dependabot PRs) plus no fork PRs. Windows is slow: PRs run the
+    # quick suite; tags and nightly run the full one.
+    if: >-
+      ((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/test_windows.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: windows
+      # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off-PR only.
+      full-suite: ${{ github.event_name != 'pull_request' }}
 
   test: # Run all tests (PRs, tags and the nightly schedule / manual dispatch)
     if: (github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]') || startsWith(github.ref,

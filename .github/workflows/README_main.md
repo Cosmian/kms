@@ -1,7 +1,7 @@
 # CI workflows: `main.yml`
 
 `main.yml` is the PR / tag / nightly test pipeline. It only calls other workflows:
-`main.yml` -> `main_base.yml` -> `forward_proxy.yml`, `test_all.yml` -> `test_windows.yml`, `cargo-publish.yml`.
+`main.yml` -> `main_base.yml` -> `supply-chain.yml`, `no-nix.yml`, `forward_proxy.yml`, `test_windows.yml`, `test_all.yml` -> `cargo-publish.yml`.
 Packaging and releases are described in [README_nightly.md](README_nightly.md).
 
 ## Triggers and concurrency
@@ -21,12 +21,14 @@ flowchart LR
     Base["main_base.yml"]
     Cla["cla.yml<br/>external PRs"]
     Proxy["forward_proxy.yml"]
+    Supply["supply-chain.yml<br/>cargo vet · pip-audit · govulncheck · npm audit"]
+    NoNixWf["no-nix.yml<br/>cargo test without Nix"]
     TestAll["test_all.yml<br/>PR (non-dependabot) · tags · schedule · dispatch"]
-    Win["test_windows.yml"]
+    Win["test_windows.yml<br/>same gating as test_all.yml, minus fork PRs"]
     Pub["cargo-publish.yml"]
     Main --> Base
-    Base --> Cla & Proxy & TestAll
-    TestAll --> Win & Pub
+    Base --> Cla & Supply & NoNixWf & Proxy & Win & TestAll
+    TestAll --> Pub
 ```
 
 ## `main_base.yml`
@@ -38,20 +40,18 @@ flowchart TB
         Clippy["cargo-clippy"]
         Deny["Security Audit (cargo-deny)"]
         Machete["cargo-machete"]
-        Vet["cargo vet"]
-        PipAudit["pip-audit"]
-        GoVuln["govulncheck"]
-        NpmAudit["npm dependency audit"]
+        Supply["supply-chain (supply-chain.yml)<br/>cargo vet · pip-audit · govulncheck · npm audit"]
     end
     subgraph Docs["Documentation"]
         DocBuild["Build documentation"]
         Links["Link check"]
         PubDoc["public_documentation<br/>staging on develop · prod on tags"]
     end
-    NoNix["No Nix cargo test<br/>ubuntu x64 · ubuntu arm · macos-15 × fips · non-fips"]
+    NoNix["no-nix (no-nix.yml)<br/>cargo test: ubuntu x64 · ubuntu arm · macos-15 × fips · non-fips"]
     Proxy["forward-proxy"]
+    Win["windows (test_windows.yml)<br/>cargo test · UI E2E · CNG KSP · EST interop"]
     TestAll["test (test_all.yml)"]
-    Base --> Static & Docs & NoNix & Proxy & TestAll
+    Base --> Static & Docs & NoNix & Proxy & Win & TestAll
 ```
 
 ## `test_all.yml`
@@ -64,13 +64,11 @@ flowchart TB
         Hsm["test-hsm-hardware<br/>proteccio · crypt2pay<br/>not on PR"]
     end
     Cache --> Groups & Hsm
-    Helm["helm (minikube)"]
     Xks["xks-remote<br/>not on schedule"]
     Mac["interop-macos<br/>pki group"]
-    Win["windows-2022<br/>test_windows.yml"]
     DryRun["cargo-publish-dry-run<br/>PR: no-verify · nightly: full"]
     Publish["cargo-publish<br/>tags only"]
-    Groups & Hsm & Helm --> Publish
+    Groups & Hsm --> Publish
 ```
 
 Each test job runs one group of `.mise/tasks/test` (`mise run test:<group> --variant <variant>`, i.e. the group's `_default`, which runs its listed leaves through `run_test_leaves` and reports every failing leaf) through the reusable `test-group.yml`, which holds the checkout, caches, Nix setup, Docker Hub login, test and bench steps. A leaf checks its own prerequisites and exits 77 when it cannot run, which counts as a skip (see `.mise/tasks/test/README.md`). `matrix.variant` gives the cells; groups whose leaves are all non-FIPS only (`pkcs11`, `spire`) run `non-fips` only. The `skip` input exports `TEST_SKIP_LEAVES`, a list of `<group>:<leaf>` ids the group must not run. The `k8s` and `pkg` groups run in `packaging-docker.yml`. A leaf no group lists runs locally only.
@@ -129,8 +127,10 @@ The Nix key hashes `shell.nix`, `nix/openssl.nix`, `nix/openssl-fips-bootstrap.*
 Not cached on purpose: cargo `target/` (multi-GB, 8 variant sets), Nix outputs of packaging and Docker builds
 (vendor hashes must be revalidated on every build).
 
-Cache scope: PRs read the base branch's caches. A PR against `main` cannot read the `develop` caches; the producer
-job then builds the Nix closure once for that PR.
+Cache scope: a run reads the caches of its own branch, of the default branch (`develop`) and, on a PR, of its base
+branch. A PR against `main` therefore still reads the `develop` caches; the producer job builds the Nix closure only
+when the key (the hash of the Nix inputs) differs from every readable entry. A cache saved by a PR is readable only
+from that PR's merge ref.
 
 ## Local composite actions
 

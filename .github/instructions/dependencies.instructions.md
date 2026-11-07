@@ -25,7 +25,7 @@ crate, package, module, base image, action and installer as untrusted code.
 
 ## 2. Rust (Cargo)
 
-Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.yml`, pre-commit hook `cargo-deny`), `cargo machete` (CI job `cargo-machete`, pre-commit hook `cargo-machete`), `cargo vet check --locked` (CI job `cargo-vet`, pre-commit hook `cargo-vet`).
+Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.yml`, pre-commit hook `cargo-deny`), `cargo machete` (CI job `cargo-machete`, pre-commit hook `cargo-machete`), `cargo vet check --locked` (CI job `cargo-vet` in `.github/workflows/supply-chain.yml`, pre-commit hook `cargo-vet`).
 
 - [ ] Declare the crate once in `[workspace.dependencies]` of the root `Cargo.toml` with an explicit version (`default-features = false` when it has default features); member crates use `<crate> = { workspace = true }`, adding `features = [...]` as needed (`toml.instructions.md`).
 - [ ] crates.io only: no `git =`, no `path =` outside the workspace, no `[patch.crates-io]` (`deny.toml` `[sources]` has `allow-git = []`).
@@ -48,7 +48,7 @@ Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.y
 
 `ui/` is the only npm project of this repository (`"packageManager": "pnpm@10.34.9"`, lockfile `ui/pnpm-lock.yaml`). `crate/clients/wasm/package.json` is the wasm-pack input manifest (only `repository`): never add npm dependencies to it.
 
-Gates: CI job `npm-dependency-audit` (`.github/workflows/main_base.yml`), pre-commit hooks `npm-policy` and `pnpm-frozen-lockfile`, pre-push hook `npm-audit` (`mise run audit:npm --base origin/develop`: npm policy, OSV-Scanner, registry signatures). On a PR, OSV-Scanner fails only on advisories absent from the base branch, and on any `MAL-*` (malicious package); the daily develop run fails on any advisory. `ui/.npmrc` enforces the 7-day cooldown and `strict-dep-builds`. Run these checks from `ui/`:
+Gates: CI job `npm-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-commit hooks `npm-policy` and `pnpm-frozen-lockfile`, pre-push hook `npm-audit` (`mise run audit:npm --base origin/develop`: npm policy, OSV-Scanner, registry signatures). On a PR, OSV-Scanner fails only on advisories absent from the base branch, and on any `MAL-*` (malicious package); the daily develop run fails on any advisory. `ui/.npmrc` enforces the 7-day cooldown and `strict-dep-builds`. Run these checks from `ui/`:
 
 - [ ] Release-age cooldown: the version was published at least 7 days ago. List the eligible versions:
 
@@ -67,7 +67,7 @@ Gates: CI job `npm-dependency-audit` (`.github/workflows/main_base.yml`), pre-co
 
 ## 4. Python (test and docs helpers)
 
-Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/main_base.yml`), pre-push hook `pip-audit-lockfiles`.
+Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
 
 - [ ] Prefer the standard library (`python.instructions.md`).
 - [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/requirements-jose.in`).
@@ -78,12 +78,12 @@ Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/
 
 ## 5. Go (`.mise/scripts/kmip-go`)
 
-Gates: CI job `govulncheck` (`.github/workflows/main_base.yml`), pre-push hook `govulncheck`.
+Gates: CI job `govulncheck` (`.github/workflows/supply-chain.yml`), pre-push hook `govulncheck`.
 
 - [ ] From the module directory: `go get <module>@vX.Y.Z` (never `@latest`), `go mod tidy`, `go mod verify`; commit `go.mod` and `go.sum`.
 - [ ] Bump the `toolchain` line only to a Go release that fixes a standard-library vulnerability reported by govulncheck.
 - [ ] `govulncheck -test ./...` reports no vulnerability.
-- [ ] A new Go module: add a `gomod` entry to `.github/dependabot.yml`, a govulncheck run to `.github/workflows/main_base.yml`, and its path to the `govulncheck` hook of `.pre-commit-config.yaml`.
+- [ ] A new Go module: add a `gomod` entry to `.github/dependabot.yml`, a govulncheck run to `.github/workflows/supply-chain.yml`, and its path to the `govulncheck` hook of `.pre-commit-config.yaml`.
 
 ## 6. Docker base images
 
@@ -98,7 +98,7 @@ Gate: pre-commit hook `github-actions-sha-pin`; Dependabot (`github-actions`) ke
 
 - [ ] Reuse an action already pinned under `.github/` (copy its `uses:` line).
 - [ ] A new action or reusable workflow is `uses: <owner>/<repo>[/<path>]@<40-hex commit SHA> # <tag or branch>`; resolve the SHA with `GH_PAGER=cat gh api repos/<owner>/<repo>/commits/<tag or branch> --jq .sha`. Local `./.github/...` references are exempt.
-- [ ] A tool installed by a step pins an exact version: `cargo install --locked <tool>@<x.y.z>`, `go install <module>@vX.Y.Z`, `pip install <tool>==<x.y.z>`, `npm install -g <tool>@<x.y.z>` (pattern: the supply-chain jobs of `.github/workflows/main_base.yml`).
+- [ ] A tool installed by a step pins an exact version: `cargo install --locked <tool>@<x.y.z>`, `go install <module>@vX.Y.Z`, `pip install <tool>==<x.y.z>`, `npm install -g <tool>@<x.y.z>` (pattern: the supply-chain jobs of `.github/workflows/supply-chain.yml`).
 - [ ] Least-privilege `permissions:` (`github-actions.instructions.md`). Never give release, signing or registry secrets to a job that installs or builds third-party code; publish from a separate job.
 
 ## 8. Downloaded installers and binaries
