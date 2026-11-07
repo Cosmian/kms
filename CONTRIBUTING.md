@@ -213,7 +213,7 @@ Pre-commit hooks enforce the policy locally (`.pre-commit-config.yaml`): `cargo-
 network access) run on `pre-push`.
 
 Reference: [`supply-chain/config.toml`](supply-chain/config.toml), [`.github/dependabot.yml`](.github/dependabot.yml),
-[`.github/workflows/main_base.yml`](.github/workflows/main_base.yml), and the pre-existing
+[`.github/workflows/main.yml`](.github/workflows/main.yml), and the pre-existing
 [`.cargo/audit.toml`](.cargo/audit.toml) / [`deny.toml`](deny.toml).
 
 ---

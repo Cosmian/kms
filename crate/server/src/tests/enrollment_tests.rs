@@ -1106,7 +1106,7 @@ fn check_apple_envelope(envelope: &[u8], ca_key: &PKey<Private>, ca: &X509) {
     );
 }
 
-/// Captures of the native macOS SCEP client (`mise run test:scep-apple`) must stay parseable by
+/// Captures of the native macOS SCEP client (`mise run test:pki:scep-apple`) must stay parseable by
 /// the server (see [`check_apple_envelope`] for the envelope).
 #[tokio::test]
 async fn apple_scep_fixtures_parse() {

@@ -1,0 +1,60 @@
+---
+name: Push to package.cosmian.com
+description: >
+  Upload files to package.cosmian.com under /mnt/package/kms/<branch>/<subdir>
+  (branch = tag name on tags, else last_build/<branch>). Runs in a job container
+  mounting /root/.ssh/id_rsa. Requires a prior checkout when the caller's files
+  come from the workspace.
+
+inputs:
+  subdir:
+    description: Sub-directory under the branch directory on the server
+    required: true
+  files:
+    description: Newline-separated bash glob patterns, relative to the workspace
+    required: true
+  known-hosts:
+    description: Trusted package.cosmian.com host key from vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS
+    required: true
+
+outputs:
+  remote-dir:
+    description: Remote directory the files were uploaded to
+    value: ${{ steps.push.outputs.remote-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Push files
+      id: push
+      shell: bash
+      env:
+        SUBDIR: ${{ inputs.subdir }}
+        FILES: ${{ inputs.files }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        set -euo pipefail
+        : "${KNOWN_HOSTS:?Package server SSH host key is not configured}"
+        known_hosts=$(mktemp)
+        trap 'rm -f "$known_hosts"' EXIT
+        printf '%s\n' "${KNOWN_HOSTS}" > "$known_hosts"
+        chmod 600 "$known_hosts"
+        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          BRANCH="${GITHUB_REF_NAME}"
+        else
+          BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+        fi
+        REMOTE_DIR="/mnt/package/kms/${BRANCH}/${SUBDIR}"
+        shopt -s nullglob globstar
+        uploads=()
+        while IFS= read -r pattern; do
+          [ -z "${pattern}" ] && continue
+          # shellcheck disable=SC2206 # intentional glob expansion of the caller's pattern
+          matches=(${pattern})
+          if [ "${#matches[@]}" -eq 0 ]; then echo "::error::No file matches '${pattern}'"; exit 1; fi
+          uploads+=("${matches[@]}")
+        done <<<"${FILES}"
+        ssh_opts=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$known_hosts" -o BatchMode=yes -i /root/.ssh/id_rsa)
+        printf 'mkdir -p -- %q\n' "$REMOTE_DIR" | ssh "${ssh_opts[@]}" cosmian@package.cosmian.com bash
+        scp "${ssh_opts[@]}" "${uploads[@]}" "cosmian@package.cosmian.com:${REMOTE_DIR}/"
+        echo "remote-dir=${REMOTE_DIR}" >>"$GITHUB_OUTPUT"

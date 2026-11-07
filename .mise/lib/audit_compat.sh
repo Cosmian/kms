@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared helpers for the OpenSearch/Splunk audit JSONL compatibility mise tasks
-# (test:audit-compat-opensearch, test:audit-compat-splunk). Keeps the container
+# (test:obs:audit-opensearch, test:obs:audit-splunk). Keeps the container
 # lifecycle and Python setup boilerplate in one place instead of duplicated per backend.
 
 [ -n "${_MISE_AUDIT_COMPAT_SH_LOADED:-}" ] && return 0
@@ -35,8 +35,15 @@ audit_compat_container_cleanup_trap() {
 audit_compat_python() {
   local repo_root="$1"
   local venv_dir="${repo_root}/target/audit-compat-venv"
+  local ok='import sys; sys.exit(sys.version_info < (3, 12))'
+  local py
+  py="$(pick_python312)"
+  # A venv left by an older python3 is unusable: recreate it.
+  if [ -x "${venv_dir}/bin/python3" ] && ! "${venv_dir}/bin/python3" -c "$ok"; then
+    rm -rf "${venv_dir}"
+  fi
   if [ ! -x "${venv_dir}/bin/python3" ]; then
-    python3 -m venv "${venv_dir}" >&2
+    "$py" -m venv "${venv_dir}" >&2
   fi
   "${venv_dir}/bin/python3" -m pip install --quiet --require-hashes -r "${repo_root}/.mise/scripts/test/requirements-audit-compat.txt" >&2
   echo "${venv_dir}/bin/python3"

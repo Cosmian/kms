@@ -141,7 +141,7 @@ sed -e "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
   "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
 
 # ── 3. Authentication Verifier — start with pre-built binary ─────────────────
-# The binary is pre-built with the host toolchain by the `test:ui-auth` mise
+# The binary is pre-built with the host toolchain by the `test:ui:auth` mise
 # task BEFORE entering the nix shell (the nix rustc may be too old for this
 # crate).  Run with the repo as cwd so relative paths in the config work.
 AUTH_BIN="${AUTH_VERIFIER_REPO}/target/debug/auth_verifier"

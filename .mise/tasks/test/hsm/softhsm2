@@ -6,5 +6,197 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend to test against" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/hsm-softhsm2" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_HSM=1
+ensure_nix_shell
+setup_db_env "${usage_db:-sqlite}"
+
+print_header "Running SoftHSM2 HSM tests (${VARIANT_NAME})"
+
+# ── SoftHSM2 setup ──────────────────────────────────────────────────────────
+softhsm2_setup "${REPO_ROOT}/.softhsm2/tokens" "${REPO_ROOT}/.softhsm2/softhsm2.conf"
+softhsm2_init_standard_tokens "my_token"
+
+export HSM_USER_PASSWORD
+export SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}"
+export HSM_MODEL="softhsm2"
+export HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID"
+
+LIB_PATH="$(softhsm2_lib_search_path)"
+
+# ── Run KMS server HSM tests ────────────────────────────────────────────────
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="$LIB_PATH" \
+  DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_MODEL="softhsm2" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+  ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+  ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+  ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+  ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+  cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::hsm::test_hsm_all --ignored --exact
+
+print_status "SoftHSM2 KMS server tests completed"
+
+# ── Run test_kms_server HSM vector tests ─────────────────────────────────────
+print_header "Running test_kms_server HSM vector tests"
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="$LIB_PATH" \
+  DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_MODEL="softhsm2" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+  ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+  ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+  ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+  ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+  cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- test_vec_hsm
+
+print_status "HSM vector tests completed"
+
+# ── Run cosmian_pkcs11 HSM-KEK conformance tests ────────────────────────────
+# Mandatory PKCS#11 signing tests (EdDSA Ed25519, ECDSA P-256, ECDSA
+# secp256k1), an RSA-PSS sign test, and an end-to-end C_Verify round-trip
+# test (including a tampered-signature negative case), all against a KMS
+# server backed by SoftHSM2 with a Key-Encryption-Key (HSM-KEK). These tests
+# live in `cosmian_pkcs11`'s non-fips-only `tests_v3` module (PKCS#11 v3.x
+# conformance tests are never mixed with the legacy `tests` module), so they
+# only run for the non-fips variant.
+if [ "${VARIANT:-}" = "non-fips" ]; then
+  print_header "Running cosmian_pkcs11 HSM-KEK conformance tests"
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="$LIB_PATH" \
+    DYLD_LIBRARY_PATH="$LIB_PATH" \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+    ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+    ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+    ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+    ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+    cargo test \
+    -p cosmian_pkcs11 \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored test_hsm_kek --test-threads=1
+
+  print_status "cosmian_pkcs11 HSM-KEK conformance tests completed"
+else
+  print_status "Skipping cosmian_pkcs11 HSM-KEK conformance tests (non-fips only)"
+fi
+
+# ── Run ckms CSR-generation test with HSM-held keys ─────────────────────────
+# `generate_csr` for non-extractable SoftHSM2 keys, then certify with them.
+# ckms tests are compiled only with the `non-fips` feature.
+if [ "${VARIANT:-}" = "non-fips" ]; then
+  print_header "Running ckms SoftHSM2 CSR generation test"
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="$LIB_PATH" \
+    DYLD_LIBRARY_PATH="$LIB_PATH" \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    cargo test \
+    -p ckms \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored tests::certificates::generate_csr::test_generate_csr_for_softhsm2_held_keys_and_certify_them --exact
+
+  print_status "ckms SoftHSM2 CSR generation test completed"
+else
+  print_status "Skipping ckms SoftHSM2 CSR generation test (non-fips only)"
+fi
+
+# ── Run OASIS PKCS11 XML vectors ────────────────────────────────────────────
+# PKCS11-M-1-20/21 need an HSM; the XML vector harness is non-fips only.
+if [ "${VARIANT:-}" = "non-fips" ]; then
+  print_header "Running OASIS PKCS11 XML vectors"
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="$LIB_PATH" \
+    DYLD_LIBRARY_PATH="$LIB_PATH" \
+    SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    cargo test \
+    -p cosmian_kms_cli_actions \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored tests::xml::kmip::kmip_xml_pkcs11 --exact
+
+  print_status "OASIS PKCS11 XML vectors completed"
+else
+  print_status "Skipping OASIS PKCS11 XML vectors (non-fips only)"
+fi
+
+# ── Run softhsm2 loader tests ───────────────────────────────────────────────
+# The loader crate forwards the variant feature to `cosmian_kms_base_hsm`.
+print_header "Running softhsm2_pkcs11_loader tests"
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="$LIB_PATH" \
+  DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  cargo test \
+  -p softhsm2_pkcs11_loader \
+  --features softhsm2 \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- --nocapture tests::test_hsm_softhsm2_all --ignored --exact
+
+# ── Run base_hsm PKCS#11 v3 message-signature adapter test ──────────────────
+# SoftHSM2 has no v3.0 message functions: a test-only C adapter adds them on top of it.
+print_header "Running base_hsm PKCS#11 v3 message-signature adapter test"
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="$LIB_PATH" \
+  DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  cargo test \
+  -p cosmian_kms_base_hsm \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --nocapture session::message_signature_tests::softhsm2_v3_adapter_message_signature --ignored --exact
+
+print_success "SoftHSM2 tests completed"

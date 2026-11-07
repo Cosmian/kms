@@ -45,7 +45,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `markdown.instructions.md` | `**/*.md` |
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` |
 | `nix.instructions.md` | `nix/**/*.nix` |
-| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` |
+| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` |
 | `mermaid.instructions.md` | `**/*.md` |
 | `rust-security.instructions.md` | `crate/**/*.rs` |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |

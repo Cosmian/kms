@@ -5,7 +5,7 @@
 # end-to-end CLI <-> gpg integration scenario against a running KMS server.
 #
 # Usage:
-#   mise test:gnupg
+#   mise test:pkcs11:gnupg
 #   bash .mise/scripts/test/test_gnupg.sh --variant non-fips
 set -euo pipefail
 

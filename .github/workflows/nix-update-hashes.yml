@@ -105,11 +105,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/setup-nix-mise
         with:
           extra-nix-config: http-connections = 8
-
-      - uses: ./.github/actions/install-mise
 
       - name: Recompute all Nix vendor hashes
         run: mise run release:nix-update-hashes

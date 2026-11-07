@@ -159,7 +159,7 @@ async fn test_hsm_all() {
     }
 }
 
-/// JOSE flow A against the HSM (runs standalone via `mise run test:jose-hsm`).
+/// JOSE flow A against the HSM (runs standalone via `mise run test:hsm:jose`).
 #[tokio::test]
 #[ignore = "Requires a working HSM setup"]
 async fn test_hsm_jose() {

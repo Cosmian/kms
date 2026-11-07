@@ -15,9 +15,9 @@ source "${SCRIPT_DIR}/../../lib/test_slots.sh"
 COMPOSE_FILE=".mise/scripts/docker-compose.yml"
 export COMPOSE_FILE
 
-# KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:docker).
+# KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker).
 # Accepted values: fips, non_fips
-: "${KMS_TLS_CONFIG_FLAVOR:?KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:docker)}"
+: "${KMS_TLS_CONFIG_FLAVOR:?KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker)}"
 echo "Using KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}"
 
 # Config paths
@@ -277,5 +277,5 @@ bash .mise/scripts/oracle/set_hsm.sh
 
 docker compose -f "$COMPOSE_FILE" --profile oracle down --remove-orphans || true
 echo "Oracle TDE HSM test completed successfully"
-# Oracle TDE remote upgrade and smoke test is a separate step: mise run test:docker-oracle
+# Oracle TDE remote upgrade and smoke test is a separate step: mise run test:pkg:docker-oracle
 # It runs only on non-fips amd64, gated by the CI workflow condition.

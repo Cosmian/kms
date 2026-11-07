@@ -9,6 +9,13 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 # shellcheck source=.mise/lib/k8s.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+if [ "${CI:-}" != true ]; then
+  has_cmd kubectl || skip_test "kubectl not found on PATH"
+  has_cmd helm || skip_test "helm not found on PATH"
+  has_cmd minikube || skip_test "minikube not found on PATH"
+  has_cmd openssl || skip_test "openssl not found on PATH"
+  kubectl cluster-info --request-timeout=5s >/dev/null 2>&1 || skip_test "no reachable Kubernetes cluster"
+fi
 
 NAMESPACE="kms-csi-e2e"
 RELEASE="csi-kms"

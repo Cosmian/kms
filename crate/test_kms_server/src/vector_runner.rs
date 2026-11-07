@@ -1622,13 +1622,15 @@ async fn execute_steps(
     let binary_url = format!("{base_url}/kmip");
 
     let mut captures: HashMap<String, String> = HashMap::new();
+    // One owner client per vector: clones share the hyper connection pool, so steps reuse one connection.
+    let owner_client = context.get_owner_client();
 
     for (i, step) in manifest.steps.iter().enumerate() {
         // Resolve which client to use for this step
         let step_identity = step.identity.as_deref().unwrap_or("owner");
         let client = identity_clients
             .get(step_identity)
-            .map_or_else(|| context.get_owner_client(), Clone::clone);
+            .map_or_else(|| owner_client.clone(), Clone::clone);
 
         let request_path = vector_path.join(&step.request);
         let request_json = load_request_json(&request_path, &captures)?;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SCEP (RFC 8894) interoperability test against the micromdm `scepclient`.
-# The native Apple client is covered by test_scep_apple.sh (`mise run test:scep-apple`).
+# The native Apple client is covered by test_scep_apple.sh (`mise run test:pki:scep-apple`).
 #
 # Scenarios (all against a live KMS server, no internal API):
 #   1. GetCACaps advertises exactly POSTPKIOperation / SHA-256 / AES / Renewal (no DES3, no SHA-1)

@@ -1,0 +1,21 @@
+---
+name: Cache build.rs OpenSSL
+description: >
+  Cache the OpenSSL prefixes that crate/crypto/build.rs installs under target/openssl-*.
+  build.rs skips its OpenSSL build when target/openssl-*/lib/libcrypto.a and the FIPS module
+  already exist (crate/crypto/build.rs). Install paths are absolute and identical on all
+  GitHub-hosted runners. Call right after checkout, before any cargo command.
+
+inputs:
+  variant:
+    description: FIPS variant the prefix is built for (fips or non-fips)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Cache build.rs OpenSSL
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: target/openssl-*
+        key: openssl-buildrs-${{ runner.os }}-${{ runner.arch }}-${{ inputs.variant }}-${{ hashFiles('crate/crypto/build.rs') }}

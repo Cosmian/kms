@@ -1,0 +1,24 @@
+---
+name: Import GPG signing key
+description: Import the package-signing GPG key and list it.
+
+inputs:
+  gpg-private-key:
+    description: Armored GPG private key (secrets.GPG_SIGNING_KEY)
+    required: true
+  passphrase:
+    description: Passphrase of the key (secrets.GPG_SIGNING_KEY_PASSPHRASE)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up GPG
+      uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7
+      with:
+        gpg_private_key: ${{ inputs.gpg-private-key }}
+        passphrase: ${{ inputs.passphrase }}
+
+    - name: List keys
+      shell: bash
+      run: gpg -K

@@ -264,7 +264,7 @@ sequenceDiagram
 
 ```bash
 # MISE task — builds KMS, starts server, runs tests, cleans up
-mise run test:kmip-go
+mise run test:interop:kmip-go
 
 # Manual (KMS already running on port 15696)
 cd .mise/scripts/kmip-go

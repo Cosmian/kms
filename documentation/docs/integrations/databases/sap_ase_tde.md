@@ -79,7 +79,7 @@ The `lib`, `pin`, and `slot` parameters are passed to the PKCS#11 provider. KMIP
 Run the integration test with:
 
 ```bash
-mise run test:ase --variant non-fips
+mise run test:interop:ase --variant non-fips
 ```
 
 The test verifies:

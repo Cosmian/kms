@@ -73,7 +73,7 @@ certificate used for enrollment.
 
 In this tutorial a pretend device named `device1.iot.example` enrolls with a user name and
 password, then renews its certificate. It reproduces what the project's automated EST test does
-(`mise run test:est-interop`), so every command is known to work.
+(`mise run test:pki:est-interop`), so every command is known to work.
 
 You will need, in addition to the [prerequisites](pki-enrollment.md#before-you-start):
 
@@ -271,5 +271,5 @@ Errors common to EST and SCEP are listed on the
 
 ## Verifying the setup
 
-`mise run test:est-interop` runs the globalsign `estclient` over TLS against a live KMS: `cacerts`,
+`mise run test:pki:est-interop` runs the globalsign `estclient` over TLS against a live KMS: `cacerts`,
 `csrattrs`, `enroll`, mutual-TLS `reenroll`, and rejections.

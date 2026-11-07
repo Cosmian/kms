@@ -36,31 +36,31 @@ The most common flags (accepted by most tasks):
 
 | Task | Default variant | Description |
 |------|-----------------|-------------|
-| `test:sqlite` | fips | SQLite workspace tests |
-| `test:psql` | fips | PostgreSQL tests |
-| `test:mysql` | fips | MySQL tests |
-| `test:percona` | fips | Percona XtraDB tests |
-| `test:mariadb` | fips | MariaDB tests |
-| `test:redis` | non-fips | Redis-findex tests |
-| `test:matrix` | all | All HSM × DB backend × variant combinations |
+| `test:db:sqlite` | fips | SQLite workspace tests |
+| `test:db:psql` | fips | PostgreSQL tests |
+| `test:db:mysql` | fips | MySQL tests |
+| `test:db:percona` | fips | Percona XtraDB tests |
+| `test:db:mariadb` | fips | MariaDB tests |
+| `test:db:redis` | non-fips | Redis-findex tests |
+| `test:hsm:matrix` | all | All HSM × DB backend × variant combinations |
 
 ### Cloud & SaaS integrations
 
 | Task | Default variant | Description |
 |------|-----------------|-------------|
-| `test:google-cse` | fips | Google CSE tests |
-| `test:gcp-cmek` | fips | GCP CMEK wrapping key tests |
-| `test:azure-ekm` | non-fips | Azure EKM tests |
-| `test:xks` | non-fips | AWS XKS tests |
+| `test:cloud:google-cse` | fips | Google CSE tests |
+| `test:cloud:gcp-cmek` | fips | GCP CMEK wrapping key tests |
+| `test:cloud:azure-ekm` | non-fips | Azure EKM tests |
+| `test:cloud:xks` | non-fips | AWS XKS tests |
 
 ### Secret backends
 
 | Task | Default variant | Description |
 |------|-----------------|-------------|
-| `test:secret_cosmian_kms` | fips | Secrets against a local Cosmian KMS |
-| `test:secret_aws` | non-fips | Secrets against AWS SSM Parameter Store |
-| `test:secret_azure` | non-fips | Secrets against Azure Key Vault |
-| `test:secret_vault` | non-fips | Secrets against HashiCorp Vault |
+| `test:cloud:secret-cosmian-kms` | fips | Secrets against a local Cosmian KMS |
+| `test:cloud:secret-aws` | non-fips | Secrets against AWS SSM Parameter Store |
+| `test:cloud:secret-azure` | non-fips | Secrets against Azure Key Vault |
+| `test:cloud:secret-vault` | non-fips | Secrets against HashiCorp Vault |
 
 ### HSM
 
@@ -72,12 +72,12 @@ The most common flags (accepted by most tasks):
 | `test:hsm:proteccio` | fips | Proteccio (Linux only) |
 | `test:hsm:crypt2pay` | fips | Crypt2Pay (Linux only) |
 | `test:hsm:luna` | fips | Thales Luna (Linux only; `LUNA_PASSWORD`, `LUNA_SLOT`) |
-| `test:hsm-softhsm2` | fips | Same as `test:hsm:softhsm2` (flat alias) |
-| `test:hsm-utimaco` | fips | Same as `test:hsm:utimaco` |
-| `test:hsm-proteccio` | fips | Same as `test:hsm:proteccio` |
-| `test:hsm-crypt2pay` | fips | Same as `test:hsm:crypt2pay` |
-| `test:hsm-crypt2pay-simulator` | fips | Same as `test:hsm:crypt2pay-simulator` |
-| `test:hsm-luna` | fips | Same as `test:hsm:luna` |
+| `test:hsm:softhsm2` | fips | Same as `test:hsm:softhsm2` (flat alias) |
+| `test:hsm:utimaco` | fips | Same as `test:hsm:utimaco` |
+| `test:hsm:proteccio` | fips | Same as `test:hsm:proteccio` |
+| `test:hsm:crypt2pay` | fips | Same as `test:hsm:crypt2pay` |
+| `test:hsm:crypt2pay-simulator` | fips | Same as `test:hsm:crypt2pay-simulator` |
+| `test:hsm:luna` | fips | Same as `test:hsm:luna` |
 
 ### Kubernetes
 
@@ -94,18 +94,18 @@ The most common flags (accepted by most tasks):
 
 | Task | Default variant | Description |
 |------|-----------------|-------------|
-| `test:audit` | non-fips | Audit log integration test (JSONL, hash chain, fields) |
-| `test:cef` | non-fips | All CEF integration tests (format, UDP syslog, TCP rsyslog) |
-| `test:cef-format` | non-fips | CEF v27 format validation |
-| `test:cef-syslog` | non-fips | CEF over UDP syslog |
-| `test:cef-tcp-syslog` | non-fips | CEF over TCP syslog (rsyslog, RFC 6587) |
-| `test:siem` | non-fips | All SIEM integration tests |
-| `test:siem-cef-syslog` | non-fips | CEF-over-syslog SIEM |
-| `test:siem-cef-tcp-syslog` | non-fips | CEF-over-TCP-syslog SIEM (rsyslog) |
-| `test:siem-filebeat` | non-fips | Filebeat → Elasticsearch SIEM |
-| `test:siem-fluent-bit` | non-fips | Fluent Bit JSONL file-tailing SIEM |
-| `test:monitoring` | non-fips | Monitoring stack (VictoriaMetrics + Grafana) |
-| `test:otel` | fips | OTLP/OpenTelemetry export integration |
+| `test:obs:audit` | non-fips | Audit log integration test (JSONL, hash chain, fields) |
+| `test:obs` | non-fips | All CEF integration tests (format, UDP syslog, TCP rsyslog) |
+| `test:obs:cef-format` | non-fips | CEF v27 format validation |
+| `test:obs:cef-syslog` | non-fips | CEF over UDP syslog |
+| `test:obs:cef-tcp-syslog` | non-fips | CEF over TCP syslog (rsyslog, RFC 6587) |
+| `test:obs` | non-fips | All SIEM integration tests |
+| `test:obs:cef-syslog` | non-fips | CEF-over-syslog SIEM |
+| `test:obs:cef-tcp-syslog` | non-fips | CEF-over-TCP-syslog SIEM (rsyslog) |
+| `test:obs:filebeat` | non-fips | Filebeat → Elasticsearch SIEM |
+| `test:obs:fluent-bit` | non-fips | Fluent Bit JSONL file-tailing SIEM |
+| `test:obs:monitoring` | non-fips | Monitoring stack (VictoriaMetrics + Grafana) |
+| `test:obs:otel` | fips | OTLP/OpenTelemetry export integration |
 
 All audit/SIEM tests require a non-fips KMS binary and Docker. Every guard exits 1 if no
 evidence is found — no silent skips. A pre-flight step removes any stale Docker container
@@ -115,68 +115,70 @@ Run all four integration areas at once:
 
 ```bash
 cargo build --features non-fips          # build once
-KMS_SKIP_BUILD=1 mise test:audit      --variant non-fips
-KMS_SKIP_BUILD=1 mise test:cef        --variant non-fips
-KMS_SKIP_BUILD=1 mise test:siem       --variant non-fips
-KMS_SKIP_BUILD=1 mise test:monitoring --variant non-fips
+KMS_SKIP_BUILD=1 mise test:obs:audit      --variant non-fips
+KMS_SKIP_BUILD=1 mise test:obs        --variant non-fips
+KMS_SKIP_BUILD=1 mise test:obs       --variant non-fips
+KMS_SKIP_BUILD=1 mise test:obs:monitoring --variant non-fips
 ```
 
 Or run individual suites:
 
 ```bash
-mise test:cef  --suite format        # CEF v27 format validation (jc parser)
-mise test:cef  --suite syslog        # CEF → UDP syslog
-mise test:cef  --suite tcp-syslog    # CEF → TCP rsyslog (RFC 6587)
-mise test:siem --suite fluent-bit    # Fluent Bit JSONL file tailing
-mise test:siem --suite filebeat      # Filebeat → Elasticsearch
+mise test:obs  --suite format        # CEF v27 format validation (jc parser)
+mise test:obs  --suite syslog        # CEF → UDP syslog
+mise test:obs  --suite tcp-syslog    # CEF → TCP rsyslog (RFC 6587)
+mise test:obs --suite fluent-bit    # Fluent Bit JSONL file tailing
+mise test:obs --suite filebeat      # Filebeat → Elasticsearch
 ```
 
 #### Guard summary
 
 | Command | Docker images used | Key guards |
 |---|---|---|
-| `mise test:audit` | — (KMS binary only) | ≥ 4 events written; hash chain intact (`ckms audit verify`); required fields present; ≥ 1 Success + ≥ 1 Failure |
-| `mise test:cef --suite format` | — | CEF header format; 1:1 audit-to-CEF mapping; all extension keys; Success + Failure `outcome` |
-| `mise test:cef --suite syslog` | — (nc listener) | All 4 CEF lines received via UDP |
-| `mise test:cef --suite tcp-syslog` | `rsyslog/syslog_appliance_alpine:latest` | All 4 CEF lines received via TCP; field integrity preserved |
-| `mise test:siem --suite fluent-bit` | `fluent/fluent-bit:4.0` | All events forwarded; required fields present |
-| `mise test:siem --suite filebeat` | `docker.elastic.co/beats/filebeat:8.17.0` + `elasticsearch:8.17.0` | All events indexed; ingest pipeline normalises Success/Failure |
-| `mise test:monitoring` | `otel/opentelemetry-collector-contrib:latest` + `victoriametrics/victoria-metrics:latest` + `grafana/grafana:latest` | KMS metric lines confirmed on Prometheus endpoint (guard: > 0); required metric families present; Grafana `database=ok` |
+| `mise test:obs:audit` | — (KMS binary only) | ≥ 4 events written; hash chain intact (`ckms audit verify`); required fields present; ≥ 1 Success + ≥ 1 Failure |
+| `mise test:obs --suite format` | — | CEF header format; 1:1 audit-to-CEF mapping; all extension keys; Success + Failure `outcome` |
+| `mise test:obs --suite syslog` | — (nc listener) | All 4 CEF lines received via UDP |
+| `mise test:obs --suite tcp-syslog` | `rsyslog/syslog_appliance_alpine:latest` | All 4 CEF lines received via TCP; field integrity preserved |
+| `mise test:obs --suite fluent-bit` | `fluent/fluent-bit:4.0` | All events forwarded; required fields present |
+| `mise test:obs --suite filebeat` | `docker.elastic.co/beats/filebeat:8.17.0` + `elasticsearch:8.17.0` | All events indexed; ingest pipeline normalises Success/Failure |
+| `mise test:obs:monitoring` | `otel/opentelemetry-collector-contrib:latest` + `victoriametrics/victoria-metrics:latest` + `grafana/grafana:latest` | KMS metric lines confirmed on Prometheus endpoint (guard: > 0); required metric families present; Grafana `database=ok` |
 
 ### Protocol & interoperability
 
 | Task | Default variant | Description |
 |------|-----------------|-------------|
-| `test:wasm` | fips | WASM build + tests |
+| `test:ui:wasm` | fips | WASM build + tests |
 | `test:ui` | non-fips | All Playwright E2E tests (standard + auth + OIDC) |
-| `test:ui-auth` | non-fips | Playwright E2E auth tests against a real Authentication Verifier |
-| `test:ui-oidc` | non-fips | Playwright E2E OIDC tests against a real Auth0 IdP |
-| `test:pykmip` | non-fips | PyKMIP + Synology DSM tests |
-| `test:kmip-go` | non-fips | KMIP 1.0–1.4 compliance tests (ovh/kmip-go) |
-| `test:jose` | non-fips | JOSE REST API + jwcrypto interoperability |
-| `test:edb-tde` | non-fips | EDB TDE KMIP compliance |
-| `test:docker` | fips | Docker image smoke tests |
-| `test:docker-scan` | fips | Syft SBOM + Grype scan of a Docker image, `Cargo.lock` and `ui/pnpm-lock.yaml` (fails on fixable High/Critical) |
-| `test:docker-oracle` | — | Oracle TDE remote upgrade smoke test (non-fips, amd64 only) |
-| `test:helm` | fips | Helm chart lint, template validation, and optional E2E deployment |
-| `test:load-balancer` | fips | nginx load-balancer graceful shutdown |
-| `test:iris` | non-fips | IRIS mTLS integration |
+| `test:ui:auth` | non-fips | Playwright E2E auth tests against a real Authentication Verifier |
+| `test:ui:oidc` | non-fips | Playwright E2E OIDC tests against a real Auth0 IdP |
+| `test:interop:pykmip` | non-fips | PyKMIP + Synology DSM tests |
+| `test:interop:kmip-go` | non-fips | KMIP 1.0–1.4 compliance tests (ovh/kmip-go) |
+| `test:interop:jose` | non-fips | JOSE REST API + jwcrypto interoperability |
+| `test:interop:edb-tde` | non-fips | EDB TDE KMIP compliance |
+| `test:pkg:docker` | fips | Docker image smoke tests |
+| `test:pkg:docker-scan` | fips | Syft SBOM + Grype scan of a Docker image, `Cargo.lock` and `ui/pnpm-lock.yaml` (fails on fixable High/Critical) |
+| `test:pkg:docker-oracle` | — | Oracle TDE remote upgrade smoke test (non-fips, amd64 only) |
+| `test:k8s:helm` | fips | Helm chart lint, template validation, and optional E2E deployment |
+| `test:pkg:load-balancer` | fips | nginx load-balancer graceful shutdown |
+| `test:interop:iris` | non-fips | IRIS mTLS integration |
 | `test:spire` | non-fips | SPIRE + Mistral client full integration |
-| `test:spire-pki` | non-fips | KMS PKI capability validation |
+| `test:spire:pki` | non-fips | KMS PKI capability validation |
 
 ### PKCS#11 & disk encryption
 
 | Task | Default variant | Description |
 |------|-----------------|-------------|
-| `test:openssh` | non-fips | OpenSSH PKCS#11 integration |
-| `test:luks` | non-fips | LUKS disk-encryption PKCS#11 |
-| `test:veracrypt` | non-fips | VeraCrypt PKCS#11 integration |
+| `test:pkcs11:openssh` | non-fips | OpenSSH PKCS#11 integration |
+| `test:pkcs11:luks` | non-fips | LUKS disk-encryption PKCS#11 |
+| `test:pkcs11:veracrypt` | non-fips | VeraCrypt PKCS#11 integration |
 
 ### Utilities
 
 | Task | Description |
 |------|-------------|
-| `test:vectors-rekey` | Generate ReKey and ReKeyKeyPair test vectors into `test_data/` |
+| `dev:vectors-rekey` | Generate ReKey and ReKeyKeyPair test vectors into `test_data/` |
+| `dev:ci-uncovered-tasks` | Inventory the mise tasks no CI workflow runs, directly or through another task (`--strict` exits 1 if any) |
+| `dev:ci-ignored-tests` | Inventory the `#[ignore]` Rust tests no `cargo test --ignored` in any MISE task, script or lib runs (`--ci`: only those a CI workflow reaches; `--strict` exits 1 if any) |
 | `test` / `test:_default` | Run all tests sequentially |
 
 ---

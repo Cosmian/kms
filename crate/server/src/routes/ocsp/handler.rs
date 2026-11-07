@@ -552,7 +552,7 @@ fn retrieve_signer_cert_and_key<'a>(
         // truthfully reporting `revoked`/`cACompromise` for every certificate the CA
         // issued precisely *because* the CA was compromised — refusing to sign at all in
         // that case would silence the cascade this feature exists to provide, which is
-        // exercised end-to-end by `mise run test:ocsp` (step 7). Once a CA key is truly
+        // exercised end-to-end by `mise run test:pki:ocsp` (step 7). Once a CA key is truly
         // compromised, an attacker holding it can already forge arbitrary responses
         // without the KMS's help, so continuing to use it here for an accurate,
         // already-forced `revoked` statement adds no meaningful additional exposure.

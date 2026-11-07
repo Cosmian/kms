@@ -396,7 +396,7 @@ for hit in hits:
 
 # Python venv for the helper
 VENV_DIR="$(mktemp -d -t siem-venv-XXXXXX)"
-python3 -m venv "${VENV_DIR}"
+"$(pick_python312)" -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 
