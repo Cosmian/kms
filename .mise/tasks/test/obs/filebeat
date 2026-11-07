@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Run Filebeat → Elasticsearch SIEM integration test"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="Feature variant (must be non-fips)" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+# SIEM tests require non-fips: CEF export and audit middleware use non-fips features.
+# Uses Docker containers + KMS binary (self-builds OpenSSL). No Nix shell needed.
+# Requires Elasticsearch: docker compose up -d elasticsearch
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+[ "$VARIANT" = non-fips ] || skip_test "non-fips only"
+docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d elasticsearch || {
+  if [ "${CI:-}" = true ]; then print_error "could not start compose: elasticsearch"; fi
+  skip_test "could not start compose: elasticsearch"
+}
+
+print_header "Running Filebeat → Elasticsearch SIEM integration test (${VARIANT_NAME})"
+
+bash "${REPO_ROOT}/.mise/scripts/test/test_siem_filebeat.sh" --variant "$VARIANT"
+
+print_success "Filebeat → Elasticsearch SIEM test completed"

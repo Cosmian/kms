@@ -41,10 +41,10 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
     // process: repeated load/unload cycles can corrupt internal C state and cause a SIGSEGV.
     let cfg = cfg()?;
     let hsm = shared::instantiate::<AwsCloudHsmCapabilityProvider>(&cfg)?;
-    drop(hsm.hsm_lib().get_info_struct()?);
+    shared::get_info(&hsm)?;
     let slot = shared::get_slot::<AwsCloudHsmCapabilityProvider>(&hsm, &cfg)?;
     shared::get_mechanisms_and_hashes(&slot)?;
-    drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
+    shared::get_supported_algorithms(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
@@ -75,53 +75,6 @@ fn test_hsm_aws_cloudhsm_all() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_get_info() -> HResult<()> {
-    shared::get_info::<AwsCloudHsmCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_get_mechanisms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::get_mechanisms_and_hashes(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_get_supported_algorithms() -> HResult<()> {
-    shared::get_supported_algorithms::<AwsCloudHsmCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_generate_aes_key() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::generate_aes_key(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_generate_rsa_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::generate_rsa_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_generate_ec_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::generate_ec_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_key_wrap() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
 fn test_hsm_aws_cloudhsm_rsa_pkcs_encrypt() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
     shared::rsa_pkcs_encrypt(&slot)
@@ -129,103 +82,9 @@ fn test_hsm_aws_cloudhsm_rsa_pkcs_encrypt() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_oaep_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_aes_gcm_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_gcm_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_aes_cbc_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_aes_cbc_multi_round_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_multi_round(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_pkcs_v15_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_v15_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_sha256_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sha256_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sign_all_algorithms(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_rsa_pss_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pss_sign_all_algorithms(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::ecdsa_sign_all_curves_and_hashes(&slot)
-}
-
-/// AWS `CloudHSM`'s PKCS#11 v2.40 library documents EdDSA(Ed25519) support; run with
-/// `--features non-fips,aws_cloudhsm`.
-#[cfg(feature = "non-fips")]
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_eddsa_sign_all_curves() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::eddsa_sign_all_curves(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
 fn test_hsm_aws_cloudhsm_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_concurrent_sign_does_not_degrade() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::concurrent_sign_does_not_degrade(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_list_objects() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::list_objects(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, the AWS CloudHSM PKCS#11 library, and a live cluster"]
-fn test_hsm_aws_cloudhsm_get_key_metadata() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<AwsCloudHsmCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
 }
 
 #[test]

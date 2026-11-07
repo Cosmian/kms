@@ -358,12 +358,12 @@ flowchart TB
     rebuild["Rebuild: nix-build -A <target> -o result"]
     copy["Copy hash from build output to expected-hashes/<br/>• Vendor: cargoHash error<br/>• Binary: installCheckPhase output"]
     script["Script performs:<br/>1. Build with Nix<br/>2. Compute SHA-256<br/>3. Update hash files"]
-    verify["Verify: mise run test:sqlite"]
+    verify["Verify: mise run test:db:sqlite"]
     commit["Commit updated hashes"]
     change --> fail --> rebuild --> copy --> script --> verify --> commit
 ```
 
-Tip: for a quick end-to-end check after updates, use `mise run test:sqlite` or build a package with `mise run package`.
+Tip: for a quick end-to-end check after updates, use `mise run test:db:sqlite` or build a package with `mise run package`.
 
 Hash enforcement is configurable: some expected-hash checks are only enforced when `enforceDeterministicHash`/`--enforce-deterministic-hash true` is enabled.
 

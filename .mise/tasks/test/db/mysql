@@ -7,4 +7,25 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/mysql" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_HSM=1
+ensure_nix_shell
+docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d mysql || {
+  if [ "${CI:-}" = true ]; then print_error "could not start compose: mysql"; fi
+  skip_test "could not start compose: mysql"
+}
+
+print_header "Running MySQL tests (${VARIANT_NAME})"
+
+check_and_test_db "MySQL" "mysql" "MYSQL_HOST" "MYSQL_PORT"
+run_db_softhsm2_tests "mysql_softhsm2"
+
+print_success "MySQL tests completed"

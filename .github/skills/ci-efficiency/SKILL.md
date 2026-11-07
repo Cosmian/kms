@@ -17,7 +17,7 @@ mise run [--variant fips|non-fips] [--link static|dynamic] <task>
 
 Key workflows:
 
-- `.github/workflows/main.yml` + `main_base.yml` — push and pull-request CI
+- `.github/workflows/main.yml` — push and pull-request CI
 - `.github/workflows/test_all.yml` — full test matrix
 - `.github/workflows/release.yml` — release automation
 - `.github/workflows/packaging.yml`, `packaging-docker.yml`, `packaging-tests.yml` — packaging

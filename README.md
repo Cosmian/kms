@@ -722,7 +722,7 @@ Nix-based (reproducible FIPS builds):
 
 ```sh
 # Run tests (defaults to sqlite; DB backends require services)
-mise run test:sqlite
+mise run test:db:sqlite
 
 # Package artifacts (Linux → deb+rpm, macOS → dmg)
 mise run package

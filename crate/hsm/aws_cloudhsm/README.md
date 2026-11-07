@@ -73,7 +73,7 @@ read-only `cloudhsm:DescribeClusters` permission for this purpose.
 ## Running the CI test lane locally
 
 ```bash
-mise run test:hsm-aws-cloudhsm --variant non-fips
+mise run test:hsm:aws-cloudhsm --variant non-fips
 ```
 
 This sources `.github/reusable_scripts/prepare_aws_cloudhsm.sh`, which installs the CloudHSM

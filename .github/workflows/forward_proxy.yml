@@ -16,6 +16,10 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: non-fips
+
       - uses: ./.github/actions/install-mise
 
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -50,4 +54,4 @@ jobs:
           # The port in this URL is intentionally omitted; only the host matters.
           export KMS_URL=http://$LOCAL_IP
 
-          cargo +${{ inputs.toolchain }} test --workspace --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy
+          cargo +${{ inputs.toolchain }} test -p ckms --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy

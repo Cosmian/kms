@@ -406,7 +406,7 @@ Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
 ## OpenPGP (non-FIPS only)
 
 `pgp-key-flow.spec.ts` verifies armored and binary GnuPG secret/public key imports and exports through
-the Web UI. `mise test:gnupg` exercises CKMS import/export interoperability with GnuPG-generated
+the Web UI. `mise test:pkcs11:gnupg` exercises CKMS import/export interoperability with GnuPG-generated
 armored and binary transferable keys.
 
 ## FPE — Format-Preserving Encryption (non-FIPS only)
@@ -783,6 +783,6 @@ live outside `tests/e2e/` and have their own Playwright config and mise task:
 
 | Suite             | Config                      | Task                    | What it covers                                                                                                                        |
 | ----------------- | --------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/e2e-auth/` | `playwright.auth.config.ts` | `mise run test:ui-auth` | `auth-verifier-login`: real Auth Verifier login; `saml-login`: mocked UI contract of the SAML button (`/ui/login_saml`, `/ui/whoami`) |
-| `tests/e2e-saml/` | `playwright.saml.config.ts` | `mise run test:ui-saml` | `saml-sso`: real SAML 2.0 round trip (KMS → Auth Verifier SP → Keycloak IdP → ACS → `_ea_` session cookie → KMS)                      |
-| `tests/e2e-oidc/` | `playwright.oidc.config.ts` | `mise run test:ui-oidc` | `oidc-login`: real OIDC (Auth0) login, no token in the browser, session persistence and logout                                        |
+| `tests/e2e-auth/` | `playwright.auth.config.ts` | `mise run test:ui:auth` | `auth-verifier-login`: real Auth Verifier login; `saml-login`: mocked UI contract of the SAML button (`/ui/login_saml`, `/ui/whoami`) |
+| `tests/e2e-saml/` | `playwright.saml.config.ts` | `mise run test:ui:saml` | `saml-sso`: real SAML 2.0 round trip (KMS → Auth Verifier SP → Keycloak IdP → ACS → `_ea_` session cookie → KMS)                      |
+| `tests/e2e-oidc/` | `playwright.oidc.config.ts` | `mise run test:ui:oidc` | `oidc-login`: real OIDC (Auth0) login, no token in the browser, session persistence and logout                                        |

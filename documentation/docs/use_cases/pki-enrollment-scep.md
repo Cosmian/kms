@@ -155,8 +155,8 @@ sequenceDiagram
 !!! note "Client compatibility"
     The implementation is built for clients that honour `GetCACaps`. It is verified against the
     micromdm `scepclient` (whose stock build hard-codes single DES and must be built with
-    AES-128-CBC; see `mise run test:scep-interop`) and against the native macOS 26.6 SCEP client
-    (see `mise run test:scep-apple`). Renewal by the Apple client and Windows clients were not
+    AES-128-CBC; see `mise run test:pki:scep-interop`) and against the native macOS 26.6 SCEP client
+    (see `mise run test:pki:scep-apple`). Renewal by the Apple client and Windows clients were not
     verified.
 
 ## Security notes
@@ -200,9 +200,9 @@ Errors common to EST and SCEP are listed on the
 
 ## Verifying the setup
 
-- `mise run test:scep-interop`: the micromdm `scepclient` (built to send RSAES-OAEP):
+- `mise run test:pki:scep-interop`: the micromdm `scepclient` (built to send RSAES-OAEP):
   enrollment, challenge-less renewal and a wrong challenge.
-- `mise run test:scep-apple --variant non-fips` (macOS, interactive): installs a
+- `mise run test:pki:scep-apple --variant non-fips` (macOS, interactive): installs a
   `com.apple.security.scep` profile with a `CAFingerprint` pin; you approve it in System Settings.
   It checks the Apple request (SHA-256, AES, RSA-2048, challenge) and the issued identity in the
   keychain, then stores the capture under `test_data/scep/apple/` for the CI test

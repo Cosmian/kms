@@ -1,0 +1,29 @@
+---
+name: Windows VS Ninja
+description: >
+  Put Visual Studio's bundled Ninja on PATH so vcpkg does not download it from GitHub.
+  Requires a prior checkout (fallback script lives in .mise/scripts/windows).
+
+runs:
+  using: composite
+  steps:
+    - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+      shell: pwsh
+      run: |
+        # VS 2022 ships Ninja under the CMake integration path.
+        # If we add it to PATH now, vcpkg_find_acquire_program(NINJA)
+        # will find it there instead of attempting a network download.
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vsInstall = & $vswhere -latest -products '*' `
+          -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+          -property installationPath 2>$null
+        if ($vsInstall) {
+          $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+          if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+            Add-Content $env:GITHUB_PATH $ninjaDir
+            Write-Host "Added VS Ninja to PATH: $ninjaDir"
+            return
+          }
+        }
+        # Fallback: pinned, SHA-256-verified release of Ninja
+        .\.mise\scripts\windows\install_ninja.ps1

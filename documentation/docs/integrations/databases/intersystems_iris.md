@@ -246,7 +246,7 @@ IRIS_DOCKER_IMAGE=containers.intersystems.com/intersystems/iris:latest \
 bash .mise/scripts/test/test_iris.sh --variant non-fips
 
 # Via the Nix wrapper (matches CI exactly)
-mise run test:iris --variant non-fips
+mise run test:interop:iris --variant non-fips
 ```
 
 ### Environment variables

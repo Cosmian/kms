@@ -114,7 +114,7 @@ trap cleanup EXIT INT TERM
 echo "==> Building KMS server (${VARIANT_NAME})…"
 pushd "${REPO_ROOT}" >/dev/null
 cargo build --bin cosmian_kms --bin ckms "${FEATURES_FLAG[@]}"
-CKMS_BIN="${REPO_ROOT}/target/debug/ckms"
+CKMS_BIN="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/ckms"
 CKMS_URL="https://127.0.0.1:${KMS_HTTP_PORT}"
 
 CKMS_CONF="${KMS_SQLITE_DIR}/ckms.toml"
@@ -246,7 +246,10 @@ docker run --rm --platform linux/amd64 \
   "rust:${RUST_VERSION}-bookworm" \
   bash -c "apt-get update -qq && apt-get install -y -qq clang libssl-dev pkg-config >/dev/null 2>&1; \
     env -u OPENSSL_DIR -u OPENSSL_LIB_DIR -u OPENSSL_INCLUDE_DIR \
-    cargo build -p cosmian_pkcs11 --features non-fips --target-dir /work/target/pkcs11-linux-amd64"
+    cargo build -p cosmian_pkcs11 --features non-fips --target-dir /work/target/pkcs11-linux-amd64; rc=\$?; \
+    rm -rf /work/target/openssl-non-fips-3.6.5-linux-x86_64; exit \$rc"
+# The container build bakes /work/target/... into the OpenSSL prefix as OPENSSLDIR; the container
+# removes it (as root, even if the build failed) so later leaves (jose, kmipkit) rebuild it for the host path.
 PKCS11_LIB="${PKCS11_TARGET_DIR}/debug/libcosmian_pkcs11.so"
 if [ ! -f "${PKCS11_LIB}" ]; then
   echo "ERROR: libcosmian_pkcs11.so was not produced at ${PKCS11_LIB}." >&2

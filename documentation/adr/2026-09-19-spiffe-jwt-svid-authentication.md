@@ -159,7 +159,7 @@ The Web UI and `ckms` CLI are fully integrated with SPIFFE JWT-SVID authenticati
   the identity-resolution decision and is covered by unit tests in
   `jwt_token_auth.rs` (email priority, SPIFFE acceptance/rejection, non-SPIFFE
   `sub` rejection, reserved-identity defense-in-depth).
-- **IMP-004**: Integration test harnesses (`.mise/tasks/test/spire-jwt-svid` in this repository, as well as the reference Kubernetes deployment smoke test) validate the end-to-end flow:
+- **IMP-004**: Integration test harnesses (`.mise/tasks/test/spire/jwt-svid` in this repository, as well as the reference Kubernetes deployment smoke test) validate the end-to-end flow:
   1. Native `ckms login spire --audience <aud>` connects to the SPIRE Agent Workload API socket and persists the JWT-SVID.
   2. A gateway/BFF calls `POST /ui/login_svid` to obtain a cookie-backed session.
   3. Authenticated requests create KMS cryptographic keys owned by the full SPIFFE URI.

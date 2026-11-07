@@ -14,7 +14,7 @@ Google network access and none of the CI secrets. Only one test needs real Googl
 | Server endpoints, token validation, crypto, startup | `cargo test -p cosmian_kms_server google_cse` | none |
 | `ckms google` commands (clap actions) | `cargo test -p cosmian_kms_cli_actions --features non-fips google_cmd` | none |
 | `ckms google` through the `ckms` binary | `cargo test -p ckms --features non-fips google_cmd` | none |
-| All of the above, plus the real Google token test | `mise run test:google-cse` | The real Google test needs `TEST_GOOGLE_OAUTH_CLIENT_ID`, `TEST_GOOGLE_OAUTH_CLIENT_SECRET` and `TEST_GOOGLE_OAUTH_REFRESH_TOKEN` (CI only); without them it is skipped with a warning, and fails when `CI` is set |
+| All of the above, plus the real Google token test | `mise run test:cloud:google-cse` | The real Google test needs `TEST_GOOGLE_OAUTH_CLIENT_ID`, `TEST_GOOGLE_OAUTH_CLIENT_SECRET` and `TEST_GOOGLE_OAUTH_REFRESH_TOKEN` (CI only); without them it is skipped with a warning, and fails when `CI` is set |
 
 ## Server endpoints
 

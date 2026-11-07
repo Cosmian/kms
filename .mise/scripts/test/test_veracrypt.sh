@@ -23,8 +23,8 @@
 #     the PKCS#11 library pointing at the KMS, verifies the mount, then dismounts.
 #
 # Usage:
-#   mise run test:veracrypt
-#   mise run test:veracrypt -- --variant non-fips
+#   mise run test:pkcs11:veracrypt
+#   mise run test:pkcs11:veracrypt -- --variant non-fips
 #   bash .mise/scripts/test/test_veracrypt.sh
 set -euo pipefail
 set -x

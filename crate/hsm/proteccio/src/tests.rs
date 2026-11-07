@@ -37,10 +37,10 @@ fn test_hsm_proteccio_all() -> HResult<()> {
     // cause a SIGSEGV (signal 11) on subsequent PKCS#11 calls.
     let cfg = cfg()?;
     let hsm = shared::instantiate::<ProteccioCapabilityProvider>(&cfg)?;
-    drop(hsm.hsm_lib().get_info_struct()?);
+    shared::get_info(&hsm)?;
     let slot = shared::get_slot::<ProteccioCapabilityProvider>(&hsm, &cfg)?;
     shared::get_mechanisms_and_hashes(&slot)?;
-    drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
+    shared::get_supported_algorithms(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
     shared::generate_rsa_keypair(&slot)?;
@@ -73,123 +73,6 @@ fn test_hsm_proteccio_low_level_test() -> HResult<()> {
 
 #[test]
 #[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_get_info() -> HResult<()> {
-    shared::get_info::<ProteccioCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_get_mechanisms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::get_mechanisms_and_hashes(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_get_supported_algorithms() -> HResult<()> {
-    shared::get_supported_algorithms::<ProteccioCapabilityProvider>(&cfg()?)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_generate_aes_key() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::generate_aes_key(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_generate_rsa_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::generate_rsa_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_generate_ec_keypair() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::generate_ec_keypair(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_key_wrap() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_pkcs_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_oaep_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_aes_gcm_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::aes_gcm_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_aes_cbc_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_encrypt(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_aes_cbc_multi_round_encrypt() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::aes_cbc_multi_round(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_pkcs_v15_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pkcs_v15_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_sha256_sign() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sha256_sign(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_sign_all_algorithms(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_rsa_pss_sign_all_algorithms() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::rsa_pss_sign_all_algorithms(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_ecdsa_sign_all_curves_and_hashes() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::ecdsa_sign_all_curves_and_hashes(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
 fn test_hsm_proteccio_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
     shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, 4)
@@ -204,27 +87,6 @@ fn test_hsm_proteccio_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 fn test_hsm_proteccio_eddsa_sign_all_curves() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
     shared::eddsa_sign_all_curves(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_concurrent_sign_does_not_degrade() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::concurrent_sign_does_not_degrade(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_list_objects() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::list_objects(&slot)
-}
-
-#[test]
-#[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
-fn test_hsm_proteccio_get_key_metadata() -> HResult<()> {
-    let slot = shared::instantiate_and_get_slot::<ProteccioCapabilityProvider>(&cfg()?)?;
-    shared::get_key_metadata(&slot)
 }
 
 #[test]

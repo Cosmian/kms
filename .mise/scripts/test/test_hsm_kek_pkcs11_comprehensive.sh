@@ -23,7 +23,7 @@
 # ctypes raw-ABI harness: .mise/scripts/test/pkcs11_raw_abi_check.py
 #
 # Usage (via mise):
-#   mise run test:hsm-pkcs11-tool --variant non-fips
+#   mise run test:pkcs11:tool --variant non-fips
 # ============================================================================
 set -euo pipefail
 

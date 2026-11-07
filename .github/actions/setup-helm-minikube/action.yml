@@ -1,0 +1,15 @@
+---
+name: Setup Helm and Minikube
+description: Install Helm and start a Minikube cluster (docker driver, Kubernetes v1.32.0).
+
+runs:
+  using: composite
+  steps:
+    - name: Install Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+
+    - name: Start Minikube
+      uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
+      with:
+        driver: docker
+        kubernetes-version: v1.32.0

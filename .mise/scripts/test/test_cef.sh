@@ -199,7 +199,7 @@ echo "    Exported ${cef_lines} CEF line(s)."
 
 echo "==> Setting up Python virtualenv with jc..."
 VENV_DIR="$(mktemp -d -t cef-venv-XXXXXX)"
-python3 -m venv "${VENV_DIR}"
+"$(pick_python312)" -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 pip install --quiet --require-hashes -r "${SCRIPT_DIR}/requirements-cef.txt"

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="List the #[ignore] Rust tests that no cargo test --ignored in the MISE scripts runs"
+#USAGE flag "--strict" help="Exit 1 when at least one ignored test is not run by any MISE script"
+#USAGE flag "--ci" help="Only count the scripts a CI workflow reaches (default: every task, script and lib under .mise/)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+PYTHON="$(pick_python312)"
+ARGS=()
+[ "${usage_strict:-false}" = "true" ] && ARGS+=(--strict)
+[ "${usage_ci:-false}" = "true" ] && ARGS+=(--ci)
+
+print_header "Ignored Rust tests not run by the MISE scripts"
+"${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_coverage.py" ignored-tests ${ARGS[@]+"${ARGS[@]}"}
+print_success "Inventory complete"

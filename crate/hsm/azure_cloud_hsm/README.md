@@ -76,7 +76,7 @@ Record the following as GitHub Actions repository secrets (never commit them):
 ## Running the CI test lane locally
 
 ```bash
-mise run test:hsm-azure-cloud-hsm --variant non-fips
+mise run test:hsm:azure-cloud-hsm --variant non-fips
 ```
 
 This sources `.github/reusable_scripts/prepare_azure_cloudhsm.sh`, which installs the Azure
@@ -111,5 +111,5 @@ The test requires Linux, a reachable Azure Cloud HSM partition, the Azure Cloud 
 library, and credentials:
 
 ```bash
-mise run test:hsm-azure-cloud-hsm --variant fips
+mise run test:hsm:azure-cloud-hsm --variant fips
 ```

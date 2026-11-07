@@ -7,4 +7,38 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/percona" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+export WITH_HSM=1
+ensure_nix_shell
+docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d percona || {
+  if [ "${CI:-}" = true ]; then print_error "could not start compose: percona"; fi
+  skip_test "could not start compose: percona"
+}
+
+# PXC opens port 3306 before Galera is synced, so a TCP probe is not enough, and the entrypoint's temporary init server answers on the socket only: wait for wsrep_ready over TCP.
+# Always: CI sets KMS_PERCONA_URL but the compose container started above is still the one under test.
+print_status "Waiting for Percona to accept queries (Galera sync)"
+for _ in $(seq 1 180); do
+  docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T percona mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_ready'" 2>/dev/null | grep -q ON && break
+  sleep 1
+done
+
+print_header "Running Percona tests (${VARIANT_NAME})"
+
+# CI sets KMS_PERCONA_URL; fall back to slot-aware port default
+export KMS_MYSQL_URL="${KMS_PERCONA_URL:-${KMS_MYSQL_URL:-mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT:-3307}/kms}}"
+# Probe the Percona port, not check_and_test_db's MySQL default (3306).
+: "${PERCONA_PORT:=${KMS_SLOT_PERCONA_PORT:-3307}}"
+
+check_and_test_db "Percona" "mysql" "PERCONA_HOST" "PERCONA_PORT"
+run_db_softhsm2_tests "mysql_softhsm2"
+
+print_success "Percona tests completed"

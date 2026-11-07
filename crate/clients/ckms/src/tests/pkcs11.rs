@@ -101,7 +101,10 @@ fn pkcs11_lib_path() -> PathBuf {
         "libcosmian_pkcs11.so"
     };
 
-    workspace_root.join("target").join(profile).join(lib_name)
+    // Honour CARGO_TARGET_DIR (set per variant inside nix-shell, see shell.nix).
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map_or_else(|| workspace_root.join("target"), PathBuf::from);
+    target_dir.join(profile).join(lib_name)
 }
 
 // ---------------------------------------------------------------------------

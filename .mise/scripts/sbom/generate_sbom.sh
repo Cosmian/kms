@@ -251,6 +251,20 @@ case "$TARGET" in
     ;;
 esac
 
+# Packaging (package_common.sh / package_dmg.sh / package_pkcs11_zip.sh) links its builds as
+# result-{server,cli}-<variant>-<link>. Reuse them so the SBOM describes the shipped binary
+# and the server/CLI are not rebuilt (the rebuild also differs: packaging rewrites
+# nix/expected-hashes after its build). Read-only: never create this link here.
+case "$TARGET" in
+  server | ckms)
+    pkg_component=$([ "$TARGET" = "server" ] && echo server || echo cli)
+    pkg_result="$REPO_ROOT/result-${pkg_component}-${VARIANT}-${LINK}"
+    if [ -e "$pkg_result" ] && [ -e "$(readlink -f "$pkg_result")" ]; then
+      NIX_RESULT="$pkg_result"
+    fi
+    ;;
+esac
+
 # Adjust default output directory to include target/variant/link structure
 if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
   case "$TARGET" in

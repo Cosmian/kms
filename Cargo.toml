@@ -185,6 +185,7 @@ debug = 2               # Full DWARF: line-level attribution + reliable unwindin
 codegen-units = 1       # Keep single CGU for realistic inlining
 
 [profile.dev]
+debug = false # strip = "debuginfo" discards it anyway; generating it only slows compile/link
 strip = "debuginfo"
 incremental = false
 panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
