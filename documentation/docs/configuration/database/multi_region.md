@@ -41,8 +41,8 @@ Three rules shape everything else:
 - **One global leader.** `region_role = "leader"` (the default) or `"follower"`; exactly one region is
   the leader. There is no election: the role changes only when an operator changes the topology.
 - **Only data that cannot be merged is leader-gated.** CRL generation and Crypto Officer ceremony
-  activation/revocation are accepted on the leader only; a follower rejects them with an HTTP 422 that names
-  the leader. Everything else is written in any region.
+  activation/revocation are accepted on the leader only; a follower rejects them with an HTTP 422 telling the
+  client to retry against the leader region. Everything else is written in any region.
 
 ## What converges, and how
 
