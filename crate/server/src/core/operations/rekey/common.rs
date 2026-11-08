@@ -117,12 +117,7 @@ impl KMS {
 
         for (c, r) in candidates.iter().zip(replacements.iter()) {
             let (old_object, old_attributes) = retire_old_key(&c.owm, &r.new_uid)?;
-            operations.push(AtomicOperation::UpdateObject((
-                c.owm.id().to_owned(),
-                old_object,
-                old_attributes,
-                None,
-            )));
+            operations.push(retire_update_op(&c.owm, old_object, old_attributes));
             // see `retire_old_key`: only an Active object is moved to Deactivated
             if c.owm.effective_state() == State::Active {
                 operations.push(AtomicOperation::UpdateState((
@@ -482,6 +477,8 @@ pub(crate) trait RekeyOperation {
 ///
 /// This orchestrator drives the 8-step rotation flow in order:
 /// validate → detect wrapping → generate → prepare attributes → rewrap → commit → finalize → respond.
+/// The commit step also claims each candidate's version (see `claim_op`), so a concurrent
+/// rotation of the same object fails with `Conflict` before anything is persisted.
 pub(crate) async fn execute_rekey<T: RekeyOperation>(
     op: &T,
     kms: &KMS,
@@ -498,25 +495,42 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
     op.prepare_attributes(kms, &candidates, &mut replacements)?;
     op.rewrap_new_objects(kms, user, &mut replacements, &wrap_specs)
         .await?;
-    let persist_ops: Vec<AtomicOperation> = replacements
+    let mut persist_ops: Vec<AtomicOperation> = candidates
         .as_ref()
         .iter()
-        .map(|r| {
-            AtomicOperation::Create((
-                r.new_uid.clone(),
-                user.to_owned(),
-                r.object.clone(),
-                r.attributes.clone(),
-                r.tags.clone(),
-            ))
-        })
+        .filter_map(|c| claim_op(&c.owm))
         .collect();
+    persist_ops.extend(replacements.as_ref().iter().map(|r| {
+        AtomicOperation::Create((
+            r.new_uid.clone(),
+            user.to_owned(),
+            r.object.clone(),
+            r.attributes.clone(),
+            r.tags.clone(),
+        ))
+    }));
     kms.constraints.check_new_objects(&persist_ops)?;
     // `Database::atomic` invalidates the keyset-resolution cache for every created
     // member's `rotate_name`, so the new generation is visible immediately.
     kms.database.atomic(user, &persist_ops).await?;
-    op.finalize_dependants(kms, user, &candidates, &replacements)
-        .await?;
+    if let Err(e) = op
+        .finalize_dependants(kms, user, &candidates, &replacements)
+        .await
+    {
+        if matches!(e, KmsError::Conflict(_)) {
+            // a write hit the old key between the Phase 1 claim and Phase 2: remove our
+            // replacements (best effort, the conflict is what the caller needs)
+            let cleanup: Vec<AtomicOperation> = replacements
+                .as_ref()
+                .iter()
+                .map(|r| AtomicOperation::Delete(r.new_uid.clone()))
+                .collect();
+            if let Err(del) = kms.database.atomic(user, &cleanup).await {
+                warn!("rekey conflict: failed to remove orphan replacements: {del}");
+            }
+        }
+        return Err(e);
+    }
     Ok(op.build_response(&replacements))
 }
 
@@ -680,6 +694,42 @@ fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, A
         }
     }
     Ok((old_object, old_attributes))
+}
+
+/// Phase 1 claim on a rotation candidate: rewrite it unchanged, conditional on the version
+/// read in `validate`. Committed in the same batch as the replacements' `Create`, so a
+/// concurrent rotation of the same object fails with `Conflict` before persisting anything.
+/// `None` for stores that do not track versions (HSM).
+fn claim_op(owm: &ObjectWithMetadata) -> Option<AtomicOperation> {
+    owm.version().map(|version| {
+        AtomicOperation::UpdateObjectIfVersion((
+            owm.id().to_owned(),
+            owm.object().clone(),
+            owm.attributes().clone(),
+            None,
+            version,
+        ))
+    })
+}
+
+/// Phase 2 write retiring a rotation candidate. Guarded by the version the Phase 1 claim
+/// left on it (read + 1), so any write between the two phases fails with `Conflict`.
+/// Stores that do not track versions (HSM) get the unconditional update.
+pub(crate) fn retire_update_op(
+    owm: &ObjectWithMetadata,
+    object: Object,
+    attributes: Attributes,
+) -> AtomicOperation {
+    match owm.version() {
+        Some(version) => AtomicOperation::UpdateObjectIfVersion((
+            owm.id().to_owned(),
+            object,
+            attributes,
+            None,
+            version.saturating_add(1),
+        )),
+        None => AtomicOperation::UpdateObject((owm.id().to_owned(), object, attributes, None)),
+    }
 }
 
 #[cfg(test)]

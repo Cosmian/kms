@@ -245,7 +245,7 @@ impl SqlitePool {
 
         // Bootstrap schema and optionally clear database on startup, using trait queries
         let create_parameters = pool.get_query("create-table-parameters")?.to_owned();
-        let create_objects = pool.get_query("create-table-objects")?.to_owned();
+        let create_objects = get_sqlite_query!("create-table-objects").to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
         let idx_objects_owner = pool.get_query("create-index-objects-owner")?.to_owned();
@@ -361,6 +361,26 @@ impl SqlitePool {
                         if !has_column {
                             tx.execute_batch(
                                 "ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);",
+                            )?;
+                        }
+                        // Optimistic-locking counter for databases created before it existed.
+                        // Existing rows get version 0 (the column default).
+                        let has_version: bool = {
+                            let mut stmt = tx.prepare("PRAGMA table_info(objects)")?;
+                            let mut rows = stmt.query([])?;
+                            let mut found = false;
+                            while let Some(row) = rows.next()? {
+                                let col_name: String = row.get(1)?;
+                                if col_name == "version" {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        };
+                        if !has_version {
+                            tx.execute_batch(
+                                "ALTER TABLE objects ADD COLUMN version INTEGER NOT NULL DEFAULT 0;",
                             )?;
                         }
                         // Index supporting `find-wrapped-by` lookups and the backfill scan.
@@ -627,9 +647,9 @@ fn sqlite_row_to_owm(row: &Row<'_>) -> Result<ObjectWithMetadata, DbError> {
     let attributes: Attributes = serde_json::from_str(&attributes_json)?;
     let state =
         State::try_from(state_str.as_str()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
-    ))
+    let version: i64 = row.get(5)?;
+    let owm = ObjectWithMetadata::new(id, object, owner, state, attributes);
+    Ok(owm.with_version(u64::try_from(version).unwrap_or_default()))
 }
 
 #[async_trait(?Send)]
@@ -1600,6 +1620,7 @@ enum OwnedOp {
         attributes_json: String,
         wrapping_key_id: Option<String>,
         tags: Option<HashSet<String>>,
+        expected_version: Option<i64>,
     },
     UpdateState {
         uid: String,
@@ -1652,22 +1673,13 @@ impl OwnedOp {
                 })
             }
             AtomicOperation::UpdateObject((uid, obj, attrs, tags)) => {
-                let object_json = serde_json::to_string(obj).map_err(|e| {
-                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                Self::update_object(uid, obj, attrs, tags, None)
+            }
+            AtomicOperation::UpdateObjectIfVersion((uid, obj, attrs, tags, expected)) => {
+                let expected = i64::try_from(*expected).map_err(|e| {
+                    DbError::DatabaseError(format!("expected version out of range: {e}"))
                 })?;
-                let attributes_json = serde_json::to_string(attrs).map_err(|e| {
-                    DbError::DatabaseError(format!(
-                        "failed serializing the attributes to JSON: {e}"
-                    ))
-                })?;
-                let wrapping_key_id = obj.wrapping_key_uid();
-                Ok(Self::UpdateObject {
-                    uid: uid.clone(),
-                    object_json,
-                    attributes_json,
-                    wrapping_key_id,
-                    tags: tags.clone(),
-                })
+                Self::update_object(uid, obj, attrs, tags, Some(expected))
             }
             AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
@@ -1675,6 +1687,29 @@ impl OwnedOp {
             }),
             AtomicOperation::Delete(uid) => Ok(Self::Delete(uid.clone())),
         }
+    }
+
+    fn update_object(
+        uid: &str,
+        obj: &Object,
+        attrs: &Attributes,
+        tags: &Option<HashSet<String>>,
+        expected_version: Option<i64>,
+    ) -> DbResult<Self> {
+        let object_json = serde_json::to_string(obj).map_err(|e| {
+            DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+        })?;
+        let attributes_json = serde_json::to_string(attrs).map_err(|e| {
+            DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
+        })?;
+        Ok(Self::UpdateObject {
+            uid: uid.to_owned(),
+            object_json,
+            attributes_json,
+            wrapping_key_id: obj.wrapping_key_uid(),
+            tags: tags.clone(),
+            expected_version,
+        })
     }
 }
 
@@ -1687,6 +1722,7 @@ fn apply_owned_ops(
     let ins_obj_sql = get_sqlite_query!("insert-objects");
     let ins_tag_sql = get_sqlite_query!("insert-tags");
     let upd_obj_sql = get_sqlite_query!("update-object-with-object");
+    let upd_obj_if_version_sql = get_sqlite_query!("update-object-with-object-if-version");
     let del_tag_sql = get_sqlite_query!("delete-tags");
     let ups_obj_sql = get_sqlite_query!("upsert-object");
     let upd_st_sql = get_sqlite_query!("update-object-with-state");
@@ -1765,11 +1801,31 @@ fn apply_owned_ops(
                 attributes_json,
                 wrapping_key_id,
                 tags,
+                expected_version,
             } => {
-                tx.execute(
-                    upd_obj_sql,
-                    rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
-                )?;
+                if let Some(expected) = expected_version {
+                    let rows_affected = tx.execute(
+                        upd_obj_if_version_sql,
+                        rusqlite::params![
+                            object_json,
+                            attributes_json,
+                            wrapping_key_id,
+                            uid,
+                            expected
+                        ],
+                    )?;
+                    if rows_affected == 0 {
+                        return Err(DbError::Conflict(format!(
+                            "object '{uid}' was modified concurrently (expected version \
+                             {expected})"
+                        )));
+                    }
+                } else {
+                    tx.execute(
+                        upd_obj_sql,
+                        rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
+                    )?;
+                }
                 if let Some(tags) = tags {
                     tx.execute(del_tag_sql, params_from_iter([uid]))?;
                     for tag in tags {

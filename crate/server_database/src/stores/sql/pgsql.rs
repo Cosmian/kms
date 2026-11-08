@@ -364,6 +364,19 @@ macro_rules! pg_retry_tx {
     }};
 }
 
+// Object queries carrying the optimistic-locking `version` counter (bumped on every write).
+const PG_SELECT_OBJECT: &str = "SELECT objects.id, objects.object, objects.attributes, \
+     objects.owner, objects.state, objects.version FROM objects WHERE objects.id=$1;";
+const PG_UPDATE_OBJECT: &str = "UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, \
+     version=version+1 WHERE id=$4;";
+const PG_UPDATE_OBJECT_IF_VERSION: &str = "UPDATE objects SET object=$1, attributes=$2, \
+     wrapping_key_id=$3, version=version+1 WHERE id=$4 AND version=$5;";
+const PG_UPDATE_STATE: &str = "UPDATE objects SET state=$1, version=version+1 WHERE id=$2;";
+const PG_UPSERT_OBJECT: &str = "INSERT INTO objects (id, object, attributes, state, owner, \
+     wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO UPDATE SET object=$2, \
+     attributes=$3, state=$4, owner=$5, wrapping_key_id=$6, version=objects.version+1 \
+     WHERE objects.owner=$5;";
+
 macro_rules! get_pgsql_query {
     ($name:literal) => {
         pgsql_queries()?
@@ -442,6 +455,13 @@ impl PgPool {
         client
             .batch_execute(
                 "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Optimistic-locking version counter (idempotent).
+        client
+            .batch_execute(
+                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;",
             )
             .await
             .map_err(DbError::from)?;
@@ -727,7 +747,7 @@ impl ObjectsStore for PgPool {
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare_cached(get_pgsql_query!("select-object"))
+                .prepare_cached(PG_SELECT_OBJECT)
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
@@ -747,9 +767,11 @@ impl ObjectsStore for PgPool {
                 let state_str: String = row.get(4);
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                Ok(Some(ObjectWithMetadata::new(
-                    id, object, owner, state, attributes,
-                )))
+                let version: i64 = row.get(5);
+                Ok(Some(
+                    ObjectWithMetadata::new(id, object, owner, state, attributes)
+                        .with_version(u64::try_from(version).unwrap_or_default()),
+                ))
             } else {
                 Ok(None)
             }
@@ -812,7 +834,7 @@ impl ObjectsStore for PgPool {
             let attrs_param = Json(attributes);
             let wrapping_key_id = object.wrapping_key_uid();
             let stmt = tx
-                .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                .prepare_cached(PG_UPDATE_OBJECT)
                 .await
                 .map_err(DbError::from)?;
             tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
@@ -847,7 +869,7 @@ impl ObjectsStore for PgPool {
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare_cached(get_pgsql_query!("update-object-with-state"))
+                .prepare_cached(PG_UPDATE_STATE)
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let s = state.to_string();
@@ -931,17 +953,48 @@ impl ObjectsStore for PgPool {
                         }
                         uids.push(uid.clone());
                     }
-                    AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                    AtomicOperation::UpdateObject((uid, object, attributes, tags))
+                    | AtomicOperation::UpdateObjectIfVersion((uid, object, attributes, tags, _)) => {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
-                        let stmt = tx
-                            .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                        if let AtomicOperation::UpdateObjectIfVersion((.., expected)) = op {
+                            let expected = i64::try_from(*expected)
+                                .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+                            let stmt = tx
+                                .prepare_cached(PG_UPDATE_OBJECT_IF_VERSION)
+                                .await
+                                .map_err(DbError::from)?;
+                            let n = tx
+                                .execute(
+                                    &stmt,
+                                    &[
+                                        &object_json,
+                                        &attrs_param,
+                                        &wrapping_key_id,
+                                        &uid,
+                                        &expected,
+                                    ],
+                                )
+                                .await
+                                .map_err(DbError::from)?;
+                            if n == 0 {
+                                return Err(DbError::Conflict(format!(
+                                    "object '{uid}' was modified concurrently (expected version {expected})"
+                                )));
+                            }
+                        } else {
+                            let stmt = tx
+                                .prepare_cached(PG_UPDATE_OBJECT)
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(
+                                &stmt,
+                                &[&object_json, &attrs_param, &wrapping_key_id, &uid],
+                            )
                             .await
                             .map_err(DbError::from)?;
-                        tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
-                            .await
-                            .map_err(DbError::from)?;
+                        }
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))
@@ -964,7 +1017,7 @@ impl ObjectsStore for PgPool {
                     }
                     AtomicOperation::UpdateState((uid, state)) => {
                         let stmt = tx
-                            .prepare_cached(get_pgsql_query!("update-object-with-state"))
+                            .prepare_cached(PG_UPDATE_STATE)
                             .await
                             .map_err(DbError::from)?;
                         let st = state.to_string();
@@ -978,7 +1031,7 @@ impl ObjectsStore for PgPool {
                         let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
-                            .prepare_cached(get_pgsql_query!("upsert-object"))
+                            .prepare_cached(PG_UPSERT_OBJECT)
                             .await
                             .map_err(DbError::from)?;
                         let st = state.to_string();

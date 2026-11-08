@@ -39,6 +39,7 @@ erDiagram
         string state
         string owner
         string wrapping_key_id FK
+        bigint version
     }
     READ_ACCESS {
         string id FK
@@ -76,6 +77,7 @@ The central table. One row per KMIP object.
 | `state` | `VARCHAR(32)` | The KMIP lifecycle state of the object (for example `Active`, `Destroyed`). |
 | `owner` | `VARCHAR(255)` | The user identifier of the object's owner. |
 | `wrapping_key_id` | `VARCHAR(128)` | The UID of the key that wraps this object. Self-reference to `objects.id`. |
+| `version` | `BIGINT NOT NULL DEFAULT 0` | Optimistic-lock counter, incremented on every write; key rotation only retires the old key if the version it read is still current. |
 
 The following secondary indexes are created on `objects`:
 

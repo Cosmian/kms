@@ -1005,3 +1005,72 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
 
     Ok(())
 }
+
+/// Optimistic locking: `UpdateObjectIfVersion` succeeds with the version just read,
+/// bumps it, and a second attempt with the now-stale version is rejected with a conflict
+/// that leaves the object untouched.
+pub(super) async fn update_if_version_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    log_init(None);
+
+    let owner = UserId::from("update_if_version_owner");
+    let uid = Uuid::new_v4().to_string();
+    let mut rng = KmsRng::new().seeded_csrng()?;
+    let mut key = vec![0_u8; 32];
+    rng.fill_bytes(&mut key);
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        ..Default::default()
+    };
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, key.as_slice(), &attributes)
+        .map_err(|e| DbError::ServerError(e.to_string()))?;
+    db.create(
+        Some(uid.clone()),
+        &owner,
+        &object,
+        &attributes,
+        &HashSet::new(),
+    )
+    .await?;
+
+    let version = db
+        .retrieve(&uid)
+        .await?
+        .and_then(|owm| owm.version())
+        .ok_or_else(|| DbError::ServerError("retrieve must populate the version".to_owned()))?;
+
+    let update = |expected: u64| {
+        AtomicOperation::UpdateObjectIfVersion((
+            uid.clone(),
+            object.clone(),
+            attributes.clone(),
+            None,
+            expected,
+        ))
+    };
+    db.atomic(&owner, &[update(version)]).await?;
+
+    let new_version = db
+        .retrieve(&uid)
+        .await?
+        .and_then(|owm| owm.version())
+        .ok_or_else(|| DbError::ServerError("retrieve must populate the version".to_owned()))?;
+    if new_version <= version {
+        return Err(DbError::ServerError(format!(
+            "a successful write must bump the version: {version} -> {new_version}"
+        )));
+    }
+
+    let err = db
+        .atomic(&owner, &[update(version)])
+        .await
+        .expect_err("an update with a stale version must fail");
+    if !matches!(&err, InterfaceError::Conflict(_)) {
+        return Err(DbError::ServerError(format!(
+            "stale update returned unexpected error: {err:?}"
+        )));
+    }
+
+    db.delete(&uid).await?;
+    Ok(())
+}

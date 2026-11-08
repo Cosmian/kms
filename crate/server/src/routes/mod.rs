@@ -47,6 +47,8 @@ impl actix_web::error::ResponseError for KmsError {
         match self {
             Self::RouteNotFound(_) => StatusCode::NOT_FOUND,
 
+            Self::Conflict(_) => StatusCode::CONFLICT,
+
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
 
             // Database errors that indicate a client conflict (e.g. duplicate key)

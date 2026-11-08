@@ -91,9 +91,8 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
     let attributes: Attributes =
         serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
     let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
-    ))
+    let version: u64 = row.get(5).context("missing version")?;
+    Ok(ObjectWithMetadata::new(id, object, owner, state, attributes).with_version(version))
 }
 
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
@@ -284,6 +283,19 @@ impl MySqlPool {
         if rows.is_empty() {
             let add_col = queries.get("add-column-wrapping-key-id").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: add-column-wrapping-key-id".to_owned())
+            })?;
+            conn.query_drop(add_col).await.map_err(DbError::from)?;
+        }
+
+        // Add the optimistic-locking `version` column if not present (same reason as above).
+        let has_version_sql = queries.get("has-column-version").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-version".to_owned())
+        })?;
+        let rows: Vec<mysql_async::Row> =
+            conn.query(has_version_sql).await.map_err(DbError::from)?;
+        if rows.is_empty() {
+            let add_col = queries.get("add-column-version").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-version".to_owned())
             })?;
             conn.query_drop(add_col).await.map_err(DbError::from)?;
         }
@@ -582,7 +594,7 @@ impl ObjectsStore for MySqlPool {
             attributes: &Attributes,
             tags: Option<&HashSet<String>>,
         ) -> DbResult<()> {
-            update_object_(uid, object, attributes, tags, tx).await
+            update_object_(uid, object, attributes, tags, None, tx).await
         }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         for attempt in 0..max_retries {
@@ -1256,11 +1268,14 @@ async fn retrieve_tags_(uid: &str, pool: &Pool) -> DbResult<HashSet<String>> {
     Ok(tags)
 }
 
+/// Update an object; when `expected_version` is set, only if the stored version matches,
+/// else `DbError::Conflict`.
 pub(super) async fn update_object_(
     uid: &str,
     object: &Object,
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
+    expected_version: Option<u64>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
     let object_json = serde_json::to_string(object).map_err(|e| {
@@ -1273,12 +1288,28 @@ pub(super) async fn update_object_(
 
     let wrapping_key_id = object.wrapping_key_uid();
 
-    tx.exec_drop(
-        get_mysql_query!("update-object-with-object"),
-        (object_json, attributes_json, wrapping_key_id, uid),
-    )
-    .await
-    .map_err(DbError::from)?;
+    if let Some(version) = expected_version {
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object-if-version"),
+            (object_json, attributes_json, wrapping_key_id, uid, version),
+        )
+        .await
+        .map_err(DbError::from)?;
+        // The version is bumped on every successful write, so 0 affected rows means
+        // the stored version differs (or the object is gone).
+        if tx.affected_rows() == 0 {
+            return Err(DbError::Conflict(format!(
+                "object {uid} was modified concurrently (expected version {version})"
+            )));
+        }
+    } else {
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object"),
+            (object_json, attributes_json, wrapping_key_id, uid),
+        )
+        .await
+        .map_err(DbError::from)?;
+    }
 
     // Insert the new tags if any
     if let Some(tags) = tags {
@@ -1660,8 +1691,34 @@ pub(super) async fn atomic_(
                 uids.push(uid.clone());
             }
             AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
+                if let Err(e) =
+                    update_object_(uid, object, attributes, tags.as_ref(), None, tx).await
+                {
                     db_bail!("update of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
+            AtomicOperation::UpdateObjectIfVersion((
+                uid,
+                object,
+                attributes,
+                tags,
+                expected_version,
+            )) => {
+                match update_object_(
+                    uid,
+                    object,
+                    attributes,
+                    tags.as_ref(),
+                    Some(*expected_version),
+                    tx,
+                )
+                .await
+                {
+                    Ok(()) => {}
+                    // Keep the typed conflict so callers can retry.
+                    Err(e @ DbError::Conflict(_)) => return Err(e),
+                    Err(e) => db_bail!("update of object {uid} failed: {e}"),
                 }
                 uids.push(uid.clone());
             }

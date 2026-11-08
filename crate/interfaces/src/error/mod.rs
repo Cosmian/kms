@@ -36,4 +36,8 @@ pub enum InterfaceError {
     /// An object creation request reused an existing unique identifier.
     #[error("Object already exists: {0}")]
     ObjectAlreadyExists(String),
+
+    /// An optimistic-lock check failed: the object was modified concurrently.
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }

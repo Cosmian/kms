@@ -480,6 +480,49 @@ pub(crate) mod issue_940_repro {
         Ok(())
     }
 
+    /// `UpdateObjectIfVersion`: succeeds on the current version, then a stale
+    /// version is rejected with `Conflict` and writes nothing.
+    pub(crate) async fn t9_update_object_if_version() -> DbResult<()> {
+        let (store, _) = clients(6).await?;
+        let case = tag_case(&store).await?;
+        let object = key(4)?;
+        let update = |version: u64| {
+            AtomicOperation::UpdateObjectIfVersion((
+                case.uid.clone(),
+                object.clone(),
+                object.attributes().cloned().unwrap_or_default(),
+                None,
+                version,
+            ))
+        };
+        let version = store
+            .retrieve(&case.uid)
+            .await?
+            .context("T9 missing")?
+            .version()
+            .context("T9 no version")?;
+        store.atomic(&case.owner, &[update(version)]).await?;
+        let err = store
+            .atomic(&case.owner, &[update(version)])
+            .await
+            .err()
+            .context("T9 expected a Conflict")?;
+        assert!(matches!(
+            err,
+            cosmian_kms_interfaces::InterfaceError::Conflict(_)
+        ));
+        store.atomic(&case.owner, &[update(version + 1)]).await?;
+        assert_eq!(
+            store
+                .retrieve(&case.uid)
+                .await?
+                .context("T9 gone")?
+                .version(),
+            Some(version + 2)
+        );
+        Ok(())
+    }
+
     /// Run every #940 contract test; called from `test_db_redis_with_findex`.
     pub(crate) async fn test_issue_940() -> DbResult<()> {
         t1_removed_tag_must_not_select_existing_object().await?;
@@ -489,6 +532,7 @@ pub(crate) mod issue_940_repro {
         t5_delete_is_guarded_by_baseline().await?;
         Box::pin(t6_create_then_delete_in_one_batch()).await?;
         Box::pin(t8_standalone_mutators_are_cas_guarded()).await?;
+        Box::pin(t9_update_object_if_version()).await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_findex_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_attribute_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_interleaved_index_updates_keep_object_findable().await

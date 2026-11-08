@@ -22,6 +22,7 @@ use crate::{
         },
         uid_utils::ObjectHandle,
     },
+    error::KmsError,
     middlewares::UserId,
     result::KResult,
 };
@@ -39,12 +40,15 @@ const WARNING_THRESHOLDS_DAYS: [i64; 3] = [1, 7, 30];
 /// then issues a `ReKey` or `ReKeyKeyPair` on behalf of the key owner.
 ///
 /// Each key is rotated independently: a failure on one key never blocks the others.
+/// A key whose rotation fails with `Conflict` (modified concurrently) is skipped without a metric;
+/// if it is still due, the next check rotates it.
 /// HSM-resident keys (UID prefix `hsm::`) are skipped — the KMS cannot generate
 /// key material inside an HSM.
 ///
 /// # Metrics
 ///
-/// Increments the `kms.key.auto_rotation` `OTel` counter on each attempt, labeled
+/// Increments the `kms.key.auto_rotation` `OTel` counter on each rotation that succeeds or fails
+/// (a `Conflict` skip is not counted), labeled
 /// with `uid`, `algorithm`, and `outcome` (`"success"` / `"failure"`).
 pub(crate) async fn run_auto_rotation(kms: &KMS) {
     let now = time::OffsetDateTime::now_utc();
@@ -170,6 +174,17 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
             return Ok(());
         }
     };
+
+    // Phase 1 of the rotation claims the key's version, so a concurrent write makes this
+    // rotation fail with `Conflict` before persisting anything. If that write was another
+    // rotation, the key is now Deactivated and leaves `find_due_for_rotation`; otherwise
+    // it is still due and the next tick rotates it.
+    if let Err(KmsError::Conflict(msg)) = &new_uid_result {
+        info!(
+            "[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check"
+        );
+        return Ok(());
+    }
 
     match &new_uid_result {
         Ok(new_uid) => {

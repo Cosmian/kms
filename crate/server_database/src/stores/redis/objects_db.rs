@@ -92,6 +92,9 @@ pub(crate) struct RedisDbObject {
     // but there should always be attributes
     #[serde(rename = "a", skip_serializing_if = "Option::is_none")]
     pub(crate) attributes: Option<Attributes>,
+    /// Bumped on every write; legacy records (no field) deserialize as 0.
+    #[serde(rename = "v", default)]
+    pub(crate) version: u64,
 }
 
 impl RedisDbObject {
@@ -110,6 +113,7 @@ impl RedisDbObject {
             state,
             tags,
             attributes: Some(attributes),
+            version: 0,
         }
     }
 

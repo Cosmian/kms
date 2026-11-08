@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS objects
     attributes      json NOT NULL,
     state           VARCHAR(32),
     owner           VARCHAR(255),
-    wrapping_key_id VARCHAR(128)
+    wrapping_key_id VARCHAR(128),
+    version         BIGINT NOT NULL DEFAULT 0
 );
 
 -- name: add-column-attributes
@@ -44,6 +45,12 @@ SHOW COLUMNS FROM objects LIKE 'wrapping_key_id';
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
+
+-- name: has-column-version
+SHOW COLUMNS FROM objects LIKE 'version';
+
+-- name: add-column-version
+ALTER TABLE objects ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
 
 -- name: has-column-co-activated-by
 SHOW COLUMNS FROM crypto_officer_activations LIKE 'activated_by';
@@ -90,7 +97,7 @@ INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
 VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
 FROM objects
 WHERE objects.id = ?;
 
@@ -98,7 +105,7 @@ WHERE objects.id = ?;
 SELECT objects.state, objects.attributes FROM objects WHERE objects.id = ?;
 
 -- name: select-object-for-update
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
 FROM objects
 WHERE objects.id = ?
 FOR UPDATE;
@@ -107,12 +114,23 @@ FOR UPDATE;
 UPDATE objects
 SET object=?,
     attributes=?,
-    wrapping_key_id=?
+    wrapping_key_id=?,
+    version=version + 1
 WHERE id = ?;
+
+-- name: update-object-with-object-if-version
+UPDATE objects
+SET object=?,
+    attributes=?,
+    wrapping_key_id=?,
+    version=version + 1
+WHERE id = ?
+  AND version = ?;
 
 -- name: update-object-with-state
 UPDATE objects
-SET state=?
+SET state=?,
+    version=version + 1
 WHERE id = ?;
 
 -- name: delete-object
@@ -127,7 +145,8 @@ ON DUPLICATE KEY UPDATE object=VALUES(object),
                         attributes=VALUES(attributes),
                         state=VALUES(state),
                         owner=VALUES(owner),
-                        wrapping_key_id=VALUES(wrapping_key_id);
+                        wrapping_key_id=VALUES(wrapping_key_id),
+                        version=version + 1;
 
 -- name: select-user-accesses-for-object
 SELECT permissions

@@ -191,3 +191,172 @@ impl SqlSymmetricRekeyer {
         }])
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
+mod tests {
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+                kmip_attributes::Attributes,
+                kmip_operations::{ReKey, ReKeyResponse},
+                kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier},
+                requests::symmetric_key_create_request,
+            },
+        },
+        cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
+    };
+
+    use super::{RekeyOperation, ReplacementObject, RotationCandidate, SqlSymmetricRekeyer};
+    use crate::{
+        core::{KMS, operations::rekey::execute_rekey},
+        error::KmsError,
+        middlewares::UserId,
+        result::KResult,
+    };
+
+    /// Rekeyer whose candidate is a snapshot taken before a concurrent write: it models a
+    /// rotation that read the key, then lost the race to another writer.
+    struct StaleCandidateRekeyer {
+        inner: SqlSymmetricRekeyer,
+        stale: ObjectWithMetadata,
+        new_uid: std::sync::Mutex<Option<String>>,
+    }
+
+    impl RekeyOperation for StaleCandidateRekeyer {
+        type Candidates = [RotationCandidate; 1];
+        type Replacements = [ReplacementObject; 1];
+        type Request = ReKey;
+        type Response = ReKeyResponse;
+
+        fn validate(
+            &self,
+            _kms: &KMS,
+            _request: &ReKey,
+            _user: &UserId,
+        ) -> impl Future<Output = KResult<[RotationCandidate; 1]>> {
+            std::future::ready(Ok([RotationCandidate {
+                owm: self.stale.clone(),
+                uid: self.stale.id().to_owned(),
+            }]))
+        }
+
+        async fn generate_replacement(
+            &self,
+            kms: &KMS,
+            user: &UserId,
+            candidates: &[RotationCandidate; 1],
+        ) -> KResult<[ReplacementObject; 1]> {
+            let replacements = self
+                .inner
+                .generate_replacement(kms, user, candidates)
+                .await?;
+            *self.new_uid.lock().expect("lock") = Some(replacements[0].new_uid.clone());
+            Ok(replacements)
+        }
+
+        fn prepare_attributes(
+            &self,
+            kms: &KMS,
+            candidates: &[RotationCandidate; 1],
+            replacements: &mut [ReplacementObject; 1],
+        ) -> KResult<()> {
+            self.inner.prepare_attributes(kms, candidates, replacements)
+        }
+
+        fn build_response(&self, replacements: &[ReplacementObject; 1]) -> ReKeyResponse {
+            self.inner.build_response(replacements)
+        }
+    }
+
+    /// A rotation whose candidate was overwritten after it was read must fail with
+    /// `Conflict` from the Phase 1 claim, before its replacement is persisted, and leave
+    /// the old key untouched and rotatable.
+    ///
+    /// Guards: Cosmian/kms#1006
+    #[tokio::test]
+    async fn rekey_with_stale_candidate_conflicts_without_orphan() -> KResult<()> {
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let user = UserId::from("stale_rekey_user@example.com");
+        let request = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )
+        .map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
+        let uid = kms
+            .create(request, &user)
+            .await?
+            .unique_identifier
+            .to_string();
+        let rekey_request = || ReKey {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            ..ReKey::default()
+        };
+
+        let stale = kms
+            .database
+            .retrieve_object(&uid)
+            .await?
+            .expect("key must exist");
+        assert!(stale.version().is_some());
+
+        // the concurrent winner's write
+        kms.database
+            .atomic(
+                &user,
+                &[AtomicOperation::UpdateObject((
+                    uid.clone(),
+                    stale.object().clone(),
+                    stale.attributes().clone(),
+                    None,
+                ))],
+            )
+            .await?;
+
+        let rekeyer = StaleCandidateRekeyer {
+            inner: SqlSymmetricRekeyer {
+                offset: None,
+                attributes: None::<Attributes>,
+            },
+            stale,
+            new_uid: std::sync::Mutex::new(None),
+        };
+        let err = execute_rekey(&rekeyer, &kms, &rekey_request(), &user)
+            .await
+            .expect_err("stale rotation must fail");
+        assert!(matches!(err, KmsError::Conflict(_)), "{err:?}");
+
+        let new_uid = rekeyer
+            .new_uid
+            .lock()
+            .expect("lock")
+            .clone()
+            .expect("replacement was generated");
+        assert!(kms.database.retrieve_object(&new_uid).await?.is_none());
+
+        let old = kms
+            .database
+            .retrieve_object(&uid)
+            .await?
+            .expect("key must exist");
+        assert!(
+            old.attributes()
+                .get_link(LinkType::ReplacementObjectLink)
+                .is_none()
+        );
+        assert_eq!(old.state(), State::Active);
+
+        kms.rekey(rekey_request(), &user).await?;
+        Ok(())
+    }
+}

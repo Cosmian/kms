@@ -566,16 +566,25 @@ impl RedisWithFindex {
             AtomicOperation::Create(create) => Self::apply_create(user, create, attempt)?,
             AtomicOperation::Upsert(upsert) => self.apply_upsert(user, upsert, attempt).await?,
             AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                // State is unchanged by UpdateObject — no counter adjustment.
-                let entry = self.touch(&mut attempt.uids, uid).await?;
-                let Some(db_object) = entry.current.as_mut() else {
-                    return Err(DbError::ItemNotFound(uid.clone()));
-                };
-                db_object.object = object.clone();
-                if tags.is_some() {
-                    db_object.tags.clone_from(tags);
-                }
-                db_object.attributes = Some(attributes.clone());
+                self.apply_update(attempt, uid, object, attributes, tags.as_ref(), None)
+                    .await?;
+            }
+            AtomicOperation::UpdateObjectIfVersion((
+                uid,
+                object,
+                attributes,
+                tags,
+                expected_version,
+            )) => {
+                self.apply_update(
+                    attempt,
+                    uid,
+                    object,
+                    attributes,
+                    tags.as_ref(),
+                    Some(*expected_version),
+                )
+                .await?;
             }
             AtomicOperation::UpdateState((uid, state)) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
@@ -586,6 +595,7 @@ impl RedisWithFindex {
                     i64::from(is_live(*state)) - i64::from(is_live(db_object.state));
                 let is_key = is_key_type(db_object.object_type);
                 db_object.state = *state;
+                db_object.version += 1;
                 attempt.add_live(liveness_change, is_key);
             }
             AtomicOperation::Delete(uid) => {
@@ -600,6 +610,40 @@ impl RedisWithFindex {
         Ok(())
     }
 
+    /// `UpdateObject` / `UpdateObjectIfVersion`. The version is checked against the
+    /// object loaded in this attempt; a mismatch is a hard `Conflict`, never a retry
+    /// (a retry would re-read the new version and silently overwrite the other writer).
+    async fn apply_update(
+        &self,
+        attempt: &mut Attempt,
+        uid: &str,
+        object: &Object,
+        attributes: &Attributes,
+        tags: Option<&HashSet<String>>,
+        expected_version: Option<u64>,
+    ) -> DbResult<()> {
+        // State is unchanged by an update — no counter adjustment.
+        let entry = self.touch(&mut attempt.uids, uid).await?;
+        let Some(db_object) = entry.current.as_mut() else {
+            return Err(DbError::ItemNotFound(uid.to_owned()));
+        };
+        if let Some(expected) = expected_version
+            && db_object.version != expected
+        {
+            return Err(DbError::Conflict(format!(
+                "object {uid} was modified concurrently: expected version {expected}, found {}",
+                db_object.version
+            )));
+        }
+        db_object.object = object.clone();
+        if let Some(tags) = tags {
+            db_object.tags = Some(tags.clone());
+        }
+        db_object.attributes = Some(attributes.clone());
+        db_object.version += 1;
+        Ok(())
+    }
+
     fn apply_create(
         user: Option<&UserId>,
         (uid, _owner, object, attributes, tags): &(
@@ -611,7 +655,7 @@ impl RedisWithFindex {
         ),
         attempt: &mut Attempt,
     ) -> DbResult<()> {
-        let db_object = RedisDbObject::new(
+        let mut db_object = RedisDbObject::new(
             object.clone(),
             require_user(user)?.as_str().to_owned(),
             attributes.state.unwrap_or(State::PreActive),
@@ -630,7 +674,11 @@ impl RedisWithFindex {
                     format!("object {uid} already exists"),
                 ));
             }
-            Some(entry) => entry.current = Some(db_object),
+            Some(entry) => {
+                // Delete then Create in one batch: keep the version monotonic.
+                db_object.version = entry.baseline.as_ref().map_or(0, |b| b.version + 1);
+                entry.current = Some(db_object);
+            }
             None => {
                 attempt.uids.insert(
                     uid.clone(),
@@ -681,13 +729,14 @@ impl RedisWithFindex {
                 .and_then(|o| o.tags.clone())
                 .unwrap_or_default()
         });
-        let db_object = RedisDbObject::new(
+        let mut db_object = RedisDbObject::new(
             object.clone(),
             user.as_str().to_owned(),
             *state,
             Some(final_tags),
             attributes.clone(),
         );
+        db_object.version = old_obj.as_ref().map_or(0, |o| o.version + 1);
         let new_live = i64::from(is_live(*state));
         let is_key = is_key_type(db_object.object_type);
         entry.current = Some(db_object);
@@ -948,6 +997,7 @@ impl ObjectsStore for RedisWithFindex {
                     o.state,
                     o.attributes.unwrap_or_default(),
                 )
+                .with_version(o.version)
             })
         })?)
     }

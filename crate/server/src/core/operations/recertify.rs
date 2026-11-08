@@ -32,7 +32,9 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{trace, warn};
 
-use super::rekey::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
+use super::rekey::{
+    RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey, retire_update_op,
+};
 use crate::{
     core::{
         KMS,
@@ -353,12 +355,7 @@ impl RekeyOperation for CertificateRekey {
             }
         }
 
-        let mut operations = vec![AtomicOperation::UpdateObject((
-            candidate.uid.clone(),
-            old_object,
-            old_attributes,
-            None,
-        ))];
+        let mut operations = vec![retire_update_op(&candidate.owm, old_object, old_attributes)];
         if deactivate {
             // UpdateObject only rewrites the `attributes` JSON column; the `state` column
             // must be updated separately so that `find_due_for_rotation` sees it.

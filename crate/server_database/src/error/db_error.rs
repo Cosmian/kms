@@ -45,6 +45,10 @@ pub enum DbError {
     #[error("Inconsistent operation: {0}")]
     InconsistentOperation(String),
 
+    // An optimistic-lock check failed: the object was modified concurrently
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     // Missing arguments in the request
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
@@ -268,6 +272,7 @@ impl From<InterfaceError> for DbError {
             }
             InterfaceError::Unauthorized(s) => Self::Unauthorized(s),
             InterfaceError::InvalidRequest(s) => Self::InvalidRequest(s),
+            InterfaceError::Conflict(s) => Self::Conflict(s),
             x => Self::Store(x.to_string()),
         }
     }
@@ -340,6 +345,7 @@ impl From<DbError> for InterfaceError {
             DbError::Unauthorized(msg) => Self::Unauthorized(msg),
             DbError::InvalidRequest(msg) => Self::InvalidRequest(msg),
             DbError::NotSupported(msg) => Self::NotSupported(msg),
+            DbError::Conflict(msg) => Self::Conflict(msg),
             other => Self::Db(other.to_string()),
         }
     }
