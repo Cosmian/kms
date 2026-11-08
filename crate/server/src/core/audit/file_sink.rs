@@ -360,7 +360,9 @@ mod tests {
         );
         drop(held);
 
-        let _reacquired = try_acquire_lock(&path).expect("reacquire after release");
+        let reacquired = try_acquire_lock(&path).expect("reacquire after release");
+        // Windows locks also prevent reads through independently opened handles.
+        drop(reacquired);
         assert_eq!(
             std::fs::read(&path).expect("read lock file"),
             b"existing lock bytes"
