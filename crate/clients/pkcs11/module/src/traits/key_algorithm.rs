@@ -1,6 +1,6 @@
 use cosmian_kms_crypto::openssl::oid::{asn1_object, nid_of};
+use der::asn1::ObjectIdentifier;
 use openssl::{nid::Nid, pkey::Id};
-use pkcs1::ObjectIdentifier;
 use pkcs11_sys::{CK_KEY_TYPE, CKK_AES, CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_RSA};
 
 use crate::{ModuleError, ModuleResult};

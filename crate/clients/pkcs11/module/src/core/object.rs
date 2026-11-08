@@ -20,14 +20,13 @@
 use std::sync::Arc;
 
 use cosmian_logger::debug;
+use der::{Encode, asn1::OctetStringRef};
 use log::error;
 use openssl::{
+    bn::BigNumContext,
+    ec::PointConversionForm,
     pkey::{PKey, Private},
     rsa::Rsa,
-};
-use p256::{
-    elliptic_curve::sec1::ToEncodedPoint,
-    pkcs8::der::{Encode, asn1::OctetStringRef},
 };
 use pkcs11_sys::{
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CK_ULONG, CKC_X_509, CKO_CERTIFICATE,
@@ -358,11 +357,20 @@ fn public_key_attribute(
             if !pk.algorithm().is_ecc() {
                 return Ok(None);
             }
-            let encoded = pk.ec_p256_public_key()?.to_encoded_point(false);
-            let point_bytes = encoded.as_bytes();
+            let ec_key = pk.ec_p256_public_key()?;
+            let mut bn_ctx =
+                BigNumContext::new().map_err(|e| ModuleError::Cryptography(e.to_string()))?;
+            let point_bytes = ec_key
+                .public_key()
+                .to_bytes(
+                    ec_key.group(),
+                    PointConversionForm::UNCOMPRESSED,
+                    &mut bn_ctx,
+                )
+                .map_err(|e| ModuleError::Cryptography(e.to_string()))?;
             // PKCS#11 CKA_EC_POINT must be the DER-encoded ANSI X9.62 ECPoint
             // (i.e. the raw SEC1 point wrapped in a DER OCTET STRING).
-            let der_point = OctetStringRef::new(point_bytes)
+            let der_point = OctetStringRef::new(&point_bytes)
                 .and_then(|s| s.to_der())
                 .map_err(|e| {
                     ModuleError::Cryptography(format!("EC point DER encoding failed: {e}"))

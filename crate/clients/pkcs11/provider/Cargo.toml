@@ -35,15 +35,9 @@ ckms = { workspace = true }
 cosmian_logger = { workspace = true }
 cosmian_pkcs11_module = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-p256 = { workspace = true, features = [
-  "arithmetic",
-  "pkcs8",
-  "std",
-] }
-pkcs1 = { workspace = true }
+openssl = { workspace = true }
 pkcs11-sys = { workspace = true }
 serde_json = { workspace = true }
-sha3 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing-error = { workspace = true }
@@ -53,6 +47,5 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_config_utils = { workspace = true }
-openssl = { workspace = true }
 serial_test = { workspace = true }
 test_kms_server = { workspace = true }

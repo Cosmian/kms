@@ -14,5 +14,4 @@ pub trait DataObject: Zeroize + Send + Sync {
     fn value(&self) -> Zeroizing<Vec<u8>>;
     /// The application that manages the object
     fn application(&self) -> Vec<u8>;
-    fn data_hash(&self) -> Vec<u8>;
 }

@@ -21,7 +21,6 @@ use openssl::{
     md_ctx::MdCtx,
     pkey::PKey,
 };
-use subtle::ConstantTimeEq;
 
 use crate::{
     core::{
@@ -296,7 +295,8 @@ fn missing_mac_data() -> KmsError {
 
 /// Constant-time MAC comparison.
 fn validity(computed: &[u8], expected: &[u8]) -> ValidityIndicator {
-    if bool::from(computed.ct_eq(expected)) {
+    // memcmp::eq panics on unequal lengths; MAC length is public
+    if computed.len() == expected.len() && openssl::memcmp::eq(computed, expected) {
         ValidityIndicator::Valid
     } else {
         ValidityIndicator::Invalid

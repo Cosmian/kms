@@ -1742,10 +1742,6 @@ mod characterization_tests {
         fn application(&self) -> Vec<u8> {
             b"CharApp".to_vec()
         }
-
-        fn data_hash(&self) -> Vec<u8> {
-            vec![0_u8; 32]
-        }
     }
 
     fn init_char_test_backend() {

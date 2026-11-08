@@ -78,13 +78,6 @@ user-id = 267
 user-login = "tarcieri"
 user-name = "Tony Arcieri"
 
-[[publisher.aes-gcm-siv]]
-version = "0.11.1"
-when = "2022-08-01"
-user-id = 267
-user-login = "tarcieri"
-user-name = "Tony Arcieri"
-
 [[publisher.aes-kw]]
 version = "0.2.1"
 when = "2022-04-20"
@@ -2897,11 +2890,6 @@ delta = "0.4.0 -> 0.4.1"
 who = "David Cook <dcook@divviup.org>"
 criteria = "safe-to-deploy"
 version = "0.12.1"
-
-[[audits.isrg.audits.inout]]
-who = "David Cook <dcook@divviup.org>"
-criteria = "safe-to-deploy"
-delta = "0.1.4 -> 0.2.2"
 
 [[audits.isrg.audits.keccak]]
 who = "David Cook <dcook@divviup.org>"

@@ -44,7 +44,6 @@ use openssl::{
     sha::sha256,
     x509::{X509, X509Req},
 };
-use subtle::ConstantTimeEq;
 use uuid::Uuid;
 use x509_parser::{
     asn1_rs::{Any, Tag},
@@ -95,7 +94,7 @@ fn log_ca_use_failure(ca_uid: &str, error: &KmsError) {
 
 /// Compare two secrets in constant time (both are hashed first so that the length is not leaked).
 pub(crate) fn secrets_equal(a: &str, b: &str) -> bool {
-    sha256(a.as_bytes()).ct_eq(&sha256(b.as_bytes())).into()
+    openssl::memcmp::eq(&sha256(a.as_bytes()), &sha256(b.as_bytes()))
 }
 
 /// Address of the client of `req`, honouring `X-Forwarded-For` only from the configured

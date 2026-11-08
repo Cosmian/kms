@@ -135,14 +135,6 @@ version = "4.5.0"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
-[[exemptions.aes]]
-version = "0.9.2"
-criteria = "safe-to-run"
-
-[[exemptions.aes-kw]]
-version = "0.3.1"
-criteria = "safe-to-run"
-
 [[exemptions.ahash]]
 version = "0.8.12"
 criteria = "safe-to-deploy"
@@ -312,10 +304,6 @@ criteria = "safe-to-deploy"
 [[exemptions.ciborium]]
 version = "0.2.2"
 criteria = "safe-to-deploy"
-
-[[exemptions.cipher]]
-version = "0.5.2"
-criteria = "safe-to-run"
 
 [[exemptions.combine]]
 version = "4.6.9"
