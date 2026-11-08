@@ -117,6 +117,7 @@
     - [Command line arguments](configuration/server_cli.md)
     - [Databases]()
         - [Configuration](configuration/database/configuration.md)
+        - [Multi-region active-active](configuration/database/multi_region.md)
         - [Internals: Database Tables](configuration/database/tables.md)
         - [Redis with Findex](configuration/database/redis.md)
     - [Cache mechanisms](configuration/object-cache.md)
