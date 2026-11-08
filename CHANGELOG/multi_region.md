@@ -13,15 +13,19 @@
     Crypto Officer ceremony activation and revocation, leader activations/revocations
     replicate, and a mismatched `ceremony_secret` against replicated records fails secure
     (`not a CO`, not an error).
-  - **Object-state conflict merge** — the live pgEdge proof races `Destroyed` against
-    `Deactivated` in both commit orderings and asserts both regions converge to the
-    most-restrictive state; a static source guard additionally pins the
-    `ENABLE ALWAYS` trigger and its `GREATEST(state)` guard function in `pgsql.rs`.
+  - **Object-state conflict merge** — object lifecycle state is an insert-only replicated
+    event log (`object_state_events`, `object_state_event_tombstones`) folded into
+    `objects.state` by `ENABLE ALWAYS` triggers, because Spock `last_update_wins` drops older
+    rows before triggers run. The live pgEdge proof partitions replication deterministically
+    and asserts convergence for `Destroyed` vs `Deactivated` in both orders,
+    `Compromised` + `Destroyed` = `Destroyed_Compromised`, no key material resurrected on a
+    Destroyed row, and replicated batch-UNDO downgrades; static source guards pin the triggers.
   - **Grants/permissions** — the live pgEdge proof races a grant against a revoke on the
     same object/user and asserts both regions converge to one identical permission set
     (documented last-write-wins limitation).
   - **Schema / replication invariants** — live SQL guards verify the real
-    `PRIMARY KEY`s (`tags_pkey`, `read_access_pkey`, `crypto_officer_activations_pkey`)
+    `PRIMARY KEY`s (`tags_pkey`, `read_access_pkey`, `crypto_officer_activations_pkey`, `object_state_events_pkey`,
+    `object_state_event_tombstones_pkey`)
     with `REPLICA IDENTITY DEFAULT` and the Spock node/subscription wiring on both nodes.
   - **Operator-config guards** — when given node configs via `--configs`, the task detects
     multi-region misconfigurations: more than one (or zero) `leader` regions, a non-PostgreSQL

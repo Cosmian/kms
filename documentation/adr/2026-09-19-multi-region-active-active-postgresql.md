@@ -66,23 +66,30 @@ idempotently and automatically at server startup inside `PgPool::instantiate` �
 operator migration. SQLite and MySQL are unaffected (SQLite is never a multi-master target;
 MySQL already has real PKs on all three tables).
 
-### 2. Object `State` conflict merge via an `ENABLE ALWAYS` trigger with explicit undo bypass
+### 2. Object `State` as an insert-only replicated lifecycle event log
 
-A single PostgreSQL `BEFORE UPDATE FOR EACH ROW` trigger on `objects`, marked
-`ALTER TABLE objects ENABLE ALWAYS TRIGGER ...`, coerces any state update to
-`GREATEST(local_state, incoming_state)` using the KMIP `State` lifecycle ranking
-(`PreActive=1 … Destroyed_Compromised=6`, SP800-57-1) whenever it would downgrade the row.
-`ENABLE ALWAYS` ensures the monotonic guard protects against cross-region write races in all
-scenarios: both when a lower-rank state arrives via replication, and when a local write
-(e.g. `Deactivated`) races against a state that was already replicated in at a higher rank
-(e.g. `Destroyed`).
+Spock's `last_update_wins` drops an incoming row whose commit timestamp is older than the local
+row *before* any UPDATE or trigger runs, so a state stored on `objects` cannot converge (verified
+against Spock v5.0.13 `spock_handle_conflict_and_apply`). On PostgreSQL every lifecycle write is
+therefore appended to `object_state_events` (UUID primary key, never updated, so never in
+conflict). `objects.state` is derived by `ENABLE ALWAYS` triggers: `kms_effective_state` folds
+the live events with a join (phase `PreActive < Active < Deactivated/Compromised < Destroyed`,
+plus a sticky *compromised* flag, so `Compromised` joined with `Destroyed` is
+`Destroyed_Compromised`); `objects_state_derive` (BEFORE INSERT OR UPDATE on `objects`) writes
+that state, and for a destroyed object also restores the zeroized payload snapshotted in the
+destroyed event, so a concurrent payload write cannot bring key material back. AFTER INSERT
+triggers on both event tables re-derive the row when events arrive through replication.
 
-To preserve the legitimate backward transition required by KMIP batch UNDO
-(`revert_activation_to_preactive`), the trigger checks `current_setting('kms.allow_backward_state_transition', true)`.
-When set to `'on'`, the guard is bypassed. A dedicated trait method
-`ObjectsStore::update_state_allow_downgrade` (implemented on `PgPool` via `SET LOCAL kms.allow_backward_state_transition = 'on'`)
-is called exclusively by `revert_activation_to_preactive`, scoping the bypass strictly to
-the batch-UNDO revert path.
+A legitimate backward transition (KMIP batch UNDO, import-replace) is an *observed remove*:
+`object_state_event_tombstones` records the events this node has seen and a fresh event is
+appended. Events written concurrently in another region and not yet received still win. Server
+Destroy writes the zeroized payload and the destroyed event in one `atomic` transaction. SQLite,
+MySQL and Redis keep blind state writes (single-writer backends).
+
+Known limits: events are never compacted (compaction needs cross-region coordination), and the
+validated topology is 2 nodes. In a 3+ node full mesh an `objects` UPDATE that arrives before its
+INSERT is discarded together with its whole transaction (Spock `transdiscard`), which can drop
+that transaction's events on that node.
 
 ### 3. Static `region_role` server setting
 
@@ -151,7 +158,9 @@ OR-Set/CRDT merge is out of scope here and tracked as separate future work.
 A live 2-node CI integration test (`ghcr.io/pgedge/pgedge-postgres:16-spock5-standard`, wired
 with real `spock.node_create`/`spock.sub_create` full-mesh subscriptions) proves convergent
 behavior for concurrent `State` writes in both commit orderings and for a concurrent grant/revoke
-race, alongside a faster single-node unit test that exercises the trigger directly.
+race, with replication deterministically partitioned (`spock.sub_disable`/`sub_enable` and
+`spock.wait_for_sync_event`, no polling), alongside a faster single-node unit test that
+exercises the triggers directly.
 
 ## Consequences
 
@@ -160,13 +169,11 @@ race, alongside a faster single-node unit test that exercises the trigger direct
 - **POS-001**: Multi-region active-active PostgreSQL works with any Spock/BDR/pglogical-class
   logical multi-master extension — no vendor lock-in to pgEdge specifically.
 - **POS-002**: Minimal behavior change on single-writer PostgreSQL deployments: normal forward
-  state transitions operate identically, and batch UNDO utilizes the scoped bypass.
-- **POS-003**: The `State` conflict merge is enforced inside PostgreSQL under `ENABLE ALWAYS`,
-  preventing both replicated downgrades and local overwrite races against already-replicated
-  higher-rank states.
-- **POS-004**: The existing local KMIP batch-UNDO backward `State` transition
-  (`revert_activation_to_preactive`) is preserved via the explicit, transaction-local
-  `kms.allow_backward_state_transition` bypass in `update_state_allow_downgrade`.
+  state transitions operate identically, and batch UNDO removes only the events it observed.
+- **POS-003**: The `State` merge is a deterministic join over an insert-only event log derived
+  inside PostgreSQL under `ENABLE ALWAYS`, so it converges regardless of commit order.
+- **POS-004**: The local KMIP batch-UNDO backward `State` transition is preserved through
+  observed-remove tombstones in `update_state_allow_downgrade` and replicates to peers.
 - **POS-005**: Real PRIMARY KEYs on `tags`/`read_access`/`crypto_officer_activations` are a
   strict correctness improvement independent of multi-region use (valid `REPLICA IDENTITY` is
   also a prerequisite for other logical-replication use cases, e.g. read replicas via

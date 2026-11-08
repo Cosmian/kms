@@ -98,8 +98,8 @@ else
     # Live DB guards validate the replicated schema state left by the proofs.
     mr_run_guard "live: replicated-table PRIMARY KEYs (pgedge1)" mr_guard_primary_keys pgedge1
     mr_run_guard "live: replicated-table PRIMARY KEYs (pgedge2)" mr_guard_primary_keys pgedge2
-    mr_run_guard "live: monotonic state trigger (pgedge1)" mr_guard_state_monotonic_trigger pgedge1
-    mr_run_guard "live: monotonic state trigger (pgedge2)" mr_guard_state_monotonic_trigger pgedge2
+    mr_run_guard "live: lifecycle event triggers (pgedge1)" mr_guard_state_event_triggers pgedge1
+    mr_run_guard "live: lifecycle event triggers (pgedge2)" mr_guard_state_event_triggers pgedge2
     mr_run_guard "live: Spock wiring (pgedge1)" mr_guard_spock_wiring pgedge1
     mr_run_guard "live: Spock wiring (pgedge2)" mr_guard_spock_wiring pgedge2
   fi

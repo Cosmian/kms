@@ -335,17 +335,17 @@ sequenceDiagram
     KMS_B-->>Bob: 200 OK (Ciphertext)
 ```
 
-###### State conflict resolution (monotonic merge)
+###### State conflict resolution (lifecycle event log)
 
-In multi-region active-active replication, object `State` transitions can race across regions (e.g. an object deactivated in region A while destroyed in region B). Standard commit-timestamp last-write-wins (LWW) could silently overwrite a terminal `Destroyed` or `Compromised` state with an earlier `Deactivated` write.
+In multi-region active-active replication, object `State` transitions can race across regions (e.g. an object deactivated in region A while destroyed in region B). Spock's commit-timestamp last-write-wins (LWW) drops an incoming row older than the local row before any trigger runs, so a state column on `objects` cannot converge.
 
-The KMS installs an automatic `BEFORE UPDATE` trigger on the `objects` table marked `ENABLE ALWAYS`, so it coerces **every** state update — both local writes and incoming replicated writes — to `GREATEST(existing_state, incoming_state)` using the NIST SP 800-57 / KMIP lifecycle hierarchy:
+On PostgreSQL the KMS therefore records every lifecycle transition as an insert-only row in `object_state_events` (a row is never updated, so it never conflicts). `ENABLE ALWAYS` triggers derive `objects.state` from the live events, so they also fire in replication apply sessions. The derived state is the join of all events, using the NIST SP 800-57 / KMIP lifecycle phases plus a sticky *compromised* flag:
 
-$$\text{PreActive (1)} < \text{Active (2)} < \text{Deactivated (3)} < \text{Compromised (4)} < \text{Destroyed (5)} < \text{Destroyed\_Compromised (6)}$$
+$$\text{PreActive} < \text{Active} < \text{Deactivated} \;/\; \text{Compromised} < \text{Destroyed}$$
 
-`ENABLE ALWAYS` (rather than the default `ENABLE`/origin-only, or `ENABLE REPLICA`) is required because a local write on one region can otherwise race against a state that has *already replicated in* from another region at a higher rank: e.g. region B receives `Destroyed` from region A, then a stale local `Deactivated` write on region B — issued under the ordinary `session_replication_role = 'origin'` — must still be coerced back to `Destroyed`.
+`Compromised` joined with `Destroyed` yields `Destroyed_Compromised`. The zeroized payload written by Destroy is snapshotted in the destroyed event, so a concurrent payload write in another region cannot restore key material on a destroyed object.
 
-The one legitimate backward transition — KMIP batch UNDO reverting an object to `PreActive` (`message.rs::revert_activation_to_preactive`) — bypasses the guard via a transaction-scoped `SET LOCAL kms.allow_backward_state_transition = 'on'`, set only by that revert path.
+A legitimate backward transition (KMIP batch UNDO, import-replace) removes only the events its region has observed (rows in `object_state_event_tombstones`) and appends a new event. A higher transition made concurrently in another region and not yet received still wins. Events are never compacted, and the validated topology is two nodes.
 
 ###### Permissions and access control (LWW)
 

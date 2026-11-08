@@ -39,23 +39,19 @@ _pgedge_cleanup() {
 trap _pgedge_cleanup EXIT
 
 if ! _wait_for_port 127.0.0.1 "${local_pgedge_1_port}" 30; then
-  print_warning "pgedge-1 (port ${local_pgedge_1_port}) not ready — skipping pgEdge test"
-  exit 0
+  print_error "pgedge-1 (port ${local_pgedge_1_port}) not ready"
 fi
 if ! _wait_for_port 127.0.0.1 "${local_pgedge_2_port}" 30; then
-  print_warning "pgedge-2 (port ${local_pgedge_2_port}) not ready — skipping pgEdge test"
-  exit 0
+  print_error "pgedge-2 (port ${local_pgedge_2_port}) not ready"
 fi
 
 print_status "Waiting for pgedge1 DB to accept connections (up to 30s)..."
 if ! _wait_for_pg_db pgedge1 kms kms 30; then
-  print_warning "pgedge1 DB not ready after 30s — skipping pgEdge test"
-  exit 0
+  print_error "pgedge1 DB not ready after 30s"
 fi
 print_status "Waiting for pgedge2 DB to accept connections (up to 30s)..."
 if ! _wait_for_pg_db pgedge2 kms kms 30; then
-  print_warning "pgedge2 DB not ready after 30s — skipping pgEdge test"
-  exit 0
+  print_error "pgedge2 DB not ready after 30s"
 fi
 
 print_status "Running test_db_pgedge_active_active..."

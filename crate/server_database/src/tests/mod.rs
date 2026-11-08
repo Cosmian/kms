@@ -406,9 +406,29 @@ pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
     Ok(())
 }
 
+/// What a Destroy leaves behind: the same object with empty key material.
+fn zeroized_copy(
+    object: &cosmian_kmip::kmip_2_1::kmip_objects::Object,
+) -> DbResult<cosmian_kmip::kmip_2_1::kmip_objects::Object> {
+    use cosmian_kmip::kmip_2_1::{
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_types::KeyFormatType,
+    };
+    let mut zeroized = object.clone();
+    let key_block = zeroized
+        .key_block_mut()
+        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    key_block.key_format_type = KeyFormatType::Raw;
+    key_block.key_value = Some(KeyValue::Structure {
+        key_material: KeyMaterial::ByteString(zeroize::Zeroizing::from(vec![])),
+        attributes: None,
+    });
+    Ok(zeroized)
+}
+
 #[ignore = "Requires a running PostgreSQL instance"]
 #[tokio::test]
-pub(crate) async fn test_db_postgresql_state_monotonic_merge() -> DbResult<()> {
+pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
     use std::collections::HashSet;
 
     use cosmian_kmip::{
@@ -418,119 +438,165 @@ pub(crate) async fn test_db_postgresql_state_monotonic_merge() -> DbResult<()> {
             kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
         },
     };
-    use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, UserId};
+    use cosmian_kms_interfaces::{ObjectsStore, UserId};
     use uuid::Uuid;
 
     log_init(option_env!("RUST_LOG"));
     let pg = get_pgsql().await?;
     let owner = UserId::from("state_merge_test_user");
-    let sym_key_bytes = [0_u8; 32];
     let key_obj = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
-        &sym_key_bytes,
+        &[0_u8; 32],
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         },
     )
     .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let key_json = serde_json::to_string(&key_obj)?;
+    let zeroized_json = serde_json::to_string(&zeroized_copy(&key_obj)?)?;
+    let attrs = Attributes::default();
 
-    let uid_a = Uuid::new_v4().to_string();
-    let uid_b = Uuid::new_v4().to_string();
+    let new_object = || async {
+        pg.create(None, &owner, &key_obj, &attrs, &HashSet::new())
+            .await
+    };
+    let expect_state = |label: &str, got: Option<State>, want: State| {
+        if got == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!(
+                "{label}: expected {want:?}, got {got:?}"
+            )))
+        }
+    };
+    let state_of = |uid: String| {
+        let pg = &pg;
+        async move { state_on(pg, &uid).await }
+    };
+    let stored_json = |uid: String| {
+        let pg = &pg;
+        async move {
+            let owm = pg
+                .retrieve(&uid)
+                .await?
+                .ok_or_else(|| DbError::ServerError(format!("{uid}: object missing")))?;
+            Ok::<_, DbError>(serde_json::to_string(owm.object())?)
+        }
+    };
+    // Simulates a lifecycle event arriving through logical replication.
+    let replica_event = |uid: String, state: &'static str, object: Option<String>| {
+        let pg = &pg;
+        async move {
+            let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+            client
+                .batch_execute("SET session_replication_role = 'replica';")
+                .await
+                .map_err(DbError::from)?;
+            let inserted = client
+                .execute(
+                    "INSERT INTO object_state_events (event_id, object_id, state, object, \
+                     wrapping_key_id) VALUES (gen_random_uuid(), $1, $2, $3, NULL)",
+                    &[&uid, &state, &object],
+                )
+                .await;
+            client
+                .batch_execute("SET session_replication_role = 'origin';")
+                .await
+                .map_err(DbError::from)?;
+            inserted.map_err(DbError::from)?;
+            Ok::<_, DbError>(())
+        }
+    };
 
-    pg.atomic(
-        &owner,
-        &[
-            AtomicOperation::Create((
-                uid_a.clone(),
-                owner.clone(),
-                key_obj.clone(),
-                Attributes::default(),
-                HashSet::new(),
-            )),
-            AtomicOperation::Create((
-                uid_b.clone(),
-                owner.clone(),
-                key_obj.clone(),
-                Attributes::default(),
-                HashSet::new(),
-            )),
-        ],
-    )
-    .await?;
+    // a) a replicated Destroyed event wins over a local Deactivated.
+    let uid = new_object().await?;
+    pg.update_state(&uid, State::Deactivated).await?;
+    replica_event(uid.clone(), "Destroyed", None).await?;
+    expect_state("a", state_of(uid).await?, State::Destroyed)?;
 
-    // Ordering 1: local already Destroyed; a replicated write tries to arrive at Deactivated.
-    pg.update_state(&uid_a, State::Destroyed).await?;
-    // Local write attempt to downgrade: blocked by ENABLE ALWAYS trigger
-    pg.update_state(&uid_a, State::Deactivated).await?;
-    let (state_a1, _) = pg.retrieve_state(&uid_a).await?.expect("object exists");
-    if state_a1 != State::Destroyed {
-        return Err(DbError::ServerError(format!(
-            "Expected state_a1 to be Destroyed, got {state_a1:?}"
-        )));
-    }
+    // b) Compromised joined with Destroyed is Destroyed_Compromised, and stays so.
+    let uid = new_object().await?;
+    pg.update_state(&uid, State::Compromised).await?;
+    pg.update_state(&uid, State::Destroyed).await?;
+    expect_state(
+        "b",
+        state_of(uid.clone()).await?,
+        State::Destroyed_Compromised,
+    )?;
+    pg.update_state(&uid, State::Active).await?;
+    expect_state("b2", state_of(uid).await?, State::Destroyed_Compromised)?;
 
-    // Replicated write attempt to downgrade: also coerced
-    {
-        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
-        client
-            .batch_execute("SET session_replication_role = 'replica';")
-            .await
-            .map_err(DbError::from)?;
-        client
-            .execute(
-                "UPDATE objects SET state = $1 WHERE id = $2",
-                &[&"Deactivated", &uid_a],
-            )
-            .await
-            .map_err(DbError::from)?;
-        client
-            .batch_execute("SET session_replication_role = 'origin';")
-            .await
-            .map_err(DbError::from)?;
-    }
-    let (state_a2, _) = pg.retrieve_state(&uid_a).await?.expect("object exists");
-    if state_a2 != State::Destroyed {
-        return Err(DbError::ServerError(format!(
-            "Expected state_a2 to be Destroyed, got {state_a2:?}"
-        )));
-    }
-
-    // Ordering 2 (reversed): local Deactivated; replicated write carries the higher-rank Destroyed.
-    pg.update_state(&uid_b, State::Deactivated).await?;
-    {
-        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
-        client
-            .batch_execute("SET session_replication_role = 'replica';")
-            .await
-            .map_err(DbError::from)?;
-        client
-            .execute(
-                "UPDATE objects SET state = $1 WHERE id = $2",
-                &[&"Destroyed", &uid_b],
-            )
-            .await
-            .map_err(DbError::from)?;
-        client
-            .batch_execute("SET session_replication_role = 'origin';")
-            .await
-            .map_err(DbError::from)?;
-    }
-    let (state_b, _) = pg.retrieve_state(&uid_b).await?.expect("object exists");
-    if state_b != State::Destroyed {
-        return Err(DbError::ServerError(format!(
-            "Expected state_b to be Destroyed, got {state_b:?}"
-        )));
-    }
-
-    // Regression guard: explicit KMIP batch UNDO backward transition using
-    // update_state_allow_downgrade bypass succeeds.
-    pg.update_state_allow_downgrade(&uid_b, State::PreActive)
+    // c) an explicit downgrade replaces the observed state.
+    let uid = new_object().await?;
+    pg.update_state(&uid, State::Active).await?;
+    pg.update_state_allow_downgrade(&uid, State::PreActive)
         .await?;
-    let (state_b2, _) = pg.retrieve_state(&uid_b).await?.expect("object exists");
-    if state_b2 != State::PreActive {
+    expect_state("c", state_of(uid.clone()).await?, State::PreActive)?;
+
+    // d) a replicated Destroyed event carries its zeroized payload onto the row.
+    replica_event(uid.clone(), "Destroyed", Some(zeroized_json.clone())).await?;
+    expect_state("d", state_of(uid.clone()).await?, State::Destroyed)?;
+    if stored_json(uid.clone()).await? != zeroized_json {
+        return Err(DbError::ServerError("d: payload not zeroized".to_owned()));
+    }
+
+    // e) a later payload write cannot bring the key material back.
+    pg.update_object(&uid, &key_obj, &attrs, None).await?;
+    if stored_json(uid.clone()).await? != zeroized_json {
+        return Err(DbError::ServerError("e: key material survived".to_owned()));
+    }
+
+    // f) Batch Undo order: reset the state, then restore the payload.
+    pg.update_state_allow_downgrade(&uid, State::Active).await?;
+    pg.update_object(&uid, &key_obj, &attrs, None).await?;
+    expect_state("f", state_of(uid.clone()).await?, State::Active)?;
+    if stored_json(uid).await? != key_json {
+        return Err(DbError::ServerError("f: payload not restored".to_owned()));
+    }
+
+    // g) backfill: an object without events gets exactly one, and the marker is set.
+    let uid = Uuid::new_v4().to_string();
+    let url = option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+    {
+        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        client
+            .execute(
+                "INSERT INTO objects (id, object, attributes, state, owner) \
+                 VALUES ($1, $2, '{}'::jsonb, 'Active', 'backfill_owner')",
+                &[&uid, &key_json],
+            )
+            .await
+            .map_err(DbError::from)?;
+        client
+            .execute(
+                "DELETE FROM parameters WHERE name = $1",
+                &[&"object_state_events_backfilled"],
+            )
+            .await
+            .map_err(DbError::from)?;
+    }
+    let pg_again = PgPool::instantiate(url, false, None).await?;
+    let client = pg_again.raw_pool().get().await.map_err(DbError::from)?;
+    let events: i64 = client
+        .query_one(
+            "SELECT count(*) FROM object_state_events WHERE object_id = $1",
+            &[&uid],
+        )
+        .await
+        .map_err(DbError::from)?
+        .get(0);
+    let marker: String = client
+        .query_one(
+            "SELECT value FROM parameters WHERE name = $1",
+            &[&"object_state_events_backfilled"],
+        )
+        .await
+        .map_err(DbError::from)?
+        .get(0);
+    if events != 1 || marker != "true" {
         return Err(DbError::ServerError(format!(
-            "Expected state_b2 to be PreActive, got {state_b2:?}"
+            "g: expected 1 event and marker true, got {events} and {marker}"
         )));
     }
 
@@ -663,10 +729,64 @@ pub(crate) async fn test_db_postgresql_failover() -> DbResult<()> {
     Ok(())
 }
 
+/// Enable or disable both Spock subscriptions of the two-node test cluster.
+async fn set_replication(pg1: &PgPool, pg2: &PgPool, enabled: bool) -> DbResult<()> {
+    let func = if enabled { "sub_enable" } else { "sub_disable" };
+    for (pg, sub) in [(pg1, "sub_n1_n2"), (pg2, "sub_n2_n1")] {
+        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        client
+            .batch_execute(&format!("SELECT spock.{func}('{sub}', true);"))
+            .await
+            .map_err(DbError::from)?;
+    }
+    Ok(())
+}
+
+/// Block until everything committed so far on each node has been applied on the other.
+async fn sync_both(pg1: &PgPool, pg2: &PgPool) -> DbResult<()> {
+    for (provider, subscriber, origin) in [(pg1, pg2, "n1"), (pg2, pg1, "n2")] {
+        let lsn: String = provider
+            .raw_pool()
+            .get()
+            .await
+            .map_err(DbError::from)?
+            .query_one("SELECT spock.sync_event()::text;", &[])
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        let applied: bool = subscriber
+            .raw_pool()
+            .get()
+            .await
+            .map_err(DbError::from)?
+            .query_one(
+                "CALL spock.wait_for_sync_event(NULL, $1::name, $2::text::pg_lsn, 60);",
+                &[&origin, &lsn],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get("result");
+        if !applied {
+            return Err(DbError::ServerError(format!(
+                "replication from {origin} did not apply sync event {lsn} within 60s"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn state_on(
+    pg: &PgPool,
+    uid: &str,
+) -> DbResult<Option<cosmian_kmip::kmip_0::kmip_types::State>> {
+    use cosmian_kms_interfaces::ObjectsStore;
+    Ok(pg.retrieve_state(uid).await?.map(|(state, _)| state))
+}
+
 #[ignore = "Orchestrated by `mise run test:db:pgedge` (requires the pgedge Docker Compose profile)."]
 #[tokio::test]
 pub(crate) async fn test_db_pgedge_active_active() -> DbResult<()> {
-    use std::{collections::HashSet, time::Duration};
+    use std::collections::HashSet;
 
     use cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -787,146 +907,222 @@ pub(crate) async fn test_db_pgedge_active_active() -> DbResult<()> {
 
     // Prepare test objects
     let owner = UserId::from("pgedge_test_user");
-    let sym_key_bytes = [0_u8; 32];
     let key_obj = create_symmetric_key_kmip_object(
         VENDOR_ID_COSMIAN,
-        &sym_key_bytes,
+        &[0_u8; 32],
         &Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         },
     )
     .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let zeroized_object = zeroized_copy(&key_obj)?;
+    let attrs = Attributes::default();
 
-    let uid_1 = Uuid::new_v4().to_string();
-    let uid_2 = Uuid::new_v4().to_string();
+    // Creates an object on pg1 (optionally `Active`) and waits until both nodes have it.
+    let new_object = |active: bool| {
+        let (pg1, pg2, owner, key_obj) = (&pg1, &pg2, &owner, &key_obj);
+        async move {
+            let uid = Uuid::new_v4().to_string();
+            pg1.atomic(
+                owner,
+                &[AtomicOperation::Create((
+                    uid.clone(),
+                    owner.clone(),
+                    key_obj.clone(),
+                    Attributes::default(),
+                    HashSet::new(),
+                ))],
+            )
+            .await?;
+            if active {
+                pg1.update_state(&uid, State::Active).await?;
+            }
+            sync_both(pg1, pg2).await?;
+            Ok::<_, DbError>(uid)
+        }
+    };
+    let expect = |label: &str, got: Option<State>, want: State| {
+        if got == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!(
+                "{label}: expected {want:?}, got {got:?}"
+            )))
+        }
+    };
 
+    // S1: pg1 Destroyed vs pg2 Deactivated.
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.update_state(&uid, State::Destroyed).await?;
+    pg2.update_state(&uid, State::Deactivated).await?;
+    expect(
+        "S1 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Destroyed,
+    )?;
+    expect(
+        "S1 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Deactivated,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S1 pg1", state_on(&pg1, &uid).await?, State::Destroyed)?;
+    expect("S1 pg2", state_on(&pg2, &uid).await?, State::Destroyed)?;
+
+    // S2: pg2 Destroyed vs pg1 Deactivated (the later commit is the lower state).
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg2.update_state(&uid, State::Destroyed).await?;
+    pg1.update_state(&uid, State::Deactivated).await?;
+    expect(
+        "S2 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Deactivated,
+    )?;
+    expect(
+        "S2 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S2 pg1", state_on(&pg1, &uid).await?, State::Destroyed)?;
+    expect("S2 pg2", state_on(&pg2, &uid).await?, State::Destroyed)?;
+
+    // S3: Compromised on one node, Destroyed on the other.
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.update_state(&uid, State::Compromised).await?;
+    pg2.update_state(&uid, State::Destroyed).await?;
+    expect(
+        "S3 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Compromised,
+    )?;
+    expect(
+        "S3 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect(
+        "S3 pg1",
+        state_on(&pg1, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+    expect(
+        "S3 pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+
+    // S4: a concurrent payload write must not bring key material back on a Destroyed row.
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
     pg1.atomic(
         &owner,
         &[
-            AtomicOperation::Create((
-                uid_1.clone(),
-                owner.clone(),
-                key_obj.clone(),
-                Attributes::default(),
-                HashSet::new(),
+            AtomicOperation::UpdateObject((
+                uid.clone(),
+                zeroized_object.clone(),
+                attrs.clone(),
+                None,
             )),
-            AtomicOperation::Create((
-                uid_2.clone(),
-                owner.clone(),
-                key_obj.clone(),
-                Attributes::default(),
-                HashSet::new(),
-            )),
+            AtomicOperation::UpdateState((uid.clone(), State::Destroyed)),
         ],
     )
     .await?;
-
-    // Wait for initial object replication to arrive on pg2
-    {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            if pg2.retrieve_state(&uid_1).await?.is_some()
-                && pg2.retrieve_state(&uid_2).await?.is_some()
-            {
-                break;
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(DbError::ServerError(
-                    "Timed out waiting for initial objects to replicate from pg1 to pg2".to_owned(),
-                ));
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+    pg2.update_object(&uid, &key_obj, &attrs, None).await?;
+    expect(
+        "S4 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Destroyed,
+    )?;
+    if state_on(&pg2, &uid).await? == Some(State::Destroyed) {
+        return Err(DbError::ServerError(
+            "S4: partition did not hold".to_owned(),
+        ));
+    }
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    let zeroized_json = serde_json::to_string(&zeroized_object)?;
+    for (name, pg) in [("pg1", &pg1), ("pg2", &pg2)] {
+        expect(
+            &format!("S4 {name}"),
+            state_on(pg, &uid).await?,
+            State::Destroyed,
+        )?;
+        let stored = pg
+            .retrieve(&uid)
+            .await?
+            .ok_or_else(|| DbError::ServerError(format!("S4 {name}: object missing")))?;
+        if serde_json::to_string(stored.object())? != zeroized_json {
+            return Err(DbError::ServerError(format!(
+                "S4 {name}: key material survived Destroy"
+            )));
         }
     }
 
-    // State convergence Ordering 1:
-    // pg1 writes Destroyed; pg2 writes Deactivated on same object
-    pg1.update_state(&uid_1, State::Destroyed).await?;
-    pg2.update_state(&uid_1, State::Deactivated).await?;
+    // S5: a downgrade removes only the events its node observed.
+    let uid = new_object(true).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    pg2.update_state(&uid, State::Destroyed).await?;
+    expect(
+        "S5 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::PreActive,
+    )?;
+    expect(
+        "S5 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S5 pg1", state_on(&pg1, &uid).await?, State::Destroyed)?;
+    expect("S5 pg2", state_on(&pg2, &uid).await?, State::Destroyed)?;
 
-    // State convergence Ordering 2:
-    // pg2 writes Destroyed; pg1 writes Deactivated on same object
-    pg2.update_state(&uid_2, State::Destroyed).await?;
-    pg1.update_state(&uid_2, State::Deactivated).await?;
+    // S6: a downgrade replicates without concurrency.
+    let uid = new_object(true).await?;
+    pg1.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S6 pg1", state_on(&pg1, &uid).await?, State::PreActive)?;
+    expect("S6 pg2", state_on(&pg2, &uid).await?, State::PreActive)?;
 
-    // Poll both nodes until convergence for both objects
-    {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            let s1_on_pg1 = pg1.retrieve_state(&uid_1).await?.map(|(s, _)| s);
-            let s1_on_pg2 = pg2.retrieve_state(&uid_1).await?.map(|(s, _)| s);
-            let s2_on_pg1 = pg1.retrieve_state(&uid_2).await?.map(|(s, _)| s);
-            let s2_on_pg2 = pg2.retrieve_state(&uid_2).await?.map(|(s, _)| s);
-            if s1_on_pg1 == Some(State::Destroyed)
-                && s1_on_pg2 == Some(State::Destroyed)
-                && s2_on_pg1 == Some(State::Destroyed)
-                && s2_on_pg2 == Some(State::Destroyed)
-            {
-                break;
-            }
-
-            if tokio::time::Instant::now() >= deadline {
-                return Err(DbError::ServerError(format!(
-                    "Timed out waiting for state convergence to Destroyed. uid_1: (pg1={s1_on_pg1:?}, pg2={s1_on_pg2:?}), uid_2: (pg1={s2_on_pg1:?}, pg2={s2_on_pg2:?})"
-                )));
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-    }
-
-    // Grant/revoke convergence (documented LWW limitation)
+    // Grants: whole-row last-update-wins is the accepted contract; the nodes must agree and
+    // the row is either gone or holds both operations.
+    let uid = new_object(false).await?;
     let alice = UserId::from("alice");
-    // First create a permission row for alice on uid_1 on pg1 and wait for it to replicate
-    pg1.grant_operations(&uid_1, &alice, HashSet::from([KmipOperation::Get]))
+    pg1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Get]))
         .await?;
+    sync_both(&pg1, &pg2).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg2.remove_operations(&uid, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    pg1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    let perm1 = pg1
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    let perm2 = pg2
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    if perm1 != perm2
+        || !(perm1.is_empty()
+            || perm1 == HashSet::from([KmipOperation::Get, KmipOperation::Encrypt]))
     {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            let r2 = pg2
-                .list_user_operations_on_object(&uid_1, &alice, false)
-                .await?;
-            if r2.contains(&KmipOperation::Get) {
-                break;
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(DbError::ServerError(
-                    "Timed out waiting for initial grant to replicate from pg1 to pg2".to_owned(),
-                ));
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-    }
-
-    // Concurrently revoke on pg2 and grant additional operations on pg1
-    pg2.remove_operations(&uid_1, &alice, HashSet::from([KmipOperation::Get]))
-        .await?;
-    pg1.grant_operations(&uid_1, &alice, HashSet::from([KmipOperation::Encrypt]))
-        .await?;
-
-    // Poll until read_access converges to the same state on both nodes
-    {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            let perm1 = pg1
-                .list_user_operations_on_object(&uid_1, &alice, false)
-                .await?;
-            let perm2 = pg2
-                .list_user_operations_on_object(&uid_1, &alice, false)
-                .await?;
-
-            if perm1 == perm2 {
-                // Both nodes agreed (converged)
-                break;
-            }
-
-            if tokio::time::Instant::now() >= deadline {
-                return Err(DbError::ServerError(format!(
-                    "Timed out waiting for read_access convergence. pg1={perm1:?}, pg2={perm2:?}"
-                )));
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
+        return Err(DbError::ServerError(format!(
+            "read_access did not converge: pg1={perm1:?}, pg2={perm2:?}"
+        )));
     }
 
     Ok(())

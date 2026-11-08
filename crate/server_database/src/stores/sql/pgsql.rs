@@ -29,7 +29,8 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate,
+            OBJECT_STATE_EVENTS_BACKFILL_PARAM, WRAPPING_KEY_BACKFILL_PARAM,
             certificate_serial_tag,
         },
         pgsql_queries,
@@ -372,6 +373,47 @@ macro_rules! get_pgsql_query {
     };
 }
 
+/// Append a lifecycle event for `uid` (the new state is derived onto `objects` by trigger).
+async fn insert_state_event(
+    tx: &deadpool_postgres::Transaction<'_>,
+    uid: &str,
+    state: State,
+) -> DbResult<()> {
+    let stmt = tx
+        .prepare_cached(get_pgsql_query!("insert-object-state-event"))
+        .await
+        .map_err(DbError::from)?;
+    tx.execute(&stmt, &[&uid, &state.to_string()])
+        .await
+        .map_err(DbError::from)?;
+    Ok(())
+}
+
+/// Tombstone the lifecycle events this node has observed for `uid`.
+async fn tombstone_state_events(
+    tx: &deadpool_postgres::Transaction<'_>,
+    uid: &str,
+) -> DbResult<()> {
+    let stmt = tx
+        .prepare_cached(get_pgsql_query!("tombstone-object-state-events"))
+        .await
+        .map_err(DbError::from)?;
+    tx.execute(&stmt, &[&uid]).await.map_err(DbError::from)?;
+    Ok(())
+}
+
+/// Remove the lifecycle events (and their tombstones) of a deleted object.
+async fn delete_state_events(tx: &deadpool_postgres::Transaction<'_>, uid: &str) -> DbResult<()> {
+    for name in [
+        get_pgsql_query!("delete-object-state-event-tombstones"),
+        get_pgsql_query!("delete-object-state-events"),
+    ] {
+        let stmt = tx.prepare_cached(name).await.map_err(DbError::from)?;
+        tx.execute(&stmt, &[&uid]).await.map_err(DbError::from)?;
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub(crate) struct PgPool {
     pool: Pool,
@@ -427,6 +469,8 @@ impl PgPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-object_state_events",
+            "create-table-object_state_event_tombstones",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -471,6 +515,7 @@ impl PgPool {
             "create-index-objects-rotate-lookup",
             "create-index-objects-rotate-auto",
             "create-index-objects-type-state",
+            "create-index-object_state_events-object_id",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -577,50 +622,126 @@ impl PgPool {
                 .map_err(DbError::from)?;
         }
 
-        // Phase 2 — Object `State` conflict merge (PostgreSQL only, generic trigger)
-        // Monotonic state guard: coercive merge to GREATEST(state) on all updates (both local
-        // and replicated), protecting against cross-region write races where a local downgrade
-        // write races against an already-replicated higher-rank state.
-        // Marked ENABLE ALWAYS so it fires for both local and replicated sessions.
-        // A narrow bypass is supported via `SET LOCAL kms.allow_backward_state_transition = 'on'`
-        // for explicit KMIP batch UNDO operations.
+        // Phase 2 — Object lifecycle state as an insert-only replicated event log.
+        // Spock `last_update_wins` drops an incoming row whose commit timestamp is older than the
+        // local row before any trigger runs, so a state stored on `objects` cannot converge.
+        // Events are only ever inserted (never updated), so they never conflict; `objects.state`
+        // (and the key material of a destroyed object) is derived from them by triggers marked
+        // ENABLE ALWAYS so they also fire in replication apply sessions.
+        // shortcut: events are never compacted; compaction needs cross-region coordination.
         client
             .batch_execute(
                 r"
-CREATE OR REPLACE FUNCTION objects_state_monotonic_guard() RETURNS trigger AS $f$
+DROP TRIGGER IF EXISTS trg_objects_state_monotonic ON objects;
+DROP FUNCTION IF EXISTS objects_state_monotonic_guard();
+
+CREATE OR REPLACE FUNCTION kms_state_join(a text, b text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE AS $f$
 DECLARE
-  old_rank int;
-  new_rank int;
-  allow_undo text;
+  phase int;
+  compromised boolean;
 BEGIN
-  allow_undo := current_setting('kms.allow_backward_state_transition', true);
-  IF allow_undo = 'on' THEN
+  IF a IS NULL THEN RETURN b; END IF;
+  IF b IS NULL THEN RETURN a; END IF;
+  phase := GREATEST(
+    CASE a WHEN 'PreActive' THEN 1 WHEN 'Active' THEN 2 WHEN 'Deactivated' THEN 3
+      WHEN 'Compromised' THEN 3 WHEN 'Destroyed' THEN 4 WHEN 'Destroyed_Compromised' THEN 4
+      ELSE 0 END,
+    CASE b WHEN 'PreActive' THEN 1 WHEN 'Active' THEN 2 WHEN 'Deactivated' THEN 3
+      WHEN 'Compromised' THEN 3 WHEN 'Destroyed' THEN 4 WHEN 'Destroyed_Compromised' THEN 4
+      ELSE 0 END);
+  compromised := a IN ('Compromised', 'Destroyed_Compromised')
+              OR b IN ('Compromised', 'Destroyed_Compromised');
+  RETURN CASE
+    WHEN phase = 4 AND compromised THEN 'Destroyed_Compromised'
+    WHEN phase = 4 THEN 'Destroyed'
+    WHEN compromised THEN 'Compromised'
+    WHEN phase = 3 THEN 'Deactivated'
+    WHEN phase = 2 THEN 'Active'
+    WHEN phase = 1 THEN 'PreActive'
+    ELSE a END;
+END;
+$f$;
+
+CREATE OR REPLACE FUNCTION kms_effective_state(p_object_id varchar) RETURNS text
+LANGUAGE plpgsql STABLE AS $f$
+DECLARE
+  acc text;
+  ev text;
+BEGIN
+  FOR ev IN
+    SELECT e.state FROM object_state_events e
+    WHERE e.object_id = p_object_id
+      AND NOT EXISTS (SELECT 1 FROM object_state_event_tombstones t WHERE t.event_id = e.event_id)
+  LOOP
+    acc := kms_state_join(acc, ev);
+  END LOOP;
+  RETURN acc;
+END;
+$f$;
+
+CREATE OR REPLACE FUNCTION objects_state_derive() RETURNS trigger
+LANGUAGE plpgsql AS $f$
+DECLARE
+  eff text;
+  destroyed record;
+BEGIN
+  eff := kms_effective_state(NEW.id);
+  IF eff IS NULL THEN
     RETURN NEW;
   END IF;
-
-  old_rank := CASE OLD.state
-    WHEN 'PreActive' THEN 1 WHEN 'Active' THEN 2 WHEN 'Deactivated' THEN 3
-    WHEN 'Compromised' THEN 4 WHEN 'Destroyed' THEN 5
-    WHEN 'Destroyed_Compromised' THEN 6 ELSE 0 END;
-  new_rank := CASE NEW.state
-    WHEN 'PreActive' THEN 1 WHEN 'Active' THEN 2 WHEN 'Deactivated' THEN 3
-    WHEN 'Compromised' THEN 4 WHEN 'Destroyed' THEN 5
-    WHEN 'Destroyed_Compromised' THEN 6 ELSE 0 END;
-  IF new_rank < old_rank THEN
-    NEW.state := OLD.state;
+  NEW.state := eff;
+  IF eff IN ('Destroyed', 'Destroyed_Compromised') THEN
+    SELECT e.object, e.wrapping_key_id INTO destroyed
+    FROM object_state_events e
+    WHERE e.object_id = NEW.id AND e.object IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM object_state_event_tombstones t WHERE t.event_id = e.event_id)
+    ORDER BY e.recorded_at, e.event_id
+    LIMIT 1;
+    IF FOUND THEN
+      NEW.object := destroyed.object;
+      NEW.wrapping_key_id := destroyed.wrapping_key_id;
+    END IF;
   END IF;
   RETURN NEW;
 END;
-$f$ LANGUAGE plpgsql;
+$f$;
 
-DROP TRIGGER IF EXISTS trg_objects_state_monotonic ON objects;
-CREATE TRIGGER trg_objects_state_monotonic
-  BEFORE UPDATE ON objects
-  FOR EACH ROW
-  WHEN (NEW.state IS DISTINCT FROM OLD.state)
-  EXECUTE FUNCTION objects_state_monotonic_guard();
+DROP TRIGGER IF EXISTS trg_objects_state_derive ON objects;
+CREATE TRIGGER trg_objects_state_derive
+  BEFORE INSERT OR UPDATE ON objects
+  FOR EACH ROW EXECUTE FUNCTION objects_state_derive();
+ALTER TABLE objects ENABLE ALWAYS TRIGGER trg_objects_state_derive;
 
-ALTER TABLE objects ENABLE ALWAYS TRIGGER trg_objects_state_monotonic;
+CREATE OR REPLACE FUNCTION object_state_events_apply() RETURNS trigger
+LANGUAGE plpgsql AS $f$
+BEGIN
+  UPDATE objects SET state = state WHERE id = NEW.object_id;
+  RETURN NULL;
+END;
+$f$;
+
+DROP TRIGGER IF EXISTS trg_object_state_events_apply ON object_state_events;
+CREATE TRIGGER trg_object_state_events_apply
+  AFTER INSERT ON object_state_events
+  FOR EACH ROW EXECUTE FUNCTION object_state_events_apply();
+ALTER TABLE object_state_events ENABLE ALWAYS TRIGGER trg_object_state_events_apply;
+
+CREATE OR REPLACE FUNCTION object_state_event_tombstones_apply() RETURNS trigger
+LANGUAGE plpgsql AS $f$
+BEGIN
+  UPDATE objects SET state = state
+  WHERE id = (SELECT object_id FROM object_state_events WHERE event_id = NEW.event_id);
+  RETURN NULL;
+END;
+$f$;
+
+DROP TRIGGER IF EXISTS trg_object_state_event_tombstones_apply ON object_state_event_tombstones;
+CREATE TRIGGER trg_object_state_event_tombstones_apply
+  AFTER INSERT ON object_state_event_tombstones
+  FOR EACH ROW EXECUTE FUNCTION object_state_event_tombstones_apply();
+ALTER TABLE object_state_event_tombstones
+  ENABLE ALWAYS TRIGGER trg_object_state_event_tombstones_apply;
 ",
             )
             .await
@@ -725,12 +846,39 @@ ALTER TABLE objects ENABLE ALWAYS TRIGGER trg_objects_state_monotonic;
             tx.commit().await.map_err(DbError::from)?;
         }
 
+        // One-time lifecycle event backfill: one event per pre-existing object, gated by a
+        // completion marker (same transactional shape as above).
+        let events_backfill_done = client
+            .query_opt(
+                get_pgsql_query!("select-parameter"),
+                &[&OBJECT_STATE_EVENTS_BACKFILL_PARAM],
+            )
+            .await
+            .map_err(DbError::from)?
+            .map(|row| row.get::<usize, String>(0))
+            == Some("true".to_owned());
+        if !events_backfill_done {
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            tx.execute(get_pgsql_query!("backfill-object-state-events"), &[])
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(
+                get_pgsql_query!("upsert-parameter"),
+                &[&OBJECT_STATE_EVENTS_BACKFILL_PARAM, &"true"],
+            )
+            .await
+            .map_err(DbError::from)?;
+            tx.commit().await.map_err(DbError::from)?;
+        }
+
         // Optionally clear any existing data (useful for tests)
         if clear_database {
             for name in [
                 // Remove dependent rows first to avoid potential constraints if present
                 "clean-table-read_access",
                 "clean-table-tags",
+                "clean-table-object_state_event_tombstones",
+                "clean-table-object_state_events",
                 "clean-table-objects",
                 "clean-table-crls",
             ] {
@@ -853,6 +1001,7 @@ impl ObjectsStore for PgPool {
             )
             .await
             .map_err(DbError::from)?;
+            insert_state_event(tx, uid, attributes.state.unwrap_or(State::PreActive)).await?;
             if !tags.is_empty() {
                 let transaction_stmt = tx
                     .prepare_cached(get_pgsql_query!("insert-tags"))
@@ -996,39 +1145,21 @@ impl ObjectsStore for PgPool {
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
-        pg_retry!(self.pool, |client| {
-            let stmt = client
-                .prepare_cached(get_pgsql_query!("update-object-with-state"))
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            let s = state.to_string();
-            client
-                .execute(&stmt, &[&s, &uid])
-                .await
-                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-            Ok(())
+        pg_retry_tx!(self.pool, |tx| {
+            insert_state_event(&tx, uid, state).await
         })
     }
 
     async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> InterfaceResult<()> {
         pg_retry_tx!(self.pool, |tx| {
-            tx.batch_execute("SET LOCAL kms.allow_backward_state_transition = 'on';")
-                .await
-                .map_err(DbError::from)?;
-            let stmt = tx
-                .prepare_cached(get_pgsql_query!("update-object-with-state"))
-                .await
-                .map_err(DbError::from)?;
-            let s = state.to_string();
-            tx.execute(&stmt, &[&s, &uid])
-                .await
-                .map_err(DbError::from)?;
-            Ok::<(), DbError>(())
+            tombstone_state_events(&tx, uid).await?;
+            insert_state_event(&tx, uid, state).await
         })
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
         async fn transact(tx: &deadpool_postgres::Transaction<'_>, uid: &str) -> DbResult<()> {
+            delete_state_events(tx, uid).await?;
             let d1 = tx
                 .prepare_cached(get_pgsql_query!("delete-object"))
                 .await
@@ -1086,6 +1217,8 @@ impl ObjectsStore for PgPool {
                         )
                         .await
                         .map_err(DbError::from)?;
+                        insert_state_event(tx, uid, attributes.state.unwrap_or(State::PreActive))
+                            .await?;
                         if !tags.is_empty() {
                             let insert_stmt = tx
                                 .prepare_cached(get_pgsql_query!("insert-tags"))
@@ -1164,23 +1297,14 @@ impl ObjectsStore for PgPool {
                         uids.push(uid.clone());
                     }
                     AtomicOperation::UpdateState((uid, state)) => {
-                        let stmt = tx
-                            .prepare_cached(get_pgsql_query!("update-object-with-state"))
-                            .await
-                            .map_err(DbError::from)?;
-                        let st = state.to_string();
-                        tx.execute(&stmt, &[&st, &uid])
-                            .await
-                            .map_err(DbError::from)?;
+                        insert_state_event(tx, uid, *state).await?;
                         uids.push(uid.clone());
                     }
                     AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
-                        tx.batch_execute("SET LOCAL kms.allow_backward_state_transition = 'on';")
-                            .await
-                            .map_err(DbError::from)?;
+                        tombstone_state_events(tx, uid).await?;
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("upsert-object"))
                             .await
@@ -1205,6 +1329,7 @@ impl ObjectsStore for PgPool {
                                 "User '{user}' does not own object '{uid}' and cannot overwrite it"
                             )));
                         }
+                        insert_state_event(tx, uid, *state).await?;
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))
@@ -1226,6 +1351,7 @@ impl ObjectsStore for PgPool {
                         uids.push(uid.clone());
                     }
                     AtomicOperation::Delete(uid) => {
+                        delete_state_events(tx, uid).await?;
                         let d1 = tx
                             .prepare_cached(get_pgsql_query!("delete-object"))
                             .await

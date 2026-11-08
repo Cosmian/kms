@@ -23,7 +23,7 @@
 #   mr_self_test_config_guards             — prove the config-guard detectors fire correctly
 #   mr_guard_pg_container_ready            — wait until a pgEdge container accepts connections
 #   mr_guard_primary_keys                  — real PRIMARY KEYs / REPLICA IDENTITY on replicated tables
-#   mr_guard_state_monotonic_trigger       — objects.state monotonic trigger installed ENABLE ALWAYS
+#   mr_guard_state_event_triggers          — lifecycle event-log triggers installed ENABLE ALWAYS and replicated
 #   mr_guard_spock_wiring                  — Spock extension, node, and subscription present
 #   mr_guard_db_state_and_grants           — behavioral proof: state conflict merge + grants LWW
 #   mr_guard_crl_gating                    — behavioral proof: CRL issuance gating
@@ -54,7 +54,8 @@ mr_run_guard() {
   fi
   print_warning "Guard FAILED: $name"
   MR_GUARD_FAILURES+=("$name")
-  return 1
+  # Failures are reported through MR_GUARD_FAILURES; a non-zero return would abort under `set -e`.
+  return 0
 }
 
 # Extract the first top-level `key = value` scalar from a KMS server TOML file.
@@ -155,15 +156,17 @@ mr_guard_source_model() {
     print_warning "source guard: follower CRL-refresh cron skip missing from cron.rs"
     ok=1
   }
-  grep -q "objects_state_monotonic_guard()" "$pgsql" || {
-    print_warning "source guard: objects state monotonic guard function missing from pgsql.rs"
+  grep -q "objects_state_derive()" "$pgsql" || {
+    print_warning "source guard: objects state derive function missing from pgsql.rs"
     ok=1
   }
-  grep -q "ENABLE ALWAYS TRIGGER trg_objects_state_monotonic" "$pgsql" || {
-    print_warning "source guard: state trigger is no longer ENABLE ALWAYS in pgsql.rs"
-    ok=1
-  }
-  for pk in tags_pkey read_access_pkey crypto_officer_activations_pkey; do
+  for trg in trg_objects_state_derive trg_object_state_events_apply trg_object_state_event_tombstones_apply; do
+    grep -q "ENABLE ALWAYS TRIGGER $trg" "$pgsql" || {
+      print_warning "source guard: trigger $trg is no longer ENABLE ALWAYS in pgsql.rs"
+      ok=1
+    }
+  done
+  for pk in tags_pkey read_access_pkey crypto_officer_activations_pkey object_state_events object_state_event_tombstones; do
     grep -q "$pk" "$pgsql" || {
       print_warning "source guard: PRIMARY KEY migration for '$pk' missing from pgsql.rs"
       ok=1
@@ -174,12 +177,10 @@ mr_guard_source_model() {
     ok=1
   }
 
-  # Documented multi-region hazard (warning, not a failure): the batch-UNDO
-  # bypass is transaction-local on one node; a peer that still holds the higher
-  # state coerces the replicated row back up, so the revert may not hold.
+  # The session-local UNDO bypass is undone by peers; lifecycle events replaced it.
   if grep -q "kms.allow_backward_state_transition" "$pgsql"; then
-    print_warning "hazard: kms.allow_backward_state_transition bypass exists — KMIP batch UNDO \
-may be overridden by a peer's higher state under multi-region replication"
+    print_warning "source guard: kms.allow_backward_state_transition bypass still present in pgsql.rs"
+    ok=1
   fi
 
   [ "$ok" -eq 0 ] || return 1
@@ -228,7 +229,7 @@ mr_guard_config_topology() {
 }
 
 # Multi-region nodes must use the PostgreSQL backend (the only backend with the
-# logical-replication schema hardening and the monotonic state trigger).
+# logical-replication schema hardening and the lifecycle event-log triggers).
 # Usage: mr_guard_config_backend <config>...
 mr_guard_config_backend() {
   local f backend ok=0
@@ -516,14 +517,14 @@ mr_guard_pg_container_ready() {
 # Usage: mr_guard_primary_keys <container>
 mr_guard_primary_keys() {
   local container="$1" pks ident
-  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey');")"
-  if [ "${pks//[^0-9]/}" != "3" ]; then
-    print_warning "primary keys: ${container} has ${pks:-0}/3 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey)"
+  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey','object_state_events_pkey','object_state_event_tombstones_pkey');")"
+  if [ "${pks//[^0-9]/}" != "5" ]; then
+    print_warning "primary keys: ${container} has ${pks:-0}/5 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey, object_state_events_pkey, object_state_event_tombstones_pkey)"
     return 1
   fi
 
-  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations');")"
-  if [ "$ident" != "crypto_officer_activations=d,read_access=d,tags=d" ]; then
+  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations','object_state_events','object_state_event_tombstones');")"
+  if [ "$ident" != "crypto_officer_activations=d,object_state_event_tombstones=d,object_state_events=d,read_access=d,tags=d" ]; then
     print_warning "primary keys: ${container} REPLICA IDENTITY not default for all replicated tables: ${ident:-<none>}"
     return 1
   fi
@@ -531,27 +532,35 @@ mr_guard_primary_keys() {
   return 0
 }
 
-# The monotonic state trigger must exist, fire BEFORE UPDATE FOR EACH ROW, and be
-# ENABLE ALWAYS so it coerces both local and replicated downgrades to GREATEST(state).
-# Usage: mr_guard_state_monotonic_trigger <container>
-mr_guard_state_monotonic_trigger() {
-  local container="$1" def enabled fn
-  enabled="$(_mr_psql "${container}" "SELECT tgenabled FROM pg_trigger WHERE tgname='trg_objects_state_monotonic' AND NOT tgisinternal;")"
-  if [ "$enabled" != "A" ]; then
-    print_warning "state trigger: ${container} trigger missing or not ENABLE ALWAYS (tgenabled=${enabled:-<none>}, expected A)"
+# The lifecycle event-log triggers must be ENABLE ALWAYS (they must fire in replication apply
+# sessions), shaped as expected, and both event tables must be in a Spock replication set.
+# Usage: mr_guard_state_event_triggers <container>
+mr_guard_state_event_triggers() {
+  local container="$1" trg enabled def want repl
+  for trg in trg_objects_state_derive trg_object_state_events_apply trg_object_state_event_tombstones_apply; do
+    enabled="$(_mr_psql "${container}" "SELECT tgenabled FROM pg_trigger WHERE tgname='${trg}' AND NOT tgisinternal;")"
+    if [ "$enabled" != "A" ]; then
+      print_warning "state triggers: ${container} ${trg} missing or not ENABLE ALWAYS (tgenabled=${enabled:-<none>}, expected A)"
+      return 1
+    fi
+    def="$(_mr_psql "${container}" "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='${trg}';")"
+    want="AFTER INSERT"
+    [ "$trg" = "trg_objects_state_derive" ] && want="BEFORE INSERT OR UPDATE"
+    if ! grep -q "$want" <<<"$def" || ! grep -q "FOR EACH ROW" <<<"$def"; then
+      print_warning "state triggers: ${container} ${trg} is not ${want} FOR EACH ROW: ${def:-<none>}"
+      return 1
+    fi
+  done
+  if [ "$(_mr_psql "${container}" "SELECT count(*) FROM pg_trigger WHERE tgname='trg_objects_state_monotonic';" | tr -d '[:space:]')" != "0" ]; then
+    print_warning "state triggers: ${container} obsolete trg_objects_state_monotonic still installed"
     return 1
   fi
-  fn="$(_mr_psql "${container}" "SELECT count(*) FROM pg_proc WHERE proname='objects_state_monotonic_guard';")"
-  if [ "${fn//[^0-9]/}" != "1" ]; then
-    print_warning "state trigger: ${container} guard function objects_state_monotonic_guard() missing"
+  repl="$(_mr_psql "${container}" "SELECT count(*) FROM spock.replication_set_table WHERE set_reloid::regclass::text IN ('object_state_events','object_state_event_tombstones');")"
+  if [ "${repl//[^0-9]/}" != "2" ]; then
+    print_warning "state triggers: ${container} has ${repl:-0}/2 lifecycle event tables in a Spock replication set"
     return 1
   fi
-  def="$(_mr_psql "${container}" "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='trg_objects_state_monotonic';")"
-  if ! grep -q "BEFORE UPDATE" <<<"$def" || ! grep -q "FOR EACH ROW" <<<"$def"; then
-    print_warning "state trigger: ${container} trigger definition is not BEFORE UPDATE FOR EACH ROW: ${def:-<none>}"
-    return 1
-  fi
-  print_success "state trigger: ${container} monotonic guard is ENABLE ALWAYS (BEFORE UPDATE FOR EACH ROW)"
+  print_success "state triggers: ${container} lifecycle event triggers are ENABLE ALWAYS and replicated"
   return 0
 }
 
