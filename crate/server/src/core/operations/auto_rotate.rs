@@ -175,6 +175,18 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         }
     };
 
+    finish_rotation(kms, uid, owner, &algorithm, old_interval, new_uid_result).await
+}
+
+/// Log and count the outcome of a rotation, re-arming the replacement on success.
+async fn finish_rotation(
+    kms: &KMS,
+    uid: &str,
+    owner: &UserId,
+    algorithm: &str,
+    old_interval: Option<i64>,
+    new_uid_result: KResult<String>,
+) -> KResult<()> {
     // Phase 1 of the rotation claims the key's version, so a concurrent write makes this
     // rotation fail with `Conflict` before persisting anything. If that write was another
     // rotation, the key is now Deactivated and leaves `find_due_for_rotation`; otherwise
@@ -190,7 +202,7 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         Ok(new_uid) => {
             info!("[auto-rotate] Key {uid} (owner={owner}, algo={algorithm}) rotated successfully");
             if let Some(ref m) = kms.metrics {
-                m.record_key_auto_rotation(uid, &algorithm, "success");
+                m.record_key_auto_rotation(uid, algorithm, "success");
             }
             // Re-arm the replacement key with the original rotation policy so that
             // auto-rotation continues indefinitely without operator intervention.
@@ -209,7 +221,7 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         Err(e) => {
             warn!("[auto-rotate] Failed to rotate key {uid} (owner={owner}): {e}");
             if let Some(ref m) = kms.metrics {
-                m.record_key_auto_rotation(uid, &algorithm, "failure");
+                m.record_key_auto_rotation(uid, algorithm, "failure");
             }
         }
     }
@@ -371,7 +383,7 @@ mod tests {
         cosmian_kms_crypto::crypto::KmsRng,
     };
 
-    use super::days_until_next_rotation;
+    use super::{days_until_next_rotation, finish_rotation};
     use crate::{
         core::operations::{
             auto_rotate::{dispatch_renewal_warnings, run_auto_rotation},
@@ -1386,6 +1398,22 @@ mod tests {
             "gen-1 cert must have rotate_generation = 1"
         );
 
+        Ok(())
+    }
+
+    /// A `Conflict` (concurrent modification) is a skip, not a failure; any other error still
+    /// surfaces so the failure is logged and counted.
+    #[tokio::test]
+    async fn test_finish_rotation_skips_conflict_only() -> KResult<()> {
+        use crate::error::KmsError;
+
+        let kms = test_kms().await?;
+        let owner = UserId::from("owner");
+        let conflict = Err(KmsError::Conflict("stale version".to_owned()));
+        finish_rotation(&kms, "uid", &owner, "AES", None, conflict).await?;
+        let failure = Err(KmsError::ServerError("boom".to_owned()));
+        let result = finish_rotation(&kms, "uid", &owner, "AES", None, failure).await;
+        assert!(matches!(result, Err(KmsError::ServerError(_))));
         Ok(())
     }
 }
