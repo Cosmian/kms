@@ -20,6 +20,9 @@ On every rotation the server:
 > **Auto-rotation** (scheduler-driven, policy-based) is covered separately in
 > [Auto-Rotation Policy](auto_rotation_policy.md).
 > **HSM key rotation** is covered in [HSM Key Rotation](hsm.md).
+> **Concurrent rotations** of the same object, and the `Conflict` error the
+> losing request receives, are explained in
+> [Concurrent Re-Key and Conflicts](concurrent_rekey.md).
 
 ---
 
