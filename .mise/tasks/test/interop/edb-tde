@@ -11,6 +11,8 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
+# Skipped: docker.enterprisedb.com rejects the CI registry token (401); drop this line once it is renewed.
+skip_test "EDB registry credentials rejected (401) — test disabled"
 has_env_vars EDB_SUBSCRIPTION_TOKEN || skip_test "env EDB_SUBSCRIPTION_TOKEN not set"
 if [ "${CI:-}" != true ]; then
   has_cmd nix-shell || skip_test "nix-shell not found"
