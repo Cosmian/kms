@@ -278,7 +278,7 @@ impl DecryptAction {
         let mut stream_cipher = cipher.stream_cipher(Mode::Decrypt, &dek, &nonce, &aad)?;
         let tag_size = cipher.tag_size();
         // read the file by chunks
-        let mut chunk = vec![0; 2 ^ 16]; //64K
+        let mut chunk = vec![0; super::FILE_CHUNK_SIZE];
         let mut read_buffer = vec![];
         loop {
             let bytes_read = input_file.read(&mut chunk)?;
@@ -412,7 +412,8 @@ mod characterization_tests {
 
     use super::DecryptAction;
     use crate::actions::symmetric::{
-        KeyEncryptionAlgorithm, encrypt::EncryptAction, keys::create_key::CreateKeyAction,
+        FILE_CHUNK_SIZE, KeyEncryptionAlgorithm, encrypt::EncryptAction,
+        keys::create_key::CreateKeyAction,
     };
 
     fn pattern(len: usize) -> Vec<u8> {
@@ -474,7 +475,28 @@ mod characterization_tests {
         let ctx = start_default_test_kms_server().await;
         let client = ctx.get_owner_client();
         let kek = Box::pin(new_kek(client.clone())).await;
-        for len in [0, 1, 15, 16, 17, 18, 19, 33, 34, 35, 36, 37, 100, 1000] {
+        for len in [
+            0,
+            1,
+            15,
+            16,
+            17,
+            18,
+            19,
+            33,
+            34,
+            35,
+            36,
+            37,
+            100,
+            1000,
+            FILE_CHUNK_SIZE - 1,
+            FILE_CHUNK_SIZE,
+            FILE_CHUNK_SIZE + 1,
+            FILE_CHUNK_SIZE + 16,
+            FILE_CHUNK_SIZE + 17,
+            2 * FILE_CHUNK_SIZE + 1,
+        ] {
             let out = round_trip(&kek, client.clone(), DataEncryptionAlgorithm::AesGcm, len).await;
             assert_eq!(out.len(), len);
         }
@@ -486,7 +508,23 @@ mod characterization_tests {
         let ctx = start_default_test_kms_server().await;
         let client = ctx.get_owner_client();
         let kek = Box::pin(new_kek(client.clone())).await;
-        for len in [0, 1, 17, 18, 19, 35, 36, 37, 1000] {
+        for len in [
+            0,
+            1,
+            17,
+            18,
+            19,
+            35,
+            36,
+            37,
+            1000,
+            FILE_CHUNK_SIZE - 1,
+            FILE_CHUNK_SIZE,
+            FILE_CHUNK_SIZE + 1,
+            FILE_CHUNK_SIZE + 16,
+            FILE_CHUNK_SIZE + 17,
+            2 * FILE_CHUNK_SIZE + 1,
+        ] {
             let out = round_trip(
                 &kek,
                 client.clone(),

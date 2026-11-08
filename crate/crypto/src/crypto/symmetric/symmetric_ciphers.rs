@@ -13,7 +13,7 @@ use openssl::symm::{
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
-use super::aes_gcm_siv_not_openssl;
+use super::aes_gcm_siv;
 use crate::{
     crypto::{
         KmsRng,
@@ -217,7 +217,7 @@ impl SymCipher {
             Self::Chacha20 => Ok(Cipher::chacha20()),
             #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv | Self::Aes256GcmSiv => {
-                // TODO: openssl supports AES GCM SIV but the rust openssl crate does not expose it
+                // GCM-SIV uses an EVP cipher fetched by name in aes_gcm_siv.rs; there is no legacy symm::Cipher for it
                 crypto_bail!(CryptoError::NotSupported(
                     "AES GCM SIV is not supported in this version of openssl".to_owned()
                 ))
@@ -582,7 +582,7 @@ pub fn encrypt(
         }
         #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-            aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
+            aes_gcm_siv::encrypt(key, nonce, aad, plaintext)
         }
         SymCipher::Rfc5649_16 | SymCipher::Rfc5649_24 | SymCipher::Rfc5649_32 => {
             Ok((rfc5649_wrap(plaintext, key)?, vec![]))
@@ -734,7 +734,7 @@ pub fn decrypt(
         }
         #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-            aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
+            aes_gcm_siv::decrypt(key, nonce, aad, ciphertext, tag)?
         }
         SymCipher::Rfc3394_16 | SymCipher::Rfc3394_24 | SymCipher::Rfc3394_32 => {
             info!(
@@ -874,7 +874,7 @@ impl StreamCipher {
         match sym_cipher {
             #[cfg(feature = "non-fips")]
             SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-                // TODO: the pure Rust crate does not support streaming. When openssl id exposed, this should be fixed
+                // RFC 8452 SIV is two-pass: OpenSSL accepts the whole message in a single update
                 Err(CryptoError::NotSupported(
                     "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
                 ))

@@ -1,5 +1,5 @@
-use num_bigint::BigUint;
-use num_traits::{Num, One, ToPrimitive};
+use num_bigint_dig::BigUint;
+use num_traits::{Num, One, Pow, ToPrimitive};
 
 use super::{Alphabet, FPEError};
 
@@ -19,7 +19,7 @@ impl Integer {
     ///
     /// ```
     /// use cosmian_kms_crypto::crypto::fpe::Integer;
-    /// use num_bigint::BigUint;
+    /// use num_bigint_dig::BigUint;
     ///
     /// let number = Integer::instantiate(8, 7).unwrap();
     /// assert_eq!(number.digits(), 7);
@@ -58,7 +58,7 @@ impl Integer {
             )));
         }
 
-        let max_value = BigUint::from(radix)
+        let max_value = (&BigUint::from(radix))
             .pow(u32::try_from(digits).map_err(|e| FPEError::ConversionError(e.to_string()))?)
             - BigUint::one();
         let alphabet = &"0123456789abcdef"
@@ -116,7 +116,7 @@ impl Integer {
     ///
     /// ```
     /// use cosmian_kms_crypto::crypto::fpe::Integer;
-    /// use num_bigint::BigUint;
+    /// use num_bigint_dig::BigUint;
     ///
     /// let integer = Integer::instantiate(16, 8).unwrap();
     /// let key = [0u8; 32];
@@ -219,7 +219,7 @@ impl Integer {
     ///
     /// ```
     /// use cosmian_kms_crypto::crypto::fpe::Integer;
-    /// use num_bigint::BigUint;
+    /// use num_bigint_dig::BigUint;
     ///
     /// let key = [0; 32];
     /// let tweak = [0];

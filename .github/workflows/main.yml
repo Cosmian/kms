@@ -98,6 +98,8 @@ jobs:
           mise run docs:mdbook-build
 
   linkcheck:
+    # Link checking hits external sites (flaky on PRs): nightly only.
+    if: github.event_name == 'schedule'
     name: Check documentation links
     runs-on: ubuntu-24.04
     steps:

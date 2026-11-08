@@ -5,9 +5,18 @@ use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     traits::{KeyAlgorithm, PublicKey, SignatureAlgorithm, backend},
 };
-use pkcs1::{RsaPublicKey, der::Decode};
-use sha3::Digest;
-use x509_cert::spki::SubjectPublicKeyInfoOwned;
+use openssl::{
+    bn::BigNumContext,
+    ec::{EcGroup, EcKey, EcPoint},
+    hash::{MessageDigest, hash},
+    nid::Nid,
+    pkey::Public,
+    rsa::Rsa,
+};
+use x509_cert::{
+    der::Decode,
+    spki::{ObjectIdentifier, SubjectPublicKeyInfoOwned},
+};
 use zeroize::Zeroizing;
 
 use crate::kms_object::KmsObject;
@@ -43,7 +52,7 @@ impl Pkcs11PublicKey {
             let params = spki.algorithm.parameters.as_ref().ok_or_else(|| {
                 ModuleError::BadArguments("EC SPKI is missing curve OID in parameters".to_owned())
             })?;
-            let curve_oid = params.decode_as::<pkcs1::ObjectIdentifier>().map_err(|e| {
+            let curve_oid = params.decode_as::<ObjectIdentifier>().map_err(|e| {
                 ModuleError::Cryptography(format!(
                     "failed to decode EC curve OID from SPKI parameters: {e}"
                 ))
@@ -60,7 +69,9 @@ impl Pkcs11PublicKey {
         //   RSA  → PKCS#1 DER (SEQUENCE { INTEGER n, INTEGER e })
         //   EC   → raw SEC1 point bytes (04 || x || y)
         let inner_key_bytes = spki.subject_public_key.raw_bytes().to_vec();
-        let fingerprint = sha3::Sha3_256::digest(&inner_key_bytes).to_vec();
+        let fingerprint = hash(MessageDigest::sha3_256(), &inner_key_bytes)
+            .map_err(|e| ModuleError::Cryptography(e.to_string()))?
+            .to_vec();
         let der_bytes = Zeroizing::new(inner_key_bytes);
         Ok(Self {
             remote_id: String::new(),
@@ -125,10 +136,10 @@ impl PublicKey for Pkcs11PublicKey {
         self.algorithm
     }
 
-    fn rsa_public_key(&self) -> ModuleResult<RsaPublicKey<'_>> {
+    fn rsa_public_key(&self) -> ModuleResult<Rsa<Public>> {
         if self.algorithm == KeyAlgorithm::Rsa {
             // der_bytes stores the PKCS#1 RSA bytes extracted from SPKI's BIT STRING
-            RsaPublicKey::from_der(&self.der_bytes).map_err(|e| {
+            Rsa::public_key_from_der_pkcs1(&self.der_bytes).map_err(|e| {
                 error!("Failed to parse RSA public key: {:?}", e);
                 ModuleError::Cryptography("Failed to parse RSA public key".to_owned())
             })
@@ -140,12 +151,19 @@ impl PublicKey for Pkcs11PublicKey {
         }
     }
 
-    fn ec_p256_public_key(&self) -> ModuleResult<p256::PublicKey> {
+    fn ec_p256_public_key(&self) -> ModuleResult<EcKey<Public>> {
         if self.algorithm == KeyAlgorithm::EccP256 {
-            // der_bytes stores the raw SEC1 point bytes (04 || x || y) from SPKI's BIT STRING
-            p256::PublicKey::from_sec1_bytes(&self.der_bytes).map_err(|e| {
+            // der_bytes stores the raw SEC1 point bytes (04 || x || y) from SPKI's BIT STRING;
+            // OpenSSL rejects points that are not on the curve.
+            let parse = || -> Result<EcKey<Public>, openssl::error::ErrorStack> {
+                let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+                let mut ctx = BigNumContext::new()?;
+                let point = EcPoint::from_bytes(&group, &self.der_bytes, &mut ctx)?;
+                EcKey::from_public_key(&group, &point)
+            };
+            parse().map_err(|e| {
                 error!("Failed to parse EC P256 public key: {:?}", e);
-                ModuleError::Cryptography(format!("Failed to parse EC P256 public key: {e:?}"))
+                ModuleError::Cryptography(format!("Failed to parse EC P256 public key: {e}"))
             })
         } else {
             error!("Public key is not an EC P256 key");
@@ -153,5 +171,62 @@ impl PublicKey for Pkcs11PublicKey {
                 "Public key is not an EC P256 key".to_owned(),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_pkcs11_module::traits::PublicKey;
+    use openssl::{
+        bn::BigNumContext,
+        ec::{EcGroup, EcKey, PointConversionForm},
+        nid::Nid,
+        pkey::PKey,
+        rsa::Rsa,
+    };
+    use x509_cert::{der::Decode, spki::SubjectPublicKeyInfoOwned};
+
+    use super::Pkcs11PublicKey;
+
+    fn spki_of<T: openssl::pkey::HasPublic>(pkey: &PKey<T>) -> SubjectPublicKeyInfoOwned {
+        SubjectPublicKeyInfoOwned::from_der(&pkey.public_key_to_der().expect("spki der"))
+            .expect("parse spki")
+    }
+
+    #[test]
+    fn rsa_attributes_match_source_key() {
+        let rsa = Rsa::generate(2048).expect("rsa key");
+        let key =
+            Pkcs11PublicKey::try_from_spki(&spki_of(&PKey::from_rsa(rsa.clone()).expect("pkey")))
+                .expect("public key");
+        assert_eq!(key.rsa_modulus().expect("modulus"), rsa.n().to_vec());
+        assert_eq!(
+            key.rsa_public_exponent().expect("exponent"),
+            rsa.e().to_vec()
+        );
+        assert_eq!(key.fingerprint().len(), 32);
+        key.ec_p256_public_key().unwrap_err();
+    }
+
+    #[test]
+    fn p256_point_matches_source_key() {
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).expect("group");
+        let ec = EcKey::generate(&group).expect("ec key");
+        let key =
+            Pkcs11PublicKey::try_from_spki(&spki_of(&PKey::from_ec_key(ec.clone()).expect("pkey")))
+                .expect("public key");
+        let mut ctx = BigNumContext::new().expect("bn ctx");
+        let expected = ec
+            .public_key()
+            .to_bytes(&group, PointConversionForm::UNCOMPRESSED, &mut ctx)
+            .expect("source point");
+        let parsed = key.ec_p256_public_key().expect("p256 key");
+        let got = parsed
+            .public_key()
+            .to_bytes(&group, PointConversionForm::UNCOMPRESSED, &mut ctx)
+            .expect("parsed point");
+        assert_eq!(got, expected);
+        assert_eq!(key.fingerprint().len(), 32);
+        key.rsa_public_key().unwrap_err();
     }
 }

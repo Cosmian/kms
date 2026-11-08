@@ -13,9 +13,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, error, trace};
-use subtle::ConstantTimeEq;
 
-use crate::{core::KMS, error::KmsError, middlewares::extract_bearer_token, result::KResult};
+use crate::{
+    core::KMS, error::KmsError, middlewares::extract_bearer_token, result::KResult,
+    routes::enrollment::secrets_equal,
+};
 
 /// Fetch the API token (symmetric key) from the database, returned as a lowercase base64 string.
 async fn get_api_token(kms: &Arc<KMS>, api_token_id: &str) -> KResult<String> {
@@ -83,7 +85,7 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
 
     // Compare the client token with the stored token using constant-time comparison
     // to prevent timing side-channel attacks.
-    let tokens_match = client_token.as_bytes().ct_eq(api_token.as_bytes()).into();
+    let tokens_match = secrets_equal(&client_token, &api_token);
     if tokens_match {
         debug!("Token authentication successful");
         Ok(())

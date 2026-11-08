@@ -20,7 +20,6 @@ use opentelemetry::{
     metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
-use sha2::{Digest, Sha256};
 
 use crate::{error::KmsError, result::KResult};
 
@@ -415,7 +414,7 @@ impl OtelMetrics {
     /// Hashes a user identity into a short, non-reversible hex digest suitable
     /// for use as a metric label (per OTEL's `user.hash` semantic convention).
     fn hash_user(user: &str) -> String {
-        let digest = Sha256::digest(user.as_bytes());
+        let digest = openssl::sha::sha256(user.as_bytes());
         let full_hex = hex::encode(digest);
         full_hex
             .get(..USER_LABEL_HASH_HEX_LEN)

@@ -14,6 +14,9 @@ pub mod decrypt;
 pub mod encrypt;
 pub mod keys;
 
+/// Read size used when streaming files through client-side encryption and decryption.
+const FILE_CHUNK_SIZE: usize = 1 << 16;
+
 /// Manage symmetric keys. Encrypt and decrypt data.
 #[derive(Parser)]
 pub enum SymmetricCommands {

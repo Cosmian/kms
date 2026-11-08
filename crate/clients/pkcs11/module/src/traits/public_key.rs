@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use pkcs1::RsaPublicKey;
-
 use crate::{
     ModuleResult,
     traits::{KeyAlgorithm, SignatureAlgorithm},
@@ -20,17 +18,17 @@ pub trait PublicKey: Send + Sync {
     fn delete(self: Arc<Self>);
     fn algorithm(&self) -> KeyAlgorithm;
     /// Return the RSA public key if the key is an RSA key
-    fn rsa_public_key(&self) -> ModuleResult<RsaPublicKey<'_>>;
+    fn rsa_public_key(&self) -> ModuleResult<openssl::rsa::Rsa<openssl::pkey::Public>>;
     /// Return the RSA modulus if the key is an RSA key
     /// In big endian
     fn rsa_modulus(&self) -> ModuleResult<Vec<u8>> {
-        Ok(self.rsa_public_key()?.modulus.as_bytes().to_vec())
+        Ok(self.rsa_public_key()?.n().to_vec())
     }
     /// Return the RSA public exponent if the key is an RSA key
     /// In big endian
     fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
-        Ok(self.rsa_public_key()?.public_exponent.as_bytes().to_vec())
+        Ok(self.rsa_public_key()?.e().to_vec())
     }
     /// Return the EC P256 public key if the key is an EC key
-    fn ec_p256_public_key(&self) -> ModuleResult<p256::PublicKey>;
+    fn ec_p256_public_key(&self) -> ModuleResult<openssl::ec::EcKey<openssl::pkey::Public>>;
 }

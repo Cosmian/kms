@@ -23,7 +23,6 @@ use actix_web::{
 use cosmian_logger::{debug, trace, warn};
 use dashmap::DashMap;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use url::Url;
 
 use super::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity};
@@ -241,7 +240,7 @@ async fn check_vault_token(
         },
     };
 
-    let hash_bytes: [u8; 32] = Sha256::digest(raw_token.as_bytes()).into();
+    let hash_bytes: [u8; 32] = openssl::sha::sha256(raw_token.as_bytes());
 
     if let Some(user) = cache.lookup(&hash_bytes) {
         return VaultTokenResult::Valid(user);
@@ -457,14 +456,13 @@ mod tests {
     use std::time::Duration;
 
     use actix_web::{App, HttpMessage, HttpResponse, web};
-    use sha2::{Digest, Sha256};
 
     use super::*;
 
     // ── helpers ──────────────────────────────────────────────────────────
 
     fn compute_hash(token: &str) -> [u8; 32] {
-        Sha256::digest(token.as_bytes()).into()
+        openssl::sha::sha256(token.as_bytes())
     }
 
     fn make_cache_with_user(entity: &str) -> (Arc<SpireTokenCache>, [u8; 32], String) {

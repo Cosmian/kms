@@ -10,6 +10,21 @@ pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     }
 }
 
+// Argon2id and AES-GCM-SIV are fetched from OpenSSL's default provider. Tests that explicitly
+// load (and later drop) a provider disable the implicit default fallback and unload the
+// provider under concurrently running tests, so pin it for the whole test process.
+#[cfg(all(test, feature = "non-fips"))]
+fn pin_default_provider() {
+    static DEFAULT_PROVIDER: std::sync::LazyLock<Option<::openssl::provider::Provider>> =
+        std::sync::LazyLock::new(|| {
+            ::openssl::provider::Provider::try_load(None, "default", true).ok()
+        });
+    std::sync::LazyLock::force(&DEFAULT_PROVIDER);
+}
+
+#[cfg(all(test, not(feature = "non-fips")))]
+const fn pin_default_provider() {}
+
 // Initialize OpenSSL environment from values provided by build.rs (tests only).
 // Keep ctor usage limited to dev/test builds as requested.
 #[cfg(test)]
@@ -28,6 +43,8 @@ fn initialize_openssl_env_from_build() {
             std::env::set_var("OPENSSL_MODULES", mods);
         }
     }
+
+    pin_default_provider();
 
     // Diagnostics to help understand which OpenSSL is loaded under Nix.
     {

@@ -1,6 +1,6 @@
 use core::{cmp, fmt};
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use num_traits::{ToPrimitive, identities::Zero};
 use openssl::symm::{Cipher, Crypter, Mode};
 use zeroize::{Zeroize, Zeroizing};
@@ -336,12 +336,6 @@ pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8> {
     /// AES-256 key — zeroised when the struct is dropped.
     key: Zeroizing<[u8; KEY_LEN]>,
     radix: Radix,
-}
-
-impl<const FEISTEL_ROUNDS: u8> Drop for FF1fr<FEISTEL_ROUNDS> {
-    fn drop(&mut self) {
-        // Zeroizing<> handles the key; nothing else to explicitly wipe.
-    }
 }
 
 impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {

@@ -94,16 +94,6 @@ impl DataObject for DummyDataObject {
     fn application(&self) -> Vec<u8> {
         b"Test PKCS#11 Application".to_vec()
     }
-
-    fn data_hash(&self) -> Vec<u8> {
-        // Simple test hash - just the first 32 bytes repeated or padded
-        let mut hash = vec![0_u8; 32];
-        let data = self.value.as_slice();
-        for (i, &byte) in data.iter().take(32).enumerate() {
-            hash[i] = byte;
-        }
-        hash
-    }
 }
 
 struct DummySymKey;
@@ -1299,11 +1289,11 @@ impl PublicKey for DummyPublicKey {
         KeyAlgorithm::EccP256
     }
 
-    fn rsa_public_key(&self) -> ModuleResult<pkcs1::RsaPublicKey<'_>> {
+    fn rsa_public_key(&self) -> ModuleResult<openssl::rsa::Rsa<openssl::pkey::Public>> {
         Err(ModuleError::FunctionNotSupported)
     }
 
-    fn ec_p256_public_key(&self) -> ModuleResult<p256::PublicKey> {
+    fn ec_p256_public_key(&self) -> ModuleResult<openssl::ec::EcKey<openssl::pkey::Public>> {
         Err(ModuleError::FunctionNotSupported)
     }
 }

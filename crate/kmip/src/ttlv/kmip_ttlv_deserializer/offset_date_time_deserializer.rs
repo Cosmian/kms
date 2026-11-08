@@ -47,14 +47,18 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_any: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_bool<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_bool: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -96,7 +100,10 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
         } else if self.index == 8 {
             visitor.visit_i32(self.dt.offset().whole_seconds() % 60)
         } else {
-            unimplemented!("should not be called by OffsetDateTime deserializer")
+            Err(TtlvError::from(format!(
+                "deserialize_i32: unexpected OffsetDateTime field index {}",
+                self.index
+            )))
         }
     }
 
@@ -104,7 +111,9 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_i64: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_u16<V>(self, visitor: V) -> std::result::Result<V::Value, Self::Error>
@@ -127,70 +136,90 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_u64: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_f32: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_f64<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_f64: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_char<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_char: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_str<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_str: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_string<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_string: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_bytes<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_bytes: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_byte_buf<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_byte_buf: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_option<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_option: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_unit<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_unit: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_unit_struct<V>(
@@ -201,7 +230,9 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_unit_struct: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_newtype_struct<V>(
@@ -212,14 +243,18 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_newtype_struct: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_seq<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_seq: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_tuple<V>(
@@ -230,7 +265,9 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_tuple: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_tuple_struct<V>(
@@ -242,14 +279,18 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_tuple_struct: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_map<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_map: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_struct<V>(
@@ -261,7 +302,9 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_struct: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_enum<V>(
@@ -273,21 +316,27 @@ impl<'de> de::Deserializer<'de> for &mut OffsetDateTimeDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_enum: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_identifier<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_identifier: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 
     fn deserialize_ignored_any<V>(self, _visitor: V) -> std::result::Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!("should not be called by OffsetDateTime deserializer")
+        Err(TtlvError::from(
+            "deserialize_ignored_any: Unsupported deserialization for OffsetDateTime",
+        ))
     }
 }
 
@@ -315,151 +364,77 @@ impl<'de> SeqAccess<'de> for OffsetDateTimeDeserializer {
 }
 
 #[cfg(test)]
-mod characterization_tests {
-    use serde::{Deserializer, de::IgnoredAny};
-    use time::macros::datetime;
+mod tests {
+    use serde::Deserialize;
 
-    use super::OffsetDateTimeDeserializer;
+    use super::*;
 
-    fn de() -> OffsetDateTimeDeserializer {
-        OffsetDateTimeDeserializer::new("ActivationDate", datetime!(2024-03-05 12:34:56 UTC))
+    #[test]
+    fn offset_date_time_rejects_every_unsupported_method() {
+        use serde::{Deserializer, de::IgnoredAny};
+
+        let de = || OffsetDateTimeDeserializer::new("DateTime", OffsetDateTime::UNIX_EPOCH);
+        let results = [
+            ("any", (&mut de()).deserialize_any(IgnoredAny)),
+            ("bool", (&mut de()).deserialize_bool(IgnoredAny)),
+            ("i64", (&mut de()).deserialize_i64(IgnoredAny)),
+            ("u64", (&mut de()).deserialize_u64(IgnoredAny)),
+            ("f32", (&mut de()).deserialize_f32(IgnoredAny)),
+            ("f64", (&mut de()).deserialize_f64(IgnoredAny)),
+            ("char", (&mut de()).deserialize_char(IgnoredAny)),
+            ("str", (&mut de()).deserialize_str(IgnoredAny)),
+            ("string", (&mut de()).deserialize_string(IgnoredAny)),
+            ("bytes", (&mut de()).deserialize_bytes(IgnoredAny)),
+            ("byte_buf", (&mut de()).deserialize_byte_buf(IgnoredAny)),
+            ("option", (&mut de()).deserialize_option(IgnoredAny)),
+            ("unit", (&mut de()).deserialize_unit(IgnoredAny)),
+            (
+                "unit_struct",
+                (&mut de()).deserialize_unit_struct("X", IgnoredAny),
+            ),
+            (
+                "newtype_struct",
+                (&mut de()).deserialize_newtype_struct("X", IgnoredAny),
+            ),
+            ("seq", (&mut de()).deserialize_seq(IgnoredAny)),
+            ("tuple", (&mut de()).deserialize_tuple(1, IgnoredAny)),
+            (
+                "tuple_struct",
+                (&mut de()).deserialize_tuple_struct("X", 1, IgnoredAny),
+            ),
+            ("map", (&mut de()).deserialize_map(IgnoredAny)),
+            (
+                "struct",
+                (&mut de()).deserialize_struct("X", &[], IgnoredAny),
+            ),
+            ("enum", (&mut de()).deserialize_enum("X", &[], IgnoredAny)),
+            ("identifier", (&mut de()).deserialize_identifier(IgnoredAny)),
+            (
+                "ignored_any",
+                (&mut de()).deserialize_ignored_any(IgnoredAny),
+            ),
+        ];
+        for (name, result) in results {
+            let error = result.expect_err("method is not an OffsetDateTime field");
+            assert_eq!(
+                error.to_string(),
+                format!("deserialize_{name}: Unsupported deserialization for OffsetDateTime")
+            );
+        }
     }
 
     #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_any_unsupported() {
-        drop((&mut de()).deserialize_any(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_bool_unsupported() {
-        drop((&mut de()).deserialize_bool(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_i64_unsupported() {
-        drop((&mut de()).deserialize_i64(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_u64_unsupported() {
-        drop((&mut de()).deserialize_u64(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_f32_unsupported() {
-        drop((&mut de()).deserialize_f32(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_f64_unsupported() {
-        drop((&mut de()).deserialize_f64(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_char_unsupported() {
-        drop((&mut de()).deserialize_char(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_str_unsupported() {
-        drop((&mut de()).deserialize_str(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_string_unsupported() {
-        drop((&mut de()).deserialize_string(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_bytes_unsupported() {
-        drop((&mut de()).deserialize_bytes(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_byte_buf_unsupported() {
-        drop((&mut de()).deserialize_byte_buf(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_option_unsupported() {
-        drop((&mut de()).deserialize_option(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_unit_unsupported() {
-        drop((&mut de()).deserialize_unit(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_unit_struct_unsupported() {
-        drop((&mut de()).deserialize_unit_struct("X", IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_newtype_struct_unsupported() {
-        drop((&mut de()).deserialize_newtype_struct("X", IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_seq_unsupported() {
-        drop((&mut de()).deserialize_seq(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_tuple_unsupported() {
-        drop((&mut de()).deserialize_tuple(1, IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_tuple_struct_unsupported() {
-        drop((&mut de()).deserialize_tuple_struct("X", 1, IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_map_unsupported() {
-        drop((&mut de()).deserialize_map(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_struct_unsupported() {
-        drop((&mut de()).deserialize_struct("X", &[], IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_enum_unsupported() {
-        drop((&mut de()).deserialize_enum("X", &[], IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_identifier_unsupported() {
-        drop((&mut de()).deserialize_identifier(IgnoredAny));
-    }
-
-    #[test]
-    #[should_panic(expected = "should not be called by OffsetDateTime deserializer")]
-    fn characterization_offset_date_time_deserializer_ignored_any_unsupported() {
-        drop((&mut de()).deserialize_ignored_any(IgnoredAny));
+    fn offset_date_time_rejects_unexpected_field_index() {
+        let mut de = OffsetDateTimeDeserializer {
+            tag: "DateTime".to_owned(),
+            dt: OffsetDateTime::UNIX_EPOCH,
+            index: 9,
+        };
+        let error = i32::deserialize(&mut de).expect_err("field index 9 is outside OffsetDateTime");
+        assert!(
+            error
+                .to_string()
+                .starts_with("deserialize_i32: unexpected OffsetDateTime field index 9")
+        );
     }
 }

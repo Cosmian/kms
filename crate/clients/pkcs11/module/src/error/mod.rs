@@ -113,7 +113,7 @@ pub enum ModuleError {
     #[error(transparent)]
     Backend(#[from] Box<dyn std::error::Error>),
     #[error(transparent)]
-    Pkcs1DerError(#[from] pkcs1::der::Error),
+    Der(#[from] der::Error),
     #[error(transparent)]
     ReadGuardError(#[from] PoisonError<RwLockReadGuard<'static, ObjectsStore>>),
     #[error(transparent)]
@@ -128,8 +128,8 @@ pub enum ModuleError {
     SignatureInvalid,
 }
 
-impl From<const_oid::Error> for ModuleError {
-    fn from(e: const_oid::Error) -> Self {
+impl From<der::oid::Error> for ModuleError {
+    fn from(e: der::oid::Error) -> Self {
         Self::Oid(e.to_string())
     }
 }
@@ -173,7 +173,7 @@ impl From<ModuleError> for CK_RV {
             | ModuleError::Todo(_)
             | ModuleError::Cryptography(_)
             | ModuleError::TryFromInt(_)
-            | ModuleError::Pkcs1DerError(_)
+            | ModuleError::Der(_)
             | ModuleError::Oid(_)
             | ModuleError::ReadGuardError(_)
             | ModuleError::WriteGuardError(_)

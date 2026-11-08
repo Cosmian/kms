@@ -1,4 +1,3 @@
-use argon2::Argon2;
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_crypto_core::reexport::tiny_keccak::{Hasher as _, Sha3};
 use sha2::{Digest, Sha256};
@@ -115,8 +114,7 @@ impl Hasher {
             }
             HashMethod::Argon2(salt) => {
                 let mut output = [0_u8; 32];
-                Argon2::default()
-                    .hash_password_into(data, salt, &mut output)
+                crate::crypto::password_derivation::argon2id(data, salt, &mut output)
                     .map_err(|e| AnoError::Argon2(e.to_string()))?;
 
                 Ok(output)
