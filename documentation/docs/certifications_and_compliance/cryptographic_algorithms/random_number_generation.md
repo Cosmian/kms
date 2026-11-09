@@ -368,8 +368,8 @@ OpenSSL — that feeds the FIPS module's random bit generator. Concretely, this 
    table, establishing the chain from noise source to DRBG seed to Approved algorithm output.
 
 Crucially, **the OpenSSL FIPS Provider's own Security Policy places the entropy source outside the module
-boundary**: "The Module relies on the use of a [SP 800-90B] compliant entropy source outside the Module
-boundary. The calling application is responsible for use of an [SP 800-90B] compliant entropy source..."
+boundary**: "The Module relies on the use of a \[SP 800-90B\] compliant entropy source outside the Module
+boundary. The calling application is responsible for use of an \[SP 800-90B\] compliant entropy source..."
 (OpenSSL FIPS Provider 3.1.2, FIPS 140-3 Non-Proprietary Security Policy, NIST CMVP Certificate #4985, §2.8
 "RBG and Entropy"). No OpenSSL version — vendored by Eviden, upgraded, or customer-supplied — carries an ESV
 certificate of its own; the entropy source is always a separate, platform-specific validation tied to the
@@ -444,8 +444,8 @@ obtaining a FIPS 140-3 certificate would say nothing on its own about its entrop
 
 - Every OpenSSL FIPS Provider Security Policy examined (the only one currently validated, NIST CMVP
   Certificate #4985, version 3.1.2) places the entropy source **outside the module's cryptographic boundary**:
-  "The Module relies on the use of a [SP800-90B] compliant entropy source outside the Module boundary. The
-  calling application is responsible for use of an [SP800-90B] compliant entropy source..." (§2.8). This is an
+  "The Module relies on the use of a \[SP800-90B\] compliant entropy source outside the Module boundary. The
+  calling application is responsible for use of an \[SP800-90B\] compliant entropy source..." (§2.8). This is an
   architectural property of how the OpenSSL FIPS provider is designed (entropy supplied via callback from the
   calling application), not something that changes when new algorithms (PQC or otherwise) are added to the
   Approved Algorithms table. A future validated 3.5+ release would be expected to follow the same pattern
@@ -453,7 +453,7 @@ obtaining a FIPS 140-3 certificate would say nothing on its own about its entrop
 - The default entropy source OpenSSL's FIPS provider is built against is `os` (the operating system RNG) per
   `README-FIPS.md`, which is not itself ESV-certified by that validation. The only documented path to an
   ESV-referenced entropy claim is the `enable-fips-jitter` build option (OpenSSL ≥3.5), and even then only
-  "unless an entropy assessment [ESV] and validation through the [CMVP] are additionally conducted" — i.e., a
+  "unless an entropy assessment \[ESV\] and validation through the \[CMVP\] are additionally conducted" — i.e., a
   **separate** ESV submission specific to that jitter-entropy build, independent of the main FIPS 140-3 module
   validation. As of this research, no OpenSSL release — at any version — has a published Security Policy that
   references an ESV certificate.
