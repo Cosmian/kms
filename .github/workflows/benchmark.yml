@@ -76,9 +76,20 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      # bench:load (built from source), bench:hsm and bench:pkcs11 run inside nix-shell (not preinstalled on the benchmark runner).
-      - uses: ./.github/actions/setup-nix
+      # bench:load (built from source), bench:hsm and bench:pkcs11 run inside nix-shell. The self-hosted runner keeps /nix
+      # between runs and the installer aborts on an existing install, so only install when nix-shell is missing.
+      - name: Detect Nix
+        id: nix
         if: inputs.server_version == ''
+        run: |
+          NIX_BIN=/nix/var/nix/profiles/default/bin
+          if [[ -x "$NIX_BIN/nix-shell" ]]; then
+            echo "$NIX_BIN" >> "$GITHUB_PATH"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: ./.github/actions/setup-nix
+        if: inputs.server_version == '' && steps.nix.outputs.present != 'true'
 
       - name: Install system dependencies
         run: |
