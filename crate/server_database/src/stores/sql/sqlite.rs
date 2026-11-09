@@ -1,4 +1,4 @@
-// SQLite backend implementation using tokio-rusqlite
+// SQLite backend implementation on top of rusqlite
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -21,7 +21,6 @@ use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
-use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
 use super::{
@@ -47,6 +46,56 @@ use crate::{
         sqlite_queries,
     },
 };
+
+/// Async handle over a `rusqlite` connection; blocking calls run on tokio's blocking pool.
+/// The mutex serialises access to the connection; readers stay parallel because each reader
+/// is its own `Connection`. Dropping the last clone closes the `SQLite` handle synchronously.
+#[derive(Clone)]
+struct Connection(Arc<std::sync::Mutex<rusqlite::Connection>>);
+
+impl Connection {
+    async fn open(path: &Path) -> DbResult<Self> {
+        let path = path.to_path_buf();
+        let conn = tokio::task::spawn_blocking(move || rusqlite::Connection::open(path))
+            .await
+            .map_err(|e| DbError::DatabaseError(format!("sqlite open task failed: {e}")))??;
+        Ok(Self(Arc::new(std::sync::Mutex::new(conn))))
+    }
+
+    async fn call<F, R, E>(&self, f: F) -> DbResult<R>
+    where
+        F: FnOnce(&mut rusqlite::Connection) -> Result<R, E> + Send + 'static,
+        R: Send + 'static,
+        E: Into<DbError> + Send + 'static,
+    {
+        let conn = Arc::clone(&self.0);
+        tokio::task::spawn_blocking(move || {
+            let mut guard = conn
+                .lock()
+                .map_err(|e| DbError::DatabaseError(format!("sqlite connection poisoned: {e}")))?;
+            f(&mut guard).map_err(Into::into)
+        })
+        .await
+        .map_err(|e| DbError::DatabaseError(format!("sqlite task failed: {e}")))?
+    }
+}
+
+/// Maps a `rusqlite` error from an object insert, turning a constraint violation into
+/// an "already exists" KMIP error.
+fn map_insert_error(error: rusqlite::Error) -> DbError {
+    match error {
+        rusqlite::Error::SqliteFailure(sqlite_error, _)
+            if sqlite_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            DbError::Kmip21Error(
+                ErrorReason::Object_Already_Exists,
+                "one or more objects already exist".to_owned(),
+            )
+        }
+        other => DbError::from(other),
+    }
+}
+
 /// `SQLite` flavour of the shared queries (`$n` placeholders rewritten to `?n`).
 fn sqlite_converted_queries() -> DbResult<&'static HashMap<String, String>> {
     static CELL: OnceLock<HashMap<String, String>> = OnceLock::new();
@@ -85,9 +134,8 @@ fn is_transient_lock_error(error: &DbError) -> bool {
 /// against contention from other connections. It cannot help while a connection is being
 /// opened, nor while a fresh writer is bootstrapping its schema against a database file whose
 /// previous writer connection (e.g. from an immediately-preceding `KMS` instance in the same
-/// process, as in some tests) has not finished releasing its lock yet — `tokio-rusqlite`
-/// connections close their underlying `SQLite` handle asynchronously on drop, with no
-/// synchronization point available to callers. This retry loop absorbs that narrow window.
+/// process, as in some tests) has not finished releasing its lock yet. This retry loop
+/// absorbs that narrow window, as well as contention from other processes and connections.
 async fn retry_on_transient_lock<T, F, Fut>(mut operation: F) -> DbResult<T>
 where
     F: FnMut() -> Fut,
@@ -134,7 +182,7 @@ impl SqlitePool {
             // closing yet (see `retry_on_transient_lock` for details), so this whole
             // open-and-configure step is retried on a transient lock error.
             let conn = retry_on_transient_lock(|| async {
-                let conn = Connection::open(path).await.map_err(DbError::from)?;
+                let conn = Connection::open(path).await?;
                 conn.call(
                     |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         c.execute_batch(
@@ -153,8 +201,7 @@ impl SqlitePool {
                         )
                     },
                 )
-                .await
-                .map_err(DbError::from)?;
+                .await?;
                 Ok(conn)
             })
             .await?;
@@ -277,7 +324,6 @@ impl SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -358,9 +404,7 @@ impl SqlitePool {
                         Ok(())
                     },
                 )
-                .await
-                .map_err(DbError::from)
-        })
+                .await})
         .await?;
         if !backfill_done {
             pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
@@ -411,7 +455,6 @@ impl SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             })
             .await?;
             pool.set_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true")
@@ -457,7 +500,6 @@ impl SqlitePool {
                     },
                 )
                 .await
-                .map_err(DbError::from)
         })
         .await?;
 
@@ -472,7 +514,6 @@ impl SqlitePool {
                     },
                 )
                 .await
-                .map_err(DbError::from)
         })
         .await?;
 
@@ -503,8 +544,7 @@ impl SqlitePool {
                         .optional()
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(res)
     }
 
@@ -525,7 +565,6 @@ impl SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -536,7 +575,6 @@ impl SqlitePool {
         self.writer
             .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
             .await
-            .map_err(DbError::from)
     }
 }
 
@@ -619,42 +657,31 @@ impl ObjectsStore for SqlitePool {
         let tags_owned: HashSet<String> = tags.clone();
         let uid_for_closure = uid.clone();
         self.writer
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    let tx = c.transaction()?;
+            .call(move |c: &mut rusqlite::Connection| -> DbResult<()> {
+                let tx = c.transaction().map_err(map_insert_error)?;
+                tx.execute(
+                    insert_object,
+                    rusqlite::params![
+                        uid_for_closure,
+                        object_json,
+                        attributes_json,
+                        state_s,
+                        owner_s,
+                        wrapping_key_id,
+                    ],
+                )
+                .map_err(map_insert_error)?;
+                for tag in &tags_owned {
                     tx.execute(
-                        insert_object,
-                        rusqlite::params![
-                            uid_for_closure,
-                            object_json,
-                            attributes_json,
-                            state_s,
-                            owner_s,
-                            wrapping_key_id,
-                        ],
-                    )?;
-                    for tag in &tags_owned {
-                        tx.execute(
-                            insert_tag,
-                            params_from_iter([&uid_for_closure, tag.as_str()]),
-                        )?;
-                    }
-                    tx.commit()?;
-                    Ok(())
-                },
-            )
-            .await
-            .map_err(|error| match error {
-                tokio_rusqlite::Error::Error(rusqlite::Error::SqliteFailure(sqlite_error, _))
-                    if sqlite_error.code == rusqlite::ErrorCode::ConstraintViolation =>
-                {
-                    InterfaceError::from(DbError::Kmip21Error(
-                        ErrorReason::Object_Already_Exists,
-                        "one or more objects already exist".to_owned(),
-                    ))
+                        insert_tag,
+                        params_from_iter([&uid_for_closure, tag.as_str()]),
+                    )
+                    .map_err(map_insert_error)?;
                 }
-                other => InterfaceError::from(DbError::from(other)),
-            })?;
+                tx.commit().map_err(map_insert_error)?;
+                Ok(())
+            })
+            .await?;
         Ok(uid)
     }
 
@@ -671,8 +698,7 @@ impl ObjectsStore for SqlitePool {
                     .optional()?;
                 Ok(row)
             })
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(res)
     }
 
@@ -696,8 +722,7 @@ impl ObjectsStore for SqlitePool {
                     .optional()?;
                 Ok(row)
             })
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(res)
     }
 
@@ -718,8 +743,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(tags)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(tags)
     }
 
@@ -760,8 +784,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -778,8 +801,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -799,8 +821,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -824,11 +845,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(uids)
                 },
             )
-            .await
-            .map_err(|e| match e {
-                tokio_rusqlite::Error::Error(db_err) => db_err,
-                other => DbError::from(other),
-            })?;
+            .await?;
         Ok(v)
     }
 
@@ -845,8 +862,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(exists)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(owned)
     }
 
@@ -882,8 +898,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(ids)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(set)
     }
 
@@ -962,8 +977,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(rows)
     }
 
@@ -991,8 +1005,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
 
         Ok(filter_due_for_rotation(
             rows.into_iter().map(|(uid, owner, attrs_json)| {
@@ -1044,8 +1057,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
 
         let mut results = Vec::with_capacity(rows.len());
         for (uid, attrs_json) in rows {
@@ -1095,8 +1107,7 @@ impl ObjectsStore for SqlitePool {
                     c.query_row(sql, [], |row| row.get(0))
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(count)
     }
 
@@ -1111,8 +1122,7 @@ impl ObjectsStore for SqlitePool {
                     c.query_row(sql, [], |row| row.get(0))
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(count)
     }
 }
@@ -1138,7 +1148,6 @@ impl Migrate for SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -1164,7 +1173,6 @@ impl Migrate for SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -1205,8 +1213,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(ids)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(list)
     }
 
@@ -1230,8 +1237,7 @@ impl PermissionsStore for SqlitePool {
                 }
                 Ok(ids)
             })
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(map)
     }
 
@@ -1268,8 +1274,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1310,8 +1315,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1353,8 +1357,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1372,8 +1375,7 @@ impl PermissionsStore for SqlitePool {
                         .optional()
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(result)
     }
 
@@ -1386,8 +1388,7 @@ impl PermissionsStore for SqlitePool {
                     c.query_row(sql, [], |row| row.get(0))
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(count > 0)
     }
 
@@ -1408,8 +1409,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1446,8 +1446,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1467,8 +1466,7 @@ impl PermissionsStore for SqlitePool {
                     .optional()
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(result)
     }
 
@@ -1487,8 +1485,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(result)
     }
 
@@ -1505,8 +1502,7 @@ impl PermissionsStore for SqlitePool {
                         .map(Option::flatten)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(max.map(crl_number_from_sql))
     }
 }
@@ -1527,7 +1523,7 @@ impl SqlitePool {
                 LocateParam::I64(i) => rusqlite::types::Value::Integer(i),
             })
             .collect();
-        Ok(self
+        self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<
@@ -1554,7 +1550,7 @@ impl SqlitePool {
                     Ok(out)
                 },
             )
-            .await?)
+            .await
     }
 
     async fn perms(&self, uid: &str, userid: &str) -> DbResult<HashSet<KmipOperation>> {
@@ -1575,7 +1571,6 @@ impl SqlitePool {
                 Ok(res.unwrap_or_default())
             })
             .await
-            .map_err(DbError::from)
     }
 }
 

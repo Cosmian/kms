@@ -438,6 +438,38 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     Ok(())
 }
 
+/// Creating an object whose UID already exists must report `ObjectAlreadyExists`
+/// (the `SQLite` backend maps a constraint violation), not a generic DB error.
+pub(super) async fn create_duplicate_uid_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    log_init(None);
+    let key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[7_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let uid = Uuid::new_v4().to_string();
+    let owner = UserId::from("duplicate_owner");
+    db.create(
+        Some(uid.clone()),
+        &owner,
+        &key,
+        key.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+    let second = db
+        .create(Some(uid), &owner, &key, key.attributes()?, &HashSet::new())
+        .await;
+    assert!(
+        matches!(second, Err(InterfaceError::ObjectAlreadyExists(_))),
+        "expected ObjectAlreadyExists, got {second:?}"
+    );
+    Ok(())
+}
+
 /// Test that any legacy value (`0x8000_000D`) is correctly migrated
 /// to `BlockCipherMode::AESKeyWrapPadding` (`0x0000_000C`) when objects are retrieved from the database.
 /// This ensures backward compatibility with some databases that might have been created by KMS versions prior to 5.15.
