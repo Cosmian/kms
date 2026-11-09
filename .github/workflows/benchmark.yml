@@ -27,14 +27,17 @@ on:
       server_version:
         description: KMS server version to benchmark (e.g. 5.24.0); omit to build from the selected branch
         required: false
+        type: string
         default: ''
       variant:
         description: Build variant (fips|non-fips)
         required: false
+        type: string
         default: non-fips
       bench_mode:
         description: Benchmark mode (all|encrypt|key-creation|sign-verify|batch)
         required: false
+        type: string
         default: all
 
   # Nightly on the default branch (develop; schedules only run there): benchmark develop and
@@ -73,9 +76,9 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      # bench:hsm / bench:pkcs11 re-exec inside nix-shell (not preinstalled on the benchmark runner).
+      # bench:load (built from source), bench:hsm and bench:pkcs11 run inside nix-shell (not preinstalled on the benchmark runner).
       - uses: ./.github/actions/setup-nix
-        if: inputs.server_version == '' && github.event_name != 'schedule'
+        if: inputs.server_version == ''
 
       - name: Install system dependencies
         run: |
@@ -89,8 +92,14 @@ jobs:
       - name: Run software baseline benchmark (bench:load)
         run: |
           ARGS=(--variant "${{ inputs.variant || 'non-fips' }}" --mode "${{ inputs.bench_mode || 'all' }}" --criterion)
-          [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
-          mise run bench:load "${ARGS[@]}"
+          if [[ -n "${{ inputs.server_version }}" ]]; then
+            mise run bench:load "${ARGS[@]}" --server-version "${{ inputs.server_version }}"
+          else
+            # Outside nix-shell, crate/crypto/build.rs silently falls back to the runner's system OpenSSL 3.0.13
+            # (no ML-KEM/ML-DSA/SLH-DSA/AES-GCM-SIV): those benchmarks are skipped and cannot be compared.
+            nix-shell shell.nix --argstr variant "${{ inputs.variant || 'non-fips' }}" \
+              --run "mise run bench:load ${ARGS[*]@Q}"
+          fi
 
       # The steps below always benchmark the checked-out code (no --server-version support), so
       # running them for a released version would publish checkout numbers under that version.
