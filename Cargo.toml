@@ -332,7 +332,7 @@ rcgen = { version = "0.14", default-features = false }
 redis = "1.6"
 regex = { version = "1.11", default-features = false }
 reqwest = { version = "0.12", default-features = false }
-rusqlite = "0.37"
+rusqlite = "0.41"
 rust-ini = "0.21"
 rustls = { version = "0.23", default-features = false }
 schemars = "1"
@@ -354,7 +354,6 @@ thiserror = "2.0"
 time = "0.3"
 tokio = { version = "1.44", default-features = false }
 tokio-postgres = { version = "0.7.18", default-features = false }
-tokio-rusqlite = "0.7"
 tokio-stream = "0.1"
 toml = "0.9"
 tonic = "0.12"
