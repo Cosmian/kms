@@ -32,7 +32,7 @@ If anything else wrote to the key in the meantime, the condition fails and the
 rotation is rejected with a `Conflict` error. No lock is held while the
 replacement key is generated, so a slow rotation never blocks other requests.
 
-## The two phases
+## One atomic commit
 
 ```mermaid
 sequenceDiagram
@@ -42,30 +42,28 @@ sequenceDiagram
 
     A->>DB: read old key (version v)
     B->>DB: read old key (version v)
-    Note over A,B: each generates its own replacement
-    A->>DB: Phase 1: claim old key if version = v,<br/>create replacement A (one atomic batch)
+    Note over A,B: each prepares its replacement and dependant updates in memory
+    A->>DB: one atomic batch: create replacement A,<br/>retire old key if version = v, rewrap dependants
     DB-->>A: OK (old key is now at version v+1)
-    B->>DB: Phase 1: claim old key if version = v,<br/>create replacement B (one atomic batch)
+    B->>DB: one atomic batch: create replacement B,<br/>retire old key if version = v, rewrap dependants
     DB-->>B: Conflict, nothing persisted
-    A->>DB: Phase 2: retire old key if version = v+1<br/>(links, Deactivated), rewrap dependants
-    DB-->>A: OK
 ```
 
-1. **Phase 1, claim.** The old key is rewritten **unchanged**, conditional on
-   version `v`, in the **same atomic batch** that creates the replacement
-   object(s). The write bumps the version to `v + 1`. If another writer got
-   there first, the whole batch is rejected and **nothing is persisted**, so
-   the losing request leaves no orphan behind.
-2. **Phase 2, retire.** The old key is updated with its `ReplacementObjectLink`
-   and moved to `Deactivated` (when it was `Active`), conditional on version
-   `v + 1`, the value left by the claim. Dependants wrapped by the old key are
-   then re-wrapped. Any write to the old key between the two phases makes this
-   step fail with `Conflict`; the server then deletes the replacement objects
-   it created (best effort) so the failed request does not leave orphans
-   either.
+The server prepares the replacement keys, the retirement of the old key
+(`ReplacementObjectLink`, `Deactivated` when it was `Active`) and the re-wrapped
+dependants entirely in memory. It then commits all of them in **one atomic
+batch**, in which the old key is updated only if its version is still `v`.
+
+- If another writer changed the key first, the whole batch is rejected with
+  `Conflict` and **nothing is persisted**.
+- A replacement key becomes visible only when the whole rotation commits, so a
+  client can never encrypt with a replacement that is later rolled back. The
+  server never deletes key material it has already published.
+- A request that is slow to prepare its replacement never blocks other requests.
 
 The same pipeline backs `Re-Key`, `Re-Key Key Pair` and `Re-Certify`, so all
-three operations are protected.
+three operations are protected. For a key pair, the batch covers the private
+key, the public key and both replacements.
 
 !!! note
     Keys stored in an HSM have no version, so the check does not apply to them.
@@ -76,15 +74,17 @@ three operations are protected.
 
 The losing request fails with a `Conflict` error. The error means the old key
 was modified concurrently; it does not mean the rotation is impossible. How it
-reaches the client depends on the protocol:
+reaches the client depends on the request envelope, not on whether the client
+is a REST or a KMIP client:
 
-| Protocol                                                         | What the client receives                                                                                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST endpoints (HTTP)                                            | HTTP status `409 Conflict`.                                                                                                                       |
-| KMIP `RequestMessage` batch item (binary TTLV, socket server, JSON) | `Result Status` = `Operation Failed`, `Result Reason` = `General Failure`, and a `Result Message` starting with `Conflict:`. There is no 409 here. |
+| Request | What the client receives |
+| ------- | ------------------------ |
+| A single operation sent as JSON TTLV to `POST /kmip/2_1` (the `ckms` CLI and the Web UI use this form) | HTTP status `409 Conflict`; the plain-text body starts with `Conflict:`. There is no KMIP result message. |
+| A KMIP `RequestMessage` batch item (binary TTLV, socket server, or JSON `RequestMessage`) | `Result Status` = `Operation Failed`, `Result Reason` = `General Failure`, and a `Result Message` starting with `Conflict:`. There is no 409 here. |
 
-KMIP defines no result reason for an optimistic-lock failure, so a KMIP client
-must recognise a lost race by the `Conflict:` prefix of the result message.
+KMIP defines no result reason for an optimistic-lock failure, so a client that
+sends a `RequestMessage` must recognise a lost race by the `Conflict:` prefix of
+the result message.
 
 Before retrying a manual rotation, **look at the old key**:
 
