@@ -8,6 +8,4 @@ ignore = [
   "RUSTSEC-2023-0071",
   # crypto-bigint 0.5.5 via elliptic-curve 0.13 (jsonwebtoken, optional pgp); no 0.5.x patch, see deny.toml
   "RUSTSEC-2026-0387",
-  # SQLite < 3.54 uninitialised memory via a crafted -wal; fix blocked by tokio-rusqlite, see deny.toml
-  "RUSTSEC-2026-0459",
 ]

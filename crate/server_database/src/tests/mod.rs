@@ -25,8 +25,8 @@ use crate::{
     tests::{
         database_tests::{
             atomic, block_cipher_mode_migration_after_json_deserialization,
-            count_non_destroyed_keys_test, find_due_for_rotation_test, find_with_options_test,
-            wrapping_key_link_test,
+            count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
+            find_with_options_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -142,6 +142,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Box::pin(atomic(&get_sqlite(&db_file).await?)).await?;
     upsert(&get_sqlite(&db_file).await?).await?;
     crud(&get_sqlite(&db_file).await?).await?;
+    create_duplicate_uid_test(&get_sqlite(&db_file).await?).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
     find_due_for_rotation_test(&get_sqlite(&db_file).await?).await?;

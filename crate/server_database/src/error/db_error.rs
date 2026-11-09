@@ -190,21 +190,6 @@ impl From<rusqlite::Error> for DbError {
     }
 }
 
-impl<E: std::error::Error + Send + Sync + 'static> From<tokio_rusqlite::Error<E>> for DbError {
-    fn from(e: tokio_rusqlite::Error<E>) -> Self {
-        // The error type is generic across tokio-rusqlite versions; rely on string content.
-        let msg = e.to_string();
-        if msg.contains("Query is not read-only") {
-            Self::Kmip21Error(
-                ErrorReason::Object_Already_Exists,
-                "one or more objects already exist".to_owned(),
-            )
-        } else {
-            Self::SqlError(msg)
-        }
-    }
-}
-
 impl From<tokio_postgres::Error> for DbError {
     fn from(e: tokio_postgres::Error) -> Self {
         // Normalize common constraint violations to user-friendly messages

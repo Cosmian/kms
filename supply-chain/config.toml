@@ -668,7 +668,7 @@ version = "2.7.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.hashlink]]
-version = "0.10.0"
+version = "0.12.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.hkdf]]
@@ -815,7 +815,7 @@ version = "0.1.18"
 criteria = "safe-to-deploy"
 
 [[exemptions.libsqlite3-sys]]
-version = "0.35.0"
+version = "0.39.1"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
@@ -1203,8 +1203,13 @@ criteria = "safe-to-deploy"
 version = "0.9.10"
 criteria = "safe-to-deploy"
 
+[[exemptions.rsqlite-vfs]]
+version = "0.2.0"
+criteria = "safe-to-deploy"
+notes = "wasm-only transitive dependency of rusqlite 0.41 (libsqlite3-sys) — unaudited, pending review"
+
 [[exemptions.rusqlite]]
-version = "0.37.0"
+version = "0.41.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rust-ini]]
@@ -1391,6 +1396,11 @@ version = "0.8.1"
 criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 0.8.1) — unaudited, pending review"
 
+[[exemptions.sqlite-wasm-rs]]
+version = "0.6.2"
+criteria = "safe-to-deploy"
+notes = "wasm-only transitive dependency of rusqlite 0.41 (libsqlite3-sys) — unaudited, pending review"
+
 [[exemptions.stable_deref_trait]]
 version = "1.2.1"
 criteria = "safe-to-deploy"
@@ -1449,10 +1459,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tokio-postgres]]
 version = "0.7.18"
-criteria = "safe-to-deploy"
-
-[[exemptions.tokio-rusqlite]]
-version = "0.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tokio-tungstenite]]
