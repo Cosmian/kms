@@ -144,7 +144,11 @@ pub(crate) async fn retrieve_object_for_operation(
 
             // KMIP 2.1 §4.57 time-based transitions. A refreshed snapshot already carries the
             // transition persisted on its first pass, so it is never transitioned again.
-            if !refreshed && let Some(target) = due_lifecycle_transition(&owm, effective_state)? {
+            // Activate performs PreActive → Active itself and must still see PreActive.
+            if !refreshed
+                && operation_type != KmipOperation::Activate
+                && let Some(target) = due_lifecycle_transition(&owm, effective_state)?
+            {
                 trace!(
                     "Auto-transitioning object {} from {effective_state} to {target}",
                     owm.id()
@@ -391,6 +395,34 @@ mod tests {
             assert!(owm.version().is_some(), "{case}: SQLite tracks versions");
             assert_eq!(owm.version(), stored.version(), "{case}: returned version");
         }
+        Ok(())
+    }
+
+    /// `Activate` must see a `PreActive` object even when its `ActivationDate` has passed,
+    /// otherwise the explicit Activate would be rejected as Active → Active.
+    #[tokio::test]
+    async fn test_activate_retrieval_skips_auto_transition() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("retrieve_activate_owner@example.com");
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            state: Some(State::PreActive),
+            activation_date: Some(time_normalize()? - Duration::hours(1)),
+            ..Attributes::default()
+        };
+        let object = create_symmetric_key_kmip_object("x-vendor", &[7_u8; 32], &attributes)?;
+        let uid = kms
+            .database
+            .create(None, &owner, &object, &attributes, &HashSet::new())
+            .await?;
+        let owm = retrieve_object_for_operation(
+            ObjectHandle::from(uid.as_str()),
+            KmipOperation::Activate,
+            &kms,
+            &owner,
+        )
+        .await?;
+        assert_eq!(owm.state(), State::PreActive);
         Ok(())
     }
 
