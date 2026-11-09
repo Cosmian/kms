@@ -187,10 +187,10 @@ async fn finish_rotation(
     old_interval: Option<i64>,
     new_uid_result: KResult<String>,
 ) -> KResult<()> {
-    // Phase 1 of the rotation claims the key's version, so a concurrent write makes this
-    // rotation fail with `Conflict` before persisting anything. If that write was another
-    // rotation, the key is now Deactivated and leaves `find_due_for_rotation`; otherwise
-    // it is still due and the next tick rotates it.
+    // The rotation commits against the key's version as read, so a concurrent write makes it
+    // fail with `Conflict` without persisting anything. If that write was another rotation,
+    // the key is now Deactivated and leaves `find_due_for_rotation`; otherwise it is still
+    // due and the next tick rotates it.
     if let Err(KmsError::Conflict(msg)) = &new_uid_result {
         info!(
             "[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check"
@@ -1414,6 +1414,183 @@ mod tests {
         let failure = Err(KmsError::ServerError("boom".to_owned()));
         let result = finish_rotation(&kms, "uid", &owner, "AES", None, failure).await;
         assert!(matches!(result, Err(KmsError::ServerError(_))));
+        Ok(())
+    }
+
+    // ── Certificates whose lifecycle dates elapsed before the renewal ─────────
+
+    /// Issue a self-signed EC certificate (and its key pair) owned by `owner`.
+    async fn certify_self_signed(kms: &crate::core::KMS, owner: &UserId) -> KResult<String> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            kmip_operations::Certify,
+            kmip_types::{CertificateAttributes, CryptographicDomainParameters, RecommendedCurve},
+        };
+
+        let certify_req = Certify {
+            attributes: Some(Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                    recommended_curve: Some(RecommendedCurve::P256),
+                    ..CryptographicDomainParameters::default()
+                }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
+                certificate_attributes: Some(CertificateAttributes::parse_subject_line(
+                    "CN=elapsed-lifecycle-test",
+                )?),
+                ..Attributes::default()
+            }),
+            ..Certify::default()
+        };
+        Ok(kms
+            .certify(certify_req, owner)
+            .await?
+            .unique_identifier
+            .to_string())
+    }
+
+    /// Store `state` (column and attributes) on the certificate and apply `edit` to its
+    /// attributes, bypassing the lifecycle so the dates can be backdated.
+    async fn rewrite_certificate(
+        kms: &crate::core::KMS,
+        cert_id: &str,
+        state: State,
+        edit: impl FnOnce(&mut Attributes),
+    ) -> KResult<()> {
+        let owm = kms
+            .database
+            .retrieve_object(cert_id)
+            .await?
+            .expect("certificate must exist");
+        let mut attributes = owm.attributes().clone();
+        attributes.state = Some(state);
+        edit(&mut attributes);
+        kms.database
+            .update_object(cert_id, owm.object(), &attributes, None)
+            .await?;
+        kms.database.update_state(cert_id, state).await?;
+        Ok(())
+    }
+
+    /// Assert that `old_id` was renewed: it is Deactivated with a `ReplacementObjectLink` to a
+    /// persisted certificate whose `ReplacedObjectLink` points back. Returns the successor.
+    async fn assert_renewed(
+        kms: &crate::core::KMS,
+        old_id: &str,
+    ) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata>
+    {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            kmip_objects::ObjectType, kmip_types::LinkType,
+        };
+
+        let old = kms
+            .database
+            .retrieve_object(old_id)
+            .await?
+            .expect("old certificate must still exist");
+        assert_eq!(old.state(), State::Deactivated, "old certificate {old_id}");
+        let new_id = old
+            .attributes()
+            .get_link(LinkType::ReplacementObjectLink)
+            .expect("old certificate must link its replacement")
+            .to_string();
+        let new = kms
+            .database
+            .retrieve_object(&new_id)
+            .await?
+            .expect("replacement certificate must be persisted");
+        assert_eq!(new.object().object_type(), ObjectType::Certificate);
+        assert_eq!(
+            new.attributes()
+                .get_link(LinkType::ReplacedObjectLink)
+                .map(|link| link.to_string()),
+            Some(old_id.to_owned()),
+            "replacement {new_id} must link the certificate it replaces"
+        );
+        Ok(new)
+    }
+
+    /// `ReCertify` renews a certificate whose Activation and/or Deactivation Date elapsed
+    /// before the request. Retrieval persists the automatic transition (bumping the stored
+    /// version); the renewal must commit against that write instead of conflicting with it.
+    #[tokio::test]
+    async fn test_recertify_after_elapsed_lifecycle_dates() -> KResult<()> {
+        use super::ReCertify;
+
+        let kms = test_kms().await?;
+        let owner = UserId::from("recertify_elapsed_dates@example.com");
+        let now = time::OffsetDateTime::now_utc();
+        // (stored state, Deactivation Date): activation elapsed → Active, then retired by the
+        // renewal; deactivation elapsed → Deactivated; both elapsed → Deactivated.
+        let cases = [
+            (State::PreActive, None),
+            (State::Active, Some(now - time::Duration::hours(1))),
+            (State::PreActive, Some(now - time::Duration::hours(1))),
+        ];
+        for (stored_state, deactivation_date) in cases {
+            let cert_id = certify_self_signed(&kms, &owner).await?;
+            rewrite_certificate(&kms, &cert_id, stored_state, |attributes| {
+                attributes.activation_date = Some(now - time::Duration::hours(2));
+                attributes.deactivation_date = deactivation_date;
+            })
+            .await?;
+
+            let new_id = kms
+                .recertify(
+                    ReCertify {
+                        unique_identifier: Some(UniqueIdentifier::TextString(cert_id.clone())),
+                        certificate_request_unique_identifier: None,
+                        offset: None,
+                        attributes: None,
+                        certificate_request_type: None,
+                        certificate_request_value: None,
+                        protection_storage_masks: None,
+                    },
+                    &owner,
+                )
+                .await?
+                .unique_identifier
+                .to_string();
+
+            let new = assert_renewed(&kms, &cert_id).await?;
+            assert_eq!(
+                new.id(),
+                new_id,
+                "{stored_state}: response names the successor"
+            );
+        }
+        Ok(())
+    }
+
+    /// The scheduler renews, on its first tick, a due Active certificate whose Deactivation
+    /// Date has elapsed (the renewal used to `Conflict` with the automatic deactivation it
+    /// triggered, and was skipped on every tick), and re-arms the successor's rotation policy.
+    #[tokio::test]
+    async fn test_auto_rotation_renews_certificate_with_elapsed_deactivation() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("auto_rotate_elapsed_deactivation@example.com");
+        let now = time::OffsetDateTime::now_utc();
+        let cert_id = certify_self_signed(&kms, &owner).await?;
+        rewrite_certificate(&kms, &cert_id, State::Active, |attributes| {
+            attributes.rotate_automatic = Some(true);
+            attributes.rotate_interval = Some(3600);
+            attributes.initial_date = Some(now - time::Duration::hours(2));
+            attributes.deactivation_date = Some(now - time::Duration::hours(1));
+        })
+        .await?;
+
+        run_auto_rotation(&kms).await;
+
+        let new = assert_renewed(&kms, &cert_id).await?;
+        assert_eq!(new.attributes().rotate_automatic, Some(true));
+        assert_eq!(new.attributes().rotate_interval, Some(3600));
+        let due = kms
+            .database
+            .find_due_for_rotation(time::OffsetDateTime::now_utc())
+            .await?;
+        assert!(
+            !due.iter().any(|(uid, _)| uid == &cert_id),
+            "the renewed certificate must leave the rotation schedule"
+        );
         Ok(())
     }
 }

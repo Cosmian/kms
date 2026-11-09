@@ -329,17 +329,17 @@ impl RekeyOperation for CertificateRekey {
         std::future::ready(Ok(()))
     }
 
-    async fn finalize_dependants(
+    async fn prepare_finalization(
         &self,
         kms: &KMS,
         user: &UserId,
         candidates: &[RotationCandidate; 1],
         replacements: &[ReplacementObject; 1],
-    ) -> KResult<()> {
+    ) -> KResult<Vec<AtomicOperation>> {
         let [candidate] = candidates;
         let [replacement] = replacements;
 
-        // Phase 2: Update the old certificate with ReplacementObjectLink; only an Active
+        // Prepare the old certificate's ReplacementObjectLink; only an Active
         // certificate is retired (Deactivation Date = now, §4.57 transition 6).
         let deactivate = candidate.owm.effective_state() == State::Active;
         let mut old_object = candidate.owm.object().clone();
@@ -376,8 +376,7 @@ impl RekeyOperation for CertificateRekey {
         )
         .await?;
 
-        kms.database.atomic(user, &operations).await?;
-        Ok(())
+        Ok(operations)
     }
 
     fn build_response(&self, replacements: &[ReplacementObject; 1]) -> ReCertifyResponse {

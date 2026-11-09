@@ -4,6 +4,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_attributes::Attributes,
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
             kmip_objects::{Object, ObjectType},
             kmip_types::{
@@ -448,15 +449,42 @@ async fn wrap_using_kms(
         )));
     }
 
-    // If the wrapping key is itself wrapped, we must unwrap it first
-    let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
-        debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
-        let mut obj = wrapping_key.object().clone();
-        Box::pin(unwrap_stored_object(&mut obj, kms, user)).await?;
-        obj
-    } else {
-        wrapping_key.object().clone()
-    };
+    wrap_with_local_key(
+        object,
+        key_wrapping_specification,
+        kms,
+        user,
+        wrapping_key.object(),
+        wrapping_key.attributes(),
+    )
+    .await
+}
+
+/// Wrap with an already authorized, Active software key, including an unpublished replacement.
+///
+/// Callers must check ownership/grants and lifecycle state before calling this helper.
+pub(crate) async fn wrap_with_local_key(
+    object: &mut Object,
+    key_wrapping_specification: &KeyWrappingSpecification,
+    kms: &KMS,
+    user: &UserId,
+    wrapping_key: &Object,
+    wrapping_attributes: &Attributes,
+) -> KResult<()> {
+    let wrapping_key_uid = key_wrapping_specification
+        .encryption_key_information
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest("missing wrapping key identifier".to_owned()))?
+        .unique_identifier
+        .as_str()
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("wrapping key identifier is not a string".to_owned())
+        })?;
+    // If the wrapping key is itself wrapped, we must unwrap it first.
+    let mut wrapping_key_object = wrapping_key.clone();
+    if wrapping_key_object.is_wrapped() {
+        Box::pin(unwrap_stored_object(&mut wrapping_key_object, kms, user)).await?;
+    }
 
     // If unwrap produced a KeyValue::Structure without attributes, reattach attributes
     // from the ObjectWithMetadata (database) when available so lower-level crypto code
@@ -466,7 +494,7 @@ async fn wrap_using_kms(
         && attributes.is_none()
     {
         // copy object-with-metadata attributes into the unwrapped key value
-        let attrs = wrapping_key.attributes().clone();
+        let attrs = wrapping_attributes.clone();
         *attributes = Some(Box::new(attrs));
     }
 
@@ -474,10 +502,7 @@ async fn wrap_using_kms(
     trace!("Checking usage mask for wrapping key {wrapping_key_uid}");
     // TODO: certs attributes should be checked instead
     if wrapping_key_object.object_type() != ObjectType::Certificate {
-        if !wrapping_key
-            .attributes()
-            .is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
-        {
+        if !wrapping_attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey)? {
             return Err(KmsError::NotSupported(format!(
                 "The key: {wrapping_key_uid} is not meant to wrap keys"
             )));

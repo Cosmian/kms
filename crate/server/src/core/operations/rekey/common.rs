@@ -8,8 +8,8 @@
 //! - Generate replacement material (new key/cert) with fresh UIDs.
 //! - Prepare attributes: links, lifecycle dates, rotation metadata.
 //! - Re-wrap new objects if the originals were wrapped.
-//! - Phase 1: persist new objects atomically.
-//! - Phase 2: retire old objects, finalize dependants (rewrap keys / relink certs).
+//! - Prepare retirement and dependant updates without publishing replacement material.
+//! - Commit replacements, conditional retirement, and dependant updates atomically.
 //! - Build and return the KMIP response.
 
 use std::collections::HashSet;
@@ -36,7 +36,7 @@ use crate::{
         KMS,
         operations::key_ops::ObjectLifecycleExt,
         uid_utils::ObjectHandle,
-        wrapping::{unwrap_stored_object, wrap_and_cache, wrap_object},
+        wrapping::{unwrap_stored_object, wrap_and_cache, wrap_object, wrap_with_local_key},
     },
     error::KmsError,
     middlewares::UserId,
@@ -106,13 +106,13 @@ impl KMS {
         Ok(())
     }
 
-    /// Default implementation for [`RekeyOperation::finalize_dependants`].
-    pub(crate) async fn default_finalize_dependants(
+    /// Prepare retirement and dependant updates without persisting them.
+    pub(crate) async fn default_prepare_finalization(
         &self,
         user: &UserId,
         candidates: &[RotationCandidate],
         replacements: &[ReplacementObject],
-    ) -> KResult<()> {
+    ) -> KResult<Vec<AtomicOperation>> {
         let mut operations: Vec<AtomicOperation> = Vec::new();
 
         for (c, r) in candidates.iter().zip(replacements.iter()) {
@@ -130,21 +130,14 @@ impl KMS {
                     user,
                     ObjectHandle::from(c.owm.id()),
                     ObjectHandle::from(new_wrapping_uid),
+                    Some(r),
                     &mut operations,
                 ))
                 .await?;
             }
         }
 
-        self.database.atomic(user, &operations).await?;
-
-        for (c, r) in candidates.iter().zip(replacements.iter()) {
-            info!(
-                "Rekey finalized: old={} → new={}, user={user}",
-                c.uid, r.new_uid
-            );
-        }
-        Ok(())
+        Ok(operations)
     }
 
     /// Default implementation for [`RekeyOperation::rewrap_new_objects`].
@@ -203,6 +196,7 @@ impl KMS {
         owner: &UserId,
         old_handle: ObjectHandle<'_>,
         new_handle: ObjectHandle<'_>,
+        new_key: Option<&ReplacementObject>,
         operations: &mut Vec<AtomicOperation>,
     ) -> KResult<()> {
         let old_uid = old_handle.as_str();
@@ -231,7 +225,14 @@ impl KMS {
             let dep_attrs = dep_owm.attributes().clone();
 
             if let Some(op) = self
-                .rewrap_single_dependant(owner, &dep_uid, &mut dep_object, dep_attrs, new_uid)
+                .rewrap_single_dependant(
+                    owner,
+                    &dep_uid,
+                    &mut dep_object,
+                    dep_attrs,
+                    new_uid,
+                    new_key,
+                )
                 .await?
             {
                 operations.push(op);
@@ -248,6 +249,7 @@ impl KMS {
         dep_object: &mut Object,
         mut dep_attrs: Attributes,
         new_uid: &str,
+        new_key: Option<&ReplacementObject>,
     ) -> KResult<Option<AtomicOperation>> {
         let dep_wrap_spec = dep_object
             .key_block()
@@ -280,7 +282,20 @@ impl KMS {
             warn!("failed to unwrap dependant {dep_uid}: {e}, skipping");
             return Ok(None);
         }
-        if let Err(e) = crate::core::wrapping::wrap_object(dep_object, &spec, self, owner).await {
+        let result = if let Some(key) = new_key {
+            if key.attributes.state == Some(State::Active) {
+                // The replacement belongs to the caller and is not published until the batch commits.
+                wrap_with_local_key(dep_object, &spec, self, owner, &key.object, &key.attributes)
+                    .await
+            } else {
+                Err(KmsError::NotSupported(format!(
+                    "The wrapping key {new_uid} is not active"
+                )))
+            }
+        } else {
+            wrap_object(dep_object, &spec, self, owner).await
+        };
+        if let Err(e) = result {
             warn!("failed to re-wrap dependant {dep_uid} with new key: {e}, skipping");
             return Ok(None);
         }
@@ -327,7 +342,7 @@ impl RotationCandidate {
     }
 }
 
-/// A newly generated replacement object ready for Phase 1 commit.
+/// A newly generated replacement object, not yet visible in the database.
 pub(crate) struct ReplacementObject {
     /// The fresh UID for the replacement.
     pub new_uid: String,
@@ -340,7 +355,7 @@ pub(crate) struct ReplacementObject {
     /// Tags for the new object (used in `AtomicOperation::Create`).
     pub tags: HashSet<String>,
     /// If `Some`, dependants of the old object will be re-wrapped/re-linked
-    /// to this UID during Phase 2. `None` means no dependant processing for this slot.
+    /// to this UID in the rotation batch. `None` means no dependant processing for this slot.
     pub rewrap_to: Option<String>,
 }
 
@@ -452,21 +467,18 @@ pub(crate) trait RekeyOperation {
         kms.default_rewrap_new_objects(user, replacements.as_mut(), wrap_specs)
     }
 
-    /// Step 6: Phase 2 — retire old objects + finalize dependants.
+    /// Prepare retirement and dependant updates for the atomic rotation batch.
     ///
-    /// For keys: rewrap all dependants with the new wrapping key.
-    /// For certificates: relink keys' `CertificateLink` to the new cert UID.
-    ///
-    /// The default implementation retires old objects and re-wraps dependants atomically.
-    /// Override this for certificate-specific logic.
-    fn finalize_dependants(
+    /// Key replacements are still in memory while dependants are rewrapped.
+    /// Certificates override this to relink keys to the unpublished replacement.
+    fn prepare_finalization(
         &self,
         kms: &KMS,
         user: &UserId,
         candidates: &Self::Candidates,
         replacements: &Self::Replacements,
-    ) -> impl std::future::Future<Output = KResult<()>> {
-        kms.default_finalize_dependants(user, candidates.as_ref(), replacements.as_ref())
+    ) -> impl Future<Output = KResult<Vec<AtomicOperation>>> {
+        kms.default_prepare_finalization(user, candidates.as_ref(), replacements.as_ref())
     }
 
     /// Step 8: Build the KMIP response from the completed replacements.
@@ -475,10 +487,9 @@ pub(crate) trait RekeyOperation {
 
 /// Execute the full rotation pipeline using a [`RekeyOperation`] implementor.
 ///
-/// This orchestrator drives the 8-step rotation flow in order:
-/// validate → detect wrapping → generate → prepare attributes → rewrap → commit → finalize → respond.
-/// The commit step also claims each candidate's version (see `claim_op`), so a concurrent
-/// rotation of the same object fails with `Conflict` before anything is persisted.
+/// Generate and prepare in memory, then publish replacements and retire the source objects
+/// in one transaction. A version conflict rolls back the entire rotation before any
+/// replacement is visible to clients.
 pub(crate) async fn execute_rekey<T: RekeyOperation>(
     op: &T,
     kms: &KMS,
@@ -495,11 +506,9 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
     op.prepare_attributes(kms, &candidates, &mut replacements)?;
     op.rewrap_new_objects(kms, user, &mut replacements, &wrap_specs)
         .await?;
-    let mut persist_ops: Vec<AtomicOperation> = candidates
-        .as_ref()
-        .iter()
-        .filter_map(|c| claim_op(&c.owm))
-        .collect();
+    let mut persist_ops = op
+        .prepare_finalization(kms, user, &candidates, &replacements)
+        .await?;
     persist_ops.extend(replacements.as_ref().iter().map(|r| {
         AtomicOperation::Create((
             r.new_uid.clone(),
@@ -510,31 +519,18 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
         ))
     }));
     kms.constraints.check_new_objects(&persist_ops)?;
-    // `Database::atomic` invalidates the keyset-resolution cache for every created
-    // member's `rotate_name`, so the new generation is visible immediately.
+    // Keyset-cache invalidation happens only after the full rotation commits.
     kms.database.atomic(user, &persist_ops).await?;
-    if let Err(e) = op
-        .finalize_dependants(kms, user, &candidates, &replacements)
-        .await
-    {
-        if matches!(e, KmsError::Conflict(_)) {
-            // a write hit the old key between the Phase 1 claim and Phase 2: remove our
-            // replacements (best effort, the conflict is what the caller needs)
-            let cleanup: Vec<AtomicOperation> = replacements
-                .as_ref()
-                .iter()
-                .map(|r| AtomicOperation::Delete(r.new_uid.clone()))
-                .collect();
-            if let Err(del) = kms.database.atomic(user, &cleanup).await {
-                warn!("rekey conflict: failed to remove orphan replacements: {del}");
-            }
-        }
-        return Err(e);
+    for (candidate, replacement) in candidates.as_ref().iter().zip(replacements.as_ref()) {
+        info!(
+            "Rekey finalized: old={} → new={}, user={user}",
+            candidate.uid, replacement.new_uid
+        );
     }
     Ok(op.build_response(&replacements))
 }
 
-// ─── Phase 2: Finalize rekey (retire old keys + rewrap dependants) ───────────
+// ─── Replacement setup and retirement helpers ────────────────────────────────
 
 /// Set up a newly generated key with replacement attributes and links.
 ///
@@ -696,25 +692,8 @@ fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, A
     Ok((old_object, old_attributes))
 }
 
-/// Phase 1 claim on a rotation candidate: rewrite it unchanged, conditional on the version
-/// read in `validate`. Committed in the same batch as the replacements' `Create`, so a
-/// concurrent rotation of the same object fails with `Conflict` before persisting anything.
-/// `None` for stores that do not track versions (HSM).
-fn claim_op(owm: &ObjectWithMetadata) -> Option<AtomicOperation> {
-    owm.version().map(|version| {
-        AtomicOperation::UpdateObjectIfVersion((
-            owm.id().to_owned(),
-            owm.object().clone(),
-            owm.attributes().clone(),
-            None,
-            version,
-        ))
-    })
-}
-
-/// Phase 2 write retiring a rotation candidate. Guarded by the version the Phase 1 claim
-/// left on it (read + 1), so any write between the two phases fails with `Conflict`.
-/// Stores that do not track versions (HSM) get the unconditional update.
+/// Retire a source only if its stored version still matches the validated snapshot.
+/// Stores that do not track versions use the unconditional update.
 pub(crate) fn retire_update_op(
     owm: &ObjectWithMetadata,
     object: Object,
@@ -726,7 +705,7 @@ pub(crate) fn retire_update_op(
             object,
             attributes,
             None,
-            version.saturating_add(1),
+            version,
         )),
         None => AtomicOperation::UpdateObject((owm.id().to_owned(), object, attributes, None)),
     }

@@ -113,7 +113,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
-    update_if_version_test(&get_redis_with_findex().await?).await?;
+    Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
     Ok(())
 }
 
@@ -150,7 +150,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     count_non_destroyed_keys_test(&get_sqlite(&db_file).await?).await?;
     find_with_options_test(&get_sqlite(&db_file).await?).await?;
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
-    update_if_version_test(&get_sqlite(&db_file).await?).await?;
+    Box::pin(update_if_version_test(&get_sqlite(&db_file).await?)).await?;
     Ok(())
 }
 
@@ -379,7 +379,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     count_non_destroyed_keys_test(&get_pgsql().await?).await?;
     find_with_options_test(&get_pgsql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
-    update_if_version_test(&get_pgsql().await?).await?;
+    Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
     Ok(())
 }
 
@@ -551,6 +551,6 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     find_due_for_rotation_test(&get_mysql().await?).await?;
     count_non_destroyed_keys_test(&get_mysql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
-    update_if_version_test(&get_mysql().await?).await?;
+    Box::pin(update_if_version_test(&get_mysql().await?)).await?;
     Ok(())
 }

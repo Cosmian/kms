@@ -625,7 +625,14 @@ impl RedisWithFindex {
         // State is unchanged by an update — no counter adjustment.
         let entry = self.touch(&mut attempt.uids, uid).await?;
         let Some(db_object) = entry.current.as_mut() else {
-            return Err(DbError::ItemNotFound(uid.to_owned()));
+            return Err(expected_version.map_or_else(
+                || DbError::ItemNotFound(uid.to_owned()),
+                |expected| {
+                    DbError::Conflict(format!(
+                        "object {uid} was deleted concurrently (expected version {expected})"
+                    ))
+                },
+            ));
         };
         if let Some(expected) = expected_version
             && db_object.version != expected
