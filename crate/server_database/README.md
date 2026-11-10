@@ -50,8 +50,11 @@ The schema below use the following legend :
 
 | Key | Value |
 |-----|-------|
-| `db_version` | `>= 5.12.0` |
+| `db_version` | Last KMS version migrated to (`>= 5.12.0`; updated after each migration step and on completion) |
 | `db_state` | `"ready"` \| `"upgrading"` |
+| `wrapping_key_id_backfilled` | `"true"` once the `5.25.0` `wrapped_by::<uid>` Findex backfill has completed |
+| `certificate_serial_tag_backfilled` | `"true"` once the `5.29.0` `_serial=<HEX>` certificate tag backfill has completed |
+| `kms_db_migration_lock` | Ephemeral UUID v4 lease token (`SET ... NX PX 1800000`, released via Lua compare-and-delete) serializing startup migrations |
 | `do::<object_uid>` | `ENC_KMS(object data)` |
 | `ENC_Findex v8(o:obj_uid)` | `ENC_Findex v8(permission_triplet)` |
 | `ENC_Findex v8(u:userid)` | `ENC_Findex v8(permission_triplet)` |

@@ -38,6 +38,8 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
+#[cfg(feature = "non-fips")]
+mod redis_migration_tests;
 mod sql_migration_tests;
 mod sqlite_migration_tests;
 mod tagging_tests;
@@ -116,6 +118,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
     Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
+    Box::pin(redis_migration_tests::redis_migration_scenarios()).await?;
     Ok(())
 }
 

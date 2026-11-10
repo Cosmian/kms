@@ -40,10 +40,7 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState,
-            WRAPPING_KEY_BACKFILL_PARAM, certificate_serial_tag,
-        },
+        migrate::{Migrate, MigrationStep, certificate_serial_tag},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::{AtomicScriptOutcome, ScriptOp},
@@ -263,6 +260,22 @@ impl RedisWithFindex {
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
     ) -> DbResult<Self> {
+        let (redis_with_findex, _applied) = Self::instantiate_at_version(
+            redis_url,
+            master_key,
+            clear_database,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await?;
+        Ok(redis_with_findex)
+    }
+
+    pub(crate) async fn instantiate_at_version(
+        redis_url: &str,
+        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        clear_database: bool,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
@@ -280,18 +293,6 @@ impl RedisWithFindex {
         let findex = Arc::new(init_findex_redis(&master_key, redis_url).await?);
 
         let permission_db = PermissionDB::new(findex.clone());
-
-        if clear_database {
-            redis::cmd("FLUSHDB")
-                .query_async::<()>(&mut mgr.clone())
-                .await?;
-        }
-
-        let count: usize = redis::cmd("DBSIZE")
-            .query_async(&mut mgr.clone())
-            .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
-        trace!("Redis DB size: {count}");
 
         // Derive ceremony key material from the master key.
         // Per-user ceremony record keys are computed at call time using this derivation key.
@@ -313,43 +314,8 @@ impl RedisWithFindex {
             ceremony_active_cos_key,
         };
 
-        if count == 0 {
-            debug!("Empty Redis database detected. Initializing a new database instance.");
-            redis_with_findex
-                .set_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            redis_with_findex.set_db_state(DbState::Ready).await?;
-        } else {
-            // Existing database detected. Accept databases that have our version/state markers;
-            // refuse truly legacy databases (no markers or non-ready state) since migrations were removed.
-            let db_version = redis_with_findex.get_db_version().await?;
-            let db_state = redis_with_findex.get_db_state().await?;
-
-            match (db_version, db_state) {
-                (Some(version), Some(DbState::Ready)) => {
-                    debug!(
-                        "Existing Redis database detected (version {version}). Using current database."
-                    );
-                    // proceed without reinitialization
-                }
-                _ => {
-                    return Err(DbError::DatabaseError(
-                        "Legacy Redis/Findex migration support has been removed. \
-                        Please export your data from the legacy KMS and reimport into the current version."
-                            .to_owned(),
-                    ));
-                }
-            }
-        }
-
-        // One-time backfill of the `wrapped_by::<uid>` Findex index for objects
-        // created before that index existed. Gated by a completion marker so the
-        // O(N) scan runs at most once per database (a fresh database has no
-        // objects, so this is a no-op that only writes the marker).
-        redis_with_findex.backfill_wrapped_by_index().await?;
-        Box::pin(redis_with_findex.backfill_certificate_serial_tags()).await?;
-
-        Ok(redis_with_findex)
+        let applied = redis_with_findex.bootstrap(clear_database, target).await?;
+        Ok((redis_with_findex, applied))
     }
 
     /// Backfill the `wrapped_by::<uid>` Findex index for wrapped objects that
@@ -358,56 +324,25 @@ impl RedisWithFindex {
     /// `find_wrapped_by` (used by key rotation) relies on a `wrapped_by::<uid>`
     /// keyword that newer code writes at insert time. Objects stored by earlier
     /// versions lack it, so they would be invisible to rotation. This method
-    /// scans every object once, (re-)inserts the keyword for wrapped ones, and
-    /// records a `wrapping_key_id_backfilled` marker so the scan never re-runs.
-    /// Re-inserting an already-indexed keyword is idempotent.
+    /// scans every object once and (re-)inserts the keyword for wrapped ones.
+    /// Re-inserting an already-indexed keyword is idempotent; completion markers
+    /// are owned by the migration runner.
     pub(crate) async fn backfill_wrapped_by_index(&self) -> DbResult<()> {
-        let marker: Option<String> = redis::cmd("GET")
-            .arg(WRAPPING_KEY_BACKFILL_PARAM)
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to read wrapped_by backfill marker: {e}"))
-            })?;
-        if marker.as_deref() == Some("true") {
-            return Ok(());
-        }
-
         let wrapped = self.objects_db.scan_wrapped_objects().await?;
         for (uid, wrapping_key_uid) in wrapped {
             let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
             let indexed_uid = IndexedValue::from(uid.as_bytes());
             self.findex.insert(keyword, [indexed_uid]).await?;
         }
-
-        redis::cmd("SET")
-            .arg(WRAPPING_KEY_BACKFILL_PARAM)
-            .arg("true")
-            .query_async::<()>(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
-            })?;
         Ok(())
     }
 
     /// Add the `_serial=<HEX>` tag to certificates stored before that tag existed.
     ///
     /// Candidates come from the `_cert` Findex keyword. Updating the tags through the normal
-    /// atomic path re-indexes the Findex keywords. Gated by a completion marker so the scan runs
-    /// at most once per database; a failed update leaves the marker unset so the next boot retries.
+    /// atomic path re-indexes the Findex keywords. Completion markers are owned by the
+    /// migration runner.
     pub(crate) async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
-        let marker: Option<String> = redis::cmd("GET")
-            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to read serial tag backfill marker: {e}"))
-            })?;
-        if marker.as_deref() == Some("true") {
-            return Ok(());
-        }
-
         let indexed_uids = self
             .findex
             .search(&Keyword::from(SYSTEM_TAG_CERTIFICATE.as_bytes()))
@@ -457,15 +392,6 @@ impl RedisWithFindex {
                 Err(e) => return Err(e),
             }
         }
-
-        redis::cmd("SET")
-            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
-            .arg("true")
-            .query_async::<()>(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to set serial tag backfill marker: {e}"))
-            })?;
         Ok(())
     }
 

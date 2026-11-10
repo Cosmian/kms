@@ -782,8 +782,6 @@ Crate path: `crate/server_database`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `debug` | `Empty Redis database detected. Initializing a new database instance.` | `src/stores/redis/redis_with_findex.rs` | - | - |
-| `debug` | `Existing Redis database detected (version {version}). Using current database.` | `src/stores/redis/redis_with_findex.rs` | `version`: version | - |
 | `debug` | `Listed {} rows` | `src/stores/sql/mysql.rs` | - | ×2 in this file |
 | `debug` | `Owner = {}` | `src/stores/sql/mysql.rs` | - | - |
 | `debug` | `PG find query: {}` | `src/stores/sql/pgsql.rs` | - | - |
@@ -795,7 +793,6 @@ Crate path: `crate/server_database`
 | `trace` | `find: user must be owner` | `src/stores/redis/redis_with_findex.rs` | — | — |
 | `trace` | `Insert read access right in DB: {uid} / {userid}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`userid` — … | — |
 | `trace` | `Invalidating the cache for {}` | `src/core/unwrapped_cache.rs` | — | — |
-| `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
 | `trace` | `Updated in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | ×2 in this file |
 | `trace` | `Upserted in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | — |
 | `debug` | `[redis-bootstrap] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | ×2 in this file |
@@ -836,6 +833,9 @@ Crate path: `crate/server_database`
 | `info` | `Applying database migration step` | `src/stores/migrate.rs` | - | - |
 | `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
+| `warn` | `Failed to release database migration lock` | `src/stores/migrate.rs` | `error`: lock release error | Emitted if the backend migration lock release call fails after `bootstrap`; the completed migration result is preserved. |
+| `warn` | `Failed to release Redis migration lock on drop` | `src/stores/redis/migrations/mod.rs` | `error`: Redis script invocation error | Emitted by the drop fallback when a cancelled migration future could not delete `kms_db_migration_lock`. |
+| `warn` | `Redis migration lock was already expired or replaced before release` | `src/stores/redis/migrations/mod.rs` | `lock_key`: `kms_db_migration_lock` | The 30-minute lease expired or was replaced before compare-and-delete ran; migration steps are idempotent. |
 
 ### `cosmian_kms_crypto`
 
