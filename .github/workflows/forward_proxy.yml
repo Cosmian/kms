@@ -3,10 +3,6 @@ name: forward proxy
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
 
 jobs:
   forward-proxy:
@@ -22,10 +18,7 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          components: rustfmt, clippy
+      - uses: ./.github/actions/install-rust
 
       - name: Prerequisites
         run: |
@@ -43,7 +36,7 @@ jobs:
       - name: Forward proxy test
         run: |
           set -ex
-          cargo +${{ inputs.toolchain }} build -p ckms --features non-fips
+          cargo build -p ckms --features non-fips
 
           # Get the local IP address
           LOCAL_IP=$(hostname -I | awk '{print $1}')
@@ -54,4 +47,4 @@ jobs:
           # The port in this URL is intentionally omitted; only the host matters.
           export KMS_URL=http://$LOCAL_IP
 
-          cargo +${{ inputs.toolchain }} test -p ckms --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy
+          cargo test -p ckms --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy

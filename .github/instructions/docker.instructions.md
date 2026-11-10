@@ -252,11 +252,9 @@ If you add a new image or new runner, update this table.
 ### Triggering the workflow manually
 
 ```bash
-# Requires toolchain input; default is 1.99.1
 GH_PAGER=cat gh workflow run "Packaging - Docker" \
   --repo Cosmian/kms \
-  --ref <branch> \
-  -f toolchain=1.99.1
+  --ref <branch>
 ```
 
 The workflow is `workflow_call` + `workflow_dispatch` only — it does **not** trigger

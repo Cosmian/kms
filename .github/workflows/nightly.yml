@@ -60,5 +60,3 @@ jobs:
     if: github.repository == 'Cosmian/kms' && startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1

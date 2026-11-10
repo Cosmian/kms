@@ -3,25 +3,12 @@ name: Packaging
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
-        default: 1.99.1
-
   workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain version
-        required: false
-        type: string
-        default: 1.99.1
 
 jobs:
   windows-package:
     uses: ./.github/workflows/build_windows.yml
     with:
-      toolchain: 1.99.1
       archive-name: windows
     secrets:
       AZURE_TENANT_ID_POC: ${{ secrets.AZURE_TENANT_ID_POC }}
@@ -32,8 +19,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
       'schedule'
     uses: ./.github/workflows/packaging-docker.yml
-    with:
-      toolchain: 1.99.1
     secrets: inherit
 
   packages:
@@ -117,8 +102,6 @@ jobs:
   apk:
     uses: ./.github/workflows/packaging-apk.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1
 
   publish-release:
     if: |
@@ -342,5 +325,3 @@ jobs:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1

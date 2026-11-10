@@ -285,8 +285,9 @@ services:
   # Started on demand with: docker compose up -d db2-tde
   # Requires Docker privileged mode. Startup takes up to 5 minutes.
   # LICENSE=accept is required to run the Community Edition image.
+  # manuthor/db2 is a Docker Hub mirror of icr.io/db2_community/db2 (icr.io is flaky from CI runners).
   db2-tde:
-    image: ${DB2_DOCKER_IMAGE:-icr.io/db2_community/db2}
+    image: ${DB2_DOCKER_IMAGE:-manuthor/db2}
     container_name: ${DB2_CONTAINER_NAME:-db2-kmip-test}
     # The Community image has no arm64 manifest: amd64 (emulated on arm64 hosts).
     platform: linux/amd64
