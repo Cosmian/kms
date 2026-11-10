@@ -11,7 +11,8 @@ use cosmian_kms_client::{
     jose::{JoseEncReq, JoseSignReq, b64url},
     kmip_2_1::{
         extra::BulkData,
-        kmip_operations::{Encrypt, Operation, Sign},
+        kmip_objects::Object,
+        kmip_operations::{Encrypt, Get, Operation, Sign},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
             RecommendedCurve, UniqueIdentifier,
@@ -34,7 +35,10 @@ use super::{
         rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp, try_create_hsm_rsa_kp,
         try_create_hsm_sym_key,
     },
-    jose::{jose_create_sym_key, jose_try_create_ec_kp},
+    jose::{
+        jose_create_sym_key, jose_rsa_oaep_decrypt_body, jose_try_create_ec_kp,
+        jose_try_create_rsa_kp,
+    },
     output::criterion_home,
     transport::{make_wire_request, to_wire_bytes, wire_response_ok},
     types::{BenchMode, BenchProtocol},
@@ -93,6 +97,18 @@ enum PreparedLoadOp {
         url: String,
         body: Bytes,
     },
+    /// Bodiless GET (e.g. the public `/.well-known/jwks.json` document).
+    Get { name: &'static str, url: String },
+    /// JOSE RSA-OAEP decrypt of a JWE rebuilt client-side on every call (new CEK and
+    /// `encrypted_key`), so the server's CEK cache never hits. Latency includes the
+    /// client-side build (RSA public wrap + AES-GCM, tens of µs).
+    JoseRsaOaepFreshDecrypt {
+        name: &'static str,
+        url: String,
+        kid: String,
+        public_key: Box<Object>,
+        plaintext: Vec<u8>,
+    },
     /// AES-256 symmetric key creation.  Cannot be pre-serialized because each
     /// invocation must allocate a distinct key object on the server.
     AesSymCreate { name: &'static str, vid: String },
@@ -118,6 +134,8 @@ impl PreparedLoadOp {
         match self {
             Self::PreSerialized { name, .. }
             | Self::PreSerializedBinary { name, .. }
+            | Self::Get { name, .. }
+            | Self::JoseRsaOaepFreshDecrypt { name, .. }
             | Self::AesSymCreate { name, .. }
             | Self::HsmAesSymCreate { name, .. }
             | Self::HsmRsaKpCreate { name, .. } => name,
@@ -138,6 +156,8 @@ impl PreparedLoadOp {
             Self::HsmAesSymCreate { .. } | Self::HsmRsaKpCreate { .. } => Some(64),
             Self::PreSerialized { .. }
             | Self::PreSerializedBinary { .. }
+            | Self::Get { .. }
+            | Self::JoseRsaOaepFreshDecrypt { .. }
             | Self::AesSymCreate { .. } => None,
         }
     }
@@ -164,6 +184,27 @@ impl PreparedLoadOp {
                 .post_bytes(url, body.clone(), "application/octet-stream")
                 .await
                 .is_ok_and(|resp| wire_response_ok(resp.bytes())),
+            Self::Get { url, .. } => client
+                .client
+                .get(url)
+                .await
+                .is_ok_and(|resp| resp.status.is_success()),
+            Self::JoseRsaOaepFreshDecrypt {
+                url,
+                kid,
+                public_key,
+                plaintext,
+                ..
+            } => {
+                let Ok(body) = jose_rsa_oaep_decrypt_body(public_key, kid, plaintext) else {
+                    return false;
+                };
+                client
+                    .client
+                    .post_bytes(url, body, "application/json")
+                    .await
+                    .is_ok_and(|resp| resp.status.is_success())
+            }
             Self::AesSymCreate { vid, .. } => {
                 let Ok(req) = symmetric_key_create_request(
                     vid,
@@ -476,6 +517,8 @@ fn prepare_load_ops(
         } else {
             eprintln!("[load] JOSE A256GCM key creation failed, skipping JOSE encrypt load test");
         }
+        push_jose_jwks_op(rt, client, &mut ops);
+        push_jose_rsa_oaep_decrypt_ops(rt, client, plaintext_size, &mut ops)?;
     }
 
     if run_jose && needs_sign {
@@ -659,6 +702,70 @@ const fn push_jose_eddsa_sign_op(
     _client: &KmsClient,
     _ops: &mut Vec<PreparedLoadOp>,
 ) {
+}
+
+/// Public JWKS document load op (`GET /.well-known/jwks.json`); skipped when the endpoint is
+/// not served (`jwks_endpoint_enabled = false`).
+fn push_jose_jwks_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+    let url = format!("{}/.well-known/jwks.json", client.client.server_url);
+    if rt
+        .block_on(client.client.get(&url))
+        .is_ok_and(|resp| resp.status.is_success())
+    {
+        ops.push(PreparedLoadOp::Get {
+            name: "jose/jwks",
+            url,
+        });
+    } else {
+        eprintln!(
+            "[load] GET /.well-known/jwks.json unavailable (jwks_endpoint_enabled = false?), \
+             skipping JOSE JWKS load test"
+        );
+    }
+}
+
+/// JOSE RSA-OAEP decrypt load ops: one replayed token (CEK cache hit when the cache is on) and
+/// one fresh token per call (always a CEK cache miss).
+fn push_jose_rsa_oaep_decrypt_ops(
+    rt: &Runtime,
+    client: &KmsClient,
+    plaintext_size: usize,
+    ops: &mut Vec<PreparedLoadOp>,
+) -> KmsCliResult<()> {
+    let Some((_priv_kid, pub_kid)) = jose_try_create_rsa_kp(rt, client, "RSA-OAEP-256", 2048)
+    else {
+        eprintln!(
+            "[load] JOSE RSA-OAEP-256 key creation failed, skipping JOSE RSA-OAEP decrypt load tests"
+        );
+        return Ok(());
+    };
+    let Ok(public_key) = rt.block_on(client.get(Get::new(
+        UniqueIdentifier::TextString(pub_kid.clone()),
+        false,
+        None,
+        None,
+    ))) else {
+        eprintln!(
+            "[load] JOSE RSA-OAEP-256 public key fetch failed, skipping JOSE RSA-OAEP decrypt load tests"
+        );
+        return Ok(());
+    };
+    let object = public_key.object;
+    let url = format!("{}/v1/crypto/decrypt", client.client.server_url);
+    let plaintext = vec![1_u8; plaintext_size];
+    ops.push(PreparedLoadOp::PreSerialized {
+        name: "jose/decrypt/rsa-oaep-cached",
+        url: url.clone(),
+        body: jose_rsa_oaep_decrypt_body(&object, &pub_kid, &plaintext)?,
+    });
+    ops.push(PreparedLoadOp::JoseRsaOaepFreshDecrypt {
+        name: "jose/decrypt/rsa-oaep-fresh",
+        url,
+        kid: pub_kid,
+        public_key: Box::new(object),
+        plaintext,
+    });
+    Ok(())
 }
 
 /// Prepare load-test operations for `--hsm`: keys are created with an
