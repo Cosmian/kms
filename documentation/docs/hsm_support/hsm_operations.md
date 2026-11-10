@@ -206,7 +206,7 @@ while minimizing HSM calls through expiring caching.
 The AES modes need an AES key encryption key and `rsa-oaep` an RSA one. The startup check below
 applies to HSM AES keys only.
 
-For AES-GCM with an HSM key, this KMS's FIPS build requires the HSM to generate the IV so IV generation remains inside the HSM's cryptographic boundary, consistent with FIPS 140-3 Implementation Guidance C.H. If the PKCS#11 v3.0 message API fails, the KMS retries with classic PKCS#11 AES-GCM; decryption does the same when the library refuses message-decrypt init as unsupported. Profiles without `supports_message` (for example Crypt2Pay, Luna, GCP Cloud HSM and SoftHSM2) never try the message API and depend only on the classic path; startup fails if that path needs an HSM-generated IV and the HSM returns none: always in the FIPS build, and in a non-FIPS build for profiles without `supports_caller_iv` (see the matrix below). AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
+For AES-GCM with an HSM key, this KMS's FIPS build requires the HSM to generate the IV so IV generation remains inside the HSM's cryptographic boundary, consistent with FIPS 140-3 Implementation Guidance C.H. If the PKCS#11 v3.0 message API fails, the KMS retries with classic PKCS#11 AES-GCM; decryption does the same when the library refuses message-decrypt init as unsupported. Profiles without `supports_message` (for example Crypt2Pay, Luna, GCP Cloud HSM and SoftHSM2) never try the message API and depend only on the classic path; startup fails if that path needs an HSM-generated IV and the HSM returns none: always in the FIPS build, and in a non-FIPS build for profiles without `supports_caller_iv` (see [the matrix](hsm_aes_gcm_iv.md)). AES-KW and AES-KWP use no IV and are the usual FIPS key-wrap mechanisms:
 
 ```toml
 key_encryption_key = "hsm::4::master_kek"
@@ -223,60 +223,9 @@ error. Keys already wrapped with another algorithm are still unwrapped.
 
 #### AES-GCM IVs, PKCS#11 versions and HSM FIPS mode
 
-Who generates the AES-GCM IV is decided by the **KMS build** and the HSM **capability profile**, never by
-the PKCS#11 version the library announces. For an HSM AES key and no caller-supplied IV, the KMS tries, in
-order:
-
-1. **PKCS#11 v3.0 message API** (the HSM generates the IV), when the profile has `supports_message` and the
-   library offers all five message-encrypt functions. The KMS looks each function up as an exported symbol
-   first, then in the v3.0 interface table, so a v2.40 library that exports these names (even as stubs
-   answering `CKR_FUNCTION_NOT_SUPPORTED`) is treated as v3-capable. If the call fails, the KMS continues
-   with step 2 or 3 (versions without this fallback abort startup).
-2. **Classic `CKM_AES_GCM`, KMS-chosen random IV**: non-FIPS build with a profile that has
-   `supports_caller_iv`; FIPS build only for development-token profiles (`allows_caller_iv_in_fips`, SoftHSM2
-   and Kryoptic).
-3. **Classic `CKM_AES_GCM`, HSM-generated IV** (every other case, in particular the FIPS build): the KMS
-   passes a zeroed IV buffer and the HSM must write the IV it generated back into it. An IV left at zero is
-   refused, never used.
-
-A caller-supplied 12-byte IV (KMIP or CLI) never uses the message API and is accepted only where step 2 is
-allowed. Decryption reads the IV from the stored value and uses the message API when available, falling back
-to classic AES-GCM when its initialization is refused as unsupported (other errors, including authentication
-failures, are not retried).
-
-| KMS build | HSM library | HSM in FIPS mode | Result |
-| --- | --- | --- | --- |
-| FIPS | message API works | any | works, HSM-generated IV |
-| FIPS | no usable message API, classic returns the IV | any | works, HSM-generated IV (SoftHSM2 and Kryoptic development tokens: KMS-chosen IV) |
-| FIPS | no usable message API, classic returns no IV | any | startup refused: `needs an IV generated inside the HSM`; use `aes-key-wrap-padding`, `aes-key-wrap` or `rsa-oaep` |
-| non-FIPS | message API works | any | works, HSM-generated IV |
-| non-FIPS | no usable message API, profile with `supports_caller_iv` | no | works, KMS-chosen IV |
-| non-FIPS | no usable message API, profile with `supports_caller_iv` | yes | the HSM refuses the KMS-chosen IV (for example `CKR_ACTION_PROHIBITED`, 27); use the FIPS build or a key-wrap algorithm |
-| non-FIPS | no usable message API, profile without `supports_caller_iv` (GCP, AWS CloudHSM and Azure Cloud HSM profiles) | any | same as the FIPS build: HSM-generated IV, or startup refused |
-
-The HSM's FIPS mode does not change what the KMS sends, only whether the HSM accepts it. HSM
-key-wrap support is HSM-dependent: validate the chosen algorithm on your HSM. AES-KW/KWP of a KMS key goes
-through `C_WrapKey` on an ephemeral imported key, which some HSMs refuse with `CKR_KEY_HANDLE_INVALID`
-(observed on Crypt2Pay: only HSM-generated keys can be wrapped). On such an HSM use an RSA key encryption
-key with `rsa-oaep`.
-
-To diagnose a failed startup, read the server error:
-
-- `Failed to initialize message-based encryption. Return code: 84` (`CKR_FUNCTION_NOT_SUPPORTED`) or `112`
-  (`CKR_MECHANISM_INVALID`): the library exports message functions it does not implement. Upgrade to a version
-  that includes the message-API fallback.
-- `needs an IV generated inside the HSM … provided none`: step 3 failed; change the wrapping algorithm.
-- `CKR_ACTION_PROHIBITED` (27) from `C_Encrypt`: step 2 against an HSM in FIPS mode.
-
-List the exports of the library the server actually loads with
-`nm -D --defined-only <lib> | grep -E 'C_(Message|EncryptMessage|DecryptMessage|GetInterface)'`.
-To test an HSM's AES-GCM IV behaviour without the KMS, run the standalone probe `.mise/scripts/test/pkcs11_gcm_iv_probe.py`
-(`PKCS11_PIN=<pin> python3 pkcs11_gcm_iv_probe.py <library.so> <slot-id>`; a C twin, `pkcs11_gcm_iv_probe.c`, is
-provided for hosts without Python) on the library the server loads. It replays the KMS calls (zeroed IV buffer with
-and without the length query, caller-chosen IV, NULL IV), reports whether the HSM returns a generated IV, and lists the
-exported v3.0 message symbols; it only creates a temporary session key.
-`ckms pkcs11 capabilities` does not diagnose this: it checks Cosmian's own PKCS#11 provider against a
-running KMS, not the HSM driver the server loads.
+Who generates the AES-GCM IV (the HSM or the KMS) depends on the KMS build and the HSM capability profile.
+The decision order, the build/HSM matrix, sequence diagrams for every case and troubleshooting steps are on
+[AES-GCM IVs, PKCS#11 versions and HSM FIPS mode](hsm_aes_gcm_iv.md).
 
 ## Using the wrapped KMS key
 
