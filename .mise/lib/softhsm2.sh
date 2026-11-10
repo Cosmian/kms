@@ -177,6 +177,7 @@ softhsm2_lib_search_path() {
 # KMS_TEST_DB and all DB connection env vars (KMS_POSTGRES_URL, REDIS_HOST, …)
 # must already be exported by the caller — typically done by _run_workspace_tests
 # or check_and_test_db inside common.sh.
+# After the HSM test it also replays the shared-server suite with KMS_HSM_KEK=1.
 #
 # Hard-fails (via require_cmd) if softhsm2-util is absent — there is no silent skip.
 #
@@ -227,4 +228,26 @@ run_db_softhsm2_tests() {
     -p test_kms_server \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     -- "test_db_${suffix}" --ignored --nocapture
+
+  print_header "DB×SoftHSM2-KEK: shared-server suite (KMS_TEST_DB=${KMS_TEST_DB:-unset}, KMS_HSM_KEK=1)"
+
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="$lib_path" \
+    DYLD_LIBRARY_PATH="$lib_path" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF:-}" \
+    SOFTHSM2_HOME="${SOFTHSM2_HOME:-}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    KMS_HSM_KEK=1 \
+    KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+    ${KMS_POSTGRES_URL:+KMS_POSTGRES_URL="$KMS_POSTGRES_URL"} \
+    ${KMS_MYSQL_URL:+KMS_MYSQL_URL="$KMS_MYSQL_URL"} \
+    ${REDIS_HOST:+REDIS_HOST="$REDIS_HOST"} \
+    ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
+    cargo test --lib "${KMS_SHARED_SERVER_TEST_PACKAGES[@]}" \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- --nocapture
 }
