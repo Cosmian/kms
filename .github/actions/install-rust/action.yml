@@ -1,27 +1,39 @@
 ---
 name: Install Rust
 description: >
-  Install the Rust toolchain and components pinned in rust-toolchain.toml
-  (rustup toolchain-file precedence). Must run after actions/checkout.
+  Install the Rust toolchain and components pinned in rust-toolchain.toml with
+  dtolnay/rust-toolchain. That action cannot read the file itself and requires a
+  `toolchain` input, so this wrapper reads `channel` and `components` from the file and
+  passes them on. Must run after actions/checkout.
 
 inputs:
   targets:
-    description: Space-separated extra rustup targets to add (optional)
+    description: Comma-separated extra rustup targets to add (optional)
     required: false
     default: ''
 
 runs:
   using: composite
   steps:
-    - name: Install Rust toolchain from rust-toolchain.toml
+    - name: Read rust-toolchain.toml
+      id: file
       shell: bash
-      env:
-        TARGETS: ${{ inputs.targets }}
       run: |
         set -euo pipefail
-        rustup toolchain install
-        if [ -n "$TARGETS" ]; then
-          # shellcheck disable=SC2086 # word-splitting the target list is intended
-          rustup target add $TARGETS
+        # shortcut: single-line `channel = "..."` and `components = [...]` only, upgrade to a
+        # TOML parser if rust-toolchain.toml ever uses multi-line arrays.
+        channel=$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml)
+        components=$(sed -n 's/^components *= *\[\(.*\)\].*/\1/p' rust-toolchain.toml | tr -d '" ')
+        if [ -z "$channel" ]; then
+          echo "::error::No 'channel' found in rust-toolchain.toml"
+          exit 1
         fi
-        rustc --version
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+        echo "components=$components" >> "$GITHUB_OUTPUT"
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+      with:
+        toolchain: ${{ steps.file.outputs.channel }}
+        components: ${{ steps.file.outputs.components }}
+        targets: ${{ inputs.targets }}
