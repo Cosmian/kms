@@ -453,6 +453,9 @@ def build_create_key_pair(
         pub_attrs.append(
             {"tag": "ActivationDate", "type": "DateTime", "value": activation_date}
         )
+    if tags:
+        priv_attrs.append(tag_attribute(tags))
+        pub_attrs.append(tag_attribute(tags))
     return {
         "tag": "CreateKeyPair",
         "value": [
