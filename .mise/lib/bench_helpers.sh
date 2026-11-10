@@ -858,6 +858,7 @@ PYEOF
 #   dlopen()-based Cryptoki C API benchmark. May be combined with is_hsm=true
 #   for PKCS#11 operations delegated to HSM-resident keys.
 #   BENCH_DOCS_SUFFIX (env, optional): appended to docs_subdir, e.g. "_hr" or "2_ed25519".
+#   BENCH_JOSE_CACHE_STATE (env, optional): "on"|"off"; renders the JOSE CEK cache report (bench:jose-cache).
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
@@ -925,6 +926,9 @@ bench_generate_report() {
   fi
   if [ "${is_pkcs11}" = "true" ]; then
     plot_args+=("--pkcs11")
+  fi
+  if [ -n "${BENCH_JOSE_CACHE_STATE:-}" ]; then
+    plot_args+=("--jose-cache" "${BENCH_JOSE_CACHE_STATE}")
   fi
   if [ -n "${BENCH_HSM_BACKEND:-}" ]; then
     plot_args+=("--hsm-backend" "${BENCH_HSM_BACKEND}")

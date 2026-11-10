@@ -12,7 +12,7 @@ is the canonical reference.
 | 3 | HSM-delegated crypto | `ckms` + KMS server; `hsm::<slot>::<uuid>` keys — key gen + Encrypt/Sign routed to the HSM's CryptoOracle (PKCS#11), crypto runs ON the HSM | `mise run bench:hsm --delegated` | `ckms_bench_hsm_delegated_softhsm2` (or `_<hsm_backend>`) |
 | 4 | Real PKCS#11 DLL | `cosmian_pkcs11` shared library `dlopen()`-ed + KMS server — drives the real Cryptoki C ABI (`C_Sign`, `C_Encrypt`, ...) | `mise run bench:pkcs11` | `ckms_bench_pkcs11` |
 | 5 | PKCS#11 HSM-delegated | Same as Benchmark 4, but with `hsm::<slot>::<uuid>` HSM-resident keys — `cosmian_pkcs11` makes HTTPS calls to KMS, which routes crypto operations to the HSM's CryptoOracle via PKCS#11 | `mise run bench:pkcs11 --delegated --hsm-model <backend>` | `ckms_bench_pkcs11_hsm_delegated_<hsm_backend>` |
-| 6 | JOSE caches | `ckms` + two fresh KMS servers started from `test_data/configs/server/test/bench_jose_cache.toml`, one with `disable_unwrapped_cache = false` (CEK cache on) and one with `true` (off); same JOSE sweep (JWKS, `dir`/A256GCM encrypt, RSA-OAEP decrypt replayed vs fresh token) | `mise run bench:jose-cache` | `ckms_bench_jose_cache_on` and `ckms_bench_jose_cache_off` |
+| 6 | JOSE caches | `ckms` + two fresh KMS servers started from `test_data/configs/server/test/bench_jose_cache.toml`, one with `disable_unwrapped_cache = false` (CEK cache on) and one with `true` (off); same JOSE sweep (`dir`/A256GCM encrypt, RSA-OAEP decrypt replayed vs fresh token) | `mise run bench:jose-cache` | `ckms_bench_jose_cache_on` and `ckms_bench_jose_cache_off` |
 
 Benchmarks 2 and 3 are both driven by the same task (`bench/hsm`); the
 `--delegated` flag switches between them. Benchmarks 4 and 5 share the `bench/pkcs11` task;

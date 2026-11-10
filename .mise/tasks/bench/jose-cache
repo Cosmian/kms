@@ -84,6 +84,7 @@ run_cache_state() {
     --load \
     --mode encrypt \
     --protocol jose \
+    --load-plaintext-size 4096 \
     --time "${BENCH_TIME}" \
     --load-concurrency "${BENCH_CONCURRENCY}" \
     --warmup-time "${BENCH_WARMUP}" \
@@ -91,6 +92,7 @@ run_cache_state() {
 
   BENCH_COMMAND_USED="mise run bench:jose-cache${usage_args:+ $usage_args} (unwrapped cache ${state})"
   export BENCH_COMMAND_USED
+  export BENCH_JOSE_CACHE_STATE="${state}"
   # Must run while the server is still up: it queries /version.
   bench_generate_report "${KMS_PORT}" "ckms_bench_jose_cache_${state}"
   kms_stop

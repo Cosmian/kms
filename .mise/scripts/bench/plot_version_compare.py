@@ -1000,6 +1000,32 @@ def _render_architecture_section(
         ]
 
 
+_JOSE_PROTOCOL_PARAGRAPH = (
+    '**JOSE** (JSON Object Signing and Encryption, RFC 7516 / RFC 7515)'
+    ' exposes KMS key material through `/v1/crypto/` REST endpoints.'
+    ' It is used by cloud integrations (Google CSE, Microsoft DKE, Azure EKM)'
+    ' and any workload that speaks JWA algorithm identifiers (A256GCM, RS256, ES384 …)'
+    ' rather than KMIP semantics.'
+)
+
+
+def _load_test_lines(extra: str = '') -> list[str]:
+    """Software-baseline load-test paragraph and metric bullets; `extra` follows the paragraph."""
+    return [
+        'The load test sweeps a configurable list of concurrency levels.'
+        ' At each level *N* concurrent async tasks send pre-serialised requests in tight loops'
+        ' for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase**'
+        ' (default: 5 s) that is excluded from measurements.'
+        ' Pre-serialisation happens once at setup time and the same bytes are reused on every iteration,'
+        ' isolating server-side KMS latency from client-side encoding overhead.'
+        + (f" {extra}" if extra else ''),
+        'Recorded metrics per *(protocol, operation, concurrency)* triple:',
+        '',
+        '- **Throughput** — requests per second (req/s)',
+        '- **p50 / p95 / p99** — round-trip latency percentiles (ms)',
+    ]
+
+
 def _render_protocol_section(
     *,
     is_hsm: bool = False,
@@ -1131,11 +1157,7 @@ def _render_protocol_section(
         ' The **binary** variant uses a compact 8-byte fixed header (3-byte tag, 1-byte type,'
         ' 4-byte length) per value, removing JSON tokenisation, base64, and UTF-8 overhead entirely.',
         '',
-        '**JOSE** (JSON Object Signing and Encryption, RFC 7516 / RFC 7515)'
-        ' exposes KMS key material through `/v1/crypto/` REST endpoints.'
-        ' It is used by cloud integrations (Google CSE, Microsoft DKE, Azure EKM)'
-        ' and any workload that speaks JWA algorithm identifiers (A256GCM, RS256, ES384 …)'
-        ' rather than KMIP semantics.',
+        _JOSE_PROTOCOL_PARAGRAPH,
         '',
     ]
 
@@ -1438,16 +1460,7 @@ def _render_methodology_section(
         '',
         f'### Load test ({load_cmd})',
         '',
-        'The load test sweeps a configurable list of concurrency levels.'
-        ' At each level *N* concurrent async tasks send pre-serialised requests in tight loops'
-        ' for a fixed **measurement window** (default: 20 s), preceded by a **warm-up phase**'
-        ' (default: 5 s) that is excluded from measurements.'
-        ' Pre-serialisation happens once at setup time and the same bytes are reused on every iteration,'
-        ' isolating server-side KMS latency from client-side encoding overhead.',
-        'Recorded metrics per *(protocol, operation, concurrency)* triple:',
-        '',
-        '- **Throughput** — requests per second (req/s)',
-        '- **p50 / p95 / p99** — round-trip latency percentiles (ms)',
+        *_load_test_lines(),
         '',
         '### Criterion micro-benchmarks (`ckms bench`)',
         '',
@@ -1461,6 +1474,118 @@ def _render_methodology_section(
         ' (temporary, discarded after the run).'
         ' This isolates pure cryptographic and KMIP serialisation overhead from database I/O.'
         ' Throughput figures will differ on a production deployment backed by PostgreSQL or Redis-Findex.',
+        '',
+    ]
+
+
+def _render_jose_cache_architecture(state: str) -> list[str]:
+    """Render ## Architecture for the JOSE CEK cache benchmark (`bench:jose-cache`)."""
+    cache_state = (
+        'enabled in this run (`disable_unwrapped_cache = false`)'
+        if state == 'on'
+        else 'disabled in this run (`disable_unwrapped_cache = true`):'
+        ' every lookup misses and nothing is stored'
+    )
+    return [
+        '## Architecture',
+        '',
+        '```mermaid',
+        'graph LR',
+        '    ckms["<b>ckms bench --load</b><br/>(--protocol jose)"]',
+        '    api["KMS JOSE REST API<br/>/v1/crypto/*"]',
+        '    cache["UnwrappedCache<br/>(JOSE CEK entries)"]',
+        '    rsa["RSA-OAEP-256 unwrap<br/>(OpenSSL)"]',
+        '    db["Key storage<br/>(temporary SQLite)"]',
+        '    ckms -->|HTTP| api',
+        '    api -->|peek / insert CEK| cache',
+        '    api -->|cache miss| rsa',
+        '    api --> db',
+        '```',
+        '',
+        '- **ckms**: concurrent load driver sending JWE requests to the JOSE endpoints',
+        '- **JOSE REST API**: `POST /v1/crypto/encrypt` and `POST /v1/crypto/decrypt`',
+        '- **UnwrappedCache**: holds unwrapped CEKs keyed by'
+        f' SHA-256(private key uid || 0x00 || encrypted_key); {cache_state}',
+        '- **RSA-OAEP-256 unwrap**: private-key operation run only on a cache miss',
+        '- **Key storage**: temporary SQLite database, discarded after the run',
+        '',
+    ]
+
+
+def _render_jose_cache_protocol_section() -> list[str]:
+    """Render ## Protocols for the JOSE CEK cache benchmark: JOSE only."""
+    return [
+        '## Protocols',
+        '',
+        'Only the **jose** protocol is exercised; KMIP is not used by this benchmark.',
+        '',
+        '| Protocol | Transport | Encoding | Endpoints |',
+        '|---|---|---|---|',
+        '| **jose** | HTTP/1.1 (plain, loopback) | JWE JSON (RFC 7516) |'
+        ' `POST /v1/crypto/encrypt`, `POST /v1/crypto/decrypt` |',
+        '',
+        _JOSE_PROTOCOL_PARAGRAPH,
+        '',
+    ]
+
+
+def _render_jose_cache_methodology_section(
+    state: str, command_str: str | None
+) -> list[str]:
+    """Render ## Benchmark Methodology for the JOSE CEK cache benchmark."""
+    load_cmd = command_str if command_str else '`ckms bench --load`'
+    if not load_cmd.startswith('`'):
+        load_cmd = f"`{load_cmd}`"
+    cache_text = (
+        '`disable_unwrapped_cache = false`: decrypted CEKs are cached, so'
+        ' `decrypt/rsa-oaep-cached` skips the RSA private-key operation and the'
+        ' private-key load.'
+        if state == 'on'
+        else '`disable_unwrapped_cache = true`: the cache is bypassed, so'
+        ' `decrypt/rsa-oaep-cached` and `decrypt/rsa-oaep-fresh` do the same'
+        ' server-side work.'
+    )
+    return [
+        '## Benchmark Methodology',
+        '',
+        '### Operations and payload sizes',
+        '',
+        'Every request carries a **4,096-byte** plaintext'
+        ' (`ckms bench --load-plaintext-size 4096`).',
+        '',
+        '| Operation | JWE construction | Plaintext | What it measures |',
+        '|---|---|---|---|',
+        '| `encrypt/aes-gcm` | `dir` + A256GCM, 256-bit AES key held by the KMS |'
+        ' 4,096 bytes | Server-side JWE encryption; does not use the CEK cache |',
+        '| `decrypt/rsa-oaep-cached` | RSA-OAEP-256 + A256GCM, RSA-2048 key pair;'
+        ' one JWE built once by the client and replayed | 4,096 bytes |'
+        ' Repeated decryption of the same token: a CEK cache hit after the first'
+        ' request when the cache is on |',
+        '| `decrypt/rsa-oaep-fresh` | Same algorithms; a new JWE (new CEK, new'
+        ' `encrypted_key`) built client-side for every request | 4,096 bytes |'
+        ' Always a CEK cache miss: full RSA private-key unwrap; latency includes the'
+        ' client-side JWE build (RSA public wrap + AES-GCM) |',
+        '',
+        'The decrypt requests set `kid` to the RSA **public** key id; the server'
+        ' resolves the private key through its `PrivateKeyLink`.',
+        '',
+        '### Cache state in this run',
+        '',
+        cache_text,
+        '',
+        'Compare with the [cache ON](../ckms_bench_jose_cache_on/report.md) and'
+        ' [cache OFF](../ckms_bench_jose_cache_off/report.md) reports.',
+        '',
+        f'### Load test ({load_cmd})',
+        '',
+        *_load_test_lines(
+            'Exception: `decrypt/rsa-oaep-fresh` builds its request on every iteration'
+            ' (see above).'
+        ),
+        '',
+        '> **Infrastructure note:** each cache state runs against its own freshly'
+        ' started server with a temporary SQLite database; both runs use the same'
+        ' binaries, machine and sweep parameters.',
         '',
     ]
 
@@ -1479,11 +1604,16 @@ def generate_report(
     is_pkcs11: bool = False,
     default_hsm_backend: str | None = None,
     default_command: str | None = None,
+    jose_cache_state: str | None = None,
 ) -> None:
     """Write report.md combining load-test and criterion sections."""
     sep = ['', '---', '']
     lines: list[str] = [
-        '# KMS Performance Comparison',
+        (
+            '# KMS Performance Comparison'
+            if jose_cache_state is None
+            else f"# JOSE CEK Cache Benchmark — cache {jose_cache_state.upper()}"
+        ),
         '',
         f"**Versions**: {', '.join(f'`v{v}`' if v[0:1].isdigit() else f'`{v}`' for v in versions)}  ",
         f"**Generated**: {date.today().isoformat()}",
@@ -1515,39 +1645,47 @@ def generate_report(
         if env_lines:
             lines += env_lines
             lines += sep
-    # ── Architecture ──────────────────────────────────────────────────────────
-    arch_lines = _render_architecture_section(
-        is_hsm=is_hsm,
-        is_hsm_kek=is_hsm_kek,
-        is_pkcs11=is_pkcs11,
-        hsm_backend_name=hsm_backend_name,
-        active_ops=active_ops,
-        command_str=command_str,
-    )
-    if arch_lines:
-        lines += arch_lines
+    if jose_cache_state:
+        lines += _render_jose_cache_architecture(jose_cache_state)
+        lines += sep
+        lines += _render_jose_cache_protocol_section()
+        lines += sep
+        lines += _render_jose_cache_methodology_section(jose_cache_state, command_str)
+        lines += sep
+    else:
+        # ── Architecture ──────────────────────────────────────────────────────
+        arch_lines = _render_architecture_section(
+            is_hsm=is_hsm,
+            is_hsm_kek=is_hsm_kek,
+            is_pkcs11=is_pkcs11,
+            hsm_backend_name=hsm_backend_name,
+            active_ops=active_ops,
+            command_str=command_str,
+        )
+        if arch_lines:
+            lines += arch_lines
+            lines += sep
+
+        # ── Protocols ─────────────────────────────────────────────────────────
+        lines += _render_protocol_section(
+            is_hsm=is_hsm,
+            is_hsm_kek=is_hsm_kek,
+            is_pkcs11=is_pkcs11,
+            hsm_backend_name=hsm_backend_name,
+            active_ops=active_ops,
+        )
         lines += sep
 
-    # ── Protocols ─────────────────────────────────────────────────────────────
-    lines += _render_protocol_section(
-        is_hsm=is_hsm,
-        is_hsm_kek=is_hsm_kek,
-        is_pkcs11=is_pkcs11,
-        hsm_backend_name=hsm_backend_name,
-        active_ops=active_ops,
-    )
-    lines += sep
-
-    # ── Methodology ───────────────────────────────────────────────────────────
-    lines += _render_methodology_section(
-        is_hsm=is_hsm,
-        is_hsm_kek=is_hsm_kek,
-        is_pkcs11=is_pkcs11,
-        hsm_backend_name=hsm_backend_name,
-        active_ops=active_ops,
-        command_str=command_str,
-    )
-    lines += sep
+        # ── Methodology ───────────────────────────────────────────────────────
+        lines += _render_methodology_section(
+            is_hsm=is_hsm,
+            is_hsm_kek=is_hsm_kek,
+            is_pkcs11=is_pkcs11,
+            hsm_backend_name=hsm_backend_name,
+            active_ops=active_ops,
+            command_str=command_str,
+        )
+        lines += sep
 
     # ── Load tests ────────────────────────────────────────────────────────
     has_load = any(load_data.get(v) for v in versions)
@@ -1618,7 +1756,7 @@ def generate_report(
             lines.extend(sep)
 
     # ── Criterion benchmarks ──────────────────────────────────────────────
-    if any(criterion_data.values()):
+    if not jose_cache_state and any(criterion_data.values()):
         lines += ['## Criterion Benchmarks', '']
         for chart_title, table_lines in _build_criterion_tables(
             versions, criterion_data
@@ -1648,6 +1786,7 @@ def main() -> None:
 
     hsm_backend_arg = None
     command_arg = None
+    jose_cache_state: str | None = None
     cleaned_argv: list[str] = []
     idx = 0
     while idx < len(argv):
@@ -1671,14 +1810,27 @@ def main() -> None:
             command_arg = arg.split('=', 1)[1]
             idx += 1
             continue
+        if arg == '--jose-cache' and idx + 1 < len(argv):
+            jose_cache_state = argv[idx + 1]
+            idx += 2
+            continue
+        if arg.startswith('--jose-cache='):
+            jose_cache_state = arg.split('=', 1)[1]
+            idx += 1
+            continue
         cleaned_argv.append(arg)
         idx += 1
     argv = cleaned_argv
+
+    if jose_cache_state not in (None, 'on', 'off'):
+        print(f"ERROR: --jose-cache expects on|off, got {jose_cache_state!r}")
+        sys.exit(1)
 
     if len(argv) < 2:
         print(
             f"Usage: {sys.argv[0]} <results_dir> <version1> [version2] ... "
             '[--hsm] [--kek] [--pkcs11] [--hsm-backend <name>] [--command <cmd>]'
+            ' [--jose-cache on|off]'
         )
         sys.exit(1)
 
@@ -1750,6 +1902,7 @@ def main() -> None:
         is_pkcs11=is_pkcs11,
         default_hsm_backend=hsm_backend_arg,
         default_command=command_arg,
+        jose_cache_state=jose_cache_state,
     )
 
 
