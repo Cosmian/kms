@@ -61,20 +61,22 @@ PY
 resolve_old_versions() {
   local baseline
   baseline="$(read_supported_baseline)"
-  python3 - "${REPO_ROOT}" "${baseline}" "${OLD_VERSION_ARG}" "${ROTATION_INDEX}" <<'PY'
-import subprocess, sys, time
-repo_root, baseline, arg, rot = sys.argv[1:5]
+  python3 - "${REPO_ROOT}" "${baseline}" "${OLD_VERSION_ARG}" "${ROTATION_INDEX}" "${GITHUB_REF_NAME:-}" <<'PY'
+import re, subprocess, sys, time
+repo_root, baseline, arg, rot, ref_name = sys.argv[1:6]
 if arg != "nightly":
     print("\n".join(v.strip() for v in arg.split(",") if v.strip()))
     raise SystemExit(0)
 ver = lambda s: tuple(int(x) for x in s.split("."))
-tags = subprocess.check_output(["git", "-C", repo_root, "tag", "-l", "5.*"], text=True).splitlines()
-if len(tags) < 2:
-    remote = subprocess.check_output(["git", "-C", repo_root, "ls-remote", "--tags", "--refs", "origin", "refs/tags/5.*"], text=True).splitlines()
-    tags = [line.split("refs/tags/")[-1] for line in remote if "refs/tags/" in line]
-pool = sorted({t.strip() for t in tags if t.strip().count(".") == 2 and "-" not in t and ver(t.strip()) >= ver(baseline)}, key=ver)
+sem = re.compile(r"^\d+\.\d+\.\d+$")
+tags = subprocess.check_output(["git", "-C", repo_root, "tag", "-l"], text=True).splitlines()
+sem_tags = [t.strip() for t in tags if sem.match(t.strip())]
+if len(sem_tags) < 2:
+    remote = subprocess.check_output(["git", "-C", repo_root, "ls-remote", "--tags", "--refs", "origin"], text=True).splitlines()
+    sem_tags = [line.split("refs/tags/")[-1].strip() for line in remote if "refs/tags/" in line and sem.match(line.split("refs/tags/")[-1].strip())]
+pool = sorted({t for t in sem_tags if ver(t) >= ver(baseline) and (not sem.match(ref_name) or ver(t) < ver(ref_name))}, key=ver)
 if not pool:
-    raise SystemExit(f"No released 5.x tags >= {baseline}")
+    raise SystemExit(f"No released semver tags >= {baseline}")
 selected = [baseline] + ([pool[-1]] if pool[-1] != baseline else [])
 middle = [v for v in pool if v not in selected]
 day_idx = int(rot) if rot else int(time.time() // 86400)
@@ -120,19 +122,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Pull an old release image with up to 3 attempts on transient registry errors and log its digest.
-pull_old_image() {
-  local image="$1" attempt
-  for attempt in 1 2 3; do
-    if docker image inspect "${image}" >/dev/null 2>&1 || docker pull --quiet "${image}" >/dev/null; then
-      local digest
-      digest="$(docker inspect --format '{{join .RepoDigests ","}}' "${image}" 2>/dev/null || true)"
-      print_status "Using old image ${image} (digest=${digest:-local})"
-      return 0
-    fi
-    print_warning "docker pull ${image} failed (attempt ${attempt}/3)"
-  done
-  print_error "Could not pull old release image ${image}"
+# Pull a Docker image (if not already present locally) using retry from common.sh.
+pull_image_with_retry() {
+  local image="$1"
+  if ! docker image inspect "${image}" >/dev/null 2>&1; then
+    retry 3 5 docker pull --quiet "${image}" >/dev/null || print_error "Could not pull image ${image}"
+  fi
+  local digest
+  digest="$(docker inspect --format '{{join .RepoDigests ","}}' "${image}" 2>/dev/null || true)"
+  print_status "Using image ${image} (digest=${digest:-local})"
 }
 
 # Execute a readiness or backup command against the active database container.
@@ -303,12 +301,23 @@ save_failure_artifacts() {
   print_warning "Saved failure artifacts to ${dest}"
 }
 
+# Format the one-line replay command for a (backend, old_version, seed) cell.
+format_replay_cmd() {
+  local backend="$1" old_version="$2" seed="$3"
+  local cmd="mise run test:upgrade-db --variant ${VARIANT} --backend ${backend} --old-version ${old_version} --new-image ${NEW_IMAGE} --seed ${seed}"
+  if [ "${RANDOM_COUNT}" != "10" ]; then
+    cmd+=" --random-count ${RANDOM_COUNT}"
+  fi
+  echo "${cmd}"
+}
+
 # Run verify_db_upgrade.py with mTLS owner and grantee credentials against the active KMS container.
 run_py_verifier() {
   local subcmd="$1" backend="$2" old_version="$3" seed="$4"
   shift 4
   local cert_dir="${REPO_ROOT}/test_data/certificates/client_server"
-  local replay="mise run test:upgrade-db --variant ${VARIANT} --backend ${backend} --old-version ${old_version} --seed ${seed}"
+  local replay
+  replay="$(format_replay_cmd "${backend}" "${old_version}" "${seed}")"
   python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" "${subcmd}" \
     --url "https://127.0.0.1:${KMS_HOST_PORT}" \
     --ca-cert "${cert_dir}/ca/ca.crt" \
@@ -324,13 +333,17 @@ run_py_verifier() {
 seed_cell_db() {
   local backend="$1" old_version="$2" old_image="$3" seed="$4" cell_dir="$5" seed_target="$6"
   local cert_dir="${REPO_ROOT}/test_data/certificates/client_server"
+  local replay
+  replay="$(format_replay_cmd "${backend}" "${old_version}" "${seed}")"
   start_kms_container "${old_image}" "${backend}" "${seed_target}" "${cell_dir}/old-seed.log" &&
     python3 "${REPO_ROOT}/.mise/scripts/test/populate_fixed_set.py" \
       --url "https://127.0.0.1:${KMS_HOST_PORT}" --ca-cert "${cert_dir}/ca/ca.crt" \
       --client-cert "${cert_dir}/owner/owner.client.acme.com.crt" \
       --client-key "${cert_dir}/owner/owner.client.acme.com.key" \
       --variant "${VARIANT}" --manifest "${cell_dir}/manifest.json" \
-      --sample-cert "${cert_dir}/server/kmserver.acme.com.crt" &&
+      --sample-cert "${cert_dir}/server/kmserver.acme.com.crt" \
+      --old-version "${old_version}" --new-version "${NEW_IMAGE}" \
+      --backend "${backend}" --replay-cmd "${replay}" &&
     run_py_verifier populate-random "${backend}" "${old_version}" "${seed}" \
       --manifest "${cell_dir}/manifest.json" --seed "${seed}" --count "${RANDOM_COUNT}" \
       --sample-cert "${cert_dir}/server/kmserver.acme.com.crt" &&
@@ -373,19 +386,33 @@ run_upgrade_cell() {
 }
 
 parse_args "$@"
+RAW_VERSIONS="$(resolve_old_versions)"
+RAW_BACKENDS="$(resolve_backends)"
+mapfile -t VERSIONS <<<"${RAW_VERSIONS}"
+read -r -a BACKENDS <<<"${RAW_BACKENDS}"
+[ -n "${VERSIONS[0]:-}" ] || print_error "Resolved empty old-version list."
+[ -n "${BACKENDS[0]:-}" ] || print_error "Resolved empty backend list."
+
 docker network create "${NETWORK}" >/dev/null
 BASE_SEED="${SEED_ARG:-$(date +%s)}"
 REPO_PREFIX="ghcr.io/cosmian/kms"
 [ "${VARIANT}" != "fips" ] || REPO_PREFIX="ghcr.io/cosmian/kms-fips"
 
-mapfile -t VERSIONS < <(resolve_old_versions)
-read -r -a BACKENDS <<<"$(resolve_backends)"
 print_header "DB Upgrade Gate (variant=${VARIANT}, backends=${BACKENDS[*]}, versions=${VERSIONS[*]}, seed=${BASE_SEED})"
 
+for backend in "${BACKENDS[@]}"; do
+  case "${backend}" in
+    postgresql) pull_image_with_retry "${POSTGRES_IMAGE}" ;;
+    mysql) pull_image_with_retry "${MYSQL_IMAGE}" ;;
+    redis) pull_image_with_retry "${REDIS_IMAGE}" ;;
+  esac
+done
+
 FAILED=()
+REPLAYS=()
 for old_ver in "${VERSIONS[@]}"; do
   old_img="${REPO_PREFIX}:${old_ver}"
-  pull_old_image "${old_img}"
+  pull_image_with_retry "${old_img}"
   for backend in "${BACKENDS[@]}"; do
     print_status "Testing upgrade ${old_ver} -> ${NEW_IMAGE} on ${backend} (${VARIANT}, seed=${BASE_SEED})"
     if (run_upgrade_cell "${backend}" "${old_ver}" "${old_img}" "${BASE_SEED}"); then
@@ -394,12 +421,16 @@ for old_ver in "${VERSIONS[@]}"; do
       print_warning "${backend} (${VARIANT}) upgrade from ${old_ver} FAILED"
       save_failure_artifacts "${backend}" "${old_ver}" "${WORK_DIR}/${backend}-${old_ver}"
       FAILED+=("${backend}:${old_ver}")
+      REPLAYS+=("$(format_replay_cmd "${backend}" "${old_ver}" "${BASE_SEED}")")
     fi
   done
 done
 
 if [ "${#FAILED[@]}" -gt 0 ]; then
   echo "ERROR: Database upgrade gate failed for: ${FAILED[*]}" >&2
+  for cmd in "${REPLAYS[@]}"; do
+    echo "  Replay: ${cmd}" >&2
+  done
   exit 1
 fi
 print_success "All database upgrade gate checks passed (${VARIANT})"
