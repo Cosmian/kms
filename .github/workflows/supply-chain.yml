@@ -5,10 +5,6 @@ name: Supply chain
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
 
 jobs:
   cargo-vet:
@@ -19,9 +15,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
+      - uses: ./.github/actions/install-rust
 
       - name: Install cargo-vet
         run: cargo install --locked cargo-vet@0.10.2

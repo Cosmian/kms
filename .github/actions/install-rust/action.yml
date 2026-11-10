@@ -1,0 +1,27 @@
+---
+name: Install Rust
+description: >
+  Install the Rust toolchain and components pinned in rust-toolchain.toml
+  (rustup toolchain-file precedence). Must run after actions/checkout.
+
+inputs:
+  targets:
+    description: Space-separated extra rustup targets to add (optional)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain from rust-toolchain.toml
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        set -euo pipefail
+        rustup toolchain install
+        if [ -n "$TARGETS" ]; then
+          # shellcheck disable=SC2086 # word-splitting the target list is intended
+          rustup target add $TARGETS
+        fi
+        rustc --version
