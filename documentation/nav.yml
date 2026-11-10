@@ -72,6 +72,7 @@ nav:
               - Key Rotation: kmip_support/key_rotation/index.md
               - HSM Key Rotation: kmip_support/key_rotation/hsm.md
               - Auto-Rotation Policy: kmip_support/key_rotation/auto_rotation_policy.md
+              - Concurrent Re-Key and Conflicts: kmip_support/key_rotation/concurrent_rekey.md
           - Revoke: kmip_support/_revoke.md
           - Sign: kmip_support/_signature.md
   - Integrations:

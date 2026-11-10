@@ -25,6 +25,8 @@ pub struct ObjectWithMetadata {
     owner: UserId,
     state: State,
     attributes: Attributes,
+    // optimistic-lock counter as read from the store; `None` if the store does not track it
+    version: Option<u64>,
 }
 
 impl ObjectWithMetadata {
@@ -42,7 +44,21 @@ impl ObjectWithMetadata {
             owner: owner.into(),
             state,
             attributes,
+            version: None,
         }
+    }
+
+    /// Set the version read from the store (see `AtomicOperation::UpdateObjectIfVersion`).
+    #[must_use]
+    pub const fn with_version(mut self, version: u64) -> Self {
+        self.version = Some(version);
+        self
+    }
+
+    /// The optimistic-lock version read from the store, if the store tracks one.
+    #[must_use]
+    pub const fn version(&self) -> Option<u64> {
+        self.version
     }
 
     #[must_use]

@@ -176,6 +176,7 @@ impl SqlitePool {
     /// `PRAGMAs` to each. Returns them in a `Vec`.
     async fn open_connections(path: &Path, count: usize) -> DbResult<Vec<Connection>> {
         let mut conns = Vec::with_capacity(count);
+        let pragmas = get_sqlite_query!("connection-pragmas");
         for _ in 0..count {
             // Opening a connection and applying its startup PRAGMAs can transiently race
             // against a previous writer connection to the same file that has not finished
@@ -184,21 +185,8 @@ impl SqlitePool {
             let conn = retry_on_transient_lock(|| async {
                 let conn = Connection::open(path).await?;
                 conn.call(
-                    |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                        c.execute_batch(
-                            // WAL mode: readers and the single writer never block each other.
-                            "PRAGMA journal_mode=WAL;\
-                             PRAGMA synchronous=NORMAL;\
-                             PRAGMA busy_timeout=5000;\
-                             PRAGMA cache_size=-65536;\
-                             PRAGMA mmap_size=268435456;\
-                             PRAGMA temp_store=MEMORY;",
-                            // cache_size=-65536 → 64 MiB page cache per connection (negative
-                            // value means KiB, positive means pages of 4 KiB each).
-                            // mmap_size=268435456 → 256 MiB memory-mapped I/O window;
-                            // eliminates pread() syscall overhead for read-hot pages.
-                            // temp_store=MEMORY → sort/index temp tables stay in RAM.
-                        )
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        c.execute_batch(pragmas)
                     },
                 )
                 .await?;
@@ -245,7 +233,7 @@ impl SqlitePool {
 
         // Bootstrap schema and optionally clear database on startup, using trait queries
         let create_parameters = pool.get_query("create-table-parameters")?.to_owned();
-        let create_objects = pool.get_query("create-table-objects")?.to_owned();
+        let create_objects = get_sqlite_query!("create-table-objects").to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
         let idx_objects_owner = pool.get_query("create-index-objects-owner")?.to_owned();
@@ -340,13 +328,19 @@ impl SqlitePool {
         // so we check PRAGMA table_info first.
         let backfill_done =
             pool.get_parameter(WRAPPING_KEY_BACKFILL_PARAM).await? == Some("true".to_owned());
+        let table_info_objects_sql = get_sqlite_query!("table-info-objects");
+        let add_wrapping_sql = get_sqlite_query!("add-column-wrapping-key-id");
+        let add_version_sql = get_sqlite_query!("add-column-version");
+        let idx_wrapping_sql = get_sqlite_query!("create-index-objects-wrapping-key-id");
+        let select_null_wrapping_sql = get_sqlite_query!("select-objects-null-wrapping-key");
+        let update_wrapping_sql = get_sqlite_query!("update-wrapping-key-id");
         retry_on_transient_lock(|| async {
             pool.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         let tx = c.transaction()?;
                         let has_column: bool = {
-                            let mut stmt = tx.prepare("PRAGMA table_info(objects)")?;
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
                             let mut rows = stmt.query([])?;
                             let mut found = false;
                             while let Some(row) = rows.next()? {
@@ -359,21 +353,32 @@ impl SqlitePool {
                             found
                         };
                         if !has_column {
-                            tx.execute_batch(
-                                "ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);",
-                            )?;
+                            tx.execute_batch(add_wrapping_sql)?;
+                        }
+                        // Optimistic-locking counter for databases created before it existed.
+                        // Existing rows get version 0 (the column default).
+                        let has_version: bool = {
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut found = false;
+                            while let Some(row) = rows.next()? {
+                                let col_name: String = row.get(1)?;
+                                if col_name == "version" {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        };
+                        if !has_version {
+                            tx.execute_batch(add_version_sql)?;
                         }
                         // Index supporting `find-wrapped-by` lookups and the backfill scan.
-                        tx.execute_batch(
-                            "CREATE INDEX IF NOT EXISTS idx_objects_wrapping_key_id \
-                             ON objects (wrapping_key_id);",
-                        )?;
+                        tx.execute_batch(idx_wrapping_sql)?;
                         if !backfill_done {
                             // Backfill: deserialize each object and extract its wrapping key UID.
                             let pairs: Vec<(String, String)> = {
-                                let mut stmt = tx.prepare(
-                                    "SELECT id, object FROM objects WHERE wrapping_key_id IS NULL",
-                                )?;
+                                let mut stmt = tx.prepare(select_null_wrapping_sql)?;
                                 let mut rows = stmt.query([])?;
                                 let mut out = Vec::new();
                                 while let Some(row) = rows.next()? {
@@ -386,7 +391,7 @@ impl SqlitePool {
                                     Ok(obj) => {
                                         if let Some(wrapping_uid) = obj.wrapping_key_uid() {
                                             tx.execute(
-                                                "UPDATE objects SET wrapping_key_id = ?1 WHERE id = ?2",
+                                                update_wrapping_sql,
                                                 rusqlite::params![wrapping_uid, id],
                                             )?;
                                         }
@@ -404,7 +409,8 @@ impl SqlitePool {
                         Ok(())
                     },
                 )
-                .await})
+                .await
+        })
         .await?;
         if !backfill_done {
             pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
@@ -465,13 +471,15 @@ impl SqlitePool {
         // SQLite does not support ADD COLUMN IF NOT EXISTS — check PRAGMA first.
         // Also create the unique partial index that prevents duplicate active records
         // per user (enforces n-of-n dual-control at the DB layer).
+        let table_info_co_sql = get_sqlite_query!("table-info-crypto-officer-activations");
+        let add_co_col_sql = get_sqlite_query!("add-column-co-activated-by");
+        let idx_co_active_sql = get_sqlite_query!("create-unique-index-co-activations-active");
         retry_on_transient_lock(|| async {
             pool.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         let has_activated_by: bool = {
-                            let mut stmt =
-                                c.prepare("PRAGMA table_info(crypto_officer_activations)")?;
+                            let mut stmt = c.prepare(table_info_co_sql)?;
                             let mut rows = stmt.query([])?;
                             let mut found = false;
                             while let Some(row) = rows.next()? {
@@ -484,18 +492,11 @@ impl SqlitePool {
                             found
                         };
                         if !has_activated_by {
-                            c.execute_batch(
-                                "ALTER TABLE crypto_officer_activations \
-                                 ADD COLUMN activated_by VARCHAR(255);",
-                            )?;
+                            c.execute_batch(add_co_col_sql)?;
                         }
                         // Unique partial index: at most one active record per user.
                         // SQLite supports partial indexes since 3.8.9 (2014-08-15).
-                        c.execute_batch(
-                            "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
-                             ON crypto_officer_activations (activated_by) \
-                             WHERE revoked_at IS NULL;",
-                        )?;
+                        c.execute_batch(idx_co_active_sql)?;
                         Ok(())
                     },
                 )
@@ -506,11 +507,12 @@ impl SqlitePool {
         // Refresh planner statistics so the selective JSON-expression indexes are
         // preferred over idx_objects_state. analysis_limit bounds ANALYZE to a sample,
         // keeping this cheap on very large databases.
+        let optimize_sql = get_sqlite_query!("optimize-planner");
         retry_on_transient_lock(|| async {
             pool.writer
                 .call(
-                    |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                        c.execute_batch("PRAGMA analysis_limit=1000; PRAGMA optimize=0x10002;")
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        c.execute_batch(optimize_sql)
                     },
                 )
                 .await
@@ -572,8 +574,9 @@ impl SqlitePool {
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
+        let sql = get_sqlite_query!("health-check");
         self.writer
-            .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
+            .call(move |c| c.query_row(sql, [], |_row| Ok(())))
             .await
     }
 }
@@ -627,9 +630,9 @@ fn sqlite_row_to_owm(row: &Row<'_>) -> Result<ObjectWithMetadata, DbError> {
     let attributes: Attributes = serde_json::from_str(&attributes_json)?;
     let state =
         State::try_from(state_str.as_str()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
-    ))
+    let version: i64 = row.get(5)?;
+    let owm = ObjectWithMetadata::new(id, object, owner, state, attributes);
+    Ok(owm.with_version(u64::try_from(version).unwrap_or_default()))
 }
 
 #[async_trait(?Send)]
@@ -1490,14 +1493,14 @@ impl PermissionsStore for SqlitePool {
     }
 
     async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
-        let sql = "SELECT MAX(crl_number) FROM crls".to_owned();
+        let sql = get_sqlite_query!("select-max-crl-number");
         let max: Option<i64> = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
                     // MAX() returns a single row with NULL when the table is empty.
                     // Use Option<i64> to handle both NULL and actual values.
-                    c.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0))
+                    c.query_row(sql, [], |row| row.get::<_, Option<i64>>(0))
                         .optional()
                         .map(Option::flatten)
                 },
@@ -1600,6 +1603,7 @@ enum OwnedOp {
         attributes_json: String,
         wrapping_key_id: Option<String>,
         tags: Option<HashSet<String>>,
+        expected_version: Option<i64>,
     },
     UpdateState {
         uid: String,
@@ -1652,22 +1656,13 @@ impl OwnedOp {
                 })
             }
             AtomicOperation::UpdateObject((uid, obj, attrs, tags)) => {
-                let object_json = serde_json::to_string(obj).map_err(|e| {
-                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                Self::update_object(uid, obj, attrs, tags, None)
+            }
+            AtomicOperation::UpdateObjectIfVersion((uid, obj, attrs, tags, expected)) => {
+                let expected = i64::try_from(*expected).map_err(|e| {
+                    DbError::DatabaseError(format!("expected version out of range: {e}"))
                 })?;
-                let attributes_json = serde_json::to_string(attrs).map_err(|e| {
-                    DbError::DatabaseError(format!(
-                        "failed serializing the attributes to JSON: {e}"
-                    ))
-                })?;
-                let wrapping_key_id = obj.wrapping_key_uid();
-                Ok(Self::UpdateObject {
-                    uid: uid.clone(),
-                    object_json,
-                    attributes_json,
-                    wrapping_key_id,
-                    tags: tags.clone(),
-                })
+                Self::update_object(uid, obj, attrs, tags, Some(expected))
             }
             AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
@@ -1675,6 +1670,29 @@ impl OwnedOp {
             }),
             AtomicOperation::Delete(uid) => Ok(Self::Delete(uid.clone())),
         }
+    }
+
+    fn update_object(
+        uid: &str,
+        obj: &Object,
+        attrs: &Attributes,
+        tags: &Option<HashSet<String>>,
+        expected_version: Option<i64>,
+    ) -> DbResult<Self> {
+        let object_json = serde_json::to_string(obj).map_err(|e| {
+            DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+        })?;
+        let attributes_json = serde_json::to_string(attrs).map_err(|e| {
+            DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
+        })?;
+        Ok(Self::UpdateObject {
+            uid: uid.to_owned(),
+            object_json,
+            attributes_json,
+            wrapping_key_id: obj.wrapping_key_uid(),
+            tags: tags.clone(),
+            expected_version,
+        })
     }
 }
 
@@ -1687,11 +1705,13 @@ fn apply_owned_ops(
     let ins_obj_sql = get_sqlite_query!("insert-objects");
     let ins_tag_sql = get_sqlite_query!("insert-tags");
     let upd_obj_sql = get_sqlite_query!("update-object-with-object");
+    let upd_obj_if_version_sql = get_sqlite_query!("update-object-with-object-if-version");
     let del_tag_sql = get_sqlite_query!("delete-tags");
     let ups_obj_sql = get_sqlite_query!("upsert-object");
     let upd_st_sql = get_sqlite_query!("update-object-with-state");
     let del_obj_sql = get_sqlite_query!("delete-object");
     let del_acc_sql = get_sqlite_query!("delete-read-access-for-object");
+    let exists_obj_sql = get_sqlite_query!("exists-object");
 
     for op in ops {
         match op {
@@ -1703,7 +1723,7 @@ fn apply_owned_ops(
                 state_s,
                 tags,
             } => {
-                let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+                let mut stmt = tx.prepare_cached(exists_obj_sql)?;
                 let exists = stmt.exists(params_from_iter([uid]))?;
                 if exists {
                     return Err(DbError::Kmip21Error(
@@ -1765,11 +1785,31 @@ fn apply_owned_ops(
                 attributes_json,
                 wrapping_key_id,
                 tags,
+                expected_version,
             } => {
-                tx.execute(
-                    upd_obj_sql,
-                    rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
-                )?;
+                if let Some(expected) = expected_version {
+                    let rows_affected = tx.execute(
+                        upd_obj_if_version_sql,
+                        rusqlite::params![
+                            object_json,
+                            attributes_json,
+                            wrapping_key_id,
+                            uid,
+                            expected
+                        ],
+                    )?;
+                    if rows_affected == 0 {
+                        return Err(DbError::Conflict(format!(
+                            "object '{uid}' was modified concurrently (expected version \
+                             {expected})"
+                        )));
+                    }
+                } else {
+                    tx.execute(
+                        upd_obj_sql,
+                        rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
+                    )?;
+                }
                 if let Some(tags) = tags {
                     tx.execute(del_tag_sql, params_from_iter([uid]))?;
                     for tag in tags {

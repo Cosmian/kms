@@ -749,11 +749,22 @@ impl Database {
         };
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
-        let ids = self
+        let ids = match self
             .record("atomic", async move {
                 db.atomic(user, operations).await.map_err(DbError::from)
             })
-            .await?;
+            .await
+        {
+            Ok(ids) => ids,
+            Err(e @ DbError::Conflict(_)) => {
+                // the cached versions are stale: make the caller's retry read fresh ones
+                for op in operations {
+                    self.object_cache.invalidate(op.get_object_uid()).await;
+                }
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        };
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
@@ -765,6 +776,7 @@ impl Database {
                     }
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, ..))
+                | AtomicOperation::UpdateObjectIfVersion((uid, object, attributes, ..))
                 | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;

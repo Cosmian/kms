@@ -55,3 +55,15 @@ When adding or removing a page, also update the navigation in `documentation/doc
 `documentation/nav.yml`.
 
 > Run `/threat-model` when database changes alter trust boundaries, authorization, or security-relevant data flows; skip only for a confirmed incremental change outside those areas.
+
+## SQL statements live in SQL files
+
+- Every SQL statement (queries, DDL, migrations, `PRAGMA`/`SET SESSION`, health checks) MUST be a named entry in the backend's `.sql` file, never a string literal in a `.rs` file:
+    - `query.sql` — PostgreSQL, and the shared base that SQLite inherits;
+    - `query_sqlite.sql` — SQLite overrides (loaded after `query.sql`; same name wins);
+    - `query_mysql.sql` — MySQL/MariaDB (standalone, no fallback to `query.sql`).
+    - `stores/audit/audit.sql` — the audit store (PostgreSQL).
+- Fetch them by name with `get_pgsql_query!`, `get_sqlite_query!`, `get_mysql_query!` or `SqlDatabase::get_query`. Resolve the name before entering a `call(|c| …)` closure and move the `&'static str` in.
+- Adding a schema change means adding the statement to every backend file that needs it, plus the idempotent migration step that runs it at startup (`ADD COLUMN IF NOT EXISTS`; on SQLite/MySQL check `PRAGMA table_info` / `SHOW COLUMNS` first).
+- The `rawsql` loader has parsing pitfalls (a query ends at the first line ending in `;`, so multi-statement entries go on one line; no `name` in comments) — see `database-tables.instructions.md` § `rawsql` loader gotcha.
+- Exceptions: (1) SQL assembled at runtime from user-supplied filters (`locate_query.rs`, `format!` with bind placeholders); (2) `#[cfg(test)]` code and test fixtures (tamper/trigger tests, legacy-schema fixtures in `tests/`). Any other inline SQL in non-test code is a review finding.

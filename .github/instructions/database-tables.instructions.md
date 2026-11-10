@@ -86,3 +86,9 @@ with spaces. Two failure modes follow:
 
 Comments are safe only between two queries (after one query's closing `;`, before the
 next `-- name:` tag) — never inside a query's body.
+
+Two more pitfalls:
+
+- A query ends at the first line that ends with `;`. A multi-statement entry (e.g. several `PRAGMA`s)
+  must therefore sit on a single line, otherwise only its first statement is stored.
+- Query names must not contain the substring `name` either, since the tag parser strips it.

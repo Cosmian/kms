@@ -480,6 +480,41 @@ pub(crate) mod issue_940_repro {
         Ok(())
     }
 
+    /// Unconditional updates retain their established missing-object error after deletion.
+    pub(crate) async fn t9_unconditional_update_after_delete() -> DbResult<()> {
+        let (store, _) = clients(6).await?;
+        let case = tag_case(&store).await?;
+        let object = key(4)?;
+        store.delete(&case.uid).await?;
+        let expected_error = format!("Item not found: {}", case.uid);
+        let err = store
+            .atomic(
+                &case.owner,
+                &[AtomicOperation::UpdateObject((
+                    case.uid.clone(),
+                    object.clone(),
+                    object.attributes()?.clone(),
+                    None,
+                ))],
+            )
+            .await
+            .expect_err("unconditional atomic update must reject a deleted object");
+        assert!(
+            matches!(&err, cosmian_kms_interfaces::InterfaceError::Db(message) if message == &expected_error),
+            "unexpected missing-object error: {err}"
+        );
+        let err = store
+            .update_object(&case.uid, &object, object.attributes()?, None)
+            .await
+            .expect_err("standalone update must reject a deleted object");
+        assert!(
+            matches!(&err, cosmian_kms_interfaces::InterfaceError::Db(message) if message == &expected_error),
+            "unexpected missing-object error: {err}"
+        );
+        assert!(store.retrieve(&case.uid).await?.is_none());
+        Ok(())
+    }
+
     /// Run every #940 contract test; called from `test_db_redis_with_findex`.
     pub(crate) async fn test_issue_940() -> DbResult<()> {
         t1_removed_tag_must_not_select_existing_object().await?;
@@ -489,6 +524,7 @@ pub(crate) mod issue_940_repro {
         t5_delete_is_guarded_by_baseline().await?;
         Box::pin(t6_create_then_delete_in_one_batch()).await?;
         Box::pin(t8_standalone_mutators_are_cas_guarded()).await?;
+        Box::pin(t9_unconditional_update_after_delete()).await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_findex_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_attribute_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_interleaved_index_updates_keep_object_findable().await

@@ -32,7 +32,9 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{trace, warn};
 
-use super::rekey::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
+use super::rekey::{
+    RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey, retire_update_op,
+};
 use crate::{
     core::{
         KMS,
@@ -327,17 +329,17 @@ impl RekeyOperation for CertificateRekey {
         std::future::ready(Ok(()))
     }
 
-    async fn finalize_dependants(
+    async fn prepare_finalization(
         &self,
         kms: &KMS,
         user: &UserId,
         candidates: &[RotationCandidate; 1],
         replacements: &[ReplacementObject; 1],
-    ) -> KResult<()> {
+    ) -> KResult<Vec<AtomicOperation>> {
         let [candidate] = candidates;
         let [replacement] = replacements;
 
-        // Phase 2: Update the old certificate with ReplacementObjectLink; only an Active
+        // Prepare the old certificate's ReplacementObjectLink; only an Active
         // certificate is retired (Deactivation Date = now, §4.57 transition 6).
         let deactivate = candidate.owm.effective_state() == State::Active;
         let mut old_object = candidate.owm.object().clone();
@@ -353,12 +355,7 @@ impl RekeyOperation for CertificateRekey {
             }
         }
 
-        let mut operations = vec![AtomicOperation::UpdateObject((
-            candidate.uid.clone(),
-            old_object,
-            old_attributes,
-            None,
-        ))];
+        let mut operations = vec![retire_update_op(&candidate.owm, old_object, old_attributes)];
         if deactivate {
             // UpdateObject only rewrites the `attributes` JSON column; the `state` column
             // must be updated separately so that `find_due_for_rotation` sees it.
@@ -379,8 +376,7 @@ impl RekeyOperation for CertificateRekey {
         )
         .await?;
 
-        kms.database.atomic(user, &operations).await?;
-        Ok(())
+        Ok(operations)
     }
 
     fn build_response(&self, replacements: &[ReplacementObject; 1]) -> ReCertifyResponse {

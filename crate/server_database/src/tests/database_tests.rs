@@ -18,8 +18,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, ObjectsStore, PermissionsStore,
-    UserId,
+    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, ObjectWithMetadata,
+    ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
@@ -1003,5 +1003,245 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
     db.delete(&wrapped_uid).await?;
     db.delete(&plain_uid).await?;
 
+    Ok(())
+}
+
+/// Conditional updates advance exactly once; stale or deleted snapshots conflict without
+/// publishing earlier operations, and state/upsert writes invalidate old snapshots.
+pub(super) async fn update_if_version_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    log_init(None);
+
+    let owner = UserId::from("update_if_version_owner");
+    let uid = Uuid::new_v4().to_string();
+    let mut rng = KmsRng::new().seeded_csrng()?;
+    let mut key = vec![0_u8; 32];
+    rng.fill_bytes(&mut key);
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        ..Default::default()
+    };
+    let object = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, key.as_slice(), &attributes)
+        .map_err(|e| DbError::ServerError(e.to_string()))?;
+    let tags = HashSet::from([format!("original-{uid}")]);
+    db.create(Some(uid.clone()), &owner, &object, &attributes, &tags)
+        .await?;
+    let initial = db
+        .retrieve(&uid)
+        .await?
+        .expect("created object must be present");
+    let version = initial
+        .version()
+        .expect("retrieve must populate the version");
+
+    let rejected_tags = HashSet::from([format!("rejected-{uid}")]);
+    let update = |expected: u64| {
+        AtomicOperation::UpdateObjectIfVersion((
+            uid.clone(),
+            object.clone(),
+            attributes.clone(),
+            Some(rejected_tags.clone()),
+            expected,
+        ))
+    };
+    let assert_unchanged = |actual: &ObjectWithMetadata, expected: &ObjectWithMetadata| {
+        assert_eq!(
+            actual.version(),
+            expected.version(),
+            "failed CAS changed the version"
+        );
+        assert_eq!(
+            actual.attributes(),
+            expected.attributes(),
+            "failed CAS changed attributes"
+        );
+        assert_eq!(
+            actual.state(),
+            expected.state(),
+            "failed CAS changed the state"
+        );
+        assert!(
+            actual.object() == expected.object(),
+            "failed CAS changed the object"
+        );
+    };
+    let mut updated_attributes = attributes.clone();
+    updated_attributes.sensitive = Some(true);
+    let mut updated_object = object.clone();
+    *updated_object.attributes_mut()? = updated_attributes.clone();
+    let updated_tags = HashSet::from([format!("updated-{uid}")]);
+    db.atomic(
+        &owner,
+        &[AtomicOperation::UpdateObjectIfVersion((
+            uid.clone(),
+            updated_object.clone(),
+            updated_attributes.clone(),
+            Some(updated_tags.clone()),
+            version,
+        ))],
+    )
+    .await?;
+    let committed = db
+        .retrieve(&uid)
+        .await?
+        .expect("successful CAS must retain the object");
+    assert_eq!(
+        committed.version(),
+        Some(version + 1),
+        "CAS must increment exactly once"
+    );
+    assert_eq!(committed.attributes(), &updated_attributes);
+    assert_eq!(db.retrieve_tags(&uid).await?, updated_tags);
+
+    let err = db
+        .atomic(&owner, &[update(version)])
+        .await
+        .expect_err("a stale snapshot must conflict");
+    assert!(matches!(err, InterfaceError::Conflict(_)), "{err}");
+    assert_unchanged(
+        &db.retrieve(&uid)
+            .await?
+            .expect("failed CAS must retain the object"),
+        &committed,
+    );
+    assert_eq!(db.retrieve_tags(&uid).await?, updated_tags);
+
+    let companion_uid = Uuid::new_v4().to_string();
+    db.create(
+        Some(companion_uid.clone()),
+        &owner,
+        &object,
+        &attributes,
+        &tags,
+    )
+    .await?;
+    let companion = db
+        .retrieve(&companion_uid)
+        .await?
+        .expect("companion must be present");
+    let marker_uid = Uuid::new_v4().to_string();
+    let err = db
+        .atomic(
+            &owner,
+            &[
+                AtomicOperation::Create((
+                    marker_uid.clone(),
+                    owner.clone(),
+                    object.clone(),
+                    attributes.clone(),
+                    rejected_tags.clone(),
+                )),
+                AtomicOperation::UpdateObject((
+                    companion_uid.clone(),
+                    updated_object.clone(),
+                    updated_attributes.clone(),
+                    Some(rejected_tags.clone()),
+                )),
+                update(version),
+            ],
+        )
+        .await
+        .expect_err("a stale CAS must roll back earlier operations");
+    assert!(matches!(err, InterfaceError::Conflict(_)), "{err}");
+    assert!(
+        db.retrieve(&marker_uid).await?.is_none(),
+        "failed batch published its Create"
+    );
+    assert_unchanged(
+        &db.retrieve(&companion_uid)
+            .await?
+            .expect("companion must survive rollback"),
+        &companion,
+    );
+    assert_eq!(db.retrieve_tags(&companion_uid).await?, tags);
+    assert_unchanged(
+        &db.retrieve(&uid)
+            .await?
+            .expect("CAS target must survive rollback"),
+        &committed,
+    );
+    assert_eq!(db.retrieve_tags(&uid).await?, updated_tags);
+    assert!(
+        db.list_uids_for_tags(&rejected_tags).await?.is_empty(),
+        "failed batch published tags"
+    );
+
+    // `exact`: Upsert is not required to bump by exactly one (MySQL updates the object and
+    // its state separately); snapshots only need to be invalidated.
+    for (operation, expected_state, exact) in [
+        (
+            AtomicOperation::UpdateState((uid.clone(), State::Deactivated)),
+            State::Deactivated,
+            true,
+        ),
+        (
+            AtomicOperation::Upsert((
+                uid.clone(),
+                updated_object,
+                updated_attributes.clone(),
+                Some(updated_tags.clone()),
+                State::Active,
+            )),
+            State::Active,
+            false,
+        ),
+    ] {
+        let before = db
+            .retrieve(&uid)
+            .await?
+            .expect("object must be present before mutation");
+        let before_version = before
+            .version()
+            .expect("retrieve must populate the version");
+        db.atomic(&owner, &[operation]).await?;
+        let after = db
+            .retrieve(&uid)
+            .await?
+            .expect("mutation must retain the object");
+        if exact {
+            assert_eq!(
+                after.version(),
+                Some(before_version + 1),
+                "mutation must increment exactly once"
+            );
+        } else {
+            assert!(
+                after.version() > Some(before_version),
+                "mutation must invalidate older snapshots"
+            );
+        }
+        assert_eq!(after.state(), expected_state);
+        assert_eq!(after.attributes(), &updated_attributes);
+        let err = db
+            .atomic(&owner, &[update(before_version)])
+            .await
+            .expect_err("state and upsert writes must invalidate snapshots");
+        assert!(matches!(err, InterfaceError::Conflict(_)), "{err}");
+        assert_unchanged(
+            &db.retrieve(&uid)
+                .await?
+                .expect("stale CAS must retain the newer object"),
+            &after,
+        );
+        assert_eq!(db.retrieve_tags(&uid).await?, updated_tags);
+    }
+
+    let current_version = db
+        .retrieve(&uid)
+        .await?
+        .expect("object must be present before deletion")
+        .version()
+        .expect("retrieve must populate the version");
+    db.delete(&uid).await?;
+    let err = db
+        .atomic(&owner, &[update(current_version)])
+        .await
+        .expect_err("deletion must invalidate a conditional update");
+    assert!(matches!(err, InterfaceError::Conflict(_)), "{err}");
+    assert!(
+        db.retrieve(&uid).await?.is_none(),
+        "conditional update resurrected a deleted object"
+    );
+    db.delete(&companion_uid).await?;
     Ok(())
 }

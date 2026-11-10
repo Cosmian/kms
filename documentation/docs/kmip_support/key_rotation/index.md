@@ -20,6 +20,9 @@ On every rotation the server:
 > **Auto-rotation** (scheduler-driven, policy-based) is covered separately in
 > [Auto-Rotation Policy](auto_rotation_policy.md).
 > **HSM key rotation** is covered in [HSM Key Rotation](hsm.md).
+> **Concurrent rotations** of the same object, and the `Conflict` error the
+> losing request receives, are explained in
+> [Concurrent Re-Key and Conflicts](concurrent_rekey.md).
 
 ---
 
@@ -242,13 +245,17 @@ dependants atomically.
 
 **What happens:**
 
-1. A new wrapping key is created and committed to the database (Phase 1).
+1. A new wrapping key is generated in memory; it is not yet visible to any client.
 2. **Every** key owned by the same user whose `WrappingKeyLink` points to the
    old wrapping key is fetched — regardless of its state (Active, Deactivated,
    Pre-Active, Compromised, …) — unwrapped in memory (plaintext never stored),
-   and re-wrapped with the new wrapping key (Phase 2).
+   and re-wrapped with the new wrapping key.
 3. Each wrapped key's `WrappingKeyLink` is updated to the new wrapping key UID.
 4. Standard rotation metadata is applied; old wrapping key → Deactivated.
+5. The new wrapping key, the retired old key and every re-wrapped dependant are
+   committed in **one atomic batch**. If the old wrapping key changed since it
+   was read, nothing is committed (see
+   [Concurrent Re-Key and Conflicts](concurrent_rekey.md)).
 
 > **No state filter on dependants.**  The server queries all keys with a
 > `wrapping_key_id` matching the rotated key, with no restriction on their
@@ -262,14 +269,14 @@ sequenceDiagram
     participant DB
 
     Client->>KMS: Re-Key(wrapping_key_uid)
-    KMS->>DB: Phase 1 — create new wrapping key (committed)
+    KMS->>KMS: generate new wrapping key (in memory)
     loop For each wrapped dependant
         KMS->>DB: retrieve wrapped key
         KMS->>KMS: unwrap with old wrapping key
         KMS->>KMS: re-wrap with new wrapping key
-        KMS->>DB: update WrappingKeyLink → new wrapping key UID
+        KMS->>KMS: set WrappingKeyLink → new wrapping key UID
     end
-    KMS->>DB: Phase 2 — retire old wrapping key (Deactivated, links set)
+    KMS->>DB: one atomic batch: create new wrapping key,<br/>retire old wrapping key if unchanged, update dependants
     KMS-->>Client: Re-KeyResponse(new_wrapping_key_uid)
 ```
 
@@ -332,8 +339,7 @@ sequenceDiagram
     KMS->>DB: retrieve private key
     KMS->>DB: retrieve linked public key (PublicKeyLink)
     KMS->>KMS: generate new key pair (same algorithm)
-    KMS->>DB: Phase 1 — store new private key + new public key
-    KMS->>DB: Phase 2 — retire old private key + public key (Deactivated, links)
+    KMS->>DB: one atomic batch: store new private key + new public key,<br/>retire old private key + public key if unchanged (Deactivated, links)
     KMS-->>Client: Re-Key Key PairResponse(new_sk_uid, new_pk_uid)
 ```
 
@@ -389,9 +395,7 @@ sequenceDiagram
     KMS->>DB: retrieve old certificate
     KMS->>KMS: resolve issuer + subject from old cert
     KMS->>KMS: build & sign new certificate (same key pair)
-    KMS->>DB: Phase 1 — store new cert (fresh UID)
-    KMS->>DB: Phase 2 — update old cert (ReplacementObjectLink)
-    KMS->>DB: Phase 2 — relink keys (CertificateLink → new cert)
+    KMS->>DB: one atomic batch: store new cert (fresh UID),<br/>update old cert (ReplacementObjectLink) if unchanged,<br/>relink keys (CertificateLink → new cert)
     KMS-->>Client: ReCertifyResponse(new_cert_uid)
 ```
 
@@ -465,7 +469,7 @@ flowchart TD
     subgraph "Re-Key dispatch"
         REQ["Re-Key / Re-Key Key Pair / ReCertify"] --> DISPATCH{"Object type?"}
         DISPATCH -->|SymmetricKey, no dependants| PLAIN["Plain rekey<br/>(new material, new UID)"]
-        DISPATCH -->|SymmetricKey, has WrappingKeyLink dependants| WRAP_K["Wrapping-key rotation<br/>(Phase 1 commit → Phase 2 re-wrap)"]
+        DISPATCH -->|SymmetricKey, has WrappingKeyLink dependants| WRAP_K["Wrapping-key rotation<br/>(re-wrap dependants in the same atomic commit)"]
         DISPATCH -->|SymmetricKey, is wrapped| WRAP_D["Wrapped-key rotation<br/>(unwrap → new material → re-wrap)"]
         DISPATCH -->|PrivateKey| ASYM["Re-Key Key Pair"]
         DISPATCH -->|Certificate| CERT["ReCertify<br/>(same key pair, new cert UID)"]
