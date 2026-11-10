@@ -118,6 +118,17 @@ pub(crate) async fn collect_attributes(
                 attributes
             } else {
                 let mut a = owm.attributes().to_owned();
+                // A key wrapped at rest has no readable key-value attributes: the key block still
+                // carries the algorithm, length and format.
+                if a.cryptographic_algorithm.is_none() {
+                    a.cryptographic_algorithm = key_block.cryptographic_algorithm;
+                }
+                if a.cryptographic_length.is_none() {
+                    a.cryptographic_length = key_block.cryptographic_length;
+                }
+                if a.key_format_type.is_none() {
+                    a.key_format_type = Some(key_block.key_format_type);
+                }
                 if let Some(vendor_attributes) = a.vendor_attributes.as_mut() {
                     vendor_attributes.retain(|va| {
                         !(va.vendor_identification == kms.vendor_id()
