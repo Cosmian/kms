@@ -205,7 +205,7 @@ exercises the triggers directly.
 
 ## Alternatives Considered
 
-### Rank comparison enforced in Rust (`update_state`) instead of a database trigger
+### Rank comparison enforced in Rust (`update_state`) instead of the database
 
 - **ALT-001 Description**: Derive `Ord`/`PartialOrd` on the KMIP `State` enum and enforce
   monotonicity inside each backend's `update_state`/`atomic` implementation.
@@ -213,17 +213,16 @@ exercises the triggers directly.
   extension's apply worker, which writes to the table via its own internal mechanism, entirely
   bypassing the KMS's `ObjectsStore` trait layer. The merge must live inside the database.
 
-### `ENABLE REPLICA` trigger without local write protection
+### A monotonic `BEFORE UPDATE` trigger on `objects.state` with a session-local undo bypass
 
-- **ALT-003 Description**: Mark the monotonic-guard trigger `ENABLE REPLICA` so it fires only
-  for incoming replication apply workers (`session_replication_role = 'replica'`).
-- **ALT-004 Rejection Reason**: While `ENABLE REPLICA` would avoid needing any bypass for local
-  batch UNDO, empirical testing on a live 2-node cluster proved it leaves a critical gap: if a
-  higher-rank state (e.g. `Destroyed`) has already replicated into node B, a subsequent local
-  write on node B (e.g. `Deactivated`) executes under `session_replication_role = 'origin'`,
-  bypassing the replica-only trigger and silently overwriting `Destroyed` back down to `Deactivated`.
-  Using `ENABLE ALWAYS` combined with a scoped `SET LOCAL` bypass for batch UNDO is required
-  for end-to-end convergence.
+- **ALT-003 Description**: Keep the state in `objects.state` and coerce every update to the
+  highest state with an `ENABLE ALWAYS` trigger, allowing KMIP batch UNDO through a
+  `SET LOCAL` setting. This was the first implementation.
+- **ALT-004 Rejection Reason**: Spock `last_update_wins` discards an incoming row whose commit
+  timestamp is older than the local row before any UPDATE (and so any trigger) runs, so a
+  `Destroyed` row committed earlier than a local `Deactivated` write was dropped and the regions
+  never converged. The session-local bypass also replicated as a plain row, which peers undid.
+  An insert-only event log never conflicts and is folded into the state on every node.
 
 ### Dynamic leader election / consensus (Raft, etcd, Patroni-style)
 
@@ -254,12 +253,11 @@ exercises the triggers directly.
   `pg_constraint` catalog lookups (same pattern as the existing `wrapping_key_id` backfill gate).
   `CREATE INDEX CONCURRENTLY` statements are each issued as their own single-statement
   `batch_execute` call (cannot run inside a transaction block).
-- **IMP-002**: The trigger's rank `CASE` mapping mirrors the `State` enum's existing numeric
-  discriminants (`crate/kmip/src/kmip_0/kmip_types.rs`) against the exact strings produced by its
+- **IMP-002**: `kms_state_join` mirrors the `State` enum against the exact strings produced by its
   `Display`/`to_string()` implementation (verified: plain `strum::Display`, no
-  `#[strum(serialize=...)]` override). `ENABLE ALWAYS` enforces rank monotonicity for all updates,
-  with a `SET LOCAL kms.allow_backward_state_transition = 'on'` check allowing explicit downgrade
-  in `update_state_allow_downgrade`.
+  `#[strum(serialize=...)]` override). The derive and event triggers are `ENABLE ALWAYS`;
+  `update_state_allow_downgrade` tombstones the observed events and appends a new one, with no
+  session-local bypass setting.
 - **IMP-003**: `region_role` flows `ClapConfig` → `ServerParams` exactly like every other simple
   global setting (`default_username`), with no wizard prompt and no client-side config mirroring.
 - **IMP-004**: The `require_leader_region` gate lives in `crate/server/src/core/mod.rs` and is
@@ -268,11 +266,11 @@ exercises the triggers directly.
 - **IMP-005**: Validated against `ghcr.io/pgedge/pgedge-postgres:16-spock5-standard` via a new
   `mise run test:db:pgedge` 2-node CI task (`spock.node_create`/`spock.repset_add_all_tables`/
   `spock.sub_create`/`spock.sub_wait_for_sync` full-mesh wiring), plus a faster single-node
-  `test_db_postgresql_state_monotonic_merge` unit test in the standard `psql` CI test type.
+  `test_db_postgresql_state_event_merge` unit test in the standard `psql` CI test type.
 - **IMP-006**: Success criteria — `cargo clippy-all` and `cargo test -p
   cosmian_kms_server_database` pass; the new pgEdge CI test demonstrates convergent behavior for
   concurrent grant/revoke and concurrent state-transition scenarios in both commit orderings.
-- **IMP-007**: `crypto_officer_activations` requires no monotonic-merge trigger (unlike
+- **IMP-007**: `crypto_officer_activations` requires no state-merge triggers (unlike
   `objects.state`) because writes are single-writer (leader-only).
   `Database::verify_ceremony_record` fails secure (`Ok(false)`, not `Err`) on a
   `DbError::CryptographicError` from `CeremonyKeys::unseal`, covering both genuine tampering and
