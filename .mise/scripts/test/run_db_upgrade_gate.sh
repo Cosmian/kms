@@ -69,6 +69,9 @@ if arg != "nightly":
     raise SystemExit(0)
 ver = lambda s: tuple(int(x) for x in s.split("."))
 tags = subprocess.check_output(["git", "-C", repo_root, "tag", "-l", "5.*"], text=True).splitlines()
+if len(tags) < 2:
+    remote = subprocess.check_output(["git", "-C", repo_root, "ls-remote", "--tags", "--refs", "origin", "refs/tags/5.*"], text=True).splitlines()
+    tags = [line.split("refs/tags/")[-1] for line in remote if "refs/tags/" in line]
 pool = sorted({t.strip() for t in tags if t.strip().count(".") == 2 and "-" not in t and ver(t.strip()) >= ver(baseline)}, key=ver)
 if not pool:
     raise SystemExit(f"No released 5.x tags >= {baseline}")
