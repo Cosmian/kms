@@ -1127,9 +1127,8 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
 ///
 /// Seeds a **legacy** wrapped object — stored directly via `object_upsert`, so it
 /// carries no `wrapped_by::` keyword, exactly like an object written before that
-/// index existed — clears the completion marker, then runs
-/// `backfill_wrapped_by_index` and asserts the object becomes discoverable
-/// through `find_wrapped_by` (used by key rotation).
+/// index existed — then runs `MigrationStep::WrappingKeyIdBackfill` and asserts the
+/// object becomes discoverable through `find_wrapped_by` (used by key rotation).
 pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let mut rng = KmsRng::new().seeded_csrng()?;
@@ -1174,12 +1173,6 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     // Store the object WITHOUT Findex indexing → simulates a pre-index legacy object.
     db.objects_db().object_upsert(uid, &dbo).await?;
 
-    // Clear the completion marker so the backfill actually runs.
-    redis::cmd("DEL")
-        .arg("wrapping_key_id_backfilled")
-        .query_async::<()>(&mut db.mgr.clone())
-        .await?;
-
     // Before backfill: the legacy object is invisible to find_wrapped_by (no keyword).
     let before = db
         .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
@@ -1189,8 +1182,12 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
         "legacy wrapped object must NOT be found before backfill"
     );
 
-    // Run the one-time backfill.
-    db.backfill_wrapped_by_index().await?;
+    // Run the migration step.
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::WrappingKeyIdBackfill,
+    )
+    .await?;
 
     // After backfill: the object is discoverable by its wrapping key.
     let after = db
@@ -1201,8 +1198,12 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
         "wrapped object must be discoverable after backfill, got: {after:?}"
     );
 
-    // Idempotency: re-running is a no-op (marker set) and keeps it discoverable.
-    db.backfill_wrapped_by_index().await?;
+    // Idempotency: re-running keeps it discoverable.
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::WrappingKeyIdBackfill,
+    )
+    .await?;
     let again = db
         .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
         .await?;
@@ -1234,18 +1235,17 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
         )
         .await?;
 
-    // Clear the completion marker so the backfill actually runs.
-    redis::cmd("DEL")
-        .arg("certificate_serial_tag_backfilled")
-        .query_async::<()>(&mut db.mgr.clone())
-        .await?;
     let serial_tag = HashSet::from(["_serial=0ABBCC".to_owned()]);
     assert!(
         !db.list_uids_for_tags(&serial_tag).await?.contains(&uid),
         "the legacy certificate must not be locatable by serial before the backfill"
     );
 
-    db.backfill_certificate_serial_tags().await?;
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::CertificateSerialTagBackfill,
+    )
+    .await?;
 
     assert!(db.retrieve_tags(&uid).await?.contains("_serial=0ABBCC"));
     assert!(
@@ -1257,12 +1257,12 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
         "the backfill must keep the existing tags"
     );
 
-    // Re-running with the marker cleared skips the already-tagged certificate.
-    redis::cmd("DEL")
-        .arg("certificate_serial_tag_backfilled")
-        .query_async::<()>(&mut db.mgr.clone())
-        .await?;
-    db.backfill_certificate_serial_tags().await?;
+    // Re-running skips the already-tagged certificate.
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::CertificateSerialTagBackfill,
+    )
+    .await?;
     assert_eq!(
         db.retrieve_tags(&uid).await?,
         HashSet::from(["_cert".to_owned(), "_serial=0ABBCC".to_owned()])
@@ -1276,17 +1276,15 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
 /// default database (0) shared by the other Redis tests.
 const ISOLATED_REDIS_DB: u8 = 15;
 
-/// Redis migration-state markers: a freshly initialised database records its version
-/// and a `ready` state; re-opening it is accepted, while a database whose recorded
-/// state is not `ready` (or that has no markers) is refused as legacy.
+/// Redis migration runner state transitions on isolated DB 15:
+/// fresh, `upgrading` resumes to `ready`, newer version is refused, unversioned populated
+/// database is refused with `Legacy database`, and a `5.16.0` database with an unindexed
+/// wrapped object is migrated to the current version with the wrapped object discoverable.
 pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
     use crate::stores::migrate::{DbParameters as _, DbState};
 
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let mut rng = KmsRng::new().seeded_csrng()?;
-    // Use a dedicated logical Redis database: this test deliberately leaves the database in
-    // refused (non-ready / legacy) states, which must never leak into the default database
-    // shared with the other Redis tests and with later runs.
     let redis_url = format!("{}/{ISOLATED_REDIS_DB}", get_redis_url());
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
 
@@ -1301,44 +1299,91 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
     let reopened = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
     assert_eq!(reopened.get_db_state().await?, Some(DbState::Ready));
 
-    // A non-ready state makes the next start refuse the database.
+    // An interrupted 'upgrading' state resumes to 'ready'.
     reopened.set_db_state(DbState::Upgrading).await?;
     assert_eq!(reopened.get_db_state().await?, Some(DbState::Upgrading));
-    let refused = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await;
-    assert!(
-        matches!(&refused, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy")),
-        "database in 'upgrading' state must be refused, got: {:?}",
-        refused.map(|_| ())
-    );
-
-    // Version marker round-trip.
-    reopened.set_db_version("0.0.1-test").await?;
+    let resumed = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
+    assert_eq!(resumed.get_db_state().await?, Some(DbState::Ready));
     assert_eq!(
-        reopened.get_db_version().await?.as_deref(),
-        Some("0.0.1-test")
+        resumed.get_db_version().await?.as_deref(),
+        Some(env!("CARGO_PKG_VERSION"))
     );
 
-    // A database without markers (non-empty, no version/state) is legacy and refused.
+    // A recorded version newer than the server is refused.
+    resumed.set_db_version("99.0.0").await?;
+    let newer = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await;
+    assert!(
+        matches!(&newer, Err(DbError::DatabaseError(msg)) if msg.contains("99.0.0 is newer")),
+        "newer database must be refused, got: {:?}",
+        newer.map(|_| ())
+    );
+
+    // A database at 5.16.0 with an unindexed wrapped object runs the backfill and advances to current.
+    let owner = "legacy_5_16_owner";
+    let wrapping_key_uid = "legacy_5_16_kek";
+    let uid = "legacy_5_16_wrapped";
+    let wrapped_obj: Object = serde_json::from_value(serde_json::json!({
+        "SymmetricKey": {
+            "KeyBlock": {
+                "KeyFormatType": "TransparentSymmetricKey",
+                "CryptographicAlgorithm": "AES",
+                "CryptographicLength": 256,
+                "KeyWrappingData": {
+                    "WrappingMethod": "Encrypt",
+                    "EncryptionKeyInformation": { "UniqueIdentifier": wrapping_key_uid },
+                    "EncodingOption": "TTLVEncoding"
+                }
+            }
+        }
+    }))
+    .map_err(|e| DbError::DatabaseError(format!("failed to build wrapped object: {e}")))?;
+    let dbo = RedisDbObject::new(
+        wrapped_obj,
+        owner.to_owned(),
+        State::Active,
+        Some(HashSet::new()),
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            state: Some(State::Active),
+            ..Default::default()
+        },
+    );
+    resumed.objects_db().object_upsert(uid, &dbo).await?;
+    resumed.set_db_version("5.16.0").await?;
+    redis::cmd("DEL")
+        .arg("wrapping_key_id_backfilled")
+        .query_async::<()>(&mut resumed.mgr.clone())
+        .await?;
+    let upgraded = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
+    assert_eq!(
+        upgraded.get_db_version().await?.as_deref(),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+    assert_eq!(upgraded.get_db_state().await?, Some(DbState::Ready));
+    let found = upgraded
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
+    assert!(
+        found.iter().any(|(id, _, _)| id.as_str() == uid),
+        "5.16.0 wrapped object must be found after startup migration"
+    );
+
+    // An unversioned database with data is refused as legacy.
     redis::cmd("DEL")
         .arg("db_version")
         .arg("db_state")
-        .query_async::<()>(&mut reopened.mgr.clone())
-        .await?;
-    redis::cmd("SET")
-        .arg("some_legacy_key")
-        .arg("v")
-        .query_async::<()>(&mut reopened.mgr.clone())
+        .query_async::<()>(&mut upgraded.mgr.clone())
         .await?;
     let legacy = RedisWithFindex::instantiate(&redis_url, master_key, false).await;
     assert!(
-        matches!(&legacy, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy")),
-        "marker-less database must be refused, got: {:?}",
+        matches!(&legacy, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy database")),
+        "unversioned populated database must be refused, got: {:?}",
         legacy.map(|_| ())
     );
 
     // Leave nothing behind: this test intentionally corrupts the migration markers.
     redis::cmd("FLUSHDB")
-        .query_async::<()>(&mut reopened.mgr.clone())
+        .query_async::<()>(&mut upgraded.mgr.clone())
         .await?;
     Ok(())
 }

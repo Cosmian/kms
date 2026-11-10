@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate migration fixtures with each release's server and ckms.
-# Usage: generate_db_migration_fixtures.sh [sqlite|postgresql|mysql|all] [VERSION]
+# Usage: generate_db_migration_fixtures.sh [sqlite|postgresql|mysql|redis|all] [VERSION]
 set -euo pipefail
 
 # shellcheck source=.mise/lib/common.sh
@@ -10,14 +10,18 @@ require_cmd docker
 require_cmd python3
 require_cmd curl
 docker_ready || print_error "Docker must be running to generate migration fixtures."
-[ "$#" -le 2 ] || print_error "Usage: $0 [sqlite|postgresql|mysql|all] [VERSION]"
+[ "$#" -le 2 ] || print_error "Usage: $0 [sqlite|postgresql|mysql|redis|all] [VERSION]"
 SELECTED_VERSION="${2:-}"
 
 case "${1:-all}" in
-  sqlite | postgresql | mysql) readonly BACKENDS=("$1") ;;
-  all) readonly BACKENDS=(sqlite postgresql mysql) ;;
-  *) print_error "Usage: $0 [sqlite|postgresql|mysql|all]" ;;
+  sqlite | postgresql | mysql | redis) readonly BACKENDS=("$1") ;;
+  all) readonly BACKENDS=(sqlite postgresql mysql redis) ;;
+  *) print_error "Usage: $0 [sqlite|postgresql|mysql|redis|all]" ;;
 esac
+if [[ " ${BACKENDS[*]} " == *" redis "* ]]; then
+  python3 -c "import cryptography" 2>/dev/null ||
+    print_error "Python 'cryptography' package is required to generate Redis migration fixtures."
+fi
 
 # Resolve pins with: docker pull <image>:<tag>
 # The Digest line identifies the immutable release manifest.
@@ -32,6 +36,8 @@ readonly IMAGES=(
 readonly CKMS_FALLBACK_IMAGE="${IMAGES[1]}"
 readonly POSTGRES_IMAGE="postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336"
 readonly MYSQL_IMAGE="mysql:8.0@sha256:99d774bf02a48a1bb1c599920d2571946d31e5940b854b02737d5e95c184358f"
+# Redis 6.2 writes RDB format version 9, which restores on Redis 6.0, 6.2, 7.x, and 8.x.
+readonly REDIS_IMAGE="redis:6.2-alpine@sha256:bb3686b504e6780e6878f187f1b8275236183d7ef514a248802f60106adf571a"
 # Throwaway credentials of the fixture database containers.
 readonly DB_PASSWORD="kms-fixture"
 
@@ -158,6 +164,7 @@ db_client() {
       ;;
     mysql/restore) docker exec --interactive "${mysql_env[@]}" "${DB_NAME}" mysql --user kms kms ;;
     mysql/facts) docker exec "${mysql_env[@]}" "${DB_NAME}" mysql --batch --skip-column-names --user kms kms --execute "${MYSQL_FACTS}" ;;
+    redis/ready) docker exec "${DB_NAME}" redis-cli ping | grep -q PONG ;;
     *) print_error "Unknown database client action: $1/$2" ;;
   esac
 }
@@ -169,10 +176,13 @@ start_db() {
   if [ "${backend}" = postgresql ]; then
     docker run --detach --name "${DB_NAME}" --network "${NETWORK}" --env POSTGRES_USER=kms \
       --env POSTGRES_PASSWORD="${DB_PASSWORD}" --env POSTGRES_DB=kms "${POSTGRES_IMAGE}" >/dev/null
-  else
+  elif [ "${backend}" = mysql ]; then
     docker run --detach --name "${DB_NAME}" --network "${NETWORK}" --env MYSQL_USER=kms \
       --env MYSQL_PASSWORD="${DB_PASSWORD}" --env MYSQL_ROOT_PASSWORD="${DB_PASSWORD}" \
       --env MYSQL_DATABASE=kms "${MYSQL_IMAGE}" >/dev/null
+  else
+    docker run --detach --name "${DB_NAME}" --network "${NETWORK}" --publish 127.0.0.1::6379 \
+      "${REDIS_IMAGE}" redis-server --save "" --appendonly no >/dev/null
   fi
   if wait_for_command 120 db_client "${backend}" ready >/dev/null 2>&1; then
     return 0
@@ -611,21 +621,266 @@ generate_sql_fixture() {
   write_sql_fixture "${backend}" "${version}" "${output}"
 }
 
+populate_redis_junk() {
+  local kms_address
+  kms_address="$(docker port "${KMS_NAME}" 9998/tcp)"
+  python3 - "${kms_address##*:}" <<'PY'
+import json
+import sys
+import urllib.request
+
+url = f"http://127.0.0.1:{sys.argv[1]}/kmip/2_1"
+active_date = {"tag": "ActivationDate", "type": "DateTime", "value": "2024-01-01T00:00:00Z"}
+
+
+def import_opaque(uid: str, tags: list[str]) -> None:
+    payload = {
+        "tag": "Import",
+        "value": [
+            {"tag": "UniqueIdentifier", "type": "TextString", "value": uid},
+            {"tag": "ObjectType", "type": "Enumeration", "value": "OpaqueObject"},
+            {"tag": "ReplaceExisting", "type": "Boolean", "value": False},
+            {"tag": "Attributes", "value": [
+                {"tag": "ObjectType", "type": "Enumeration", "value": "OpaqueObject"},
+                active_date,
+                {
+                    "tag": "Attribute",
+                    "value": [
+                        {"tag": "VendorIdentification", "type": "TextString", "value": "cosmian"},
+                        {"tag": "AttributeName", "type": "TextString", "value": "tag"},
+                        {"tag": "AttributeValue", "type": "TextString", "value": json.dumps(tags)},
+                    ],
+                },
+            ]},
+            {"tag": "OpaqueObject", "value": [
+                {"tag": "OpaqueDataType", "type": "Enumeration", "value": "Unknown"},
+                {"tag": "OpaqueDataValue", "type": "ByteString", "value": "01020304"},
+            ]},
+        ],
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        resp.read()
+
+
+for uid, tags in [
+    ("junk_bad_json", ["junk", "_cert"]),
+    ("junk_wrong_shape_json", ["junk"]),
+    ("junk_bad_cert_der", ["junk", "_cert"]),
+    ("junk_non_cert_tagged_cert", ["junk", "_cert"]),
+]:
+    import_opaque(uid, tags)
+PY
+  fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag junk junk_missing_kek
+  fixture_ckms sym keys create --number-of-bits 128 --algorithm aes --tag junk \
+    --wrapping-key-id junk_missing_kek junk_dangling_wrapped
+  fixture_ckms sym keys create --number-of-bits 256 --algorithm aes --tag junk_orphan_tag \
+    junk_orphan_object
+  fixture_ckms access-rights grant --object-uid junk_orphan_object mig_user get
+}
+
+run_redis_fixture_py() {
+  python3 - "$@" <<'PY'
+import json
+import socket
+import struct
+import sys
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+mode, port_str, version, dump_path = sys.argv[1:5]
+port = int(port_str)
+# Deterministic db_key derived from DB_PASSWORD="kms-fixture" (Argon2id salt "rediswithfindex_" + Blake3 kdf256 salt "db").
+DB_KEY = bytes.fromhex("06b763dbb6f2e02256221af5dda48767697ed01661e9d4a10b3c736aa0f22d2b")
+aesgcm = AESGCM(DB_KEY)
+
+
+class RespClient:
+    def __init__(self, host: str, port: int) -> None:
+        self.sock = socket.create_connection((host, port), timeout=15)
+        self.rfile = self.sock.makefile("rb")
+
+    def cmd(self, *args: bytes | str):
+        parts = [f"*{len(args)}\r\n".encode()]
+        for arg in args:
+            b = arg.encode() if isinstance(arg, str) else arg
+            parts.append(f"${len(b)}\r\n".encode() + b + b"\r\n")
+        self.sock.sendall(b"".join(parts))
+        return self._read()
+
+    def _read(self):
+        line = self.rfile.readline()
+        if not line:
+            raise RuntimeError("Unexpected EOF from Redis")
+        prefix, payload = line[:1], line[1:-2]
+        if prefix == b"+":
+            return payload
+        if prefix == b"-":
+            raise RuntimeError(f"Redis error: {payload.decode(errors='replace')}")
+        if prefix == b":":
+            return int(payload)
+        if prefix == b"$":
+            n = int(payload)
+            if n < 0:
+                return None
+            data = self.rfile.read(n)
+            self.rfile.read(2)
+            return data
+        if prefix == b"*":
+            n = int(payload)
+            return [self._read() for _ in range(n)]
+        raise RuntimeError(f"Unknown RESP prefix: {prefix!r}")
+
+
+def encrypt_blob(uid: str, plaintext: bytes) -> bytes:
+    nonce = uid.encode()[:12].ljust(12, b"\0")
+    return nonce + aesgcm.encrypt(nonce, plaintext, uid.encode())
+
+
+rc = RespClient("127.0.0.1", port)
+if mode == "dump":
+    rc.cmd(
+        "DEL",
+        "do::junk_missing_kek",
+        "do::junk_orphan_object",
+        "kms::metrics::live_object_count",
+        "kms::metrics::active_key_count",
+    )
+    rc.cmd("SET", "do::junk_bad_json", encrypt_blob("junk_bad_json", b"{not valid json"))
+    rc.cmd(
+        "SET",
+        "do::junk_wrong_shape_json",
+        encrypt_blob(
+            "junk_wrong_shape_json",
+            b'{"o":{"NotAKmipObject":{"foo":123}},"t":"OpaqueObject","w":"admin","s":"Active","l":["junk"],"a":{}}',
+        ),
+    )
+    rc.cmd(
+        "SET",
+        "do::junk_bad_cert_der",
+        encrypt_blob(
+            "junk_bad_cert_der",
+            b'{"o":{"Certificate":{"CertificateType":"X509","CertificateValue":[222,173,190,239]}},"t":"Certificate","w":"admin","s":"Active","l":["junk","_cert"],"a":{}}',
+        ),
+    )
+    cursor = b"0"
+    found: set[bytes] = set()
+    while True:
+        cursor, batch = rc.cmd("SCAN", cursor, "COUNT", "500")
+        found.update(batch)
+        if cursor == b"0":
+            break
+    with open(dump_path, "wb") as f:
+        for k in sorted(found):
+            dumped = rc.cmd("DUMP", k)
+            if dumped is None:
+                raise RuntimeError(f"Missing DUMP for key {k!r}")
+            f.write(struct.pack("<Q", len(k)) + k + struct.pack("<Q", len(dumped)) + dumped)
+else:
+    entries: dict[bytes, bytes] = {}
+    with open(dump_path, "rb") as f:
+        while True:
+            hdr = f.read(8)
+            if not hdr:
+                break
+            (klen,) = struct.unpack("<Q", hdr)
+            key = f.read(klen)
+            (vlen,) = struct.unpack("<Q", f.read(8))
+            val = f.read(vlen)
+            rc.cmd("RESTORE", key, "0", val)
+            entries[key] = val
+    if rc.cmd("DBSIZE") != len(entries):
+        raise RuntimeError("Restored Redis DBSIZE mismatch")
+    if b"kms_db_migration_lock" in entries:
+        raise RuntimeError("Migration lock key must not appear in fixture dump")
+    if rc.cmd("GET", "db_version") != version.encode():
+        raise RuntimeError(f"Unexpected Redis db_version for {version}")
+    if rc.cmd("GET", "db_state") != b'"ready"':
+        raise RuntimeError(f"Unexpected Redis db_state for {version}")
+    if rc.cmd("GET", "wrapping_key_id_backfilled") != (b"true" if version == "5.28.0" else None):
+        raise RuntimeError(f"Unexpected Redis wrapping backfill marker for {version}")
+    if rc.cmd("GET", "certificate_serial_tag_backfilled") is not None:
+        raise RuntimeError(f"Unexpected Redis serial-tag marker for {version}")
+    do_keys = [k[4:].decode() for k in entries if k.startswith(b"do::")]
+    expected_named = {
+        "mig_kek", "mig_wrapped", "mig_rsa", "mig_rsa_pk", "mig_revoked", "mig_cert",
+        "bulk_aes_128", "bulk_aes_192", "bulk_aes_256", "bulk_sym_wrapped", "bulk_rsa_3072",
+        "bulk_rsa_3072_pk", "bulk_wrapped_2", "bulk_ec_p256", "bulk_ec_p256_pk", "bulk_ec_p384",
+        "bulk_ec_p384_pk", "bulk_secret_data", "bulk_opaque", "bulk_cert_2", "bulk_preactive",
+        "bulk_compromised", "bulk_destroyed", "junk_bad_json", "junk_wrong_shape_json",
+        "junk_bad_cert_der", "junk_non_cert_tagged_cert", "junk_dangling_wrapped",
+    }
+    if len(do_keys) != 32 or not expected_named <= set(do_keys):
+        raise RuntimeError(f"Unexpected Redis object keys: count={len(do_keys)}")
+    expected_states = {
+        "mig_revoked": "Deactivated",
+        "bulk_preactive": "PreActive",
+        "bulk_compromised": "Compromised",
+        "bulk_destroyed": "Destroyed",
+    }
+    for uid in do_keys:
+        raw = rc.cmd("GET", f"do::{uid}")
+        plain = aesgcm.decrypt(raw[:12], raw[12:], uid.encode())
+        if uid == "junk_bad_json":
+            if plain != b"{not valid json":
+                raise RuntimeError("Unexpected plaintext for junk_bad_json")
+            continue
+        doc = json.loads(plain)
+        want_state = expected_states.get(uid, "Active")
+        if doc.get("s") != want_state:
+            raise RuntimeError(f"Unexpected Redis state for {uid}: {doc.get('s')}")
+    print(f"{version}: verified redis dump: {len(entries)} keys, 32 objects")
+PY
+}
+
+write_redis_fixture() {
+  local version="$1" output="$2"
+  local redis_addr dump="${WORK_DIR}/dump.bin"
+  redis_addr="$(docker port "${DB_NAME}" 6379/tcp)"
+  run_redis_fixture_py "dump" "${redis_addr##*:}" "${version}" "${dump}"
+  docker rm --force "${DB_NAME}" >/dev/null
+  start_db redis
+  redis_addr="$(docker port "${DB_NAME}" 6379/tcp)"
+  run_redis_fixture_py "verify" "${redis_addr##*:}" "${version}" "${dump}"
+  docker rm --force "${DB_NAME}" >/dev/null
+  mv "${dump}" "${output}"
+}
+
+generate_redis_fixture() {
+  local image="$1" version="$2" output="$3"
+  start_db redis
+  start_kms "${image}" --database-type redis-findex \
+    --database-url "redis://${DB_NAME}:6379" \
+    --redis-master-password "${DB_PASSWORD}"
+  fixture_ckms --version
+  populate_fixture
+  populate_redis_junk
+  stop_kms
+  write_redis_fixture "${version}" "${output}"
+}
+
 generate_fixture() {
   local backend="$1" image="$2" version="$3"
   local output_dir="${REPO_ROOT}/test_data/db_migration/${version}/${backend}"
   local output="${output_dir}/dump.sql"
-  [ "${backend}" != sqlite ] || output="${output_dir}/kms.db"
+  case "${backend}" in
+    sqlite) output="${output_dir}/kms.db" ;;
+    redis) output="${output_dir}/dump.bin" ;;
+  esac
   [ ! -e "${output}" ] || print_error "Fixture already exists: ${output}"
   mkdir -p "${output_dir}"
   CKMS_IMAGE="${image}"
   [ "${version}" != 5.14.0 ] || CKMS_IMAGE="${CKMS_FALLBACK_IMAGE}"
   print_status "Generating ${backend} fixture with ${image}"
-  if [ "${backend}" = sqlite ]; then
-    generate_sqlite_fixture "${image}" "${version}" "${output}"
-  else
-    generate_sql_fixture "${backend}" "${image}" "${version}" "${output}"
-  fi
+  case "${backend}" in
+    sqlite) generate_sqlite_fixture "${image}" "${version}" "${output}" ;;
+    redis) generate_redis_fixture "${image}" "${version}" "${output}" ;;
+    *) generate_sql_fixture "${backend}" "${image}" "${version}" "${output}" ;;
+  esac
 }
 
 docker network create "${NETWORK}" >/dev/null

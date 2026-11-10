@@ -155,6 +155,7 @@ fn expected_state(id: &str) -> State {
 pub(super) async fn assert_store_objects_and_grants<P: ObjectsStore + PermissionsStore>(
     pool: &P,
     objects: &[(String, String)],
+    tags_in_object_blob: bool,
 ) -> DbResult<()> {
     db_ensure!(
         objects.len() == 32,
@@ -167,15 +168,18 @@ pub(super) async fn assert_store_objects_and_grants<P: ObjectsStore + Permission
             *state == want_state.to_string(),
             "Unexpected stored state for {id}: {state}"
         );
-        let tags = pool.retrieve_tags(id).await?;
         if id == "junk_bad_json" || id == "junk_wrong_shape_json" {
             db_ensure!(
                 pool.retrieve(id).await.is_err(),
                 "Corrupt fixture object {id} unexpectedly deserialized"
             );
-            db_ensure!(tags.contains("junk"), "Junk object {id} lost its junk tag");
+            if !tags_in_object_blob {
+                let tags = pool.retrieve_tags(id).await?;
+                db_ensure!(tags.contains("junk"), "Junk object {id} lost its junk tag");
+            }
             continue;
         }
+        let tags = pool.retrieve_tags(id).await?;
         let object = pool
             .retrieve(id)
             .await?
@@ -212,12 +216,18 @@ pub(super) async fn assert_store_objects_and_grants<P: ObjectsStore + Permission
             "bulk_aes_256 lost tag {tag}: {aes_256_tags:?}"
         );
     }
-    db_ensure!(
-        pool.retrieve_tags("junk_orphan_object")
-            .await?
-            .contains("junk_orphan_tag"),
-        "Orphan tag row for junk_orphan_object was lost"
-    );
+    let orphan_tags = pool.retrieve_tags("junk_orphan_object").await?;
+    if tags_in_object_blob {
+        db_ensure!(
+            orphan_tags.is_empty(),
+            "Deleted Redis object junk_orphan_object returned tags: {orphan_tags:?}"
+        );
+    } else {
+        db_ensure!(
+            orphan_tags.contains("junk_orphan_tag"),
+            "Orphan tag row for junk_orphan_object was lost"
+        );
+    }
     let expected = HashSet::from([
         KmipOperation::Get,
         KmipOperation::Encrypt,
@@ -269,7 +279,7 @@ async fn assert_fixture_preserved(
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?
     };
-    assert_store_objects_and_grants(pool, &objects).await
+    assert_store_objects_and_grants(pool, &objects, false).await
 }
 
 pub(super) async fn assert_wrapped_key_found<P: ObjectsStore>(pool: &P) -> DbResult<()> {
@@ -289,7 +299,11 @@ pub(super) async fn assert_wrapped_key_found<P: ObjectsStore>(pool: &P) -> DbRes
     Ok(())
 }
 
-pub(super) async fn assert_serial_tag<P: ObjectsStore>(pool: &P, present: bool) -> DbResult<()> {
+pub(super) async fn assert_serial_tag<P: ObjectsStore>(
+    pool: &P,
+    present: bool,
+    tags_in_object_blob: bool,
+) -> DbResult<()> {
     let mut seen_serials = HashSet::new();
     for cert_id in ["mig_cert", "bulk_cert_2"] {
         let cert = pool
@@ -334,6 +348,9 @@ pub(super) async fn assert_serial_tag<P: ObjectsStore>(pool: &P, present: bool) 
         "junk_bad_cert_der",
         "junk_non_cert_tagged_cert",
     ] {
+        if tags_in_object_blob && junk_cert == "junk_bad_json" {
+            continue;
+        }
         let tags = pool.retrieve_tags(junk_cert).await?;
         db_ensure!(
             !tags.iter().any(|tag| tag.starts_with("_serial=")),
@@ -391,7 +408,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
             .is_empty(),
         "The wrapping-key backfill must not run before 5.25.0"
     );
-    assert_serial_tag(&step, false).await?;
+    assert_serial_tag(&step, false, false).await?;
     assert_fixture_preserved(&step, &step_path, &original).await?;
 
     expect_steps(
@@ -401,7 +418,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
     assert_ready(&step, "5.25.0").await?;
     assert_markers(&step, &[WrappingKeyIdBackfill]).await?;
     assert_wrapped_key_found(&step).await?;
-    assert_serial_tag(&step, false).await?;
+    assert_serial_tag(&step, false, false).await?;
     assert_fixture_preserved(&step, &step_path, &original).await?;
 
     expect_steps(
@@ -410,7 +427,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
     )?;
     assert_ready(&step, TARGET).await?;
     assert_markers(&step, &BOTH_STEPS).await?;
-    assert_serial_tag(&step, true).await?;
+    assert_serial_tag(&step, true, false).await?;
     assert_fixture_preserved(&step, &step_path, &original).await?;
 
     let (direct, applied) =
@@ -419,7 +436,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
     assert_ready(&direct, TARGET).await?;
     assert_markers(&direct, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&direct).await?;
-    assert_serial_tag(&direct, true).await?;
+    assert_serial_tag(&direct, true, false).await?;
     assert_fixture_preserved(&direct, &direct_path, &original).await?;
     let migrated = complete_data(&direct_path)?;
     db_ensure!(
@@ -483,7 +500,7 @@ async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
         };
         assert_markers(&pool, markers).await?;
         assert_wrapped_key_found(&pool).await?;
-        assert_serial_tag(&pool, true).await?;
+        assert_serial_tag(&pool, true, false).await?;
         assert_fixture_preserved(&pool, &path, &original).await?;
         if let Some((rows, parameters)) = before {
             let [objects, tags, access, _] = rows;
@@ -605,7 +622,7 @@ async fn test_sqlite_migration_lock_serializes_instances() -> DbResult<()> {
         assert_markers(pool, &BOTH_STEPS).await?;
     }
     assert_wrapped_key_found(&first).await?;
-    assert_serial_tag(&second, true).await?;
+    assert_serial_tag(&second, true, false).await?;
     assert_fixture_preserved(&first, &path, &original).await?;
     assert_fixture_preserved(&second, &path, &original).await
 }
