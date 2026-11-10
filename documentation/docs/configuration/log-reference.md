@@ -1112,6 +1112,9 @@ Crate path: `crate/hsm/base_hsm`
 | `debug` | `Could not terminate the encryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
 | `warn` | `{} failed: {rv:#010x} ({}); context dropped` | `src/session/message_context.rs` | `rv` | - |
 | `debug` | `PKCS#11 message-based {0} unsupported for mechanism {mechanism_type:#x} ({1}); using C_{2}Init` | `src/session/message_context.rs` | `0`, `mechanism_type`, `1`, `2` | - |
+| `debug` | `PKCS#11 v3 message AES-GCM decrypt unsupported; using classic: {reason}` | `src/session/session_impl.rs` | `reason` | - |
+| `debug` | `PKCS#11 v3 message AES-GCM failed; trying classic AES-GCM: {message_error}` | `src/session/session_impl.rs` | `message_error` | - |
+| `debug` | `PKCS#11 v3 message AES-GCM unsupported; using classic AES-GCM: {reason}` | `src/session/session_impl.rs` | `reason` | - |
 
 ---
 
