@@ -660,6 +660,7 @@ pub fn get_object_states() -> Result<JsValue, JsValue> {
 }
 
 /// Returns the list of delegable KMIP operations for the access-rights UI.
+///
 /// The `create` operation is excluded because it is handled separately
 /// (it applies to the wildcard object `*`, not to a specific object).
 #[wasm_bindgen]
@@ -1302,6 +1303,7 @@ wasm_response_parser!(parse_create_split_key_ttlv_response, CreateSplitKeyRespon
 wasm_response_parser!(parse_join_split_key_ttlv_response, JoinSplitKeyResponse);
 
 /// Create an Opaque Object (via Import) TTLV request.
+///
 /// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
 /// Wrapping key id can be provided to set the object wrapping attribute.
 #[wasm_bindgen]
@@ -2653,6 +2655,7 @@ wasm_response_parser!(parse_re_certify_ttlv_response, ReCertifyResponse);
 // Attributes request
 
 /// Returns the canonical list of attribute key strings used to enrich KMIP Locate results.
+///
 /// Sourced from [`cosmian_kms_client_utils::attributes_utils::LOCATE_ENRICH_ATTRIBUTE_KEYS`] —
 /// single source of truth defined next to `parse_selected_attributes_flatten`.
 #[wasm_bindgen]

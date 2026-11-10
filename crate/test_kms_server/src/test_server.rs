@@ -391,6 +391,8 @@ fn acquire_shared_test_db_clear_lock(config: &mut ClapConfig) -> Option<DbClearL
 /// Configuration is loaded from `test_data/configs/server/auth/plain.toml` by default.
 /// Set `KMS_TEST_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
 /// the full test suite against a different database backend transparently.
+/// Set `KMS_HSM_KEK` (any value) to run against the `SoftHSM2` + KEK server instead (requires
+/// `HSM_SLOT_ID`; see [`start_default_test_kms_server_plain_with_hsm_and_kek`]).
 ///
 /// # Panics
 /// - if the server fails to start
@@ -398,6 +400,17 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ensure_no_proxy_for_localhost();
     disable_proxies_for_tests();
+    if env::var_os("KMS_HSM_KEK").is_some() {
+        return start_default_test_kms_server_plain_with_hsm_and_kek().await;
+    }
+    start_plain_default_test_kms_server().await
+}
+
+/// The default plain test server, whatever `KMS_HSM_KEK` says.
+///
+/// The vector runner picks its server per vector (`server_type`) and several vectors assert
+/// the wrapped state of keys, which the unwrap-everything KEK server would hide.
+pub(crate) async fn start_plain_default_test_kms_server() -> &'static TestsContext {
     start_singleton_from_toml(
         &ONCE,
         test_config_path("auth/plain.toml"),
@@ -724,6 +737,48 @@ pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsC
     .await
     .unwrap_or_else(|e| {
         error!("failed to start test server with hsm: {e}");
+        std::process::abort();
+    })
+}
+
+pub(crate) static ONCE_DEFAULT_PLAIN_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+
+/// The default (plain HTTP, no authentication) test server with its storage encrypted by an
+/// HSM-held KEK.
+///
+/// Same transport as [`start_default_test_kms_server`] (`auth/plain.toml`), so the tests that
+/// hard-code `http://` or write plain-HTTP client configs keep working; only the storage layer
+/// differs from [`start_default_test_kms_server_with_hsm_and_kek`], which brings TLS, a client CA
+/// and JWT. Selected by `KMS_HSM_KEK`; needs `HSM_SLOT_ID`.
+pub(crate) async fn start_default_test_kms_server_plain_with_hsm_and_kek() -> &'static TestsContext
+{
+    trace!("Starting default plain test server with HSM and KEK");
+    let model = get_hsm_model();
+    let password = get_hsm_password();
+    Box::pin(ONCE_DEFAULT_PLAIN_HSM_KEK.get_or_try_init(|| async move {
+        let slot = get_hsm_slot_id()?;
+        let (workspace_dir, kek_id) = Box::pin(create_hsm_kek_in_db()).await?;
+        let config_path = test_config_path("auth/plain.toml");
+        let (mut config, http_listener) = load_test_config_from_toml(&config_path)?;
+        config.hsm.hsm_model = model;
+        config.hsm.hsm_slot = vec![slot];
+        config.hsm.hsm_password = vec![password];
+        config.hsm.hsm_admin = vec![config.default_username.clone()];
+        config.db.sqlite_path = workspace_dir.join("sqlite-data");
+        // The KEK was created in this database: it must survive the start.
+        config.db.clear_database = false;
+        config.workspace.root_data_path = workspace_dir.join("workspace");
+        config.workspace.tmp_path = workspace_dir.join("tmp");
+        config.key_encryption_key = Some(kek_id);
+        // Keys are KEK-wrapped at rest; without this, Export returns them still wrapped, which
+        // the suites written for the plain server do not expect.
+        config.default_unwrap_type = Some(vec!["All".to_owned()]);
+        apply_test_db_override(&mut config);
+        start_server_from_config(config, &config_path, http_listener).await
+    }))
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start default plain test server with hsm and kek: {e}");
         std::process::abort();
     })
 }

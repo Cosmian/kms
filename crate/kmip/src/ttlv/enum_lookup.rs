@@ -36,6 +36,7 @@ pub fn lookup_enum_code(name: &str) -> Option<(u32, &'static str)> {
 }
 
 /// Tag-aware enum code lookup. When a TTLV tag is known (e.g.
+///
 /// `"HashingAlgorithm"`), this function intercepts the small set of variant
 /// names that collide across enums before falling through to the global table.
 ///

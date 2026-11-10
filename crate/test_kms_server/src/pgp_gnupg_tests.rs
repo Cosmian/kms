@@ -10,14 +10,14 @@ use std::{
 use cosmian_kms_client::{
     KmsClient, KmsClientError,
     cosmian_kmip::time_normalize,
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::kmip_types::{CryptographicUsageMask, KeyWrapType},
     kmip_2_1::{
         extra::{VENDOR_ATTR_PGP_USER_ID, tagging::VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PGPKey},
         kmip_operations::{
-            Create, Decrypt, Destroy, Encrypt, Export, Import, Sign, SignatureVerify,
+            Create, Decrypt, Destroy, Encrypt, Export, Get, Import, Sign, SignatureVerify,
         },
         kmip_types::{
             CryptographicAlgorithm, KeyFormatType, UniqueIdentifier, ValidityIndicator,
@@ -1405,7 +1405,7 @@ async fn test_pgp_sign_rejects_streaming() {
 }
 
 #[tokio::test]
-async fn test_pgp_wrapped_export_rejects_format_request() {
+async fn test_pgp_wrapped_create_and_unwrap_roundtrip() {
     init_test_logging();
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
@@ -1428,20 +1428,39 @@ async fn test_pgp_wrapped_export_rejects_format_request() {
     let kek_resp = client.create(kek_req).await.unwrap();
     let kek_id = kek_resp.unique_identifier.to_string();
 
-    // Attempt to create a PGP key wrapped with KEK.
-    // The server's `wrap_object` defaults to `NoEncoding` for keys with key_bytes,
-    // which `key_data_to_wrap` does not support for ObjectType::PGPKey.
-    // This pins the server-side limitation that PGPKey cannot be wrapped on Create.
+    // A PGP key created with a wrapping key must be creatable, and Get with `NotWrapped`
+    // returns the OpenPGP key material again.
     let mut pgp_req = pgp_create_request(CryptographicAlgorithm::Ed25519, None);
     pgp_req
         .attributes
         .set_wrapping_key_id(VENDOR_ID_COSMIAN, &kek_id);
-    let create_res = client.create(pgp_req).await;
+    let uid = client
+        .create(pgp_req)
+        .await
+        .expect("PGPKey wrap-on-create must succeed")
+        .unique_identifier;
+
+    let plain = client
+        .get(Get {
+            unique_identifier: Some(uid.clone()),
+            key_wrap_type: Some(KeyWrapType::NotWrapped),
+            ..Get::default()
+        })
+        .await
+        .unwrap();
+    assert!(!plain.object.is_wrapped());
     assert!(
-        create_res.is_err(),
-        "PGPKey wrap-on-create must return an error due to unsupported encoding"
+        !plain
+            .object
+            .key_block()
+            .unwrap()
+            .key_bytes()
+            .unwrap()
+            .is_empty(),
+        "unwrapped PGP key must carry its OpenPGP packets"
     );
 
+    destroy_key(&client, &uid.to_string()).await;
     destroy_key(&client, &kek_id).await;
 }
 
