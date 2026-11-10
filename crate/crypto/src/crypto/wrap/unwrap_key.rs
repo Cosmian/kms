@@ -228,7 +228,9 @@ pub fn decode_unwrapped_key(
                 | KeyFormatType::CoverCryptSecretKey
                 | KeyFormatType::CoverCryptPublicKey
                 | KeyFormatType::ConfigurableKEMSecretKey
-                | KeyFormatType::ConfigurableKEMPublicKey => {
+                | KeyFormatType::ConfigurableKEMPublicKey
+                | KeyFormatType::OpenPgpSecretKey
+                | KeyFormatType::OpenPgpPublicKey => {
                     // For no encoding, create a structure with the plaintext as bytes
                     let key_material = KeyMaterial::ByteString(plaintext);
                     Ok(KeyValue::Structure {
