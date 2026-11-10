@@ -95,6 +95,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 - Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
 - Regression test: every bug fix ships a test that fails before the fix (or the commit message says why not).
+- SQL: every SQL statement lives as a named entry in the backend's `.sql` file (`crate/server_database/src/stores/sql/query*.sql`, `stores/audit/audit.sql`), never as a string literal in non-test Rust — see `.github/instructions/rust-database.instructions.md` § SQL statements live in SQL files.
 - Secrets: compare in constant time, keep in `Zeroizing`, never log — see `.github/instructions/rust-security.instructions.md`.
 - Commit subjects: conventional-commit type + descriptive subject; never `fix: PR review`, `fix: commit`.
 
