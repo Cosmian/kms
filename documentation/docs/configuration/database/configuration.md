@@ -409,24 +409,24 @@ The KMS server can be configured to clear the database on restart automatically.
 
 ## Database migration
 
-The startup migration runner supports **SQLite**, **PostgreSQL**, **MySQL**, **MariaDB**, and **Percona XtraDB Cluster**. Redis runner wiring follows separately.
+The startup migration runner supports **SQLite**, **PostgreSQL**, **MySQL**, **MariaDB**, **Percona XtraDB Cluster**, and **Redis with Findex** (non-FIPS).
 
-Transparent migration is supported for databases created by KMS **5.20.0 or later**. An unversioned, populated SQL database is treated as `5.20.0`. Older recorded SQL versions trigger a warning and an attempt to run all registered steps, subject to their completion markers. Pre-5.0.0 databases and pre-5.12.0 Redis/Findex databases require export and re-import.
+Transparent migration is supported for databases created by KMS **5.20.0 or later**. An unversioned, populated SQL database is treated as `5.20.0`. Older recorded SQL versions (and Redis versions in `5.12.0..5.20.0`) trigger a warning and an attempt to run all registered steps, subject to their completion markers. Pre-5.0.0 databases and pre-5.12.0 Redis/Findex databases (either unversioned with data or recorded below `5.12.0`) require export and re-import.
 
 The runner stores `db_version`, `db_state` and completion markers in the SQL [parameters table](tables.md#parameters); Redis uses plain keys. `db_version` records the version the runner last migrated to, not the database creation version. `db_state` is persisted as a JSON string: `"ready"` or `"upgrading"`.
 
-On each supported SQL backend, the server acquires a migration lock and checks the recorded version before application schema DDL. A newer database or an invalid version refuses startup. Idempotent schema additions run next; data transformations run only when their release boundary satisfies `recorded < step <= target`. Release comparison uses numeric `MAJOR.MINOR.PATCH`, ignoring any `-…` or `+…` suffix. The target is the running KMS package version.
+On each supported backend, the server acquires a migration lock and checks the recorded version before application schema DDL. A newer database, a recorded version below the backend's minimum (`5.12.0` on Redis), or an invalid version refuses startup. Idempotent schema additions run next; data transformations run only when their release boundary satisfies `recorded < step <= target`. Release comparison uses numeric `MAJOR.MINOR.PATCH`, ignoring any `-…` or `+…` suffix. The target is the running KMS package version.
 
 ```mermaid
 flowchart TD
     Start["KMS server starts"] --> Connect["Connect to database"]
-    Connect --> Lock["Acquire migration lock<br/>SQLite: sidecar file<br/>PostgreSQL: advisory lock<br/>MySQL family: row lock"]
+    Connect --> Lock["Acquire migration lock<br/>SQLite: sidecar file<br/>PostgreSQL: advisory lock<br/>MySQL family: row lock<br/>Redis: SET NX PX lease"]
     Lock -- "held by another instance" --> Wait["Wait 500 ms and retry<br/>give up after 31 min"]
     Wait --> Lock
     Lock -- "acquired" --> ReadVersion["Read db_version without DDL"]
     ReadVersion -- "invalid version" --> Invalid["Refuse to start"]
-    ReadVersion --> Compare{"Recorded version newer<br/>and no clear request?"}
-    Compare -- "yes" --> Refuse["Refuse before DDL<br/>Upgrade the KMS server"]
+    ReadVersion --> Compare{"Recorded version newer<br/>or below backend minimum<br/>and no clear request?"}
+    Compare -- "yes" --> Refuse["Refuse before DDL"]
     Compare -- "no" --> Schema["Ensure idempotent schema<br/>Clear object data if requested"]
     Schema --> Clear{"Clear requested?"}
     Clear -- "yes" --> Stamp["Write db_version = target<br/>db_state = ready"]
@@ -447,8 +447,8 @@ flowchart TD
 |---|---|---|---|
 | none | no | all | Stamp target version and `ready`; no data step |
 | none | yes | SQL | Treat as `5.20.0`, apply pending steps unless their markers are `true`, then stamp target and `ready` |
-| none | yes | Redis | Refuse unsupported pre-5.12.0 Findex data; export and re-import |
-| below `5.20.0` | any | all | Warn that transparent migration is supported from `5.20.0`; offer all steps up to target, with marker checks |
+| none or `< 5.12.0` | yes (or any when `< 5.12.0`) | Redis | Refuse unsupported pre-5.12.0 Findex data; export and re-import |
+| below `5.20.0` (`>= 5.12.0` on Redis) | any | all | Warn that transparent migration is supported from `5.20.0`; offer all steps up to target, with marker checks |
 | `5.20.0 <= v < target` | any | all | Apply steps with `v < step <= target`, ascending; stamp target and `ready` |
 | equal to target | any | all | No step; force `ready` |
 | newer than target | any | all | Refuse before schema DDL |
@@ -457,10 +457,10 @@ flowchart TD
 
 Version refusals take precedence over interrupted-run recovery. `--clear-database` overrides the newer-version refusal, but an invalid version is still an error.
 
-The SQL runner currently registers three data steps:
+The runner currently registers three data steps:
 
-- `5.15.0`: convert PostgreSQL `objects.attributes` from `json` to `jsonb`; completion marker `attributes_jsonb_converted`. This step is a no-op on SQLite and the MySQL family.
-- `5.25.0`: derive `objects.wrapping_key_id` from stored objects; completion marker `wrapping_key_id_backfilled`.
+- `5.15.0`: convert PostgreSQL `objects.attributes` from `json` to `jsonb`; completion marker `attributes_jsonb_converted`. This step is a no-op on SQLite, the MySQL family, and Redis.
+- `5.25.0`: derive `objects.wrapping_key_id` (SQL) or `wrapped_by::<uid>` Findex keywords (Redis) from stored objects; completion marker `wrapping_key_id_backfilled`.
 - `5.29.0`: add `_serial=<HEX>` lookup tags to existing certificates; completion marker `certificate_serial_tag_backfilled`.
 
 The runner reads a step's marker before applying it, writes `true` after it succeeds, then advances the version checkpoint. Each data transformation is idempotent, so an interrupted run can resume even if it committed data before writing its marker. Version selection still applies: removing a marker alone does not rerun a step when the database is already at the target version.
@@ -478,6 +478,7 @@ Each startup retries its backend lock every 500 ms for at most 31 minutes:
 - SQLite locks the database filename followed by `.migration.lock`: for the server, `<sqlite-path>/kms.db.migration.lock`. It is an OS file lock, not a check for the file's presence. The sidecar remains after release; **do not delete it**. Closing the handle releases the lock, including on startup errors.
 - PostgreSQL takes the session-level advisory lock `(1263358785, 2)` in the target database. Dropping the dedicated connection releases it.
 - MySQL, MariaDB, and Percona XtraDB Cluster lock row `id = 1` in the `kms_migration_lock` table with `FOR UPDATE NOWAIT` on a dedicated connection. Disconnecting rolls back the transaction and releases the row.
+- Redis sets `kms_db_migration_lock` to a random UUID v4 token with `SET ... NX PX 1800000` (30-minute lease) and releases it with a Lua compare-and-delete script.
 
 The lock covers the version check, schema initialization, every data step and the final `ready` stamp. Other starting instances wait, then observe the completed version and apply no steps. No waiting instance binds its HTTP listener before its own bootstrap completes. SQLite instances sharing a database must also share storage that supports file locking and resolve the same database and sidecar paths.
 
@@ -490,6 +491,8 @@ The lock covers the version check, schema initialization, every data step and th
     PostgreSQL failover drops the lock session. The migration steps are idempotent, but the lock has no fencing token.
 
     MySQL-family row locks are local to a database server. In a multi-node Galera or Percona XtraDB Cluster deployment, start all migrating KMS instances against the same node.
+
+    Redis migration leases (`kms_db_migration_lock`, 30 minutes) are not renewed; if a process is killed with `SIGKILL` mid-migration, delete `kms_db_migration_lock` once you have confirmed no other KMS instance is migrating, or wait for the lease to expire.
 
 ### MySQL schema update (5.14.0)
 
