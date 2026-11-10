@@ -97,8 +97,6 @@ enum PreparedLoadOp {
         url: String,
         body: Bytes,
     },
-    /// Bodiless GET (e.g. the public `/.well-known/jwks.json` document).
-    Get { name: &'static str, url: String },
     /// JOSE RSA-OAEP decrypt of a JWE rebuilt client-side on every call (new CEK and
     /// `encrypted_key`), so the server's CEK cache never hits. Latency includes the
     /// client-side build (RSA public wrap + AES-GCM, tens of µs).
@@ -134,7 +132,6 @@ impl PreparedLoadOp {
         match self {
             Self::PreSerialized { name, .. }
             | Self::PreSerializedBinary { name, .. }
-            | Self::Get { name, .. }
             | Self::JoseRsaOaepFreshDecrypt { name, .. }
             | Self::AesSymCreate { name, .. }
             | Self::HsmAesSymCreate { name, .. }
@@ -156,7 +153,6 @@ impl PreparedLoadOp {
             Self::HsmAesSymCreate { .. } | Self::HsmRsaKpCreate { .. } => Some(64),
             Self::PreSerialized { .. }
             | Self::PreSerializedBinary { .. }
-            | Self::Get { .. }
             | Self::JoseRsaOaepFreshDecrypt { .. }
             | Self::AesSymCreate { .. } => None,
         }
@@ -184,11 +180,6 @@ impl PreparedLoadOp {
                 .post_bytes(url, body.clone(), "application/octet-stream")
                 .await
                 .is_ok_and(|resp| wire_response_ok(resp.bytes())),
-            Self::Get { url, .. } => client
-                .client
-                .get(url)
-                .await
-                .is_ok_and(|resp| resp.status.is_success()),
             Self::JoseRsaOaepFreshDecrypt {
                 url,
                 kid,
@@ -517,7 +508,6 @@ fn prepare_load_ops(
         } else {
             eprintln!("[load] JOSE A256GCM key creation failed, skipping JOSE encrypt load test");
         }
-        push_jose_jwks_op(rt, client, &mut ops);
         push_jose_rsa_oaep_decrypt_ops(rt, client, plaintext_size, &mut ops)?;
     }
 
@@ -702,26 +692,6 @@ const fn push_jose_eddsa_sign_op(
     _client: &KmsClient,
     _ops: &mut Vec<PreparedLoadOp>,
 ) {
-}
-
-/// Public JWKS document load op (`GET /.well-known/jwks.json`); skipped when the endpoint is
-/// not served (`jwks_endpoint_enabled = false`).
-fn push_jose_jwks_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
-    let url = format!("{}/.well-known/jwks.json", client.client.server_url);
-    if rt
-        .block_on(client.client.get(&url))
-        .is_ok_and(|resp| resp.status.is_success())
-    {
-        ops.push(PreparedLoadOp::Get {
-            name: "jose/jwks",
-            url,
-        });
-    } else {
-        eprintln!(
-            "[load] GET /.well-known/jwks.json unavailable (jwks_endpoint_enabled = false?), \
-             skipping JOSE JWKS load test"
-        );
-    }
 }
 
 /// JOSE RSA-OAEP decrypt load ops: one replayed token (CEK cache hit when the cache is on) and
