@@ -86,6 +86,10 @@ jobs:
           mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target server
           mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target ckms
 
+      - name: Validate SBOM and CBOM (cyclonedx-cli)
+        if: matrix.runner == 'ubuntu-24.04'
+        run: mise run sbom:validate --variant ${{ matrix.features }} --link ${{ matrix.link }}
+
       - name: Upload SBOM artifact
         if: matrix.runner == 'ubuntu-24.04'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

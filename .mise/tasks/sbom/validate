@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#MISE description="Validate every generated CycloneDX SBOM/CBOM against its JSON schema (cyclonedx-cli)"
+#USAGE flag "-v --variant <variant>" help="Only validate server/ckms SBOMs of this variant (fips|non-fips)"
+#USAGE flag "-l --link <link>" help="Only validate server/ckms SBOMs of this linkage (static|dynamic)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# Pinned GitHub release binary: nixpkgs' cyclonedx-cli (0.25.x) predates the 1.6 schema.
+CDX_CLI_VERSION="0.33.1"
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) cdx_asset="linux-x64" cdx_sha256="bfc8b2538da86fe239bc53658bbb63c1c8c510a293c1e6891aa5bea5d3c58746" ;;
+  Linux-aarch64) cdx_asset="linux-arm64" cdx_sha256="b2e9fdf9665ef49868a2ec012171c6e785dcd69745bc5869e53e4f4bfb096a5f" ;;
+  Darwin-arm64) cdx_asset="osx-arm64" cdx_sha256="750c148780154833f6401f9067d08c5a4c31567b6ee3c26c062c3a95c62d741c" ;;
+  Darwin-x86_64) cdx_asset="osx-x64" cdx_sha256="0ea92306fc7d7c30ed112a7463781a200585a3bf1cdaf77229181c5aabd1d4b6" ;;
+  *)
+    echo "Unsupported platform for cyclonedx-cli: $(uname -s)-$(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+REPO_ROOT="$(get_repo_root)"
+CDX_BIN="${REPO_ROOT}/.cache/cyclonedx-cli/${CDX_CLI_VERSION}-${cdx_asset}"
+if [ ! -x "$CDX_BIN" ]; then
+  mkdir -p "$(dirname "$CDX_BIN")"
+  curl --fail --silent --show-error --location --retry 3 \
+    -o "${CDX_BIN}.tmp" \
+    "https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CDX_CLI_VERSION}/cyclonedx-${cdx_asset}"
+  echo "${cdx_sha256}  ${CDX_BIN}.tmp" | shasum -a 256 -c -
+  chmod +x "${CDX_BIN}.tmp"
+  mv "${CDX_BIN}.tmp" "$CDX_BIN"
+fi
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+# Committed SBOMs of other variants may predate the current generator: CI filters to what it just built.
+mapfile -t files < <(find "${REPO_ROOT}/sbom" "${REPO_ROOT}/cbom" -name '*.cdx.json' |
+  grep -E "/(server|ckms)/${usage_variant:-[^/]+}/${usage_link:-[^/]+}/|/openssl_[^/]+/|/cbom/" | sort)
+
+print_header "Validating CycloneDX SBOM/CBOM"
+[ "${#files[@]}" -gt 0 ] || {
+  echo "No *.cdx.json files found under sbom/ or cbom/" >&2
+  exit 1
+}
+
+failed=0
+for f in "${files[@]}"; do
+  # The tool dumps the whole instance on failure: keep only the error summary.
+  if out="$("$CDX_BIN" validate --input-file "$f" --input-format json --fail-on-errors 2>&1)"; then
+    echo "  OK   ${f#"${REPO_ROOT}"/}"
+  else
+    echo "  FAIL ${f#"${REPO_ROOT}"/}" >&2
+    printf '%s\n' "$out" | grep -E '^(On instance|Value|Required|The )' | sed -E 's#/[0-9]+#/N#g' | sort | uniq -c | sort -rn | head -10 >&2
+    failed=1
+  fi
+done
+[ "$failed" -eq 0 ] || {
+  echo "CycloneDX validation failed" >&2
+  exit 1
+}
+print_success "All ${#files[@]} CycloneDX files are valid"
