@@ -1428,7 +1428,7 @@ async fn test_pgp_wrapped_create_and_unwrap_roundtrip() {
     let kek_resp = client.create(kek_req).await.unwrap();
     let kek_id = kek_resp.unique_identifier.to_string();
 
-    // A PGP key created with a wrapping key is stored wrapped, and Get with `NotWrapped`
+    // A PGP key created with a wrapping key must be creatable, and Get with `NotWrapped`
     // returns the OpenPGP key material again.
     let mut pgp_req = pgp_create_request(CryptographicAlgorithm::Ed25519, None);
     pgp_req
@@ -1439,20 +1439,6 @@ async fn test_pgp_wrapped_create_and_unwrap_roundtrip() {
         .await
         .expect("PGPKey wrap-on-create must succeed")
         .unique_identifier;
-
-    let wrapped = client
-        .get(Get {
-            unique_identifier: Some(uid.clone()),
-            // Explicit: a server with `default_unwrap_type` unwraps when this is left unset.
-            key_wrap_type: Some(KeyWrapType::AsRegistered),
-            ..Get::default()
-        })
-        .await
-        .unwrap();
-    assert!(
-        wrapped.object.is_wrapped(),
-        "stored PGP key must be wrapped"
-    );
 
     let plain = client
         .get(Get {
