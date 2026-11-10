@@ -2,8 +2,6 @@
 #MISE description="SQLite upgrade (old -> new KMS binary) and pre-upgrade backup restore check"
 #USAGE flag "--old-kms <path>" env="OLD_KMS" help="Baseline cosmian_kms binary (e.g. built from tag 5.29.0)"
 #USAGE flag "--new-kms <path>" env="NEW_KMS" help="Candidate cosmian_kms binary"
-#USAGE flag "--ckms <path>" env="CKMS" help="Optional ckms binary (retained for CLI flag compatibility)"
-#USAGE flag "--old-ckms <path>" env="OLD_CKMS" help="Optional old ckms binary (retained for compatibility)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }

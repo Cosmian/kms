@@ -1441,7 +1441,7 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:pkg:docker`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
 ### `test:pkg:docker`
 
