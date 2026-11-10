@@ -209,7 +209,7 @@ backoff** for the following PostgreSQL SQLSTATE codes:
 No additional configuration is required; the retry behaviour is enabled automatically for all
 PostgreSQL connections.
 
-##### Multi-region active-active PostgreSQL (Spock / pgEdge / BDR)
+#### Multi-region active-active PostgreSQL (Spock / pgEdge / BDR)
 
 The KMS supports multi-region active-active deployments using PostgreSQL with a Spock-, pgEdge-, or BDR-class logical multi-master replication extension (validated against `ghcr.io/pgedge/pgedge-postgres`). In this topology, each region runs a local KMS instance group connected to a local PostgreSQL node, serving local reads and writes for minimum latency. State converges asynchronously across regions via bidirectional logical replication.
 
@@ -237,7 +237,7 @@ graph TD
     PGA <-->|Logical Multi-Master Replication| PGC
 ```
 
-###### Topology and `region_role`
+##### Topology and `region_role`
 
 To prevent split-brain conflicts on operations requiring global coordination, the deployment defines a topological role per region via the `region_role` configuration setting:
 
@@ -249,7 +249,7 @@ region_role = "leader"    # exactly one region per deployment
 
 Or via CLI flag `--region-role <leader|follower>` or environment variable `KMS_REGION_ROLE`.
 
-###### Leader-only operations
+##### Leader-only operations
 
 Exactly one region across the entire deployment MUST be designated `leader` (`region_role = "leader"`, which is the default). All other regions MUST be configured as `follower`.
 
@@ -260,7 +260,7 @@ The `leader` region is the only region permitted to execute:
 
 If a client attempts CRL generation or ceremony activation/revocation against a node configured with `region_role = "follower"`, the request is rejected immediately with an HTTP 422 error instructing the client to target the leader region. Background CRL refresh cron tasks on followers are automatically skipped.
 
-###### CRL endpoints across regions
+##### CRL endpoints across regions
 
 The KMS exposes two distinct CRL endpoints:
 
@@ -335,7 +335,7 @@ sequenceDiagram
     KMS_B-->>Bob: 200 OK (Ciphertext)
 ```
 
-###### State conflict resolution (lifecycle event log)
+##### State conflict resolution (lifecycle event log)
 
 In multi-region active-active replication, object `State` transitions can race across regions (e.g. an object deactivated in region A while destroyed in region B). Spock's commit-timestamp last-write-wins (LWW) drops an incoming row older than the local row before any trigger runs, so a state column on `objects` cannot converge.
 
@@ -347,11 +347,11 @@ $$\text{PreActive} < \text{Active} < \text{Deactivated} \;/\; \text{Compromised}
 
 A legitimate backward transition (KMIP batch UNDO, import-replace) removes only the events its region has observed (rows in `object_state_event_tombstones`) and appends a new event. A higher transition made concurrently in another region and not yet received still wins. Events are never compacted, and the validated topology is two nodes.
 
-###### Permissions and access control (LWW)
+##### Permissions and access control (LWW)
 
 Concurrent conflicting modifications to `read_access` (e.g. concurrent grant on node 1 and revoke on node 2 for the same `(object_id, user_id)` pair) converge via the underlying replication extension's row-level conflict resolution (`last_update_wins`). A concurrent grant and revoke on the same object/user pair can result in either state winning.
 
-###### Crypto Officer ceremony across regions
+##### Crypto Officer ceremony across regions
 
 `crypto_officer_activations` replicates like any other table in the default replication set: a Crypto Officer ceremony completed on the leader region becomes recognized on every follower region automatically, once the activation row replicates (subject to ordinary replication lag — there is no separate per-region CO status). The same applies to revocation.
 
@@ -390,14 +390,13 @@ sequenceDiagram
     end
 ```
 
-###### Extension requirements
+##### Extension requirements
 
 Any PostgreSQL multi-master extension supporting Spock/BDR/pglogical protocols is supported. Key requirements:
 
 - `wal_level = logical`
 - `track_commit_timestamp = on`
 - Shared replication set covering all public KMS tables (`objects`, `tags`, `read_access`, `crypto_officer_activations`, `parameters`, `crls`).
-
 
 ### MySQL, MariaDB, or Percona XtraDB Cluster
 
