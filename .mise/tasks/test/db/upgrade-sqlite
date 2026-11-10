@@ -2,57 +2,71 @@
 #MISE description="SQLite upgrade (old -> new KMS binary) and pre-upgrade backup restore check"
 #USAGE flag "--old-kms <path>" env="OLD_KMS" help="Baseline cosmian_kms binary (e.g. built from tag 5.29.0)"
 #USAGE flag "--new-kms <path>" env="NEW_KMS" help="Candidate cosmian_kms binary"
-#USAGE flag "--ckms <path>" env="CKMS" help="ckms binary used as the test driver"
-#USAGE flag "--old-ckms <path>" env="OLD_CKMS" help="ckms used against the old server (default: --ckms)"
+#USAGE flag "--ckms <path>" env="CKMS" help="Optional ckms binary (retained for CLI flag compatibility)"
+#USAGE flag "--old-ckms <path>" env="OLD_CKMS" help="Optional old ckms binary (retained for compatibility)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "--seed <seed>" env="SEED" help="Deterministic random seed" default="424242"
+#USAGE flag "--random-count <count>" env="RANDOM_COUNT" help="Number of seeded random recipes" default="8"
 set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/kms_server.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 
-# Upgrade proof: seed with the OLD server, cold-copy the database, open the copy with the NEW
-# server (read + write + restart), then restore the pre-upgrade backup with the OLD server.
-# The binaries define FIPS/non-FIPS; nothing is built or downloaded here.
+# Upgrade proof: seed with the OLD server (fixed mig_*/bulk_* + seeded rnd_* over KMIP JSON),
+# cold-copy the database, open the copy with the NEW server (verify + mutate + restart),
+# then restore the pre-upgrade backup with the OLD server.
 
 OLD_KMS="${usage_old_kms:-}"
 NEW_KMS="${usage_new_kms:-}"
-NEW_CKMS="${usage_ckms:-}"
-OLD_CKMS="${usage_old_ckms:-${NEW_CKMS}}"
+VARIANT="${usage_variant:-fips}"
+SEED="${usage_seed:-424242}"
+RANDOM_COUNT="${usage_random_count:-8}"
 
 [ -n "${OLD_KMS}" ] || print_error "--old-kms (or OLD_KMS) is required"
 [ -n "${NEW_KMS}" ] || print_error "--new-kms (or NEW_KMS) is required"
-[ -n "${NEW_CKMS}" ] || print_error "--ckms (or CKMS) is required"
-for bin in "${OLD_KMS}" "${NEW_KMS}" "${NEW_CKMS}" "${OLD_CKMS}"; do
-  [ -f "${bin}" ] && [ -x "${bin}" ] || print_error "Not an executable file: ${bin}"
+for bin in "${OLD_KMS}" "${NEW_KMS}"; do
+  if [ ! -f "${bin}" ] || [ ! -x "${bin}" ]; then
+    print_error "Not an executable file: ${bin}"
+  fi
 done
 require_cmd python3
 require_cmd curl
-require_cmd cmp
 
-cd "${MISE_CONFIG_ROOT}"
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+cd "${REPO_ROOT}"
 umask 077
 WORK_DIR="$(mktemp -d)"
 trap 'kms_stop; rm -rf -- "${WORK_DIR:?}"' EXIT
 
 OLD_VERSION="$("${OLD_KMS}" --version 2>&1 | head -n 1)"
-print_header "SQLite upgrade proof"
+NEW_VERSION="$("${NEW_KMS}" --version 2>&1 | head -n 1)"
+print_header "SQLite upgrade proof (${VARIANT}, seed=${SEED})"
 print_status "repository HEAD: $(git rev-parse HEAD)"
-for bin in "${OLD_KMS}" "${NEW_KMS}" "${NEW_CKMS}" "${OLD_CKMS}"; do
+for bin in "${OLD_KMS}" "${NEW_KMS}"; do
   print_status "${bin}: $("${bin}" --version 2>&1 | head -n 1) sha256=$(compute_sha256 "${bin}")"
 done
 
 HTTP_PORT="$(kms_pick_free_port)"
 SOCKET_PORT="$(kms_pick_free_port)"
 SERVER_URL="https://127.0.0.1:${HTTP_PORT}"
+CA_CERT="${REPO_ROOT}/test_data/certificates/client_server/ca/ca.crt"
+OWNER_CERT="${REPO_ROOT}/test_data/certificates/client_server/owner/owner.client.acme.com.crt"
+OWNER_KEY="${REPO_ROOT}/test_data/certificates/client_server/owner/owner.client.acme.com.key"
+GRANTEE_CERT="${REPO_ROOT}/test_data/certificates/client_server/user/user.client.acme.com.crt"
+GRANTEE_KEY="${REPO_ROOT}/test_data/certificates/client_server/user/user.client.acme.com.key"
+SERVER_CERT="${REPO_ROOT}/test_data/certificates/client_server/server/kmserver.acme.com.crt"
 
-# From rule://test-configs section 3: fails when the key is absent from the fixture.
-set_toml_value() { # <file> <key> <already-quoted-value>
+# Substitute scalar values in a complete test_data fixture (rule 4.20).
+set_toml_value() {
   grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
   sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
 }
 
 KMS_TOML="${WORK_DIR}/kms.toml"
-OWNER_CONF="${WORK_DIR}/owner.toml"
-USER_CONF="${WORK_DIR}/user.toml"
-cp test_data/configs/server/auth/cert.toml "${KMS_TOML}"
+cp "${REPO_ROOT}/test_data/configs/server/auth/cert.toml" "${KMS_TOML}"
 set_toml_value "${KMS_TOML}" port "${HTTP_PORT}"
 set_toml_value "${KMS_TOML}" hostname '"127.0.0.1"'
 set_toml_value "${KMS_TOML}" socket_server_port "${SOCKET_PORT}"
@@ -61,209 +75,89 @@ set_toml_value "${KMS_TOML}" tmp_path "\"${WORK_DIR}/tmp\""
 set_toml_value "${KMS_TOML}" clear_database false
 set_toml_value "${KMS_TOML}" kms_public_url "\"https://localhost:${HTTP_PORT}/google_cse\""
 mkdir -p "${WORK_DIR}/workspace" "${WORK_DIR}/tmp"
-cp test_data/configs/client/cert_owner.toml "${OWNER_CONF}"
-cp test_data/configs/client/cert_user.toml "${USER_CONF}"
-set_toml_value "${OWNER_CONF}" server_url "\"${SERVER_URL}\""
-set_toml_value "${USER_CONF}" server_url "\"${SERVER_URL}\""
 
 PHASE="init"
-CK="${OLD_CKMS}"
-OUT="${WORK_DIR}/out.txt"
-ERR="${WORK_DIR}/err.txt"
-SNAP_DIR="${WORK_DIR}/snap"
-mkdir -p "${SNAP_DIR}"
-PLAIN="${WORK_DIR}/plain.bin"
-CT_SHARED="${WORK_DIR}/ct-shared.bin"
-CT_WRAPPED="${WORK_DIR}/ct-wrapped.bin"
-IDS=(upgrade-kek upgrade-shared upgrade-private upgrade-retired upgrade-wrapped upgrade-cert)
+MANIFEST="${WORK_DIR}/manifest.json"
+SNAPSHOT="${WORK_DIR}/snapshot.json"
+CANARY="${WORK_DIR}/canary.json"
+REPLAY_CMD="mise run test:upgrade-sqlite --old-kms ${OLD_KMS} --new-kms ${NEW_KMS} --variant ${VARIANT} --seed ${SEED}"
 
-# Print phase, failing command and log tail (never stdout of ckms: it may carry key material).
-fail() {
+# Print phase and server log tail before exiting on error.
+fail_phase() {
   echo "[ERROR] phase '${PHASE}': $*" >&2
-  [ -s "${ERR}" ] && {
-    echo "--- last stderr:" >&2
-    tail -n 5 "${ERR}" >&2
-  }
-  [ -f "${WORK_DIR}/${PHASE}.log" ] && {
+  if [ -f "${WORK_DIR}/${PHASE}.log" ]; then
     echo "--- tail of ${PHASE}.log:" >&2
     tail -n 30 "${WORK_DIR}/${PHASE}.log" >&2
-  }
+  fi
   exit 1
 }
 
-# ckms <conf> <args...>: runs ckms as the given identity; output kept in ${OUT}/${ERR}.
-ckms_run() {
-  local conf="$1"
-  shift
-  COSMIAN_KMS_CLI_FORMAT=json "${CK}" --conf-path "${conf}" "$@" >"${OUT}" 2>"${ERR}"
-}
-owner() { ckms_run "${OWNER_CONF}" "$@" || fail "ckms $*"; }
-grantee() { ckms_run "${USER_CONF}" "$@" || fail "ckms (grantee) $*"; }
-
-# expect_denied <conf> <args...>: must fail with an authorization/not-found error, and the
-# next owner command must still succeed (the server did not break).
-expect_denied() {
-  local conf="$1"
-  shift
-  if ckms_run "${conf}" "$@"; then fail "expected denial but succeeded: ckms $*"; fi
-  grep -Eiq 'not.found|permission|denied|unauthori' "${ERR}" || fail "denied for the wrong reason: ckms $*"
-  owner attributes get --id upgrade-shared --output-file "${WORK_DIR}/probe.json"
-}
-
-PY_TOOL='
-import json, sys
-WANT = {"state", "namevalue", "cryptographicalgorithm", "cryptographiclength",
-        "linkedobjectidentifier", "digestvalue"}
-norm = lambda k: str(k).lower().replace("_", "").replace(" ", "")
-def walk(n, out):
-    if isinstance(n, list):
-        for i in n: walk(i, out)
-    elif isinstance(n, dict):
-        # 5.29.0 invents a Random Number Generator attribute (ANSI X9.31 / AES / 256) on every
-        # object; 6.0 no longer reports it. It is not stored data: do not collect its sub-fields.
-        if norm(n.get("tag", "")) == "randomnumbergenerator":
-            return
-        if "tag" in n and "value" in n and norm(n["tag"]) in WANT and not isinstance(n["value"], (dict, list)):
-            out.setdefault(norm(n["tag"]), []).append(str(n["value"]))
-        for k, v in n.items():
-            if norm(k) in WANT and not isinstance(v, (dict, list)):
-                out.setdefault(norm(k), []).append(str(v))
-            walk(v, out)
-mode = sys.argv[1]
-if mode == "extract":
-    out = {}
-    walk(json.load(open(sys.argv[2])), out)
-    json.dump({k: sorted(set(v)) for k, v in out.items()}, open(sys.argv[3], "w"))
-elif mode == "has":
-    vals = json.load(open(sys.argv[2])).get(sys.argv[3], [])
-    sys.exit(0 if sys.argv[4] in vals else 1)
-elif mode == "compare":
-    base, cur = (json.load(open(p)) for p in sys.argv[2:4])
-    bad = []
-    for k in sorted(set(base) | set(cur)):
-        b, c = base.get(k, []), cur.get(k, [])
-        if k == "digestvalue":
-            if not set(b) <= set(c): bad.append("%s: baseline=%s current=%s" % (k, b, c))
-        elif b != c: bad.append("%s: baseline=%s current=%s" % (k, b, c))
-    if bad:
-        print("attribute mismatch: " + "; ".join(bad), file=sys.stderr)
-        sys.exit(1)
-'
-py_tool() { python3 -c "${PY_TOOL}" "$@"; }
-
-# `ckms attributes get` cannot show State, Link or Digest, so the same KMIP 2.1 GetAttributes
-# JSON request is sent to whichever server runs (old or new) with the owner certificate.
-fetch_attrs() { # <id> <dest.json>
-  curl -sS --max-time 20 --fail-with-body \
-    --cacert test_data/certificates/client_server/ca/ca.crt \
-    --cert test_data/certificates/client_server/owner/owner.client.acme.com.crt \
-    --key test_data/certificates/client_server/owner/owner.client.acme.com.key \
+# Probe the mTLS KMIP endpoint until it answers HTTP 422 on an empty JSON body.
+probe_mtls_kmip() {
+  kill -0 "${KMS_PID}" 2>/dev/null || return 1
+  local code
+  code="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' \
+    --cacert "${CA_CERT}" --cert "${OWNER_CERT}" --key "${OWNER_KEY}" \
     --resolve "kmserver.acme.com:${HTTP_PORT}:127.0.0.1" \
-    -X POST -H 'Content-Type: application/json' \
-    -d "{\"tag\":\"GetAttributes\",\"value\":[{\"tag\":\"UniqueIdentifier\",\"type\":\"TextString\",\"value\":\"$1\"}]}" \
-    -o "$2" "https://kmserver.acme.com:${HTTP_PORT}/kmip/2_1" 2>"${ERR}" || fail "GetAttributes of $1"
+    -X POST -H 'Content-Type: application/json' -d '{}' \
+    "https://kmserver.acme.com:${HTTP_PORT}/kmip/2_1" 2>/dev/null || true)"
+  [ "${code}" = "422" ]
 }
 
-# snapshot_attrs <id> <dest.json>
-snapshot_attrs() {
-  fetch_attrs "$1" "${WORK_DIR}/raw-$1.json"
-  cp "${WORK_DIR}/raw-$1.json" "${SNAP_DIR}/$1.raw"
-  py_tool extract "${WORK_DIR}/raw-$1.json" "$2" || fail "cannot extract attributes of $1"
-  [ -s "$2" ] || fail "empty attribute snapshot for $1"
-  py_tool has "$2" state "$3" || {
-    echo "--- extracted: $(cat "$2")" >&2
-    echo "--- raw (attributes only): $(head -c 3000 "${WORK_DIR}/raw-$1.json" | tr -s ' \n' ' ')" >&2
-    fail "$1 is not in state $3"
-  }
-}
-
-assert_name() { # <id> <name> <present|absent>
-  snapshot_attrs "$1" "${WORK_DIR}/name-$1.json" Active
-  if py_tool has "${WORK_DIR}/name-$1.json" namevalue "$2"; then
-    [ "$3" = present ] || fail "$1 unexpectedly carries name $2"
-  else
-    [ "$3" = absent ] || fail "$1 lacks name $2"
-  fi
-}
-
-roundtrip() { # <ckms conf runner: owner|grantee> <id> <ciphertext> : decrypt and compare
-  "$1" sym decrypt --key-id "$2" "$3" --output-file "${WORK_DIR}/dec.bin"
-  cmp -s "${PLAIN}" "${WORK_DIR}/dec.bin" || fail "decrypted data differs from plaintext ($2)"
-  rm -f "${WORK_DIR}/dec.bin"
-}
-
-# Every read-only check of phase 1, replayed against another server/database.
-read_checks() {
-  local id
-  for id in "${IDS[@]}"; do
-    fetch_attrs "${id}" "${WORK_DIR}/raw-${id}.json"
-    py_tool extract "${WORK_DIR}/raw-${id}.json" "${WORK_DIR}/cur-${id}.json" || fail "cannot extract attributes of ${id}"
-    py_tool compare "${SNAP_DIR}/${id}.json" "${WORK_DIR}/cur-${id}.json" ||
-      fail "attribute snapshot of ${id} changed"
-  done
-  rm -f "${WORK_DIR}"/cur-*.json "${WORK_DIR}"/raw-*.json
-  roundtrip owner upgrade-shared "${CT_SHARED}"
-  roundtrip owner upgrade-wrapped "${CT_WRAPPED}"
-  roundtrip grantee upgrade-shared "${CT_SHARED}"
-  expect_denied "${USER_CONF}" sym keys export --key-id upgrade-shared "${WORK_DIR}/denied.json"
-  expect_denied "${USER_CONF}" sym encrypt --key-id upgrade-private "${PLAIN}" --output-file "${WORK_DIR}/denied.enc"
-}
-
-# start_server <phase> <bin> <db-dir>
+# Start a KMS binary against the given SQLite directory and wait for mTLS readiness.
 start_server() {
   PHASE="$1"
   set_toml_value "${KMS_TOML}" sqlite_path "\"$3\""
-  # shellcheck disable=SC2034  # read by kms_start_from_bin/kms_stop (sourced .mise/lib/kms_server.sh)
+  # shellcheck disable=SC2034  # read by kms_start_from_bin/kms_stop (.mise/lib/kms_server.sh)
   KMS_CONFIG_FILE="${KMS_TOML}"
-  # shellcheck disable=SC2034  # same
+  # shellcheck disable=SC2034
   KMS_LOG_FILE="${WORK_DIR}/${PHASE}.log"
-  # shellcheck disable=SC2034  # same
+  # shellcheck disable=SC2034
   KMS_PORT="${HTTP_PORT}"
-  # shellcheck disable=SC2034  # same
+  # shellcheck disable=SC2034
   KMS_URL="${SERVER_URL}"
-  # kms_wait_ready probes without a client certificate: under pipefail its curl TLS failure
-  # (exit 56, "000") reads as "not ready" until the timeout. The mTLS probe below really waits.
   set +o pipefail
   kms_start_from_bin "$2"
   set -o pipefail
-  local code=000
-  for _ in $(seq 1 60); do
-    code="$(curl -sk --max-time 2 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' \
-      --cert test_data/certificates/client_server/owner/owner.client.acme.com.crt \
-      --key test_data/certificates/client_server/owner/owner.client.acme.com.key \
-      "${SERVER_URL}/kmip/2_1" || true)"
-    [ "${code}" != "000" ] && break
-    kill -0 "${KMS_PID}" 2>/dev/null || fail "server exited early"
-    sleep 1
-  done
-  [ "${code}" != "000" ] || fail "server not answering over mTLS"
+  wait_for_command 60 probe_mtls_kmip || fail_phase "server not answering over mTLS"
 }
+
+COMMON_PY_ARGS=(
+  --url "${SERVER_URL}"
+  --ca-cert "${CA_CERT}"
+  --client-cert "${OWNER_CERT}"
+  --client-key "${OWNER_KEY}"
+)
+VERIFY_PY_ARGS=(
+  "${COMMON_PY_ARGS[@]}"
+  --grantee-cert "${GRANTEE_CERT}"
+  --grantee-key "${GRANTEE_KEY}"
+  --old-version "${OLD_VERSION}"
+  --new-version "${NEW_VERSION}"
+  --backend sqlite
+  --variant "${VARIANT}"
+  --replay-cmd "${REPLAY_CMD}"
+)
 
 # ── Phase 1: seed with the old server ────────────────────────────────────────
 print_header "Phase 1: seed (old server)"
-CK="${OLD_CKMS}"
+mkdir -p "${WORK_DIR}/db-seed"
 start_server seed "${OLD_KMS}" "${WORK_DIR}/db-seed"
-printf 'upgrade-sqlite fixed plaintext 0123456789\n' >"${PLAIN}"
-for id in upgrade-kek upgrade-shared upgrade-private upgrade-retired; do
-  owner sym keys create --algorithm aes --number-of-bits 256 "${id}"
-done
-owner sym keys create --algorithm aes --number-of-bits 256 --wrapping-key-id upgrade-kek upgrade-wrapped
-owner attributes set --id upgrade-shared --name upgrade-shared-name
-owner certificates import --format pem test_data/certificates/client_server/server/kmserver.acme.com.crt upgrade-cert
-owner attributes set --id upgrade-shared --certificate-id upgrade-cert
-owner access-rights grant user.client@acme.com encrypt decrypt --object-uid upgrade-shared
-owner sym keys revoke "upgrade test" --key-id upgrade-retired
-owner sym keys destroy --key-id upgrade-retired
-for id in upgrade-kek upgrade-shared upgrade-private upgrade-wrapped; do
-  snapshot_attrs "${id}" "${SNAP_DIR}/${id}.json" Active
-done
-snapshot_attrs upgrade-retired "${SNAP_DIR}/upgrade-retired.json" Destroyed
-snapshot_attrs upgrade-cert "${SNAP_DIR}/upgrade-cert.json" Active
-py_tool has "${SNAP_DIR}/upgrade-shared.json" namevalue upgrade-shared-name || fail "seed name missing"
-py_tool has "${SNAP_DIR}/upgrade-shared.json" linkedobjectidentifier upgrade-cert || fail "seed certificate link missing"
-owner sym encrypt --key-id upgrade-shared "${PLAIN}" --output-file "${CT_SHARED}"
-owner sym encrypt --key-id upgrade-wrapped "${PLAIN}" --output-file "${CT_WRAPPED}"
-read_checks
+python3 "${REPO_ROOT}/.mise/scripts/test/populate_fixed_set.py" \
+  "${COMMON_PY_ARGS[@]}" \
+  --variant "${VARIANT}" \
+  --manifest "${MANIFEST}" \
+  --sample-cert "${SERVER_CERT}" || fail_phase "fixed-set population failed"
+python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" populate-random \
+  "${VERIFY_PY_ARGS[@]}" \
+  --manifest "${MANIFEST}" \
+  --seed "${SEED}" \
+  --count "${RANDOM_COUNT}" \
+  --sample-cert "${SERVER_CERT}" || fail_phase "random-layer population failed"
+python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" snapshot \
+  "${VERIFY_PY_ARGS[@]}" \
+  --manifest "${MANIFEST}" \
+  --snapshot "${SNAPSHOT}" || fail_phase "pre-upgrade snapshot failed"
 kms_stop
 
 # ── Phase 2: cold backup ─────────────────────────────────────────────────────
@@ -274,35 +168,33 @@ cp -a "${WORK_DIR}/backup" "${WORK_DIR}/db-candidate"
 
 # ── Phase 3: candidate server on the copy ────────────────────────────────────
 print_header "Phase 3: candidate (new server)"
-CK="${NEW_CKMS}"
 start_server candidate "${NEW_KMS}" "${WORK_DIR}/db-candidate"
-read_checks
-owner attributes set --id upgrade-shared --name upgrade-candidate-name
-owner sym keys create --algorithm aes --number-of-bits 256 upgrade-new
-owner sym encrypt --key-id upgrade-new "${PLAIN}" --output-file "${WORK_DIR}/ct-new.bin"
-roundtrip owner upgrade-new "${WORK_DIR}/ct-new.bin"
+python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
+  "${VERIFY_PY_ARGS[@]}" \
+  --snapshot "${SNAPSHOT}" \
+  --phase candidate \
+  --mutate \
+  --canary-file "${CANARY}" || fail_phase "candidate verification failed"
 kms_stop
+
 start_server candidate-restart "${NEW_KMS}" "${WORK_DIR}/db-candidate"
-assert_name upgrade-shared upgrade-candidate-name present
-snapshot_attrs upgrade-new "${WORK_DIR}/new.json" Active
-roundtrip owner upgrade-new "${WORK_DIR}/ct-new.bin"
-roundtrip owner upgrade-shared "${CT_SHARED}"
+python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
+  "${VERIFY_PY_ARGS[@]}" \
+  --snapshot "${SNAPSHOT}" \
+  --phase candidate-restart \
+  --canary-file "${CANARY}" || fail_phase "candidate-restart verification failed"
 kms_stop
 
 # ── Phase 4: restore the pre-upgrade backup with the old server ─────────────
 PHASE="restore"
 print_header "Phase 4: restore (old server on the pre-upgrade backup)"
 cp -a "${WORK_DIR}/backup" "${WORK_DIR}/db-restore"
-CK="${OLD_CKMS}"
 start_server restore "${OLD_KMS}" "${WORK_DIR}/db-restore"
-read_checks
-assert_name upgrade-shared upgrade-shared-name present
-assert_name upgrade-shared upgrade-candidate-name absent
-if ckms_run "${OWNER_CONF}" attributes get --id upgrade-new --output-file "${WORK_DIR}/new-gone.json"; then
-  fail "upgrade-new exists in the restored backup"
-fi
-grep -Eiq 'not.found|no.*object|does not exist' "${ERR}" || fail "upgrade-new lookup failed for an unexpected reason"
-owner attributes get --id upgrade-shared --output-file "${WORK_DIR}/probe.json"
+python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
+  "${VERIFY_PY_ARGS[@]}" \
+  --snapshot "${SNAPSHOT}" \
+  --phase restore \
+  --canary-file "${CANARY}" || fail_phase "restore verification failed"
 kms_stop
 
 print_success "SQLite upgrade from ${OLD_VERSION} and pre-upgrade backup restore verified"
