@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Run live Docker old-image -> new-image database upgrade gate"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-b --backend <backend>" env="BACKEND" help="Database backend" default="all" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "redis" "all"
+#USAGE }
+#USAGE flag "--old-version <version>" env="OLD_VERSION" help="Old KMS version(s) or 'nightly'" default="nightly"
+#USAGE flag "--new-image <image>" env="DOCKER_IMAGE_NAME" help="Candidate KMS Docker image under test"
+#USAGE flag "--seed <seed>" env="SEED" help="Deterministic seed for random object generation"
+#USAGE flag "--random-count <count>" env="RANDOM_COUNT" help="Number of random recipes per version" default="10"
+#USAGE flag "--rotation-index <index>" env="ROTATION_INDEX" help="Override daily rotation index for testing"
+#USAGE flag "--artifacts-dir <dir>" env="ARTIFACTS_DIR" help="Directory for failure artifacts"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+
+exec bash "${REPO_ROOT}/.mise/scripts/test/run_db_upgrade_gate.sh" \
+  --variant "${VARIANT}" \
+  --backend "${usage_backend:-all}" \
+  --old-version "${usage_old_version:-nightly}" \
+  --new-image "${usage_new_image:-${DOCKER_IMAGE_NAME:-}}" \
+  --seed "${usage_seed:-}" \
+  --random-count "${usage_random_count:-10}" \
+  --rotation-index "${usage_rotation_index:-}" \
+  --artifacts-dir "${usage_artifacts_dir:-${REPO_ROOT}/target/db-upgrade-gate/${VARIANT}}"
