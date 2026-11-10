@@ -1524,14 +1524,14 @@ components:
 
     CreateTransitKeyRequest:
       type: object
-      required: [type]
       properties:
         type:
           type: string
+          default: aes256-gcm96
           description: |
             Key algorithm and size. Supported values:
-            `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`, `rsa-4096`.
-            Non-FIPS only: `ed25519`, `ml-dsa-65`.
+            `aes256-gcm96` (encryption, default), `ecdsa-p256`, `ecdsa-p384`,
+            `rsa-2048`, `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`.
           example: ecdsa-p256
         exportable:
           type: boolean
@@ -1582,13 +1582,21 @@ components:
           example: true
         latest_version:
           type: integer
-          description: Current key version (always `1` — in-place rotation is not supported).
+          description: |
+            Current key version. Always `1` for asymmetric keys; incremented by
+            `POST /keys/{name}/rotate` for `aes256-gcm96` keys.
           example: 1
         keys:
           type: object
-          description: Map of version number string to key version metadata.
+          description: |
+            Map of version number string to key version metadata. Asymmetric keys map
+            to a `TransitKeyVersion`; `aes256-gcm96` keys map to the creation time as a
+            Unix timestamp (as in Vault).
           additionalProperties:
-            $ref: '#/components/schemas/TransitKeyVersion'
+            oneOf:
+              - $ref: '#/components/schemas/TransitKeyVersion'
+              - type: integer
+                format: int64
           example:
             '1':
               public_key: "-----BEGIN PUBLIC KEY-----\nMFkwE...\n-----END PUBLIC KEY-----\n"
@@ -1618,6 +1626,72 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/TransitKeyListData'
+
+    EncryptTransitRequest:
+      type: object
+      required: [plaintext]
+      properties:
+        plaintext:
+          type: string
+          description: Base64-encoded plaintext.
+          example: c2VjcmV0
+        key_version:
+          type: integer
+          description: Key version to encrypt with. Defaults to the latest version.
+        associated_data:
+          type: string
+          description: Base64-encoded AEAD associated data; must be supplied again on decrypt.
+        context:
+          type: string
+          description: Not supported (derived keys); any non-empty value is rejected with `400`.
+        batch_input:
+          description: Not supported; any value is rejected with `400`.
+
+    EncryptTransitResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [ciphertext, key_version]
+          properties:
+            ciphertext:
+              type: string
+              description: '`vault:v{version}:` followed by base64(nonce (12 bytes) || ciphertext || tag (16 bytes)).'
+              example: vault:v1:8SDd3WHDOjf7mq69CyCqYjBXAiQQAVZRkFM13ok481zoCmHnSeDX9vyf7w==
+            key_version:
+              type: integer
+              example: 1
+
+    DecryptTransitRequest:
+      type: object
+      required: [ciphertext]
+      properties:
+        ciphertext:
+          type: string
+          description: Ciphertext returned by the encrypt endpoint.
+          example: vault:v1:8SDd3WHDOjf7mq69CyCqYjBXAiQQAVZRkFM13ok481zoCmHnSeDX9vyf7w==
+        associated_data:
+          type: string
+          description: Base64-encoded AEAD associated data used at encryption.
+        context:
+          type: string
+          description: Not supported (derived keys); any non-empty value is rejected with `400`.
+        batch_input:
+          description: Not supported; any value is rejected with `400`.
+
+    DecryptTransitResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [plaintext]
+          properties:
+            plaintext:
+              type: string
+              description: Base64-encoded plaintext.
+              example: c2VjcmV0
 
     SignTransitRequest:
       type: object
@@ -4616,9 +4690,11 @@ paths:
       tags: [Vault Transit]
       summary: Create a transit key
       description: |
-        Create a new asymmetric transit key pair stored in the KMS under the tag
-        `vault_transit:{name}`. Supported types: `ecdsa-p256`, `ecdsa-p384`,
-        `rsa-2048`, `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`.
+        Create a transit key stored in the KMS under the tag `vault_transit:{name}`.
+        Supported types: `aes256-gcm96` (default, symmetric encryption key used by
+        the encrypt/decrypt endpoints), `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`,
+        `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`. Creating an existing key
+        is a no-op. The same operation is also accepted with `PUT`.
       operationId: vaultTransitCreateKey
       parameters:
         - name: name
@@ -4821,6 +4897,108 @@ paths:
           description: Key not found.
         '500':
           description: Signing failed.
+
+  /v1/transit/keys/{name}/rotate:
+    post:
+      tags: [Vault Transit]
+      summary: Rotate an encryption transit key
+      description: |
+        Add a new version to an `aes256-gcm96` transit key. New encryptions use the
+        new version; ciphertexts of older versions stay decryptable. Asymmetric
+        signing keys cannot be rotated (`400`). Also accepted with `PUT`.
+      operationId: vaultTransitRotateKey
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: autounseal
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Key rotated. Returns the updated key metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitKeyInfoWrapper'
+        '400':
+          description: The key is an asymmetric signing key.
+        '404':
+          description: Key not found.
+
+  /v1/transit/encrypt/{name}:
+    post:
+      tags: [Vault Transit]
+      summary: Encrypt with a transit key
+      description: |
+        Encrypt base64 plaintext with AES-256-GCM under the latest (or requested)
+        version of an `aes256-gcm96` transit key. The cryptographic operation runs
+        inside the KMS; the key never leaves it. Used by the HashiCorp Vault
+        `seal "transit"` auto-unseal. Also accepted with `PUT` (Vault Go client).
+      operationId: vaultTransitEncrypt
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: autounseal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncryptTransitRequest'
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Vault-formatted ciphertext.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncryptTransitResponse'
+        '400':
+          description: Invalid request (bad base64, unknown key version, unsupported option).
+        '404':
+          description: No `aes256-gcm96` key with this name is owned by the caller.
+
+  /v1/transit/decrypt/{name}:
+    post:
+      tags: [Vault Transit]
+      summary: Decrypt with a transit key
+      description: |
+        Decrypt a `vault:vN:` ciphertext with version N of an `aes256-gcm96`
+        transit key. Also accepted with `PUT` (Vault Go client).
+      operationId: vaultTransitDecrypt
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: autounseal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecryptTransitRequest'
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Base64 plaintext.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecryptTransitResponse'
+        '400':
+          description: Malformed ciphertext, unknown key version, or authentication failure.
+        '404':
+          description: No `aes256-gcm96` key with this name is owned by the caller.
 
   # ── Vault PKI ──────────────────────────────────────────────────────────────
 

@@ -83,6 +83,10 @@ use crate::{
                 delete_transit_key, get_transit_key, list_transit_keys, sign_with_transit_key,
                 sign_with_transit_key_put,
             },
+            transit_encryption::{
+                decrypt_with_transit_key, decrypt_with_transit_key_put, encrypt_with_transit_key,
+                encrypt_with_transit_key_put, rotate_transit_key, rotate_transit_key_put,
+            },
         },
         swagger,
         ui_auth::configure_auth_routes,
@@ -1610,7 +1614,13 @@ pub async fn prepare_kms_server(
                     .service(list_transit_keys)
                     .service(delete_transit_key)
                     .service(sign_with_transit_key)
-                    .service(sign_with_transit_key_put);
+                    .service(sign_with_transit_key_put)
+                    .service(encrypt_with_transit_key)
+                    .service(encrypt_with_transit_key_put)
+                    .service(decrypt_with_transit_key)
+                    .service(decrypt_with_transit_key_put)
+                    .service(rotate_transit_key)
+                    .service(rotate_transit_key_put);
                 app = app.service(transit_scope);
 
                 let pki_mount = kms_server_for_http.params.vault.pki_mount.clone();
