@@ -348,7 +348,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
         let key_id = key_id.to_vec();
-        let data = data.to_vec();
+        let data = Zeroizing::new(data.to_vec());
         let iv_counter_nonce = iv_counter_nonce.to_vec();
         self.with_session(slot_id, false, move |slot, session| {
             let handle = session.get_object_handle(&key_id)?;

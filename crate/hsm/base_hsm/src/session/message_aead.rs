@@ -20,11 +20,14 @@ use std::ptr;
 use cosmian_kms_interfaces::EncryptedContent;
 use pkcs11_sys::{
     CK_GCM_MESSAGE_PARAMS, CK_MECHANISM, CK_OBJECT_HANDLE, CK_ULONG, CKG_GENERATE_RANDOM,
-    CKG_NO_GENERATE, CKM_AES_GCM, CKR_BUFFER_TOO_SMALL, CKR_OK,
+    CKG_NO_GENERATE, CKM_AES_GCM, CKR_BUFFER_TOO_SMALL, CKR_OK, CKR_OPERATION_NOT_INITIALIZED,
 };
 use zeroize::Zeroizing;
 
-use crate::{HError, HResult, session::Session};
+use crate::{
+    HError, HResult,
+    session::{Session, message_context::is_message_unsupported_rv},
+};
 
 const AES_GCM_MESSAGE_IV_LENGTH: usize = 12;
 const AES_GCM_MESSAGE_TAG_LENGTH: usize = 16;
@@ -107,6 +110,9 @@ impl Session {
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
+        let aad_len = CK_ULONG::try_from(aad.len())?;
+        let input_len = CK_ULONG::try_from(plaintext.len())?;
+        let parameter_len = CK_ULONG::try_from(size_of::<CK_GCM_MESSAGE_PARAMS>())?;
 
         #[expect(
             unsafe_code,
@@ -122,9 +128,13 @@ impl Session {
                 .ok_or_else(|| HError::Default("C_MessageEncryptInit unavailable".to_owned()))?;
             let rv = init(self.session_handle(), &raw mut mechanism, key_handle);
             if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to initialize message-based encryption. Return code: {rv}"
-                )));
+                let message =
+                    format!("Failed to initialize message-based encryption. Return code: {rv}");
+                return Err(if is_message_unsupported_rv(rv) {
+                    HError::MessageUnsupported(message)
+                } else {
+                    HError::Default(message)
+                });
             }
 
             let encrypt = self
@@ -132,7 +142,7 @@ impl Session {
                 .C_EncryptMessage
                 .ok_or_else(|| HError::Default("C_EncryptMessage unavailable".to_owned()))?;
             let mut aad = aad.to_vec();
-            let mut plaintext = plaintext.to_vec();
+            let mut plaintext = Zeroizing::new(plaintext.to_vec());
 
             // Deliberately a *single* call, not the two-call "NULL output buffer first to
             // learn the size" idiom used elsewhere in this crate. Per OASIS Cryptoki v3.0
@@ -149,22 +159,32 @@ impl Session {
             // AEAD input when there is AAD to authenticate — still selects base §5.2's
             // real call rather than being misread as a size probe.
             let mut ciphertext = vec![0_u8; plaintext.len()];
-            let mut ciphertext_len = CK_ULONG::try_from(ciphertext.len())?;
+            let mut ciphertext_len = input_len;
             let rv = encrypt(
                 self.session_handle(),
                 (&raw mut params).cast::<std::ffi::c_void>(),
-                CK_ULONG::try_from(size_of::<CK_GCM_MESSAGE_PARAMS>())?,
+                parameter_len,
                 aad.as_mut_ptr(),
-                CK_ULONG::try_from(aad.len())?,
+                aad_len,
                 plaintext.as_mut_ptr(),
-                CK_ULONG::try_from(plaintext.len())?,
+                input_len,
                 ciphertext.as_mut_ptr(),
                 &raw mut ciphertext_len,
             );
-            // Deliberately not retried with a larger buffer: a second `C_EncryptMessage`
-            // would re-present the same IV, which is precisely what the single-call flow
-            // above exists to avoid. Report it instead, with enough detail to diagnose a
-            // token that disagrees with the detached-tag length invariant.
+            let end = self
+                .hsm()
+                .C_MessageEncryptFinal
+                .ok_or_else(|| HError::Default("C_MessageEncryptFinal unavailable".to_owned()))?;
+            let final_rv = end(self.session_handle());
+            // Some drivers terminate the whole process on a message error.
+            let already_terminated = rv != CKR_OK && final_rv == CKR_OPERATION_NOT_INITIALIZED;
+            if final_rv != CKR_OK && !already_terminated {
+                return Err(HError::OperationCleanup(format!(
+                    "Failed to finalize message-based encryption after message call returned {rv}. \
+                     Final return code: {final_rv}"
+                )));
+            }
+            // Finalize the initialized operation before returning an error or retrying via v2.
             if rv == CKR_BUFFER_TOO_SMALL {
                 return Err(HError::Default(format!(
                     "Message-based encryption rejected a {} byte ciphertext buffer for a {} \
@@ -182,17 +202,17 @@ impl Session {
                     "Failed to perform message-based encryption. Return code: {rv}"
                 )));
             }
-            ciphertext.truncate(usize::try_from(ciphertext_len)?);
-
-            let end = self
-                .hsm()
-                .C_MessageEncryptFinal
-                .ok_or_else(|| HError::Default("C_MessageEncryptFinal unavailable".to_owned()))?;
-            let rv = end(self.session_handle());
-            if rv != CKR_OK {
+            if usize::try_from(ciphertext_len)? != ciphertext.len() {
                 return Err(HError::Default(format!(
-                    "Failed to finalize message-based encryption. Return code: {rv}"
+                    "Invalid message AES-GCM output length: expected {}, got {ciphertext_len}",
+                    ciphertext.len()
                 )));
+            }
+            if nonce.iter().all(|&byte| byte == 0) {
+                return Err(HError::Default(
+                    "The HSM did not generate an AES-GCM IV; refusing to use an all-zero nonce"
+                        .to_owned(),
+                ));
             }
 
             Ok(EncryptedContent {
@@ -252,6 +272,9 @@ impl Session {
             pParameter: ptr::null_mut(),
             ulParameterLen: 0,
         };
+        let aad_len = CK_ULONG::try_from(aad.len())?;
+        let input_len = CK_ULONG::try_from(ciphertext.len())?;
+        let parameter_len = CK_ULONG::try_from(size_of::<CK_GCM_MESSAGE_PARAMS>())?;
 
         #[expect(
             unsafe_code,
@@ -267,9 +290,13 @@ impl Session {
                 .ok_or_else(|| HError::Default("C_MessageDecryptInit unavailable".to_owned()))?;
             let rv = init(self.session_handle(), &raw mut mechanism, key_handle);
             if rv != CKR_OK {
-                return Err(HError::Default(format!(
-                    "Failed to initialize message-based decryption. Return code: {rv}"
-                )));
+                let message =
+                    format!("Failed to initialize message-based decryption. Return code: {rv}");
+                return Err(if is_message_unsupported_rv(rv) {
+                    HError::MessageUnsupported(message)
+                } else {
+                    HError::Default(message)
+                });
             }
 
             let decrypt = self
@@ -288,19 +315,32 @@ impl Session {
             // supplied detached in `CK_GCM_MESSAGE_PARAMS.pTag` rather than appended to
             // the ciphertext, and `CKM_AES_GCM` is CTR-based, so the plaintext is exactly
             // as long as the ciphertext.
-            let mut plaintext = vec![0_u8; ciphertext.len()];
-            let mut plaintext_len = CK_ULONG::try_from(plaintext.len())?;
+            let mut plaintext = Zeroizing::new(vec![0_u8; ciphertext.len()]);
+            let mut plaintext_len = input_len;
             let rv = decrypt(
                 self.session_handle(),
                 (&raw mut params).cast::<std::ffi::c_void>(),
-                CK_ULONG::try_from(size_of::<CK_GCM_MESSAGE_PARAMS>())?,
+                parameter_len,
                 aad.as_mut_ptr(),
-                CK_ULONG::try_from(aad.len())?,
+                aad_len,
                 ciphertext.as_mut_ptr(),
-                CK_ULONG::try_from(ciphertext.len())?,
+                input_len,
                 plaintext.as_mut_ptr(),
                 &raw mut plaintext_len,
             );
+            let end = self
+                .hsm()
+                .C_MessageDecryptFinal
+                .ok_or_else(|| HError::Default("C_MessageDecryptFinal unavailable".to_owned()))?;
+            let final_rv = end(self.session_handle());
+            // Preserve the message error when the driver has already terminated its process.
+            let already_terminated = rv != CKR_OK && final_rv == CKR_OPERATION_NOT_INITIALIZED;
+            if final_rv != CKR_OK && !already_terminated {
+                return Err(HError::OperationCleanup(format!(
+                    "Failed to finalize message-based decryption after message call returned {rv}. \
+                     Final return code: {final_rv}"
+                )));
+            }
             // Not retried with a larger buffer: unlike the encrypt side there is no IV to
             // reuse, but a second `C_DecryptMessage` would re-run tag verification on a
             // terminated operation, and a token needing more than `ciphertext.len()` bytes
@@ -321,20 +361,14 @@ impl Session {
                     "Failed to perform message-based decryption. Return code: {rv}"
                 )));
             }
-            plaintext.truncate(usize::try_from(plaintext_len)?);
-
-            let end = self
-                .hsm()
-                .C_MessageDecryptFinal
-                .ok_or_else(|| HError::Default("C_MessageDecryptFinal unavailable".to_owned()))?;
-            let rv = end(self.session_handle());
-            if rv != CKR_OK {
+            if usize::try_from(plaintext_len)? != plaintext.len() {
                 return Err(HError::Default(format!(
-                    "Failed to finalize message-based decryption. Return code: {rv}"
+                    "Invalid message AES-GCM output length: expected {}, got {plaintext_len}",
+                    plaintext.len()
                 )));
             }
 
-            Ok(Zeroizing::new(plaintext))
+            Ok(plaintext)
         }
     }
 }

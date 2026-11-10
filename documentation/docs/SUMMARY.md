@@ -17,6 +17,7 @@
 - [HSM support]()
   - [Introduction](hsm_support/introduction/index.md)
   - [HSM keys & operations](hsm_support/hsm_operations.md)
+  - [AES-GCM IVs and HSM FIPS mode](hsm_support/hsm_aes_gcm_iv.md)
   - [HSM key labeling & tagging](hsm_support/tagging.md)
   - [Multi-HSM support](hsm_support/multi_hsm.md)
   - [Algorithm support by model](hsm_support/algorithm_support.md)

@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+#MISE description="Run KMS against hsm_model=other PKCS#11 backends (v2 and v3, caller-IV policy per build)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+export WITH_HSM=1
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "hsm_model=other KMS startup scenarios (${VARIANT_NAME})"
+
+# `hsm_model = "other"` is a generic PKCS#11 backend: the KMS build and profile decide who
+# generates the AES-GCM IV. The shim models that per variant:
+#   FIPS      the module generates every IV; a caller-supplied IV is refused;
+#   non-FIPS  the KMS chooses the IV and the module accepts it.
+# Both variants exercise the classic path, and the v3 library additionally proves the
+# message-API attempt falls back to classic GCM.
+require_cmd cc
+POLICY=()
+[ "${VARIANT}" = "non-fips" ] && POLICY=(-DACCEPT_CALLER_IV)
+SHIM_DIR="$(mktemp -d)"
+trap 'rm -rf -- "${SHIM_DIR:?}"' EXIT
+SHIM_SRC="${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_fips_iv_shim.c"
+cc -shared -fPIC -O2 -Wno-cast-function-type-mismatch \
+  ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v2.so" "${SHIM_SRC}"
+cc -shared -fPIC -O2 -DV3_MESSAGE -Wno-cast-function-type-mismatch \
+  ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v3.so" "${SHIM_SRC}"
+# v3 table whose message entries are stubs answering CKR_FUNCTION_NOT_SUPPORTED
+cc -shared -fPIC -O2 -DV3_MESSAGE -DMESSAGE_INIT_NOT_SUPPORTED -Wno-cast-function-type-mismatch \
+  ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v3-stubs.so" "${SHIM_SRC}"
+
+for mode in v2 v3 v3-stubs; do
+  print_header "Scenario PKCS#11 ${mode}"
+  # Each scenario gets its own token: the KEK and master key of one run must not leak into the other.
+  softhsm2_setup "${SHIM_DIR}/${mode}/tokens" "${SHIM_DIR}/${mode}/softhsm2.conf"
+  softhsm2_init_standard_tokens "hsm_other_${mode}"
+  LIB_PATH="$(softhsm2_lib_search_path)"
+  MARKER="${SHIM_DIR}/${mode}/calls.txt"
+  env PATH="$PATH" \
+    LD_LIBRARY_PATH="${LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    OTHER_HSM_PKCS11_LIB="${SHIM_DIR}/shim-${mode}.so" \
+    HSM_MODEL=other \
+    HSM_SLOT_ID="${SOFTHSM2_HSM_SLOT_ID}" \
+    HSM_USER_PASSWORD="${HSM_USER_PASSWORD}" \
+    FIPS_IV_SHIM_MARKER="${MARKER}" \
+    KMS_TEST_DB="${KMS_TEST_DB:-sqlite}" \
+    cargo test \
+    -p test_kms_server \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    --lib \
+    -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_other
+  if [ "${mode}" = "v2" ]; then
+    # The standalone probes given to HSM vendors (C and Python) must both report what this shim does.
+    cc -O2 -o "${SHIM_DIR}/probe" "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_gcm_iv_probe.c" -ldl
+    require_cmd python3
+    for probe_kind in c python; do
+      if [ "${probe_kind}" = "c" ]; then
+        PROBE_CMD=("${SHIM_DIR}/probe")
+      else
+        PROBE_CMD=(python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_gcm_iv_probe.py")
+      fi
+      PROBE_OUT="$(env LD_LIBRARY_PATH="${LIB_PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+        SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" PKCS11_PIN="${HSM_USER_PASSWORD}" \
+        "${PROBE_CMD[@]}" "${SHIM_DIR}/shim-v2.so" "${SOFTHSM2_HSM_SLOT_ID}")" ||
+        print_error "pkcs11_gcm_iv_probe (${probe_kind}) failed"
+      printf '%s\n' "${PROBE_OUT}"
+      # Every expected verdict line must be present: a missing one fails the task.
+      if [ "${VARIANT}" = "non-fips" ]; then
+        EXPECTED=('a caller-chosen IV is accepted' 'did NOT write a generated IV')
+      else
+        EXPECTED=('the HSM generated and returned an IV' 'CKR_MECHANISM_PARAM_INVALID')
+      fi
+      for expected in "${EXPECTED[@]}"; do
+        printf '%s\n' "${PROBE_OUT}" | grep -q "${expected}" ||
+          print_error "pkcs11_gcm_iv_probe (${probe_kind}): missing verdict '${expected}'"
+      done
+    done
+  fi
+  grep -q '^classic-encrypt-init$' "${MARKER}" ||
+    print_error "PKCS#11 ${mode}: the classic encryption path never ran"
+  if [ "${mode}" != "v2" ]; then
+    grep -q '^message-encrypt-init$' "${MARKER}" ||
+      print_error "PKCS#11 ${mode}: the message API was never attempted, so its fallback was not exercised"
+  elif grep -q '^message-encrypt-init$' "${MARKER}"; then
+    print_error "PKCS#11 v2: this library must not expose message functions"
+  fi
+  if [ "${mode}" = "v3-stubs" ]; then
+    grep -q '^message-decrypt-init$' "${MARKER}" ||
+      print_error "PKCS#11 v3-stubs: the message decrypt API was never attempted, so its fallback was not exercised"
+  fi
+  print_status "PKCS#11 ${mode}: KMS booted with an HSM-backed KEK"
+done
+
+print_success "hsm_model=other startup scenarios completed (${VARIANT_NAME})"

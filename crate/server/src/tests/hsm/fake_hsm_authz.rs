@@ -44,7 +44,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     config::ClapConfig,
-    core::KMS,
+    core::{KMS, wrapping::ensure_kek_wrapping},
     error::KmsError,
     middlewares::UserId,
     result::KResult,
@@ -73,10 +73,11 @@ struct FakeKey {
 /// In-memory AES-only HSM with a single slot (0).
 struct FakeHsm {
     keys: HashMap<Vec<u8>, FakeKey>,
+    fail_encrypt: bool,
 }
 
 impl FakeHsm {
-    fn new() -> Self {
+    fn new(fail_encrypt: bool) -> Self {
         let plain = |byte| FakeKey {
             bytes: Zeroizing::new(vec![byte; 32]),
             rotate_name: None,
@@ -93,7 +94,7 @@ impl FakeHsm {
                 ..plain(3)
             },
         );
-        Self { keys }
+        Self { keys, fail_encrypt }
     }
 }
 
@@ -176,6 +177,11 @@ impl HSM for FakeHsm {
         data: &'a [u8],
         _iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
+        if self.fail_encrypt {
+            return Err(InterfaceError::Default(
+                "simulated AES-GCM mechanism unavailable".to_owned(),
+            ));
+        }
         Ok(EncryptedContent {
             ciphertext: bitwise_not(data),
             ..EncryptedContent::default()
@@ -293,11 +299,18 @@ async fn kms_with_fake_hsm(with_kek: bool) -> KResult<Arc<KMS>> {
     kms_with_fake_hsm_conf(conf).await
 }
 
-/// KMS built from `conf` with `FakeHsm` mounted under the `hsm` prefix.
+/// KMS built from `conf` with `FakeHsm` mounted on the `hsm` prefix.
 async fn kms_with_fake_hsm_conf(conf: ClapConfig) -> KResult<Arc<KMS>> {
+    kms_with_fake_hsm_conf_and_encrypt_failure(conf, false).await
+}
+
+async fn kms_with_fake_hsm_conf_and_encrypt_failure(
+    conf: ClapConfig,
+    fail_encrypt: bool,
+) -> KResult<Arc<KMS>> {
     let kms = Box::pin(test_kms_with_config(conf)).await?;
     let store = HsmStore::new(
-        Arc::new(FakeHsm::new()),
+        Arc::new(FakeHsm::new(fail_encrypt)),
         &[ADMIN.to_owned()],
         kms.vendor_id(),
         "hsm",
@@ -307,6 +320,16 @@ async fn kms_with_fake_hsm_conf(conf: ClapConfig) -> KResult<Arc<KMS>> {
         .await;
     kms.register_crypto_oracle("hsm", Box::new(store)).await;
     Ok(kms)
+}
+
+#[tokio::test]
+async fn unsupported_hsm_gcm_probe_blocks_startup() -> KResult<()> {
+    let mut conf = https_clap_config();
+    conf.key_encryption_key = Some(HSM_KEK.to_owned());
+    let kms = kms_with_fake_hsm_conf_and_encrypt_failure(conf, true).await?;
+
+    assert!(ensure_kek_wrapping(&kms).await.is_err());
+    Ok(())
 }
 
 async fn grant(kms: &KMS, uid: &str, user: &str, op: KmipOperation) -> KResult<()> {
