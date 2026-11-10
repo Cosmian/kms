@@ -31,7 +31,7 @@ jobs:
       toolchain: 1.99.1
 
   cargo-deny:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@9d4044e8a0d095dced51d0b5ce0422ff36d57562 # develop
     name: Security Audit
     with:
       toolchain: 1.99.1
