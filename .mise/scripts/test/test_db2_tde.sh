@@ -15,10 +15,10 @@
 #
 # Prerequisites:
 #   • Docker must be available.
-#   • docker-compose db2-tde service is used (icr.io/db2_community/db2).
+#   • docker-compose db2-tde service is used (manuthor/db2, a Docker Hub mirror of icr.io/db2_community/db2).
 #
 # Configurable environment variables:
-#   DB2_DOCKER_IMAGE    Image to use (default: icr.io/db2_community/db2)
+#   DB2_DOCKER_IMAGE    Image to use (default: manuthor/db2)
 #   DB2_CONTAINER_NAME  Container name (default: db2-kmip-test)
 #   DB2_INSTANCE_PWD    db2inst1 password (default: Db2KmipTest1)
 #   DB2_DBNAME          Test database name (default: KMIPDB)
@@ -40,7 +40,7 @@ init_build_env "$@"
 setup_test_logging
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-: "${DB2_DOCKER_IMAGE:=icr.io/db2_community/db2}"
+: "${DB2_DOCKER_IMAGE:=manuthor/db2}"
 : "${DB2_CONTAINER_NAME:=db2-kmip-test}"
 : "${DB2_INSTANCE_PWD:=Db2KmipTest1}"
 : "${DB2_DBNAME:=KMIPDB}"
@@ -172,11 +172,12 @@ fi
 
 # ── Step 4: Start Db2 via docker compose ─────────────────────────────────────
 echo
-echo "==> Pulling Db2 image (icr.io can be slow/flaky — retrying on failure)…"
+echo "==> Pulling Db2 image (registry can be slow/flaky — retrying on failure)…"
 echo "    Image: ${DB2_DOCKER_IMAGE} (with LICENSE=accept)"
 export DB2_DOCKER_IMAGE DB2_CONTAINER_NAME DB2_INSTANCE_PWD DB2_DBNAME
-# icr.io intermittently times out from GitHub runners (context deadline exceeded);
-# retry the pull with backoff so a transient registry hiccup does not fail the job.
+# The upstream icr.io registry intermittently times out from GitHub runners (context deadline
+# exceeded), hence the Docker Hub mirror; retry the pull with backoff so a transient registry
+# hiccup does not fail the job.
 _pulled=false
 for _attempt in 1 2 3 4 5; do
   if docker compose -f "${REPO_ROOT}/docker-compose.yml" pull db2-tde; then
@@ -211,7 +212,7 @@ echo "Db2 is ready."
 
 # ── Step 5: Install GSKit tooling prerequisite ────────────────────────────────
 # gsk9certutil_64 (the GSKit CLI in Db2 12.1 — gsk8capicmd_64 was removed) needs
-# libicu, which is missing from the icr.io/db2_community/db2 image.
+# libicu, which is missing from the Db2 Community image (icr.io/db2_community/db2).
 echo
 echo "==> Installing libicu (required by gsk9certutil_64)…"
 docker exec -u root "${DB2_CONTAINER_NAME}" bash -c 'dnf install -y libicu' >/dev/null 2>&1 ||
