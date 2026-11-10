@@ -310,39 +310,6 @@ async fn decrypt_rsa_oaep(
         }
     };
 
-    let unwrapper = if let ObjectHandle::Hsm { prefix, .. } =
-        ObjectHandle::from(private_key_owm.id())
-    {
-        // The HSM holds the key and rejects a non-RSA-OAEP-capable key at use time
-        OaepUnwrapper::Hsm {
-            prefix: prefix.to_owned(),
-            uid: private_key_owm.id().to_owned(),
-        }
-    } else {
-        // Convert KMIP private key to OpenSSL PKey<Private>
-        let private_key = kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
-            CryptoApiError::CryptoFailure(format!(
-                "RSA-OAEP decrypt: failed to load private key: {e}"
-            ))
-        })?;
-
-        // Validate RSA key type and minimum size
-        if private_key.id() != openssl::pkey::Id::RSA {
-            return Err(CryptoApiError::CryptoFailure(format!(
-                "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
-                kid,
-                private_key.id()
-            )));
-        }
-        if private_key.bits() < 2048 {
-            return Err(CryptoApiError::CryptoFailure(format!(
-                "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
-                private_key.bits()
-            )));
-        }
-        OaepUnwrapper::Software(private_key)
-    };
-
     let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
     let expected_cek_len = cek_size_bytes(enc);
 
@@ -352,6 +319,11 @@ async fn decrypt_rsa_oaep(
     //
     // RFC 7516 §11.5 implicit rejection is preserved: the cache is only
     // populated with genuine CEKs; random substitute keys are never inserted.
+    //
+    // Peek before building the OpenSSL key: kmip_private_key_to_openssl runs RSA
+    // check_key() (~100 ms for RSA-2048), which would otherwise dwarf a cache hit.
+    // An entry is bound to this key uid and fingerprint, so the type/size validation
+    // below already passed when it was inserted.
     let cek: Zeroizing<Vec<u8>> = if let Some(cached_cek) = cek_cache::peek_cek(
         kms,
         private_key_owm.id(),
@@ -362,6 +334,39 @@ async fn decrypt_rsa_oaep(
     {
         cached_cek
     } else {
+        let unwrapper =
+            if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(private_key_owm.id()) {
+                // The HSM holds the key and rejects a non-RSA-OAEP-capable key at use time
+                OaepUnwrapper::Hsm {
+                    prefix: prefix.to_owned(),
+                    uid: private_key_owm.id().to_owned(),
+                }
+            } else {
+                // Convert KMIP private key to OpenSSL PKey<Private>
+                let private_key =
+                    kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
+                        CryptoApiError::CryptoFailure(format!(
+                            "RSA-OAEP decrypt: failed to load private key: {e}"
+                        ))
+                    })?;
+
+                // Validate RSA key type and minimum size
+                if private_key.id() != openssl::pkey::Id::RSA {
+                    return Err(CryptoApiError::CryptoFailure(format!(
+                        "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
+                        kid,
+                        private_key.id()
+                    )));
+                }
+                if private_key.bits() < 2048 {
+                    return Err(CryptoApiError::CryptoFailure(format!(
+                        "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
+                        private_key.bits()
+                    )));
+                }
+                OaepUnwrapper::Software(private_key)
+            };
+
         // Cache miss — perform RSA-OAEP unwrap.
         // Implicit rejection: attempt unwrap; on failure substitute random CEK.
         // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
