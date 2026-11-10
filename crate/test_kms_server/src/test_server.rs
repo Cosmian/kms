@@ -762,6 +762,9 @@ pub(crate) async fn start_default_test_kms_server_plain_with_hsm_and_kek() -> &'
         config.workspace.root_data_path = workspace_dir.join("workspace");
         config.workspace.tmp_path = workspace_dir.join("tmp");
         config.key_encryption_key = Some(kek_id);
+        // Keys are KEK-wrapped at rest; without this, Export returns them still wrapped, which
+        // the suites written for the plain server do not expect.
+        config.default_unwrap_type = Some(vec!["All".to_owned()]);
         apply_test_db_override(&mut config);
         start_server_from_config(config, &config_path, http_listener).await
     }))
