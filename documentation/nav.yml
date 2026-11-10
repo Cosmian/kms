@@ -200,6 +200,8 @@ nav:
       - Software (no HSM):
           - Software Baseline: benchmarks/ckms_bench/report.md
           - PKCS#11 (Software Crypto): benchmarks/ckms_bench_pkcs11/report.md
+          - JOSE Caches On: benchmarks/ckms_bench_jose_cache_on/report.md
+          - JOSE Caches Off: benchmarks/ckms_bench_jose_cache_off/report.md
       - SoftHSM2:
           - HSM-Backed KEK: benchmarks/ckms_bench_hsm_kek_softhsm2/report.md
           - HSM-Delegated Crypto: benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md
