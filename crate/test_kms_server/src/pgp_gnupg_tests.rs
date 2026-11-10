@@ -1443,6 +1443,8 @@ async fn test_pgp_wrapped_create_and_unwrap_roundtrip() {
     let wrapped = client
         .get(Get {
             unique_identifier: Some(uid.clone()),
+            // Explicit: a server with `default_unwrap_type` unwraps when this is left unset.
+            key_wrap_type: Some(KeyWrapType::AsRegistered),
             ..Get::default()
         })
         .await

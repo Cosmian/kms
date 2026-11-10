@@ -17,7 +17,9 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_operations::Operation,
-            kmip_types::{CryptographicAlgorithm, LinkedObjectIdentifier, UniqueIdentifier},
+            kmip_types::{
+                CryptographicAlgorithm, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+            },
         },
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
@@ -183,6 +185,9 @@ async fn capture_inner(
         .link
         .iter()
         .flatten()
+        // The wrapping key (the server KEK, possibly HSM-held) is only read by the operation,
+        // never changed: a link to it must not make the item impossible to snapshot.
+        .filter(|link| link.link_type != LinkType::WrappingKeyLink)
         .filter_map(|link| match &link.linked_object_identifier {
             LinkedObjectIdentifier::TextString(uid) => Some(uid.clone()),
             _ => None,

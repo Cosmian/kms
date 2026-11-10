@@ -179,6 +179,17 @@ pub(crate) async fn collect_attributes(
         }
     };
 
+    // The server-wide KEK that wraps objects at rest is an internal detail, not an attribute the
+    // client asked for (Export strips this link too); a user-chosen wrapping key stays visible.
+    let mut attributes = attributes;
+    if let Some(kek) = &kms.params.key_wrapping_key
+        && attributes
+            .get_link(LinkType::WrappingKeyLink)
+            .is_some_and(|link| link.to_string() == *kek)
+    {
+        attributes.remove_link(LinkType::WrappingKeyLink);
+    }
+
     trace!("Retrieved object attributes");
     trace!("Processing requested attribute references");
 
