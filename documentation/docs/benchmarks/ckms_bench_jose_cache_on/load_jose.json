@@ -1,0 +1,15 @@
+{"protocol":"jose","operation":"encrypt/aes-gcm","concurrency":1,"throughput_rps":5940.45,"p50_ms":0.160,"p95_ms":0.186,"p99_ms":0.385}
+{"protocol":"jose","operation":"encrypt/aes-gcm","concurrency":2,"throughput_rps":11256.15,"p50_ms":0.165,"p95_ms":0.197,"p99_ms":0.490}
+{"protocol":"jose","operation":"encrypt/aes-gcm","concurrency":4,"throughput_rps":21858.65,"p50_ms":0.165,"p95_ms":0.250,"p99_ms":0.557}
+{"protocol":"jose","operation":"encrypt/aes-gcm","concurrency":8,"throughput_rps":31409.45,"p50_ms":0.172,"p95_ms":0.462,"p99_ms":0.607}
+{"protocol":"jose","operation":"encrypt/aes-gcm","concurrency":16,"throughput_rps":47312.70,"p50_ms":0.273,"p95_ms":0.539,"p99_ms":0.624}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-cached","concurrency":1,"throughput_rps":4008.30,"p50_ms":0.231,"p95_ms":0.316,"p99_ms":0.710}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-cached","concurrency":2,"throughput_rps":7777.30,"p50_ms":0.241,"p95_ms":0.288,"p99_ms":0.718}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-cached","concurrency":4,"throughput_rps":15328.70,"p50_ms":0.237,"p95_ms":0.379,"p99_ms":0.763}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-cached","concurrency":8,"throughput_rps":23155.40,"p50_ms":0.245,"p95_ms":0.597,"p99_ms":0.790}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-cached","concurrency":16,"throughput_rps":36826.60,"p50_ms":0.374,"p95_ms":0.661,"p99_ms":0.724}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-fresh","concurrency":1,"throughput_rps":9.05,"p50_ms":110.822,"p95_ms":111.565,"p99_ms":111.879}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-fresh","concurrency":2,"throughput_rps":18.10,"p50_ms":110.883,"p95_ms":111.683,"p99_ms":115.390}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-fresh","concurrency":4,"throughput_rps":35.90,"p50_ms":110.927,"p95_ms":113.882,"p99_ms":124.609}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-fresh","concurrency":8,"throughput_rps":67.90,"p50_ms":110.994,"p95_ms":141.273,"p99_ms":196.694}
+{"protocol":"jose","operation":"decrypt/rsa-oaep-fresh","concurrency":16,"throughput_rps":91.05,"p50_ms":126.639,"p95_ms":360.989,"p99_ms":361.401}
