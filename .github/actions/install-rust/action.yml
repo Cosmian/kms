@@ -2,12 +2,6 @@
 name: Install Rust
 description: Install the Rust toolchain with dtolnay/rust-toolchain. Must run after actions/checkout.
 
-inputs:
-  targets:
-    description: Comma-separated extra rustup targets to add (optional)
-    required: false
-    default: ''
-
 runs:
   using: composite
   steps:
@@ -16,4 +10,3 @@ runs:
       with:
         toolchain: stable
         components: rustfmt, clippy
-        targets: ${{ inputs.targets }}

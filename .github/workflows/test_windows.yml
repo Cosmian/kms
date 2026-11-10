@@ -50,8 +50,9 @@ jobs:
           submodules: recursive
 
       - uses: ./.github/actions/install-rust
-        with:
-          targets: wasm32-unknown-unknown
+
+      # Run in the checkout so the target lands on the rust-toolchain.toml toolchain, not on stable.
+      - run: rustup target add wasm32-unknown-unknown
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
