@@ -43,6 +43,7 @@ pub fn to_cef_line(event: &AuditEvent, kms_version: &str) -> String {
 }
 
 /// Adds optional `(instance_id, chain_generation)` source metadata to a CEF export.
+///
 /// With a source, `deviceExternalId` identifies the instance, `cn2` the generation,
 /// and `externalId` is `<generation>:<id>`. Without one, file output is unchanged.
 #[must_use]

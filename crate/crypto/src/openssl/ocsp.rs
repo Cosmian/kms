@@ -1039,7 +1039,7 @@ mod tests {
             let mut trusted = X509StoreBuilder::new().expect("store");
             trusted.add_cert(ca.clone()).expect("add_cert");
             let mut certs = Stack::new().expect("stack");
-            certs.push(ca.clone()).expect("push");
+            certs.push(ca).expect("push");
             basic
                 .verify(&certs, &trusted.build(), OcspFlag::empty())
                 .expect("verify");

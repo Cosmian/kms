@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::{self},
-    io::Write as _,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fmt, io::Write as _, path::PathBuf};
 
 use clap::{CommandFactory, Parser};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;

@@ -1,4 +1,5 @@
 //! AES Key Wrap (RFC 3394) without padding (KW)  via rust-openssl.
+//!
 //! Please prefer using the RFC 5649, as it's the current standard. This implementation is only made available to comply with API that still support legacy encryption standards.
 //!
 //! Spec references:

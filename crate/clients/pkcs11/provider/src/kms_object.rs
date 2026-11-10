@@ -30,12 +30,13 @@ use ckms::{
             },
         },
         cosmian_kms_client::{
-            ExportObjectParams, KmsClient, KmsClientConfig, batch_export_objects, export_object,
+            ExportObjectParams, KmsClient, KmsClientConfig, KmsClientError, batch_export_objects,
+            export_object,
         },
         cosmian_kms_crypto::crypto::KmsRng,
     },
 };
-use cosmian_logger::{debug, error, trace};
+use cosmian_logger::{debug, error, trace, warn};
 use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{
@@ -191,6 +192,52 @@ pub(crate) fn get_kms_secret_data_objects(
     ))
 }
 
+/// Whether `error` is the server refusing to hand out one object (sensitive, non-extractable or
+/// not permitted), as opposed to a failure of the request itself (transport, TLS, 5xx, ...).
+///
+/// `batch_operations` flattens a failed batch item into `Default("Error: <reason> <message>")`;
+/// the reason is the KMIP `ErrorReason` name.
+fn is_export_denial(error: &KmsClientError) -> bool {
+    matches!(error, KmsClientError::Default(message)
+    if message.strip_prefix("Error: ").is_some_and(|rest| {
+        ["Sensitive", "Not_Extractable", "Permission_Denied"]
+            .iter()
+            .any(|reason| rest.starts_with(reason))
+    }))
+}
+
+/// Export `key_ids` in one batch; if the server denies one of them, retry id by id and skip the
+/// denied objects.
+///
+/// The batch is all-or-nothing: one non-exportable object (e.g. a sensitive key that another
+/// client or test process tagged identically on a shared database) must not hide the others.
+/// Any other error (unreachable server, expired token, missing object, ...) is returned as is, so
+/// callers never mistake a failure for an empty listing.
+pub(crate) async fn batch_export_skipping_denied(
+    kms_rest_client: &KmsClient,
+    key_ids: Vec<String>,
+    params: impl Fn() -> ExportObjectParams<'static>,
+) -> Pkcs11Result<Vec<(UniqueIdentifier, Object, Attributes)>> {
+    match batch_export_objects(kms_rest_client, key_ids.clone(), params()).await {
+        Ok(responses) => Ok(responses),
+        Err(batch_error) if is_export_denial(&batch_error) => {
+            warn!("batch export denied ({batch_error}); retrying object by object");
+            let mut responses = Vec::with_capacity(key_ids.len());
+            for id in key_ids {
+                match batch_export_objects(kms_rest_client, vec![id.clone()], params()).await {
+                    Ok(mut one) => responses.append(&mut one),
+                    Err(error) if is_export_denial(&error) => {
+                        warn!("skipping object {id}: {error}");
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Ok(responses)
+        }
+        Err(batch_error) => Err(batch_error.into()),
+    }
+}
+
 /// Locate and export only `Certificate` objects with the given tags.
 /// This adds an `ObjectType=Certificate` filter to the Locate request, preventing
 /// false matches with non-certificate objects (e.g. symmetric disk-encryption keys
@@ -227,12 +274,12 @@ async fn get_kms_certificate_objects_async(
         );
         return Ok(vec![]);
     }
-    let export_object_params = ExportObjectParams {
+    let responses = batch_export_skipping_denied(kms_rest_client, key_ids, || ExportObjectParams {
         unwrap: true,
         key_format_type: Some(KeyFormatType::X509),
         ..Default::default()
-    };
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    })
+    .await?;
     trace!(
         "get_kms_certificate_objects_async: found {} Certificate objects",
         responses.len()
@@ -267,12 +314,12 @@ async fn get_kms_secret_data_objects_async(
         );
         return Ok(vec![]);
     }
-    let export_object_params = ExportObjectParams {
+    let responses = batch_export_skipping_denied(kms_rest_client, key_ids, || ExportObjectParams {
         unwrap: true,
         key_format_type: Some(KeyFormatType::Raw),
         ..Default::default()
-    };
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    })
+    .await?;
     trace!(
         "get_kms_secret_data_objects_async: found {} SecretData objects",
         responses.len()
@@ -323,7 +370,7 @@ fn disk_encryption_label(
         .unwrap_or_else(|| fallback_id.to_owned())
 }
 
-async fn get_kms_disk_encryption_data_objects_async(
+pub(crate) async fn get_kms_disk_encryption_data_objects_async(
     kms_rest_client: &KmsClient,
     vendor_id: &str,
     disk_encryption_tag: &str,
@@ -346,12 +393,12 @@ async fn get_kms_disk_encryption_data_objects_async(
         );
         return Ok(vec![]);
     }
-    let export_object_params = ExportObjectParams {
+    let responses = batch_export_skipping_denied(kms_rest_client, key_ids, || ExportObjectParams {
         unwrap: true,
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Default::default()
-    };
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    })
+    .await?;
     trace!(
         "get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects",
         responses.len()
@@ -366,41 +413,6 @@ async fn get_kms_disk_encryption_data_objects_async(
         );
         results.push(KmsObject {
             remote_id: label,
-            object,
-            attributes,
-        });
-    }
-    Ok(results)
-}
-
-#[cfg(all(test, feature = "non-fips"))]
-pub(crate) async fn get_kms_objects_async(
-    kms_rest_client: &KmsClient,
-    vendor_id: &str,
-    tags: &[String],
-    key_format_type: Option<KeyFormatType>,
-) -> Pkcs11Result<Vec<KmsObject>> {
-    let key_ids = locate_objects(kms_rest_client, vendor_id, tags).await?;
-    let export_object_params = ExportObjectParams {
-        unwrap: true,
-        key_format_type,
-        ..Default::default()
-    };
-    if key_ids.is_empty() {
-        trace!(
-            "get_kms_objects_async: no objects found for tags: {:?}",
-            tags
-        );
-        return Ok(vec![]);
-    }
-
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
-    trace!("Found {} objects", responses.len());
-
-    let mut results = vec![];
-    for (id, object, attributes) in responses {
-        results.push(KmsObject {
-            remote_id: id.to_string(),
             object,
             attributes,
         });
@@ -1528,6 +1540,27 @@ pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_server_denials_are_skippable_export_errors() {
+        for reason in [
+            "Sensitive DENIED",
+            "Not_Extractable x",
+            "Permission_Denied x",
+        ] {
+            assert!(is_export_denial(&KmsClientError::Default(format!(
+                "Error: {reason}"
+            ))));
+        }
+        for error in [
+            KmsClientError::Default("Error: Item_Not_Found nope".to_owned()),
+            KmsClientError::Default("Error: General_Failure boom".to_owned()),
+            KmsClientError::RequestFailed("connection refused".to_owned()),
+            KmsClientError::Unauthorized("token expired".to_owned()),
+        ] {
+            assert!(!is_export_denial(&error), "{error} must surface");
+        }
+    }
 
     #[test]
     fn test_ecdsa_der_to_raw_p256() -> Result<(), Box<dyn std::error::Error>> {

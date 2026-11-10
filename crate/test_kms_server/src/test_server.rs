@@ -391,7 +391,7 @@ fn acquire_shared_test_db_clear_lock(config: &mut ClapConfig) -> Option<DbClearL
 /// Configuration is loaded from `test_data/configs/server/auth/plain.toml` by default.
 /// Set `KMS_TEST_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
 /// the full test suite against a different database backend transparently.
-/// Set `KMS_HSM_KEK` (any value) to run against the SoftHSM2 + KEK server instead (requires
+/// Set `KMS_HSM_KEK` (any value) to run against the `SoftHSM2` + KEK server instead (requires
 /// `HSM_SLOT_ID`; see [`start_default_test_kms_server_with_hsm_and_kek`]).
 ///
 /// # Panics

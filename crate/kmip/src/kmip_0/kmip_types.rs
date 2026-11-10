@@ -1025,6 +1025,7 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
 }
 
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
+///
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
