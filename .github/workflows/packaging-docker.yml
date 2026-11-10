@@ -193,6 +193,21 @@ jobs:
           path: target/image-scan/${{ matrix.features }}/
           if-no-files-found: warn
 
+      - name: Run database upgrade gate
+        if: matrix.runner == 'ubuntu-24.04'
+        env:
+          DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+        run: mise run test:upgrade-db --variant ${{ matrix.features }}
+
+      - name: Upload database upgrade failure artifacts
+        if: failure() && matrix.runner == 'ubuntu-24.04'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: db-upgrade-gate-${{ matrix.features }}-${{ steps.arch.outputs.arch }}
+          path: target/db-upgrade-gate/${{ matrix.features }}/
+          retention-days: 7
+          if-no-files-found: ignore
+
       # - name: Oracle TDE remote upgrade and smoke test
       #   if: matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
       #   env:
