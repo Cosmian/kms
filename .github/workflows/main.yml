@@ -37,7 +37,7 @@ jobs:
       toolchain: 1.99.1
 
   cargo-machete:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@9d4044e8a0d095dced51d0b5ce0422ff36d57562 # develop
     with:
       toolchain: 1.99.1
 
