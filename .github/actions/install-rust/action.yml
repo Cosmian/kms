@@ -1,10 +1,6 @@
 ---
 name: Install Rust
-description: >
-  Install the Rust toolchain and components pinned in rust-toolchain.toml with
-  dtolnay/rust-toolchain. That action cannot read the file itself and requires a
-  `toolchain` input, so this wrapper reads `channel` and `components` from the file and
-  passes them on. Must run after actions/checkout.
+description: Install the Rust toolchain with dtolnay/rust-toolchain. Must run after actions/checkout.
 
 inputs:
   targets:
@@ -15,25 +11,9 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Read rust-toolchain.toml
-      id: file
-      shell: bash
-      run: |
-        set -euo pipefail
-        # shortcut: single-line `channel = "..."` and `components = [...]` only, upgrade to a
-        # TOML parser if rust-toolchain.toml ever uses multi-line arrays.
-        channel=$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml)
-        components=$(sed -n 's/^components *= *\[\(.*\)\].*/\1/p' rust-toolchain.toml | tr -d '" ')
-        if [ -z "$channel" ]; then
-          echo "::error::No 'channel' found in rust-toolchain.toml"
-          exit 1
-        fi
-        echo "channel=$channel" >> "$GITHUB_OUTPUT"
-        echo "components=$components" >> "$GITHUB_OUTPUT"
-
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
       with:
-        toolchain: ${{ steps.file.outputs.channel }}
-        components: ${{ steps.file.outputs.components }}
+        toolchain: stable
+        components: rustfmt, clippy
         targets: ${{ inputs.targets }}
