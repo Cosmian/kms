@@ -457,7 +457,9 @@ impl MySqlPool {
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SELECT 1").await.map_err(DbError::from)
+        conn.query_drop(get_mysql_query!("health-check"))
+            .await
+            .map_err(DbError::from)
     }
 
     // Helper to obtain a pooled connection and configure session settings consistently
@@ -465,10 +467,10 @@ impl MySqlPool {
     // - Lock wait timeout: 10s (avoid long stalls under contention)
     async fn get_configured_conn(&self) -> DbResult<mysql_async::Conn> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        conn.query_drop(get_mysql_query!("set-session-isolation-read-committed"))
             .await
             .map_err(DbError::from)?;
-        conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+        conn.query_drop(get_mysql_query!("set-session-lock-wait-timeout"))
             .await
             .map_err(DbError::from)?;
         Ok(conn)
@@ -1194,7 +1196,7 @@ impl PermissionsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let row_opt: Option<mysql_async::Row> = conn
-            .exec_first("SELECT MAX(crl_number) FROM crls", ())
+            .exec_first(get_mysql_query!("select-max-crl-number"), ())
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // MAX() returns one row; the value is NULL when the table is empty.

@@ -334,3 +334,15 @@ SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
 
 -- name: list-crl-issuers
 SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;
+
+-- name: health-check
+SELECT 1;
+
+-- name: select-max-crl-number
+SELECT MAX(crl_number) FROM crls;
+
+-- name: set-session-isolation-read-committed
+SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- name: set-session-lock-wait-timeout
+SET SESSION innodb_lock_wait_timeout=10;

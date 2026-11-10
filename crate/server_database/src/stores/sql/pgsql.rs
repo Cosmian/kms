@@ -364,19 +364,6 @@ macro_rules! pg_retry_tx {
     }};
 }
 
-// Object queries carrying the optimistic-locking `version` counter (bumped on every write).
-const PG_SELECT_OBJECT: &str = "SELECT objects.id, objects.object, objects.attributes, \
-     objects.owner, objects.state, objects.version FROM objects WHERE objects.id=$1;";
-const PG_UPDATE_OBJECT: &str = "UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, \
-     version=version+1 WHERE id=$4;";
-const PG_UPDATE_OBJECT_IF_VERSION: &str = "UPDATE objects SET object=$1, attributes=$2, \
-     wrapping_key_id=$3, version=version+1 WHERE id=$4 AND version=$5;";
-const PG_UPDATE_STATE: &str = "UPDATE objects SET state=$1, version=version+1 WHERE id=$2;";
-const PG_UPSERT_OBJECT: &str = "INSERT INTO objects (id, object, attributes, state, owner, \
-     wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO UPDATE SET object=$2, \
-     attributes=$3, state=$4, owner=$5, wrapping_key_id=$6, version=objects.version+1 \
-     WHERE objects.owner=$5;";
-
 macro_rules! get_pgsql_query {
     ($name:literal) => {
         pgsql_queries()?
@@ -446,42 +433,29 @@ impl PgPool {
         }
         // Ensure attributes column is jsonb (and convert if needed)
         client
-            .batch_execute(
-                "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
-            )
+            .batch_execute(tmp_loader.get_query("alter-column-attributes-jsonb")?)
             .await
             .map_err(DbError::from)?;
         // Add wrapping_key_id column if not present (idempotent).
         client
-            .batch_execute(
-                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
-            )
+            .batch_execute(tmp_loader.get_query("add-column-wrapping-key-id")?)
             .await
             .map_err(DbError::from)?;
         // Optimistic-locking version counter (idempotent).
         client
-            .batch_execute(
-                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;",
-            )
+            .batch_execute(tmp_loader.get_query("add-column-version")?)
             .await
             .map_err(DbError::from)?;
         // Add activated_by column to crypto_officer_activations (idempotent).
         // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
         client
-            .batch_execute(
-                "ALTER TABLE crypto_officer_activations \
-                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
-            )
+            .batch_execute(tmp_loader.get_query("add-column-co-activated-by")?)
             .await
             .map_err(DbError::from)?;
         // Unique partial index: at most one active activation record per user.
         // Prevents duplicate active records even under concurrent JoinSplitKey requests.
         client
-            .batch_execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
-                 ON crypto_officer_activations (activated_by) \
-                 WHERE revoked_at IS NULL;",
-            )
+            .batch_execute(tmp_loader.get_query("create-unique-index-co-activations-active")?)
             .await
             .map_err(DbError::from)?;
         // Create the read-path indexes (idempotent). PostgreSQL supports
@@ -632,7 +606,7 @@ impl PgPool {
             .await
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         client
-            .query_one("SELECT 1", &[])
+            .query_one(get_pgsql_query!("health-check"), &[])
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
@@ -747,7 +721,7 @@ impl ObjectsStore for PgPool {
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare_cached(PG_SELECT_OBJECT)
+                .prepare_cached(get_pgsql_query!("select-object"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
@@ -834,7 +808,7 @@ impl ObjectsStore for PgPool {
             let attrs_param = Json(attributes);
             let wrapping_key_id = object.wrapping_key_uid();
             let stmt = tx
-                .prepare_cached(PG_UPDATE_OBJECT)
+                .prepare_cached(get_pgsql_query!("update-object-with-object"))
                 .await
                 .map_err(DbError::from)?;
             tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
@@ -869,7 +843,7 @@ impl ObjectsStore for PgPool {
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
         pg_retry!(self.pool, |client| {
             let stmt = client
-                .prepare_cached(PG_UPDATE_STATE)
+                .prepare_cached(get_pgsql_query!("update-object-with-state"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let s = state.to_string();
@@ -962,7 +936,9 @@ impl ObjectsStore for PgPool {
                             let expected = i64::try_from(*expected)
                                 .map_err(|e| DbError::DatabaseError(e.to_string()))?;
                             let stmt = tx
-                                .prepare_cached(PG_UPDATE_OBJECT_IF_VERSION)
+                                .prepare_cached(get_pgsql_query!(
+                                    "update-object-with-object-if-version"
+                                ))
                                 .await
                                 .map_err(DbError::from)?;
                             let n = tx
@@ -985,7 +961,7 @@ impl ObjectsStore for PgPool {
                             }
                         } else {
                             let stmt = tx
-                                .prepare_cached(PG_UPDATE_OBJECT)
+                                .prepare_cached(get_pgsql_query!("update-object-with-object"))
                                 .await
                                 .map_err(DbError::from)?;
                             tx.execute(
@@ -1017,7 +993,7 @@ impl ObjectsStore for PgPool {
                     }
                     AtomicOperation::UpdateState((uid, state)) => {
                         let stmt = tx
-                            .prepare_cached(PG_UPDATE_STATE)
+                            .prepare_cached(get_pgsql_query!("update-object-with-state"))
                             .await
                             .map_err(DbError::from)?;
                         let st = state.to_string();
@@ -1031,7 +1007,7 @@ impl ObjectsStore for PgPool {
                         let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
-                            .prepare_cached(PG_UPSERT_OBJECT)
+                            .prepare_cached(get_pgsql_query!("upsert-object"))
                             .await
                             .map_err(DbError::from)?;
                         let st = state.to_string();
@@ -1670,7 +1646,7 @@ impl PermissionsStore for PgPool {
     async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
         pg_retry!(self.pool, |client| {
             let rows = client
-                .query("SELECT MAX(crl_number) FROM crls", &[])
+                .query(get_pgsql_query!("select-max-crl-number"), &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             // MAX() returns one row; the value is NULL when the table is empty.
@@ -2051,11 +2027,12 @@ mod tests {
             .await
             .map_err(|e| e.to_string())?;
         tokio::spawn(connection);
+        let sql = pgsql_queries()
+            .map_err(|e| e.to_string())?
+            .get("select-pg-backend-ssl")
+            .ok_or_else(|| "select-pg-backend-ssl SQL query can't be found".to_owned())?;
         client
-            .query_one(
-                "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
-                &[],
-            )
+            .query_one(sql, &[])
             .await
             .map(|row| row.get(0))
             .map_err(|e| e.to_string())

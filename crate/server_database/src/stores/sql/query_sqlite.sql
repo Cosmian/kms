@@ -62,3 +62,39 @@ CREATE TABLE IF NOT EXISTS crls (
     generated_at TEXT    NOT NULL,
     next_update  TEXT    NOT NULL
 );
+
+-- ── Schema migration helpers (SQLite has no `ADD COLUMN IF NOT EXISTS`: callers check
+-- `PRAGMA table_info` first) ──
+
+-- name: table-info-objects
+PRAGMA table_info(objects);
+
+-- name: table-info-crypto-officer-activations
+PRAGMA table_info(crypto_officer_activations);
+
+-- name: add-column-wrapping-key-id
+ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
+
+-- name: add-column-version
+ALTER TABLE objects ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+
+-- name: add-column-co-activated-by
+ALTER TABLE crypto_officer_activations ADD COLUMN activated_by VARCHAR(255);
+
+-- name: exists-object
+SELECT 1 FROM objects WHERE id=$1 LIMIT 1;
+
+-- ── Per-connection tuning ──
+-- WAL mode: readers and the single writer never block each other.
+-- cache_size=-65536 -> 64 MiB page cache per connection (negative means KiB).
+-- mmap_size=268435456 -> 256 MiB memory-mapped I/O window; avoids pread() syscalls.
+-- temp_store=MEMORY -> sort/index temp tables stay in RAM.
+
+-- Note: the loader ends a query at the first line ending in `;`, so each multi-statement
+-- query below is kept on a single line.
+-- name: connection-pragmas
+PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA cache_size=-65536; PRAGMA mmap_size=268435456; PRAGMA temp_store=MEMORY;
+
+-- Refresh planner statistics; analysis_limit bounds ANALYZE to a sample.
+-- name: optimize-planner
+PRAGMA analysis_limit=1000; PRAGMA optimize=0x10002;
