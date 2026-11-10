@@ -1,6 +1,15 @@
 ---
 name: Benchmark
 
+# The six benchmarks (see .mise/tasks/bench/README.md), selectable one at a time with `benchmark`:
+#   software             bench:load                          -> ckms_bench
+#   hsm-kek              bench:hsm                           -> ckms_bench_hsm_kek_softhsm2
+#   hsm-delegated        bench:hsm --delegated               -> ckms_bench_hsm_delegated_softhsm2
+#   pkcs11               bench:pkcs11                        -> ckms_bench_pkcs11
+#   pkcs11-hsm-delegated bench:pkcs11 --delegated            -> ckms_bench_pkcs11_hsm_delegated_softhsm2
+#   jose-cache           bench:jose-cache                    -> ckms_bench_jose_cache_on / _off
+# `all` runs the six. Only `software` supports `server_version` (a released version).
+
 on:
   # Called by other workflows (e.g. the release workflow) to record a baseline.
   workflow_call:
@@ -20,47 +29,148 @@ on:
         required: false
         default: all
         type: string
+      benchmark:
+        description: Benchmark to run (all|software|hsm-kek|hsm-delegated|pkcs11|pkcs11-hsm-delegated|jose-cache)
+        required: false
+        default: all
+        type: string
 
   # Manual trigger from the GitHub UI.
   workflow_dispatch:
     inputs:
+      benchmark:
+        description: Benchmark to run
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - software
+          - hsm-kek
+          - hsm-delegated
+          - pkcs11
+          - pkcs11-hsm-delegated
+          - jose-cache
       server_version:
-        description: KMS server version to benchmark (e.g. 5.24.0); omit to build from the selected branch
+        description: KMS server version to benchmark (e.g. 5.24.0; software benchmark only); omit to build from the selected branch
         required: false
         type: string
         default: ''
       variant:
         description: Build variant (fips|non-fips)
         required: false
-        type: string
+        type: choice
         default: non-fips
+        options:
+          - non-fips
+          - fips
       bench_mode:
-        description: Benchmark mode (all|encrypt|key-creation|sign-verify|batch)
+        description: Benchmark mode (ignored by jose-cache; pkcs11 only supports all|encrypt|key-creation and falls back to all)
         required: false
-        type: string
+        type: choice
         default: all
+        options:
+          - all
+          - encrypt
+          - key-creation
+          - sign-verify
+          - batch
 
-  # Nightly on the default branch (develop; schedules only run there): benchmark develop and
-  # compare it against the last released version. Inputs are empty on this trigger, so the
-  # `inputs.* ||` defaults below select non-fips / all.
+  # Nightly on the default branch (develop; schedules only run there): benchmark develop (software
+  # benchmark only) and compare it against the last released version.
   schedule:
     - cron: 0 2 * * * # Daily at 02:00 UTC
 
 jobs:
-  # ── Job 1: run the benchmark suite ─────────────────────────────────────────
+  # ── Job 1: run the selected benchmark(s) ───────────────────────────────────
   benchmark:
-    name: Benchmark KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant || 'non-fips' }})
+    name: Benchmark KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant || 'non-fips' }}, ${{ inputs.benchmark || 'software' }})
     # Benchmarks require a stable, dedicated machine to produce comparable results.
     # See https://github.com/Cosmian/kms/issues/776
     # Forks have no self-hosted benchmark runner: do not queue the nightly there.
     if: github.event_name != 'schedule' || github.repository == 'Cosmian/kms'
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 600
+    permissions:
+      contents: read
     concurrency:
-      group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}
+      # One group per benchmark: running two different benchmarks never cancels the other.
+      group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software' }}
       cancel-in-progress: true
+    env:
+      # Prefixed WF_ on purpose: the mise bench tasks read BENCH_* variables from the environment.
+      WF_BENCHMARK: ${{ inputs.benchmark || 'all' }}
+      WF_SERVER_VERSION: ${{ inputs.server_version }}
+      WF_VARIANT: ${{ inputs.variant || 'non-fips' }}
+      WF_MODE: ${{ inputs.bench_mode || 'all' }}
+    outputs:
+      run_software: ${{ steps.select.outputs.run_software }}
 
     steps:
+      # Single place deciding what runs; every later step only tests its `run_*` output.
+      - name: Select benchmarks
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+          all="software hsm-kek hsm-delegated pkcs11 pkcs11-hsm-delegated jose-cache"
+          bench="${WF_BENCHMARK}"
+          if [[ "${bench}" != all && " ${all} " != *" ${bench} "* ]]; then
+            echo "::error::Unknown benchmark '${bench}' (expected: all ${all})"
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == schedule ]]; then
+            # Nightly: only the software baseline is published and compared against the last release.
+            bench=software
+          elif [[ -n "${WF_SERVER_VERSION}" ]]; then
+            # Only bench:load can benchmark a released version (--server-version); the others always
+            # benchmark the checked-out code and would publish it under that version.
+            case "${bench}" in
+              all | software) bench=software ;;
+              *)
+                echo "::error::Benchmark '${bench}' cannot run against server_version '${WF_SERVER_VERSION}': only 'software' supports it."
+                exit 1
+                ;;
+            esac
+          fi
+          # bench:pkcs11 --mode accepts a narrower set than the other tasks (no sign-verify/batch).
+          pkcs11_mode="${WF_MODE}"
+          case "${pkcs11_mode}" in
+            all | encrypt | key-creation) ;;
+            *)
+              echo "NOTE: bench_mode '${pkcs11_mode}' is not a valid bench:pkcs11 mode; using 'all' instead."
+              pkcs11_mode=all
+              ;;
+          esac
+          # Report folders written by the selected benchmarks (bench:hsm/bench:pkcs11 default to softhsm2).
+          declare -A dir_of=(
+            [software]="ckms_bench"
+            [hsm-kek]="ckms_bench_hsm_kek_softhsm2"
+            [hsm-delegated]="ckms_bench_hsm_delegated_softhsm2"
+            [pkcs11]="ckms_bench_pkcs11"
+            [pkcs11-hsm-delegated]="ckms_bench_pkcs11_hsm_delegated_softhsm2"
+            [jose-cache]="ckms_bench_jose_cache_on ckms_bench_jose_cache_off"
+          )
+          report_dirs=()
+          for b in ${all}; do
+            if [[ "${bench}" == all || "${bench}" == "${b}" ]]; then
+              # shellcheck disable=SC2206 # dir_of values are space-separated folder names
+              report_dirs+=(${dir_of[${b}]})
+            fi
+          done
+          {
+            for b in ${all}; do
+              if [[ "${bench}" == all || "${bench}" == "${b}" ]]; then
+                echo "run_${b//-/_}=true"
+              else
+                echo "run_${b//-/_}=false"
+              fi
+            done
+            echo "pkcs11_mode=${pkcs11_mode}"
+            echo "report_dirs=${report_dirs[*]}"
+            echo "from_source=$([[ -z "${WF_SERVER_VERSION}" ]] && echo true || echo false)"
+          } | tee -a "${GITHUB_OUTPUT}"
+
       - name: Clean workspace (fix self-hosted runner permission issues)
         run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
 
@@ -69,6 +179,16 @@ jobs:
           submodules: recursive
           clean: false
 
+      # The report folders are checked in: delete the selected ones so that a stale copy can never be
+      # mistaken for (and published as) the result of this run. clean: false keeps the working tree otherwise.
+      - name: Remove checked-in reports of the selected benchmarks
+        shell: bash
+        env:
+          REPORT_DIRS: ${{ steps.select.outputs.report_dirs }}
+        run: |
+          set -euo pipefail
+          for d in ${REPORT_DIRS}; do rm -rf -- "documentation/docs/benchmarks/${d}"; done
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
@@ -76,11 +196,13 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      # bench:load (built from source), bench:hsm and bench:pkcs11 run inside nix-shell. The self-hosted runner keeps /nix
-      # between runs and the installer aborts on an existing install, so only install when nix-shell is missing.
+      # Every benchmark built from source runs inside nix-shell (bench:load and bench:jose-cache are
+      # wrapped below; bench:hsm and bench:pkcs11 re-enter it themselves). The self-hosted runner keeps
+      # /nix between runs and the installer aborts on an existing install, so only install when
+      # nix-shell is missing.
       - name: Detect Nix
         id: nix
-        if: inputs.server_version == ''
+        if: steps.select.outputs.from_source == 'true'
         run: |
           NIX_BIN=/nix/var/nix/profiles/default/bin
           if [[ -x "$NIX_BIN/nix-shell" ]]; then
@@ -89,7 +211,7 @@ jobs:
           fi
 
       - uses: ./.github/actions/setup-nix
-        if: inputs.server_version == '' && steps.nix.outputs.present != 'true'
+        if: steps.select.outputs.from_source == 'true' && steps.nix.outputs.present != 'true'
 
       - name: Install system dependencies
         run: |
@@ -101,81 +223,80 @@ jobs:
           fi
 
       - name: Run software baseline benchmark (bench:load)
+        if: steps.select.outputs.run_software == 'true'
         run: |
-          ARGS=(--variant "${{ inputs.variant || 'non-fips' }}" --mode "${{ inputs.bench_mode || 'all' }}" --criterion)
-          if [[ -n "${{ inputs.server_version }}" ]]; then
-            mise run bench:load "${ARGS[@]}" --server-version "${{ inputs.server_version }}"
+          ARGS=(--variant "${WF_VARIANT}" --mode "${WF_MODE}" --criterion)
+          if [[ -n "${WF_SERVER_VERSION}" ]]; then
+            mise run bench:load "${ARGS[@]}" --server-version "${WF_SERVER_VERSION}"
           else
             # Outside nix-shell, crate/crypto/build.rs silently falls back to the runner's system OpenSSL 3.0.13
             # (no ML-KEM/ML-DSA/SLH-DSA/AES-GCM-SIV): those benchmarks are skipped and cannot be compared.
-            nix-shell shell.nix --argstr variant "${{ inputs.variant || 'non-fips' }}" \
+            nix-shell shell.nix --argstr variant "${WF_VARIANT}" \
               --run "mise run bench:load ${ARGS[*]@Q}"
           fi
 
-      # The steps below always benchmark the checked-out code (no --server-version support), so
-      # running them for a released version would publish checkout numbers under that version.
       - name: Run HSM-backed KEK benchmark (bench:hsm)
-        if: inputs.server_version == '' && github.event_name != 'schedule'
-        run: |
-          mise run bench:hsm \
-            --variant "${{ inputs.variant || 'non-fips' }}" \
-            --mode "${{ inputs.bench_mode || 'all' }}" \
-            --criterion
+        if: steps.select.outputs.run_hsm_kek == 'true'
+        run: mise run bench:hsm --variant "${WF_VARIANT}" --mode "${WF_MODE}" --criterion
 
       - name: Run HSM-delegated crypto benchmark (bench:hsm --delegated)
-        if: inputs.server_version == '' && github.event_name != 'schedule'
-        run: |
-          mise run bench:hsm --delegated \
-            --variant "${{ inputs.variant || 'non-fips' }}" \
-            --mode "${{ inputs.bench_mode || 'all' }}" \
-            --criterion
+        if: steps.select.outputs.run_hsm_delegated == 'true'
+        run: mise run bench:hsm --delegated --variant "${WF_VARIANT}" --mode "${WF_MODE}" --criterion
 
       - name: Run PKCS#11 benchmark (bench:pkcs11)
-        if: inputs.server_version == '' && github.event_name != 'schedule'
-        run: |
-          # bench:pkcs11's --mode choices are a different, narrower set than the other
-          # three tasks (no "sign-verify"/"batch"). Fall back to "all" when the shared
-          # bench_mode input picked one of those two, instead of failing the whole job.
-          PKCS11_MODE="${{ inputs.bench_mode || 'all' }}"
-          case "${PKCS11_MODE}" in
-            all | encrypt | key-creation) ;;
-            *)
-              echo "NOTE: bench_mode '${PKCS11_MODE}' is not a valid bench:pkcs11 mode; using 'all' instead."
-              PKCS11_MODE="all"
-              ;;
-          esac
-          mise run bench:pkcs11 \
-            --variant "${{ inputs.variant || 'non-fips' }}" \
-            --mode "${PKCS11_MODE}" \
-            --criterion
+        if: steps.select.outputs.run_pkcs11 == 'true'
+        env:
+          PKCS11_MODE: ${{ steps.select.outputs.pkcs11_mode }}
+        run: mise run bench:pkcs11 --variant "${WF_VARIANT}" --mode "${PKCS11_MODE}" --criterion
 
       - name: Run HSM-delegated PKCS#11 benchmark (bench:pkcs11 --delegated)
-        if: inputs.server_version == '' && github.event_name != 'schedule'
-        run: |
-          # Same PKCS11_MODE fallback logic for the delegated step
-          PKCS11_MODE_DELEGATED="${{ inputs.bench_mode || 'all' }}"
-          case "${PKCS11_MODE_DELEGATED}" in
-            all | encrypt | key-creation) ;;
-            *)
-              echo "NOTE: bench_mode '${PKCS11_MODE_DELEGATED}' is not a valid bench:pkcs11 mode; using 'all' instead."
-              PKCS11_MODE_DELEGATED="all"
-              ;;
-          esac
-          mise run bench:pkcs11 --delegated \
-            --variant "${{ inputs.variant || 'non-fips' }}" \
-            --mode "${PKCS11_MODE_DELEGATED}" \
-            --criterion
+        if: steps.select.outputs.run_pkcs11_hsm_delegated == 'true'
+        env:
+          PKCS11_MODE: ${{ steps.select.outputs.pkcs11_mode }}
+        run: mise run bench:pkcs11 --delegated --variant "${WF_VARIANT}" --mode "${PKCS11_MODE}" --criterion
 
+      # Starts its own two servers (JOSE CEK cache on, then off); has no --mode/--criterion.
+      - name: Run JOSE caches benchmark (bench:jose-cache)
+        if: steps.select.outputs.run_jose_cache == 'true'
+        run: |
+          nix-shell shell.nix --argstr variant "${WF_VARIANT}" \
+            --run "mise run bench:jose-cache --variant ${WF_VARIANT}"
+
+      # Stage only the reports of the selected benchmarks: documentation/docs/benchmarks/ also holds the
+      # checked-in reports of every other benchmark, which must not be republished under this version.
+      # The selected folders were deleted after checkout, so a missing one means the benchmark did not
+      # write it (bench_generate_report returns 0 without touching the docs when plotting fails).
+      - name: Collect benchmark reports
+        if: always()
+        shell: bash
+        env:
+          REPORT_DIRS: ${{ steps.select.outputs.report_dirs }}
+        run: |
+          set -euo pipefail
+          src=documentation/docs/benchmarks
+          dst="${RUNNER_TEMP}/benchmark-reports"
+          rm -rf "${dst}"
+          mkdir -p "${dst}"
+          missing=0
+          for d in ${REPORT_DIRS}; do
+            if [[ -d "${src}/${d}" ]]; then
+              cp -r "${src}/${d}" "${dst}/"
+            else
+              echo "::error::Expected report folder ${src}/${d} was not generated"
+              missing=1
+            fi
+          done
+          ls -1 "${dst}"
+          exit "${missing}"
 
       - name: Upload benchmark report folder
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}
-          # Reports generated per HSM backend: ckms_bench/, ckms_bench_hsm_kek_<backend>/,
-          # ckms_bench_hsm_delegated_<backend>/, ckms_bench_pkcs11/, ckms_bench_pkcs11_hsm_delegated_<backend>/
-          # mirroring the existing pattern in .github/workflows/flamegraph.yml.
-          path: documentation/docs/benchmarks/
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software'
+            }}
+          path: ${{ runner.temp }}/benchmark-reports
+          if-no-files-found: error
           retention-days: 30
 
   # ── Job 2: publish benchmark report to package.cosmian.com ────────────────
@@ -183,6 +304,8 @@ jobs:
     name: Publish to package.cosmian.com
     needs: benchmark
     runs-on: [self-hosted, not-sgx]
+    permissions:
+      contents: read
     container:
       image: cosmian/docker_doc_ci
       volumes:
@@ -192,42 +315,53 @@ jobs:
       - name: Download benchmark artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software'
+            }}
           path: report
 
       - name: Push benchmark report to package.cosmian.com
         shell: bash
+        env:
+          VERSION_DIR: ${{ inputs.server_version || github.ref_name }}
+          KNOWN_HOSTS: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
         run: |
-          set -ex
-          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks"
-          SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
+          set -euo pipefail
+          : "${KNOWN_HOSTS:?Package server SSH host key is not configured (vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS)}"
+          known_hosts=$(mktemp)
+          trap 'rm -f "${known_hosts}"' EXIT
+          printf '%s\n' "${KNOWN_HOSTS}" > "${known_hosts}"
+          REMOTE_DIR="/mnt/package/kms/${VERSION_DIR}/benchmarks"
+          SSH_OPTS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${known_hosts}" -o BatchMode=yes -i /root/.ssh/id_rsa)
 
-          # Create remote directory.
-          ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
+          printf 'mkdir -p -- %q\n' "${REMOTE_DIR}" | ssh "${SSH_OPTS[@]}" cosmian@package.cosmian.com bash
 
-          # Copy the full report folder (report.md + load/ + criterion/ SVGs + raw JSON).
+          # Copy the staged report folders (report.md + load/ + criterion/ SVGs + raw JSON).
           # Use tar-over-ssh instead of `scp dir/.` — newer OpenSSH (SFTP mode)
           # rejects the trailing-dot trick with "unexpected filename: .".
-          tar -C report -cf - . | ssh ${SSH_OPTS} cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
+          tar -C report -cf - . | ssh "${SSH_OPTS[@]}" cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
 
           echo ""
           echo "Published:"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_kek_softhsm2/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11/report.md"
-          echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md"
+          for d in report/*/; do
+            echo "  https://package.cosmian.com/kms/${VERSION_DIR}/benchmarks/$(basename "${d}")/report.md"
+          done
 
   # ── Job 3: compare the published report against the last released version ──
-  # Runs for every build-from-source run (nightly develop, manual branch runs); skipped when a
-  # released version is itself being benchmarked (nothing to compare it against here).
+  # Runs for every build-from-source run that benchmarked the software baseline (nightly develop,
+  # manual branch runs); skipped when a released version is itself being benchmarked (nothing to
+  # compare it against here) or when the selected benchmark does not produce ckms_bench.
   compare:
     name: Compare against last release
-    needs: publish
+    needs: [benchmark, publish]
     # Published paths carry no variant, so only the non-fips report is comparable to the release baseline.
-    if: inputs.server_version == '' && (inputs.variant || 'non-fips') == 'non-fips'
+    if: >-
+      inputs.server_version == ''
+      && (inputs.variant || 'non-fips') == 'non-fips'
+      && needs.benchmark.outputs.run_software == 'true'
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 15
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -254,8 +388,10 @@ jobs:
           exit 1
 
       - name: Compare benchmark reports
+        env:
+          BASE_VERSION: ${{ steps.base.outputs.version }}
         run: |
-          mise run bench:compare "${{ steps.base.outputs.version }}" "${{ github.ref_name }}" 5 --fail \
+          mise run bench:compare "${BASE_VERSION}" "${GITHUB_REF_NAME}" 5 --fail \
             --output target/bench_compare/report.md
 
       - name: Publish comparison to the job summary
