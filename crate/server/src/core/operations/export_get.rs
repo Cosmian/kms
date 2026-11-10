@@ -420,7 +420,17 @@ pub(crate) async fn export_get(
                 .await?;
             }
         }
-        ObjectType::PGPKey => pgp_ops::pgp_export_convert(&mut owm, request.key_format_type)?,
+        ObjectType::PGPKey => {
+            Box::pin(unwrap_if_requested(
+                &mut owm,
+                &request.key_wrap_type,
+                kms,
+                user,
+                ObjectType::PGPKey,
+            ))
+            .await?;
+            pgp_ops::pgp_export_convert(&mut owm, request.key_format_type)?;
+        }
         ObjectType::OpaqueObject | ObjectType::SplitKey => {
             // Opaque Objects and SplitKey shares are returned as-is. KMIP does not define
             // alternate export formats for these types; no wrapping/unwrapping semantics apply.

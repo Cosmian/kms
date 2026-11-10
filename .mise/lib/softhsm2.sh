@@ -229,6 +229,8 @@ run_db_softhsm2_tests() {
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
     -- "test_db_${suffix}" --ignored --nocapture
 
+  # vector_runner picks its server per vector (`server_type`), so KMS_HSM_KEK does not change what
+  # it tests; with HSM_SLOT_ID set it would only re-run the HSM-gated vectors of `test:hsm`.
   print_header "DB×SoftHSM2-KEK: shared-server suite (KMS_TEST_DB=${KMS_TEST_DB:-unset}, KMS_HSM_KEK=1)"
 
   env \
@@ -249,5 +251,5 @@ run_db_softhsm2_tests() {
     ${REDIS_PORT:+REDIS_PORT="$REDIS_PORT"} \
     cargo test --lib "${KMS_SHARED_SERVER_TEST_PACKAGES[@]}" \
     ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-    -- --nocapture
+    -- --nocapture --skip vector_runner
 }

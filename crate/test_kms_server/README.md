@@ -55,7 +55,6 @@ CI scripts set `KMS_TEST_DB` to select a single backend:
 - `test_psql.sh` → `KMS_TEST_DB=postgresql`
 - `test_mysql.sh` → `KMS_TEST_DB=mysql`
 - `test_redis.sh` → `KMS_TEST_DB=redis`
-- SoftHSM2 + KEK: `KMS_HSM_KEK=1 HSM_SLOT_ID=<slot> cargo test -p <crate>` (any value of `KMS_HSM_KEK` swaps the default server for the HSM + KEK one; combinable with `KMS_TEST_DB`)
 
 ---
 

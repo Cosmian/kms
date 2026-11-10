@@ -403,6 +403,14 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     if env::var_os("KMS_HSM_KEK").is_some() {
         return start_default_test_kms_server_plain_with_hsm_and_kek().await;
     }
+    start_plain_default_test_kms_server().await
+}
+
+/// The default plain test server, whatever `KMS_HSM_KEK` says.
+///
+/// The vector runner picks its server per vector (`server_type`) and several vectors assert
+/// the wrapped state of keys, which the unwrap-everything KEK server would hide.
+pub(crate) async fn start_plain_default_test_kms_server() -> &'static TestsContext {
     start_singleton_from_toml(
         &ONCE,
         test_config_path("auth/plain.toml"),
