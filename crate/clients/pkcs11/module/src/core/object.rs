@@ -21,7 +21,6 @@ use std::sync::Arc;
 
 use cosmian_logger::debug;
 use der::{Encode, asn1::OctetStringRef};
-use log::error;
 use openssl::{
     bn::BigNumContext,
     ec::PointConversionForm,
@@ -32,6 +31,7 @@ use pkcs11_sys::{
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CK_ULONG, CKC_X_509, CKO_CERTIFICATE,
     CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
+use tracing::error;
 
 use crate::{
     ModuleError, ModuleResult,

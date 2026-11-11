@@ -33,7 +33,7 @@ use pkcs11_sys::{
     CKA_TOKEN, CKA_TRUSTED, CKA_UNIQUE_ID, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY,
     CKA_VERIFY_RECOVER, CKA_WRAP, CKC_X_509,
 };
-use strum_macros::Display;
+use strum::Display;
 
 use crate::{ModuleError, ModuleResult, not_null};
 

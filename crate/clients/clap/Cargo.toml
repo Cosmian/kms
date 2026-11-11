@@ -70,7 +70,6 @@ x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-assert_cmd = { workspace = true }
 openssl = { workspace = true }
 serial_test = { workspace = true }
 tempfile = { workspace = true }

@@ -2398,8 +2398,13 @@ pub fn parse_export_certificate_ttlv_response(
                 }
                 CertificateExportFormat::Pem => {
                     // save the pem to a file
-                    let pem = pem::Pem::new("CERTIFICATE", certificate_value.as_slice());
-                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                    let pem = x509_cert::der::pem::encode_string(
+                        "CERTIFICATE",
+                        x509_cert::der::pem::LineEnding::CRLF,
+                        certificate_value,
+                    )
+                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    JsValue::from(Uint8Array::from(pem.as_bytes()))
                 }
                 CertificateExportFormat::Pkcs12 => {
                     // PKCS12 is exported as a private key object
@@ -2418,8 +2423,13 @@ pub fn parse_export_certificate_ttlv_response(
                 }
                 CertificateExportFormat::Pkcs7 => {
                     // save the pem to a file
-                    let pem = pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
-                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                    let pem = x509_cert::der::pem::encode_string(
+                        "PKCS7",
+                        x509_cert::der::pem::LineEnding::CRLF,
+                        certificate_value,
+                    )
+                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    JsValue::from(Uint8Array::from(pem.as_bytes()))
                 }
             };
             Ok(data)

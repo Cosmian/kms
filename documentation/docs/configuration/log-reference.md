@@ -1201,6 +1201,7 @@ Crate path: `crate/clients/client`
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
 | `debug` | `Connection error, retrying with backoff (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
 | `warn` | `Failed to load system CA bundle {bundle}: {e}` | `src/http_client/tls.rs` | `bundle`, `e` | - |
+| `debug` | `OAuth2 callback connection error: {e}` | `src/http_client/login.rs` | `e`: hyper error on a connection to the local OAuth2 redirect listener | Harmless noise from browsers that open and drop speculative connections |
 
 ---
 
