@@ -204,10 +204,10 @@ mod tests {
 
     #[test]
     fn cef_line_contains_rt() {
-        let ev = make_event(AuditResult::Success);
+        let mut ev = make_event(AuditResult::Success);
+        ev.timestamp = ev.timestamp.replace_nanosecond(123_456_789).unwrap();
         let line = to_cef_line(&ev, "5.0.0");
-        // 1_700_000_000 * 1000 = 1700000000000
-        assert!(line.contains("rt=1700000000000"));
+        assert!(line.contains("rt=1700000000123 suser="), "{line}");
     }
 
     #[test]
@@ -486,6 +486,10 @@ mod tests {
             (AuditResult::Success, 5),
             (AuditResult::Failure("401 Unauthorized".to_owned()), 7),
             (AuditResult::Failure("403 Forbidden".to_owned()), 7),
+            (AuditResult::Failure("401".to_owned()), 7),
+            (AuditResult::Failure("403".to_owned()), 7),
+            (AuditResult::Failure("Unauthorized".to_owned()), 7),
+            (AuditResult::Failure("Forbidden".to_owned()), 7),
             (AuditResult::Failure("Internal error".to_owned()), 6),
         ] {
             let ev = make_event(result);
