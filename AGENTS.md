@@ -422,7 +422,7 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 
 | Invoke | When |
 |--------|------|
-| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure through review feedback; reports CI once, never waits for it, never merges |
+| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure: scope, plan, **user plan approval (the only interactive step)**, then automated implement through review feedback; reports CI once, never waits for it, never merges |
 | `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
 | `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; run once for significant work (`AGENTS.md` §5.6.3), skip for trivial fixes |
