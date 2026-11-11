@@ -235,11 +235,10 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
         }
 
         CKM_AES_CMAC => {
-            if mechanism.ulParameterLen != 0 {
-                error!(
-                    "CKM_AES_CMAC takes no parameter but ulParameterLen is {}",
-                    mechanism.ulParameterLen
-                );
+            // Bind to a local to avoid a reference to a packed struct field.
+            let parameter_len = mechanism.ulParameterLen;
+            if parameter_len != 0 {
+                error!("CKM_AES_CMAC takes no parameter but ulParameterLen is {parameter_len}");
                 return Err(ModuleError::MechanismInvalid(mechanism.mechanism));
             }
             Ok(Mechanism::AesCmac)
