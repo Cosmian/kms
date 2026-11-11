@@ -25,13 +25,17 @@ use ckms::{
 use cosmian_config_utils::ConfigUtils;
 use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
+    ModuleError,
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
         C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
+    traits::{
+        AES_GMAC_IV_SIZE, Backend, KeyAlgorithm, MacAlgorithm, MacUsage, SignatureAlgorithm,
+        backend as registered_backend,
+    },
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
@@ -393,6 +397,97 @@ fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
     assert_ne!(first, second, "two calls must not return the same bytes");
     // The two chunks of one call (65_536 + 4_464 bytes) must not be a repeat of each other.
     assert_ne!(first.get(..4_464), first.get(65_536..));
+    Ok(())
+}
+
+/// AES-CMAC and the PKCS#11 AES-GMAC (caller IV, tag only) through the provider backend against a
+/// live KMS: the tags are the standard ones, tampering is rejected, and the key's usage bits
+/// decide what works (GMAC runs as an `Encrypt`, CMAC as a KMIP `MAC`).
+#[test]
+#[serial]
+fn test_aes_mac_against_the_kms() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::crypto::symmetric::mac::{
+        aes_cmac, aes_gmac,
+    };
+
+    let backend = initialize_backend()?;
+    let to_error = |e: &dyn std::fmt::Display| Pkcs11Error::Default(e.to_string());
+    let data = b"cosmian pkcs11 aes mac".to_vec();
+    let iv = [0x42_u8; AES_GMAC_IV_SIZE];
+    let gmac = MacAlgorithm::AesGmac { iv };
+
+    // A key generated with CKA_SIGN and CKA_VERIFY, and a default key (Encrypt bit, no MAC bits).
+    let mac_key = backend
+        .generate_key_with_mac_usage(
+            KeyAlgorithm::Aes256,
+            32,
+            false,
+            Some("test-aes-mac-1367-both"),
+            MacUsage {
+                generate: true,
+                verify: true,
+            },
+        )
+        .map_err(|e| to_error(&e))?;
+    let plain_key = backend
+        .generate_key(
+            KeyAlgorithm::Aes256,
+            32,
+            false,
+            Some("test-aes-mac-1367-plain"),
+        )
+        .map_err(|e| to_error(&e))?;
+
+    for key in [&mac_key, &plain_key] {
+        let id = key.remote_id();
+        let key_bytes = key.raw_bytes().map_err(|e| to_error(&e))?;
+        let expected = aes_gmac(&key_bytes, iv, &data).map_err(|e| to_error(&e))?;
+        let expected_tag = expected.get(AES_GMAC_IV_SIZE..).unwrap_or_default();
+
+        // GMAC: the signature is the 16-byte tag of the standard algorithm for the caller's IV.
+        let tag = backend.mac(id, gmac, &data).map_err(|e| to_error(&e))?;
+        assert_eq!(tag, expected_tag);
+        backend
+            .mac_verify(id, gmac, &data, &tag)
+            .map_err(|e| to_error(&e))?;
+
+        let mut flipped = tag.clone();
+        flipped[0] ^= 0xFF;
+        let other_iv = MacAlgorithm::AesGmac {
+            iv: [0x43; AES_GMAC_IV_SIZE],
+        };
+        for (algorithm, message, signature) in [
+            (gmac, data.as_slice(), flipped.as_slice()),
+            (other_iv, data.as_slice(), tag.as_slice()),
+            (gmac, b"another message".as_slice(), tag.as_slice()),
+        ] {
+            assert!(matches!(
+                backend.mac_verify(id, algorithm, message, signature),
+                Err(ModuleError::SignatureInvalid)
+            ));
+        }
+    }
+
+    // CMAC needs the MAC Generate / MAC Verify bits: only the key made with CKA_SIGN has them.
+    let id = mac_key.remote_id();
+    let key_bytes = mac_key.raw_bytes().map_err(|e| to_error(&e))?;
+    let expected = aes_cmac(&key_bytes, &data).map_err(|e| to_error(&e))?;
+    let tag = backend
+        .mac(id, MacAlgorithm::AesCmac, &data)
+        .map_err(|e| to_error(&e))?;
+    assert_eq!(tag, expected);
+    backend
+        .mac_verify(id, MacAlgorithm::AesCmac, &data, &tag)
+        .map_err(|e| to_error(&e))?;
+    let mut flipped = tag;
+    flipped[0] ^= 0xFF;
+    assert!(matches!(
+        backend.mac_verify(id, MacAlgorithm::AesCmac, &data, &flipped),
+        Err(ModuleError::SignatureInvalid)
+    ));
+    backend
+        .mac(plain_key.remote_id(), MacAlgorithm::AesCmac, &data)
+        .unwrap_err();
     Ok(())
 }
 

@@ -580,16 +580,18 @@ pub(crate) async fn kms_import_symmetric_key_async(
 
     let cryptographic_length = Some(i32::try_from(key_length * 8)?);
 
-    // `CKA_SIGN` / `CKA_VERIFY` of the `C_GenerateKey` template grant the MAC usage bits.
+    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
+    // `CKA_SIGN` / `CKA_VERIFY` of the `C_GenerateKey` template grant the MAC usage bits. An HSM
+    // key is created with the server's default mask (no MAC bits), so it must not advertise them.
     let mut usage_mask = CryptographicUsageMask::Encrypt
         | CryptographicUsageMask::Decrypt
         | CryptographicUsageMask::WrapKey
         | CryptographicUsageMask::UnwrapKey
         | CryptographicUsageMask::KeyAgreement;
-    if mac_usage.generate {
+    if mac_usage.generate && !is_hsm_key {
         usage_mask |= CryptographicUsageMask::MACGenerate;
     }
-    if mac_usage.verify {
+    if mac_usage.verify && !is_hsm_key {
         usage_mask |= CryptographicUsageMask::MACVerify;
     }
     let mut attributes = Attributes {
@@ -617,7 +619,6 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_wrapping_data: None,
         },
     });
-    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
     let remote_id = if is_hsm_key {
         let request = symmetric_key_create_request(
             vendor_id,

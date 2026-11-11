@@ -89,6 +89,9 @@ the provider buffers the data and sends it to the KMS once).
   AAD (`ulAADLen` = 0): the `C_Sign` data is the authenticated data and the signature is the 16-byte
   tag. It is computed as an AES-GCM `Encrypt` of an empty plaintext, so the key needs the `Encrypt`
   usage bit, which AES keys have by default. The IV must be unique for every message under one key.
+  Because KMIP `MAC` has no IV field, this runs AES-GCM with the caller's IV, which OpenSSL does not
+  treat as a FIPS-approved service; the KMIP `MAC` operation (and `ckms mac --mode gmac`) uses the
+  provider's `GMAC` instead. It is not supported for HSM-resident keys.
 
 `CKA_SIGN` / `CKA_VERIFY` of a secret key report the `MAC Generate` / `MAC Verify` bits only. A key
 created by `C_GenerateKey` gets those bits when its template sets `CKA_SIGN` / `CKA_VERIFY` to true,
