@@ -536,12 +536,10 @@ fn aes_xts_streaming_test() {
     );
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::unwrap_in_result,
-    clippy::panic_in_result_fn
-)] // tests: a panic is the failure signal
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
 mod mutation_regressions {
     use cosmian_kmip::{
         kmip_0::kmip_types::BlockCipherMode, kmip_2_1::kmip_types::CryptographicAlgorithm,
@@ -645,7 +643,7 @@ mod mutation_regressions {
             for (padding, plaintext) in cases {
                 let (ciphertext, tag) = encrypt(cipher, &key, &[], &[], plaintext, padding)?;
                 assert_eq!(ciphertext.len(), 32);
-                assert!(tag.is_empty());
+                assert_eq!(tag, Vec::<u8>::new());
                 assert_eq!(
                     decrypt(cipher, &key, &[], &[], &ciphertext, &tag, padding)?.as_slice(),
                     plaintext
@@ -674,7 +672,7 @@ mod mutation_regressions {
             let plaintext = [0x41; 16];
             let (ciphertext, tag) = encrypt(cipher, &key, &nonce, &[], &plaintext, None)?;
             assert_eq!(ciphertext.len(), plaintext.len());
-            assert!(tag.is_empty());
+            assert_eq!(tag, Vec::<u8>::new());
             assert_eq!(
                 decrypt(cipher, &key, &nonce, &[], &ciphertext, &tag, None)?.as_slice(),
                 plaintext
@@ -699,7 +697,7 @@ mod mutation_regressions {
         let mut ciphertext = encryption.update(&plaintext)?;
         let (remainder, tag) = encryption.finalize_encryption()?;
         ciphertext.extend(remainder);
-        assert!(tag.is_empty());
+        assert_eq!(tag, Vec::<u8>::new());
         assert_eq!(ciphertext.len(), 48);
         let mut decryption = cipher.stream_cipher(Mode::Decrypt, &key, &nonce, &[])?;
         let mut decrypted = decryption.update(&ciphertext)?;
@@ -798,7 +796,7 @@ mod mutation_regressions {
         let (ciphertext, tag) = encrypt(cipher, &key, &nonce, &[], &plaintext, None)?;
         assert_eq!(ciphertext.len(), plaintext.len());
         assert_ne!(ciphertext, plaintext);
-        assert!(tag.is_empty());
+        assert_eq!(tag, Vec::<u8>::new());
         assert_eq!(
             decrypt(cipher, &key, &nonce, &[], &ciphertext, &tag, None)?.as_slice(),
             plaintext

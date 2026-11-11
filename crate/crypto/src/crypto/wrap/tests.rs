@@ -76,6 +76,10 @@ fn gcm_wrapping_key(key_len: usize) -> CryptoResult<(Object, KeyWrappingData)> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
 fn test_aes_gcm_wrapped_blob_boundaries() -> CryptoResult<()> {
     for key_len in [16, 24, 32] {
         let (key, wrapping_data) = gcm_wrapping_key(key_len)?;
@@ -101,6 +105,10 @@ fn test_aes_gcm_wrapped_blob_boundaries() -> CryptoResult<()> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
 fn test_aes_gcm_rejects_truncated_wrapped_blobs() -> CryptoResult<()> {
     let (key, wrapping_data) = gcm_wrapping_key(32)?;
     let key_bytes = key.key_block()?.key_bytes()?;
@@ -121,6 +129,10 @@ fn test_aes_gcm_rejects_truncated_wrapped_blobs() -> CryptoResult<()> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
 fn test_no_encoding_preserves_raw_asymmetric_key_bytes() -> CryptoResult<()> {
     let bytes = KmsRng::new().random_vec(32)?;
     let key_block = KeyBlock {
@@ -153,6 +165,10 @@ fn test_no_encoding_preserves_raw_asymmetric_key_bytes() -> CryptoResult<()> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
 fn test_no_encoding_serializes_transparent_rsa_keys() -> CryptoResult<()> {
     let private_key = PKey::from_rsa(Rsa::generate(2048)?)?;
     let public_key = PKey::public_key_from_der(&private_key.public_key_to_der()?)?;
@@ -180,6 +196,10 @@ fn test_no_encoding_serializes_transparent_rsa_keys() -> CryptoResult<()> {
 
 #[cfg(feature = "non-fips")]
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
 fn test_wrap_unwrap_rsa_pkcs1v15() -> CryptoResult<()> {
     use cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
 
