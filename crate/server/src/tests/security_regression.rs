@@ -207,6 +207,7 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
             ..Default::default()
         }),
         data: Some(message.to_vec()),
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

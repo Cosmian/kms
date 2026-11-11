@@ -74,6 +74,15 @@ impl CryptoOpSpec for MacOp {
             request.correlation_value.as_deref(),
         )?;
         let data = part_data(request.data.as_deref(), part, "MAC")?;
+        if request.i_v_counter_nonce.is_some()
+            && aes_mac_mode(request.cryptographic_parameters.as_ref())?
+                != Some(BlockCipherMode::GCM)
+        {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                "MAC: an IV is only accepted for AES-GMAC (Block Cipher Mode GCM)".to_owned(),
+            ));
+        }
         trace!("Mac: part: {part:?}, data len: {}", data.len());
         let owner = StreamOwner {
             op: Self::OP_NAME,
@@ -89,7 +98,12 @@ impl CryptoOpSpec for MacOp {
                     owm,
                     request.cryptographic_parameters.as_ref(),
                     "mac",
-                    || random_gmac_iv(kms),
+                    || {
+                        request
+                            .i_v_counter_nonce
+                            .as_deref()
+                            .map_or_else(|| random_gmac_iv(kms), caller_gmac_iv)
+                    },
                 )
             },
             |ctx, last| {
@@ -118,6 +132,11 @@ impl CryptoOpSpec for MacOp {
         )?;
         reject_multi_part_for_oracle(Self::OP_NAME, part)?;
         let data = part_data(request.data.as_deref(), part, "MAC")?;
+        if request.i_v_counter_nonce.is_some() {
+            kms_bail!(KmsError::NotSupported(
+                "MAC: a caller-supplied IV is not supported for HSM keys".to_owned()
+            ));
+        }
         let lock = kms.crypto_oracles.read().await;
         let crypto_oracle = lock.get(prefix).ok_or_else(|| {
             KmsError::InvalidRequest(format!("MAC: unknown crypto oracle prefix: {prefix}"))
@@ -412,6 +431,23 @@ fn mac_context(
     }))
 }
 
+/// IV supplied by the caller of an AES-GMAC (PKCS#11 `CKM_AES_GMAC`); it must not repeat
+/// under one key, which only the caller can ensure.
+fn caller_gmac_iv(iv: &[u8]) -> KResult<[u8; GMAC_IV_LENGTH]> {
+    <[u8; GMAC_IV_LENGTH]>::try_from(iv).map_or_else(
+        |_| {
+            Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Field,
+                format!(
+                    "MAC: the AES-GMAC IV must be {GMAC_IV_LENGTH} bytes, got {}",
+                    iv.len()
+                ),
+            ))
+        },
+        Ok,
+    )
+}
+
 /// Random IV of a new AES-GMAC.
 fn random_gmac_iv(kms: &KMS) -> KResult<[u8; GMAC_IV_LENGTH]> {
     let mut iv = [0_u8; GMAC_IV_LENGTH];
@@ -622,6 +658,7 @@ mod tests {
                 ..Default::default()
             }),
             data: data.map(<[u8]>::to_vec),
+            i_v_counter_nonce: None,
             correlation_value,
             init_indicator,
             final_indicator,
@@ -945,6 +982,7 @@ mod tests {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: parameters(mode),
             data: Some(data.to_vec()),
+            i_v_counter_nonce: None,
             correlation_value: cv,
             init_indicator: init,
             final_indicator: fin,
@@ -1093,16 +1131,26 @@ mod tests {
             KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
         ));
 
-        // The PKCS#11 `CKM_AES_GMAC` mapping: AES-GCM Encrypt of an empty plaintext with the
-        // MAC's IV and the data as AAD yields the MAC's tag.
+        // A caller-supplied IV (PKCS#11 `CKM_AES_GMAC`): the MAC is that IV followed by the tag,
+        // it is repeatable, and equals the tag of AES-GCM of an empty plaintext with the data as
+        // AAD.
+        let iv = [0x42_u8; 12];
+        let with_iv = |mode, iv: &[u8]| MAC {
+            i_v_counter_nonce: Some(iv.to_vec()),
+            ..mac(&aes, mode, b"hello world", None, None, None)
+        };
         let gmac = kms
-            .mac(
-                mac(&aes, BlockCipherMode::GCM, b"hello world", None, None, None),
-                &user,
-            )
+            .mac(with_iv(BlockCipherMode::GCM, &iv), &user)
             .await?
             .mac_data
             .context("no MAC")?;
+        assert_eq!(gmac.get(..12), Some(iv.as_slice()));
+        assert_eq!(
+            kms.mac(with_iv(BlockCipherMode::GCM, &iv), &user)
+                .await?
+                .mac_data,
+            Some(gmac.clone())
+        );
         let encrypted = kms
             .encrypt(
                 Encrypt {
@@ -1113,7 +1161,7 @@ mod tests {
                         ..Default::default()
                     }),
                     data: Some(zeroize::Zeroizing::new(Vec::new())),
-                    i_v_counter_nonce: Some(gmac[..12].to_vec()),
+                    i_v_counter_nonce: Some(iv.to_vec()),
                     authenticated_encryption_additional_data: Some(b"hello world".to_vec()),
                     ..Default::default()
                 },
@@ -1122,8 +1170,21 @@ mod tests {
             .await?;
         assert_eq!(
             encrypted.authenticated_encryption_tag.as_deref(),
-            Some(&gmac[12..])
+            gmac.get(12..)
         );
+        // the IV is only for GMAC and must be 96 bits
+        for (mode, bad_iv) in [
+            (BlockCipherMode::GCM, &iv[..11]),
+            (BlockCipherMode::GCM, &[0_u8; 16][..]),
+            (BlockCipherMode::CMAC, &iv[..]),
+        ] {
+            let error = kms.mac(with_iv(mode, bad_iv), &user).await.unwrap_err();
+            assert!(
+                matches!(error, KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)),
+                "{mode:?} {}: {error:?}",
+                bad_iv.len()
+            );
+        }
 
         // An HMAC key is not an AES MAC key
         let hmac_key = create(CryptographicAlgorithm::HMACSHA256).await?;

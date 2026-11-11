@@ -2651,6 +2651,10 @@ pub struct MAC {
     /// The data to be hashed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
+    /// Vendor extension (also a field of `Encrypt`): the initialization vector of an AES-GMAC.
+    /// KMIP 2.1 `MAC` has no IV field; when absent the server draws a random IV.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i_v_counter_nonce: Option<Vec<u8>>,
     /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
@@ -2666,6 +2670,7 @@ impl_display!(MAC, "Mac", {
     opt unique_identifier,
     opt cryptographic_parameters,
     opt_b64 data,
+    opt_b64 i_v_counter_nonce,
     opt_b64 correlation_value,
     opt init_indicator,
     opt final_indicator,

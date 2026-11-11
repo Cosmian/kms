@@ -60,11 +60,14 @@ Both algorithms support multi-part requests. The `CMAC` block cipher mode is par
 policy; GMAC relies on the already allowed `GCM`.
 
 - **AES-CMAC**: `MACData` is the 16-byte tag.
-- **AES-GMAC**: KMIP MAC has no IV field and a GMAC IV must never repeat under one key, so the server generates a
-  random 96-bit IV and `MACData` is the 28 bytes `IV (12 bytes) || tag (16 bytes)`. MAC Verify reads the IV from the
-  first 12 bytes; `MACData` of another length returns `Invalid_Field`, and for a multi-part verification `MACData` must
-  be sent on the Init part because it carries the IV. Following NIST SP 800-38D, do not compute more than 2^32 GMACs
-  under one key.
+- **AES-GMAC**: a GMAC IV must never repeat under one key, so by default the server generates a random 96-bit IV
+  and `MACData` is the 28 bytes `IV (12 bytes) || tag (16 bytes)`. A client that must choose the IV (PKCS#11
+  `CKM_AES_GMAC`) sends it in the `IVCounterNonce` field of the `MAC` request, a vendor extension (KMIP 2.1 `MAC` has
+  no IV field): it must be 12 bytes, is accepted for GMAC only and is not supported for HSM keys, otherwise
+  `Invalid_Field`; `MACData` is still `IV || tag`, and the caller must ensure the IV is unique. MAC Verify reads the IV
+  from the first 12 bytes; `MACData` of another length returns `Invalid_Field`, and for a multi-part verification
+  `MACData` must be sent on the Init part because it carries the IV. Following NIST SP 800-38D, do not compute more
+  than 2^32 GMACs under one key.
 
 ```bash
 ckms mac compute --mac-key-id <AES_KEY_ID> --mode cmac --data 6bc1bee22e409f96e93d7e117393172a
