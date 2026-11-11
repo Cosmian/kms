@@ -628,9 +628,10 @@ impl SigningAlgorithm {
 /// `AesCmac` to `CKM_AES_CMAC` (NIST SP 800-38B) and `AesGmac` to `CKM_AES_GMAC`
 /// (NIST SP 800-38D).
 ///
-/// A GMAC `MAC Data` is always `IV (12 bytes) || tag (16 bytes)`: KMIP MAC has no IV field and a
-/// GMAC nonce must never repeat under one key, so the implementation generates the IV when
-/// computing and reads it back when verifying.
+/// A GMAC `MAC Data` is always `IV (12 bytes) || tag (16 bytes)`: a GMAC nonce must never repeat
+/// under one key, so the implementation generates the IV itself when computing and reads it back
+/// when verifying. Unlike the software path, an HSM key cannot take a caller-chosen IV: the KMIP
+/// `MAC` `IVCounterNonce` extension is refused before the oracle is called.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MacAlgorithm {
     HmacSha1,

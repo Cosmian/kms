@@ -434,18 +434,16 @@ fn mac_context(
 /// IV supplied by the caller of an AES-GMAC (PKCS#11 `CKM_AES_GMAC`); it must not repeat
 /// under one key, which only the caller can ensure.
 fn caller_gmac_iv(iv: &[u8]) -> KResult<[u8; GMAC_IV_LENGTH]> {
-    <[u8; GMAC_IV_LENGTH]>::try_from(iv).map_or_else(
-        |_| {
-            Err(KmsError::Kmip21Error(
-                ErrorReason::Invalid_Field,
-                format!(
-                    "MAC: the AES-GMAC IV must be {GMAC_IV_LENGTH} bytes, got {}",
-                    iv.len()
-                ),
-            ))
-        },
-        Ok,
-    )
+    let Ok(iv_array) = <[u8; GMAC_IV_LENGTH]>::try_from(iv) else {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!(
+                "MAC: the AES-GMAC IV must be {GMAC_IV_LENGTH} bytes, got {}",
+                iv.len()
+            ),
+        ));
+    };
+    Ok(iv_array)
 }
 
 /// Random IV of a new AES-GMAC.

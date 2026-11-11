@@ -63,8 +63,8 @@ policy; GMAC relies on the already allowed `GCM`.
 - **AES-GMAC**: a GMAC IV must never repeat under one key, so by default the server generates a random 96-bit IV
   and `MACData` is the 28 bytes `IV (12 bytes) || tag (16 bytes)`. A client that must choose the IV (PKCS#11
   `CKM_AES_GMAC`) sends it in the `IVCounterNonce` field of the `MAC` request, a vendor extension (KMIP 2.1 `MAC` has
-  no IV field): it must be 12 bytes, is accepted for GMAC only and is not supported for HSM keys, otherwise
-  `Invalid_Field`; `MACData` is still `IV || tag`, and the caller must ensure the IV is unique. MAC Verify reads the IV
+  no IV field): it must be 12 bytes and is accepted for GMAC only, otherwise `Invalid_Field`; on an HSM key it returns
+  `Feature_Not_Supported`. `MACData` is still `IV || tag`, and the caller must ensure the IV is unique. MAC Verify reads the IV
   from the first 12 bytes; `MACData` of another length returns `Invalid_Field`, and for a multi-part verification
   `MACData` must be sent on the Init part because it carries the IV. Following NIST SP 800-38D, do not compute more
   than 2^32 GMACs under one key.
