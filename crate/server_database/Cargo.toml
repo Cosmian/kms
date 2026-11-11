@@ -72,7 +72,6 @@ tokio-postgres = { workspace = true, features = [
 ] }
 url = { workspace = true }
 uuid = { workspace = true }
-x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]

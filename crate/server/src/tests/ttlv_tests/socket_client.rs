@@ -4,18 +4,21 @@
 //! The client is thread-safe and can be shared across threads
 //! using `Arc`
 use std::{
-    collections::HashMap,
     fmt,
     io::{Read, Write},
     net::TcpStream,
-    sync::{Arc, Mutex, OnceLock},
+    sync::Arc,
 };
 
 use cosmian_kms_client_utils::reexport::cosmian_kmip::ttlv::{
     KmipFlavor, TTLV, from_ttlv, to_ttlv,
 };
 use cosmian_logger::debug;
-use native_tls::{Identity, TlsConnector};
+use openssl::{
+    pkcs12::Pkcs12,
+    ssl::{SslConnector, SslMethod, SslVerifyMode, SslVersion},
+    x509::X509,
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::result::{KResult, KResultHelper};
@@ -43,7 +46,7 @@ pub(super) struct SocketClientConfig {
 /// using `Arc`
 pub(super) struct SocketClient {
     config: SocketClientConfig,
-    connector: Arc<TlsConnector>,
+    connector: Arc<SslConnector>,
 }
 
 impl SocketClient {
@@ -56,49 +59,49 @@ impl SocketClient {
     /// * `SocketClient` - A new socket client
     ///
     /// # Errors
-    /// * If the PKCS#12 file cannot be parsed
+    /// * If the PKCS#12 file cannot be parsed or decrypted
     /// * If the TLS connector cannot be built
     /// * If the server CA certificate cannot be parsed
-    /// * If the identity cannot be created
-    /// * If the identity cannot be cached
-    /// * If the identity cannot be retrieved from the cache
-    /// * If the identity cannot be created from the PKCS#12 file
     pub(super) fn new(config: SocketClientConfig) -> KResult<Self> {
-        // Create or retrieve client identity from cache
-        // The reason we need this is that macOS keychain will sometimes complain
-        // that "The specified item already exists in the keychain" when trying to create an identity
-        let identity = {
-            // Use a static cache for identities to avoid repeated parsing of PKCS12 files
-            static IDENTITY_CACHE: OnceLock<Mutex<HashMap<Vec<u8>, Identity>>> = OnceLock::new();
-            let cache = IDENTITY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-
-            let mut cache = cache.lock().context("Identity cache lock poisoned")?;
-
-            // Try to get from cache first
-            if let Some(cached_identity) = cache.get(&config.client_p12) {
-                cached_identity.clone()
-            } else {
-                // Create new identity and cache it
-                let identity = Identity::from_pkcs12(&config.client_p12, &config.client_p12_secret)
-                    .context("Failed to create identity from client PKCS#12")?;
-                cache.insert(config.client_p12.clone(), identity.clone());
-                identity
-            }
-        };
+        let p12 = Pkcs12::from_der(&config.client_p12)
+            .context("Failed to parse client PKCS#12")?
+            .parse2(&config.client_p12_secret)
+            .context("Failed to decrypt client PKCS#12")?;
 
         // Build TLS connector with client certificate authentication
-        let connector = TlsConnector::builder()
-            .identity(identity)
-            .add_root_certificate(
-                native_tls::Certificate::from_pem(config.server_ca_cert_pem.as_bytes())
+        let mut builder = SslConnector::builder(SslMethod::tls_client())
+            .context("Failed to create TLS connector")?;
+        if let Some(cert) = &p12.cert {
+            builder
+                .set_certificate(cert)
+                .context("Failed to set client certificate")?;
+        }
+        if let Some(key) = &p12.pkey {
+            builder
+                .set_private_key(key)
+                .context("Failed to set client private key")?;
+        }
+        for ca in p12.ca.into_iter().flatten() {
+            builder
+                .add_extra_chain_cert(ca)
+                .context("Failed to add client chain certificate")?;
+        }
+        builder
+            .cert_store_mut()
+            .add_cert(
+                X509::from_pem(config.server_ca_cert_pem.as_bytes())
                     .context("Failed to create certificate from CA certificate data")?,
             )
-            // Force TLS 1.2
-            .min_protocol_version(Some(native_tls::Protocol::Tlsv12))
-            .max_protocol_version(Some(native_tls::Protocol::Tlsv12))
-            .danger_accept_invalid_certs(true)
-            .build()
-            .context("Failed to build TLS connector")?;
+            .context("Failed to add CA certificate")?;
+        // Force TLS 1.2
+        builder
+            .set_min_proto_version(Some(SslVersion::TLS1_2))
+            .context("Failed to set min TLS version")?;
+        builder
+            .set_max_proto_version(Some(SslVersion::TLS1_2))
+            .context("Failed to set max TLS version")?;
+        builder.set_verify(SslVerifyMode::NONE);
+        let connector = builder.build();
 
         Ok(Self {
             config,

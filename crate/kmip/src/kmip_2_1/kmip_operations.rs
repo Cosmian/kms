@@ -7,7 +7,7 @@ use base64::{Engine, engine::general_purpose};
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
-use strum_macros::Display;
+use strum::Display;
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 

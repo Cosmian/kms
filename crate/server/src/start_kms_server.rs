@@ -392,12 +392,12 @@ async fn import_cse_migration_key(
     uid_pk: &str,
     migration_key_pem: &str,
 ) -> Result<(UniqueIdentifier, UniqueIdentifier), KmsError> {
-    let key_bytes = pem::parse(migration_key_pem)
+    let key_bytes = x509_parser::pem::parse_x509_pem(migration_key_pem.as_bytes())
         .map_err(|e| {
             KmsError::CryptographicError(format!("Error parsing google_cse_migration PEM key: {e}"))
         })?
-        .contents()
-        .to_vec();
+        .1
+        .contents;
 
     // Build PrivateKey object
     let object_sk = Object::PrivateKey(PrivateKey {
