@@ -331,10 +331,9 @@ pub trait Backend: Send + Sync {
         key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()>;
 
-    /// Computes the AES-CMAC / AES-GMAC of `data` with the remote secret key `remote_id`: AES-CMAC
-    /// through a KMIP `MAC` round trip, AES-GMAC (with the caller's IV) as AES-GCM `Encrypt` of an
-    /// empty plaintext whose AAD is `data`. The result is [`MacAlgorithm::mac_len`] bytes long:
-    /// the tag.
+    /// Computes the AES-CMAC / AES-GMAC of `data` with the remote secret key `remote_id`, through
+    /// a KMIP `MAC` round trip (GMAC passes the caller's IV). The result is
+    /// [`MacAlgorithm::mac_len`] bytes long: the tag.
     fn mac(
         &self,
         _remote_id: &str,

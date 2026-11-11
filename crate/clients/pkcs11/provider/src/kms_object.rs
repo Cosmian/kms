@@ -40,9 +40,8 @@ use cosmian_logger::{debug, error, trace, warn};
 use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{
-        AES_GMAC_IV_SIZE, AES_GMAC_TAG_SIZE, DecryptContext, DigestType, EncryptContext,
-        EncryptionAlgorithm, KeyAlgorithm, MacAlgorithm, MacUsage, MessageEncryptionOutput,
-        SignatureAlgorithm,
+        AES_GMAC_TAG_SIZE, DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm,
+        KeyAlgorithm, MacAlgorithm, MacUsage, MessageEncryptionOutput, SignatureAlgorithm,
     },
 };
 use zeroize::Zeroizing;
@@ -1471,74 +1470,56 @@ pub(crate) async fn kms_verify_async(
     }
 }
 
-/// KMIP `CryptographicParameters` selecting AES-CMAC (`block_cipher_mode = CMAC`) on the KMIP
-/// `MAC` / `MACVerify` operations.
-fn cmac_cryptographic_parameters() -> CryptographicParameters {
+/// KMIP `CryptographicParameters` selecting AES-CMAC (`block_cipher_mode = CMAC`) or AES-GMAC
+/// (`GCM`) on the KMIP `MAC` / `MACVerify` operations.
+fn aes_mac_parameters(block_cipher_mode: BlockCipherMode) -> CryptographicParameters {
     CryptographicParameters {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        block_cipher_mode: Some(BlockCipherMode::CMAC),
+        block_cipher_mode: Some(block_cipher_mode),
         ..Default::default()
     }
 }
 
-/// AES-GMAC tag of `data` under the key `unique_identifier` and the caller's `iv`
-/// (PKCS#11 v3.0 §2.13.4): AES-GCM `Encrypt` of an empty plaintext whose additional
-/// authenticated data is `data`. KMIP `MAC` has no IV field, so it cannot carry the caller's IV.
-fn kms_gmac_tag(
-    kms_rest_client: &KmsClient,
-    unique_identifier: &str,
-    iv: &[u8; AES_GMAC_IV_SIZE],
-    data: &[u8],
-) -> Pkcs11Result<Vec<u8>> {
-    let encrypt_ctx = EncryptContext {
-        remote_object_id: unique_identifier.to_owned(),
-        algorithm: EncryptionAlgorithm::AesGcm,
-        iv: Some(iv.to_vec()),
-        aad: Some(data.to_vec()),
-    };
-    let output = RUNTIME.block_on(kms_encrypt_async(
-        kms_rest_client,
-        &encrypt_ctx,
-        Vec::new(),
-        false,
-    ))?;
-    if output.tag.len() != AES_GMAC_TAG_SIZE {
-        return Err(Pkcs11Error::ServerError(format!(
-            "AES-GMAC: the KMS returned a {}-byte tag, expected {AES_GMAC_TAG_SIZE}",
-            output.tag.len()
-        )));
-    }
-    Ok(output.tag)
-}
-
-/// Computes the AES-CMAC (KMIP `MAC`) or the AES-GMAC tag (AES-GCM `Encrypt`, see
-/// [`kms_gmac_tag`]) of `data`.
+/// Computes the AES-CMAC or the AES-GMAC tag (PKCS#11 v3.0 §2.13.4) of `data` with the KMIP
+/// `MAC` operation. GMAC passes the caller's IV (the `IVCounterNonce` extension of `MAC`), so
+/// it runs as the OpenSSL provider's `GMAC`; the server answers `IV || tag` and the signature
+/// is the tag.
 pub(crate) fn kms_mac(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
     algorithm: MacAlgorithm,
     data: &[u8],
 ) -> Pkcs11Result<Vec<u8>> {
+    let (mode, iv) = match algorithm {
+        MacAlgorithm::AesCmac => (BlockCipherMode::CMAC, None),
+        MacAlgorithm::AesGmac { iv } => (BlockCipherMode::GCM, Some(iv.to_vec())),
+    };
+    let request = MAC {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters: Some(aes_mac_parameters(mode)),
+        data: Some(data.to_vec()),
+        i_v_counter_nonce: iv,
+        ..Default::default()
+    };
+    let response = RUNTIME.block_on(kms_rest_client.mac(request))?;
+    let mac_data = response.mac_data.ok_or_else(|| {
+        Pkcs11Error::ServerError("MAC response does not contain MAC data".to_owned())
+    })?;
     match algorithm {
-        MacAlgorithm::AesCmac => {
-            let request = MAC {
-                unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
-                cryptographic_parameters: Some(cmac_cryptographic_parameters()),
-                data: Some(data.to_vec()),
-                ..Default::default()
-            };
-            let response = RUNTIME.block_on(kms_rest_client.mac(request))?;
-            response.mac_data.ok_or_else(|| {
-                Pkcs11Error::ServerError("MAC response does not contain MAC data".to_owned())
-            })
-        }
-        MacAlgorithm::AesGmac { iv } => kms_gmac_tag(kms_rest_client, unique_identifier, &iv, data),
+        MacAlgorithm::AesCmac => Ok(mac_data),
+        MacAlgorithm::AesGmac { iv } => match mac_data.strip_prefix(iv.as_slice()) {
+            Some(tag) if tag.len() == AES_GMAC_TAG_SIZE => Ok(tag.to_vec()),
+            _ => Err(Pkcs11Error::ServerError(format!(
+                "AES-GMAC: the KMS returned {} bytes, expected the IV and a {AES_GMAC_TAG_SIZE}-byte tag",
+                mac_data.len()
+            ))),
+        },
     }
 }
 
-/// Verifies `mac` (the exact output of [`kms_mac`]) over `data`; anything but a valid MAC is
-/// [`Pkcs11Error::SignatureInvalid`]. AES-CMAC uses KMIP `MACVerify`; AES-GMAC recomputes the
-/// tag with [`kms_gmac_tag`] and compares it in constant time.
+/// Verifies `mac` (the exact output of [`kms_mac`]) over `data` with KMIP `MACVerify`; anything
+/// but a valid MAC is [`Pkcs11Error::SignatureInvalid`]. For AES-GMAC the `MACData` is the
+/// caller's IV followed by the tag.
 pub(crate) fn kms_mac_verify(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
@@ -1546,32 +1527,24 @@ pub(crate) fn kms_mac_verify(
     data: &[u8],
     mac: &[u8],
 ) -> Pkcs11Result<()> {
-    match algorithm {
-        MacAlgorithm::AesCmac => {
-            let request = MACVerify {
-                unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
-                cryptographic_parameters: Some(cmac_cryptographic_parameters()),
-                data: data.to_vec(),
-                mac_data: mac.to_vec(),
-                correlation_value: None,
-                init_indicator: None,
-                final_indicator: None,
-            };
-            let response = RUNTIME.block_on(kms_rest_client.mac_verify(request))?;
-            match response.validity_indicator {
-                Some(ValidityIndicator::Valid) => Ok(()),
-                Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
-                    Err(Pkcs11Error::SignatureInvalid)
-                }
-            }
-        }
-        MacAlgorithm::AesGmac { iv } => {
-            let tag = kms_gmac_tag(kms_rest_client, unique_identifier, &iv, data)?;
-            if tag.len() == mac.len() && openssl::memcmp::eq(&tag, mac) {
-                Ok(())
-            } else {
-                Err(Pkcs11Error::SignatureInvalid)
-            }
+    let (mode, mac_data) = match algorithm {
+        MacAlgorithm::AesCmac => (BlockCipherMode::CMAC, mac.to_vec()),
+        MacAlgorithm::AesGmac { iv } => (BlockCipherMode::GCM, [iv.as_slice(), mac].concat()),
+    };
+    let request = MACVerify {
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
+        cryptographic_parameters: Some(aes_mac_parameters(mode)),
+        data: data.to_vec(),
+        mac_data,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    let response = RUNTIME.block_on(kms_rest_client.mac_verify(request))?;
+    match response.validity_indicator {
+        Some(ValidityIndicator::Valid) => Ok(()),
+        Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
+            Err(Pkcs11Error::SignatureInvalid)
         }
     }
 }

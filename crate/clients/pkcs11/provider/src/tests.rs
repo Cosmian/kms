@@ -401,8 +401,8 @@ fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
 }
 
 /// AES-CMAC and the PKCS#11 AES-GMAC (caller IV, tag only) through the provider backend against a
-/// live KMS: the tags are the standard ones, tampering is rejected, and the key's usage bits
-/// decide what works (GMAC runs as an `Encrypt`, CMAC as a KMIP `MAC`).
+/// live KMS: the tags are the standard ones, tampering is rejected, and both run as KMIP `MAC`, so
+/// they need the key's MAC Generate / MAC Verify usage bits.
 #[test]
 #[serial]
 fn test_aes_mac_against_the_kms() -> Pkcs11Result<()> {
@@ -438,40 +438,37 @@ fn test_aes_mac_against_the_kms() -> Pkcs11Result<()> {
         )
         .map_err(|e| to_error(&e))?;
 
-    for key in [&mac_key, &plain_key] {
-        let id = key.remote_id();
-        let key_bytes = key.raw_bytes().map_err(|e| to_error(&e))?;
-        let expected = aes_gmac(&key_bytes, iv, &data).map_err(|e| to_error(&e))?;
-        let expected_tag = expected.get(AES_GMAC_IV_SIZE..).unwrap_or_default();
-
-        // GMAC: the signature is the 16-byte tag of the standard algorithm for the caller's IV.
-        let tag = backend.mac(id, gmac, &data).map_err(|e| to_error(&e))?;
-        assert_eq!(tag, expected_tag);
-        backend
-            .mac_verify(id, gmac, &data, &tag)
-            .map_err(|e| to_error(&e))?;
-
-        let mut flipped = tag.clone();
-        flipped[0] ^= 0xFF;
-        let other_iv = MacAlgorithm::AesGmac {
-            iv: [0x43; AES_GMAC_IV_SIZE],
-        };
-        for (algorithm, message, signature) in [
-            (gmac, data.as_slice(), flipped.as_slice()),
-            (other_iv, data.as_slice(), tag.as_slice()),
-            (gmac, b"another message".as_slice(), tag.as_slice()),
-        ] {
-            assert!(matches!(
-                backend.mac_verify(id, algorithm, message, signature),
-                Err(ModuleError::SignatureInvalid)
-            ));
-        }
-    }
-
-    // CMAC needs the MAC Generate / MAC Verify bits: only the key made with CKA_SIGN has them.
     let id = mac_key.remote_id();
     let key_bytes = mac_key.raw_bytes().map_err(|e| to_error(&e))?;
+    let expected = aes_gmac(&key_bytes, iv, &data).map_err(|e| to_error(&e))?;
+    let expected_tag = expected.get(AES_GMAC_IV_SIZE..).unwrap_or_default();
+
+    // GMAC: the signature is the 16-byte tag of the standard algorithm for the caller's IV.
+    let tag = backend.mac(id, gmac, &data).map_err(|e| to_error(&e))?;
+    assert_eq!(tag, expected_tag);
+    backend
+        .mac_verify(id, gmac, &data, &tag)
+        .map_err(|e| to_error(&e))?;
+
+    let mut flipped = tag.clone();
+    flipped[0] ^= 0xFF;
+    let other_iv = MacAlgorithm::AesGmac {
+        iv: [0x43; AES_GMAC_IV_SIZE],
+    };
+    for (algorithm, message, signature) in [
+        (gmac, data.as_slice(), flipped.as_slice()),
+        (other_iv, data.as_slice(), tag.as_slice()),
+        (gmac, b"another message".as_slice(), tag.as_slice()),
+    ] {
+        assert!(matches!(
+            backend.mac_verify(id, algorithm, message, signature),
+            Err(ModuleError::SignatureInvalid)
+        ));
+    }
+
+    // CMAC with the same key.
     let expected = aes_cmac(&key_bytes, &data).map_err(|e| to_error(&e))?;
+
     let tag = backend
         .mac(id, MacAlgorithm::AesCmac, &data)
         .map_err(|e| to_error(&e))?;
@@ -485,9 +482,12 @@ fn test_aes_mac_against_the_kms() -> Pkcs11Result<()> {
         backend.mac_verify(id, MacAlgorithm::AesCmac, &data, &flipped),
         Err(ModuleError::SignatureInvalid)
     ));
-    backend
-        .mac(plain_key.remote_id(), MacAlgorithm::AesCmac, &data)
-        .unwrap_err();
+    // Without the MAC bits neither CMAC nor GMAC is allowed.
+    for algorithm in [MacAlgorithm::AesCmac, gmac] {
+        backend
+            .mac(plain_key.remote_id(), algorithm, &data)
+            .unwrap_err();
+    }
     Ok(())
 }
 

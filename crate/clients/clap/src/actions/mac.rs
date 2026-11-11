@@ -203,6 +203,7 @@ impl MacAction {
                 unique_identifier: unique_identifier.clone(),
                 cryptographic_parameters: Some(cryptographic_parameters),
                 data,
+                i_v_counter_nonce: None,
                 correlation_value,
                 init_indicator,
                 final_indicator,

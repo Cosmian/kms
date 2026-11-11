@@ -23,10 +23,9 @@ pub enum MacAlgorithm {
     /// `CKM_AES_CMAC` (NIST SP 800-38B), through the KMIP `MAC` operation: the 16-byte tag.
     AesCmac,
     /// `CKM_AES_GMAC` (PKCS#11 v3.0 §2.13.4, NIST SP 800-38D) with the caller's IV, as in
-    /// PKCS#11: the signature is the 16-byte tag. KMIP `MAC` has no IV field, so the KMS runs it
-    /// as AES-GCM `Encrypt` of an empty plaintext whose AAD is the message (verification
-    /// recomputes the tag). Residual: OpenSSL classes AES-GCM with a caller-supplied IV as not
-    /// FIPS-approved, unlike the KMIP `MAC` GMAC, which uses the provider's `GMAC`.
+    /// PKCS#11: the signature is the 16-byte tag. The KMS computes it with the KMIP `MAC`
+    /// operation, passing the IV in its `IVCounterNonce` field, so it runs as the OpenSSL
+    /// provider's `GMAC` (the FIPS provider in a FIPS build).
     AesGmac {
         /// IV from `CK_GCM_PARAMS`; it must not repeat under one key.
         iv: [u8; AES_GMAC_IV_SIZE],
