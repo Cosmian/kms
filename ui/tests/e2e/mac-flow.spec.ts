@@ -60,6 +60,18 @@ test.describe("MAC compute", () => {
         expect(text).toMatch(/MAC \(hex\):\s*[0-9a-f]+/i);
     });
 
+    test("compute AES-CMAC returns 16-byte hex MAC (issue #1367)", async ({ page }) => {
+        const keyId = await createHmacKey(page, "AES");
+
+        await gotoAndWait(page, "/ui/mac/compute");
+        await page.fill('input[placeholder="Enter key ID"]', keyId);
+        await selectOption(page, "mac-type-select", "AES-CMAC");
+        await page.fill('textarea[placeholder="e.g. 0011223344556677"]', DATA_HEX);
+        const text = await submitAndWaitForResponse(page);
+
+        expect(text).toMatch(/MAC \(hex\):\s*[0-9a-f]{32}\b/i);
+    });
+
     test("compute without key ID shows error", async ({ page }) => {
         await gotoAndWait(page, "/ui/mac/compute");
         // Leave key ID blank; fill only data.
@@ -124,6 +136,37 @@ test.describe("MAC compute → verify roundtrip", () => {
 
         expect(verifyText).toMatch(/valid/i);
         expect(verifyText).not.toMatch(/invalid/i);
+    });
+
+    test("AES-GMAC compute then verify roundtrip, tampered MAC is Invalid (issue #1367)", async ({ page }) => {
+        const keyId = await createHmacKey(page, "AES");
+
+        // ── Compute: the MAC is the 12-byte IV followed by the 16-byte tag (56 hex digits) ──
+        await gotoAndWait(page, "/ui/mac/compute");
+        await page.fill('input[placeholder="Enter key ID"]', keyId);
+        await selectOption(page, "mac-type-select", "AES-GMAC");
+        await page.fill('textarea[placeholder="e.g. 0011223344556677"]', DATA_HEX);
+        const computeText = await submitAndWaitForResponse(page);
+        const macMatch = computeText.match(/MAC \(hex\):\s*([0-9a-f]{56})\b/i);
+        expect(macMatch).not.toBeNull();
+        const macHex = macMatch![1];
+
+        // ── Verify the MAC, then a MAC whose last tag digit is changed ──────────
+        const verify = async (mac: string): Promise<string> => {
+            await gotoAndWait(page, "/ui/mac/verify");
+            await page.fill('input[placeholder="Enter key ID"]', keyId);
+            await selectOption(page, "mac-verify-type-select", "AES-GMAC");
+            await page.fill('textarea[placeholder="e.g. 0011223344556677889900"]', DATA_HEX);
+            await page.fill('textarea[placeholder="e.g. F91DDB96D12CF8FA..."]', mac);
+            return submitAndWaitForResponse(page);
+        };
+        const validText = await verify(macHex);
+        expect(validText).toMatch(/valid/i);
+        expect(validText).not.toMatch(/invalid/i);
+
+        const lastDigit = macHex.slice(-1) === "0" ? "1" : "0";
+        const tamperedText = await verify(macHex.slice(0, -1) + lastDigit);
+        expect(tamperedText).toMatch(/invalid/i);
     });
 
     test("verify with wrong MAC data returns Invalid", async ({ page }) => {

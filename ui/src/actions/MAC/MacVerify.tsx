@@ -4,37 +4,23 @@ import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import KeyIdInput from "../../components/common/KeyIdInput";
+import { buildCryptographicParameters, MAC_HASHING_ALGORITHMS, MAC_TYPES, type MacType } from "./macParams";
 
 interface MacVerifyFormData {
     keyId?: string;
     tags?: string[];
+    macType: MacType;
     algorithm: string;
     data: string;
     macData: string;
 }
 
-const MAC_HASHING_ALGORITHMS = [
-    { label: "SHA-1", value: "SHA1" },
-    { label: "SHA-224", value: "SHA224" },
-    { label: "SHA-256", value: "SHA256" },
-    { label: "SHA-384", value: "SHA384" },
-    { label: "SHA-512", value: "SHA512" },
-    { label: "SHA3-224", value: "SHA3224" },
-    { label: "SHA3-256", value: "SHA3256" },
-    { label: "SHA3-384", value: "SHA3384" },
-    { label: "SHA3-512", value: "SHA3512" },
-];
-
-const buildMacVerifyRequest = (keyId: string, algorithm: string, dataHex: string, macDataHex: string) => ({
+const buildMacVerifyRequest = (keyId: string, macType: MacType, algorithm: string, dataHex: string, macDataHex: string) => ({
     tag: "MACVerify",
     type: "Structure",
     value: [
         { tag: "UniqueIdentifier", type: "TextString", value: keyId },
-        {
-            tag: "CryptographicParameters",
-            type: "Structure",
-            value: [{ tag: "HashingAlgorithm", type: "Enumeration", value: algorithm }],
-        },
+        buildCryptographicParameters(macType, algorithm),
         { tag: "Data", type: "ByteString", value: dataHex },
         { tag: "MACData", type: "ByteString", value: macDataHex },
     ],
@@ -44,6 +30,7 @@ const MacVerifyForm: React.FC = () => {
     const [form] = Form.useForm<MacVerifyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const { t } = useTranslation("actions");
+    const macType = Form.useWatch("macType", form) ?? "HMAC";
     const [isValid, setIsValid] = useState<boolean | undefined>(undefined);
 
     const onFinish = async (values: MacVerifyFormData) => {
@@ -53,7 +40,7 @@ const MacVerifyForm: React.FC = () => {
             if (id == undefined) {
                 throw new Error(t("macVerify.missingKeyId"));
             }
-            const request = buildMacVerifyRequest(id, values.algorithm, values.data, values.macData);
+            const request = buildMacVerifyRequest(id, values.macType, values.algorithm, values.data, values.macData);
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = JSON.parse(result_str) as { tag?: string; value?: Array<{ tag: string; type: string; value: unknown }> };
@@ -78,7 +65,7 @@ const MacVerifyForm: React.FC = () => {
                 <p>{t("macVerify.introHex")}</p>
             </div>
 
-            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ macType: "HMAC", algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("macVerify.keyIdentification")}</h3>
@@ -96,14 +83,20 @@ const MacVerifyForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <Form.Item
-                            name="algorithm"
-                            label={t("macVerify.hashingAlgorithm")}
-                            rules={[{ required: true, message: t("macVerify.pleaseSelectHashingAlgorithm") }]}
-                            help={t("macVerify.hashingAlgorithmHelp")}
-                        >
-                            <Select data-testid="mac-verify-algorithm-select" options={MAC_HASHING_ALGORITHMS} />
+                        <Form.Item name="macType" label={t("macVerify.macType")} help={t("macVerify.macTypeHelp")}>
+                            <Select data-testid="mac-verify-type-select" options={MAC_TYPES} />
                         </Form.Item>
+                        {macType === "HMAC" && (
+                            <Form.Item
+                                name="algorithm"
+                                label={t("macVerify.hashingAlgorithm")}
+                                rules={[{ required: true, message: t("macVerify.pleaseSelectHashingAlgorithm") }]}
+                                help={t("macVerify.hashingAlgorithmHelp")}
+                            >
+                                <Select data-testid="mac-verify-algorithm-select" options={MAC_HASHING_ALGORITHMS} />
+                            </Form.Item>
+                        )}
+                        {macType === "AES-GMAC" && <p>{t("macVerify.gmacHelp")}</p>}
                     </Card>
 
                     <Card>
