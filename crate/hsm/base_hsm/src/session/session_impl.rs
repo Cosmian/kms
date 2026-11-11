@@ -4292,21 +4292,37 @@ mod tests {
         let mut params = gmac_params(&mut iv).unwrap();
         let mechanism = gmac_mechanism(&mut params).unwrap();
 
-        assert_eq!(mechanism.mechanism, CKM_AES_GMAC);
+        // Copy the fields first: `CK_MECHANISM` and `CK_GCM_PARAMS` are packed on Windows and
+        // `assert_eq!` would take unaligned references to them.
+        let (mechanism_type, parameter_len, parameter_ptr) = (
+            mechanism.mechanism,
+            mechanism.ulParameterLen,
+            mechanism.pParameter,
+        );
+        let (p_iv, iv_len, iv_bits, tag_bits, p_aad, aad_len) = (
+            params.pIv,
+            params.ulIvLen,
+            params.ulIvBits,
+            params.ulTagBits,
+            params.pAAD,
+            params.ulAADLen,
+        );
+
+        assert_eq!(mechanism_type, CKM_AES_GMAC);
         assert_eq!(
-            usize::try_from(mechanism.ulParameterLen).unwrap(),
+            usize::try_from(parameter_len).unwrap(),
             size_of::<CK_AES_GCM_PARAMS>()
         );
         assert_eq!(
-            mechanism.pParameter,
+            parameter_ptr,
             ptr::from_mut(&mut params).cast::<std::ffi::c_void>()
         );
-        assert_eq!(params.pIv, iv_ptr);
-        assert_eq!(params.ulIvLen, 12);
-        assert_eq!(params.ulIvBits, 96);
-        assert_eq!(params.ulTagBits, 128);
-        assert!(params.pAAD.is_null());
-        assert_eq!(params.ulAADLen, 0);
+        assert_eq!(p_iv, iv_ptr);
+        assert_eq!(iv_len, 12);
+        assert_eq!(iv_bits, 96);
+        assert_eq!(tag_bits, 128);
+        assert!(p_aad.is_null());
+        assert_eq!(aad_len, 0);
     }
 
     #[test]
