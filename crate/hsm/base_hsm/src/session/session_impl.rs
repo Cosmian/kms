@@ -4284,6 +4284,31 @@ mod tests {
         }
     }
 
+    /// `CKM_AES_GMAC` takes a `CK_GCM_PARAMS` (PKCS#11 v3.0 section 2.13.4), not a raw IV.
+    #[test]
+    fn gmac_mechanism_carries_gcm_params() {
+        let mut iv = [0x11_u8; AES_GMAC_IV_LENGTH];
+        let iv_ptr = iv.as_mut_ptr();
+        let mut params = gmac_params(&mut iv).unwrap();
+        let mechanism = gmac_mechanism(&mut params).unwrap();
+
+        assert_eq!(mechanism.mechanism, CKM_AES_GMAC);
+        assert_eq!(
+            usize::try_from(mechanism.ulParameterLen).unwrap(),
+            size_of::<CK_AES_GCM_PARAMS>()
+        );
+        assert_eq!(
+            mechanism.pParameter,
+            ptr::from_mut(&mut params).cast::<std::ffi::c_void>()
+        );
+        assert_eq!(params.pIv, iv_ptr);
+        assert_eq!(params.ulIvLen, 12);
+        assert_eq!(params.ulIvBits, 96);
+        assert_eq!(params.ulTagBits, 128);
+        assert!(params.pAAD.is_null());
+        assert_eq!(params.ulAADLen, 0);
+    }
+
     #[test]
     fn caller_gcm_iv_policy_development_token() {
         let development_token = AesGcmCapabilities {

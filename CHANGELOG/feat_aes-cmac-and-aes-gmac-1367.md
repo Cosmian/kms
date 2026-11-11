@@ -7,7 +7,7 @@
 - Add NIST known-answer test vectors for AES-CMAC and AES-GMAC
 
 ### HSM
-- `MacAlgorithm` gains `AesCmac` (`CKM_AES_CMAC`) and `AesGmac` (`CKM_AES_GMAC`); the PKCS#11 HSM backends now delegate HMAC, AES-CMAC and AES-GMAC to the HSM when the AES key is HSM-resident, instead of answering "not supported". `CKM_AES_GMAC` is sent with a standard `CK_GCM_PARAMS`
+- `MacAlgorithm` gains `AesCmac` (`CKM_AES_CMAC`) and `AesGmac` (`CKM_AES_GMAC`); the PKCS#11 HSM backends now delegate AES-CMAC and AES-GMAC to the HSM when the AES key is HSM-resident, instead of answering "not supported". `CKM_AES_GMAC` is sent with a standard `CK_GCM_PARAMS`. The HMAC variants are mapped to `CKM_*_HMAC` too, but only AES-typed HSM keys reach this path, so HMAC on an HSM key stays unavailable until a generic-secret key type is supported
 
 ### CLI
 - Add `ckms mac compute|verify --mode {hmac,cmac,gmac}`. The AES key needs the `MAC Generate` / `MAC Verify` usage bits, e.g. `ckms sym keys import -f aes key.bin --key-usage mac-generate --key-usage mac-verify`
