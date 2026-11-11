@@ -3933,7 +3933,11 @@ Compute a MAC over data with a MAC key
 ### Arguments
 `--mac-key-id [-k] <MAC_KEY_ID>` Locate an object which has a link to this MAC key id
 
-`--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
+`--mode [-M] <MODE>` MAC mode: `hmac` (default, needs `--algorithm`), `cmac` (AES-CMAC) or `gmac` (AES-GMAC). The key must be an AES key with the MAC Generate / MAC Verify usage bits (keys from `sym keys create` do not have them; e.g. `ckms sym keys import -f aes key.bin --key-usage mac-generate --key-usage mac-verify`). A `cmac` MAC is the 16-byte tag; a `gmac` MAC is the IV (12 bytes) followed by the tag (16 bytes), hex encoded (56 characters)
+
+Possible values:  `"hmac", "cmac", "gmac"` [default: `"hmac"`]
+
+`--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive); required for `hmac`, forbidden for `cmac`/`gmac`.
 
 Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 
@@ -3962,7 +3966,11 @@ Verify a MAC over data with a MAC key
 ### Arguments
 `--mac-key-id [-k] <MAC_KEY_ID>` Locate an object which has a link to this MAC key id
 
-`--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive)
+`--mode [-M] <MODE>` MAC mode: `hmac` (default, needs `--algorithm`), `cmac` (AES-CMAC) or `gmac` (AES-GMAC). For `gmac` the MAC to verify is the IV (12 bytes) followed by the tag (16 bytes), in hex. The key must be an AES key with the MAC Generate / MAC Verify usage bits (e.g. imported with `ckms sym keys import -f aes key.bin --key-usage mac-generate --key-usage mac-verify`)
+
+Possible values:  `"hmac", "cmac", "gmac"` [default: `"hmac"`]
+
+`--algorithm [-a] <ALGORITHM>` Hashing algorithm (case insensitive); required for `hmac`, forbidden for `cmac`/`gmac`.
 
 Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"`
 

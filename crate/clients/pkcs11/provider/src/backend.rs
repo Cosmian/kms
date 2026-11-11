@@ -18,8 +18,8 @@ use cosmian_pkcs11_module::{
     core::object::Object,
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm,
-        MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm,
-        SymmetricKey, Version,
+        MacAlgorithm, MacUsage, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
+        SignatureAlgorithm, SymmetricKey, Version,
     },
 };
 use zeroize::Zeroizing;
@@ -29,8 +29,8 @@ use crate::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
         kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_generate_random,
-        kms_import_object, kms_import_symmetric_key, kms_revoke_object, kms_sign, kms_verify,
-        locate_kms_objects,
+        kms_import_object, kms_import_symmetric_key, kms_mac, kms_mac_verify, kms_revoke_object,
+        kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -152,6 +152,7 @@ impl CliBackend {
             id.to_owned(),
             algorithm,
             key_size,
+            attributes.cryptographic_usage_mask,
         )))
     }
 
@@ -191,6 +192,7 @@ impl CliBackend {
             id.to_owned(),
             key_algorithm,
             key_size,
+            attributes.cryptographic_usage_mask,
         ))))
     }
 
@@ -581,7 +583,24 @@ impl Backend for CliBackend {
         sensitive: bool,
         label: Option<&str>,
     ) -> ModuleResult<Arc<dyn SymmetricKey>> {
-        trace!("generate_key: {algorithm:?}-{key_length}, {label:?}");
+        self.generate_key_with_mac_usage(
+            algorithm,
+            key_length,
+            sensitive,
+            label,
+            MacUsage::default(),
+        )
+    }
+
+    fn generate_key_with_mac_usage(
+        &self,
+        algorithm: KeyAlgorithm,
+        key_length: usize,
+        sensitive: bool,
+        label: Option<&str>,
+        mac_usage: MacUsage,
+    ) -> ModuleResult<Arc<dyn SymmetricKey>> {
+        trace!("generate_key: {algorithm:?}-{key_length}, {label:?}, {mac_usage:?}");
 
         if algorithm != KeyAlgorithm::Aes256 {
             return Err(ModuleError::Backend(Box::new(pkcs11_error!(
@@ -596,6 +615,7 @@ impl Backend for CliBackend {
             key_length,
             sensitive,
             label,
+            mac_usage,
         )?;
         Ok(Arc::new(Pkcs11SymmetricKey::try_from_kms_object(
             kms_object,
@@ -688,7 +708,24 @@ impl Backend for CliBackend {
         )
         .map_err(Into::into)
     }
+
+    fn mac(&self, remote_id: &str, algorithm: MacAlgorithm, data: &[u8]) -> ModuleResult<Vec<u8>> {
+        debug!("mac: remote_id: {remote_id}, algorithm: {algorithm:?}");
+        kms_mac(&self.kms_rest_client, remote_id, algorithm, data).map_err(Into::into)
+    }
+
+    fn mac_verify(
+        &self,
+        remote_id: &str,
+        algorithm: MacAlgorithm,
+        data: &[u8],
+        mac: &[u8],
+    ) -> ModuleResult<()> {
+        debug!("mac_verify: remote_id: {remote_id}, algorithm: {algorithm:?}");
+        kms_mac_verify(&self.kms_rest_client, remote_id, algorithm, data, mac).map_err(Into::into)
+    }
 }
+
 #[cfg(test)]
 mod characterization_tests {
     //! Characterization tests for the `cosmian_pkcs11` backend serial number.

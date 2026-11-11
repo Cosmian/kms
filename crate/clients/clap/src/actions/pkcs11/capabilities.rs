@@ -1273,6 +1273,8 @@ fn run_aes_checks(
                 ("CKM_AES_CBC", "encrypt/decrypt round-trip"),
                 ("CKM_AES_CBC_PAD", "encrypt/decrypt round-trip"),
                 ("CKM_AES_GCM", "encrypt/decrypt round-trip"),
+                ("CKM_AES_CMAC", "sign/verify round-trip"),
+                ("CKM_AES_GMAC", "sign/verify round-trip"),
             ] {
                 results.push(CheckResult {
                     name,
@@ -1327,6 +1329,27 @@ fn run_aes_checks(
         });
     }
 
+    for (ck_mechanism, name) in [
+        (CKM_AES_CMAC, "CKM_AES_CMAC"),
+        (CKM_AES_GMAC, "CKM_AES_GMAC"),
+    ] {
+        let outcome = match aes_mac_round_trip(
+            func_list,
+            session,
+            key_handle,
+            ck_mechanism,
+            arbitrary_plaintext,
+        ) {
+            Ok(()) => Outcome::Pass,
+            Err(e) => Outcome::Fail(e),
+        };
+        results.push(CheckResult {
+            name,
+            detail: "sign/verify round-trip".to_owned(),
+            outcome,
+        });
+    }
+
     if let Some(c_destroy) = func_list.C_DestroyObject {
         // SAFETY: `key_handle` is a valid handle returned by `C_GenerateKey` above.
         let _ = unsafe { c_destroy(session, key_handle) };
@@ -1354,6 +1377,8 @@ fn generate_aes_key(
     let mut value_len: CK_ULONG = 32;
     let mut sensitive_true: CK_BBOOL = CK_TRUE;
     let mut extractable_true: CK_BBOOL = CK_TRUE;
+    // `CKA_SIGN` / `CKA_VERIFY` make the generated key usable with `CKM_AES_CMAC`.
+    let mut mac_true: CK_BBOOL = CK_TRUE;
     let label = "ckms-pkcs11-capabilities-aes";
     let mut template = [
         CK_ATTRIBUTE {
@@ -1380,6 +1405,16 @@ fn generate_aes_key(
             type_: CKA_VALUE_LEN,
             pValue: (&raw mut value_len).cast::<c_void>(),
             ulValueLen: ck_ulong(size_of::<CK_ULONG>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: pkcs11_sys::CKA_SIGN,
+            pValue: (&raw mut mac_true).cast::<c_void>(),
+            ulValueLen: ck_ulong(size_of::<CK_BBOOL>())?,
+        },
+        CK_ATTRIBUTE {
+            type_: pkcs11_sys::CKA_VERIFY,
+            pValue: (&raw mut mac_true).cast::<c_void>(),
+            ulValueLen: ck_ulong(size_of::<CK_BBOOL>())?,
         },
     ];
 
@@ -1526,6 +1561,120 @@ fn aes_round_trip(
 
     if decrypted != plaintext {
         return Err("decrypted plaintext does not match the original".to_owned());
+    }
+    Ok(())
+}
+
+/// `CKM_AES_CMAC` / `CKM_AES_GMAC` sign/verify round-trip; a tampered signature must be
+/// `CKR_SIGNATURE_INVALID`. `CKM_AES_GMAC` takes a `CK_GCM_PARAMS` (12-byte IV, 128-bit tag, no
+/// AAD) and its signature is the tag.
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+fn aes_mac_round_trip(
+    func_list: &CK_FUNCTION_LIST,
+    session: CK_SESSION_HANDLE,
+    key_handle: CK_OBJECT_HANDLE,
+    mechanism_type: CK_MECHANISM_TYPE,
+    message: &[u8],
+) -> Result<(), String> {
+    let mut iv = [0x5A_u8; AES_GCM_IV_SIZE];
+    let mut gmac_params = CK_GCM_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: ck_ulong(iv.len())?,
+        ulIvBits: ck_ulong(iv.len() * 8)?,
+        pAAD: ptr::null_mut(),
+        ulAADLen: 0,
+        ulTagBits: 128,
+    };
+    let mut mechanism = if mechanism_type == CKM_AES_GMAC {
+        CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: (&raw mut gmac_params).cast::<c_void>(),
+            ulParameterLen: ck_ulong(size_of::<CK_GCM_PARAMS>())?,
+        }
+    } else {
+        CK_MECHANISM {
+            mechanism: mechanism_type,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        }
+    };
+    let mut data = message.to_vec();
+    let data_len = ck_ulong(data.len())?;
+
+    let c_sign_init = func_list
+        .C_SignInit
+        .ok_or_else(|| "C_SignInit not present in function list".to_owned())?;
+    // SAFETY: `mechanism` and the GCM parameters it points to are live locals.
+    let rv = unsafe { c_sign_init(session, &raw mut mechanism, key_handle) };
+    if rv != CKR_OK {
+        return Err(format!("C_SignInit returned {} (0x{rv:08X})", ckr_name(rv)));
+    }
+    let c_sign = func_list
+        .C_Sign
+        .ok_or_else(|| "C_Sign not present in function list".to_owned())?;
+    let mut tag = vec![0_u8; 16];
+    let mut tag_len = ck_ulong(tag.len())?;
+    // SAFETY: `data` holds `data_len` bytes; `tag` holds `tag_len` writable bytes.
+    let rv = unsafe {
+        c_sign(
+            session,
+            data.as_mut_ptr(),
+            data_len,
+            tag.as_mut_ptr(),
+            &raw mut tag_len,
+        )
+    };
+    if rv != CKR_OK {
+        return Err(format!("C_Sign returned {} (0x{rv:08X})", ckr_name(rv)));
+    }
+    tag.truncate(ck_usize(tag_len)?);
+    if tag.len() != 16 {
+        return Err(format!("expected a 16-byte MAC, got {} bytes", tag.len()));
+    }
+
+    let c_verify_init = func_list
+        .C_VerifyInit
+        .ok_or_else(|| "C_VerifyInit not present in function list".to_owned())?;
+    let c_verify = func_list
+        .C_Verify
+        .ok_or_else(|| "C_Verify not present in function list".to_owned())?;
+    let mut tampered = tag.clone();
+    if let Some(first) = tampered.first_mut() {
+        *first ^= 0xFF;
+    }
+    for (signature, expected) in [
+        (&mut tag, CKR_OK),
+        (&mut tampered, pkcs11_sys::CKR_SIGNATURE_INVALID),
+    ] {
+        // SAFETY: `mechanism` and the GCM parameters it points to are live locals.
+        let rv = unsafe { c_verify_init(session, &raw mut mechanism, key_handle) };
+        if rv != CKR_OK {
+            return Err(format!(
+                "C_VerifyInit returned {} (0x{rv:08X})",
+                ckr_name(rv)
+            ));
+        }
+        let signature_len = ck_ulong(signature.len())?;
+        // SAFETY: `data` holds `data_len` bytes; `signature` holds `signature_len` bytes.
+        let rv = unsafe {
+            c_verify(
+                session,
+                data.as_mut_ptr(),
+                data_len,
+                signature.as_mut_ptr(),
+                signature_len,
+            )
+        };
+        if rv != expected {
+            return Err(format!(
+                "C_Verify returned {} (0x{rv:08X}), expected {}",
+                ckr_name(rv),
+                ckr_name(expected)
+            ));
+        }
     }
     Ok(())
 }

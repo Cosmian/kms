@@ -18,4 +18,14 @@ pub trait SymmetricKey: Send + Sync {
 
     /// Return raw bytes
     fn raw_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>>;
+
+    /// Whether the key's KMIP usage mask allows `MACGenerate` (reported as `CKA_SIGN`).
+    fn can_generate_mac(&self) -> bool {
+        false
+    }
+
+    /// Whether the key's KMIP usage mask allows `MACVerify` (reported as `CKA_VERIFY`).
+    fn can_verify_mac(&self) -> bool {
+        false
+    }
 }

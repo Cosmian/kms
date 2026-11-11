@@ -13,16 +13,17 @@ use std::{
 use cosmian_logger::log_init;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR,
-    CK_GCM_MESSAGE_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_GCM_MESSAGE_PARAMS, CK_GCM_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
     CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_UNAVAILABLE_INFORMATION, CKA_CLASS,
-    CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION,
-    CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN,
-    CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
-    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
-    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
-    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
+    CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKF_SIGN,
+    CKF_VERIFY, CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_CMAC,
+    CKM_AES_GCM, CKM_AES_GMAC, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS_PSS,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
+    CKR_FUNCTION_NOT_SUPPORTED, CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID,
+    CKR_SIGNATURE_LEN_RANGE, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
@@ -40,13 +41,15 @@ use crate::{
         C_GenerateKey, C_GetAttributeValue, C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo,
         C_GetMechanismList, C_GetSessionInfo, C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo,
         C_Initialize, C_MessageDecryptFinal, C_MessageDecryptInit, C_MessageEncryptFinal,
-        C_MessageEncryptInit, C_MessageSignInit, C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED,
-        SLOT_ID,
+        C_MessageEncryptInit, C_MessageSignInit, C_OpenSession, C_Sign, C_SignFinal, C_SignInit,
+        C_SignUpdate, C_Verify, C_VerifyFinal, C_VerifyInit, C_VerifyUpdate, FUNC_LIST,
+        INITIALIZED, SLOT_ID,
     },
     traits::{
-        Backend, Certificate, DataObject, DecryptContext, EncryptContext, EncryptionAlgorithm,
-        KeyAlgorithm, MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions,
-        SignatureAlgorithm, SymmetricKey, Version, register_backend,
+        AES_CMAC_TAG_SIZE, AES_GMAC_TAG_SIZE, Backend, Certificate, DataObject, DecryptContext,
+        EncryptContext, EncryptionAlgorithm, KeyAlgorithm, MacAlgorithm, MessageEncryptionOutput,
+        PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version,
+        register_backend,
     },
     utils::{ck_len, ck_ptr},
 };
@@ -277,6 +280,24 @@ impl Backend for TestBackend {
         _key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()> {
         Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn mac(&self, _remote_id: &str, algorithm: MacAlgorithm, data: &[u8]) -> ModuleResult<Vec<u8>> {
+        Ok(fake_mac(algorithm, data))
+    }
+
+    fn mac_verify(
+        &self,
+        _remote_id: &str,
+        algorithm: MacAlgorithm,
+        data: &[u8],
+        mac: &[u8],
+    ) -> ModuleResult<()> {
+        if mac == fake_mac(algorithm, data) {
+            Ok(())
+        } else {
+            Err(ModuleError::SignatureInvalid)
+        }
     }
 }
 
@@ -961,6 +982,218 @@ fn message_encrypt_returns_kms_generated_artifacts() {
 
     assert_eq!(C_CloseSession(session), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Deterministic stand-in for the KMS MAC: depends on the algorithm, the IV (GMAC) and the data
+/// length, so a test can tell whether multi-part `Update` data was buffered into a single MAC
+/// call and whether the caller's GMAC IV reached the backend.
+fn fake_mac(algorithm: MacAlgorithm, data: &[u8]) -> Vec<u8> {
+    let fill = u8::try_from(data.len()).unwrap_or(u8::MAX);
+    match algorithm {
+        MacAlgorithm::AesCmac => vec![fill; AES_CMAC_TAG_SIZE],
+        MacAlgorithm::AesGmac { iv } => vec![fill ^ iv[0]; AES_GMAC_TAG_SIZE],
+    }
+}
+
+/// `CKM_AES_CMAC` / `CKM_AES_GMAC` are listed with `CKF_SIGN | CKF_VERIFY` and AES key sizes.
+#[test]
+#[serial]
+fn mac_mechanisms_report_sign_verify_and_key_sizes() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    for mechanism in [CKM_AES_CMAC, CKM_AES_GMAC] {
+        assert!(SUPPORTED_SIGNATURE_MECHANISMS.contains(&mechanism));
+        let mut info = CK_MECHANISM_INFO::default();
+        // SAFETY: `info` is a valid, writable `CK_MECHANISM_INFO`.
+        assert_eq!(
+            unsafe { C_GetMechanismInfo(SLOT_ID, mechanism, &raw mut info) },
+            CKR_OK
+        );
+        assert_eq!(info.flags, CKF_SIGN | CKF_VERIFY);
+        assert_eq!((info.ulMinKeySize, info.ulMaxKeySize), (16, 32));
+    }
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Runs sign (one-shot, length query, too-small buffer, multi-part) and verify (one-shot,
+/// multi-part, tampered, wrong length) with `mechanism` against `TestBackend`.
+fn check_mac_sign_verify(mut mechanism: CK_MECHANISM, algorithm: MacAlgorithm) {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let mut session = CK_INVALID_HANDLE;
+    // SAFETY: session output is a valid mutable handle, with standard serial-session arguments.
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut session,
+            )
+        },
+        CKR_OK
+    );
+    let key = test_generate_key(session);
+    let mut data = b"abcd".to_vec();
+    let expected = fake_mac(algorithm, &data);
+
+    // SAFETY: the mechanism, data and output buffers outlive every call below and match the
+    // lengths passed alongside them.
+    unsafe {
+        // One-shot sign, with a length query and a too-small buffer first.
+        assert_eq!(C_SignInit(session, &raw mut mechanism, key), CKR_OK);
+        let mut mac_len = 0;
+        assert_eq!(
+            C_Sign(
+                session,
+                data.as_mut_ptr(),
+                ck_len(data.len()),
+                ptr::null_mut(),
+                &raw mut mac_len
+            ),
+            CKR_OK
+        );
+        assert_eq!(ck_to_usize(mac_len), expected.len());
+        let mut mac = vec![0_u8; expected.len()];
+        let mut small_len = ck_len(expected.len() - 1);
+        assert_eq!(
+            C_Sign(
+                session,
+                data.as_mut_ptr(),
+                ck_len(data.len()),
+                mac.as_mut_ptr(),
+                &raw mut small_len
+            ),
+            CKR_BUFFER_TOO_SMALL
+        );
+        assert_eq!(
+            C_Sign(
+                session,
+                data.as_mut_ptr(),
+                ck_len(data.len()),
+                mac.as_mut_ptr(),
+                &raw mut mac_len
+            ),
+            CKR_OK
+        );
+        assert_eq!(mac, expected);
+
+        // Multi-part sign buffers `Update` data, then issues one MAC over the 4 bytes.
+        assert_eq!(C_SignInit(session, &raw mut mechanism, key), CKR_OK);
+        let (mut first, mut second) = (b"ab".to_vec(), b"cd".to_vec());
+        assert_eq!(
+            C_SignUpdate(session, first.as_mut_ptr(), ck_len(first.len())),
+            CKR_OK
+        );
+        assert_eq!(
+            C_SignUpdate(session, second.as_mut_ptr(), ck_len(second.len())),
+            CKR_OK
+        );
+        let mut multi_part_mac = vec![0_u8; expected.len()];
+        let mut multi_part_len = ck_len(multi_part_mac.len());
+        assert_eq!(
+            C_SignFinal(
+                session,
+                multi_part_mac.as_mut_ptr(),
+                &raw mut multi_part_len
+            ),
+            CKR_OK
+        );
+        assert_eq!(multi_part_mac, expected);
+
+        // One-shot verify, then multi-part verify.
+        assert_eq!(C_VerifyInit(session, &raw mut mechanism, key), CKR_OK);
+        assert_eq!(
+            C_Verify(
+                session,
+                data.as_mut_ptr(),
+                ck_len(data.len()),
+                mac.as_mut_ptr(),
+                ck_len(mac.len())
+            ),
+            CKR_OK
+        );
+        assert_eq!(C_VerifyInit(session, &raw mut mechanism, key), CKR_OK);
+        assert_eq!(
+            C_VerifyUpdate(session, first.as_mut_ptr(), ck_len(first.len())),
+            CKR_OK
+        );
+        assert_eq!(
+            C_VerifyUpdate(session, second.as_mut_ptr(), ck_len(second.len())),
+            CKR_OK
+        );
+        assert_eq!(
+            C_VerifyFinal(session, mac.as_mut_ptr(), ck_len(mac.len())),
+            CKR_OK
+        );
+
+        // A tampered MAC is `CKR_SIGNATURE_INVALID`; a MAC of the wrong size is
+        // `CKR_SIGNATURE_LEN_RANGE`.
+        let mut tampered = mac.clone();
+        tampered[0] ^= 0xFF;
+        assert_eq!(C_VerifyInit(session, &raw mut mechanism, key), CKR_OK);
+        assert_eq!(
+            C_Verify(
+                session,
+                data.as_mut_ptr(),
+                ck_len(data.len()),
+                tampered.as_mut_ptr(),
+                ck_len(tampered.len())
+            ),
+            CKR_SIGNATURE_INVALID
+        );
+        assert_eq!(C_VerifyInit(session, &raw mut mechanism, key), CKR_OK);
+        assert_eq!(
+            C_Verify(
+                session,
+                data.as_mut_ptr(),
+                ck_len(data.len()),
+                mac.as_mut_ptr(),
+                ck_len(mac.len() - 1)
+            ),
+            CKR_SIGNATURE_LEN_RANGE
+        );
+    }
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+#[test]
+#[serial]
+fn aes_cmac_sign_verify_round_trip() {
+    check_mac_sign_verify(
+        CK_MECHANISM {
+            mechanism: CKM_AES_CMAC,
+            pParameter: ptr::null_mut(),
+            ulParameterLen: 0,
+        },
+        MacAlgorithm::AesCmac,
+    );
+}
+
+/// `CKM_AES_GMAC` (`CK_GCM_PARAMS`): the caller's IV reaches the backend and the 16-byte tag is
+/// the signature.
+#[test]
+#[serial]
+fn aes_gmac_sign_verify_round_trip() {
+    let mut iv = [0x77_u8; 12];
+    let mut params = CK_GCM_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: ck_len(iv.len()),
+        ulIvBits: ck_len(iv.len() * 8),
+        pAAD: ptr::null_mut(),
+        ulAADLen: 0,
+        ulTagBits: 128,
+    };
+    check_mac_sign_verify(
+        CK_MECHANISM {
+            mechanism: CKM_AES_GMAC,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: ck_len(std::mem::size_of::<CK_GCM_PARAMS>()),
+        },
+        MacAlgorithm::AesGmac { iv },
+    );
 }
 
 /// `C_GetAttributeValue` must not write past the caller-declared `ulValueLen`:

@@ -5,7 +5,7 @@ use std::sync::{
 
 use zeroize::Zeroizing;
 
-use super::{SignatureAlgorithm, SymmetricKey};
+use super::{MacAlgorithm, MacUsage, SignatureAlgorithm, SymmetricKey};
 use crate::{
     ModuleError, ModuleResult,
     core::object::Object,
@@ -82,6 +82,17 @@ pub struct EncryptContext {
     /// Additional Authenticated Data (AAD), used by `CKM_AES_GCM` (PKCS#11 v3.0).
     /// Always `None` for non-AEAD mechanisms.
     pub aad: Option<Vec<u8>>,
+}
+
+/// State of an active AES-CMAC / AES-GMAC `C_SignInit` / `C_VerifyInit` operation on a secret key.
+#[derive(Debug)]
+pub struct MacContext {
+    /// KMS unique identifier of the secret key.
+    pub remote_object_id: String,
+    /// MAC algorithm selected by the mechanism.
+    pub algorithm: MacAlgorithm,
+    /// Data buffered by `C_SignUpdate` / `C_VerifyUpdate`; the KMS receives it in one MAC call.
+    pub payload: Option<Vec<u8>>,
 }
 
 /// Detached AES-GCM artifacts returned by a PKCS#11 v3 message-encryption call.
@@ -253,6 +264,20 @@ pub trait Backend: Send + Sync {
         label: Option<&str>,
     ) -> ModuleResult<Arc<dyn SymmetricKey>>;
 
+    /// Like [`Backend::generate_key`], and the key may also MAC as `mac_usage` says (`CKA_SIGN`
+    /// / `CKA_VERIFY` of the `C_GenerateKey` template). Backends that cannot grant MAC usage
+    /// ignore it, which is what this default does.
+    fn generate_key_with_mac_usage(
+        &self,
+        algorithm: KeyAlgorithm,
+        key_length: usize,
+        sensitive: bool,
+        label: Option<&str>,
+        _mac_usage: MacUsage,
+    ) -> ModuleResult<Arc<dyn SymmetricKey>> {
+        self.generate_key(algorithm, key_length, sensitive, label)
+    }
+
     /// Fill `buf` with random bytes for `C_GenerateRandom`.
     ///
     /// The default implementation draws from `KmsRng` (OpenSSL AES-256 CTR-DRBG, fail-closed).
@@ -305,4 +330,30 @@ pub trait Backend: Send + Sync {
         signature: &[u8],
         key_algorithm: KeyAlgorithm,
     ) -> ModuleResult<()>;
+
+    /// Computes the AES-CMAC / AES-GMAC of `data` with the remote secret key `remote_id`: AES-CMAC
+    /// through a KMIP `MAC` round trip, AES-GMAC (with the caller's IV) as AES-GCM `Encrypt` of an
+    /// empty plaintext whose AAD is `data`. The result is [`MacAlgorithm::mac_len`] bytes long:
+    /// the tag.
+    fn mac(
+        &self,
+        _remote_id: &str,
+        _algorithm: MacAlgorithm,
+        _data: &[u8],
+    ) -> ModuleResult<Vec<u8>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    /// Verifies `mac` (the exact output of [`Backend::mac`]) over `data` with the remote secret
+    /// key `remote_id`. Returns `Err(ModuleError::SignatureInvalid)` when the KMS does not
+    /// report the MAC as valid.
+    fn mac_verify(
+        &self,
+        _remote_id: &str,
+        _algorithm: MacAlgorithm,
+        _data: &[u8],
+        _mac: &[u8],
+    ) -> ModuleResult<()> {
+        Err(ModuleError::FunctionNotSupported)
+    }
 }

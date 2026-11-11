@@ -77,6 +77,23 @@ C_EncryptInit(session, &mechanism, key_handle);
 C_Encrypt(session, plaintext, plaintext_len, ciphertext, &ciphertext_len);
 ```
 
+### `CKM_AES_CMAC` and `CKM_AES_GMAC`
+
+Both are sign/verify mechanisms for AES keys (16, 24 or 32 bytes), single-part
+(`C_Sign`/`C_Verify`) or multi-part (`C_SignUpdate`/`C_SignFinal` and `C_VerifyUpdate`/`C_VerifyFinal`;
+the provider buffers the data and sends it to the KMS once).
+
+- `CKM_AES_CMAC` takes no parameter and returns the 16-byte tag. It is computed by the KMIP `MAC`
+  operation, so the key needs the `MAC Generate` (sign) and `MAC Verify` (verify) usage bits.
+- `CKM_AES_GMAC` takes a `CK_GCM_PARAMS` with a 12-byte IV (`pIv`/`ulIvLen`), `ulTagBits` = 128 and no
+  AAD (`ulAADLen` = 0): the `C_Sign` data is the authenticated data and the signature is the 16-byte
+  tag. It is computed as an AES-GCM `Encrypt` of an empty plaintext, so the key needs the `Encrypt`
+  usage bit, which AES keys have by default. The IV must be unique for every message under one key.
+
+`CKA_SIGN` / `CKA_VERIFY` of a secret key report the `MAC Generate` / `MAC Verify` bits only. A key
+created by `C_GenerateKey` gets those bits when its template sets `CKA_SIGN` / `CKA_VERIFY` to true,
+so it can be used with `CKM_AES_CMAC`.
+
 ## Backward compatibility
 
 No configuration change and no code change are required to keep using the PKCS#11 provider library
