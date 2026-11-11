@@ -6,7 +6,7 @@
 #USAGE flag "-d --dir <d>" env="BENCH_COMPARE_DIR" default="ckms_bench" help="Published report directory under benchmarks/ (e.g. ckms_bench, ckms_bench_pkcs11)"
 #USAGE flag "-o --output <f>" env="BENCH_COMPARE_OUTPUT" default="" help="Report file (default: target/bench_compare/<base>_vs_<new>.md)"
 #USAGE flag "--all" help="Show every compared benchmark, not only the regressions"
-#USAGE flag "--fail" help="Exit non-zero when a regression or an encryption/signature gap is found"
+#USAGE flag "--fail" help="Exit non-zero on a regression, a collapsed load point, or an encryption/signature load point dropped from the new version"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 

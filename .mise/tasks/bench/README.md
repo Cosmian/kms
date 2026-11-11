@@ -30,9 +30,9 @@ benchmarks published on package.cosmian.com for both versions and compares them 
 listed, plus points whose throughput collapsed below 10 req/s (with the counts of what was compared); `--all` lists every compared point with its OK/REGRESSION/noise status.
 It writes a markdown report to `target/bench_compare/<base>_vs_<new>.md`. `threshold` is a percentage (default 5).
 A Criterion slowdown beyond the threshold counts as a regression only when the confidence intervals do not overlap,
-otherwise it is marked `noise`. Benchmarks present in only one version are listed; a gap in an encryption or signature
-algorithm is flagged. `--dir <report dir>` (default `ckms_bench`), `--fail` (non-zero exit on regression or
-encryption/signature gap). It warns when the two runs' environments (CPU, variant, load parameters) differ: only
+otherwise it is marked `noise`. Benchmarks present in only one version are listed; new-only ones never fail, and a dropped
+Criterion id is a warning. `--dir <report dir>` (default `ckms_bench`), `--fail` (non-zero exit on regression, collapsed
+load point, or an encryption/signature load point dropped from the new version). It warns when the two runs' environments (CPU, variant, load parameters) differ: only
 compare runs from the same benchmark machine.
 
 ## Where a new report goes in the docs nav
