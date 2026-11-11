@@ -1,6 +1,8 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm, State},
+        kmip_0::kmip_types::{
+            BlockCipherMode, CryptographicUsageMask, ErrorReason, HashingAlgorithm, State,
+        },
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -13,6 +15,7 @@ use cosmian_kms_server_database::reexport::{
             },
         },
     },
+    cosmian_kms_crypto::crypto::symmetric::mac::{AesMac, GMAC_IV_LENGTH, gmac_iv},
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::trace;
@@ -81,10 +84,17 @@ impl CryptoOpSpec for MacOp {
             &kms.rng,
             part,
             owner,
-            || hmac_context(owm, request.cryptographic_parameters.as_ref(), "mac"),
+            || {
+                mac_context(
+                    owm,
+                    request.cryptographic_parameters.as_ref(),
+                    "mac",
+                    || random_gmac_iv(kms),
+                )
+            },
             |ctx, last| {
-                ctx.digest_sign_update(data)?;
-                Ok(if last { Some(hmac_final(ctx)?) } else { None })
+                ctx.update(data)?;
+                Ok(if last { Some(ctx.finalize()?) } else { None })
             },
         )?;
 
@@ -123,11 +133,35 @@ impl CryptoOpSpec for MacOp {
     }
 }
 
-/// State of a multi-part MAC Verify: the running HMAC and the MAC to check, which may be
-/// supplied on the initial or the final part.
+/// State of a multi-part MAC Verify: the running MAC and the MAC to check, which may be
+/// supplied on the initial or the final part (on the initial part only for AES-GMAC, whose IV
+/// it carries).
 struct MacVerifyState {
-    ctx: MdCtx,
+    ctx: MacCtx,
     mac_data: Vec<u8>,
+}
+
+/// A running MAC: HMAC, AES-CMAC or AES-GMAC.
+enum MacCtx {
+    Hmac(MdCtx),
+    Aes(AesMac),
+}
+
+impl MacCtx {
+    fn update(&mut self, data: &[u8]) -> KResult<()> {
+        match self {
+            Self::Hmac(ctx) => ctx.digest_sign_update(data)?,
+            Self::Aes(mac) => mac.update(data)?,
+        }
+        Ok(())
+    }
+
+    fn finalize(&mut self) -> KResult<Vec<u8>> {
+        match self {
+            Self::Hmac(ctx) => hmac_final(ctx),
+            Self::Aes(mac) => Ok(mac.finalize()?),
+        }
+    }
 }
 
 /// Marker type for the `MACVerify` operation's key selection requirements.
@@ -187,16 +221,17 @@ impl CryptoOpSpec for MacVerifyOp {
             owner,
             || {
                 Ok(MacVerifyState {
-                    ctx: hmac_context(
+                    ctx: mac_context(
                         owm,
                         request.cryptographic_parameters.as_ref(),
                         "mac_verify",
+                        || gmac_iv_of(&request.mac_data),
                     )?,
                     mac_data: Vec::new(),
                 })
             },
             |state, last| {
-                state.ctx.digest_sign_update(&request.data)?;
+                state.ctx.update(&request.data)?;
                 if !request.mac_data.is_empty() {
                     state.mac_data.clone_from(&request.mac_data);
                 }
@@ -206,7 +241,7 @@ impl CryptoOpSpec for MacVerifyOp {
                 if state.mac_data.is_empty() {
                     return Err(missing_mac_data());
                 }
-                let computed = hmac_final(&mut state.ctx)?;
+                let computed = state.ctx.finalize()?;
                 Ok(Some(validity(&computed, &state.mac_data)))
             },
         )?;
@@ -322,16 +357,77 @@ fn hmac_md(algorithm: HashingAlgorithm) -> KResult<&'static MdRef> {
     })
 }
 
-/// Start an HMAC with the key of `owm` and the algorithm from the request or the key.
-fn hmac_context(
+/// `BlockCipherMode` of an AES MAC requested by `parameters`: CMAC, or GCM for GMAC.
+/// `None` selects HMAC.
+fn aes_mac_mode(parameters: Option<&CryptographicParameters>) -> KResult<Option<BlockCipherMode>> {
+    let Some(parameters) = parameters else {
+        return Ok(None);
+    };
+    let Some(mode @ (BlockCipherMode::CMAC | BlockCipherMode::GCM)) = parameters.block_cipher_mode
+    else {
+        return Ok(None);
+    };
+    if let Some(algorithm) = parameters.cryptographic_algorithm
+        && algorithm != CryptographicAlgorithm::AES
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Bad_Cryptographic_Parameters,
+            format!("MAC: {mode:?} requires the AES cryptographic algorithm, not {algorithm:?}"),
+        ));
+    }
+    Ok(Some(mode))
+}
+
+/// Start the MAC of the key of `owm` selected by the request parameters: AES-CMAC, AES-GMAC
+/// (with the IV from `gmac_iv`), or else HMAC with the algorithm from the request or the key.
+fn mac_context(
     owm: &ObjectWithMetadata,
     request_parameters: Option<&CryptographicParameters>,
     context: &'static str,
-) -> KResult<MdCtx> {
+    gmac_iv: impl FnOnce() -> KResult<[u8; GMAC_IV_LENGTH]>,
+) -> KResult<MacCtx> {
     let key_block = owm.object().key_block()?;
-    let algorithm = mac_hashing_algorithm(key_block, owm.attributes(), request_parameters)?;
-    trace!("Mac: algorithm: {algorithm:?}");
-    hmac_init(key_block.key_bytes_ref().context(context)?, algorithm)
+    let key = key_block.key_bytes_ref().context(context)?;
+    let Some(mode) = aes_mac_mode(request_parameters)? else {
+        let algorithm = mac_hashing_algorithm(key_block, owm.attributes(), request_parameters)?;
+        trace!("Mac: algorithm: {algorithm:?}");
+        return Ok(MacCtx::Hmac(hmac_init(key, algorithm)?));
+    };
+    // an HMAC or any other symmetric key must not be usable as an AES MAC key
+    if key_block
+        .cryptographic_algorithm
+        .or_else(|| owm.attributes().cryptographic_algorithm)
+        != Some(CryptographicAlgorithm::AES)
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Bad_Cryptographic_Parameters,
+            format!("{context}: AES-{mode:?} requires an AES key"),
+        ));
+    }
+    trace!("Mac: AES {mode:?}");
+    Ok(MacCtx::Aes(if mode == BlockCipherMode::CMAC {
+        AesMac::new_cmac(key)?
+    } else {
+        AesMac::new_gmac(key, gmac_iv()?)?
+    }))
+}
+
+/// Random IV of a new AES-GMAC.
+fn random_gmac_iv(kms: &KMS) -> KResult<[u8; GMAC_IV_LENGTH]> {
+    let mut iv = [0_u8; GMAC_IV_LENGTH];
+    // the IV is sent in clear with the MAC
+    kms.rng.fill_public_bytes(&mut iv)?;
+    Ok(iv)
+}
+
+/// IV of the AES-GMAC `mac_data` to verify (its first 12 bytes).
+fn gmac_iv_of(mac_data: &[u8]) -> KResult<[u8; GMAC_IV_LENGTH]> {
+    gmac_iv(mac_data).map_err(|e| {
+        KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!("MACVerify: AES-GMAC MAC Data is required on the single or initial part: {e}"),
+        )
+    })
 }
 
 fn hmac_init(key: &[u8], algorithm: HashingAlgorithm) -> KResult<MdCtx> {
@@ -441,10 +537,12 @@ fn infer_hmac_hashing_algorithm(
 )]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm},
+        kmip_0::kmip_types::{
+            BlockCipherMode, CryptographicUsageMask, ErrorReason, HashingAlgorithm,
+        },
         kmip_2_1::{
             extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-            kmip_operations::{MAC, MACVerify},
+            kmip_operations::{Encrypt, MAC, MACVerify},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier,
                 ValidityIndicator,
@@ -805,6 +903,243 @@ mod tests {
             err,
             KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
         ));
+        Ok(())
+    }
+
+    /// AES-CMAC and AES-GMAC through MAC / MAC Verify: single and multi-part, tampering, and
+    /// refusal of a key that is not an AES key.
+    #[tokio::test]
+    async fn test_server_aes_cmac_and_gmac() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let create = |algorithm| {
+            let kms = &kms;
+            let user = &user;
+            async move {
+                let mut request = symmetric_key_create_request(
+                    VENDOR_ID_COSMIAN,
+                    None,
+                    256,
+                    algorithm,
+                    EMPTY_TAGS,
+                    false,
+                    None,
+                )?;
+                request.attributes.cryptographic_usage_mask = Some(
+                    CryptographicUsageMask::MACGenerate
+                        | CryptographicUsageMask::MACVerify
+                        | CryptographicUsageMask::Encrypt,
+                );
+                KResult::Ok(kms.create(request, user).await?.unique_identifier)
+            }
+        };
+        let aes = create(CryptographicAlgorithm::AES).await?;
+        let parameters = |mode| {
+            Some(CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                block_cipher_mode: Some(mode),
+                ..Default::default()
+            })
+        };
+        let mac = |uid: &UniqueIdentifier, mode, data: &[u8], cv, init, fin| MAC {
+            unique_identifier: Some(uid.clone()),
+            cryptographic_parameters: parameters(mode),
+            data: Some(data.to_vec()),
+            correlation_value: cv,
+            init_indicator: init,
+            final_indicator: fin,
+        };
+        let verify =
+            |uid: &UniqueIdentifier, mode, data: &[u8], mac_data, cv, init, fin| MACVerify {
+                unique_identifier: uid.clone(),
+                cryptographic_parameters: parameters(mode),
+                data: data.to_vec(),
+                mac_data,
+                correlation_value: cv,
+                init_indicator: init,
+                final_indicator: fin,
+            };
+
+        for (mode, mac_len) in [(BlockCipherMode::CMAC, 16), (BlockCipherMode::GCM, 28)] {
+            let single = kms
+                .mac(mac(&aes, mode, b"hello world", None, None, None), &user)
+                .await?
+                .mac_data
+                .context("no MAC")?;
+            assert_eq!(single.len(), mac_len);
+
+            let verdict = |data: &'static [u8], mac_data: Vec<u8>| {
+                let request = verify(&aes, mode, data, mac_data, None, None, None);
+                let kms = &kms;
+                let user = &user;
+                async move { KResult::Ok(kms.mac_verify(request, user).await?.validity_indicator) }
+            };
+            assert_eq!(
+                verdict(b"hello world", single.clone()).await?,
+                Some(ValidityIndicator::Valid)
+            );
+            // tampered data, tag and (GMAC) IV
+            let mut bad_tag = single.clone();
+            *bad_tag.last_mut().context("empty MAC")? ^= 1;
+            let mut bad_head = single.clone();
+            bad_head[0] ^= 1;
+            for (data, mac_data) in [
+                (&b"hello worle"[..], single.clone()),
+                (&b"hello world"[..], bad_tag),
+                (&b"hello world"[..], bad_head),
+            ] {
+                assert_eq!(
+                    verdict(data, mac_data).await?,
+                    Some(ValidityIndicator::Invalid)
+                );
+            }
+
+            // multi-part MAC Verify, MAC Data on the initial part
+            let init = kms
+                .mac_verify(
+                    verify(
+                        &aes,
+                        mode,
+                        b"hello ",
+                        single.clone(),
+                        None,
+                        Some(true),
+                        None,
+                    ),
+                    &user,
+                )
+                .await?;
+            let last = kms
+                .mac_verify(
+                    verify(
+                        &aes,
+                        mode,
+                        b"world",
+                        Vec::new(),
+                        init.correlation_value,
+                        None,
+                        Some(true),
+                    ),
+                    &user,
+                )
+                .await?;
+            assert_eq!(last.validity_indicator, Some(ValidityIndicator::Valid));
+
+            // multi-part MAC, checked against the one-shot verification
+            let init = kms
+                .mac(mac(&aes, mode, b"hello ", None, Some(true), None), &user)
+                .await?;
+            let last = kms
+                .mac(
+                    mac(
+                        &aes,
+                        mode,
+                        b"world",
+                        init.correlation_value,
+                        None,
+                        Some(true),
+                    ),
+                    &user,
+                )
+                .await?
+                .mac_data
+                .context("no MAC")?;
+            assert_eq!(last.len(), mac_len);
+            assert_eq!(
+                verdict(b"hello world", last).await?,
+                Some(ValidityIndicator::Valid)
+            );
+        }
+
+        // GMAC: a MAC that is not IV || tag cannot carry an IV
+        let error = kms
+            .mac_verify(
+                verify(
+                    &aes,
+                    BlockCipherMode::GCM,
+                    b"x",
+                    vec![0; 16],
+                    None,
+                    None,
+                    None,
+                ),
+                &user,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
+        ));
+
+        // GMAC multi-part verify needs the MAC Data (it carries the IV) on the initial part
+        let error = kms
+            .mac_verify(
+                verify(
+                    &aes,
+                    BlockCipherMode::GCM,
+                    b"x",
+                    Vec::new(),
+                    None,
+                    Some(true),
+                    None,
+                ),
+                &user,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            KmsError::Kmip21Error(ErrorReason::Invalid_Field, _)
+        ));
+
+        // The PKCS#11 `CKM_AES_GMAC` mapping: AES-GCM Encrypt of an empty plaintext with the
+        // MAC's IV and the data as AAD yields the MAC's tag.
+        let gmac = kms
+            .mac(
+                mac(&aes, BlockCipherMode::GCM, b"hello world", None, None, None),
+                &user,
+            )
+            .await?
+            .mac_data
+            .context("no MAC")?;
+        let encrypted = kms
+            .encrypt(
+                Encrypt {
+                    unique_identifier: Some(aes.clone()),
+                    cryptographic_parameters: Some(CryptographicParameters {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        block_cipher_mode: Some(BlockCipherMode::GCM),
+                        ..Default::default()
+                    }),
+                    data: Some(zeroize::Zeroizing::new(Vec::new())),
+                    i_v_counter_nonce: Some(gmac[..12].to_vec()),
+                    authenticated_encryption_additional_data: Some(b"hello world".to_vec()),
+                    ..Default::default()
+                },
+                &user,
+            )
+            .await?;
+        assert_eq!(
+            encrypted.authenticated_encryption_tag.as_deref(),
+            Some(&gmac[12..])
+        );
+
+        // An HMAC key is not an AES MAC key
+        let hmac_key = create(CryptographicAlgorithm::HMACSHA256).await?;
+        for mode in [BlockCipherMode::CMAC, BlockCipherMode::GCM] {
+            let error = kms
+                .mac(mac(&hmac_key, mode, b"x", None, None, None), &user)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    KmsError::Kmip21Error(ErrorReason::Bad_Cryptographic_Parameters, _)
+                ),
+                "{error:?}"
+            );
+        }
         Ok(())
     }
 

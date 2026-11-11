@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**716 vectors** across 16 categories (including KAT):
+**720 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -613,7 +613,11 @@ MAC, or derived-key values.
 | Hash | `kat/hash/sha3_384` | FIPS 202 | Hash | `Data` |
 | Hash | `kat/hash/sha3_512` | FIPS 202 | Hash | `Data` |
 | Hash | `kat/hash/sha512` | FIPS 180-4 | Hash | `Data` |
-| **MAC** | | RFC 4231 / RFC 2202 / NIST HMAC-SHA3 | | |
+| **MAC** | | RFC 4231 / RFC 2202 / NIST HMAC-SHA3 / NIST SP 800-38B / NIST CAVP GCM | | |
+| Mac | `kat/mac/aes128_cmac` | NIST SP 800-38B D.1 | Import, Mac, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes128_cmac_multi_part` | NIST SP 800-38B D.1 | Import, Mac, Mac, Mac, MACVerify, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes128_gmac_verify` | NIST CAVP GCM (PTlen=0) | Import, MACVerify, MACVerify | `ValidityIndicator` |
+| Mac | `kat/mac/aes256_cmac` | NIST SP 800-38B D.3 | Import, Mac, MACVerify | `MACData`, `ValidityIndicator` |
 | Mac | `kat/mac/hmac_sha1` | RFC 2202 §3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha256` | RFC 4231 §4.2 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha256_multi_part` | RFC 4231 §4.2 | Import, Mac, Mac, Mac, MACVerify, MACVerify | `MACData`, `ValidityIndicator` |

@@ -3863,6 +3863,30 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_kat_mac_aes128_cmac() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes128_cmac").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_mac_aes128_cmac_multi_part() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes128_cmac_multi_part").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_mac_aes128_gmac_verify() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes128_gmac_verify").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_mac_aes256_cmac() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes256_cmac").await
+    }
+
+    #[tokio::test]
     async fn test_kat_symmetric_aes128_gcm_multi_part() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/symmetric/aes128_gcm_multi_part").await

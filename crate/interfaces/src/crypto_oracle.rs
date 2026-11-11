@@ -624,7 +624,13 @@ impl SigningAlgorithm {
 
 /// MAC algorithms supported by the crypto oracle / HSM.
 ///
-/// Each variant maps directly to a PKCS#11 HMAC mechanism (e.g. `CKM_SHA256_HMAC`).
+/// HMAC variants map to the PKCS#11 HMAC mechanisms (e.g. `CKM_SHA256_HMAC`);
+/// `AesCmac` to `CKM_AES_CMAC` (NIST SP 800-38B) and `AesGmac` to `CKM_AES_GMAC`
+/// (NIST SP 800-38D).
+///
+/// A GMAC `MAC Data` is always `IV (12 bytes) || tag (16 bytes)`: KMIP MAC has no IV field and a
+/// GMAC nonce must never repeat under one key, so the implementation generates the IV when
+/// computing and reads it back when verifying.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MacAlgorithm {
     HmacSha1,
@@ -636,10 +642,15 @@ pub enum MacAlgorithm {
     HmacSha3256,
     HmacSha3384,
     HmacSha3512,
+    AesCmac,
+    AesGmac,
 }
 
 impl MacAlgorithm {
     /// Derive a `MacAlgorithm` from KMIP `CryptographicParameters`.
+    ///
+    /// `BlockCipherMode::CMAC` selects AES-CMAC and `BlockCipherMode::GCM` AES-GMAC; otherwise
+    /// the HMAC hash is taken from `hashing_algorithm`.
     ///
     /// Unlike `SigningAlgorithm::from_kmip`, there is no stored-key fallback: an HSM-resident
     /// symmetric key carries no registered hash size, so the caller must supply
@@ -650,9 +661,14 @@ impl MacAlgorithm {
     /// HMAC-SHA-1 and HMAC-SHA-224 as "Acceptable" for MAC use.
     ///
     /// # Errors
-    /// Returns `InterfaceError::InvalidRequest` if the hashing algorithm is missing or is not
-    /// a supported HMAC hash.
+    /// Returns `InterfaceError::InvalidRequest` if the block cipher mode is not CMAC/GCM and the
+    /// hashing algorithm is missing or is not a supported HMAC hash.
     pub fn from_kmip(params: Option<&CryptographicParameters>) -> Result<Self, InterfaceError> {
+        match params.and_then(|p| p.block_cipher_mode) {
+            Some(BlockCipherMode::CMAC) => return Ok(Self::AesCmac),
+            Some(BlockCipherMode::GCM) => return Ok(Self::AesGmac),
+            _ => {}
+        }
         let hashing_algorithm = params.and_then(|p| p.hashing_algorithm).ok_or_else(|| {
             InterfaceError::InvalidRequest("Hashing algorithm is required".to_owned())
         })?;
@@ -1301,5 +1317,31 @@ mod tests {
         )
         .expect_err("RSA on an EC key must be rejected");
         assert!(matches!(err, InterfaceError::InvalidRequest(_)));
+    }
+
+    #[test]
+    fn mac_algorithm_from_kmip_selects_cmac_gmac_and_hmac() {
+        let with_mode = |block_cipher_mode| CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(block_cipher_mode),
+            ..Default::default()
+        };
+        assert_eq!(
+            MacAlgorithm::from_kmip(Some(&with_mode(BlockCipherMode::CMAC))).expect("CMAC"),
+            MacAlgorithm::AesCmac
+        );
+        assert_eq!(
+            MacAlgorithm::from_kmip(Some(&with_mode(BlockCipherMode::GCM))).expect("GCM"),
+            MacAlgorithm::AesGmac
+        );
+        let sha256 = params_with(None, None, Some(HashingAlgorithm::SHA256), None, None);
+        assert_eq!(
+            MacAlgorithm::from_kmip(Some(&sha256)).expect("SHA-256"),
+            MacAlgorithm::HmacSha256
+        );
+        assert!(matches!(
+            MacAlgorithm::from_kmip(None),
+            Err(InterfaceError::InvalidRequest(_))
+        ));
     }
 }
