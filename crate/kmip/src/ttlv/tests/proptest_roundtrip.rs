@@ -18,7 +18,7 @@ use crate::{
         kmip_operations::{Create, CreateKeyPair, Operation, Query},
         kmip_types::{OperationEnumeration, QueryFunction},
     },
-    ttlv::{KmipFlavor, from_ttlv, to_ttlv},
+    ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
 };
 
 // ── Strategies ───────────────────────────────────────────────────────────────
@@ -213,5 +213,48 @@ proptest! {
         let ttlv2 = crate::ttlv::TTLV::from_bytes(&bytes, KmipFlavor::Kmip1).unwrap();
         let msg2: RequestMessage = from_ttlv(&ttlv2).unwrap();
         prop_assert_eq!(msg, msg2);
+    }
+}
+
+// ── Robustness: corrupted untrusted input must never panic the decoders ─────
+
+proptest! {
+    #[test]
+    fn corrupted_ttlv_bytes_never_panic(
+        msg in arb_request_message(),
+        flip in any::<prop::sample::Index>(),
+        mask in 1_u8..,
+        cut in any::<prop::sample::Index>(),
+    ) {
+        let mut bytes = to_ttlv(&msg).unwrap().to_bytes(KmipFlavor::Kmip1).unwrap();
+        let i = flip.index(bytes.len());
+        if let Some(b) = bytes.get_mut(i) {
+            *b ^= mask;
+        }
+        bytes.truncate(cut.index(bytes.len()).saturating_add(1));
+        drop(TTLV::find_version(&bytes));
+        for flavor in [KmipFlavor::Kmip1, KmipFlavor::Kmip2] {
+            if let Ok(ttlv) = TTLV::from_bytes(&bytes, flavor) {
+                drop(from_ttlv::<RequestMessage>(&ttlv));
+            }
+        }
+    }
+
+    #[test]
+    fn corrupted_json_ttlv_never_panics(
+        msg in arb_request_message(),
+        flip in any::<prop::sample::Index>(),
+        mask in 1_u8..,
+    ) {
+        let mut json = serde_json::to_vec(&to_ttlv(&msg).unwrap()).unwrap();
+        let i = flip.index(json.len());
+        if let Some(b) = json.get_mut(i) {
+            *b ^= mask;
+        }
+        if let Ok(s) = std::str::from_utf8(&json)
+            && let Ok(ttlv) = serde_json::from_str::<TTLV>(s)
+        {
+            drop(from_ttlv::<RequestMessage>(&ttlv));
+        }
     }
 }

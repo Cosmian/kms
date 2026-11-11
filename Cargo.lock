@@ -1735,6 +1735,7 @@ dependencies = [
  "openssl",
  "openssl-sys",
  "pgp",
+ "proptest",
  "rand 0.10.3",
  "rand_chacha 0.10.0",
  "rand_distr",
