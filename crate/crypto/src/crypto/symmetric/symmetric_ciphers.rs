@@ -976,7 +976,7 @@ impl StreamCipher {
                 let mut final_bytes = if self.buffer.is_empty() {
                     vec![]
                 } else {
-                    let mut final_bytes = vec![0; self.buffer.len() + self.block_size];
+                    let mut final_bytes = vec![0; 2 * self.block_size];
                     let len = c.update(&self.buffer, &mut final_bytes)?;
                     final_bytes.truncate(len);
                     final_bytes
@@ -1014,7 +1014,7 @@ impl StreamCipher {
                 let mut final_bytes = if self.buffer.is_empty() {
                     vec![]
                 } else {
-                    let mut final_bytes = vec![0; self.buffer.len() + self.block_size];
+                    let mut final_bytes = vec![0; 2 * self.block_size];
                     let len = c.update(&self.buffer, &mut final_bytes)?;
                     final_bytes.truncate(len);
                     final_bytes
