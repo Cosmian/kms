@@ -667,10 +667,6 @@ criteria = "safe-to-deploy"
 version = "2.7.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.hashlink]]
-version = "0.12.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.hkdf]]
 version = "0.12.4"
 criteria = "safe-to-deploy"

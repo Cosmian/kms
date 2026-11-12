@@ -26,7 +26,6 @@ axum-server = { workspace = true, features = ["tls-rustls"] }
 
 # Encoding
 base64 = { workspace = true }
-chrono = { workspace = true }
 
 # CLI
 clap = { workspace = true, features = ["help", "env", "std", "usage", "error-context", "derive", "cargo"] }
@@ -60,6 +59,7 @@ thiserror = { workspace = true }
 sha2 = { workspace = true }
 
 # Async
+time = { workspace = true, features = ["formatting"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
 tracing = { workspace = true }
 

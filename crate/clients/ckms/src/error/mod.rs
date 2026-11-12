@@ -41,12 +41,8 @@ pub enum CosmianError {
     CovercryptError(#[from] cosmian_cover_crypt::Error),
     #[error(transparent)]
     CryptoError(#[from] CryptoError),
-    #[error(transparent)]
-    CsvError(#[from] csv::Error),
     #[error("{0}")]
     Default(String),
-    #[error(transparent)]
-    DerError(#[from] der::Error),
     #[error(transparent)]
     FmtError(#[from] std::fmt::Error),
     #[error(transparent)]

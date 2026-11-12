@@ -1,15 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::mpsc::{self, Sender},
-    thread,
-};
+use std::collections::HashMap;
 
-use actix_web::{
-    App, HttpResponse, HttpServer,
-    dev::ServerHandle,
-    get,
-    web::{self, Data},
-};
+use base64::{Engine as _, prelude::BASE64_STANDARD};
 use http::{
     HeaderMap, HeaderValue, StatusCode,
     header::{ACCEPT, CONTENT_TYPE},
@@ -177,11 +168,9 @@ impl LoginState {
         // URL.  Use the port that was actually embedded in the redirect URL at
         // construction time (respects OAUTH2_REDIRECT_URL_PORT).
         let port = self.redirect_url.port_or_known_default().unwrap_or(17_899);
-        let (auth_parameters, server_handle) = Self::receive_authorization_parameters(port)?;
-        // Gracefully stop the redirect listener so the port is freed immediately
-        // rather than lingering in TIME_WAIT.  This prevents port-binding
-        // failures when the test suite is run multiple times in quick succession.
-        server_handle.stop(true).await;
+        let (auth_parameters, server) = Self::receive_authorization_parameters(port).await?;
+        // Stop accepting callbacks; dropping the listener frees the port.
+        server.abort();
 
         // Once the user has been redirected to the redirect URL, you'll have access to
         // the authorization code. For security reasons, your code should verify
@@ -218,69 +207,78 @@ impl LoginState {
 
     /// This function starts the server on the given `port` and waits for the
     /// authorization code to be received from the browser window. Once the
-    /// code is received, the server handle is returned alongside the parameters
-    /// so the caller can gracefully stop the server and free the port.
+    /// code is received, the server task handle is returned alongside the
+    /// parameters so the caller can stop the server and free the port.
     ///
     /// The port must match the one embedded in the redirect URL that was sent
     /// to the Identity Provider during the authorization request.
-    fn receive_authorization_parameters(
+    async fn receive_authorization_parameters(
         port: u16,
-    ) -> HttpClientResult<(HashMap<String, String>, ServerHandle)> {
-        // Pre-bind the port *synchronously* before spawning the server thread.
-        // This ensures the OS TCP stack is ready to accept incoming connections
-        // immediately, even before the actix worker threads have started.
-        // Without this, `spawn_browser_simulation`'s fixed-delay heuristic can
-        // race against slow thread startup under heavy parallel-test CPU load,
-        // causing the browser simulation to connect to the wrong server or fail
-        // to connect at all.
-        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
-            HttpClientError::Default(format!("cannot bind port {port} for OAuth2 callback: {e}"))
-        })?;
+    ) -> HttpClientResult<(HashMap<String, String>, tokio::task::JoinHandle<()>)> {
+        // Bind first so a port-in-use error is reported to the caller, not to a spawned task.
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+            .await
+            .map_err(|e| {
+                HttpClientError::Default(format!(
+                    "cannot bind port {port} for OAuth2 callback: {e}"
+                ))
+            })?;
 
-        let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
-        let (server_handle_tx, server_handle_rx) = mpsc::sync_channel::<ServerHandle>(1);
-        // Spawn the server into a runtime
-        let tokio_handle = tokio::runtime::Handle::current();
-        let _task = thread::spawn(move || {
-            tokio_handle.block_on(async move {
-                // server.await
-                #[get("/authorization")]
-                async fn authorization_handler(
-                    auth_params: web::Query<HashMap<String, String>>,
-                    auth_params_tx: Data<Sender<HashMap<String, String>>>,
-                ) -> HttpResponse {
-                    if auth_params_tx
-                        .into_inner()
-                        .send(auth_params.into_inner())
-                        .is_err()
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<HashMap<String, String>>();
+        let server = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let service = hyper::service::service_fn(move |req| {
+                        let response = authorization_response(&req, &tx);
+                        async move { Ok::<_, std::convert::Infallible>(response) }
+                    });
+                    if let Err(e) = hyper::server::conn::http1::Builder::new()
+                        .timer(hyper_util::rt::TokioTimer::new())
+                        .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
+                        .await
                     {
-                        return HttpResponse::InternalServerError()
-                            .body("OAuth2 login is no longer waiting for the callback.");
+                        tracing::debug!("OAuth2 callback connection error: {e}");
                     }
-                    HttpResponse::Ok().body("You can now close this window.")
-                }
-
-                let server = HttpServer::new(move || {
-                    App::new()
-                        .app_data(Data::new(auth_params_tx.clone()))
-                        .service(authorization_handler)
-                })
-                .listen(listener)?
-                .run();
-                // Send the handle before awaiting so the outer thread can stop
-                // the server once the first callback has been received.
-                drop(server_handle_tx.send(server.handle()));
-                server.await
-            })
+                });
+            }
         });
-        let params = auth_params_rx.recv().map_err(|e| {
-            HttpClientError::Default(format!("authorization code not received: {e:?}"))
+        let params = rx.recv().await.ok_or_else(|| {
+            HttpClientError::Default("authorization code not received".to_owned())
         })?;
-        let handle = server_handle_rx
-            .recv_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| HttpClientError::Default(format!("server handle not received: {e:?}")))?;
-        Ok((params, handle))
+        Ok((params, server))
     }
+}
+
+/// Answer one request of the `OAuth2` callback server: `GET /authorization?...` forwards
+/// its query parameters to the waiting login; anything else is a 404.
+fn authorization_response(
+    req: &http::Request<hyper::body::Incoming>,
+    tx: &tokio::sync::mpsc::UnboundedSender<HashMap<String, String>>,
+) -> http::Response<http_body_util::Full<bytes::Bytes>> {
+    let (status, body) =
+        if req.method() != http::Method::GET || req.uri().path() != "/authorization" {
+            (StatusCode::NOT_FOUND, "")
+        } else if tx
+            .send(
+                url::form_urlencoded::parse(req.uri().query().unwrap_or_default().as_bytes())
+                    .into_owned()
+                    .collect(),
+            )
+            .is_err()
+        {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "OAuth2 login is no longer waiting for the callback.",
+            )
+        } else {
+            (StatusCode::OK, "You can now close this window.")
+        };
+    let mut response = http::Response::new(http_body_util::Full::new(bytes::Bytes::from_static(
+        body.as_bytes(),
+    )));
+    *response.status_mut() = status;
+    response
 }
 
 #[derive(Deserialize, Debug)]
@@ -466,39 +464,35 @@ pub async fn auth_verifier_login(
         |code| format!(r#"{{"totp_code":"{code}"}}"#),
     );
 
-    let client = reqwest::Client::builder()
+    let client = super::HttpClient::instantiate(&super::HttpClientConfig {
+        server_url: config.server_url.clone(),
         // TODO: remove accept_invalid_certs
-        .danger_accept_invalid_certs(accept_invalid_certs)
-        .build()
-        .map_err(|e| HttpClientError::Default(format!("Failed to build reqwest client: {e:?}")))?;
+        accept_invalid_certs,
+        custom_headers: Some(vec![format!(
+            "Authorization: Basic {}",
+            BASE64_STANDARD.encode(format!("{username}:{password}"))
+        )]),
+        ..Default::default()
+    })
+    .map_err(|e| HttpClientError::Default(format!("failed to create HTTP client: {e}")))?;
     let response = client
-        .post(url)
-        .basic_auth(username, Some(password))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(body)
-        .send()
+        .post_bytes(url.as_str(), body, "application/json")
         .await
-        .map_err(|e| HttpClientError::Default(format!("Cosmian login request failed: {e:?}")))?;
+        .map_err(|e| HttpClientError::Default(format!("Cosmian login request failed: {e}")))?;
 
-    let status = response.status();
-    if !status.is_success() {
+    if !response.status.is_success() {
         let error_text = response
             .text()
-            .await
             .unwrap_or_else(|_| "<failed to read response>".to_owned());
         return Err(HttpClientError::Default(format!(
-            "Cosmian login failed ({status}): {error_text}"
+            "Cosmian login failed ({}): {error_text}",
+            response.status
         )));
     }
 
-    // Collect headers before consuming the response body.
-    let headers = response.headers().clone();
-
     // Parse the JSON body to determine the authentication next step.
-    let body_bytes = response.bytes().await.map_err(|e| {
-        HttpClientError::Default(format!("Failed to read login response body: {e}"))
-    })?;
-    let result: AuthenticationResult = serde_json::from_slice(&body_bytes)
+    let result: AuthenticationResult = response
+        .json()
         .map_err(|e| HttpClientError::Default(format!("Failed to parse login response: {e}")))?;
 
     match result.next_step {
@@ -516,7 +510,7 @@ pub async fn auth_verifier_login(
     // The access token is delivered via `Set-Cookie: _ea_=<JWT>; ...`.
     // There may be multiple Set-Cookie headers; find the first one whose
     // cookie name is exactly `_ea_`.
-    for header_value in headers.get_all(reqwest::header::SET_COOKIE) {
+    for header_value in response.headers().get_all(http::header::SET_COOKIE) {
         let raw = header_value
             .to_str()
             .map_err(|e| HttpClientError::Default(format!("invalid Set-Cookie header: {e}")))?;
@@ -712,7 +706,9 @@ mod characterization_tests {
         let (tx, rx) = mpsc::channel();
         browser_get(PORT, "/authorization?code=abc%20def&state=xyz&extra=", tx);
 
-        let (params, handle) = LoginState::receive_authorization_parameters(PORT).unwrap();
+        let (params, handle) = LoginState::receive_authorization_parameters(PORT)
+            .await
+            .unwrap();
 
         let expected: HashMap<String, String> = HashMap::from([
             ("code".to_owned(), "abc def".to_owned()),
@@ -727,14 +723,16 @@ mod characterization_tests {
             response.ends_with("You can now close this window."),
             "{response}"
         );
-        handle.stop(true).await;
+        handle.abort();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn characterization_receive_authorization_parameters_port_in_use() {
         const PORT: u16 = 17_952;
         let _listener = std::net::TcpListener::bind(("127.0.0.1", PORT)).unwrap();
-        let err = LoginState::receive_authorization_parameters(PORT).unwrap_err();
+        let err = LoginState::receive_authorization_parameters(PORT)
+            .await
+            .unwrap_err();
         assert!(
             err.to_string()
                 .contains("cannot bind port 17952 for OAuth2 callback: "),
@@ -747,8 +745,10 @@ mod characterization_tests {
         const PORT: u16 = 17_953;
         let (tx, rx) = mpsc::channel();
         browser_get(PORT, "/authorization?code=first", tx);
-        // The receiver is dropped when this returns; the server keeps running until `handle` stops it.
-        let (_params, handle) = LoginState::receive_authorization_parameters(PORT).unwrap();
+        // The receiver is dropped when this returns; the server keeps running until `handle` aborts it.
+        let (_params, handle) = LoginState::receive_authorization_parameters(PORT)
+            .await
+            .unwrap();
         rx.recv_timeout(Duration::from_secs(10)).unwrap();
 
         let (tx, rx) = mpsc::channel();
@@ -762,6 +762,6 @@ mod characterization_tests {
             response.ends_with("OAuth2 login is no longer waiting for the callback."),
             "{response}"
         );
-        handle.stop(true).await;
+        handle.abort();
     }
 }

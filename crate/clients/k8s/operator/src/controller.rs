@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use chrono::Utc;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, StatefulSet},
@@ -180,7 +179,7 @@ async fn upsert_secret(
 /// Trigger a rolling restart for declared Deployments and `StatefulSets` by
 /// patching `spec.template.metadata.annotations` with the current timestamp.
 async fn restart_workloads(client: &Client, namespace: &str, owner: &KMSSecret) {
-    let now = chrono_now();
+    let now = rfc3339_now();
     restart_resource::<Deployment>(
         client,
         namespace,
@@ -243,7 +242,7 @@ async fn patch_status(
         ready: if error_msg.is_none() { "True" } else { "False" }.to_owned(),
         message: error_msg.map(ToOwned::to_owned),
         last_secret_hash: Some(hash.to_owned()),
-        last_sync_time: Some(chrono_now()),
+        last_sync_time: Some(rfc3339_now()),
     };
     let patch = serde_json::json!({ "status": status });
     if let Err(e) = api
@@ -263,8 +262,11 @@ fn refresh_duration(obj: &KMSSecret, default: Duration) -> Duration {
         .map_or(default, Into::into)
 }
 
-fn chrono_now() -> String {
-    Utc::now().to_rfc3339()
+fn rfc3339_now() -> String {
+    // Rfc3339 formatting of now_utc() only fails for years > 9999.
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

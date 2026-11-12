@@ -475,14 +475,13 @@ mod login_tests {
     // port and can run in parallel with the other tests.
     //
     // The browser simulation uses `std::thread::spawn` (not `tokio::spawn`)
-    // because `finalize()` calls `std::sync::mpsc::Receiver::recv()`, a
-    // blocking call that cannot be driven from the same tokio thread.  A plain
-    // OS thread is free to issue a blocking HTTP request without interfering
-    // with the tokio scheduler.
+    // because the simulation does blocking TCP I/O, which cannot be driven from
+    // the same tokio thread.  A plain OS thread is free to issue a blocking HTTP
+    // request without interfering with the tokio scheduler.
     // -----------------------------------------------------------------------
 
     /// Extract the `state` query parameter from `auth_url` — that is the CSRF
-    /// token the actix handler expects.
+    /// token the callback handler expects.
     fn extract_csrf_state(state: &LoginState) -> String {
         state
             .auth_url
@@ -700,7 +699,12 @@ mod approle_login_tests {
         net::TcpListener,
     };
 
-    use crate::http_client::{HttpClientConfig, login::approle_login};
+    use crate::http_client::{
+        HttpClientConfig,
+        login::{
+            AuthVerifierLoginConfig, AuthVerifierLoginStep, approle_login, auth_verifier_login,
+        },
+    };
 
     /// Spawn a one-shot raw-TCP HTTP/1.1 server on `port` that reads a single
     /// request and replies with the supplied `status_line` and JSON `body`.
@@ -852,6 +856,50 @@ mod approle_login_tests {
         assert!(
             err.to_string().contains("empty client_token"),
             "error must mention empty client_token: {err}"
+        );
+    }
+
+    /// `auth_verifier_login` sends `Basic` credentials and the `_ea_` session cookie is the token.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_auth_verifier_login_sends_basic_auth_and_returns_ea_cookie() {
+        const PORT: u16 = 18_055;
+        let request_rx = spawn_mock_http_once(
+            PORT,
+            "HTTP/1.1 200 OK\r\nSet-Cookie: _ea_=jwt-123; Path=/; HttpOnly",
+            r#"{"next_step":"Authenticated"}"#,
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let step = auth_verifier_login(
+            &AuthVerifierLoginConfig {
+                server_url: format!("http://127.0.0.1:{PORT}"),
+                realm: "kms".to_owned(),
+            },
+            "user",
+            "pass",
+            false,
+            None,
+        )
+        .await
+        .expect("Auth Verifier login should succeed");
+        assert!(
+            matches!(&step, AuthVerifierLoginStep::Authenticated(t) if t == "jwt-123"),
+            "unexpected login step: {step:?}"
+        );
+
+        let request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("mock server should have captured the request");
+        assert!(
+            request.starts_with("POST /login?realm=kms "),
+            "unexpected request line: {request}"
+        );
+        // base64("user:pass"); hyper lowercases header names.
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: basic dxnlcjpwyxnz"),
+            "missing Basic auth header: {request}"
         );
     }
 }

@@ -57,8 +57,8 @@ async fn decrypt_data_test() -> KResult<()> {
 
     let app = test_utils::test_app(None).await;
 
-    let pem: pem::Pem = pem::parse(RSA_PRIVATE_KEY.as_bytes())
-        .map_err(|e| kms_error!(format!("cannot parse RSA private key: {}", e)))?;
+    let (_, pem) = x509_parser::pem::parse_x509_pem(RSA_PRIVATE_KEY.as_bytes())
+        .map_err(|e| kms_error!(format!("cannot parse RSA private key: {e}")))?;
 
     let import_key = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -71,7 +71,7 @@ async fn decrypt_data_test() -> KResult<()> {
                 key_format_type: KeyFormatType::PKCS8,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(pem.contents().to_vec().into()),
+                    key_material: KeyMaterial::ByteString(pem.contents.into()),
                     attributes: None,
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
