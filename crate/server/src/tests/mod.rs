@@ -24,8 +24,6 @@ mod kmip_policy;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
 mod locate;
-#[cfg(feature = "non-fips")]
-mod migrate;
 mod ms_dke;
 mod mtls_db;
 #[cfg(feature = "non-fips")]

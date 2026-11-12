@@ -99,6 +99,13 @@ fn newer_database_error(recorded: &str, target: &str) -> DbError {
     )
 }
 
+fn older_database_error(recorded: &str, minimum: &str) -> DbError {
+    db_error!(
+        "Legacy database: recorded version {recorded} is older than the minimum supported version \
+         {minimum} (pre-{minimum} data is unsupported; export and re-import)."
+    )
+}
+
 /// Poll without blocking the runtime; attempts may borrow a dedicated mutable backend connection.
 pub(crate) async fn wait_for_migration_lock(
     lock_name: &str,
@@ -182,11 +189,19 @@ pub(crate) trait Migrate: DbParameters {
     /// A populated, unversioned database is refused when this is `None`.
     const UNVERSIONED_BASELINE: Option<&'static str>;
 
+    /// Recorded versions below this floor are refused (for example pre-5.12 Findex v5 on Redis).
+    const MIN_RECORDED_VERSION: Option<&'static str> = None;
+
     /// Check for stored objects, not metadata or the migration lock itself.
     async fn has_data(&self) -> DbResult<bool>;
 
     /// Wait for a cross-instance lock and retain its dedicated resource until guard drop.
     async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock>;
+
+    /// Deterministically release a migration lock that needs an async command before returning.
+    async fn release_migration_lock(&self, _lock: Self::MigrationLock) -> DbResult<()> {
+        Ok(())
+    }
 
     /// Idempotent schema DDL and the optional wipe, without data backfills.
     async fn ensure_schema(&self, clear_database: bool) -> DbResult<()>;
@@ -211,8 +226,8 @@ pub(crate) trait Migrate: DbParameters {
             None => {
                 let baseline = Self::UNVERSIONED_BASELINE.ok_or_else(|| {
                     db_error!(
-                        "Unversioned populated Redis/Findex database: pre-5.12.0 data is unsupported; \
-                         export and re-import."
+                        "Legacy database: it holds data but no recorded KMS version \
+                         (pre-5.12.0 Redis/Findex data is unsupported; export and re-import)."
                     )
                 })?;
                 tracing::info!(
@@ -225,6 +240,11 @@ pub(crate) trait Migrate: DbParameters {
         let mut recorded_version = recorded.parse::<Version>()?;
         if recorded_version > target_version {
             return Err(newer_database_error(recorded, target));
+        }
+        if let Some(minimum) = Self::MIN_RECORDED_VERSION
+            && recorded_version < minimum.parse::<Version>()?
+        {
+            return Err(older_database_error(recorded, minimum));
         }
         if recorded_version < SUPPORTED_BASELINE {
             tracing::warn!(
@@ -246,21 +266,35 @@ pub(crate) trait Migrate: DbParameters {
 
     /// Validate the recorded version before DDL, then keep the lock through the final ready stamp.
     async fn bootstrap(&self, clear_database: bool, target: &str) -> DbResult<Vec<MigrationStep>> {
-        let _lock = self.acquire_migration_lock().await?;
-        let target_version = target.parse::<Version>()?;
-        if let Some(recorded) = self.get_db_version().await? {
-            let recorded_version = recorded.parse::<Version>()?;
-            if !clear_database && recorded_version > target_version {
-                return Err(newer_database_error(&recorded, target));
+        let lock = self.acquire_migration_lock().await?;
+        let result = async {
+            let target_version = target.parse::<Version>()?;
+            if let Some(recorded) = self.get_db_version().await? {
+                let recorded_version = recorded.parse::<Version>()?;
+                if !clear_database {
+                    if recorded_version > target_version {
+                        return Err(newer_database_error(&recorded, target));
+                    }
+                    if let Some(minimum) = Self::MIN_RECORDED_VERSION
+                        && recorded_version < minimum.parse::<Version>()?
+                    {
+                        return Err(older_database_error(&recorded, minimum));
+                    }
+                }
             }
+            self.ensure_schema(clear_database).await?;
+            if clear_database {
+                self.set_db_version(target).await?;
+                self.set_db_state(DbState::Ready).await?;
+                return Ok(Vec::new());
+            }
+            self.upgrade_to(target).await
         }
-        self.ensure_schema(clear_database).await?;
-        if clear_database {
-            self.set_db_version(target).await?;
-            self.set_db_state(DbState::Ready).await?;
-            return Ok(Vec::new());
+        .await;
+        if let Err(error) = self.release_migration_lock(lock).await {
+            tracing::warn!(%error, "Failed to release database migration lock");
         }
-        self.upgrade_to(target).await
+        result
     }
 }
 

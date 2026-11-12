@@ -267,7 +267,10 @@ impl MigrationFixture for MySqlFixture {
     }
 }
 
-async fn assert_markers<P: DbParameters>(pool: &P, completed: &[MigrationStep]) -> DbResult<()> {
+pub(super) async fn assert_markers<P: DbParameters>(
+    pool: &P,
+    completed: &[MigrationStep],
+) -> DbResult<()> {
     for step in MIGRATION_STEPS {
         let actual = pool.get_parameter(step.marker()).await?;
         let expected = completed.contains(&step).then_some("true");
@@ -306,7 +309,7 @@ async fn assert_fixture_preserved<F: MigrationFixture>(
             .to_owned();
         objects.push((id, state));
     }
-    assert_store_objects_and_grants(pool, &objects).await
+    assert_store_objects_and_grants(pool, &objects, false).await
 }
 
 async fn fresh_and_one_connection<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
@@ -349,7 +352,7 @@ async fn unversioned_with_data<F: MigrationFixture>(fixture: &F) -> DbResult<()>
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
+    assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
@@ -366,7 +369,7 @@ async fn step_by_step_matches_all_at_once<F: MigrationFixture>(fixture: &F) -> D
             .is_empty(),
         "The wrapping-key backfill must not run before 5.25.0"
     );
-    assert_serial_tag(&pool, false).await?;
+    assert_serial_tag(&pool, false, false).await?;
 
     expect_steps(
         &pool.bootstrap(false, "5.25.0").await?,
@@ -375,7 +378,7 @@ async fn step_by_step_matches_all_at_once<F: MigrationFixture>(fixture: &F) -> D
     assert_ready(&pool, "5.25.0").await?;
     assert_markers(&pool, &[WrappingKeyIdBackfill]).await?;
     assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, false).await?;
+    assert_serial_tag(&pool, false, false).await?;
 
     expect_steps(
         &pool.bootstrap(false, TARGET).await?,
@@ -383,7 +386,7 @@ async fn step_by_step_matches_all_at_once<F: MigrationFixture>(fixture: &F) -> D
     )?;
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_serial_tag(&pool, true).await?;
+    assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await?;
     let stepwise = fixture.complete_data().await?;
     drop(pool);
@@ -412,7 +415,7 @@ async fn released_fixture<F: MigrationFixture>(
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
+    assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
@@ -429,7 +432,7 @@ async fn markers_already_set<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     expect_steps(&applied, &[])?;
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_serial_tag(&pool, false).await?;
+    assert_serial_tag(&pool, false, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
@@ -475,7 +478,7 @@ async fn interrupted_run_resumes<F: MigrationFixture>(fixture: &F) -> DbResult<(
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
+    assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
@@ -488,7 +491,7 @@ async fn below_baseline<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &MIGRATION_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
+    assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
@@ -532,7 +535,7 @@ async fn concurrent_startup<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     assert_markers(&first, &BOTH_STEPS).await?;
     assert_markers(&second, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&first).await?;
-    assert_serial_tag(&second, true).await?;
+    assert_serial_tag(&second, true, false).await?;
     assert_fixture_preserved(fixture, &first, &original).await?;
     assert_fixture_preserved(fixture, &second, &original).await
 }
@@ -632,7 +635,7 @@ async fn postgresql_5_14_fixture(fixture: &PostgresFixture) -> DbResult<()> {
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &MIGRATION_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
+    assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
