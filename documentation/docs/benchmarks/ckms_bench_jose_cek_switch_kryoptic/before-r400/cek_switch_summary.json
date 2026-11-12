@@ -1,0 +1,96 @@
+{
+  "urls": [
+    "http://127.0.0.1:51487",
+    "http://127.0.0.1:59453"
+  ],
+  "alg": "RSA-OAEP",
+  "rate_target": 400,
+  "workers": 256,
+  "plaintext_size": 256,
+  "warmup_s": 10,
+  "duration_s": 30,
+  "switch_at_s": 10,
+  "bucket_ms": 100,
+  "rate_achieved": 399.93333333333334,
+  "unsent": 0,
+  "per_server": [
+    {
+      "server": "all",
+      "samples": 12000,
+      "errors": 0,
+      "pre_switch": {
+        "n": 4000,
+        "decrypt_p50_ms": 0.585,
+        "decrypt_p99_ms": 1.599,
+        "decrypt_max_ms": 3.674,
+        "message_p50_ms": 6.723,
+        "message_p99_ms": 8.989,
+        "message_max_ms": 14.68
+      },
+      "post_switch_1s": {
+        "n": 400,
+        "decrypt_p50_ms": 0.647,
+        "decrypt_p99_ms": 2.714,
+        "decrypt_max_ms": 3.757,
+        "message_p50_ms": 6.817,
+        "message_p99_ms": 9.334,
+        "message_max_ms": 10.731
+      },
+      "peak_message_ms": 12.352,
+      "slow_messages": 0,
+      "recovery_ms": 0
+    },
+    {
+      "server": "kms1",
+      "samples": 6000,
+      "errors": 0,
+      "pre_switch": {
+        "n": 2000,
+        "decrypt_p50_ms": 0.543,
+        "decrypt_p99_ms": 1.533,
+        "decrypt_max_ms": 3.458,
+        "message_p50_ms": 6.548,
+        "message_p99_ms": 8.923,
+        "message_max_ms": 14.68
+      },
+      "post_switch_1s": {
+        "n": 200,
+        "decrypt_p50_ms": 0.566,
+        "decrypt_p99_ms": 1.596,
+        "decrypt_max_ms": 3.398,
+        "message_p50_ms": 6.559,
+        "message_p99_ms": 8.991,
+        "message_max_ms": 10.731
+      },
+      "peak_message_ms": 12.053,
+      "slow_messages": 0,
+      "recovery_ms": 0
+    },
+    {
+      "server": "kms2",
+      "samples": 6000,
+      "errors": 0,
+      "pre_switch": {
+        "n": 2000,
+        "decrypt_p50_ms": 0.628,
+        "decrypt_p99_ms": 1.645,
+        "decrypt_max_ms": 3.674,
+        "message_p50_ms": 7.014,
+        "message_p99_ms": 9.016,
+        "message_max_ms": 13.188
+      },
+      "post_switch_1s": {
+        "n": 200,
+        "decrypt_p50_ms": 0.712,
+        "decrypt_p99_ms": 2.714,
+        "decrypt_max_ms": 3.757,
+        "message_p50_ms": 7.064,
+        "message_p99_ms": 9.334,
+        "message_max_ms": 10.061
+      },
+      "peak_message_ms": 12.352,
+      "slow_messages": 0,
+      "recovery_ms": 0
+    }
+  ]
+}
