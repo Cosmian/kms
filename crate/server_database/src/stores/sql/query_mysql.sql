@@ -380,3 +380,11 @@ UPDATE gcm_invocations SET `count` = `count` + ? WHERE object_id = ?;
 
 -- name: delete-gcm-invocations
 DELETE FROM gcm_invocations WHERE object_id = ?;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64) NOT NULL PRIMARY KEY,
+    version         VARCHAR(64) NOT NULL,
+    last_heartbeat  BIGINT      NOT NULL,
+    is_leader       BOOLEAN     NOT NULL DEFAULT FALSE
+);

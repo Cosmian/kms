@@ -239,6 +239,7 @@ pub(crate) async fn test_app(
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(routes::cluster::get_cluster_status)
         .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)

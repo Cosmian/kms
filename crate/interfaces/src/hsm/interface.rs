@@ -285,6 +285,21 @@ pub trait HSM: Send + Sync {
     /// has been initialized with.
     async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>>;
 
+    /// Check that the HSM answers for a given slot (no session is opened).
+    ///
+    /// The default implementation only checks that the slot is configured. Backends able to
+    /// contact the device should override it, to detect an HSM that became unreachable after
+    /// the server started.
+    async fn check_slot(&self, slot_id: usize) -> InterfaceResult<()> {
+        if self.get_available_slot_list().await?.contains(&slot_id) {
+            Ok(())
+        } else {
+            Err(InterfaceError::InvalidRequest(format!(
+                "slot {slot_id} is not configured"
+            )))
+        }
+    }
+
     /// Get the supported cryptographic algorithms for a given HSM slot.
     ///
     /// This function queries the HSM to retrieve the list of algorithms
