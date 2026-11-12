@@ -289,7 +289,7 @@ fn push_op(ops: &mut Vec<PreparedLoadOp>, op: KmsCliResult<PreparedLoadOp>) {
     }
 }
 
-fn load_percentile(sorted: &[f64], p: f64) -> f64 {
+pub(super) fn load_percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
