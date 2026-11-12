@@ -645,6 +645,11 @@ Crate path: `crate/server`
 | `debug` | `{log_prefix}: validated entity={} policies={:?}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `ignoring embedded key material in JWT headers (x5u: {:?}, x5c: {} cert(s), x5t: {:?}); the key is taken from the configured JWKS` | `src/middlewares/jwt/jwt_config.rs` | - | - |
 | `trace` | `valid_jwt headers: typ={:?} alg={:?} kid={:?}` | `src/middlewares/jwt/jwt_config.rs` | - | - |
+| `warn` | `[kv-ttl-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[kv-ttl-cron] failed to list KV objects: {e}` | `src/routes/kv/metadata.rs` | `e` | [REMOVED] |
+| `warn` | `KV API internal error: {m}` | `src/routes/kv/error.rs` | `m` | [REMOVED] |
+| `info` | `[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)` | `src/cron.rs` | `destroyed` | - |
+| `debug` | `[kv-ttl-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `ModifyAttribute: persisting attributes for {id}` | `src/core/operations/attributes/modify.rs` | `id` | - |
 | `debug` | `Object with unique identifier: {id} revoked` | `src/core/operations/revoke.rs` | `id` | - |
 | `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{id}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | `id` | - |
@@ -774,6 +779,13 @@ Crate path: `crate/server`
 | `warn` | `Failed to persist automatic transition of object {} to {target}: {e}` | `src/core/retrieve_object_utils.rs` | `target`, `e` | - |
 | `info` | `[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check` | `src/core/operations/auto_rotate.rs` | `uid`, `msg` | - |
 | `trace` | `Auto-transitioning object {} from {effective_state} to {target}` | `src/core/retrieve_object_utils.rs` | `effective_state`, `target` | - |
+| `warn` | `[kv-ttl-cron] cannot expire version {version} of '{path}': {e}` | `src/routes/kv/metadata.rs` | `version`, `path`, `e` | [REMOVED] The TTL sweep could not build the metadata update or the destroy operations for the version, so the expired version is left in place until the next sweep. `version` is the KV version number, `path` the secret path, `e` the underlying error. Repeated occurrences point to a corrupted KV record. |
+| `warn` | `[kv-ttl-cron] failed to expire version {version} of '{path}': {e}` | `src/routes/kv/metadata.rs` | `version`, `path`, `e` | [REMOVED] Destroying the expired version failed, so its secret bytes remain until the next sweep retries. `version` is the KV version number, `path` the secret path, `e` the underlying error. Treat persistent failures as a security issue: expired secrets are still readable. |
+| `error` | `KV API internal error: {detail}` | `src/routes/kv/error.rs` | `detail` | - |
+| `error` | `SSH_CERTIFICATE_ISSUED: SSH certificate signed by the KMS CA` | `src/routes/ssh/mod.rs` | - | - |
+| `warn` | `[kv-ttl-cron] cannot expire KV version object {uid}: {error}` | `src/routes/kv/metadata.rs` | `uid`, `error` | - |
+| `warn` | `[kv-ttl-cron] sweep failed: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `Session: refusing a cookie-authenticated {} without a JSON Content-Type` | `src/middlewares/session_auth.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1185,19 +1197,19 @@ Crate path: `crate/clients/client`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | ×2 in this file |
+| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | - |
 | `info` | `The decrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the decrypted output file | ×2 in this file |
 | `info` | `The encrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the encrypted output file | ×2 in this file |
 | `info` | `Using server URL: {}` | `src/http_client/client.rs` | — | — |
-| `trace` | `<==\n{}` | `src/kms_rest_client.rs` | — | ×2 in this file |
-| `trace` | `==>\n{}` | `src/kms_rest_client.rs` | — | ×2 in this file |
+| `trace` | `<==\n{}` | `src/kms_rest_client.rs` | — | - |
+| `trace` | `==>\n{}` | `src/kms_rest_client.rs` | — | - |
 | `warn` | `Failed to set TLS 1.2 cipher list '{}' (using defaults): {}` | `src/http_client/tls.rs` | — | — |
 | `warn` | `Failed to set TLS 1.3 ciphersuites '{}' (using defaults): {}` | `src/http_client/tls.rs` | — | — |
 | `warn` | `Unknown TLS 1.2 IANA cipher suite '{}' (skipping)` | `src/http_client/tls.rs` | — | — |
 | `info` | `Using proxy: {:?}` | `src/http_client/client.rs` | — | — |
 | `debug` | `CONNECT tunnel established: {target_host}:{target_port}` | `src/http_client/proxy.rs` | `target_host`, `target_port` | — |
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
-| `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
+| `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | [REMOVED] |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
 | `debug` | `Connection error, retrying with backoff (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
 | `warn` | `Failed to load system CA bundle {bundle}: {e}` | `src/http_client/tls.rs` | `bundle`, `e` | - |

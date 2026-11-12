@@ -138,6 +138,7 @@
     "access-rights/obtained": "Obtained",
     "access-rights/crypto-officer": "Crypto Officer",
     "hsm-status": "HSM Status",
+    "kv-secrets": "Secrets (KV)",
     "hyperscalers": "Hyperscalers",
     "azure": "Azure",
     "azure/import-kek": "Import KEK",

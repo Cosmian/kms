@@ -118,6 +118,7 @@ Instead it stores:
 | Searchable indexes | Findex encrypted indexes (Redis is used as the Findex memory layer) |
 | Database metadata | Internal keys holding the database state (`ready`/`upgrading`) and version |
 | Ceremony records | Encrypted records under key names obfuscated with the master key |
+| Server parameters | AES-256-GCM encrypted under the database key at `kms::parameter::<name>` (e.g. the KV/SSH identifier key); the first value written wins across replicas |
 
 ## Migration
 

@@ -63,7 +63,8 @@ use crate::{
         AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig, SessionAuth,
         SpireTokenCache, UserId, api_token_middleware, ensure_auth_middleware,
         extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
-        spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
+        reject_forgeable_session_mutation, spire_token_middleware, tls_auth_fn,
+        vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -74,7 +75,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, ocsp, root_redirect, scep,
+        kv, ms_dke, ocsp, root_redirect, scep,
         spire::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
@@ -84,7 +85,7 @@ use crate::{
                 sign_with_transit_key_put,
             },
         },
-        swagger,
+        ssh, swagger,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -551,6 +552,17 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background KV TTL-expiry cron thread and retain shutdown signal.
+    let kv_ttl_shutdown_tx =
+        if kms_server.params.kv.enabled && kms_server.params.kv.ttl_check_interval_secs > 0 {
+            Some(cron::spawn_kv_ttl_cron(
+                kms_server.clone(),
+                kms_server.params.kv.ttl_check_interval_secs,
+            ))
+        } else {
+            None
+        };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -587,6 +599,10 @@ pub async fn start_kms_server(
     }
     // Signal the CRL refresh cron thread to stop
     if let Some(tx) = crl_refresh_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the KV TTL-expiry cron thread to stop
+    if let Some(tx) = kv_ttl_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -1161,6 +1177,9 @@ pub async fn prepare_kms_server(
     // Should we enable the MS DKE Service ?
     let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
+    // Should we enable the Vault KV v2-compatible secret store?
+    let enable_kv = kms_server.params.kv.enabled;
+
     // Should we enable the AWS XKS Service?
     let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
     if enable_aws_xks {
@@ -1480,6 +1499,56 @@ pub async fn prepare_kms_server(
             app = app.service(ms_dke_scope);
         }
 
+        let native_auth = NativeAuthStack {
+            kms_server: &kms_server_for_http,
+            use_api_token_auth,
+            use_cert_auth,
+            use_vault_token_auth,
+            auth_verifier: &auth_verifier,
+            auth_verifier_session_realm: &auth_verifier_session_realm,
+            jwt_configurations: &jwt_configurations,
+            spire_cache: &spire_cache,
+            spire_auth_verifier_url: &spire_auth_verifier_url,
+            vault_http_client: &vault_http_client,
+            spire_default_username: &spire_default_username,
+        };
+
+        if enable_kv {
+            // The Vault KV v2-compatible secret store. Accepts native KMS auth and, when
+            // `vault_api_enabled = true`, an `X-Vault-Token` header so that Vault/`bao`
+            // clients (OpenBao) authenticate once.
+            //
+            // The same routes are mounted on `/<kv_mount>` (native clients, kept for backward
+            // compatibility) and on `/v1/<kv_mount>` (what `vault`/`bao` always send), plus the
+            // KV v2 detection the CLI performs first on `/v1/sys/internal/ui/mounts`. The mount
+            // name is validated against the other scopes in `ServerParams::try_from`.
+            let use_any_auth = use_vault_token_auth
+                || use_jwt_auth
+                || use_cert_auth
+                || use_api_token_auth
+                || use_auth_verifier;
+            let kv_mount = &kms_server_for_http.params.kv.mount;
+            app = app
+                .service(kv_scope(
+                    &format!("/{kv_mount}"),
+                    kv::configure_routes,
+                    use_any_auth,
+                    &native_auth,
+                ))
+                .service(kv_scope(
+                    &format!("/v1/{kv_mount}"),
+                    kv::configure_routes,
+                    use_any_auth,
+                    &native_auth,
+                ))
+                .service(kv_scope(
+                    "/v1/sys/internal/ui/mounts",
+                    kv::configure_mount_routes,
+                    use_any_auth,
+                    &native_auth,
+                ));
+        }
+
         if enable_aws_xks {
             // The scope for the AWS XKS (External Key Store) endpoints served from /aws
             let aws_xks_scope = web::scope("/aws")
@@ -1536,20 +1605,6 @@ pub async fn prepare_kms_server(
 
             app = app.service(azure_ekm_scope);
         }
-
-        let native_auth = NativeAuthStack {
-            kms_server: &kms_server_for_http,
-            use_api_token_auth,
-            use_cert_auth,
-            use_vault_token_auth,
-            auth_verifier: &auth_verifier,
-            auth_verifier_session_realm: &auth_verifier_session_realm,
-            jwt_configurations: &jwt_configurations,
-            spire_cache: &spire_cache,
-            spire_auth_verifier_url: &spire_auth_verifier_url,
-            vault_http_client: &vault_http_client,
-            spire_default_username: &spire_default_username,
-        };
 
         #[cfg(feature = "non-fips")]
         {
@@ -1754,6 +1809,7 @@ pub async fn prepare_kms_server(
                 "/google-cse{_:.*}",
                 "/tokenize{_:.*}",
                 "/rotation-policy{_:.*}",
+                "/kv-secrets{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_runtime_config))
@@ -1906,6 +1962,10 @@ pub async fn prepare_kms_server(
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(ssh::configure_ca)
+            .service(ssh::put_role)
+            .service(ssh::sign)
+            .service(ssh::generate_password)
             .service(crl::get_crl)
             .service(csr::post_csr)
             .service(access::get_crypto_officer_status)
@@ -1917,6 +1977,7 @@ pub async fn prepare_kms_server(
                     .route(web::head().to(cli_archive_exists)),
             );
 
+        app = app.service(ssh::get_public_key);
         app.service(default_scope)
     })
     .keep_alive(actix_web::http::KeepAlive::Timeout(
@@ -2117,6 +2178,40 @@ where
                 stack.spire_default_username.clone(),
             ),
         ))
+}
+
+/// One Vault KV scope (`/<kv_mount>`, `/v1/<kv_mount>` or the mount preflight): the routes and
+/// their Vault error envelopes from `configure`, the session-cookie CSRF guard (innermost, after
+/// every authentication extractor), the native authentication stack, the audit trail and the
+/// allow-list CORS policy of the default scope, so a browser cannot read secrets cross-origin.
+fn kv_scope(
+    path: &str,
+    configure: fn(&mut web::ServiceConfig),
+    use_any_auth: bool,
+    stack: &NativeAuthStack<'_>,
+) -> Scope<
+    impl ServiceFactory<
+        ServiceRequest,
+        Config = (),
+        Response = ServiceResponse<impl MessageBody + use<>>,
+        Error = actix_web::Error,
+        InitError = (),
+    > + use<>,
+> {
+    let kms = stack.kms_server;
+    wrap_native_auth(
+        web::scope(path)
+            .wrap(from_fn(reject_forgeable_session_mutation))
+            .configure(configure),
+        ensure_auth_middleware(kms.clone(), use_any_auth),
+        stack,
+    )
+    .wrap(AuditMiddleware::new(
+        kms.audit_store.clone(),
+        kms.params.audit_trusted_proxy_cidrs.clone(),
+        kms.params.audit_failure_mode.clone(),
+    ))
+    .wrap(allowed_origins_cors(&kms.params.cors_allowed_origins))
 }
 
 #[cfg(test)]
@@ -2333,6 +2428,226 @@ mod tests {
         migrate_aws_xks_key_access(&kms)
             .await
             .expect("AWS XKS migration must not panic or fail for empty default_username");
+    }
+
+    /// Owned values behind a test [`NativeAuthStack`].
+    struct TestAuthStack {
+        kms: Arc<KMS>,
+        auth_verifier: Option<Arc<AuthVerifierValidator>>,
+        auth_verifier_session_realm: Option<Arc<str>>,
+        jwt_configurations: Arc<Vec<JwtConfig>>,
+        spire_cache: Arc<SpireTokenCache>,
+        spire_auth_verifier_url: Url,
+        vault_http_client: Arc<reqwest::Client>,
+        spire_default_username: Arc<str>,
+    }
+
+    impl TestAuthStack {
+        async fn new(auth_verifier: Option<Arc<AuthVerifierValidator>>) -> Self {
+            Self {
+                kms: crate::tests::test_utils::test_kms()
+                    .await
+                    .expect("test KMS"),
+                auth_verifier,
+                auth_verifier_session_realm: None,
+                jwt_configurations: Arc::new(Vec::new()),
+                spire_cache: SpireTokenCache::new(60),
+                spire_auth_verifier_url: Url::parse("http://localhost").expect("url"),
+                vault_http_client: Arc::new(reqwest::Client::new()),
+                spire_default_username: Arc::from("default"),
+            }
+        }
+
+        const fn stack(&self) -> NativeAuthStack<'_> {
+            NativeAuthStack {
+                kms_server: &self.kms,
+                use_api_token_auth: false,
+                use_cert_auth: false,
+                use_vault_token_auth: false,
+                auth_verifier: &self.auth_verifier,
+                auth_verifier_session_realm: &self.auth_verifier_session_realm,
+                jwt_configurations: &self.jwt_configurations,
+                spire_cache: &self.spire_cache,
+                spire_auth_verifier_url: &self.spire_auth_verifier_url,
+                vault_http_client: &self.vault_http_client,
+                spire_default_username: &self.spire_default_username,
+            }
+        }
+    }
+
+    /// Regression (#863): the KV scopes are built with the shared native authentication stack, so
+    /// an Auth Verifier bearer token authenticates there like on the default scope, a bearer
+    /// caller (like `vault`/`bao`) may omit the Content-Type, and an anonymous request is refused
+    /// once an Auth Verifier is configured.
+    #[actix_web::test]
+    async fn native_auth_stack_serves_kv_routes_to_auth_verifier_identities() {
+        use actix_web::{http::StatusCode, test};
+
+        use crate::middlewares::auth_verifier_test_helpers::{
+            auth_verifier_token, live_auth_verifier,
+        };
+
+        let auth = TestAuthStack::new(Some(live_auth_verifier().await)).await;
+        let app = test::init_service(App::new().app_data(Data::new(auth.kms.clone())).service(
+            kv_scope("/v1/kv", kv::configure_routes, true, &auth.stack()),
+        ))
+        .await;
+        let bearer = (
+            actix_web::http::header::AUTHORIZATION,
+            format!("Bearer {}", auth_verifier_token("alice@example.com", None)),
+        );
+
+        let put = test::TestRequest::put()
+            .uri("/v1/kv/data/av-app")
+            .insert_header(bearer.clone())
+            .set_payload(r#"{"data":{"k":"v"}}"#)
+            .to_request();
+        let response = test::call_service(&app, put).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let list = test::TestRequest::get()
+            .uri("/v1/kv/metadata/?list=true")
+            .insert_header(bearer)
+            .to_request();
+        let body: serde_json::Value = test::call_and_read_body_json(&app, list).await;
+        assert_eq!(
+            body["data"]["keys"],
+            serde_json::json!(["av-app"]),
+            "{body}"
+        );
+
+        let anonymous = test::TestRequest::get()
+            .uri("/v1/kv/metadata/?list=true")
+            .to_request();
+        let response = test::call_service(&app, anonymous).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// Security regression (S24): the KV JSON extractor accepts any Content-Type for Vault
+    /// clients, so a write carried by the ambient UI session cookie must use a non-safelisted
+    /// Content-Type; a same-site sibling origin cannot forge one without a CORS preflight.
+    /// Bodies are also checked to keep the Vault `errors` envelope on the real scope (S37).
+    #[actix_web::test]
+    async fn kv_scope_refuses_session_cookie_writes_without_json_content_type() {
+        use actix_session::Session;
+        use actix_web::{
+            http::{StatusCode, header::CONTENT_TYPE},
+            test,
+        };
+
+        async fn login(session: Session) -> HttpResponse {
+            session
+                .insert("user_id", "alice@example.com")
+                .expect("session insert");
+            HttpResponse::Ok().finish()
+        }
+
+        let auth = TestAuthStack::new(None).await;
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(auth.kms.clone()))
+                .wrap(
+                    SessionMiddleware::builder(
+                        CookieSessionStore::default(),
+                        Key::from(&[0x42_u8; 64]),
+                    )
+                    .cookie_secure(false)
+                    .build(),
+                )
+                .route("/login", web::post().to(login))
+                .service(kv_scope(
+                    "/v1/kv",
+                    kv::configure_routes,
+                    false,
+                    &auth.stack(),
+                )),
+        )
+        .await;
+        let login_response =
+            test::call_service(&app, test::TestRequest::post().uri("/login").to_request()).await;
+        let cookie = login_response
+            .response()
+            .cookies()
+            .next()
+            .expect("session cookie")
+            .into_owned();
+        let body = r#"{"data":{"password":"hunter2"}}"#;
+
+        for content_type in [
+            None,
+            Some("text/plain"),
+            Some("application/x-www-form-urlencoded"),
+            Some("multipart/form-data; boundary=x"),
+        ] {
+            let mut forged = test::TestRequest::post()
+                .uri("/v1/kv/data/csrf")
+                .cookie(cookie.clone())
+                .set_payload(body);
+            if let Some(content_type) = content_type {
+                forged = forged.insert_header((CONTENT_TYPE, content_type));
+            }
+            let response = test::call_service(&app, forged.to_request()).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "{content_type:?}"
+            );
+            let error: serde_json::Value = test::read_body_json(response).await;
+            assert!(error["errors"].is_array(), "{error}");
+        }
+        let forged_delete = test::TestRequest::delete()
+            .uri("/v1/kv/metadata/csrf")
+            .cookie(cookie.clone())
+            .insert_header((CONTENT_TYPE, "text/plain"))
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, forged_delete).await.status(),
+            StatusCode::UNSUPPORTED_MEDIA_TYPE
+        );
+        let read = || {
+            test::TestRequest::get()
+                .uri("/v1/kv/data/csrf")
+                .cookie(cookie.clone())
+                .to_request()
+        };
+
+        let malformed = test::TestRequest::post()
+            .uri("/v1/kv/data/csrf")
+            .cookie(cookie.clone())
+            .insert_header((CONTENT_TYPE, "application/json"))
+            .set_payload("{")
+            .to_request();
+        let response = test::call_service(&app, malformed).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let error: serde_json::Value = test::read_body_json(response).await;
+        assert!(error["errors"].is_array(), "{error}");
+
+        // `cas = 0` is a create-only write: it succeeds only if none of the refused writes
+        // above created the path.
+        let json_write = test::TestRequest::post()
+            .uri("/v1/kv/data/csrf")
+            .cookie(cookie.clone())
+            .insert_header((CONTENT_TYPE, "application/json; charset=utf-8"))
+            .set_payload(r#"{"data":{"password":"hunter2"},"options":{"cas":0}}"#)
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, json_write).await.status(),
+            StatusCode::OK,
+            "a refused write must not have created the secret"
+        );
+        let secret: serde_json::Value = test::call_and_read_body_json(&app, read()).await;
+        assert_eq!(secret["data"]["data"]["password"], "hunter2", "{secret}");
+
+        // Without the cookie the request is not ambient-authenticated: the default user of
+        // this auth-less server may still write without a Content-Type, as `bao` does.
+        let tokenless = test::TestRequest::post()
+            .uri("/v1/kv/data/vault-style")
+            .set_payload(body)
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, tokenless).await.status(),
+            StatusCode::OK
+        );
     }
 }
 

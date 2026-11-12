@@ -10,6 +10,11 @@ INSERT INTO parameters (name, value)
 VALUES (?, ?)
 ON DUPLICATE KEY UPDATE value=VALUES(value);
 
+-- name: insert-parameter-if-absent
+INSERT INTO parameters (name, value)
+VALUES (?, ?)
+ON DUPLICATE KEY UPDATE name = name;
+
 -- name: select-parameter
 SELECT value
 FROM parameters

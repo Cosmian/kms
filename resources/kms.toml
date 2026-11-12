@@ -137,6 +137,18 @@ hostname = "0.0.0.0"
 # subject_cn_regex = "[a-z0-9-]+\\.iot\\.example"
 # san_dns_regex = "[a-z0-9-]+\\.iot\\.example"
 
+[kv]
+# Enable the Vault KV v2-compatible `/<kv_mount>/` scope.
+#
+# Defaults to `false`.
+kv_enabled = false
+# KV mount name used by the `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*` routes.
+#
+# Mirrors `vault_transit_mount`/`vault_pki_mount`. Defaults to `"kv"`.
+kv_mount = ""
+# Interval, in seconds, between KV TTL-expiry sweeps (destroys secret versions whose `options.ttl` has elapsed). `0` disables the sweep. Defaults to `30`
+kv_ttl_check_interval_secs = 30
+
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"

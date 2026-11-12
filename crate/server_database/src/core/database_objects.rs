@@ -292,6 +292,24 @@ impl Database {
             .map(Arc::unwrap_or_clone))
     }
 
+    /// Retrieve a single object straight from its object store, bypassing (and not
+    /// populating) the object cache.
+    ///
+    /// The cache revalidates a hit against the object's state and `sensitive` attribute only,
+    /// so on a multi-node deployment it can serve content another node has since replaced.
+    /// Use this for authorization records whose content, not only their state, must be
+    /// current on every request (e.g. the SSH roles).
+    pub async fn retrieve_object_uncached(
+        &self,
+        uid: &str,
+    ) -> DbResult<Option<ObjectWithMetadata>> {
+        self.record("retrieve", async move {
+            let db = self.get_object_store(uid).await?;
+            db.retrieve(uid).await.map_err(DbError::from)
+        })
+        .await
+    }
+
     /// Retrieve a cached object as `Arc<ObjectWithMetadata>` without deep-cloning.
     ///
     /// On cache hit this returns a cheap `Arc` pointer bump instead of the
@@ -428,6 +446,21 @@ impl Database {
         self.record("is_object_owned_by", async move {
             let db = self.get_object_store(uid).await?;
             Ok(db.is_object_owned_by(uid, owner).await?)
+        })
+        .await
+    }
+
+    /// Return the server-internal parameter `name` from the main database, storing `value`
+    /// first if it is absent. Concurrent callers all get the first stored value. Parameters are
+    /// not KMIP objects: no client operation can read or write them.
+    pub async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> DbResult<String> {
+        self.record("get_or_insert_parameter", async move {
+            let db = self.get_object_store("").await?;
+            Ok(db.get_or_insert_parameter(name, value).await?)
         })
         .await
     }
@@ -755,14 +788,20 @@ impl Database {
             .await
         {
             Ok(ids) => ids,
-            Err(e @ DbError::Conflict(_)) => {
-                // the cached versions are stale: make the caller's retry read fresh ones
-                for op in operations {
-                    self.object_cache.invalidate(op.get_object_uid()).await;
+            Err(error) => {
+                // A conflict makes every cached version stale; a failed compare-and-swap also
+                // invalidates its object so the caller's retry reads the stored content.
+                let conflict = matches!(error, DbError::Conflict(_));
+                for operation in operations {
+                    if conflict || matches!(operation, AtomicOperation::CompareAndSwapObject { .. })
+                    {
+                        self.object_cache
+                            .invalidate(operation.get_object_uid())
+                            .await;
+                    }
                 }
-                return Err(e);
+                return Err(error);
             }
-            Err(e) => return Err(e),
         };
         // invalidate of clear cache for all operations
         for op in operations {
@@ -779,6 +818,19 @@ impl Database {
                 | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
+                    self.rotate_name_cache
+                        .invalidate_member(uid, attributes.rotate_name.as_deref());
+                }
+                AtomicOperation::CompareAndSwapObject {
+                    uid,
+                    object,
+                    attributes,
+                    ..
+                } => {
+                    self.object_cache.invalidate(uid).await;
+                    self.unwrapped_cache
+                        .validate_cache(uid, object.as_ref())
+                        .await?;
                     self.rotate_name_cache
                         .invalidate_member(uid, attributes.rotate_name.as_deref());
                 }
@@ -1456,6 +1508,106 @@ mod tests {
             arc_b_after.attributes().sensitive,
             Some(true),
             "Node B must see sensitive attribute change from Node A after revalidation window"
+        );
+    }
+
+    /// The object cache revalidates a hit against state and `sensitive` only, so content another
+    /// node replaced stays stale in it; `retrieve_object_uncached` must always see the new content.
+    #[tokio::test]
+    async fn test_uncached_retrieval_sees_content_replaced_by_another_node() {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let db_params = MainDbParams::Sqlite(tmp.path().to_path_buf(), None);
+        let mut nodes = Vec::new();
+        for _ in 0..2 {
+            nodes.push(
+                Database::instantiate(
+                    &db_params,
+                    false,
+                    HashMap::new(),
+                    crate::core::CacheParams {
+                        max_age: Duration::from_mins(15),
+                        max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                        max_ttl: None,
+                        disabled: false,
+                    },
+                    None,
+                    None,
+                )
+                .await
+                .expect("Failed to instantiate node"),
+            );
+        }
+        let node_b = nodes.pop().expect("node B");
+        let node_a = nodes.pop().expect("node A");
+
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+        let uid = node_a
+            .create(None, &owner, &key, &attributes, &HashSet::new())
+            .await
+            .expect("create key failed");
+
+        // Node B warms its cache with the original content.
+        let first = node_b
+            .retrieve_object_arc(&uid)
+            .await
+            .expect("retrieve on node B")
+            .expect("key must exist");
+        assert_eq!(
+            first
+                .object()
+                .key_block()
+                .expect("key block")
+                .key_bytes()
+                .expect("key bytes")
+                .as_slice(),
+            &[0_u8; 32]
+        );
+
+        // Node A replaces the content; state and `sensitive` are unchanged.
+        let replacement =
+            create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &[1_u8; 32], &attributes)
+                .expect("failed to build replacement key");
+        node_a
+            .update_object(&uid, &replacement, &attributes, None)
+            .await
+            .expect("Node A update_object failed");
+
+        // Even after the revalidation window, the cache keeps serving the old bytes ...
+        tokio::time::sleep(crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL).await;
+        let stale = node_b
+            .retrieve_object_arc(&uid)
+            .await
+            .expect("cached retrieve on node B")
+            .expect("key must exist");
+        assert_eq!(
+            stale
+                .object()
+                .key_block()
+                .expect("key block")
+                .key_bytes()
+                .expect("key bytes")
+                .as_slice(),
+            &[0_u8; 32],
+            "the cache is expected to serve stale content: that is why the uncached read exists"
+        );
+
+        // ... while the uncached read sees the replacement.
+        let fresh = node_b
+            .retrieve_object_uncached(&uid)
+            .await
+            .expect("uncached retrieve on node B")
+            .expect("key must exist");
+        assert_eq!(
+            fresh
+                .object()
+                .key_block()
+                .expect("key block")
+                .key_bytes()
+                .expect("key bytes")
+                .as_slice(),
+            &[1_u8; 32]
         );
     }
 }

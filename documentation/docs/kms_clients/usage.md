@@ -26,6 +26,7 @@ Commands:
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
   google         Manage google elements. Handle key pairs and identities from Gmail API
+  kv             Read and write secrets in the Vault KV v2-compatible store
   locate         Locate cryptographic objects inside the KMS
   login          Login to the KMS server identity provider.
   logout         Logout from the Identity Provider

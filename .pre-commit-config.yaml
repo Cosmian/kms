@@ -252,6 +252,13 @@ repos:
         files: ^crate/server/src/.*\.rs$
         exclude: ^crate/server/src/(start_kms_server|core/kms/mod|tests/test_utils|tests/google_cse/server_setup)\.rs$
 
+      - id: no-committed-credentials
+        name: No committed provider credentials
+        description: 'Fails on well-known live-credential formats (AWS access key id, GitHub, Slack and Vault tokens). Use test_data fixtures or environment variables.'
+        language: pygrep
+        entry: '\b(AKIA(?!IOSFODNN7EXAMPLE\b)[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}|xox[abprs]-[A-Za-z0-9-]{10,}|hv[sbr]\.[A-Za-z0-9_-]{24,})\b'
+        exclude: ^(test_data/|ui/pnpm-lock\.yaml|Cargo\.lock|documentation/book/|review-)
+
       - id: pip-audit-lockfiles
         name: pip-audit on hash-pinned Python requirements
         entry: bash -c 'for f in "$@"; do pip-audit -r "$f" || exit 1; done' --

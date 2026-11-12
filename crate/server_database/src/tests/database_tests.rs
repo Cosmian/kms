@@ -18,8 +18,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, InterfaceResult,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
@@ -288,6 +288,192 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 
     db.delete(&uid_3).await?;
 
+    Ok(())
+}
+
+/// The version an object currently has in the store; a read without it fails the test.
+async fn stored_version<DB: ObjectsStore>(db: &DB, uid: &str) -> DbResult<u64> {
+    db.retrieve(uid)
+        .await?
+        .and_then(|owm| owm.version())
+        .ok_or_else(|| DbError::Default(format!("no version read for {uid}")))
+}
+
+/// `CompareAndSwapObject` writes only when the caller owns the object, it is not destroyed
+/// and its version is the expected one; otherwise the whole batch fails with `Conflict` and
+/// leaves the store unchanged.
+pub(super) async fn compare_and_swap_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    log_init(None);
+
+    let mut rng = KmsRng::new().seeded_csrng()?;
+    let mut new_key = || -> DbResult<Object> {
+        let mut bytes = vec![0; 32];
+        rng.fill_bytes(&mut bytes);
+        Ok(create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &bytes,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )?)
+    };
+    let original = new_key()?;
+    let first = new_key()?;
+    let second = new_key()?;
+    let owner = UserId::from("compare_and_swap_owner");
+    let cas = |uid: &str, expected_version: u64, object: &Object| -> DbResult<AtomicOperation> {
+        Ok(AtomicOperation::CompareAndSwapObject {
+            uid: uid.to_owned(),
+            expected_version,
+            object: Box::new(object.clone()),
+            attributes: object.attributes()?.clone(),
+            tags: None,
+        })
+    };
+    let no_tags = HashSet::new();
+    let original_attributes = original.attributes()?.clone();
+    let create = |uid: &str| {
+        db.create(
+            Some(uid.to_owned()),
+            &owner,
+            &original,
+            &original_attributes,
+            &no_tags,
+        )
+    };
+    let expect_conflict = |result: InterfaceResult<Vec<String>>, case: &str| match result {
+        Err(InterfaceError::Conflict(_)) => Ok(()),
+        other => Err(DbError::Default(format!(
+            "{case}: expected Conflict, got {other:?}"
+        ))),
+    };
+
+    // Matching version: the content is swapped, the state kept, the version incremented once.
+    let uid = Uuid::new_v4().to_string();
+    create(&uid).await?;
+    let version = stored_version(db, &uid).await?;
+    db.atomic(&owner, &[cas(&uid, version, &first)?]).await?;
+    let swapped = db.retrieve(&uid).await?.expect("swapped object");
+    assert!(
+        swapped.object() == &first,
+        "the swap must write the new object"
+    );
+    assert_eq!(swapped.state(), State::PreActive);
+    assert_eq!(swapped.version(), Some(version + 1));
+
+    // Stale version: rejected, nothing written.
+    expect_conflict(
+        db.atomic(&owner, &[cas(&uid, version, &second)?]).await,
+        "stale version",
+    )?;
+    let unchanged = db.retrieve(&uid).await?.expect("object after stale swap");
+    assert!(unchanged.object() == &first, "a stale swap must not write");
+    assert_eq!(unchanged.version(), Some(version + 1));
+
+    // Foreign owner with the current version: rejected like a stale version.
+    expect_conflict(
+        db.atomic(
+            &UserId::from("another-owner"),
+            &[cas(&uid, version + 1, &second)?],
+        )
+        .await,
+        "foreign owner",
+    )?;
+    assert_eq!(stored_version(db, &uid).await?, version + 1);
+
+    // Destroyed objects: rejected with the current version, and the companion create of the
+    // same batch is rolled back.
+    for destroyed in [State::Destroyed, State::Destroyed_Compromised] {
+        let uid = Uuid::new_v4().to_string();
+        create(&uid).await?;
+        db.update_state(&uid, destroyed).await?;
+        let companion = Uuid::new_v4().to_string();
+        expect_conflict(
+            db.atomic(
+                &owner,
+                &[
+                    AtomicOperation::Create((
+                        companion.clone(),
+                        owner.clone(),
+                        first.clone(),
+                        first.attributes()?.clone(),
+                        HashSet::new(),
+                    )),
+                    cas(&uid, stored_version(db, &uid).await?, &first)?,
+                ],
+            )
+            .await,
+            "destroyed object",
+        )?;
+        assert!(db.retrieve(&companion).await?.is_none());
+        assert_eq!(
+            db.retrieve(&uid).await?.expect("destroyed object").object(),
+            &original
+        );
+    }
+
+    // Missing object: rejected.
+    expect_conflict(
+        db.atomic(&owner, &[cas(&Uuid::new_v4().to_string(), 0, &first)?])
+            .await,
+        "missing object",
+    )?;
+
+    // Two concurrent writers from the same version: exactly one batch commits.
+    let uid = Uuid::new_v4().to_string();
+    create(&uid).await?;
+    let version = stored_version(db, &uid).await?;
+    let version_uid_1 = Uuid::new_v4().to_string();
+    let version_uid_2 = Uuid::new_v4().to_string();
+    let batch = |object: &Object, version_uid: &str| -> DbResult<[AtomicOperation; 2]> {
+        Ok([
+            cas(&uid, version, object)?,
+            AtomicOperation::Create((
+                version_uid.to_owned(),
+                owner.clone(),
+                object.clone(),
+                object.attributes()?.clone(),
+                HashSet::new(),
+            )),
+        ])
+    };
+    let (batch_1, batch_2) = (
+        batch(&first, &version_uid_1)?,
+        batch(&second, &version_uid_2)?,
+    );
+    let (result_1, result_2) =
+        tokio::join!(db.atomic(&owner, &batch_1), db.atomic(&owner, &batch_2));
+    assert!(
+        matches!(
+            (&result_1, &result_2),
+            (Ok(_), Err(InterfaceError::Conflict(_))) | (Err(InterfaceError::Conflict(_)), Ok(_))
+        ),
+        "concurrent stale writes must yield one success and one conflict: {result_1:?}, {result_2:?}"
+    );
+    assert_ne!(
+        db.retrieve(&version_uid_1).await?.is_some(),
+        db.retrieve(&version_uid_2).await?.is_some(),
+        "the losing batch must not create its version object"
+    );
+    assert_eq!(stored_version(db, &uid).await?, version + 1);
+    Ok(())
+}
+
+/// `get_or_insert_parameter` stores a value once: later calls, even with another value,
+/// return the first one.
+pub(super) async fn get_or_insert_parameter<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    let name = "test_get_or_insert_parameter";
+    let first = Uuid::new_v4().to_string();
+    let stored = db.get_or_insert_parameter(name, &first).await?;
+    let again = db
+        .get_or_insert_parameter(name, &Uuid::new_v4().to_string())
+        .await?;
+    if again != stored {
+        return Err(DbError::DatabaseError(format!(
+            "parameter changed from {stored} to {again}"
+        )));
+    }
     Ok(())
 }
 

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+#MISE description="OpenBao CLI (bao kv) against the KMS Vault KV v2-compatible store"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+source "${REPO_ROOT}/.mise/scripts/test/bao_verifier.sh"
+WORK_DIR="$(mktemp -d /tmp/kms-openbao-XXXXXX)"
+
+# Keep the original exit status: kms_stop succeeding must not mask a failed scenario.
+cleanup() {
+  local rc=$?
+  if [[ "${rc}" -ne 0 && -s "${KMS_LOG_FILE:-}" ]]; then tail -n 40 "${KMS_LOG_FILE}" >&2 || true; fi
+  kms_stop
+  bao_verifier_stop
+  rm -rf -- "${WORK_DIR:?}"
+  exit "${rc}"
+}
+trap cleanup EXIT
+
+# From rule://test-configs section 3: fails when the key is absent from the fixture.
+set_toml_value() { # <file> <key> <already-quoted-value>
+  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
+  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
+require_cmd docker
+require_cmd cargo
+require_cmd curl
+require_cmd python3
+
+print_header "OpenBao + KMS KV v2 integration test (${VARIANT_NAME})"
+run_isolated python3 "${REPO_ROOT}/.mise/scripts/test/test_bao_lookup_proxy.py"
+
+# Identities: a throw-away OpenBao dev server acts as the token verifier (the KMS calls its
+# /auth/token/lookup-self, which a small proxy maps to OpenBao's /v1 path). Two userpass logins
+# give two tokens, each mapped to its own entity.
+bao_verifier_start "kms-openbao-verifier-$$" "${WORK_DIR}"
+TOKEN_OWNER="$(bao_verifier_login alice)"
+TOKEN_OTHER="$(bao_verifier_login bob)"
+
+# Complete fixture, only scalar values changed (rule://test-configs section 3).
+KMS_CONFIG_FILE="${WORK_DIR}/kms.toml"
+KMS_LOG_FILE="${WORK_DIR}/kms.log"
+KMS_PORT="$(kms_pick_free_port)"
+KMS_URL="http://127.0.0.1:${KMS_PORT}"
+mkdir -p "${WORK_DIR}/kms-data" "${WORK_DIR}/workspace" "${WORK_DIR}/tmp"
+cp "${REPO_ROOT}/test_data/configs/server/auth/vault_kv.toml" "${KMS_CONFIG_FILE}"
+set_toml_value "${KMS_CONFIG_FILE}" port "${KMS_PORT}"
+set_toml_value "${KMS_CONFIG_FILE}" sqlite_path "\"${WORK_DIR}/kms-data\""
+set_toml_value "${KMS_CONFIG_FILE}" root_data_path "\"${WORK_DIR}/workspace\""
+set_toml_value "${KMS_CONFIG_FILE}" tmp_path "\"${WORK_DIR}/tmp\""
+set_toml_value "${KMS_CONFIG_FILE}" vault_auth_verifier_url "\"${BAO_VERIFIER_URL}\""
+
+# Optional: replay the whole scenario on PostgreSQL or MySQL, e.g.
+# OPENBAO_DATABASE_URL=postgresql://kms:kms@127.0.0.1:5432/kms (the type is derived from the scheme).
+if [[ -n "${OPENBAO_DATABASE_URL:-}" ]]; then
+  case "${OPENBAO_DATABASE_URL}" in
+    postgres*) OPENBAO_DATABASE_TYPE="postgresql" ;;
+    mysql*) OPENBAO_DATABASE_TYPE="mysql" ;;
+    *) print_error "OPENBAO_DATABASE_URL must start with postgresql:// or mysql://" ;;
+  esac
+  set_toml_value "${KMS_CONFIG_FILE}" database_type "\"${OPENBAO_DATABASE_TYPE}\""
+  set_toml_value "${KMS_CONFIG_FILE}" database_url "\"${OPENBAO_DATABASE_URL}\""
+fi
+
+print_status "Building KMS server..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_start_from_bin "$(get_kms_bin)"
+print_status "KMS KV store at ${KMS_URL}"
+
+# On Linux the container shares the host network; elsewhere it reaches the host by name.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  BAO_ADDR_FOR_CONTAINER="http://127.0.0.1:${KMS_PORT}"
+else
+  BAO_ADDR_FOR_CONTAINER="http://host.docker.internal:${KMS_PORT}"
+fi
+
+BAO_ADDR="${BAO_ADDR_FOR_CONTAINER}" \
+  BAO_TOKEN="${TOKEN_OWNER}" \
+  BAO_TOKEN_OTHER="${TOKEN_OTHER}" \
+  KV_MOUNT="kv" \
+  bash "${REPO_ROOT}/.mise/scripts/test/test_openbao_kv.sh"
+
+print_success "OpenBao integration tests completed"

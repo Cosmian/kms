@@ -138,6 +138,7 @@ Known parameters:
 | `db_version` | The version of the KMS software that last ran against this database. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
 | `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
+| `kv_metadata_uid_key` | Hex-encoded 32-byte key, created on the first use of the [KV secret store](../secret_backends.md), from which the identifier of each KV path's metadata object (and of the SSH CA/role records) is derived. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
 
 ## crypto_officer_activations
 

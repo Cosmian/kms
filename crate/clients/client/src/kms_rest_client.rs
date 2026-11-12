@@ -863,19 +863,32 @@ impl KmsClient {
         R: serde::de::DeserializeOwned + Sized + 'static,
         O: Serialize + Sync,
     {
-        let server_url = format!("{}{endpoint}", self.client.server_url);
-        info!("GET {server_url}");
-        let response = match data {
-            Some(d) => self.client.get_with_query(&server_url, d).await?,
-            None => self.client.get(&server_url).await?,
-        };
-
-        let status_code = response.status;
-        if status_code.is_success() {
+        let response = self.get_response(endpoint, data).await?;
+        if response.status.is_success() {
             return Ok(response.json::<R>()?);
         }
+        Err(process_error_response(endpoint, response.status, &response))
+    }
 
-        Err(process_error_response(endpoint, status_code, &response))
+    /// Like [`Self::get_no_ttlv`], but `404 Not Found` yields `None`: Vault answers an empty KV
+    /// `LIST` with 404.
+    pub async fn get_no_ttlv_or_not_found<R, O>(
+        &self,
+        endpoint: &str,
+        data: Option<&O>,
+    ) -> Result<Option<R>, KmsClientError>
+    where
+        R: serde::de::DeserializeOwned + Sized + 'static,
+        O: Serialize + Sync,
+    {
+        let response = self.get_response(endpoint, data).await?;
+        if response.status == http::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if response.status.is_success() {
+            return Ok(Some(response.json::<R>()?));
+        }
+        Err(process_error_response(endpoint, response.status, &response))
     }
 
     /// Perform a GET request and return the raw response bytes.
@@ -889,19 +902,28 @@ impl KmsClient {
     where
         O: Serialize + Sync,
     {
-        let server_url = format!("{}{endpoint}", self.client.server_url);
-        info!("GET {server_url}");
-        let response = match data {
-            Some(d) => self.client.get_with_query(&server_url, d).await?,
-            None => self.client.get(&server_url).await?,
-        };
-
-        let status_code = response.status;
-        if status_code.is_success() {
+        let response = self.get_response(endpoint, data).await?;
+        if response.status.is_success() {
             return Ok(response.bytes().to_vec());
         }
+        Err(process_error_response(endpoint, response.status, &response))
+    }
 
-        Err(process_error_response(endpoint, status_code, &response))
+    /// Send a GET request to `endpoint`, with `data` as query parameters.
+    async fn get_response<O>(
+        &self,
+        endpoint: &str,
+        data: Option<&O>,
+    ) -> Result<crate::http_client::HttpResponse, KmsClientError>
+    where
+        O: Serialize + Sync,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        info!("GET {server_url}");
+        Ok(match data {
+            Some(d) => self.client.get_with_query(&server_url, d).await?,
+            None => self.client.get(&server_url).await?,
+        })
     }
 
     pub async fn delete_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
@@ -920,6 +942,21 @@ impl KmsClient {
         Err(process_error_response(endpoint, status_code, &response))
     }
 
+    /// Perform a DELETE request whose success response carries no body (e.g. `204 No Content`).
+    pub async fn delete_no_content(&self, endpoint: &str) -> Result<(), KmsClientError> {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        let response = self.client.delete_json(&server_url, &()).await?;
+
+        let status_code = response.status;
+        if status_code.is_success() {
+            return Ok(());
+        }
+
+        Err(process_error_response(endpoint, status_code, &response))
+    }
+
+    /// POST `data` as JSON. Request and response bodies may carry secrets (e.g. KV values),
+    /// so they are never logged.
     pub async fn post_no_ttlv<O, R>(
         &self,
         endpoint: &str,
@@ -927,28 +964,17 @@ impl KmsClient {
     ) -> Result<R, KmsClientError>
     where
         O: Serialize + Sync,
-        R: serde::de::DeserializeOwned + Sized + Serialize + 'static,
+        R: serde::de::DeserializeOwned + Sized + 'static,
     {
         let server_url = format!("{}{endpoint}", self.client.server_url);
         let response = match data {
-            Some(d) => {
-                trace!(
-                    "==>\n{}",
-                    serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_owned())
-                );
-                self.client.post_json(&server_url, d).await?
-            }
+            Some(d) => self.client.post_json(&server_url, d).await?,
             None => self.client.post_empty(&server_url).await?,
         };
 
         let status_code = response.status;
         if status_code.is_success() {
-            let result = response.json::<R>()?;
-            trace!(
-                "<==\n{}",
-                serde_json::to_string_pretty(&result).unwrap_or_else(|_| "[N/A]".to_owned())
-            );
-            return Ok(result);
+            return Ok(response.json::<R>()?);
         }
 
         Err(process_error_response(endpoint, status_code, &response))
@@ -1066,7 +1092,6 @@ fn handle_error(
     response: &crate::http_client::HttpResponse,
 ) -> String {
     let text = response.text().unwrap_or_default();
-    trace!("Error response on {endpoint}: status={status}, body={text}");
 
     format!(
         "{}: {}",

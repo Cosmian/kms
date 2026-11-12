@@ -869,6 +869,37 @@ impl ObjectsStore for SqlitePool {
         Ok(owned)
     }
 
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        let insert_param: &'static str = get_sqlite_query!("insert-parameter-if-absent");
+        let select_param: &'static str = get_sqlite_query!("select-parameter");
+        let value_s = value.to_owned();
+        let stored = retry_on_transient_lock(|| {
+            let value_s = value_s.clone();
+            async move {
+                self.writer
+                    .call(
+                        move |c: &mut rusqlite::Connection| -> Result<String, rusqlite::Error> {
+                            let tx = c.transaction()?;
+                            tx.execute(insert_param, params_from_iter([&name, &value_s.as_str()]))?;
+                            let stored =
+                                tx.query_row(select_param, params_from_iter([&name]), |row| {
+                                    row.get::<_, String>(0)
+                                })?;
+                            tx.commit()?;
+                            Ok(stored)
+                        },
+                    )
+                    .await
+            }
+        })
+        .await?;
+        Ok(stored)
+    }
+
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         let placeholders = (1..=tags.len())
             .map(|i| format!("${i}"))
@@ -1605,6 +1636,14 @@ enum OwnedOp {
         tags: Option<HashSet<String>>,
         expected_version: Option<i64>,
     },
+    CompareAndSwapObject {
+        uid: String,
+        expected_version: i64,
+        object_json: String,
+        attributes_json: String,
+        wrapping_key_id: Option<String>,
+        tags: Option<HashSet<String>>,
+    },
     UpdateState {
         uid: String,
         state_s: String,
@@ -1664,6 +1703,34 @@ impl OwnedOp {
                 })?;
                 Self::update_object(uid, obj, attrs, tags, Some(expected))
             }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_version,
+                object,
+                attributes,
+                tags,
+            } => {
+                let expected_version = i64::try_from(*expected_version).map_err(|e| {
+                    DbError::DatabaseError(format!("expected version out of range: {e}"))
+                })?;
+                let object_json = serde_json::to_string(object).map_err(|e| {
+                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                })?;
+                let attributes_json = serde_json::to_string(attributes).map_err(|e| {
+                    DbError::DatabaseError(format!(
+                        "failed serializing the attributes to JSON: {e}"
+                    ))
+                })?;
+                let wrapping_key_id = object.wrapping_key_uid();
+                Ok(Self::CompareAndSwapObject {
+                    uid: uid.clone(),
+                    expected_version,
+                    object_json,
+                    attributes_json,
+                    wrapping_key_id,
+                    tags: tags.clone(),
+                })
+            }
             AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
                 state_s: state.to_string(),
@@ -1705,6 +1772,7 @@ fn apply_owned_ops(
     let ins_obj_sql = get_sqlite_query!("insert-objects");
     let ins_tag_sql = get_sqlite_query!("insert-tags");
     let upd_obj_sql = get_sqlite_query!("update-object-with-object");
+    let update_if_owned_version_sql = get_sqlite_query!("update-object-if-owned-version");
     let upd_obj_if_version_sql = get_sqlite_query!("update-object-with-object-if-version");
     let del_tag_sql = get_sqlite_query!("delete-tags");
     let ups_obj_sql = get_sqlite_query!("upsert-object");
@@ -1809,6 +1877,40 @@ fn apply_owned_ops(
                         upd_obj_sql,
                         rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
                     )?;
+                }
+                if let Some(tags) = tags {
+                    tx.execute(del_tag_sql, params_from_iter([uid]))?;
+                    for tag in tags {
+                        tx.execute(ins_tag_sql, params_from_iter([uid, tag.as_str()]))?;
+                    }
+                }
+                uids.push(uid.clone());
+            }
+            OwnedOp::CompareAndSwapObject {
+                uid,
+                expected_version,
+                object_json,
+                attributes_json,
+                wrapping_key_id,
+                tags,
+            } => {
+                let destroyed_state = State::Destroyed.to_string();
+                let destroyed_compromised_state = State::Destroyed_Compromised.to_string();
+                let rows_affected = tx.execute(
+                    update_if_owned_version_sql,
+                    rusqlite::params![
+                        object_json,
+                        attributes_json,
+                        wrapping_key_id,
+                        uid,
+                        owner,
+                        expected_version,
+                        destroyed_state,
+                        destroyed_compromised_state,
+                    ],
+                )?;
+                if rows_affected == 0 {
+                    return Err(DbError::Conflict(uid.clone()));
                 }
                 if let Some(tags) = tags {
                     tx.execute(del_tag_sql, params_from_iter([uid]))?;
