@@ -16,9 +16,8 @@ use crate::{
     stores::{
         SqlitePool,
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState, MIGRATION_STEPS, Migrate,
+            DbParameters, DbState, MIGRATION_STEPS, Migrate,
             MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
-            WRAPPING_KEY_BACKFILL_PARAM,
         },
     },
 };
@@ -28,7 +27,7 @@ const BOTH_STEPS: [MigrationStep; 2] = [WrappingKeyIdBackfill, CertificateSerial
 type TableRows = Vec<Vec<Value>>;
 
 fn copy_fixture(version: &str) -> DbResult<(TempDir, PathBuf)> {
-    cosmian_logger::log_init(Some("info"));
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
     let directory = TempDir::new()?;
     let path = directory.path().join("kms.db");
     let source = Path::new(concat!(
@@ -326,33 +325,23 @@ pub(super) async fn assert_serial_tag<P: ObjectsStore>(pool: &P, present: bool) 
     Ok(())
 }
 
+/// A new database is stamped at once; an empty schema that lost its version is stamped again.
 #[tokio::test]
-async fn test_sqlite_migration_fresh() -> DbResult<()> {
+async fn test_sqlite_migration_empty_database_is_stamped() -> DbResult<()> {
     let directory = TempDir::new()?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(
-        &directory.path().join("kms.db"),
-        false,
-        Some(1),
-        env!("CARGO_PKG_VERSION"),
-    )
-    .await?;
+    let path = directory.path().join("kms.db");
+    let (pool, applied) =
+        SqlitePool::instantiate_at_version(&path, false, Some(1), env!("CARGO_PKG_VERSION"))
+            .await?;
     expect_steps(&applied, &[])?;
     db_ensure!(
         !pool.has_data().await?,
         "A fresh database must have no objects"
     );
-    assert_lock_released(&directory.path().join("kms.db"))?;
+    assert_lock_released(&path)?;
     assert_ready(&pool, env!("CARGO_PKG_VERSION")).await?;
-    assert_markers(&pool, &[]).await
-}
+    assert_markers(&pool, &[]).await?;
 
-#[tokio::test]
-async fn test_sqlite_migration_unversioned_empty() -> DbResult<()> {
-    let directory = TempDir::new()?;
-    let path = directory.path().join("kms.db");
-    let (pool, initial) =
-        SqlitePool::instantiate_at_version(&path, true, Some(1), "5.20.0").await?;
-    expect_steps(&initial, &[])?;
     drop(pool);
     Connection::open(&path)?.execute("DELETE FROM parameters WHERE name = 'db_version'", [])?;
     let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
@@ -365,247 +354,170 @@ async fn test_sqlite_migration_unversioned_empty() -> DbResult<()> {
     assert_ready(&pool, TARGET).await
 }
 
+/// One 5.20.0 database, migrated step by step and directly, must end identical; reopening is a no-op.
 #[tokio::test]
-async fn test_sqlite_migration_unversioned_with_data() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
+async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clean() -> DbResult<()>
+{
+    let (_step_directory, step_path) = copy_fixture("5.20.0")?;
+    let (_direct_directory, direct_path) = copy_fixture("5.20.0")?;
+    let original = preserved_data(&step_path)?;
 
-#[tokio::test]
-async fn test_sqlite_migration_step_by_step() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    let (pool, applied) =
-        SqlitePool::instantiate_at_version(&path, false, Some(1), "5.24.0").await?;
+    let (step, applied) =
+        SqlitePool::instantiate_at_version(&step_path, false, Some(1), "5.24.0").await?;
     expect_steps(&applied, &[])?;
-    assert_ready(&pool, "5.24.0").await?;
-    assert_markers(&pool, &[]).await?;
+    assert_ready(&step, "5.24.0").await?;
+    assert_markers(&step, &[]).await?;
     db_ensure!(
-        pool.find_wrapped_by("mig_kek", &UserId::from("admin"))
+        step.find_wrapped_by("mig_kek", &UserId::from("admin"))
             .await?
             .is_empty(),
         "The wrapping-key backfill must not run before 5.25.0"
     );
-    assert_serial_tag(&pool, false).await?;
-    assert_fixture_preserved(&pool, &path, &original).await?;
+    assert_serial_tag(&step, false).await?;
+    assert_fixture_preserved(&step, &step_path, &original).await?;
 
     expect_steps(
-        &pool.bootstrap(false, "5.25.0").await?,
+        &step.bootstrap(false, "5.25.0").await?,
         &[WrappingKeyIdBackfill],
     )?;
-    assert_ready(&pool, "5.25.0").await?;
-    assert_markers(&pool, &[WrappingKeyIdBackfill]).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, false).await?;
-    assert_fixture_preserved(&pool, &path, &original).await?;
+    assert_ready(&step, "5.25.0").await?;
+    assert_markers(&step, &[WrappingKeyIdBackfill]).await?;
+    assert_wrapped_key_found(&step).await?;
+    assert_serial_tag(&step, false).await?;
+    assert_fixture_preserved(&step, &step_path, &original).await?;
 
     expect_steps(
-        &pool.bootstrap(false, TARGET).await?,
+        &step.bootstrap(false, TARGET).await?,
         &[CertificateSerialTagBackfill],
     )?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
+    assert_ready(&step, TARGET).await?;
+    assert_markers(&step, &BOTH_STEPS).await?;
+    assert_serial_tag(&step, true).await?;
+    assert_fixture_preserved(&step, &step_path, &original).await?;
 
-#[tokio::test]
-async fn test_sqlite_migration_all_at_once_matches_step_by_step() -> DbResult<()> {
-    let (_first_directory, first_path) = copy_fixture("5.20.0")?;
-    let (_second_directory, second_path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&first_path)?;
-    let (first, applied) =
-        SqlitePool::instantiate_at_version(&first_path, false, Some(1), "5.24.0").await?;
-    expect_steps(&applied, &[])?;
-    expect_steps(
-        &first.bootstrap(false, "5.25.0").await?,
-        &[WrappingKeyIdBackfill],
-    )?;
-    expect_steps(
-        &first.bootstrap(false, TARGET).await?,
-        &[CertificateSerialTagBackfill],
-    )?;
-    let (second, applied) =
-        SqlitePool::instantiate_at_version(&second_path, false, Some(1), TARGET).await?;
+    let (direct, applied) =
+        SqlitePool::instantiate_at_version(&direct_path, false, Some(1), TARGET).await?;
     expect_steps(&applied, &BOTH_STEPS)?;
+    assert_ready(&direct, TARGET).await?;
+    assert_markers(&direct, &BOTH_STEPS).await?;
+    assert_wrapped_key_found(&direct).await?;
+    assert_serial_tag(&direct, true).await?;
+    assert_fixture_preserved(&direct, &direct_path, &original).await?;
+    let migrated = complete_data(&direct_path)?;
     db_ensure!(
-        complete_data(&first_path)? == complete_data(&second_path)?,
+        complete_data(&step_path)? == migrated,
         "Every row in objects, tags, read_access, and parameters must match"
     );
-    assert_ready(&first, TARGET).await?;
-    assert_ready(&second, TARGET).await?;
-    assert_markers(&first, &BOTH_STEPS).await?;
-    assert_markers(&second, &BOTH_STEPS).await?;
-    assert_fixture_preserved(&first, &first_path, &original).await?;
-    assert_fixture_preserved(&second, &second_path, &original).await
-}
 
-#[tokio::test]
-async fn test_sqlite_migration_5_24_fixture() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.24.0")?;
-    let original = preserved_data(&path)?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_5_28_fixture() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.28.0")?;
-    let original = preserved_data(&path)?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &[CertificateSerialTagBackfill])?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_5_29_fixture() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.29.0")?;
-    let original = preserved_data(&path)?;
-    let [objects, tags, access, _] = complete_data(&path)?;
-    let parameters = query_rows(
-        &path,
-        "SELECT name, value FROM parameters WHERE name NOT IN ('db_version', 'db_state') ORDER BY name",
-    )?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
+    drop(direct);
+    let (direct, applied) =
+        SqlitePool::instantiate_at_version(&direct_path, false, Some(1), TARGET).await?;
     expect_steps(&applied, &[])?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await?;
-    let [after_objects, after_tags, after_access, _] = complete_data(&path)?;
     db_ensure!(
-        objects == after_objects && tags == after_tags && access == after_access,
-        "Opening a 5.29.0 fixture changed object, tag, or permission data"
+        migrated == complete_data(&direct_path)?,
+        "Reopening changed migrated rows"
     );
-    db_ensure!(
-        parameters
-            == query_rows(
-                &path,
-                "SELECT name, value FROM parameters WHERE name NOT IN ('db_version', 'db_state') ORDER BY name",
-            )?,
-        "Opening a 5.29.0 fixture changed existing migration parameters"
-    );
+    assert_ready(&direct, TARGET).await?;
+    assert_fixture_preserved(&direct, &direct_path, &original).await
+}
+
+/// The later released databases migrate to the target, or are left alone when already there.
+#[tokio::test]
+async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
+    const MIGRATION_PARAMETERS: &str = "SELECT name, value FROM parameters \
+         WHERE name NOT IN ('db_version', 'db_state') ORDER BY name";
+    // The last row recorded below the baseline: every step is offered, and the PostgreSQL-only
+    // `AttributesJsonb` conversion must complete as a no-op on SQLite.
+    let fixtures: [(&str, Option<&str>, &[MigrationStep]); 4] = [
+        ("5.24.0", None, &BOTH_STEPS),
+        ("5.28.0", None, &[CertificateSerialTagBackfill]),
+        ("5.29.0", None, &[]),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
+    ];
+    for (fixture, recorded, expected) in fixtures {
+        let version = recorded.map_or_else(
+            || fixture.to_owned(),
+            |recorded| format!("{fixture} recorded as {recorded}"),
+        );
+        let (_directory, path) = copy_fixture(fixture)?;
+        if let Some(recorded) = recorded {
+            seed_parameters(&path, &[("db_version", recorded)])?;
+        }
+        let original = preserved_data(&path)?;
+        // Only a database already at the target has the final schema to snapshot before opening.
+        let before = if expected.is_empty() {
+            Some((
+                complete_data(&path)?,
+                query_rows(&path, MIGRATION_PARAMETERS)?,
+            ))
+        } else {
+            None
+        };
+        let (pool, applied) =
+            SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
+        expect_steps(&applied, expected)
+            .map_err(|error| db_error!("Fixture {version}: {error}"))?;
+        assert_ready(&pool, TARGET).await?;
+        assert_markers(&pool, &BOTH_STEPS).await?;
+        assert_wrapped_key_found(&pool).await?;
+        assert_serial_tag(&pool, true).await?;
+        assert_fixture_preserved(&pool, &path, &original).await?;
+        if let Some((rows, parameters)) = before {
+            let [objects, tags, access, _] = rows;
+            let [after_objects, after_tags, after_access, _] = complete_data(&path)?;
+            db_ensure!(
+                objects == after_objects && tags == after_tags && access == after_access,
+                "Opening a {version} fixture already at the target changed object, tag, or permission data"
+            );
+            db_ensure!(
+                parameters == query_rows(&path, MIGRATION_PARAMETERS)?,
+                "Opening a {version} fixture already at the target changed migration parameters"
+            );
+        }
+    }
     Ok(())
 }
 
+/// A database that cannot be opened safely is refused without a single byte written.
 #[tokio::test]
-async fn test_sqlite_migration_markers_already_set() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    seed_parameters(
-        &path,
-        &[
-            (WRAPPING_KEY_BACKFILL_PARAM, "true"),
-            (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true"),
-        ],
-    )?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &[])?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_serial_tag(&pool, false).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_newer_database_leaves_schema_untouched() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    seed_parameters(&path, &[("db_version", "99.0.0")])?;
-    let schema = query_rows(&path, "SELECT * FROM sqlite_master ORDER BY type, name")?;
-    let original_file = fs::read(&path)?;
-    let wal = path.with_file_name("kms.db-wal");
-    let shm = path.with_file_name("kms.db-shm");
-    db_ensure!(
-        !wal.try_exists()? && !shm.try_exists()?,
-        "The original fixture must not have WAL sidecars"
-    );
-    let error = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET)
-        .await
-        .err()
-        .ok_or_else(|| db_error!("A newer database must be refused"))?;
-    db_ensure!(
-        error.to_string()
-            == "Database Error: Database version 99.0.0 is newer than this KMS server version \
-         5.29.0: refusing to start. Upgrade the KMS server to 99.0.0 or later.",
-        "Unexpected newer-version error: {error}"
-    );
-    db_ensure!(
-        fs::read(&path)? == original_file,
-        "Refusal changed the database file"
-    );
-    db_ensure!(
-        !wal.try_exists()? && !shm.try_exists()?,
-        "Refusal created WAL sidecars"
-    );
-    db_ensure!(
-        schema == query_rows(&path, "SELECT * FROM sqlite_master ORDER BY type, name")?,
-        "Refusal changed schema"
-    );
-    db_ensure!(
-        original == preserved_data(&path)?,
-        "Refusal changed fixture data"
-    );
-    assert_lock_released(&path)?;
-    db_ensure!(
-        query_rows(
-            &path,
-            "SELECT name FROM pragma_table_info('objects') WHERE name = 'wrapping_key_id'"
-        )?
-        .is_empty(),
-        "Refusal added the wrapping_key_id column"
-    );
+async fn test_sqlite_migration_refuses_newer_or_invalid_version_untouched() -> DbResult<()> {
+    let cases = [
+        (
+            "99.0.0",
+            "Database Error: Database version 99.0.0 is newer than this KMS server version \
+             5.29.0: refusing to start. Upgrade the KMS server to 99.0.0 or later.",
+        ),
+        ("not-a-version", "not-a-version"),
+    ];
+    for (recorded, expected_error) in cases {
+        let (_directory, path) = copy_fixture("5.20.0")?;
+        seed_parameters(&path, &[("db_version", recorded)])?;
+        let original_file = fs::read(&path)?;
+        let wal = path.with_file_name("kms.db-wal");
+        let shm = path.with_file_name("kms.db-shm");
+        let error = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET)
+            .await
+            .err()
+            .ok_or_else(|| db_error!("Version {recorded} must be refused"))?;
+        db_ensure!(
+            error.to_string().contains(expected_error),
+            "Unexpected error for {recorded}: {error}"
+        );
+        // Identical bytes and no sidecars leave no way for schema or data to have changed.
+        db_ensure!(
+            fs::read(&path)? == original_file,
+            "Refusing {recorded} changed the database file"
+        );
+        db_ensure!(
+            !wal.try_exists()? && !shm.try_exists()?,
+            "Refusing {recorded} created WAL sidecars"
+        );
+        assert_lock_released(&path)?;
+    }
     Ok(())
 }
 
-#[tokio::test]
-async fn test_sqlite_migration_interrupted_run_resumes() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    seed_parameters(
-        &path,
-        &[("db_version", "5.24.0"), ("db_state", "\"upgrading\"")],
-    )?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_below_baseline() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    seed_parameters(&path, &[("db_version", "5.14.0")])?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &MIGRATION_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
-
+/// `--clear-database` overrides the newer-version refusal and wipes object data.
 #[tokio::test]
 async fn test_sqlite_migration_clear_database() -> DbResult<()> {
     let (_directory, path) = copy_fixture("5.20.0")?;
@@ -628,51 +540,9 @@ async fn test_sqlite_migration_clear_database() -> DbResult<()> {
     assert_ready(&pool, TARGET).await
 }
 
+/// A second instance waits for the held lock, then exactly one of two racing instances migrates.
 #[tokio::test]
-async fn test_sqlite_migration_concurrent_startup() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    let (first, second) = tokio::join!(
-        SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET),
-        SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET)
-    );
-    let (first, first_applied) = first?;
-    let (second, second_applied) = second?;
-    db_ensure!(
-        (first_applied == BOTH_STEPS && second_applied.is_empty())
-            || (second_applied == BOTH_STEPS && first_applied.is_empty()),
-        "Exactly one pool must apply both steps: {first_applied:?}, {second_applied:?}"
-    );
-    assert_ready(&first, TARGET).await?;
-    assert_ready(&second, TARGET).await?;
-    assert_markers(&first, &BOTH_STEPS).await?;
-    assert_markers(&second, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&first).await?;
-    assert_serial_tag(&second, true).await?;
-    assert_fixture_preserved(&first, &path, &original).await?;
-    assert_fixture_preserved(&second, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_reopen_is_noop() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    let migrated = complete_data(&path)?;
-    drop(pool);
-    let (pool, applied) = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET).await?;
-    expect_steps(&applied, &[])?;
-    db_ensure!(
-        migrated == complete_data(&path)?,
-        "Reopening changed migrated rows"
-    );
-    assert_ready(&pool, TARGET).await?;
-    assert_fixture_preserved(&pool, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_lock_blocks_second_pool() -> DbResult<()> {
+async fn test_sqlite_migration_lock_serializes_instances() -> DbResult<()> {
     let (_directory, path) = copy_fixture("5.20.0")?;
     let original = preserved_data(&path)?;
     let (first, first_applied) =
@@ -682,6 +552,7 @@ async fn test_sqlite_migration_lock_blocks_second_pool() -> DbResult<()> {
     expect_steps(&first_applied, &[])?;
     expect_steps(&second_applied, &[])?;
     let held = first.acquire_migration_lock().await?;
+    // Real elapsed time: the lock is polled every 500 ms, so 100 ms proves the wait without a race.
     let error = tokio::time::timeout(Duration::from_millis(100), second.bootstrap(false, TARGET))
         .await
         .err()
@@ -691,34 +562,22 @@ async fn test_sqlite_migration_lock_blocks_second_pool() -> DbResult<()> {
         "Unexpected lock timeout: {error}"
     );
     drop(held);
-    expect_steps(&second.bootstrap(false, TARGET).await?, &BOTH_STEPS)?;
-    assert_ready(&second, TARGET).await?;
-    assert_markers(&second, &BOTH_STEPS).await?;
+    let (first_applied, second_applied) = tokio::join!(
+        first.bootstrap(false, TARGET),
+        second.bootstrap(false, TARGET)
+    );
+    let (first_applied, second_applied) = (first_applied?, second_applied?);
+    db_ensure!(
+        (first_applied == BOTH_STEPS && second_applied.is_empty())
+            || (second_applied == BOTH_STEPS && first_applied.is_empty()),
+        "Exactly one pool must apply both steps: {first_applied:?}, {second_applied:?}"
+    );
+    for pool in [&first, &second] {
+        assert_ready(pool, TARGET).await?;
+        assert_markers(pool, &BOTH_STEPS).await?;
+    }
+    assert_wrapped_key_found(&first).await?;
+    assert_serial_tag(&second, true).await?;
+    assert_fixture_preserved(&first, &path, &original).await?;
     assert_fixture_preserved(&second, &path, &original).await
-}
-
-#[tokio::test]
-async fn test_sqlite_migration_invalid_version_leaves_schema_untouched() -> DbResult<()> {
-    let (_directory, path) = copy_fixture("5.20.0")?;
-    let original = preserved_data(&path)?;
-    seed_parameters(&path, &[("db_version", "not-a-version")])?;
-    let schema = query_rows(&path, "SELECT * FROM sqlite_master ORDER BY type, name")?;
-    let error = SqlitePool::instantiate_at_version(&path, false, Some(1), TARGET)
-        .await
-        .err()
-        .ok_or_else(|| db_error!("An invalid database version must be refused"))?;
-    db_ensure!(
-        error.to_string().contains("not-a-version"),
-        "Unexpected version error: {error}"
-    );
-    db_ensure!(
-        schema == query_rows(&path, "SELECT * FROM sqlite_master ORDER BY type, name")?,
-        "Invalid version changed schema"
-    );
-    db_ensure!(
-        original == preserved_data(&path)?,
-        "Invalid version changed data"
-    );
-    assert_lock_released(&path)?;
-    Ok(())
 }
