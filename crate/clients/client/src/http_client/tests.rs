@@ -365,6 +365,7 @@ mod login_tests {
             authorize_url: "http://localhost:1/auth".to_owned(),
             token_url: "http://127.0.0.1:1/token".to_owned(),
             scopes: vec!["openid".to_owned(), "email".to_owned()],
+            refresh_token: None,
         }
     }
 
