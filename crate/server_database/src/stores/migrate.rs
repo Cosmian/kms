@@ -62,24 +62,19 @@ impl FromStr for Version {
     type Err = DbError;
 
     fn from_str(value: &str) -> DbResult<Self> {
-        let invalid = || {
+        let parse = || -> Option<Self> {
+            let core = value.split_once(['-', '+']).map_or(value, |(core, _)| core);
+            let (major, rest) = core.split_once('.')?;
+            let (minor, patch) = rest.split_once('.')?;
+            Some(Self(
+                major.parse().ok()?,
+                minor.parse().ok()?,
+                patch.parse().ok()?,
+            ))
+        };
+        parse().ok_or_else(|| {
             db_error!("Invalid database migration version '{value}': expected MAJOR.MINOR.PATCH")
-        };
-        let core = value.split(['-', '+']).next().ok_or_else(invalid)?;
-        let mut components = core.split('.');
-        let mut component = || {
-            components
-                .next()
-                .filter(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-                .ok_or_else(invalid)?
-                .parse::<u32>()
-                .map_err(|error| db_error!("Invalid database migration version '{value}': {error}"))
-        };
-        let version = Self(component()?, component()?, component()?);
-        if components.next().is_some() {
-            return Err(invalid());
-        }
-        Ok(version)
+        })
     }
 }
 
@@ -502,6 +497,8 @@ mod tests {
             "4294967296.0.0",
             "5.20. 0",
             "5.20.0oops",
+            "+5.20.0",
+            "5.+20.0",
         ] {
             let error = version
                 .parse::<Version>()
