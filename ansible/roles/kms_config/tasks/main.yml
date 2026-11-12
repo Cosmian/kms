@@ -1,0 +1,57 @@
+- name: Validate KMS configuration inputs
+  ansible.builtin.assert:
+    that:
+      - kms_config_toml | trim | length > 0
+      - (kms_config_tls_certificate | length == 0) == (kms_config_tls_private_key | length == 0)
+    fail_msg: Provide kms_config_toml and provide both TLS PEM values or neither.
+
+- name: Create the KMS configuration directory
+  ansible.builtin.file:
+    path: "{{ kms_config_path | dirname }}"
+    state: directory
+    owner: "{{ kms_config_owner }}"
+    group: "{{ kms_config_group }}"
+    mode: "0750"
+
+- name: Render kms.toml
+  ansible.builtin.template:
+    src: kms.toml.j2
+    dest: "{{ kms_config_path }}"
+    owner: "{{ kms_config_owner }}"
+    group: "{{ kms_config_group }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart KMS after configuration update
+
+- name: Create TLS directories
+  ansible.builtin.file:
+    path: "{{ item | dirname }}"
+    state: directory
+    owner: "{{ kms_config_owner }}"
+    group: "{{ kms_config_group }}"
+    mode: "0750"
+  loop:
+    - "{{ kms_config_tls_certificate_path }}"
+    - "{{ kms_config_tls_private_key_path }}"
+  when: kms_config_tls_certificate | length > 0
+
+- name: Install the KMS TLS certificate
+  ansible.builtin.copy:
+    content: "{{ kms_config_tls_certificate }}"
+    dest: "{{ kms_config_tls_certificate_path }}"
+    owner: "{{ kms_config_owner }}"
+    group: "{{ kms_config_group }}"
+    mode: "0644"
+  when: kms_config_tls_certificate | length > 0
+  notify: Restart KMS after configuration update
+
+- name: Install the KMS TLS private key
+  ansible.builtin.copy:
+    content: "{{ kms_config_tls_private_key }}"
+    dest: "{{ kms_config_tls_private_key_path }}"
+    owner: "{{ kms_config_owner }}"
+    group: "{{ kms_config_group }}"
+    mode: "0600"
+  no_log: true
+  when: kms_config_tls_private_key | length > 0
+  notify: Restart KMS after configuration update

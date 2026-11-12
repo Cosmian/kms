@@ -1,0 +1,4 @@
+kms_health_url: http://localhost:9998/health
+kms_health_validate_certs: true
+kms_health_retries: 30
+kms_health_delay: 2

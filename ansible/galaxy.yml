@@ -1,0 +1,19 @@
+namespace: cosmian
+name: kms
+version: 0.1.0
+readme: README.md
+authors:
+  - Cosmian
+description: Ansible collection to deploy Cosmian KMS and manage its KMIP resources.
+license:
+  - GPL-3.0-or-later
+tags:
+  - kms
+  - kmip
+  - security
+repository: https://github.com/Cosmian/kms
+documentation: https://docs.cosmian.com/
+homepage: https://github.com/Cosmian/kms
+issues: https://github.com/Cosmian/kms/issues
+dependencies:
+  community.docker: ">=3.8.0"

@@ -1,0 +1,54 @@
+name: Ansible collection
+
+on:
+  pull_request:
+    paths:
+      - "ansible/**"
+      - "documentation/docs/integrations/ansible.md"
+      - "documentation/nav.yml"
+      - ".github/workflows/ansible.yml"
+      - ".github/workflows/ansible-galaxy-publish.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "ansible/**"
+      - "documentation/docs/integrations/ansible.md"
+      - "documentation/nav.yml"
+      - ".github/workflows/ansible.yml"
+      - ".github/workflows/ansible-galaxy-publish.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ansible
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install Ansible test tools
+        run: python -m pip install -r requirements-test.txt
+      - name: Install collection dependencies
+        run: ansible-galaxy collection install -r requirements.yml
+      - name: Build collection for local Molecule testing
+        run: ansible-galaxy collection build --force
+      - name: Install collection for local Molecule testing
+        run: ansible-galaxy collection install --force --no-deps cosmian-kms-0.1.0.tar.gz
+      - name: Test module utilities
+        run: python -m unittest discover -s tests/unit
+      - name: Sanity tests
+        run: |
+          collection_dir="$RUNNER_TEMP/ansible_collections/cosmian/kms"
+          mkdir -p "$collection_dir"
+          cp -R . "$collection_dir"
+          rm -f "$collection_dir"/*.tar.gz
+          cd "$collection_dir"
+          ansible-test sanity --python 3.12
+      - name: Lint collection
+        run: ansible-lint
+      - name: Test roles with Molecule
+        run: molecule test
+        working-directory: ansible/extensions

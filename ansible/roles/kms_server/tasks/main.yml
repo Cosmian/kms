@@ -1,0 +1,64 @@
+- name: Validate KMS installation inputs
+  ansible.builtin.assert:
+    that:
+      - kms_server_install_method in ["deb", "rpm", "container"]
+      - kms_server_install_method == "container" or kms_server_package_source | length > 0
+      - kms_server_install_method != "container" or kms_server_container_image | length > 0
+      - kms_server_install_method != "deb" or ansible_os_family == "Debian"
+      - kms_server_install_method != "rpm" or ansible_os_family == "RedHat"
+    fail_msg: Set a compatible installation method and package source or container image.
+
+- name: Configure KMS files
+  ansible.builtin.include_role:
+    name: kms_config
+  vars:
+    kms_config_path: /etc/cosmian/kms.toml
+    kms_config_tls_certificate_path: "{{ kms_server_tls_certificate_path }}"
+    kms_config_tls_private_key_path: "{{ kms_server_tls_private_key_path }}"
+    kms_config_manage_service: true
+    kms_config_service_type: "{{ kms_server_install_method }}"
+    kms_config_service_name: "{{ kms_server_service_name }}"
+    kms_config_container_name: "{{ kms_server_container_name }}"
+
+- name: Install the KMS Debian package
+  ansible.builtin.apt:
+    deb: "{{ kms_server_package_source }}"
+    state: present
+  when: kms_server_install_method == "deb"
+
+- name: Install the KMS RPM package
+  ansible.builtin.dnf:
+    name: "{{ kms_server_package_source }}"
+    state: present
+  when: kms_server_install_method == "rpm"
+
+- name: Run KMS in a container
+  community.docker.docker_container:
+    name: "{{ kms_server_container_name }}"
+    image: "{{ kms_server_container_image }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ kms_server_http_port }}:{{ kms_server_http_port }}"
+    volumes: >-
+      {{
+        ['/etc/cosmian/kms.toml:/etc/cosmian/kms.toml:ro']
+        + (
+          [
+            kms_server_tls_certificate_path ~ ':' ~ kms_server_tls_certificate_path ~ ':ro',
+            kms_server_tls_private_key_path ~ ':' ~ kms_server_tls_private_key_path ~ ':ro'
+          ] if kms_config_tls_certificate | default('') | length > 0 else []
+        )
+        + kms_server_container_extra_volumes
+      }}
+    env:
+      COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+  when: kms_server_install_method == "container"
+
+- name: Enable and start the KMS systemd service
+  ansible.builtin.systemd_service:
+    name: "{{ kms_server_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: kms_server_install_method != "container"

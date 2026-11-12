@@ -1,0 +1,9 @@
+kms_server_install_method: deb
+kms_server_package_source: ""
+kms_server_container_image: ""
+kms_server_container_name: cosmian-kms
+kms_server_http_port: 9998
+kms_server_tls_certificate_path: /etc/cosmian/tls/server.crt
+kms_server_tls_private_key_path: /etc/cosmian/tls/server.key
+kms_server_container_extra_volumes: []
+kms_server_service_name: cosmian_kms

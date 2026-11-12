@@ -1,0 +1,12 @@
+kms_config_path: /etc/cosmian/kms.toml
+kms_config_toml: ""
+kms_config_tls_certificate: ""
+kms_config_tls_private_key: ""
+kms_config_tls_certificate_path: /etc/cosmian/tls/server.crt
+kms_config_tls_private_key_path: /etc/cosmian/tls/server.key
+kms_config_owner: root
+kms_config_group: root
+kms_config_manage_service: false
+kms_config_service_type: systemd
+kms_config_service_name: cosmian_kms
+kms_config_container_name: cosmian-kms
