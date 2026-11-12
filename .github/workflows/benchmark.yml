@@ -1,14 +1,15 @@
 ---
 name: Benchmark
 
-# The six benchmarks (see .mise/tasks/bench/README.md), selectable one at a time with `benchmark`:
+# The seven benchmarks (see .mise/tasks/bench/README.md), selectable one at a time with `benchmark`:
 #   software             bench:load                          -> ckms_bench
 #   hsm-kek              bench:hsm                           -> ckms_bench_hsm_kek_softhsm2
 #   hsm-delegated        bench:hsm --delegated               -> ckms_bench_hsm_delegated_softhsm2
 #   pkcs11               bench:pkcs11                        -> ckms_bench_pkcs11
 #   pkcs11-hsm-delegated bench:pkcs11 --delegated            -> ckms_bench_pkcs11_hsm_delegated_softhsm2
 #   jose-cache           bench:jose-cache                    -> ckms_bench_jose_cache_on / _off
-# `all` runs the six. Only `software` supports `server_version` (a released version).
+#   jose-cek-switch      bench:jose-cek-switch               -> ckms_bench_jose_cek_switch_kryoptic
+# `all` runs the seven. Only `software` supports `server_version` (a released version).
 
 on:
   # Called by other workflows (e.g. the release workflow) to record a baseline.
@@ -30,9 +31,14 @@ on:
         default: all
         type: string
       benchmark:
-        description: Benchmark to run (all|software|hsm-kek|hsm-delegated|pkcs11|pkcs11-hsm-delegated|jose-cache)
+        description: Benchmark to run (all|software|hsm-kek|hsm-delegated|pkcs11|pkcs11-hsm-delegated|jose-cache|jose-cek-switch)
         required: false
         default: all
+        type: string
+      bench_label:
+        description: Run label of the jose-cek-switch report (e.g. before, after)
+        required: false
+        default: ci
         type: string
 
   # Manual trigger from the GitHub UI.
@@ -51,6 +57,7 @@ on:
           - pkcs11
           - pkcs11-hsm-delegated
           - jose-cache
+          - jose-cek-switch
       server_version:
         description: KMS server version to benchmark (e.g. 5.24.0; software benchmark only); omit to build from the selected branch
         required: false
@@ -75,6 +82,11 @@ on:
           - key-creation
           - sign-verify
           - batch
+      bench_label:
+        description: Run label of the jose-cek-switch report (e.g. before, after)
+        required: false
+        default: ci
+        type: string
 
   # Nightly on the default branch (develop; schedules only run there): benchmark develop (software
   # benchmark only) and compare it against the last released version.
@@ -103,6 +115,7 @@ jobs:
       WF_SERVER_VERSION: ${{ inputs.server_version }}
       WF_VARIANT: ${{ inputs.variant || 'non-fips' }}
       WF_MODE: ${{ inputs.bench_mode || 'all' }}
+      WF_LABEL: ${{ inputs.bench_label || 'ci' }}
     outputs:
       run_software: ${{ steps.select.outputs.run_software }}
 
@@ -113,7 +126,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          all="software hsm-kek hsm-delegated pkcs11 pkcs11-hsm-delegated jose-cache"
+          all="software hsm-kek hsm-delegated pkcs11 pkcs11-hsm-delegated jose-cache jose-cek-switch"
           bench="${WF_BENCHMARK}"
           if [[ "${bench}" != all && " ${all} " != *" ${bench} "* ]]; then
             echo "::error::Unknown benchmark '${bench}' (expected: all ${all})"
@@ -150,6 +163,7 @@ jobs:
             [pkcs11]="ckms_bench_pkcs11"
             [pkcs11-hsm-delegated]="ckms_bench_pkcs11_hsm_delegated_softhsm2"
             [jose-cache]="ckms_bench_jose_cache_on ckms_bench_jose_cache_off"
+            [jose-cek-switch]="ckms_bench_jose_cek_switch_kryoptic"
           )
           report_dirs=()
           for b in ${all}; do
@@ -258,6 +272,12 @@ jobs:
         run: |
           nix-shell shell.nix --argstr variant "${WF_VARIANT}" \
             --run "mise run bench:jose-cache --variant ${WF_VARIANT}"
+
+      # Starts its own KMS servers sharing one Kryoptic token (re-enters nix-shell itself, like bench:hsm);
+      # fails when the 2,500 JWE/s target, 0 errors or post-switch recovery is not met (performance gate).
+      - name: Run JOSE CEK switch benchmark (bench:jose-cek-switch)
+        if: steps.select.outputs.run_jose_cek_switch == 'true'
+        run: mise run bench:jose-cek-switch --variant "${WF_VARIANT}" --label "${WF_LABEL}"
 
       # Stage only the reports of the selected benchmarks: documentation/docs/benchmarks/ also holds the
       # checked-in reports of every other benchmark, which must not be republished under this version.
