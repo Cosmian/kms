@@ -3,6 +3,7 @@
 # Also scans Cargo.lock and ui/pnpm-lock.yaml: the Rust crates and the Web UI bundle are
 # compiled into the image, where Syft cannot identify them.
 # Fails on any finding of severity >= GRYPE_FAIL_ON (default: high) that has a fix available.
+# Matches marked not_affected/fixed in sbom/openvex.json (VEX) are suppressed.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,7 +28,7 @@ status=0
 scan() {
   local name="$1" source="$2"
   echo "=== Grype: ${name} (${source}) ==="
-  grype "${source}" --only-fixed --fail-on "${FAIL_ON}" \
+  grype "${source}" --only-fixed --fail-on "${FAIL_ON}" --vex "${REPO_ROOT}/sbom/openvex.json" \
     -o table -o "json=${OUT_DIR}/grype-${name}.json" | tee "${OUT_DIR}/grype-${name}.txt" || status=1
 }
 scan image "sbom:${OUT_DIR}/sbom.spdx.json"
