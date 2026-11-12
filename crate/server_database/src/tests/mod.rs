@@ -4,7 +4,7 @@ use cosmian_logger::{log_init, reexport::tracing};
 use tempfile::TempDir;
 
 use self::{
-    database_tests::{crud, tx_and_list, upsert},
+    database_tests::{crud, get_or_insert_parameter, tx_and_list, upsert},
     find_attributes_test::find_attributes,
     json_access_test::json_access,
     owner_test::owner,
@@ -17,14 +17,15 @@ use crate::stores::RedisWithFindex;
 use crate::stores::additional_redis_findex_tests::{
     issue_940_repro::test_issue_940, test_active_key_count_counter,
     test_certificate_serial_tag_backfill, test_corner_case, test_live_count_counter,
-    test_migration_state_markers, test_objects_db, test_permissions_db, test_wrapped_by_backfill,
+    test_migration_state_markers, test_objects_db, test_permissions_db, test_protected_parameters,
+    test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
     stores::{MySqlPool, PgPool, SqlitePool},
     tests::{
         database_tests::{
-            atomic, block_cipher_mode_migration_after_json_deserialization,
+            atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
             find_with_options_test, update_if_version_test, wrapping_key_link_test,
         },
@@ -100,6 +101,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_certificate_serial_tag_backfill().await?;
     Box::pin(test_issue_940()).await?;
     test_migration_state_markers().await?;
+    test_protected_parameters().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
     owner(&get_redis_with_findex().await?).await?;
@@ -107,8 +109,10 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     Box::pin(tags(&get_redis_with_findex().await?, false)).await?;
     tx_and_list(&get_redis_with_findex().await?).await?;
     Box::pin(atomic(&get_redis_with_findex().await?)).await?;
+    Box::pin(compare_and_swap_test(&get_redis_with_findex().await?)).await?;
     upsert(&get_redis_with_findex().await?).await?;
     crud(&get_redis_with_findex().await?).await?;
+    get_or_insert_parameter(&get_redis_with_findex().await?).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
@@ -141,8 +145,10 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Box::pin(tags(&get_sqlite(&db_file).await?, true)).await?;
     tx_and_list(&get_sqlite(&db_file).await?).await?;
     Box::pin(atomic(&get_sqlite(&db_file).await?)).await?;
+    Box::pin(compare_and_swap_test(&get_sqlite(&db_file).await?)).await?;
     upsert(&get_sqlite(&db_file).await?).await?;
     crud(&get_sqlite(&db_file).await?).await?;
+    get_or_insert_parameter(&get_sqlite(&db_file).await?).await?;
     create_duplicate_uid_test(&get_sqlite(&db_file).await?).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
@@ -371,8 +377,10 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Box::pin(tags(&get_pgsql().await?, true)).await?;
     tx_and_list(&get_pgsql().await?).await?;
     Box::pin(atomic(&get_pgsql().await?)).await?;
+    Box::pin(compare_and_swap_test(&get_pgsql().await?)).await?;
     upsert(&get_pgsql().await?).await?;
     crud(&get_pgsql().await?).await?;
+    get_or_insert_parameter(&get_pgsql().await?).await?;
     list_uids_for_tags_test(&get_pgsql().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?).await?;
     find_due_for_rotation_test(&get_pgsql().await?).await?;
@@ -543,8 +551,10 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     Box::pin(tags(&get_mysql().await?, true)).await?;
     tx_and_list(&get_mysql().await?).await?;
     Box::pin(atomic(&get_mysql().await?)).await?;
+    Box::pin(compare_and_swap_test(&get_mysql().await?)).await?;
     upsert(&get_mysql().await?).await?;
     crud(&get_mysql().await?).await?;
+    get_or_insert_parameter(&get_mysql().await?).await?;
     list_uids_for_tags_test(&get_mysql().await?).await?;
     find_with_options_test(&get_mysql().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?).await?;

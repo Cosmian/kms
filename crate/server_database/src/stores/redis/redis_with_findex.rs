@@ -586,6 +586,36 @@ impl RedisWithFindex {
                 )
                 .await?;
             }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_version,
+                object,
+                attributes,
+                tags,
+            } => {
+                let user = require_user(user)?;
+                let entry = self.touch(&mut attempt.uids, uid).await?;
+                let Some(db_object) = entry.current.as_mut() else {
+                    return Err(DbError::Conflict(uid.clone()));
+                };
+                // Same outcome as PostgreSQL/SQLite, where any mismatch matches no row. A version
+                // mismatch is a hard conflict, never a retry (see `apply_update`).
+                if db_object.owner != user.as_str()
+                    || matches!(
+                        db_object.state,
+                        State::Destroyed | State::Destroyed_Compromised
+                    )
+                    || db_object.version != *expected_version
+                {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                db_object.object = object.as_ref().clone();
+                if tags.is_some() {
+                    db_object.tags.clone_from(tags);
+                }
+                db_object.attributes = Some(attributes.clone());
+                db_object.version += 1;
+            }
             AtomicOperation::UpdateState((uid, state)) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
                 let Some(db_object) = entry.current.as_mut() else {
@@ -1070,6 +1100,14 @@ impl ObjectsStore for RedisWithFindex {
             .await?
             .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
         Ok(object.owner == *owner)
+    }
+
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        Ok(self.objects_db.get_or_insert_parameter(name, value).await?)
     }
 
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {

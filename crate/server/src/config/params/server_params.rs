@@ -66,6 +66,20 @@ pub struct UiParams {
     pub oidc_auth: OidcConfig,
 }
 
+/// Vault KV v2-compatible secret store parameters.
+#[derive(Clone, Debug, Default)]
+pub struct KvParams {
+    /// When `true`, the `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*` scopes
+    /// are registered at startup. Defaults to `false`.
+    pub enabled: bool,
+
+    /// KV mount name. Defaults to `"kv"`.
+    pub mount: String,
+
+    /// Interval, in seconds, between KV TTL-expiry sweeps. `0` disables the sweep.
+    pub ttl_check_interval_secs: u64,
+}
+
 /// Vault-compatible API parameters.
 #[derive(Clone, Debug, Default)]
 pub struct VaultParams {
@@ -385,6 +399,9 @@ pub struct ServerParams {
     /// Vault-compatible API parameters.
     pub vault: VaultParams,
 
+    /// Vault KV v2-compatible secret store parameters.
+    pub kv: KvParams,
+
     /// Configuration for the Auth Verifier server.
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
@@ -693,6 +710,12 @@ impl ServerParams {
         );
         let audit_backend =
             Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
+        let kv_mount = resolve_kv_mount(
+            conf.kv.enabled,
+            &conf.kv.mount,
+            &conf.vault.transit_mount,
+            &conf.vault.pki_mount,
+        )?;
 
         // EST / SCEP enrollment: resolve and validate the referenced certificate templates.
         let resolve_template =
@@ -1046,6 +1069,11 @@ impl ServerParams {
                 pki_ca_key_label: conf.vault.pki_ca_key_label,
                 token_cache_ttl_secs: conf.vault.token_cache_ttl_secs,
             },
+            kv: KvParams {
+                enabled: conf.kv.enabled,
+                mount: kv_mount,
+                ttl_check_interval_secs: conf.kv.ttl_check_interval_secs,
+            },
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
             audit_backend,
             audit_channel_capacity: conf.audit.audit_channel_capacity,
@@ -1234,6 +1262,66 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
             }
         })
         .transpose()
+}
+
+/// First path segments the KV mount must not take: it is served at both `/<mount>` and
+/// `/v1/<mount>`, so it would shadow an existing scope or route (actix-web does not fall
+/// through from a matching scope to later services).
+const KV_RESERVED_MOUNTS: &[&str] = &[
+    "v1",
+    "sys",
+    "auth",
+    "crypto",
+    "kmip",
+    "ui",
+    "aws",
+    "ms_dke",
+    "google_cse",
+    "tokenize",
+    // Default-scope and application-level routes.
+    ".well-known",
+    "access",
+    "certificates",
+    "download-cli",
+    "health",
+    "hsm",
+    "jwks.json",
+    "ocsp",
+    "openapi.yaml",
+    "public",
+    "scep",
+    "secrets",
+    "server-info",
+    "ssh",
+    "swagger",
+];
+
+/// Resolve the KV mount name. An empty value (what a TOML generated from `Default` contains)
+/// means the documented default `kv`. Collisions are only an error when KV is enabled.
+fn resolve_kv_mount(
+    kv_enabled: bool,
+    kv_mount: &str,
+    transit_mount: &str,
+    pki_mount: &str,
+) -> KResult<String> {
+    let mount = kv_mount.trim().trim_matches('/');
+    let mount = if mount.is_empty() { "kv" } else { mount };
+    if !kv_enabled {
+        return Ok(mount.to_owned());
+    }
+    if mount.contains('/') {
+        return Err(KmsError::ServerError(format!(
+            "`kv_mount` must be a single path segment, got `{mount}`"
+        )));
+    }
+    if KV_RESERVED_MOUNTS.contains(&mount) || mount == transit_mount || mount == pki_mount {
+        return Err(KmsError::ServerError(format!(
+            "`kv_mount = {mount}` collides with an existing route: pick a mount name that is \
+             not used by another scope (reserved: {KV_RESERVED_MOUNTS:?}, `vault_transit_mount`, \
+             `vault_pki_mount`)"
+        )));
+    }
+    Ok(mount.to_owned())
 }
 
 /// Parse `key_encryption_key_wrapping_algorithm` (TOML values bypass clap's `value_parser`).
@@ -1552,6 +1640,16 @@ impl fmt::Debug for ServerParams {
                 );
         }
 
+        // KV v2-compatible secret store fields
+        debug_struct.field("kv_enabled", &self.kv.enabled);
+        if self.kv.enabled {
+            debug_struct.field("kv_mount", &self.kv.mount);
+            debug_struct.field(
+                "kv_ttl_check_interval_secs",
+                &self.kv.ttl_check_interval_secs,
+            );
+        }
+
         if let Some(ref auth_verifier) = self.auth_verifier_config
             && auth_verifier.is_enabled()
         {
@@ -1581,6 +1679,7 @@ mod tests {
     use super::{
         AuditBackendParams, BlockCipherMode, CryptographicAlgorithm, PaddingMethod, ServerParams,
         ensure_svid_providers_have_audience, normalized_pg_authority, parse_kek_wrapping_algorithm,
+        resolve_kv_mount,
     };
     use crate::{
         config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
@@ -1832,6 +1931,71 @@ mod tests {
         assert_ne!(
             normalized_pg_authority("postgresql://u:p@host:5432/db_audit"),
             normalized_pg_authority("postgresql://u:p@host:5432/db_objects")
+        );
+    }
+
+    /// An empty `kv_mount` (what a TOML generated from `Default` holds) falls back to `kv`.
+    #[test]
+    fn kv_mount_empty_defaults_to_kv() {
+        assert_eq!(
+            resolve_kv_mount(true, "", "transit", "pki").unwrap(),
+            "kv".to_owned()
+        );
+        assert_eq!(
+            resolve_kv_mount(false, " / ", "transit", "pki").unwrap(),
+            "kv".to_owned()
+        );
+    }
+
+    /// Surrounding slashes are tolerated; a custom mount name is kept.
+    #[test]
+    fn kv_mount_is_normalized() {
+        assert_eq!(
+            resolve_kv_mount(true, "/secret/", "transit", "pki").unwrap(),
+            "secret".to_owned()
+        );
+    }
+
+    /// KV is served at `/<mount>` and `/v1/<mount>`: a mount that names another scope is refused
+    /// at startup instead of silently shadowing Transit/PKI/auth/crypto or the KMIP routes.
+    #[test]
+    fn kv_mount_rejects_collisions_when_enabled() {
+        for reserved in [
+            "v1",
+            "sys",
+            "auth",
+            "crypto",
+            "kmip",
+            "access",
+            "ssh",
+            "secrets",
+            "health",
+            "transit",
+            "custom-pki",
+        ] {
+            let err = resolve_kv_mount(true, reserved, "transit", "custom-pki")
+                .expect_err("colliding mount must be rejected");
+            assert!(err.to_string().contains("collides"), "{err}");
+        }
+        resolve_kv_mount(true, "a/b", "transit", "pki").expect_err("nested mount must be rejected");
+    }
+
+    #[test]
+    fn kv_mount_default_rejects_transit_and_pki_collisions() {
+        for (input, transit, pki) in [("", "kv", "pki"), (" / ", "transit", "kv")] {
+            let error = resolve_kv_mount(true, input, transit, pki)
+                .expect_err("the default KV mount must not shadow another scope");
+            assert!(error.to_string().contains("collides"), "{error}");
+            assert_eq!(resolve_kv_mount(false, input, transit, pki).unwrap(), "kv");
+        }
+    }
+
+    /// A disabled KV store must never prevent startup because of its mount name.
+    #[test]
+    fn kv_mount_collisions_are_ignored_when_disabled() {
+        assert_eq!(
+            resolve_kv_mount(false, "transit", "transit", "pki").unwrap(),
+            "transit".to_owned()
         );
     }
 

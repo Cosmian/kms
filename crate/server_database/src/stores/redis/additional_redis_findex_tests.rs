@@ -1342,3 +1342,70 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
         .await?;
     Ok(())
 }
+
+/// Logical Redis database used by [`test_protected_parameters`].
+const PARAMETERS_REDIS_DB: u8 = 7;
+
+/// Fail if any Redis string value contains `plaintext`.
+async fn assert_not_stored_in_clear(mgr: &ConnectionManager, plaintext: &str) -> DbResult<()> {
+    let mut mgr = mgr.clone();
+    let keys: Vec<Vec<u8>> = mgr.keys("*").await?;
+    for key in keys {
+        let kind: String = redis::cmd("TYPE").arg(&key).query_async(&mut mgr).await?;
+        if kind != "string" {
+            continue;
+        }
+        let value: Vec<u8> = mgr.get(&key).await?;
+        assert!(
+            !value
+                .windows(plaintext.len())
+                .any(|window| window == plaintext.as_bytes()),
+            "Redis key {} holds a parameter value in clear",
+            String::from_utf8_lossy(&key)
+        );
+    }
+    Ok(())
+}
+
+/// Server parameters are sealed under the database key in Redis: replicas converge on the
+/// first value, nothing is stored in clear, and a wrong master key fails closed instead of
+/// producing a new value.
+pub(crate) async fn test_protected_parameters() -> DbResult<()> {
+    let redis_url = format!("{}/{PARAMETERS_REDIS_DB}", get_redis_url());
+    let mut rng = KmsRng::new().seeded_csrng()?;
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let first = RedisWithFindex::instantiate(&redis_url, master_key.clone(), true).await?;
+    let replica = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
+    let mut raw = first.mgr.clone();
+
+    // New parameter written concurrently by two replicas: one value wins for both.
+    let name = "test_protected_parameter";
+    let candidates = ["candidate-a-5f0c2d9e7b", "candidate-b-81e4a6c3f2"];
+    let (a, b) = tokio::join!(
+        first.get_or_insert_parameter(name, candidates[0]),
+        replica.get_or_insert_parameter(name, candidates[1]),
+    );
+    let (stored, replica_value) = (a?, b?);
+    assert_eq!(stored, replica_value, "replicas must converge on one value");
+    assert!(candidates.contains(&stored.as_str()));
+    let restarted = RedisWithFindex::instantiate(&redis_url, master_key, false).await?;
+    assert_eq!(
+        restarted.get_or_insert_parameter(name, "later").await?,
+        stored
+    );
+    assert_not_stored_in_clear(&raw, &stored).await?;
+    let bare: Option<String> = raw.get(name).await?;
+    assert_eq!(bare, None, "no value may be stored under the bare name");
+
+    // Another master key cannot read the sealed value and does not replace it.
+    let other_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let intruder = RedisWithFindex::instantiate(&redis_url, other_key, false).await?;
+    intruder
+        .get_or_insert_parameter(name, "intruder")
+        .await
+        .expect_err("a wrong master key must not read or replace the parameter");
+    assert_eq!(first.get_or_insert_parameter(name, "again").await?, stored);
+
+    redis::cmd("FLUSHDB").query_async::<()>(&mut raw).await?;
+    Ok(())
+}

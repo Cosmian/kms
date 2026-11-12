@@ -3,6 +3,7 @@ import {
     ApartmentOutlined,
     AuditOutlined,
     CloudOutlined,
+    DatabaseOutlined,
     ExperimentOutlined,
     EyeInvisibleOutlined,
     ForkOutlined,
@@ -332,6 +333,12 @@ const baseMenu: MenuItem[] = [
         label: "HSM Status",
         icon: <UsbOutlined />,
         collapsedlabel: "HSM",
+    },
+    {
+        key: "kv-secrets",
+        label: "Secrets (KV)",
+        icon: <DatabaseOutlined />,
+        collapsedlabel: "KV",
     },
     {
         key: "hyperscalers",

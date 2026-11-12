@@ -798,6 +798,25 @@ impl ObjectsStore for MySqlPool {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("insert-parameter-if-absent"),
+            (name, value),
+        )
+        .await
+        .map_err(DbError::from)?;
+        let stored: Option<String> = conn
+            .exec_first(get_mysql_query!("select-parameter"), (name,))
+            .await
+            .map_err(DbError::from)?;
+        Ok(stored.ok_or_else(|| DbError::DatabaseError(format!("parameter {name} not stored")))?)
+    }
+
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         Ok(list_uids_for_tags_(tags, &self.pool).await?)
     }
@@ -1697,6 +1716,39 @@ pub(super) async fn atomic_(
                     update_object_(uid, object, attributes, tags.as_ref(), None, tx).await
                 {
                     db_bail!("update of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_version,
+                object,
+                attributes,
+                tags,
+            } => {
+                // The row lock taken here holds until the update below commits.
+                let row: Option<mysql_async::Row> = tx
+                    .exec_first(get_mysql_query!("select-object-for-update"), (uid,))
+                    .await
+                    .map_err(DbError::from)?;
+                let Some(row) = row else {
+                    return Err(DbError::Conflict(uid.clone()));
+                };
+                let existing_owner: String = row.get(3).context("missing owner")?;
+                let existing_state: String = row.get(4).context("missing state")?;
+                let existing_version: u64 = row.get(5).context("missing version")?;
+                // Same outcome as PostgreSQL/SQLite, where any mismatch matches no row.
+                if existing_owner != owner
+                    || existing_state == State::Destroyed.to_string()
+                    || existing_state == State::Destroyed_Compromised.to_string()
+                    || existing_version != *expected_version
+                {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                if let Err(e) =
+                    update_object_(uid, object, attributes, tags.as_ref(), None, tx).await
+                {
+                    db_bail!("compare-and-swap update of object {uid} failed: {e}");
                 }
                 uids.push(uid.clone());
             }

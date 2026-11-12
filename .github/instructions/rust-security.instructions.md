@@ -19,6 +19,7 @@ Rules for **new or modified** code. Legacy violations exist: when you touch one,
 - A field or local holding a password, PIN, token, secret, seed or key bytes is `Zeroizing<_>` (the workspace convention) or a wrapper with a redacting `Debug`.
 - Never `#[derive(Debug)]` / implement `Display` on a type holding such a field unless the impl prints a placeholder.
 - Config structs read from TOML/clap follow the same rule (existing plain-`String` secret fields in `est_config.rs`, `scep_config.rs`, `roles_config.rs`, `secret_backends/mod.rs` are legacy).
+- Never commit a live provider credential (AWS access key id, GitHub, Slack or Vault token). Gate: `no-committed-credentials` pre-commit hook; use `test_data/` fixtures or environment variables.
 
 ## 3. Logging
 

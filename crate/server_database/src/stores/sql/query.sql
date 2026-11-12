@@ -14,6 +14,9 @@ INSERT INTO parameters (name,value) VALUES ($1, $2)
 -- name: select-parameter
 SELECT value FROM parameters WHERE name=$1;
 
+-- name: insert-parameter-if-absent
+INSERT INTO parameters (name,value) VALUES ($1, $2) ON CONFLICT(name) DO NOTHING;
+
 -- name: delete-parameter
 DELETE FROM parameters WHERE name=$1;
 
@@ -81,6 +84,10 @@ UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version
 
 -- name: update-object-with-object-if-version
 UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1 WHERE id=$4 AND version=$5;
+
+-- name: update-object-if-owned-version
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1
+WHERE id=$4 AND owner=$5 AND version=$6 AND state<>$7 AND state<>$8;
 
 -- name: update-object-with-state
 UPDATE objects SET state=$1, version=version+1 WHERE id=$2;
