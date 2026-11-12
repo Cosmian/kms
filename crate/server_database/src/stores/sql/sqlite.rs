@@ -33,6 +33,7 @@ use super::{
     merge_granted_operations,
 };
 use crate::{
+    core::ClusterNode,
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
@@ -254,6 +255,7 @@ impl SqlitePool {
             .get_query("create-table-crypto_officer_activations")?
             .to_owned();
         let create_crls = pool.get_query("create-table-crls")?.to_owned();
+        let create_cluster_nodes = pool.get_query("create-table-cluster-nodes")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
@@ -276,6 +278,7 @@ impl SqlitePool {
             let idx_objects_type_state = idx_objects_type_state.clone();
             let create_crypto_officer_activations = create_crypto_officer_activations.clone();
             let create_crls = create_crls.clone();
+            let create_cluster_nodes = create_cluster_nodes.clone();
             let clean_objects = clean_objects.clone();
             let clean_read_access = clean_read_access.clone();
             let clean_tags = clean_tags.clone();
@@ -301,6 +304,7 @@ impl SqlitePool {
                                 [],
                             )?;
                             tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
+                            tx.execute(&create_cluster_nodes, [])?;
                             if clear_database {
                                 tx.execute(&clean_objects, [])?;
                                 tx.execute(&clean_read_access, [])?;
@@ -577,6 +581,64 @@ impl SqlitePool {
         let sql = get_sqlite_query!("health-check");
         self.writer
             .call(move |c| c.query_row(sql, [], |_row| Ok(())))
+            .await
+    }
+
+    pub(crate) async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        let node_id = node_id.to_owned();
+        let version = version.to_owned();
+        self.writer
+            .call(move |conn| -> Result<(), rusqlite::Error> {
+                let tx = conn.transaction()?;
+                if is_leader {
+                    tx.execute("UPDATE cluster_nodes SET is_leader = 0", [])?;
+                }
+                tx.execute(
+                    "INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader) \
+                     VALUES (?1, ?2, ?3, ?4) \
+                     ON CONFLICT (node_id) DO UPDATE SET \
+                         version = excluded.version, \
+                         last_heartbeat = excluded.last_heartbeat, \
+                         is_leader = excluded.is_leader",
+                    rusqlite::params![node_id, version, last_heartbeat, is_leader],
+                )?;
+                tx.execute(
+                    "DELETE FROM cluster_nodes WHERE last_heartbeat < ?1",
+                    [stale_before],
+                )?;
+                tx.commit()
+            })
+            .await
+    }
+
+    pub(crate) async fn list_cluster_nodes(
+        &self,
+        minimum_heartbeat: i64,
+    ) -> DbResult<Vec<ClusterNode>> {
+        self.writer
+            .call(move |conn| -> Result<Vec<ClusterNode>, rusqlite::Error> {
+                let mut statement = conn.prepare(
+                    "SELECT node_id, version, last_heartbeat, is_leader \
+                     FROM cluster_nodes WHERE last_heartbeat >= ?1 ORDER BY node_id",
+                )?;
+                statement
+                    .query_map([minimum_heartbeat], |row| {
+                        Ok(ClusterNode {
+                            node_id: row.get(0)?,
+                            version: row.get(1)?,
+                            last_heartbeat: row.get(2)?,
+                            is_leader: row.get::<_, i64>(3)? != 0,
+                        })
+                    })?
+                    .collect()
+            })
             .await
     }
 }

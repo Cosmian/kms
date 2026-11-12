@@ -24,6 +24,7 @@ use tokio_postgres::types::{Json, ToSql};
 use uuid::Uuid;
 
 use crate::{
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
@@ -375,6 +376,7 @@ macro_rules! get_pgsql_query {
 #[derive(Clone)]
 pub(crate) struct PgPool {
     pool: Pool,
+    lock_pool: Pool,
 }
 
 impl PgPool {
@@ -413,13 +415,24 @@ impl PgPool {
             ..Default::default()
         });
 
+        let mut lock_cfg = cfg.clone();
+        lock_cfg.pool = Some(deadpool_postgres::PoolConfig {
+            max_size: CRON_LOCK_CONNECTIONS,
+            ..Default::default()
+        });
         let pool = cfg
+            .create_pool(None, tls.clone())
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let lock_pool = lock_cfg
             .create_pool(None, tls)
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
 
         let mut client = pool.get().await.map_err(DbError::from)?;
         // Bootstrap schema if needed: create tables if they don't exist
-        let tmp_loader = Self { pool: pool.clone() };
+        let tmp_loader = Self {
+            pool: pool.clone(),
+            lock_pool: lock_pool.clone(),
+        };
         for name in [
             "create-table-parameters",
             "create-table-objects",
@@ -427,6 +440,7 @@ impl PgPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-cluster-nodes",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -591,12 +605,15 @@ impl PgPool {
             // pool sized to a single connection, holding `client` here would
             // self-deadlock the following `pg_get_client` calls.
             drop(client);
-            let tmp = Self { pool: pool.clone() };
+            let tmp = Self {
+                pool: pool.clone(),
+                lock_pool: lock_pool.clone(),
+            };
             tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
             tmp.set_db_state(DbState::Ready).await?;
         }
-        Ok(Self { pool })
+        Ok(Self { pool, lock_pool })
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
@@ -610,6 +627,101 @@ impl PgPool {
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
+    }
+
+    pub(crate) async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        let client = self
+            .lock_pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let row = client
+            .query_one(
+                "SELECT pg_try_advisory_lock(\
+                    hashtextextended(current_database() || ':' || $1, 0)\
+                )",
+                &[&lock_name],
+            )
+            .await
+            .map_err(DbError::from)?;
+        if row.get::<_, bool>(0) {
+            Ok(Some(Box::new(PgCronLock {
+                client: Some(client),
+                lock_name: lock_name.to_owned(),
+            })))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        if is_leader {
+            tx.execute("UPDATE cluster_nodes SET is_leader = FALSE", &[])
+                .await
+                .map_err(DbError::from)?;
+        }
+        tx.execute(
+            "INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader) \
+             VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (node_id) DO UPDATE SET \
+                 version = EXCLUDED.version, \
+                 last_heartbeat = EXCLUDED.last_heartbeat, \
+                 is_leader = EXCLUDED.is_leader",
+            &[&node_id, &version, &last_heartbeat, &is_leader],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.execute(
+            "DELETE FROM cluster_nodes WHERE last_heartbeat < $1",
+            &[&stale_before],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)
+    }
+
+    pub(crate) async fn list_cluster_nodes(
+        &self,
+        minimum_heartbeat: i64,
+    ) -> DbResult<Vec<ClusterNode>> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let rows = client
+            .query(
+                "SELECT node_id, version, last_heartbeat, is_leader \
+                 FROM cluster_nodes WHERE last_heartbeat >= $1 ORDER BY node_id",
+                &[&minimum_heartbeat],
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .iter()
+            .map(|row| ClusterNode {
+                node_id: row.get(0),
+                version: row.get(1),
+                last_heartbeat: row.get(2),
+                is_leader: row.get(3),
+            })
+            .collect())
     }
 
     /// Run a query built by the locate query builders and decode its
@@ -650,6 +762,48 @@ impl PgPool {
             }
             Ok(out)
         })
+    }
+}
+
+struct PgCronLock {
+    client: Option<deadpool_postgres::Object>,
+    lock_name: String,
+}
+
+// A session-level advisory lock outlives a pooled connection. If the job is cancelled or panics
+// before `release`, close the session instead of returning it to the pool still holding the lock.
+impl Drop for PgCronLock {
+    fn drop(&mut self) {
+        if let Some(client) = self.client.take() {
+            drop(deadpool_postgres::Object::take(client));
+        }
+    }
+}
+
+#[async_trait]
+impl ClusterLockGuard for PgCronLock {
+    async fn release(mut self: Box<Self>) -> DbResult<()> {
+        let Some(client) = self.client.as_ref() else {
+            return Ok(());
+        };
+        let row = client
+            .query_one(
+                "SELECT pg_advisory_unlock(\
+                    hashtextextended(current_database() || ':' || $1, 0)\
+                )",
+                &[&self.lock_name],
+            )
+            .await
+            .map_err(DbError::from)?;
+        if row.get::<_, bool>(0) {
+            // Unlocked cleanly: hand the connection back to the pool instead of closing it.
+            drop(self.client.take());
+            Ok(())
+        } else {
+            Err(DbError::DatabaseError(
+                "PostgreSQL cron advisory lock was not held during release".to_owned(),
+            ))
+        }
     }
 }
 

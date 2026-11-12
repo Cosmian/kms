@@ -346,3 +346,11 @@ SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
 
 -- name: set-session-lock-wait-timeout
 SET SESSION innodb_lock_wait_timeout=10;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64) NOT NULL PRIMARY KEY,
+    version         VARCHAR(64) NOT NULL,
+    last_heartbeat  BIGINT      NOT NULL,
+    is_leader       BOOLEAN     NOT NULL DEFAULT FALSE
+);

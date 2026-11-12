@@ -206,6 +206,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(self.get_available_slot_list()?)
     }
 
+    async fn check_slot(&self, slot_id: usize) -> InterfaceResult<()> {
+        self.get_slot(slot_id)?.get_supported_mechanisms()?;
+        Ok(())
+    }
+
     async fn get_supported_algorithms(
         &self,
         slot_id: usize,

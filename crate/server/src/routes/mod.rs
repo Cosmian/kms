@@ -21,6 +21,7 @@ const CLI_ARCHIVE_FILE_NAME: &str = "cli.zip";
 pub mod access;
 pub mod aws_xks;
 pub(crate) mod azure_ekm;
+pub(crate) mod cluster;
 pub(crate) mod crl;
 pub(crate) mod csr;
 pub(crate) mod enrollment;

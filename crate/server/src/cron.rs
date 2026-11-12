@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 use cosmian_logger::{debug, info, warn};
 use tokio::sync::oneshot;
@@ -7,6 +7,119 @@ use crate::core::{
     KMS,
     operations::{dispatch_renewal_warnings, run_auto_rotation},
 };
+
+const CLUSTER_HEARTBEAT_INTERVAL_SECS: u64 = 5;
+pub(crate) const CLUSTER_NODE_TIMEOUT_SECS: i64 = 15;
+
+async fn run_with_cluster_lock<F, Fut>(kms: &Arc<KMS>, lock_name: &str, action: F)
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = ()>,
+{
+    match kms.database.with_cron_lock(lock_name, action).await {
+        Ok(true) => {}
+        Ok(false) => debug!("[{lock_name}] Skipping scheduled work; another node holds the lock"),
+        Err(e) => warn!("[{lock_name}] Failed to acquire or release cluster lock: {e}"),
+    }
+}
+
+/// Publish this node's heartbeat and periodically elect a node for cluster-wide work.
+pub fn spawn_cluster_heartbeat_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                warn!("[cluster-heartbeat] Failed to build runtime: {e}");
+                return;
+            }
+        };
+
+        rt.block_on(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                CLUSTER_HEARTBEAT_INTERVAL_SECS,
+            ));
+            let mut shutdown_rx = shutdown_rx;
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        update_cluster_heartbeat(&kms).await;
+                    }
+                    _ = &mut shutdown_rx => {
+                        debug!("[cluster-heartbeat] Shutdown signal received; stopping");
+                        break;
+                    }
+                }
+            }
+        });
+    });
+
+    shutdown_tx
+}
+
+async fn update_cluster_heartbeat(kms: &Arc<KMS>) {
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let stale_before = now.saturating_sub(CLUSTER_NODE_TIMEOUT_SECS);
+    let node_id = &kms.node_id;
+    let version = env!("CARGO_PKG_VERSION");
+    let existing_nodes = match kms.database.list_cluster_nodes(stale_before).await {
+        Ok(nodes) => nodes,
+        Err(e) => {
+            warn!("[cluster-heartbeat] Failed to list nodes before heartbeat: {e}");
+            return;
+        }
+    };
+    let is_leader = existing_nodes
+        .iter()
+        .any(|node| node.node_id == node_id.as_str() && node.is_leader);
+
+    if let Err(e) = kms
+        .database
+        .record_cluster_heartbeat(node_id, version, now, is_leader, stale_before)
+        .await
+    {
+        warn!("[cluster-heartbeat] Failed to persist node heartbeat: {e}");
+        return;
+    }
+
+    if !is_leader
+        && let Err(e) = kms
+            .database
+            .with_cron_lock("cluster-heartbeat-leader", || async {
+                match kms.database.list_cluster_nodes(stale_before).await {
+                    Ok(nodes) if nodes.iter().any(|node| node.is_leader) => {}
+                    Ok(_) => {
+                        if let Err(e) = kms
+                            .database
+                            .record_cluster_heartbeat(node_id, version, now, true, stale_before)
+                            .await
+                        {
+                            warn!("[cluster-heartbeat] Failed to publish leader status: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[cluster-heartbeat] Failed to list nodes during election: {e}");
+                    }
+                }
+            })
+            .await
+    {
+        warn!("[cluster-heartbeat] Leader election failed: {e}");
+    }
+
+    match kms.database.list_cluster_nodes(stale_before).await {
+        Ok(nodes) => {
+            if let Some(metrics) = &kms.metrics {
+                metrics.update_cluster_nodes_count(i64::try_from(nodes.len()).unwrap_or(i64::MAX));
+            }
+        }
+        Err(e) => warn!("[cluster-heartbeat] Failed to list live nodes: {e}"),
+    }
+}
 
 /// Spawn a background thread that periodically runs the key auto-rotation check.
 /// The thread runs independently of the metrics cron and is spawned whenever
@@ -37,8 +150,10 @@ pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[auto-rotate-cron] Running scheduled key auto-rotation check");
-                        run_auto_rotation(&kms).await;
-                        dispatch_renewal_warnings(&kms, &mut warned).await;
+                        run_with_cluster_lock(&kms, "auto-rotation", || async {
+                            run_auto_rotation(&kms).await;
+                            dispatch_renewal_warnings(&kms, &mut warned).await;
+                        }).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[auto-rotate-cron] Shutdown signal received; stopping cron thread");
@@ -90,7 +205,9 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[crl-refresh-cron] Running scheduled CRL refresh check");
-                        refresh_expiring_crls(&kms, overlap_hours).await;
+                        run_with_cluster_lock(&kms, "crl-refresh", || async {
+                            refresh_expiring_crls(&kms, overlap_hours).await;
+                        }).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[crl-refresh-cron] Shutdown signal received; stopping");
@@ -186,55 +303,52 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
             loop {
                 tokio::select! {
                     _ = interval.tick(), if count_interval_secs > 0 => {
+                        // Not cluster-locked: the gauges live in this process's OTel exporter.
                         if let Some(ref metrics) = kms.metrics {
-                            // ── Non-destroyed key objects count ────────────────────────────────
-                            // Privileged backend count: no ACL filtering, covers all backends.
-                            match kms.database.count_non_destroyed_key_objects().await {
-                                Ok(count) => {
-                                    debug!(
-                                        "[metrics-cron] kms.keys.active.count synced to {}",
-                                        count
-                                    );
-                                    metrics.update_active_keys_count(
-                                        i64::try_from(count).unwrap_or(i64::MAX),
-                                    );
+                                // Privileged backend count: no ACL filtering, covers all backends.
+                                match kms.database.count_non_destroyed_key_objects().await {
+                                    Ok(count) => {
+                                        debug!(
+                                            "[metrics-cron] kms.keys.active.count synced to {}",
+                                            count
+                                        );
+                                        metrics.update_active_keys_count(
+                                            i64::try_from(count).unwrap_or(i64::MAX),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            "[metrics-cron] Failed to sync kms.keys.active.count: {}",
+                                            e
+                                        );
+                                    }
                                 }
-                                Err(e) => {
-                                    // A persistently failing query (e.g. a backend-specific
-                                    // SQL bug) should be visible without debug logging.
-                                    warn!(
-                                        "[metrics-cron] Failed to sync kms.keys.active.count: {}",
-                                        e
-                                    );
-                                }
-                            }
 
-                            // ── Objects-total absolute sync ────────────────────────────────────
-                            match kms.database.count_all_non_destroyed_objects().await {
-                                Ok(count) => {
-                                    debug!(
-                                        "[metrics-cron] kms.objects.total synced to {}",
-                                        count
-                                    );
-                                    metrics.update_objects_total(
-                                        i64::try_from(count).unwrap_or(i64::MAX),
-                                    );
-                                }
-                                Err(e) => {
-                                    debug!(
-                                        "[metrics-cron] Failed to sync kms.objects.total: {}",
-                                        e
-                                    );
+                                match kms.database.count_all_non_destroyed_objects().await {
+                                    Ok(count) => {
+                                        debug!(
+                                            "[metrics-cron] kms.objects.total synced to {}",
+                                            count
+                                        );
+                                        metrics.update_objects_total(
+                                            i64::try_from(count).unwrap_or(i64::MAX),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        debug!(
+                                            "[metrics-cron] Failed to sync kms.objects.total: {}",
+                                            e
+                                        );
+                                    }
                                 }
                             }
-                        }
                     }
                     _ = reconcile_interval.tick() => {
-                        // Authoritative reconcile of Redis O(1) counters (no-op for SQL).
-                        // Prevents permanent counter drift from partial failures.
-                        if let Err(e) = kms.database.reconcile_all_object_counts().await {
-                            debug!("[metrics-cron] reconcile_all_object_counts failed: {}", e);
-                        }
+                        run_with_cluster_lock(&kms, "metrics-reconcile", || async {
+                            if let Err(e) = kms.database.reconcile_all_object_counts().await {
+                                debug!("[metrics-cron] reconcile_all_object_counts failed: {}", e);
+                            }
+                        }).await;
                     }
                     _ = uptime_interval.tick() => {
                         if let Some(ref metrics) = kms.metrics {

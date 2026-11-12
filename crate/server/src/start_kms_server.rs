@@ -69,8 +69,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, csr, est, get_hsm_status,
-        get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, cluster, crl, csr, est,
+        get_hsm_status, get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
@@ -526,6 +526,8 @@ pub async fn start_kms_server(
         .await
         .context("start KMS server: key_encryption_key wrapping check")?;
 
+    let cluster_heartbeat_shutdown_tx = cron::spawn_cluster_heartbeat_cron(kms_server.clone());
+
     // Spawn background metrics cron thread and retain shutdown signal
     let metrics_shutdown_tx = if kms_server.metrics.is_some() {
         Some(cron::spawn_metrics_cron(kms_server.clone()))
@@ -577,6 +579,7 @@ pub async fn start_kms_server(
         pre_bound_http_listener,
     )
     .await;
+    let _ = cluster_heartbeat_shutdown_tx.send(());
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
         let _ = tx.send(());
@@ -1898,6 +1901,7 @@ pub async fn prepare_kms_server(
             .service(kmip::kmip)
             .service(get_server_info)
             .service(get_hsm_status)
+            .service(cluster::get_cluster_status)
             .service(access::get_current_user)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)

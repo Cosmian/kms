@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema is small and consists of six tables. The optional
+The KMS object-store schema is small and consists of seven tables. The optional
 [PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and
 `kms_audit_control`, in its own, separate database.
 
@@ -19,6 +19,7 @@ The KMS object-store schema is small and consists of six tables. The optional
 | `tags` | Tags attached to objects, used by `Locate` |
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
+| `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -62,6 +63,12 @@ erDiagram
         text sealed_record
         timestamp revoked_at
         varchar revoked_by
+    }
+    CLUSTER_NODES {
+        string node_id PK
+        string version
+        int last_heartbeat
+        boolean is_leader
     }
 ```
 
@@ -175,6 +182,20 @@ One row per CA certificate. The row is replaced atomically on every CRL regenera
 The Redis-with-Findex backend stores each CRL as a JSON value under the key
 `crl:<issuer_id>`.
 
+## `cluster_nodes`
+
+Stores one heartbeat per running KMS process. Each node refreshes its row every five seconds;
+rows older than fifteen seconds are pruned. The node holding the cluster-election lock is marked
+as leader. Node IDs are regenerated on process restart, and stale rows are removed by the next
+heartbeat.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `node_id` | `VARCHAR(64)` | Process-specific UUID and primary key. |
+| `version` | `VARCHAR(64)` | KMS package version reported by the process. |
+| `last_heartbeat` | `BIGINT` | Last heartbeat as Unix seconds. |
+| `is_leader` | `BOOLEAN` | Whether this node most recently held the election lock. |
+
 ## Links between tables
 
 - `objects.id` is referenced by `read_access.id` and `tags.id`: one object can have many access rows and many tags.
@@ -183,6 +204,7 @@ The Redis-with-Findex backend stores each CRL as a JSON value under the key
 - `objects.owner` and `read_access.userid` hold user identifiers.
   Users are authenticated identities and are **not** stored in a dedicated table.
 - `parameters` and `crypto_officer_activations` are standalone and do not reference `objects`.
+- `cluster_nodes` is a standalone, ephemeral registry; it does not reference `objects`.
 
 These relationships are managed by the application layer (`crate/server_database/`) rather than database foreign-key constraints.
 
