@@ -429,20 +429,6 @@ user-id = 267
 user-login = "tarcieri"
 user-name = "Tony Arcieri"
 
-[[publisher.csv]]
-version = "1.4.0"
-when = "2025-10-17"
-user-id = 189
-user-login = "BurntSushi"
-user-name = "Andrew Gallant"
-
-[[publisher.csv-core]]
-version = "0.1.13"
-when = "2025-10-17"
-user-id = 189
-user-login = "BurntSushi"
-user-name = "Andrew Gallant"
-
 [[publisher.ctutils]]
 version = "0.4.8"
 when = "2026-11-02"
@@ -608,6 +594,13 @@ when = "2024-11-25"
 user-id = 2915
 user-login = "Amanieu"
 user-name = "Amanieu d'Antras"
+
+[[publisher.hashlink]]
+version = "0.12.2"
+when = "2026-09-07"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
 
 [[publisher.hostname]]
 version = "0.4.2"
