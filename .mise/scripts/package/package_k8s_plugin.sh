@@ -41,7 +41,7 @@ case "$FORMAT" in
     ;;
 esac
 
-# nix/k8s-plugin.nix reads only the Linux vendor hash (nix/expected-hashes/k8s-plugin.vendor.linux.sha256);
+# nix/k8s-plugin.nix reads only the Linux vendor hash (nix/expected-hashes/cargo.vendor.linux.sha256);
 # on macOS the vendor derivation fails with a hash mismatch after several minutes.
 if [ "$(uname -s)" != "Linux" ]; then
   echo "Error: the Kubernetes plugin deb/rpm packages are built on Linux only" >&2
