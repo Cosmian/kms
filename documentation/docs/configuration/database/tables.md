@@ -7,9 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema is small and consists of six tables. The optional
-[PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and
-`kms_audit_control`, in its own, separate database.
+The KMS object-store schema has six tables shared by every SQL backend. The MySQL family adds the `kms_migration_lock` coordination table. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and `kms_audit_control`, in its own, separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -19,6 +17,7 @@ The KMS object-store schema is small and consists of six tables. The optional
 | `tags` | Tags attached to objects, used by `Locate` |
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
+| `kms_migration_lock` | MySQL-family startup migration lock (MySQL, MariaDB, and Percona XtraDB Cluster only) |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -103,7 +102,7 @@ Stores the operations that a given user is allowed to perform on a given object.
 | `permissions` | `json` | The operations granted to the user, serialized as JSON. |
 
 The pair (`id`, `userid`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, userid)`.
+In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, userid)`.
 
 A secondary index `idx_read_access_userid` is created on `userid`.
 
@@ -117,7 +116,7 @@ Stores the tags attached to objects. Tags are used to locate objects by tag.
 | `tag` | `VARCHAR(255)` | A single tag. |
 
 The pair (`id`, `tag`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, tag)`.
+In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, tag)`.
 
 A secondary index `idx_tags_tag_id` on (`tag`, `id`) supports Locate-by-tags lookups.
 
@@ -132,14 +131,25 @@ A generic key/value store used internally by the KMS for database metadata.
 
 Known parameters:
 
-SQLite uses these keys for its startup migration runner. PostgreSQL and MySQL retain their existing initialization and backfill metadata until their runner wiring is added.
+The SQL startup migration runner uses these keys on SQLite, PostgreSQL, and the MySQL family.
 
 | `name` | Meaning |
 | ------ | ------- |
 | `db_state` | The database migration state: `ready` or `upgrading`, stored as a JSON string. |
 | `db_version` | The KMS version the startup migration runner last migrated this database to. |
+| `attributes_jsonb_converted` | PostgreSQL-only marker recording that `objects.attributes` was converted from `json` to `jsonb`. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
 | `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
+
+## `kms_migration_lock`
+
+MySQL, MariaDB, and Percona XtraDB Cluster use this table to serialize startup migrations. It contains one row, `id = 1`; a starting KMS holds that row with `FOR UPDATE NOWAIT` until migration completes.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `id` | `TINYINT` | Primary key. The runner reserves value `1` for its migration lock. |
+
+The table is never wiped by `--clear-database`. Do not drop or modify it while any KMS instance is starting.
 
 ## crypto_officer_activations
 

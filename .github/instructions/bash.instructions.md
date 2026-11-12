@@ -90,7 +90,7 @@ trap 'rm -f "${TMP}"' EXIT
 
 ## Waiting and ports
 
-- Never `sleep N` to wait for a condition: use `wait_for_port` / `kms_wait_ready` (`.mise/lib/common.sh`). Never a literal port: `kms_pick_free_port` or `test_slots.sh`.
+- Never `sleep N` to wait for a condition: use `wait_for_command`, `wait_for_port` or `kms_wait_ready` (`.mise/lib/common.sh`). Never a literal port: `kms_pick_free_port` or `test_slots.sh`.
 
 ## Credentials
 
