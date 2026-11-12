@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use base64::{Engine as _, prelude::BASE64_STANDARD};
-use http::{
-    HeaderMap, HeaderValue, StatusCode,
-    header::{ACCEPT, CONTENT_TYPE},
-};
+use http::{HeaderMap, HeaderValue, StatusCode, header::ACCEPT};
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
     Scope, TokenUrl, basic::BasicClient,
@@ -14,7 +11,7 @@ use url::Url;
 
 use super::{HttpClientError, error::result::HttpClientResult};
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Oauth2LoginConfig {
     /// The client ID of your application.
     pub client_id: String,
@@ -29,6 +26,26 @@ pub struct Oauth2LoginConfig {
     /// The scopes to request.
     /// For example, for Google it is `["openid", "email"]`.
     pub scopes: Vec<String>,
+    /// Refresh token saved by `ckms login oauth` when the identity provider returns one (request the
+    /// `offline_access` scope); `ckms login oauth --refresh` exchanges it without a browser.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+}
+
+impl std::fmt::Debug for Oauth2LoginConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Oauth2LoginConfig")
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"<redacted>")
+            .field("authorize_url", &self.authorize_url)
+            .field("token_url", &self.token_url)
+            .field("scopes", &self.scopes)
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 /// This struct holds the state of the login process.
@@ -143,7 +160,7 @@ impl LoginState {
     }
 
     /// This function finalizes the login process.
-    /// It returns the access token.
+    /// It returns the identity provider tokens.
     ///
     /// This function should be called immediately after the user has been
     /// instructed to browse to the authorization URL. It starts a server on
@@ -163,7 +180,7 @@ impl LoginState {
     /// * The access token cannot be requested from the Identity Provider.
     /// * The token exchange request fails.
     /// * The token exchange response cannot be parsed.
-    pub async fn finalize(&self) -> HttpClientResult<String> {
+    pub async fn finalize(&self) -> HttpClientResult<OAuthTokens> {
         // recover the authorization code, state and other parameters from the redirect
         // URL.  Use the port that was actually embedded in the redirect URL at
         // construction time (respects OAUTH2_REDIRECT_URL_PORT).
@@ -190,19 +207,13 @@ impl LoginState {
             HttpClientError::Default("code not received on authentication".to_owned())
         })?;
 
-        let token_result = request_token(
+        request_token(
             &self.login_config,
             &self.redirect_url,
             &self.pkce_verifier,
             authorization_code,
         )
-        .await?;
-
-        Ok(match token_result.id_token {
-            // this is where Google returns the JWT token
-            Some(id_token) => id_token,
-            None => token_result.access_token,
-        })
+        .await
     }
 
     /// This function starts the server on the given `port` and waits for the
@@ -281,13 +292,33 @@ fn authorization_response(
     response
 }
 
-#[derive(Deserialize, Debug)]
-pub(crate) struct OAuthResponse {
-    pub access_token: String,
-    pub id_token: Option<String>,
+/// Tokens returned by the Identity Provider token endpoint.
+#[derive(Clone)]
+pub struct OAuthTokens {
+    /// JWT sent to the KMS: the OIDC `id_token` when present (Google and Auth0 put the JWT there), else the `access_token`.
+    pub token: String,
+    /// Refresh token, returned when `offline_access` is granted, or a rotated one on refresh.
+    pub refresh_token: Option<String>,
 }
 
-/// This function requests the access token from the Identity Provider.
+impl std::fmt::Debug for OAuthTokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("OAuthTokens(<redacted>)")
+    }
+}
+
+/// Members of an RFC 6749 token response that the client reads.
+#[derive(Deserialize)]
+pub(crate) struct OAuthResponse {
+    #[serde(rename = "access_token")]
+    pub access: String,
+    #[serde(rename = "id_token")]
+    pub id: Option<String>,
+    #[serde(rename = "refresh_token")]
+    pub refresh: Option<String>,
+}
+
+/// This function requests the tokens from the Identity Provider.
 ///
 /// This function was rewritten because Google returns the JWT token in the
 /// `id_token` field, not in the `access_token` field.
@@ -314,8 +345,8 @@ pub(crate) async fn request_token(
     redirect_url: &Url,
     pkce_verifier: &PkceCodeVerifier,
     authorization_code: &str,
-) -> HttpClientResult<OAuthResponse> {
-    let params = vec![
+) -> HttpClientResult<OAuthTokens> {
+    let params = [
         ("grant_type", "authorization_code"),
         ("redirect_uri", redirect_url.as_str()),
         ("client_id", login_config.client_id.as_str()),
@@ -323,23 +354,44 @@ pub(crate) async fn request_token(
         ("client_secret", login_config.client_secret.as_str()),
         ("code_verifier", pkce_verifier.secret()),
     ];
+    token_endpoint_request(&login_config.token_url, &params).await
+}
 
-    let mut headers = HeaderMap::new();
-    headers.append(ACCEPT, HeaderValue::from_static("application/json"));
-    headers.append(
-        CONTENT_TYPE,
-        HeaderValue::from_static("application/x-www-form-urlencoded"),
-    );
+/// Exchange `refresh_token` for new tokens with the `refresh_token` grant (RFC 6749 §6): no browser.
+///
+/// # Errors
+/// Fails if the token endpoint request fails, answers non-200, or returns an unparsable body.
+pub async fn refresh_login(
+    login_config: &Oauth2LoginConfig,
+    refresh_token: &str,
+) -> HttpClientResult<OAuthTokens> {
+    token_endpoint_request(
+        &login_config.token_url,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", login_config.client_id.as_str()),
+            ("client_secret", login_config.client_secret.as_str()),
+        ],
+    )
+    .await
+}
 
+/// POST `params` (form-encoded) to the identity provider token endpoint.
+async fn token_endpoint_request(
+    token_url: &str,
+    params: &[(&str, &str)],
+) -> HttpClientResult<OAuthTokens> {
     let body = url::form_urlencoded::Serializer::new(String::new())
         .extend_pairs(params)
         .finish();
 
     // TLS certificate validation MUST remain enabled for the OAuth2 token
-    // exchange: the authorization code and PKCE verifier are transmitted to the
-    // token endpoint, so a MITM with an invalid certificate could steal them.
+    // exchange: the authorization code, PKCE verifier and refresh token are
+    // transmitted to the token endpoint, so a MITM with an invalid certificate
+    // could steal them.
     let client = super::HttpClient::instantiate(&super::HttpClientConfig {
-        server_url: login_config.token_url.clone(),
+        server_url: token_url.to_owned(),
         accept_invalid_certs: false,
         ..Default::default()
     })
@@ -349,7 +401,7 @@ pub(crate) async fn request_token(
     extra_headers.append(ACCEPT, HeaderValue::from_static("application/json"));
 
     let response = client
-        .post_form(&login_config.token_url, &body, &extra_headers)
+        .post_form(token_url, &body, &extra_headers)
         .await
         .map_err(|e| {
             HttpClientError::Default(format!("failed issuing token exchange request: {e}"))
@@ -364,8 +416,13 @@ pub(crate) async fn request_token(
         )));
     }
 
-    response.json().map_err(|e| {
+    let r: OAuthResponse = response.json().map_err(|e| {
         HttpClientError::Default(format!("failed parsing token exchange response: {e:?}"))
+    })?;
+    Ok(OAuthTokens {
+        // this is where Google returns the JWT token
+        token: r.id.unwrap_or(r.access),
+        refresh_token: r.refresh,
     })
 }
 
@@ -628,7 +685,7 @@ mod oauth_response_tests {
     use super::OAuthResponse;
 
     /// A standard RFC 6749 token response carries more members than the client reads
-    /// (`expires_in`, `refresh_token`, `scope`, `token_type`); they must be accepted and ignored.
+    /// (`expires_in`, `scope`, `token_type`); they must be accepted and ignored.
     #[test]
     fn full_rfc6749_token_response_is_accepted() {
         let response = serde_json::from_str::<OAuthResponse>(
@@ -642,11 +699,12 @@ mod oauth_response_tests {
             }"#,
         )
         .ok();
+        assert_eq!(response.as_ref().map(|r| r.access.as_str()), Some("at"));
         assert_eq!(
-            response.as_ref().map(|r| r.access_token.as_str()),
-            Some("at")
+            response.as_ref().and_then(|r| r.refresh.as_deref()),
+            Some("rt")
         );
-        assert_eq!(response.and_then(|r| r.id_token).as_deref(), Some("it"));
+        assert_eq!(response.and_then(|r| r.id).as_deref(), Some("it"));
     }
 
     #[test]
@@ -655,11 +713,8 @@ mod oauth_response_tests {
             r#"{"access_token": "at", "token_type": "Bearer"}"#,
         )
         .ok();
-        assert_eq!(
-            response.as_ref().map(|r| r.access_token.as_str()),
-            Some("at")
-        );
-        assert_eq!(response.map(|r| r.id_token), Some(None));
+        assert_eq!(response.as_ref().map(|r| r.access.as_str()), Some("at"));
+        assert_eq!(response.map(|r| r.id), Some(None));
     }
 
     #[test]

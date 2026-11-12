@@ -9,4 +9,4 @@
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
-run_test_leaves "$(dirname "$0")" azure-ekm gcp-cmek google-cse secret-aws secret-azure secret-cosmian-kms secret-vault xks xks-remote
+run_test_leaves "$(dirname "$0")" azure-ekm gcp-cmek google-cse google-cse-remote secret-aws secret-azure secret-cosmian-kms secret-vault xks xks-remote

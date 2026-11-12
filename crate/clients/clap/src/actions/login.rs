@@ -4,8 +4,8 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClientConfig,
     reexport::cosmian_http_client::{
-        AuthVerifierLoginConfig, AuthVerifierLoginStep, LoginState, approle_login,
-        auth_verifier_login,
+        AuthVerifierLoginConfig, AuthVerifierLoginStep, LoginState, OAuthTokens, approle_login,
+        auth_verifier_login, refresh_login,
     },
 };
 use dialoguer::{Input, Password};
@@ -38,6 +38,9 @@ pub enum LoginCredential {
     /// A Vault-compatible token, stored in `http_config.vault_token` and sent
     /// as an `X-Vault-Token` header.
     VaultToken(String),
+    /// `OAuth2` tokens: the JWT is stored in `http_config.access_token`; a returned refresh token
+    /// replaces `http_config.oauth2_conf.refresh_token`.
+    OAuth(OAuthTokens),
 }
 
 /// Login to the KMS server identity provider.
@@ -48,6 +51,7 @@ pub enum LoginCredential {
 /// Requires an `oauth2_conf` section in the configuration file with fields:
 /// - `client_id`, `client_secret`, `authorize_url`, `token_url`, `scopes`.
 ///   The callback URL must be whitelisted with value `http://localhost:17899/token`.
+///   `--refresh` reuses the `refresh_token` saved by a previous browser login (scope `offline_access`) and opens no browser.
 ///
 /// **cosmian** — Auth Verifier server (HTTP Basic credentials).
 /// Requires a `cosmian_conf` section in the configuration file with fields:
@@ -78,7 +82,12 @@ pub struct LoginAction {
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum LoginSubcommand {
     /// Login using the `OAuth2` authorization code flow.
-    Oauth,
+    Oauth {
+        /// Skip the browser: exchange the `refresh_token` saved in `oauth2_conf` by a previous
+        /// `ckms login oauth` (the identity provider returns one when `offline_access` is in `scopes`).
+        #[clap(long)]
+        refresh: bool,
+    },
     /// Login using Auth Verifier server (HTTP Basic credentials).
     ///
     /// The configuration file must contain a `cosmian_conf` section with
@@ -140,7 +149,7 @@ impl LoginAction {
     /// - If the authentication request fails
     pub async fn process(&self, config: KmsClientConfig) -> KmsCliResult<LoginCredential> {
         match &self.subcommand {
-            LoginSubcommand::Oauth => {
+            LoginSubcommand::Oauth { refresh } => {
                 let login_config = config.http_config.oauth2_conf.as_ref().ok_or_else(|| {
                     KmsCliError::Default(format!(
                         "The `login oauth` command (only used for JWT authentication) requires an Identity \
@@ -148,16 +157,27 @@ impl LoginAction {
                     ))
                 })?;
 
-                let state = LoginState::try_from(login_config.clone())?;
-                writeln!(std::io::stdout().lock(), "Browse to: {}", state.auth_url)?;
-                let access_token = state.finalize().await?;
+                let tokens = if *refresh {
+                    let refresh_token = login_config.refresh_token.as_deref().ok_or_else(|| {
+                        KmsCliError::Default(
+                            "`ckms login oauth --refresh` needs `refresh_token` in oauth2_conf: add \
+                             `offline_access` to oauth2_conf.scopes and run `ckms login oauth` once"
+                                .to_owned(),
+                        )
+                    })?;
+                    refresh_login(login_config, refresh_token).await?
+                } else {
+                    let state = LoginState::try_from(login_config.clone())?;
+                    writeln!(std::io::stdout().lock(), "Browse to: {}", state.auth_url)?;
+                    state.finalize().await?
+                };
 
                 writeln!(
                     std::io::stdout().lock(),
                     "\nSuccess! The access token was saved to the KMS client configuration."
                 )?;
 
-                Ok(LoginCredential::AccessToken(access_token))
+                Ok(LoginCredential::OAuth(tokens))
             }
             LoginSubcommand::Cosmian { username, password } => {
                 let cosmian_conf: &AuthVerifierLoginConfig =

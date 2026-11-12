@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#MISE description="ckms tests against cse.cosmian.com and cse.test.cosmian.com (login, Gmail CSE identities and key pairs)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+
+[ "${VARIANT}" = non-fips ] || skip_test "remote tests do not depend on the client variant: run with --variant non-fips"
+
+# Skipped when already set: this block runs again after the nix-shell re-exec.
+if [ -z "${CKMS_CSE_CONF:-}" ]; then
+  if [ -n "${CSE_CKMS_CONF_TOML:-}" ]; then
+    # shortcut: the temp file stays on the runner (ephemeral in CI); set CKMS_CSE_CONF locally instead
+    CKMS_CSE_CONF="$(mktemp)"
+    printf '%s\n' "${CSE_CKMS_CONF_TOML}" >"${CKMS_CSE_CONF}"
+  elif [ -f "${HOME}/.cosmian/cse.cosmian.com.toml" ]; then
+    CKMS_CSE_CONF="${HOME}/.cosmian/cse.cosmian.com.toml"
+  elif [ -n "${CI:-}" ]; then
+    print_error "CSE_CKMS_CONF_TOML secret missing in CI"
+  else
+    skip_test "set CKMS_CSE_CONF or create ~/.cosmian/cse.cosmian.com.toml"
+  fi
+  export CKMS_CSE_CONF
+fi
+
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "Running remote Google CSE ckms tests"
+
+require_cmd cargo
+
+# The tests drive the prebuilt binary; rebuild so a stale one is not reused.
+cargo build -p ckms --bin ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+cargo test -p ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} google_cmd::remote_cse -- --ignored
+
+print_success "Remote Google CSE ckms tests completed"

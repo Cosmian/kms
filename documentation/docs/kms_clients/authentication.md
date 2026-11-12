@@ -184,6 +184,10 @@ scopes = ["openid", "email"]          # Recommended
 client_secret = "your-client-secret"  # Optional with PKCE
 ```
 
+To log in again without a browser (automation), add `"offline_access"` to `scopes` and run `ckms login oauth` once: the
+refresh token returned by the identity provider is saved as `refresh_token` in `oauth2_conf`. Then
+`ckms login oauth --refresh` exchanges it for a new token, and saves the new refresh token if the provider rotates it.
+
 ### PKCE Authentication (Recommended)
 
 PKCE (Proof Key for Code Exchange) enhances security by eliminating the need for client secrets. To use PKCE:
