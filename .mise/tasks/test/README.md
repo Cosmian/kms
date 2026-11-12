@@ -1441,7 +1441,7 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:pkg:docker`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
 ### `test:pkg:docker`
 
@@ -1622,6 +1622,17 @@ sequenceDiagram
     Test->>Nginx: poll GET /health (up to 20 s)
     Nginx-->>Test: 200 (recovered)
 ```
+
+---
+
+### `test:upgrade-db` and `test:upgrade-sqlite`
+
+**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification.
+
+- `test:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
+- `test:upgrade-db` runs published release Docker images (`ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) against the candidate image (`--new-image` / `DOCKER_IMAGE_NAME`) across SQLite, PostgreSQL, MySQL, and (in `non-fips` mode) Redis-findex. When `--old-version nightly` is used, it tests `SUPPORTED_BASELINE` (`5.20.0`), the latest release (`N-1`), and 2 deterministic round-robin middle releases.
+
+Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS with both the deterministic `mig_*`/`bulk_*` coverage set (`populate_fixed_set.py`) and a seeded-random `rnd_*` layer (`verify_db_upgrade.py`), captures a pre-upgrade KMIP snapshot, takes a cold backup, upgrades with the candidate server (verifying attributes, user tags, key material digests, old ciphertexts/signatures, grants, Locate sets, post-upgrade mutations, and a second restart), and finally restores the pre-upgrade backup on the old server.
 
 ---
 
