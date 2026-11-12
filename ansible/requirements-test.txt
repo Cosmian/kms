@@ -1,0 +1,4 @@
+ansible-core>=2.21,<2.22
+ansible-lint
+docker
+molecule

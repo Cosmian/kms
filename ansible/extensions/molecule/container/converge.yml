@@ -1,0 +1,37 @@
+---
+- name: Deploy KMS in a container and manage a key
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    kms_server_install_method: container
+    kms_server_container_image: ghcr.io/cosmian/kms:5.29.0
+    kms_config_toml: |
+      default_username = "admin"
+      [db]
+      database_type = "sqlite"
+      sqlite_path = "/tmp/kms-data"
+      [http]
+      port = 9998
+      hostname = "0.0.0.0"
+  roles:
+    - cosmian.kms.kms_server
+    - cosmian.kms.kms_health
+  tasks:
+    - name: Create a key
+      cosmian.kms.kms_key:
+        name: molecule-key
+      register: molecule_key
+
+    - name: Grant access to the key
+      cosmian.kms.kms_access:
+        object_id: "{{ molecule_key.key_id }}"
+        user_id: molecule-user
+        operation_types: [get, encrypt, decrypt]
+
+    - name: Enable automatic rotation
+      cosmian.kms.kms_rotation_policy:
+        object_id: "{{ molecule_key.key_id }}"
+        interval_seconds: 86400
