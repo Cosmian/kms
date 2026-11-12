@@ -157,6 +157,8 @@ seal "transit" {
   disable_renewal = "true"
 }
 EOF
+# mktemp -d creates a 0700 dir; the container's non-root vault user must traverse it.
+chmod 755 "${VAULT_WORK_DIR}"
 chmod 644 "${VAULT_WORK_DIR}/vault.hcl" "${VAULT_WORK_DIR}/ca.crt"
 
 # The image entrypoint always adds `-config=/vault/config`; keep this file elsewhere
