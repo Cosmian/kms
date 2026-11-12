@@ -69,8 +69,10 @@ pub(crate) struct SymmetricKeyVersion {
 
 #[derive(Deserialize)]
 pub(crate) struct EncryptTransitRequest {
-    /// Base64-encoded plaintext.
-    pub plaintext: String,
+    /// Base64-encoded plaintext. Required, but optional for serde so that a
+    /// `batch_input`-only body gets the explicit "not supported" error.
+    #[serde(default)]
+    pub plaintext: Option<String>,
     /// Key version to encrypt with; defaults to the latest version.
     #[serde(default)]
     pub key_version: Option<u32>,
@@ -98,8 +100,10 @@ pub(crate) struct EncryptTransitResponse {
 
 #[derive(Deserialize)]
 pub(crate) struct DecryptTransitRequest {
-    /// Vault ciphertext `vault:vN:<base64>`.
-    pub ciphertext: String,
+    /// Vault ciphertext `vault:vN:<base64>`. Required, but optional for serde so that
+    /// a `batch_input`-only body gets the explicit "not supported" error.
+    #[serde(default)]
+    pub ciphertext: Option<String>,
     /// Base64-encoded AEAD associated data (must match the value used to encrypt).
     #[serde(default)]
     pub associated_data: Option<String>,
@@ -317,13 +321,19 @@ pub(crate) fn symmetric_key_info(
 }
 
 /// Map a KMS decryption failure to a client error without leaking oracle details.
+/// Single 400 message for every ciphertext-dependent decrypt failure (malformed
+/// ciphertext, unknown key version, AEAD failure), so callers cannot tell them apart.
+const DECRYPT_FAILED: &str = "cipher: message authentication failed";
+
+fn decrypt_failed(reason: &dyn std::fmt::Display) -> SpireApiError {
+    debug!("vault transit: decryption failed: {reason}");
+    SpireApiError::BadRequest(DECRYPT_FAILED.to_owned())
+}
+
 fn decrypt_error(e: KmsError) -> SpireApiError {
     match e {
         KmsError::Unauthorized(_) => SpireApiError::Forbidden(e.to_string()),
-        other => {
-            debug!("vault transit: decryption failed: {other}");
-            SpireApiError::BadRequest("cipher: message authentication failed".to_owned())
-        }
+        other => decrypt_failed(&other),
     }
 }
 
@@ -361,7 +371,10 @@ async fn encrypt_impl(
     trace!(user = %user, "{} vault transit encrypt/{name}", req.method());
 
     reject_unsupported_options(body.context.as_deref(), body.batch_input.as_ref())?;
-    let plaintext = Zeroizing::new(BASE64_STANDARD.decode(&body.plaintext).map_err(|_e| {
+    let plaintext = body
+        .plaintext
+        .ok_or_else(|| SpireApiError::BadRequest("missing 'plaintext' field".to_owned()))?;
+    let plaintext = Zeroizing::new(BASE64_STANDARD.decode(&plaintext).map_err(|_e| {
         SpireApiError::BadRequest("invalid base64 in 'plaintext' field".to_owned())
     })?);
     let associated_data = decode_associated_data(body.associated_data.as_deref())?;
@@ -450,7 +463,10 @@ async fn decrypt_impl(
     trace!(user = %user, "{} vault transit decrypt/{name}", req.method());
 
     reject_unsupported_options(body.context.as_deref(), body.batch_input.as_ref())?;
-    let parsed = parse_ciphertext(&body.ciphertext)?;
+    let ciphertext = body
+        .ciphertext
+        .ok_or_else(|| SpireApiError::BadRequest("missing 'ciphertext' field".to_owned()))?;
+    let parsed = parse_ciphertext(&ciphertext).map_err(|e| decrypt_failed(&e))?;
     let associated_data = decode_associated_data(body.associated_data.as_deref())?;
 
     let versions = find_owned_symmetric_versions(kms, &user, name).await?;
@@ -462,7 +478,7 @@ async fn decrypt_impl(
     let key = versions
         .iter()
         .find(|v| v.version == parsed.version)
-        .ok_or_else(|| SpireApiError::BadRequest("invalid key version".to_owned()))?;
+        .ok_or_else(|| decrypt_failed(&format!("unknown key version {}", parsed.version)))?;
 
     let resp = kms
         .decrypt(
@@ -564,9 +580,10 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        GCM_NONCE_LEN, GCM_TAG_LEN, decrypt_with_transit_key, decrypt_with_transit_key_put,
-        encrypt_with_transit_key, encrypt_with_transit_key_put, find_owned_symmetric_versions,
-        format_ciphertext, parse_ciphertext, rotate_transit_key, rotate_transit_key_put,
+        DECRYPT_FAILED, GCM_NONCE_LEN, GCM_TAG_LEN, decrypt_with_transit_key,
+        decrypt_with_transit_key_put, encrypt_with_transit_key, encrypt_with_transit_key_put,
+        find_owned_symmetric_versions, format_ciphertext, parse_ciphertext, rotate_transit_key,
+        rotate_transit_key_put,
     };
     use crate::{
         core::KMS,
@@ -877,6 +894,80 @@ mod tests {
                 .await
                 .0,
             404
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn decrypt_failures_share_one_error_message() -> KResult<()> {
+        let kms = test_kms().await?;
+        call(&kms, "alice", "POST", "/keys/k", Some(json!({}))).await;
+        let (_, enc) = encrypt(&kms, "alice", "k", json!({"plaintext": b64(b"data")})).await;
+        let ct = ciphertext(&enc);
+        let mut raw = BASE64_STANDARD
+            .decode(ct.trim_start_matches("vault:v1:"))
+            .unwrap();
+        raw[GCM_NONCE_LEN] ^= 1;
+
+        for bad in [
+            format!("vault:v1:{}", b64(&raw)),
+            ct.replacen("vault:v1:", "vault:v9:", 1),
+            ct.replacen("vault:", "xxx:", 1),
+            ct[..20].to_owned(),
+        ] {
+            let (status, body) = decrypt(&kms, "alice", "k", json!({"ciphertext": bad})).await;
+            assert_eq!(status, 400, "{bad}");
+            assert_eq!(body, json!({"errors": [DECRYPT_FAILED]}), "{bad}");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unsupported_options_are_rejected_explicitly() -> KResult<()> {
+        let kms = test_kms().await?;
+        call(&kms, "alice", "POST", "/keys/k", Some(json!({}))).await;
+        let (_, enc) = encrypt(&kms, "alice", "k", json!({"plaintext": b64(b"data")})).await;
+        let ct = ciphertext(&enc);
+
+        let batch = json!({"errors": ["'batch_input' is not supported"]});
+        let context =
+            json!({"errors": ["'context' is not supported: transit keys are not derived keys"]});
+        let cases = [
+            (
+                "/encrypt/k",
+                json!({"batch_input": [{"plaintext": b64(b"x")}]}),
+                &batch,
+            ),
+            (
+                "/decrypt/k",
+                json!({"batch_input": [{"ciphertext": ct}]}),
+                &batch,
+            ),
+            (
+                "/decrypt/k",
+                json!({"ciphertext": ct, "batch_input": [{}]}),
+                &batch,
+            ),
+            (
+                "/decrypt/k",
+                json!({"ciphertext": ct, "context": "Y3R4"}),
+                &context,
+            ),
+        ];
+        for (uri, body, expected) in cases {
+            let (status, resp) = call(&kms, "alice", "PUT", uri, Some(body.clone())).await;
+            assert_eq!(status, 400, "{uri} {body}");
+            assert_eq!(&resp, expected, "{uri} {body}");
+        }
+
+        // A body without the required field gets a Vault-formatted error.
+        assert_eq!(
+            encrypt(&kms, "alice", "k", json!({})).await,
+            (400, json!({"errors": ["missing 'plaintext' field"]}))
+        );
+        assert_eq!(
+            decrypt(&kms, "alice", "k", json!({})).await,
+            (400, json!({"errors": ["missing 'ciphertext' field"]}))
         );
         Ok(())
     }

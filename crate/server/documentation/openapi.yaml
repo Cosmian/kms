@@ -4996,7 +4996,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/DecryptTransitResponse'
         '400':
-          description: Malformed ciphertext, unknown key version, or authentication failure.
+          description: |
+            Malformed ciphertext, unknown key version, or authentication failure. All three
+            return the same message (`cipher: message authentication failed`) so they cannot
+            be told apart. Missing `ciphertext` and unsupported options (`context`,
+            `batch_input`) get their own message.
         '404':
           description: No `aes256-gcm96` key with this name is owned by the caller.
 

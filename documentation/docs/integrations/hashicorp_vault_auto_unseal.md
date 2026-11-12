@@ -46,7 +46,8 @@ version is a separate, non-exportable (`sensitive`) KMS symmetric key tagged
 `vault_transit:{name}` and `vault_transit_version:{N}`, owned by the identity of the Vault token.
 Only the owner can use or rotate the key. Optional `associated_data` (AEAD) and `key_version` are
 supported; derived keys (`context`), convergent encryption and `batch_input` are not and are
-rejected with `400`.
+rejected with `400`. A malformed ciphertext, an unknown key version and an authentication
+failure all return the same `400` (`cipher: message authentication failed`).
 
 The full request and response schemas are in the [OpenAPI reference](openapi.md).
 
