@@ -132,10 +132,12 @@ A generic key/value store used internally by the KMS for database metadata.
 
 Known parameters:
 
+SQLite uses these keys for its startup migration runner. PostgreSQL and MySQL retain their existing initialization and backfill metadata until their runner wiring is added.
+
 | `name` | Meaning |
 | ------ | ------- |
-| `db_state` | The database migration state: `ready` or `upgrading`. |
-| `db_version` | The version of the KMS software that last ran against this database. |
+| `db_state` | The database migration state: `ready` or `upgrading`, stored as a JSON string. |
+| `db_version` | The KMS version the startup migration runner last migrated this database to. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
 | `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
 

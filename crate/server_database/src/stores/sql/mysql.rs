@@ -28,8 +28,8 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
+            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbParameters, DbState,
+            WRAPPING_KEY_BACKFILL_PARAM, certificate_serial_tag,
         },
         mysql_queries,
         sql::{
@@ -420,7 +420,7 @@ impl MySqlPool {
             for (id, object_json) in &missing_rows {
                 match serde_json::from_str::<Object>(object_json) {
                     Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&obj) {
+                        if let Some(tag) = certificate_serial_tag(id, &obj) {
                             conn.exec_drop(insert_sql, (id, &tag))
                                 .await
                                 .map_err(DbError::from)?;
@@ -447,8 +447,7 @@ impl MySqlPool {
 
         // On clear or first boot, update metadata (non-fips only)
         if clear_database {
-            this.set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
+            this.set_db_version(env!("CARGO_PKG_VERSION")).await?;
             this.set_db_state(DbState::Ready).await?;
         }
 
@@ -983,21 +982,18 @@ impl ObjectsStore for MySqlPool {
 }
 
 #[async_trait(?Send)]
-impl Migrate for MySqlPool {
-    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+impl DbParameters for MySqlPool {
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
         let mut conn = self.get_configured_conn().await?;
-        let sql = get_mysql_query!("upsert-parameter");
-        let state_json = serde_json::to_string(&state)?;
-        conn.exec_drop(sql, ("db_state", state_json))
+        conn.exec_first(get_mysql_query!("select-parameter"), (name,))
             .await
-            .map_err(DbError::from)?;
-        Ok(())
+            .map_err(DbError::from)
     }
 
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
         let mut conn = self.get_configured_conn().await?;
         let sql = get_mysql_query!("upsert-parameter");
-        conn.exec_drop(sql, ("db_version", version))
+        conn.exec_drop(sql, (name, value))
             .await
             .map_err(DbError::from)?;
         Ok(())

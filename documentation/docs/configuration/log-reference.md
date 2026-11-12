@@ -830,6 +830,12 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `serial tag backfill: skipping object with unparsable certificate DER or non-certificate payload` | `src/stores/migrate.rs` | `uid` (object uid) | One-time startup backfill of `_serial=` tags; the object stays without a `_serial=` tag. |
+| `warn` | `Interrupted database migration detected; resuming` | `src/stores/migrate.rs` | - | - |
+| `warn` | `transparent migration supported from 5.20.0; attempting all registered steps` | `src/stores/migrate.rs` | - | - |
+| `info` | `Applying database migration step` | `src/stores/migrate.rs` | - | - |
+| `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
+| `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 

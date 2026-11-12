@@ -42,6 +42,19 @@ Environment variables for test backends:
 | `KMS_MYSQL_URL` | `mysql://kms:kms@localhost:3306/kms` |
 | `KMS_SQLITE_PATH` | `data/shared` |
 
+## Versioned migrations
+
+- Data transformations between KMS versions **MUST** be registered as a `MigrationStep` in `crate/server_database/src/stores/migrate.rs`, never as another inline startup backfill.
+- Additive, idempotent DDL belongs in `ensure_schema`. DDL that converts existing data is a data transformation and must be versioned.
+- The runner owns completion-marker reads and writes, version checkpoints and migration state. Backend `apply_step` implementations perform only the idempotent data transformation.
+- Startup must acquire the backend lock and perform the read-only newer-version check before any DDL. Hold it through the final `ready` stamp and use a drop guard to release it on both success and errors. Never delete SQLite's sidecar lock file.
+
+When adding a migration step:
+
+1. Add its `MigrationStep` variant, `version()` and `marker()`, then append it to `MIGRATION_STEPS` in strictly ascending version order. The running package version must include the last registered step.
+2. Implement the new match arm in every backend's `apply_step`: SQLite, PostgreSQL, MySQL and Redis. SQLite is wired first; the other backends adopt these arms with their runner implementations.
+3. Extend the migration scenarios and released fixtures. Verify both step-by-step and direct upgrades, data preservation, marker skips, interrupted runs and concurrent startup.
+
 ## Documentation
 
 Keep the database documentation under `documentation/docs/configuration/` in sync whenever the

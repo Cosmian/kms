@@ -1,7 +1,8 @@
 // SQLite backend implementation on top of rusqlite
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    fs::{File, TryLockError},
+    path::{Path, PathBuf},
     sync::{
         Arc, OnceLock,
         atomic::{AtomicUsize, Ordering},
@@ -18,7 +19,6 @@ use cosmian_kms_interfaces::{
     ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
-use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
 use uuid::Uuid;
@@ -38,12 +38,10 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
+            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
+            wait_for_migration_lock,
         },
-        pgsql_queries,
-        sql::database::SqlDatabase,
-        sqlite_queries,
+        pgsql_queries, sqlite_queries,
     },
 };
 
@@ -169,6 +167,12 @@ pub(crate) struct SqlitePool {
     readers: Vec<Connection>,
     /// Round-robin counter for distributing reads across the pool.
     reader_idx: Arc<AtomicUsize>,
+    migration_lock_path: PathBuf,
+}
+
+/// Closing the owned handle releases the OS lock without deleting the shared sidecar.
+pub(crate) struct SqliteMigrationLock {
+    _file: File,
 }
 
 impl SqlitePool {
@@ -198,11 +202,29 @@ impl SqlitePool {
         Ok(conns)
     }
 
+    /// Do not expose connections until schema initialization and migrations have completed.
     pub(crate) async fn instantiate(
         path: &Path,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
+        Self::instantiate_at_version(
+            path,
+            clear_database,
+            max_connections,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        .map(|(pool, _)| pool)
+    }
+
+    /// Explicit targets and applied steps make intermediate upgrades observable in scenario tests.
+    pub(crate) async fn instantiate_at_version(
+        path: &Path,
+        clear_database: bool,
+        max_connections: Option<u32>,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         // Determine reader pool size: default to 2×CPUs capped at 32,
         // matching the MySQL/PostgreSQL backend pool sizing strategy.
         // Note: total connections = num_readers + 1 (dedicated writer).
@@ -225,117 +247,86 @@ impl SqlitePool {
         // Open the reader connections
         let readers = Self::open_connections(path, num_readers).await?;
 
+        let mut migration_lock_path = path.as_os_str().to_os_string();
+        migration_lock_path.push(".migration.lock");
         let pool = Self {
             writer,
             readers,
             reader_idx: Arc::new(AtomicUsize::new(0)),
+            migration_lock_path: PathBuf::from(migration_lock_path),
         };
+        let applied = pool.bootstrap(clear_database, target).await?;
+        Ok((pool, applied))
+    }
 
-        // Bootstrap schema and optionally clear database on startup, using trait queries
-        let create_parameters = pool.get_query("create-table-parameters")?.to_owned();
-        let create_objects = get_sqlite_query!("create-table-objects").to_owned();
-        let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
-        let create_tags = pool.get_query("create-table-tags")?.to_owned();
-        let idx_objects_owner = pool.get_query("create-index-objects-owner")?.to_owned();
-        let idx_objects_state = pool.get_query("create-index-objects-state")?.to_owned();
-        let idx_read_access_userid = pool
-            .get_query("create-index-read_access-userid")?
-            .to_owned();
-        let idx_tags_tag_id = pool.get_query("create-index-tags-tag-id")?.to_owned();
-        // JSON-expression indexes use SQLite `json_extract` syntax: load them from the
-        // SQLite overrides (`pool.get_query` only reads the PostgreSQL query file).
-        let idx_objects_rotate_name =
-            get_sqlite_query!("create-index-objects-rotate-lookup").to_owned();
-        let idx_objects_rotate_auto =
-            get_sqlite_query!("create-index-objects-rotate-auto").to_owned();
-        let idx_objects_type_state =
-            get_sqlite_query!("create-index-objects-type-state").to_owned();
-        let create_crypto_officer_activations = pool
-            .get_query("create-table-crypto_officer_activations")?
-            .to_owned();
-        let create_crls = pool.get_query("create-table-crls")?.to_owned();
-        let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
-        let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
-        let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
-        let clean_crls = pool.get_query("clean-table-crls")?.to_owned();
-        // The schema-bootstrap transaction needs a write lock; retry on a transient lock
-        // (see `retry_on_transient_lock`) in case a previous writer connection to the same
-        // file (e.g. from an immediately-preceding `KMS` instance in the same process) has
-        // not finished releasing it yet.
-        retry_on_transient_lock(|| {
-            let create_parameters = create_parameters.clone();
-            let create_objects = create_objects.clone();
-            let create_read_access = create_read_access.clone();
-            let create_tags = create_tags.clone();
-            let idx_objects_owner = idx_objects_owner.clone();
-            let idx_objects_state = idx_objects_state.clone();
-            let idx_read_access_userid = idx_read_access_userid.clone();
-            let idx_tags_tag_id = idx_tags_tag_id.clone();
-            let idx_objects_rotate_name = idx_objects_rotate_name.clone();
-            let idx_objects_rotate_auto = idx_objects_rotate_auto.clone();
-            let idx_objects_type_state = idx_objects_type_state.clone();
-            let create_crypto_officer_activations = create_crypto_officer_activations.clone();
-            let create_crls = create_crls.clone();
-            let clean_objects = clean_objects.clone();
-            let clean_read_access = clean_read_access.clone();
-            let clean_tags = clean_tags.clone();
-            let clean_crls = clean_crls.clone();
-            async {
-                pool.writer
-                    .call(
-                        move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                            let tx = c.transaction()?;
-                            tx.execute(&create_parameters, [])?;
-                            tx.execute(&create_objects, [])?;
-                            tx.execute(&create_read_access, [])?;
-                            tx.execute(&create_tags, [])?;
-                            tx.execute(&idx_objects_owner, [])?;
-                            tx.execute(&idx_objects_state, [])?;
-                            tx.execute(&idx_read_access_userid, [])?;
-                            tx.execute(&idx_tags_tag_id, [])?;
-                            tx.execute(&idx_objects_rotate_name, [])?;
-                            tx.execute(&idx_objects_rotate_auto, [])?;
-                            tx.execute(&idx_objects_type_state, [])?;
-                            tx.execute(
-                                &replace_dollars_with_qn(&create_crypto_officer_activations),
-                                [],
-                            )?;
-                            tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
-                            if clear_database {
-                                tx.execute(&clean_objects, [])?;
-                                tx.execute(&clean_read_access, [])?;
-                                tx.execute(&clean_tags, [])?;
-                                tx.execute(&clean_crls, [])?;
+    async fn create_schema(&self, clear_database: bool) -> DbResult<()> {
+        let ddl = [
+            get_sqlite_query!("create-table-parameters"),
+            get_sqlite_query!("create-table-objects"),
+            get_sqlite_query!("create-table-read_access"),
+            get_sqlite_query!("create-table-tags"),
+            get_sqlite_query!("create-index-objects-owner"),
+            get_sqlite_query!("create-index-objects-state"),
+            get_sqlite_query!("create-index-read_access-userid"),
+            get_sqlite_query!("create-index-tags-tag-id"),
+            get_sqlite_query!("create-index-objects-rotate-lookup"),
+            get_sqlite_query!("create-index-objects-rotate-auto"),
+            get_sqlite_query!("create-index-objects-type-state"),
+            get_sqlite_query!("create-table-crypto_officer_activations"),
+            get_sqlite_query!("create-table-crls"),
+        ];
+        let cleanup = [
+            get_sqlite_query!("clean-table-objects"),
+            get_sqlite_query!("clean-table-read_access"),
+            get_sqlite_query!("clean-table-tags"),
+            get_sqlite_query!("clean-table-crls"),
+        ];
+        let table_info_objects_sql = get_sqlite_query!("table-info-objects");
+        let add_version_sql = get_sqlite_query!("add-column-version");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        let tx = c.transaction()?;
+                        for query in ddl {
+                            tx.execute(query, [])?;
+                        }
+                        let has_version: bool = {
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut found = false;
+                            while let Some(row) = rows.next()? {
+                                let col_name: String = row.get(1)?;
+                                if col_name == "version" {
+                                    found = true;
+                                    break;
+                                }
                             }
-                            tx.commit()?;
-                            Ok(())
-                        },
-                    )
-                    .await
-            }
+                            found
+                        };
+                        if !has_version {
+                            tx.execute_batch(add_version_sql)?;
+                        }
+                        if clear_database {
+                            for query in cleanup {
+                                tx.execute(query, [])?;
+                            }
+                        }
+                        tx.commit()?;
+                        Ok(())
+                    },
+                )
+                .await
         })
-        .await?;
+        .await
+    }
 
-        // One-time migration for databases created before the `wrapping_key_id`
-        // column existed. The column and its index are ensured on every start
-        // (idempotent and cheap); the expensive O(N) backfill scan is gated by a
-        // completion marker so it runs at most once per database instead of on
-        // every startup (unwrapped objects keep a NULL value forever). The
-        // column-add, index and backfill share a single transaction; the completion
-        // marker is written separately afterwards. Because the backfill is idempotent,
-        // an interrupted run (marker still unset) re-executes cleanly on the next boot.
-        // Note: SQLite does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
-        // so we check PRAGMA table_info first.
-        let backfill_done =
-            pool.get_parameter(WRAPPING_KEY_BACKFILL_PARAM).await? == Some("true".to_owned());
+    async fn ensure_wrapping_key_schema(&self) -> DbResult<()> {
         let table_info_objects_sql = get_sqlite_query!("table-info-objects");
         let add_wrapping_sql = get_sqlite_query!("add-column-wrapping-key-id");
-        let add_version_sql = get_sqlite_query!("add-column-version");
         let idx_wrapping_sql = get_sqlite_query!("create-index-objects-wrapping-key-id");
-        let select_null_wrapping_sql = get_sqlite_query!("select-objects-null-wrapping-key");
-        let update_wrapping_sql = get_sqlite_query!("update-wrapping-key-id");
         retry_on_transient_lock(|| async {
-            pool.writer
+            self.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         let tx = c.transaction()?;
@@ -355,127 +346,22 @@ impl SqlitePool {
                         if !has_column {
                             tx.execute_batch(add_wrapping_sql)?;
                         }
-                        // Optimistic-locking counter for databases created before it existed.
-                        // Existing rows get version 0 (the column default).
-                        let has_version: bool = {
-                            let mut stmt = tx.prepare(table_info_objects_sql)?;
-                            let mut rows = stmt.query([])?;
-                            let mut found = false;
-                            while let Some(row) = rows.next()? {
-                                let col_name: String = row.get(1)?;
-                                if col_name == "version" {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            found
-                        };
-                        if !has_version {
-                            tx.execute_batch(add_version_sql)?;
-                        }
-                        // Index supporting `find-wrapped-by` lookups and the backfill scan.
                         tx.execute_batch(idx_wrapping_sql)?;
-                        if !backfill_done {
-                            // Backfill: deserialize each object and extract its wrapping key UID.
-                            let pairs: Vec<(String, String)> = {
-                                let mut stmt = tx.prepare(select_null_wrapping_sql)?;
-                                let mut rows = stmt.query([])?;
-                                let mut out = Vec::new();
-                                while let Some(row) = rows.next()? {
-                                    out.push((row.get(0)?, row.get(1)?));
-                                }
-                                out
-                            };
-                            for (id, object_json) in &pairs {
-                                match serde_json::from_str::<Object>(object_json) {
-                                    Ok(obj) => {
-                                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                                            tx.execute(
-                                                update_wrapping_sql,
-                                                rusqlite::params![wrapping_uid, id],
-                                            )?;
-                                        }
-                                    }
-                                    Err(e) => tracing::warn!(
-                                        uid = %id,
-                                        error = %e,
-                                        "wrapping_key_id backfill: skipping object that failed to \
-                                         deserialize"
-                                    ),
-                                }
-                            }
-                        }
                         tx.commit()?;
                         Ok(())
                     },
                 )
                 .await
         })
-        .await?;
-        if !backfill_done {
-            pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
-                .await?;
-        }
+        .await
+    }
 
-        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
-        // existed, gated by a completion marker. Idempotent: an interrupted run (marker
-        // still unset) re-executes cleanly on the next boot.
-        if pool
-            .get_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
-            .await?
-            != Some("true".to_owned())
-        {
-            let select_missing = get_sqlite_query!("select-certificates-missing-serial-tag");
-            let insert_tag = get_sqlite_query!("insert-tags-if-absent");
-            retry_on_transient_lock(|| async {
-                pool.writer
-                    .call(
-                        move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                            let tx = c.transaction()?;
-                            let rows: Vec<(String, String)> = {
-                                let mut stmt = tx.prepare(select_missing)?;
-                                let mut rows = stmt.query([])?;
-                                let mut out = Vec::new();
-                                while let Some(row) = rows.next()? {
-                                    out.push((row.get(0)?, row.get(1)?));
-                                }
-                                out
-                            };
-                            for (id, object_json) in &rows {
-                                match serde_json::from_str::<Object>(object_json) {
-                                    Ok(obj) => {
-                                        if let Some(tag) = certificate_serial_tag(&obj) {
-                                            tx.execute(insert_tag, rusqlite::params![id, tag])?;
-                                        }
-                                    }
-                                    Err(e) => tracing::warn!(
-                                        uid = %id,
-                                        error = %e,
-                                        "serial tag backfill: skipping object that failed to \
-                                         deserialize"
-                                    ),
-                                }
-                            }
-                            tx.commit()?;
-                            Ok(())
-                        },
-                    )
-                    .await
-            })
-            .await?;
-            pool.set_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true")
-                .await?;
-        }
-
-        // Migration: add activated_by column to crypto_officer_activations (idempotent).
-        // SQLite does not support ADD COLUMN IF NOT EXISTS — check PRAGMA first.
-        // Also create the unique partial index that prevents duplicate active records
-        // per user (enforces n-of-n dual-control at the DB layer).
+    async fn ensure_activation_schema(&self) -> DbResult<()> {
         let table_info_co_sql = get_sqlite_query!("table-info-crypto-officer-activations");
         let add_co_col_sql = get_sqlite_query!("add-column-co-activated-by");
         let idx_co_active_sql = get_sqlite_query!("create-unique-index-co-activations-active");
         retry_on_transient_lock(|| async {
-            pool.writer
+            self.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         let has_activated_by: bool = {
@@ -502,30 +388,92 @@ impl SqlitePool {
                 )
                 .await
         })
-        .await?;
+        .await
+    }
 
-        // Refresh planner statistics so the selective JSON-expression indexes are
-        // preferred over idx_objects_state. analysis_limit bounds ANALYZE to a sample,
-        // keeping this cheap on very large databases.
-        let optimize_sql = get_sqlite_query!("optimize-planner");
+    async fn backfill_wrapping_key_id(&self) -> DbResult<()> {
+        let select_null_wrapping_sql = get_sqlite_query!("select-objects-null-wrapping-key");
+        let update_wrapping_sql = get_sqlite_query!("update-wrapping-key-id");
         retry_on_transient_lock(|| async {
-            pool.writer
+            self.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                        c.execute_batch(optimize_sql)
+                        let tx = c.transaction()?;
+                        let pairs: Vec<(String, String)> = {
+                            let mut stmt = tx.prepare(select_null_wrapping_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut out = Vec::new();
+                            while let Some(row) = rows.next()? {
+                                out.push((row.get(0)?, row.get(1)?));
+                            }
+                            out
+                        };
+                        for (id, object_json) in &pairs {
+                            match serde_json::from_str::<Object>(object_json) {
+                                Ok(obj) => {
+                                    if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                                        tx.execute(
+                                            update_wrapping_sql,
+                                            rusqlite::params![wrapping_uid, id],
+                                        )?;
+                                    }
+                                }
+                                Err(e) => tracing::warn!(
+                                    uid = %id,
+                                    error = %e,
+                                    "wrapping_key_id backfill: skipping object that failed to \
+                                     deserialize"
+                                ),
+                            }
+                        }
+                        tx.commit()?;
+                        Ok(())
                     },
                 )
                 .await
         })
-        .await?;
+        .await
+    }
 
-        if clear_database {
-            pool.set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            pool.set_db_state(DbState::Ready).await?;
-        }
-
-        Ok(pool)
+    async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let select_missing = get_sqlite_query!("select-certificates-missing-serial-tag");
+        let insert_tag = get_sqlite_query!("insert-tags-if-absent");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        let tx = c.transaction()?;
+                        let rows: Vec<(String, String)> = {
+                            let mut stmt = tx.prepare(select_missing)?;
+                            let mut rows = stmt.query([])?;
+                            let mut out = Vec::new();
+                            while let Some(row) = rows.next()? {
+                                out.push((row.get(0)?, row.get(1)?));
+                            }
+                            out
+                        };
+                        for (id, object_json) in &rows {
+                            match serde_json::from_str::<Object>(object_json) {
+                                Ok(obj) => {
+                                    if let Some(tag) = certificate_serial_tag(id, &obj) {
+                                        tx.execute(insert_tag, rusqlite::params![id, tag])?;
+                                    }
+                                }
+                                Err(e) => tracing::warn!(
+                                    uid = %id,
+                                    error = %e,
+                                    "serial tag backfill: skipping object that failed to \
+                                     deserialize"
+                                ),
+                            }
+                        }
+                        tx.commit()?;
+                        Ok(())
+                    },
+                )
+                .await
+        })
+        .await
     }
 
     /// Returns a reader connection using round-robin distribution.
@@ -534,56 +482,11 @@ impl SqlitePool {
         self.readers.get(idx).unwrap_or(&self.writer)
     }
 
-    /// Read a value from the `parameters` table by name, or `None` if absent.
-    async fn get_parameter(&self, name: &'static str) -> DbResult<Option<String>> {
-        let select_param: &'static str = get_sqlite_query!("select-parameter");
-        let res = self
-            .reader()
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare_cached(select_param)?;
-                    stmt.query_row(params_from_iter([&name]), |row| row.get::<_, String>(0))
-                        .optional()
-                },
-            )
-            .await?;
-        Ok(res)
-    }
-
-    /// Upsert a `name`/`value` pair into the `parameters` table.
-    async fn set_parameter(&self, name: &'static str, value: &str) -> DbResult<()> {
-        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
-        let value_s = value.to_owned();
-        retry_on_transient_lock(|| {
-            let value_s = value_s.clone();
-            async move {
-                self.writer
-                    .call(
-                        move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                            let tx = c.transaction()?;
-                            tx.execute(upsert_param, params_from_iter([&name, &value_s.as_str()]))?;
-                            tx.commit()?;
-                            Ok(())
-                        },
-                    )
-                    .await
-            }
-        })
-        .await?;
-        Ok(())
-    }
-
     pub(crate) async fn health_check(&self) -> DbResult<()> {
         let sql = get_sqlite_query!("health-check");
         self.writer
             .call(move |c| c.query_row(sql, [], |_row| Ok(())))
             .await
-    }
-}
-
-impl SqlDatabase for SqlitePool {
-    fn get_loader(&self) -> DbResult<&'static Loader> {
-        pgsql_queries()
     }
 }
 
@@ -1131,46 +1034,37 @@ impl ObjectsStore for SqlitePool {
 }
 
 #[async_trait(?Send)]
-impl Migrate for SqlitePool {
-    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
-        let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
-        let state_json = serde_json::to_string(&state)?;
-        retry_on_transient_lock(|| {
-            let state_json = state_json.clone();
-            async move {
-                self.writer
-                    .call(
-                        move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                            let tx = c.transaction()?;
-                            tx.execute(
-                                upsert_param,
-                                params_from_iter([&"db_state", &state_json.as_str()]),
-                            )?;
-                            tx.commit()?;
-                            Ok(())
-                        },
-                    )
-                    .await
-            }
-        })
-        .await?;
-        Ok(())
+impl DbParameters for SqlitePool {
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+        let has_parameters = get_sqlite_query!("has-table-parameters");
+        let select_param = get_sqlite_query!("select-parameter");
+        let name = name.to_owned();
+        self.reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
+                    let parameters_exist: bool =
+                        c.query_row(has_parameters, [], |row| row.get(0))?;
+                    if !parameters_exist {
+                        return Ok(None);
+                    }
+                    let mut statement = c.prepare_cached(select_param)?;
+                    statement.query_row([name], |row| row.get(0)).optional()
+                },
+            )
+            .await
     }
 
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
         let upsert_param: &'static str = get_sqlite_query!("upsert-parameter");
-        let version_s = version.to_owned();
         retry_on_transient_lock(|| {
-            let version_s = version_s.clone();
+            let name = name.to_owned();
+            let value = value.to_owned();
             async move {
                 self.writer
                     .call(
                         move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                             let tx = c.transaction()?;
-                            tx.execute(
-                                upsert_param,
-                                params_from_iter([&"db_version", &version_s.as_str()]),
-                            )?;
+                            tx.execute(upsert_param, rusqlite::params![name, value])?;
                             tx.commit()?;
                             Ok(())
                         },
@@ -1178,8 +1072,77 @@ impl Migrate for SqlitePool {
                     .await
             }
         })
+        .await
+    }
+}
+
+#[async_trait(?Send)]
+impl Migrate for SqlitePool {
+    type MigrationLock = SqliteMigrationLock;
+
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+
+    async fn has_data(&self) -> DbResult<bool> {
+        let has_objects = get_sqlite_query!("has-objects");
+        self.reader()
+            .call(move |c| c.prepare_cached(has_objects)?.exists([]))
+            .await
+    }
+
+    async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
+        let lock_name = self.migration_lock_path.display().to_string();
+        let file = File::options()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&self.migration_lock_path)
+            .map_err(|error| {
+                db_error!("Cannot open SQLite migration lock '{lock_name}': {error}")
+            })?;
+        wait_for_migration_lock(&lock_name, MIGRATION_LOCK_TIMEOUT, async || {
+            match file.try_lock() {
+                Ok(()) => Ok(true),
+                Err(TryLockError::WouldBlock) => Ok(false),
+                Err(TryLockError::Error(error)) => Err(db_error!(
+                    "Cannot acquire SQLite migration lock '{lock_name}': {error}"
+                )),
+            }
+        })
         .await?;
-        Ok(())
+        Ok(SqliteMigrationLock { _file: file })
+    }
+
+    async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        let enable_wal_sql = get_sqlite_query!("enable-wal");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(move |c| c.execute_batch(enable_wal_sql))
+                .await
+        })
+        .await?;
+        self.create_schema(clear_database).await?;
+        self.ensure_wrapping_key_schema().await?;
+        self.ensure_activation_schema().await?;
+        let optimize_sql = get_sqlite_query!("optimize-planner");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        c.execute_batch(optimize_sql)
+                    },
+                )
+                .await
+        })
+        .await
+    }
+
+    async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
+        match step {
+            MigrationStep::WrappingKeyIdBackfill => self.backfill_wrapping_key_id().await,
+            MigrationStep::CertificateSerialTagBackfill => {
+                self.backfill_certificate_serial_tags().await
+            }
+        }
     }
 }
 
@@ -1842,7 +1805,7 @@ mod tests {
     use crate::{
         DbError,
         error::DbResult,
-        stores::migrate::{DbState, Migrate},
+        stores::migrate::{DbParameters, DbState},
     };
 
     /// Fail unless the `parameters` row `name` currently holds `expected`.
@@ -1861,7 +1824,7 @@ mod tests {
     }
 
     /// A freshly initialised database records its version and a `ready` state in the
-    /// `parameters` table, and `set_db_state` / `set_current_db_version` overwrite them
+    /// `parameters` table, and `set_db_state` / `set_db_version` overwrite them
     /// using the serialized (`snake_case`) representation read back by other backends.
     #[tokio::test]
     async fn test_migration_markers_roundtrip() -> DbResult<()> {
@@ -1874,24 +1837,8 @@ mod tests {
         pool.set_db_state(DbState::Upgrading).await?;
         expect_parameter(&pool, "db_state", "\"upgrading\"").await?;
 
-        pool.set_current_db_version("0.0.1-test").await?;
+        pool.set_db_version("0.0.1-test").await?;
         expect_parameter(&pool, "db_version", "0.0.1-test").await
-    }
-
-    /// Re-opening an existing database (`clear_database == false`) must not reset the
-    /// recorded state or version.
-    #[tokio::test]
-    async fn test_migration_markers_survive_reopen() -> DbResult<()> {
-        let dir = TempDir::new()?;
-        let file = dir.path().join("reopen.db");
-        {
-            let pool = SqlitePool::instantiate(&file, true, None).await?;
-            pool.set_db_state(DbState::Upgrading).await?;
-            pool.set_current_db_version("0.0.2-test").await?;
-        }
-        let reopened = SqlitePool::instantiate(&file, false, None).await?;
-        expect_parameter(&reopened, "db_state", "\"upgrading\"").await?;
-        expect_parameter(&reopened, "db_version", "0.0.2-test").await
     }
 
     /// Fail unless the `crls` table holds exactly `expected` issuers.
