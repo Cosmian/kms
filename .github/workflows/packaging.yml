@@ -260,6 +260,14 @@ jobs:
           subdir: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}
           files: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}/*
 
+      - name: Push OpenVEX to package.cosmian.com
+        if: matrix.features == 'fips' && matrix.link == 'static'
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: sbom
+          files: sbom/openvex.json
+
   build-monitoring-archive:
     name: Build monitoring stack archive
     if: |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Validate every generated CycloneDX SBOM/CBOM against its JSON schema (cyclonedx-cli)"
+#MISE description="Validate every generated CycloneDX SBOM/CBOM (cyclonedx-cli) and sbom/openvex.json (OpenVEX v0.2.0 schema)"
 #USAGE flag "-v --variant <variant>" help="Only validate server/ckms SBOMs of this variant (fips|non-fips)"
 #USAGE flag "-l --link <link>" help="Only validate server/ckms SBOMs of this linkage (static|dynamic)"
 set -euo pipefail
@@ -51,8 +51,27 @@ for f in "${files[@]}"; do
     failed=1
   fi
 done
+require_cmd jq
+require_cmd nix-shell
+vex_file="${REPO_ROOT}/sbom/openvex.json"
+vex_schema="${MISE_CONFIG_ROOT}/.mise/scripts/sbom/schema/openvex-0.2.0.schema.json"
+vex_rel="${vex_file#"${REPO_ROOT}"/}"
+if ! nix-shell -I "nixpkgs=${PIN_URL}" -p check-jsonschema --run \
+  "check-jsonschema --schemafile '${vex_schema}' '${vex_file}'"; then
+  echo "  FAIL ${vex_rel} (OpenVEX v0.2.0 JSON schema)" >&2
+  failed=1
+# Spec MUST rules the schema cannot express (conditional on status).
+elif ! jq -e 'all(.statements[];
+    (if .status == "not_affected" then (has("justification") or has("impact_statement")) else true end)
+    and (if .status == "affected" then has("action_statement") else true end))' \
+  "$vex_file" >/dev/null; then
+  echo "  FAIL ${vex_rel} (not_affected needs justification|impact_statement, affected needs action_statement)" >&2
+  failed=1
+else
+  echo "  OK   ${vex_rel}"
+fi
 [ "$failed" -eq 0 ] || {
   echo "CycloneDX validation failed" >&2
   exit 1
 }
-print_success "All ${#files[@]} CycloneDX files are valid"
+print_success "All ${#files[@]} CycloneDX files and ${vex_rel} are valid"

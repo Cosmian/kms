@@ -1,0 +1,317 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/openvex/spec/openvex_json_schema_0.2.0.json",
+    "title": "OpenVEX",
+    "description": "OpenVEX is an implementation of the Vulnerability Exploitability Exchange (VEX for short) that is designed to be minimal, compliant, interoperable, and embeddable.",
+    "type": "object",
+    "$defs": {
+        "vulnerability": {
+            "type": "object",
+            "properties": {
+                "@id": {
+                    "type": "string",
+                    "format": "iri",
+                    "description": "An Internationalized Resource Identifier (IRI) identifying the struct."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "A string with the main identifier used to name the vulnerability."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional free form text describing the vulnerability."
+                },
+                "aliases": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "A list of strings enumerating other names under which the vulnerability may be known."
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "additionalProperties": false
+        },
+        "identifiers": {
+            "type": "object",
+            "properties": {
+                "purl": {
+                    "type": "string",
+                    "description": "Package URL"
+                },
+                "cpe22": {
+                    "type": "string",
+                    "description": "Common Platform Enumeration v2.2"
+                },
+                "cpe23": {
+                    "type": "string",
+                    "description": "Common Platform Enumeration v2.3"
+                }
+            },
+            "additionalProperties": false,
+            "anyOf": [
+                { "required": ["purl"] },
+                { "required": ["cpe22"] },
+                { "required": ["cpe23"] }
+              ]
+        },
+        "hashes": {
+            "type": "object",
+            "properties": {
+                "md5": {
+                    "type": "string"
+                },
+                "sha1": {
+                    "type": "string"
+                },
+                "sha-256": {
+                    "type": "string"
+                },
+                "sha-384": {
+                    "type": "string"
+                },
+                "sha-512": {
+                    "type": "string"
+                },
+                "sha3-224": {
+                    "type": "string"
+                },
+                "sha3-256": {
+                    "type": "string"
+                },
+                "sha3-384": {
+                    "type": "string"
+                },
+                "sha3-512": {
+                    "type": "string"
+                },
+                "blake2s-256": {
+                    "type": "string"
+                },
+                "blake2b-256": {
+                    "type": "string"
+                },
+                "blake2b-512": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
+        "subcomponent": {
+            "type": "object",
+            "properties": {
+                "@id": {
+                    "type": "string",
+                    "format": "iri",
+                    "description": "Optional IRI identifying the component to make it externally referenceable."
+                },
+                "identifiers": {
+                    "$ref": "#/$defs/identifiers",
+                    "description": "Optional IRI identifying the component to make it externally referenceable."
+                },
+                "hashes": {
+                    "$ref": "#/$defs/hashes",
+                    "description": "Map of cryptographic hashes of the component."
+                }
+            },
+            "additionalProperties": false,
+            "anyOf": [
+                { "required": ["@id"] },
+                { "required": ["identifiers"] }
+              ]
+        },
+        "component": {
+            "type": "object",
+            "properties": {
+                "@id": {
+                    "type": "string",
+                    "format": "iri",
+                    "description": "Optional IRI identifying the component to make it externally referenceable."
+                },
+                "identifiers": {
+                    "$ref": "#/$defs/identifiers",
+                    "description": "A map of software identifiers where the key is the type and the value the identifier."
+                },
+                "hashes": {
+                    "$ref": "#/$defs/hashes",
+                    "description": "Map of cryptographic hashes of the component."
+                },
+                "subcomponents": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "description": "List of subcomponent structs describing the subcomponents subject of the VEX statement.",
+                    "items": {
+                        "$ref": "#/$defs/subcomponent"
+                    }
+                }
+            },
+            "additionalProperties": false,
+            "anyOf": [
+                { "required": ["@id"] },
+                { "required": ["identifiers"] }
+              ]
+        }
+    },
+    "properties": {
+        "@context": {
+            "type": "string",
+            "format": "uri",
+            "description": "The URL linking to the OpenVEX context definition."
+        },
+        "@id": {
+            "type": "string",
+            "format": "iri",
+            "description": "The IRI identifying the VEX document."
+        },
+        "author": {
+            "type": "string",
+            "description": "Author is the identifier for the author of the VEX statement."
+        },
+        "role": {
+            "type": "string",
+            "description": "Role describes the role of the document author."
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp defines the time at which the document was issued."
+        },
+        "last_updated": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date of last modification to the document."
+        },
+        "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Version is the document version."
+        },
+        "tooling": {
+            "type": "string",
+            "description": "Tooling expresses how the VEX document and contained VEX statements were generated."
+        },
+        "statements": {
+            "type": "array",
+            "uniqueItems": true,
+            "minItems": 1,
+            "description": "A statement is an assertion made by the document's author about the impact a vulnerability has on one or more software 'products'.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "@id": {
+                        "type": "string",
+                        "format": "iri",
+                        "description": "Optional IRI identifying the statement to make it externally referenceable."
+                    },
+                    "version": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional integer representing the statement's version number."
+                    },
+                    "vulnerability": {
+                        "$ref": "#/$defs/vulnerability",
+                        "description": "A struct identifying the vulnerability."
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Timestamp is the time at which the information expressed in the statement was known to be true."
+                    },
+                    "last_updated": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Timestamp when the statement was last updated."
+                    },
+                    "products": {
+                        "type": "array",
+                        "uniqueItems": true,
+                        "description": "List of product structs that the statement applies to.",
+                        "items": {
+                            "$ref": "#/$defs/component"
+                        }
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "not_affected",
+                            "affected",
+                            "fixed",
+                            "under_investigation"
+                        ],
+                        "description": "A VEX statement MUST provide the status of the vulnerabilities with respect to the products and components listed in the statement."
+                    },
+                    "supplier": {
+                        "type": "string",
+                        "description": "Supplier of the product or subcomponent."
+                    },
+                    "status_notes": {
+                        "type": "string",
+                        "description": "A statement MAY convey information about how status was determined and MAY reference other VEX information."
+                    },
+                    "justification": {
+                        "type": "string",
+                        "enum": [
+                            "component_not_present",
+                            "vulnerable_code_not_present",
+                            "vulnerable_code_not_in_execute_path",
+                            "vulnerable_code_cannot_be_controlled_by_adversary",
+                            "inline_mitigations_already_exist"
+                        ],
+                        "description": "For statements conveying a not_affected status, a VEX statement MUST include either a status justification or an impact_statement informing why the product is not affected by the vulnerability."
+                    },
+                    "impact_statement": {
+                        "type": "string",
+                        "description": "For statements conveying a not_affected status, a VEX statement MUST include either a status justification or an impact_statement informing why the product is not affected by the vulnerability."
+                    },
+                    "action_statement": {
+                        "type": "string",
+                        "description": "For a statement with affected status, a VEX statement MUST include a statement that SHOULD describe actions to remediate or mitigate the vulnerability."
+                    },
+                    "action_statement_timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "The timestamp when the action statement was issued."
+                    }
+                },
+                "required": [
+                    "vulnerability",
+                    "status"
+                ],
+                "additionalProperties": false,
+                "allOf": [
+                    {
+                        "if": {
+                            "properties": { "status": { "const": "not_affected" }}
+                        },
+                        "then": {
+                            "anyOf": [
+                                { "required": ["justification"]},
+                                { "required": ["impact_statement"]}
+                            ]
+                        }
+                    },
+                    {
+                        "if": {
+                            "properties": { "status": { "const": "affected" }}
+                        },
+                        "then": {
+                            "required": ["action_statement"]
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "required": [
+        "@context",
+        "@id",
+        "author",
+        "timestamp",
+        "version",
+        "statements"
+    ],
+    "additionalProperties": false
+}
