@@ -55,7 +55,7 @@ def load_run(run_dir: Path) -> dict:
             for l in read_text(run_dir / 'cek_switch_timeline.json').splitlines()
             if l
         ],
-        'version': read_text(run_dir / 'version.txt').strip(),
+        'version': read_text(run_dir / 'version.txt').strip().strip('"'),
         'gate': [l for l in read_text(run_dir / 'gate.txt').splitlines() if l.strip()],
         'unwraps': unwraps,
     }
@@ -112,6 +112,11 @@ def series(timeline: list[dict], server: str, field: str) -> list[tuple[float, f
     ]
 
 
+def uniq(runs: list[dict], key: str) -> str:
+    """Distinct values of a summary field across runs, in run order."""
+    return ', '.join(dict.fromkeys(str(r['summary'][key]) for r in runs))
+
+
 def fmt(v, digits: int = 1) -> str:
     return '-' if v is None else (f'{v:.{digits}f}' if isinstance(v, float) else str(v))
 
@@ -145,6 +150,9 @@ def run_section(r: dict, out_dir: Path) -> list[str]:
     gate = '**PASS**' if not r['gate'] else '**FAIL** — ' + '; '.join(r['gate'])
     lines = [
         f'### Run `{label}`',
+        '',
+        f"Target {s['rate_target']} msg/s, {s['workers']} senders, warmup {s['warmup_s']} s, measurement {s['duration_s']} s, "
+        f"CEK switch at +{s['switch_at_s']} s; achieved {s['rate_achieved']:.0f} msg/s ({s['unsent']} messages unsent).",
         '',
         f'Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): {gate}',
         '',
@@ -234,16 +242,16 @@ def main(argv: list[str]) -> int:
         '| Setting | Value |',
         '|---|---|',
         f"| KMS servers | {len(s['urls'])} |",
-        f"| Target rate | {s['rate_target']} msg/s (one message = one decrypt + one re-encrypt) |",
+        f"| Target rate | {uniq(runs, 'rate_target')} msg/s (one message = one decrypt + one re-encrypt) |",
         '| Achieved rate | '
         + ', '.join(
             f"{r['label']}: {r['summary']['rate_achieved']:.0f} msg/s" for r in runs
         )
         + ' |',
-        f"| Senders | {s['workers']} |",
+        f"| Senders | {uniq(runs, 'workers')} |",
         f"| JWE algorithm | {s['alg']} + A256GCM |",
         f"| Plaintext | {s['plaintext_size']} bytes |",
-        f"| Warmup / measurement / CEK switch | {s['warmup_s']} s / {s['duration_s']} s / +{s['switch_at_s']} s |",
+        f"| Warmup / measurement / CEK switch | {uniq(runs, 'warmup_s')} s / {uniq(runs, 'duration_s')} s / +{uniq(runs, 'switch_at_s')} s |",
         f"| HSM | {env.get('hsm_backend') or '-'} |",
         f"| KMS version | {first['version'] or '-'} |",
         f"| CPU | {env.get('cpu_model', '-')} ({env.get('cpu_logical_cores', '?')} logical cores) |",

@@ -277,7 +277,10 @@ jobs:
       # fails when the 2,500 JWE/s target, 0 errors or post-switch recovery is not met (performance gate).
       - name: Run JOSE CEK switch benchmark (bench:jose-cek-switch)
         if: steps.select.outputs.run_jose_cek_switch == 'true'
-        run: mise run bench:jose-cek-switch --variant "${WF_VARIANT}" --label "${WF_LABEL}"
+        run: |
+          # The self-hosted workspace persists: drop the runs of earlier workflows so the report holds this run only.
+          rm -rf target/cek-switch target/*/cek-switch
+          mise run bench:jose-cek-switch --variant "${WF_VARIANT}" --label "${WF_LABEL}"
 
       # Stage only the reports of the selected benchmarks: documentation/docs/benchmarks/ also holds the
       # checked-in reports of every other benchmark, which must not be republished under this version.
