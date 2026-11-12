@@ -90,7 +90,7 @@ ensure_expected_hashes() {
   # CLI vendor cargo hash: Linux fips==non-fips → shared file; macOS fips≠non-fips → variant-specific
   local cli_vendor_file
   if [ "$os" = "linux" ]; then
-    cli_vendor_file="$hashes_dir/cli.vendor.linux.sha256"
+    cli_vendor_file="$hashes_dir/cargo.vendor.linux.sha256"
   else
     cli_vendor_file="$hashes_dir/cli.vendor.${VARIANT}.${os}.sha256"
   fi

@@ -78,7 +78,7 @@ let
       doCheck = false;
 
       src = filteredSrc;
-      cargoSha256 = mkCargoHash ./expected-hashes/k8s-operator.vendor.linux.sha256;
+      cargoSha256 = mkCargoHash ./expected-hashes/cargo.vendor.linux.sha256;
       buildType = "release";
 
       inherit nativeBuildInputs buildInputs;
@@ -120,7 +120,7 @@ let
       doCheck = false;
 
       src = filteredSrc;
-      cargoSha256 = mkCargoHash ./expected-hashes/k8s-csi-provider.vendor.linux.sha256;
+      cargoSha256 = mkCargoHash ./expected-hashes/cargo.vendor.linux.sha256;
       buildType = "release";
 
       inherit nativeBuildInputs buildInputs;
