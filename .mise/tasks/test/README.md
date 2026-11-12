@@ -342,7 +342,7 @@ sequenceDiagram
 
 **Description:** SPIRE + Mistral client full integration (non-FIPS only). Multi-tenant topology with two independent SPIRE deployments against the same KMS.
 
-After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
+After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18), `test:spire:kmip` (19) and `test:spire:vault-transit-seal` (20).
 
 #### Architecture Overview
 
@@ -702,6 +702,30 @@ sequenceDiagram
     Envoy_D->>Envoy_U: mTLS handshake with SDS-provided certs
     Envoy_U-->>Envoy_D: connection established
     TestSDS-->>Test: PKI-10 SDS delivery passed
+```
+
+---
+
+### `test:spire:vault-transit-seal`
+
+**Description:** HashiCorp Vault OSS (Docker, `hashicorp/vault:1.21` pinned by digest) auto-unseals with `seal "transit"` against the KMS Transit engine (`/v1/transit/encrypt|decrypt`). Non-FIPS only. Checks init + unseal, auto-unseal after restart (KV secret readable), auto-unseal after KMS key rotation, and that Vault stays sealed once the KMS key is deleted. See `documentation/docs/integrations/hashicorp_vault_auto_unseal.md`.
+
+```mermaid
+sequenceDiagram
+    participant Test as vault-transit-seal
+    participant AV as auth-verifier :8443
+    participant KMS as KMS :9998
+    participant Vault as Vault OSS :8210
+
+    Test->>AV: ckms vault approle create-role vault-seal
+    Test->>KMS: POST /v1/auth/approle/login
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker run (seal "transit")
+    Test->>Vault: PUT /v1/sys/init
+    Vault->>KMS: encrypt root key
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt root key
+    Test->>Vault: read KV secret
 ```
 
 ---

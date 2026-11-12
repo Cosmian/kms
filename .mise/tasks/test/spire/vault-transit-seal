@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+#MISE description="HashiCorp Vault OSS auto-unseal with seal \"transit\" against the KMS (non-FIPS)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# End-to-end test of HashiCorp Vault auto-unseal through the KMS Vault-compatible
+# Transit engine (`/v1/transit/encrypt|decrypt/{name}`):
+#   1. start auth-verifier + KMS, provision an AppRole and log in through the KMS;
+#   2. create an `aes256-gcm96` transit key in the KMS;
+#   3. start Vault OSS (Docker) with `seal "transit"` pointing at the KMS;
+#   4. initialise Vault (recovery keys) and write a KV secret;
+#   5. restart Vault: it must auto-unseal and serve the secret;
+#   6. rotate the KMS key, restart again: the v1-wrapped root key must still unseal Vault;
+#   7. delete the KMS key, restart: Vault must stay sealed.
+#
+# Can also be invoked as a step of `mise run test:spire`.
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "vault-transit-seal tests require non-fips variant (Vault API is tested non-FIPS only)"
+fi
+
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+if [ "${CI:-}" != true ]; then
+  docker_ready || skip_test "Docker is not running"
+  [ -f "${REPO_ROOT}/authentication/Cargo.toml" ] || skip_test "authentication/Cargo.toml not found (submodule not checked out?)"
+fi
+require_cmd docker
+require_cmd curl
+require_cmd python3
+
+# Multi-arch index digest of hashicorp/vault:1.21 (docker buildx imagetools inspect).
+VAULT_IMAGE="hashicorp/vault:1.21@sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569"
+VAULT_CONTAINER="kms-vault-transit-seal"
+VAULT_PORT="8210"
+VAULT_ADDR="http://127.0.0.1:${VAULT_PORT}"
+KMS_ADDR="https://localhost:9998"
+SEAL_KEY="vault-autounseal"
+APPROLE="vault-seal"
+
+AUTH_PID=""
+AUTH_LOG="/tmp/auth-verifier-vault-seal.log"
+AUTH_DB_FILE="/tmp/auth-verifier-spire-test.db"
+KMS_LOG_FILE="/tmp/kms-vault-seal.log"
+VAULT_WORK_DIR="$(mktemp -d /tmp/vault-transit-seal.XXXXXX)"
+
+cleanup() {
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${VAULT_CONTAINER}$"; then
+    echo "--- VAULT LOGS (last 40 lines) ---"
+    docker logs "${VAULT_CONTAINER}" 2>&1 | tail -40 || true
+    docker rm -f "${VAULT_CONTAINER}" >/dev/null 2>&1 || true
+  fi
+  docker volume rm -f "${VAULT_CONTAINER}-data" >/dev/null 2>&1 || true
+  [[ -n "${AUTH_PID}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
+  [[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
+  rm -rf "${VAULT_WORK_DIR}"
+  rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm"
+}
+trap cleanup EXIT
+
+# json_get <json> <python expression on `d`>
+json_get() {
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); print($2)" "$1"
+}
+
+# ── Step 1: Build binaries ─────────────────────────────────────────────────────
+print_header "Step 1: Build binaries"
+require_cmd cargo
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+spire_ensure_certs "${TEST_DATA}"
+
+# ── Step 2: Start auth-verifier + KMS ──────────────────────────────────────────
+print_header "Step 2: auth-verifier + KMS"
+spire_stop_port 8443 "auth-verifier"
+spire_stop_port 9998 "KMS"
+docker rm -f "${VAULT_CONTAINER}" >/dev/null 2>&1 || true
+docker volume rm -f "${VAULT_CONTAINER}-data" >/dev/null 2>&1 || true
+rm -f "${AUTH_DB_FILE}"
+
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+wait_for_port 127.0.0.1 8443 60 || print_error "auth-verifier failed to start. Check ${AUTH_LOG}"
+
+"$(get_kms_bin)" --config "${TEST_DATA}/config/kms.toml" >"${KMS_LOG_FILE}" 2>&1 &
+KMS_PID=$!
+wait_for_port 127.0.0.1 9998 120 || print_error "KMS failed to start. Check ${KMS_LOG_FILE}"
+print_success "auth-verifier and KMS ready."
+
+# ── Step 3: AppRole + token ────────────────────────────────────────────────────
+print_header "Step 3: AppRole for the Vault seal"
+CKMS_CONF="$(kms_write_ckms_conf "${KMS_ADDR}")"
+ckms_approle() {
+  "$(get_ckms_bin)" --conf-path "${CKMS_CONF}" vault approle "$@" \
+    --auth-verifier-url "https://localhost:8443" \
+    --admin-user admin --admin-password change_me --accept-invalid-certs
+}
+ckms_approle create-role "${APPROLE}" --token-ttl 3600 --token-policies default >/dev/null
+ROLE_ID="$(ckms_approle get-role-id "${APPROLE}" | tr -d '[:space:]')"
+SECRET_ID="$(ckms_approle generate-secret-id "${APPROLE}" | awk '/^secret_id:/{print $2}')"
+LOGIN="$(curl -sf --cacert "${TEST_DATA}/certs/ca.crt" -X POST \
+  -d "{\"role_id\":\"${ROLE_ID}\",\"secret_id\":\"${SECRET_ID}\"}" \
+  "${KMS_ADDR}/v1/auth/approle/login")"
+SEAL_TOKEN="$(json_get "${LOGIN}" 'd["auth"]["client_token"]')"
+[[ -n "${SEAL_TOKEN}" ]] || print_error "AppRole login returned no token"
+print_success "AppRole token obtained."
+
+kms_transit() {
+  local method="$1" path="$2" body="${3:-}"
+  curl -sf --cacert "${TEST_DATA}/certs/ca.crt" -X "${method}" \
+    -H "X-Vault-Token: ${SEAL_TOKEN}" ${body:+-d "${body}"} \
+    "${KMS_ADDR}/v1/transit/${path}"
+}
+
+# ── Step 4: Transit key ────────────────────────────────────────────────────────
+print_header "Step 4: aes256-gcm96 transit key"
+kms_transit POST "keys/${SEAL_KEY}" '{"type":"aes256-gcm96"}' >/dev/null
+ENC="$(kms_transit PUT "encrypt/${SEAL_KEY}" '{"plaintext":"aGVsbG8="}')"
+CT="$(json_get "${ENC}" 'd["data"]["ciphertext"]')"
+[[ "${CT}" == vault:v1:* ]] || print_error "unexpected ciphertext format: ${CT}"
+DEC="$(kms_transit POST "decrypt/${SEAL_KEY}" "{\"ciphertext\":\"${CT}\"}")"
+[[ "$(json_get "${DEC}" 'd["data"]["plaintext"]')" == "aGVsbG8=" ]] || print_error "transit round-trip failed"
+print_success "Transit encrypt/decrypt round-trip OK (${CT:0:12}...)."
+
+# ── Step 5: Vault with seal "transit" ──────────────────────────────────────────
+print_header "Step 5: Vault OSS with seal \"transit\""
+cp "${TEST_DATA}/certs/ca.crt" "${VAULT_WORK_DIR}/ca.crt"
+cat >"${VAULT_WORK_DIR}/vault.hcl" <<EOF
+ui            = false
+disable_mlock = true
+storage "file" {
+  path = "/vault/file"
+}
+listener "tcp" {
+  address     = "0.0.0.0:8200"
+  tls_disable = true
+}
+seal "transit" {
+  address         = "https://host.docker.internal:9998"
+  token           = "${SEAL_TOKEN}"
+  key_name        = "${SEAL_KEY}"
+  mount_path      = "transit/"
+  tls_ca_cert     = "/etc/vault-seal/ca.crt"
+  disable_renewal = "true"
+}
+EOF
+# mktemp -d creates a 0700 dir; the container's non-root vault user must traverse it.
+chmod 755 "${VAULT_WORK_DIR}"
+chmod 644 "${VAULT_WORK_DIR}/vault.hcl" "${VAULT_WORK_DIR}/ca.crt"
+
+# The image entrypoint always adds `-config=/vault/config`; keep this file elsewhere
+# so the seal stanza is not loaded twice. /vault/file is chowned by the entrypoint.
+docker run -d --name "${VAULT_CONTAINER}" \
+  --add-host host.docker.internal:host-gateway \
+  -p "127.0.0.1:${VAULT_PORT}:8200" \
+  -v "${VAULT_WORK_DIR}:/etc/vault-seal:ro" \
+  -v "${VAULT_CONTAINER}-data:/vault/file" \
+  "${VAULT_IMAGE}" server -config=/etc/vault-seal/vault.hcl >/dev/null
+
+# wait_vault: wait until /v1/sys/seal-status answers; echoes the JSON.
+wait_vault() {
+  local status=""
+  for _ in $(seq 1 60); do
+    status="$(curl -s "${VAULT_ADDR}/v1/sys/seal-status" 2>/dev/null || true)"
+    if [[ "${status}" == *'"sealed"'* ]]; then
+      echo "${status}"
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+# wait_unsealed: poll until Vault reports sealed=false (auto-unseal is asynchronous).
+wait_unsealed() {
+  for _ in $(seq 1 30); do
+    if [[ "$(json_get "$(wait_vault)" 'd["sealed"]')" == "False" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_vault >/dev/null || print_error "Vault did not start"
+INIT="$(curl -sf -X PUT -d '{"recovery_shares":1,"recovery_threshold":1}' "${VAULT_ADDR}/v1/sys/init")"
+ROOT_TOKEN="$(json_get "${INIT}" 'd["root_token"]')"
+wait_unsealed || print_error "Vault is still sealed after init"
+SEAL_TYPE="$(json_get "$(wait_vault)" 'd["type"]')"
+[[ "${SEAL_TYPE}" == "transit" ]] || print_error "unexpected seal type: ${SEAL_TYPE}"
+print_success "Vault initialised and unsealed by the KMS transit seal."
+
+curl -sf -X POST -H "X-Vault-Token: ${ROOT_TOKEN}" \
+  -d '{"type":"kv","options":{"version":"2"}}' "${VAULT_ADDR}/v1/sys/mounts/secret" >/dev/null
+curl -sf -X POST -H "X-Vault-Token: ${ROOT_TOKEN}" \
+  -d '{"data":{"password":"unsealed-by-cosmian-kms"}}' "${VAULT_ADDR}/v1/secret/data/app" >/dev/null
+
+# restart_and_check <label>: restart Vault, require auto-unseal and the KV secret.
+restart_and_check() {
+  docker restart "${VAULT_CONTAINER}" >/dev/null
+  wait_unsealed || print_error "$1: Vault did not auto-unseal after restart"
+  local secret
+  secret="$(curl -sf -H "X-Vault-Token: ${ROOT_TOKEN}" "${VAULT_ADDR}/v1/secret/data/app")"
+  [[ "$(json_get "${secret}" 'd["data"]["data"]["password"]')" == "unsealed-by-cosmian-kms" ]] ||
+    print_error "$1: KV secret not readable after auto-unseal"
+  print_success "$1: Vault auto-unsealed and served the secret."
+}
+
+# ── Step 6: Restart → auto-unseal ──────────────────────────────────────────────
+print_header "Step 6: restart → auto-unseal"
+restart_and_check "restart"
+
+# ── Step 7: Rotate the KMS key → still unseals ─────────────────────────────────
+print_header "Step 7: rotate KMS key → restart"
+ROTATED="$(kms_transit POST "keys/${SEAL_KEY}/rotate")"
+[[ "$(json_get "${ROTATED}" 'd["data"]["latest_version"]')" == "2" ]] || print_error "rotation failed"
+restart_and_check "after rotation"
+
+# ── Step 8: Delete the KMS key → Vault stays sealed ────────────────────────────
+print_header "Step 8: delete KMS key → Vault must stay sealed"
+kms_transit DELETE "keys/${SEAL_KEY}" >/dev/null
+docker restart "${VAULT_CONTAINER}" >/dev/null || true
+sleep 15
+# Vault either exits at startup (its seal test-encrypt gets a 404 from the KMS) or reports
+# sealed; it must never report sealed=false.
+STATUS="$(curl -s "${VAULT_ADDR}/v1/sys/seal-status" 2>/dev/null || true)"
+if [[ "${STATUS}" == *'"sealed":false'* ]]; then
+  print_error "Vault unsealed although the KMS transit key was deleted"
+fi
+print_success "Vault cannot unseal without the KMS key."
+
+print_success "HashiCorp Vault transit auto-unseal tests passed"

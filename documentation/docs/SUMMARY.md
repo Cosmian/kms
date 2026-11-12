@@ -94,6 +94,7 @@
     - [Terraform / OpenTofu Provider](integrations/terraform.md)
   - [Other]()
     - [FortiGate / FortiOS](integrations/fortigate.md)
+    - [HashiCorp Vault auto-unseal](integrations/hashicorp_vault_auto_unseal.md)
     - [OpenSSH](integrations/openssh.md)
     - [GnuPG]()
       - [OpenPGP keys](integrations/gnupg/openpgp.md)

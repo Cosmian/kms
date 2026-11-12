@@ -218,6 +218,7 @@ permanently non-exportable at every API surface.
 | `POST` | `/v1/{mount}/keys/{name}/config` | *(no-op)* | Accept SPIRE's config call without error | 204 No Content |
 | `DELETE` | `/v1/{mount}/keys/{name}` | `Revoke`+`Destroy` | Permanently delete key pair | 204 No Content |
 | `POST`/`PUT` | `/v1/{mount}/sign/{name}/{hash_alg}` | `Sign` | Sign a pre-hashed input server-side (private key never leaves KMS) | Signature string (`vault:v1:` prefix + base64) |
+| `POST`/`PUT` | `/v1/{mount}/encrypt/{name}`, `/v1/{mount}/decrypt/{name}`, `/v1/{mount}/keys/{name}/rotate` | `Encrypt` / `Decrypt` / `Create` | AES-256-GCM with `aes256-gcm96` keys (Vault auto-unseal) — see [HashiCorp Vault auto-unseal](hashicorp_vault_auto_unseal.md) | `vault:vN:` ciphertext / base64 plaintext |
 
 #### `/v1/{mount}/root/sign-intermediate` — PKI engine (single endpoint)
 

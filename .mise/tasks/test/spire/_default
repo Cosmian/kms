@@ -599,4 +599,9 @@ print_success "Step 18: SPIFFE JWT-SVID authentication tests passed."
 print_header "Step 19: SPIRE KMIP plugins (mise run test:spire:kmip)"
 mise run test:spire:kmip --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
 print_success "Step 19: SPIRE KMIP plugins tests passed."
+
+# ── Step 20: HashiCorp Vault transit auto-unseal (test:spire:vault-transit-seal) ─
+print_header "Step 20: Vault transit auto-unseal (mise run test:spire:vault-transit-seal)"
+mise run test:spire:vault-transit-seal --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
+print_success "Step 20: Vault transit auto-unseal tests passed."
 print_success "SPIRE integration tests completed successfully!"
