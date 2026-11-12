@@ -117,6 +117,15 @@ def uniq(runs: list[dict], key: str) -> str:
     return ', '.join(dict.fromkeys(str(r['summary'][key]) for r in runs))
 
 
+def recovery(p: dict):
+    """Recovery time, or None when there is no pre-switch baseline (also for summaries written before that rule)."""
+    return p['recovery_ms'] if p['pre_switch']['n'] else None
+
+
+def reached_switch(r: dict) -> bool:
+    return any(len(u) > 1 for u in r['unwraps'].values())
+
+
 def fmt(v, digits: int = 1) -> str:
     return '-' if v is None else (f'{v:.{digits}f}' if isinstance(v, float) else str(v))
 
@@ -154,6 +163,15 @@ def run_section(r: dict, out_dir: Path) -> list[str]:
         f"Target {s['rate_target']} msg/s, {s['workers']} senders, warmup {s['warmup_s']} s, measurement {s['duration_s']} s, "
         f"CEK switch at +{s['switch_at_s']} s; achieved {s['rate_achieved']:.0f} msg/s ({s['unsent']} messages unsent).",
         '',
+        *(
+            []
+            if reached_switch(r)
+            else [
+                'The senders saturated the servers and never reached the CEK switch: '
+                'no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.',
+                '',
+            ]
+        ),
         f'Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): {gate}',
         '',
         '| server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |',
@@ -173,7 +191,7 @@ def run_section(r: dict, out_dir: Path) -> list[str]:
         lines.append(
             f"| {p['server']} | {fmt(p['pre_switch']['message_p50_ms'])} | {fmt(p['pre_switch']['message_p99_ms'])} "
             f"| {fmt(p['post_switch_1s']['message_p99_ms'])} | {fmt(p['post_switch_1s']['message_max_ms'])} "
-            f"| {fmt(p['peak_message_ms'])} | {fmt(p['recovery_ms'])} | {p['slow_messages']} | {p['errors']} | {cek0} | {cek1} |"
+            f"| {fmt(p['peak_message_ms'])} | {fmt(recovery(p))} | {p['slow_messages']} | {p['errors']} | {cek0} | {cek1} |"
         )
     return lines + [''] + images + ['']
 
@@ -189,13 +207,19 @@ def comparison(runs: list[dict]) -> list[str]:
         ),
         (
             'recovery ms (all)',
-            [fmt(r['summary']['per_server'][0]['recovery_ms']) for r in runs],
+            [fmt(recovery(r['summary']['per_server'][0])) for r in runs],
         ),
     ]
     servers = [
         p['server'] for p in runs[0]['summary']['per_server'] if p['server'] != 'all'
     ]
     for srv in servers:
+        rows.append(
+            (
+                f'HSM unwraps of cek0, {srv}',
+                [fmt((r['unwraps'].get(f'kms{srv[3:]}', []) + [0])[0]) for r in runs],
+            )
+        )
         rows.append(
             (
                 f'HSM unwraps of cek1, {srv}',

@@ -286,16 +286,22 @@ fn summarize(
             .count();
 
         // First 1 s run of buckets, entirely inside the window, whose p99 is back to the
-        // baseline (empty buckets pass).
+        // baseline (empty buckets pass, but a window with no successful message at all, or no
+        // pre-switch baseline, is not a recovery).
         let first = usize::try_from(switch_ms / BUCKET_MS).unwrap_or(usize::MAX);
         let run = usize::try_from(RECOVERY_BUCKETS).unwrap_or(10);
-        let recovery_ms = (first..=n_buckets.saturating_sub(run))
-            .find(|&b0| {
-                bucket_p99
-                    .get(b0..b0 + run)
-                    .is_some_and(|w| w.iter().all(|p| p.is_none_or(|p99| p99 <= threshold)))
-            })
-            .map(|b0| b0.to_u64().unwrap_or(0) * BUCKET_MS - switch_ms);
+        let recovery_ms = if pre_switch.n == 0 {
+            None
+        } else {
+            (first..=n_buckets.saturating_sub(run))
+                .find(|&b0| {
+                    bucket_p99.get(b0..b0 + run).is_some_and(|w| {
+                        w.iter().any(Option::is_some)
+                            && w.iter().all(|p| p.is_none_or(|p99| p99 <= threshold))
+                    })
+                })
+                .map(|b0| b0.to_u64().unwrap_or(0) * BUCKET_MS - switch_ms)
+        };
 
         summaries.push(ServerSummary {
             server: label,
@@ -331,12 +337,15 @@ struct Shared {
     end: Instant,
 }
 
-async fn post_ok(client: &KmsClient, url: &str, body: Bytes) -> bool {
-    client
-        .client
-        .post_bytes(url, body, "application/json")
-        .await
-        .is_ok_and(|resp| resp.status.is_success())
+/// A request still pending at `deadline` (the end of the drain period) counts as failed, so a
+/// server that stops answering yields errors and a report instead of a hung run.
+async fn post_ok(client: &KmsClient, url: &str, body: Bytes, deadline: Instant) -> bool {
+    tokio::time::timeout_at(
+        deadline,
+        client.client.post_bytes(url, body, "application/json"),
+    )
+    .await
+    .is_ok_and(|resp| resp.is_ok_and(|resp| resp.status.is_success()))
 }
 
 /// Sender `w`: messages `w, w + workers, ...`, message `i` scheduled at `start + i / rate`.
@@ -345,6 +354,7 @@ async fn post_ok(client: &KmsClient, url: &str, body: Bytes) -> bool {
 async fn run_worker(w: u64, shared: Arc<Shared>) -> Vec<Sample> {
     let mut samples = Vec::new();
     let n_servers = shared.servers.len().to_u64().unwrap_or(1);
+    let deadline = shared.end + DRAIN;
     let mut i = w;
     loop {
         let nanos = u128::from(i) * 1_000_000_000 / u128::from(shared.rate);
@@ -363,10 +373,16 @@ async fn run_worker(w: u64, shared: Arc<Shared>) -> Vec<Sample> {
             break;
         };
         let t0 = Instant::now();
-        let mut ok = post_ok(&srv.client, &srv.decrypt_url, body.clone()).await;
+        let mut ok = post_ok(&srv.client, &srv.decrypt_url, body.clone(), deadline).await;
         let t1 = Instant::now();
         if ok {
-            ok = post_ok(&srv.client, &srv.encrypt_url, shared.encrypt_body.clone()).await;
+            ok = post_ok(
+                &srv.client,
+                &srv.encrypt_url,
+                shared.encrypt_body.clone(),
+                deadline,
+            )
+            .await;
         }
         let t2 = Instant::now();
         if sched >= shared.measure_start {
@@ -626,6 +642,15 @@ mod tests {
             .unwrap();
         assert!((at_switch.stats.message_p99_ms - 50.0).abs() < f64::EPSILON);
         assert_eq!(summaries[1].server, "kms1");
+    }
+
+    /// Without any pre-switch baseline (e.g. the sender never reached the window) there is
+    /// no recovery to report.
+    #[test]
+    fn summarize_no_baseline_no_recovery() {
+        let samples: Vec<Sample> = (0..500).map(|k| sample(3000 + k * 10, 1)).collect();
+        let (_, summaries) = summarize(&samples, 1, 2000, 10_000);
+        assert_eq!(summaries[0].recovery_ms, None);
     }
 
     #[tokio::test]

@@ -24,13 +24,15 @@ Metacrypt receives JWEs from Estreem and sends each to the KMS: `POST /v1/crypto
 
 Target 2500 msg/s, 256 senders, warmup 10 s, measurement 60 s, CEK switch at +20 s; achieved 259 msg/s (131253 messages unsent).
 
+The senders saturated the servers and never reached the CEK switch: no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.
+
 Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 259 msg/s < 95% of target 2500 msg/s (131253 unsent)
 
 | server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| all | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 |  |  |
-| kms1 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 128 | 0 |
-| kms2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 115 | 0 |
+| all | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 |  |  |
+| kms1 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 128 | 0 |
+| kms2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 115 | 0 |
 
 ![before timeline](timeline_before.svg)
 ![before per-server p99](timeline_before_servers.svg)
@@ -39,13 +41,15 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 
 Target 2500 msg/s, 256 senders, warmup 10 s, measurement 60 s, CEK switch at +20 s; achieved 232 msg/s (133050 messages unsent).
 
+The senders saturated the servers and never reached the CEK switch: no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.
+
 Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 231 msg/s < 95% of target 2500 msg/s (133050 unsent)
 
 | server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| all | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 |  |  |
-| kms1 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 1 | 0 |
-| kms2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 1 | 0 |
+| all | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 |  |  |
+| kms1 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 1 | 0 |
+| kms2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 1 | 0 |
 
 ![after timeline](timeline_after.svg)
 ![after per-server p99](timeline_after_servers.svg)
@@ -98,6 +102,8 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 ### Run `after-r1600`
 
 Target 1600 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 237 msg/s (37629 messages unsent).
+
+The senders saturated the servers and never reached the CEK switch: no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.
 
 Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 237 msg/s < 95% of target 1600 msg/s (37629 unsent)
 
@@ -159,6 +165,8 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 
 Target 1600 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 219 msg/s (38336 messages unsent).
 
+The senders saturated the servers and never reached the CEK switch: no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.
+
 Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 218 msg/s < 95% of target 1600 msg/s (38336 unsent)
 
 | server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
@@ -177,6 +185,8 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 | achieved msg/s | 259 | 232 | 400 | 514 | 382 | 237 | 400 | 484 | 330 | 219 |
 | gate | FAIL | FAIL | PASS | FAIL | FAIL | FAIL | PASS | FAIL | FAIL | FAIL |
 | peak message ms (all) | 0.0 | 0.0 | 15.0 | 16459.9 | 25192.0 | 0.0 | 12.4 | 17814.6 | 25324.8 | 0.0 |
-| recovery ms (all) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| recovery ms (all) | - | - | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| HSM unwraps of cek0, kms1 | 128 | 1 | 1 | 1 | 1 | 1 | 41 | 42 | 79 | 128 |
 | HSM unwraps of cek1, kms1 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 1 | 1 | 0 |
+| HSM unwraps of cek0, kms2 | 115 | 1 | 1 | 1 | 1 | 1 | 27 | 113 | 105 | 91 |
 | HSM unwraps of cek1, kms2 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 1 | 1 | 0 |
