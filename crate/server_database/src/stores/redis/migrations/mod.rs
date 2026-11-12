@@ -119,8 +119,8 @@ impl DbParameters for RedisWithFindex {
 impl Migrate for RedisWithFindex {
     type MigrationLock = RedisMigrationLock;
 
-    const UNVERSIONED_BASELINE: Option<&'static str> = None;
     const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.12.0");
+    const UNVERSIONED_BASELINE: Option<&'static str> = None;
 
     async fn has_data(&self) -> DbResult<bool> {
         let mut mgr = self.mgr.clone();

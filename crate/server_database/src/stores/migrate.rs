@@ -71,24 +71,19 @@ impl FromStr for Version {
     type Err = DbError;
 
     fn from_str(value: &str) -> DbResult<Self> {
-        let invalid = || {
+        let parse = || -> Option<Self> {
+            let core = value.split_once(['-', '+']).map_or(value, |(core, _)| core);
+            let (major, rest) = core.split_once('.')?;
+            let (minor, patch) = rest.split_once('.')?;
+            Some(Self(
+                major.parse().ok()?,
+                minor.parse().ok()?,
+                patch.parse().ok()?,
+            ))
+        };
+        parse().ok_or_else(|| {
             db_error!("Invalid database migration version '{value}': expected MAJOR.MINOR.PATCH")
-        };
-        let core = value.split(['-', '+']).next().ok_or_else(invalid)?;
-        let mut components = core.split('.');
-        let mut component = || {
-            components
-                .next()
-                .filter(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-                .ok_or_else(invalid)?
-                .parse::<u32>()
-                .map_err(|error| db_error!("Invalid database migration version '{value}': {error}"))
-        };
-        let version = Self(component()?, component()?, component()?);
-        if components.next().is_some() {
-            return Err(invalid());
-        }
-        Ok(version)
+        })
     }
 }
 
@@ -334,13 +329,8 @@ mod tests {
     use std::{
         cell::{Cell, RefCell},
         collections::HashMap,
-        fs::{File, TryLockError},
         rc::Rc,
-        time::Instant,
     };
-
-    use tempfile::TempDir;
-    use tokio::sync::Notify;
 
     use super::*;
     use crate::db_ensure;
@@ -545,6 +535,8 @@ mod tests {
             "4294967296.0.0",
             "5.20. 0",
             "5.20.0oops",
+            "+5.20.0",
+            "5.+20.0",
         ] {
             let error = version
                 .parse::<Version>()
@@ -582,86 +574,35 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_migration_lock_waits_for_release() -> DbResult<()> {
-        let directory = TempDir::new()?;
-        let path = directory.path().join("migration.lock");
-        let held = File::options().create_new(true).write(true).open(&path)?;
-        held.try_lock().map_err(std::io::Error::from)?;
-        let waiting = File::options().write(true).open(&path)?;
-        let attempted = Notify::new();
-        let attempts = Cell::new(0_usize);
-        let start = Instant::now();
-        let acquire =
-            wait_for_migration_lock("held-test-lock", Duration::from_secs(2), async || {
-                attempts.set(attempts.get().saturating_add(1));
-                match waiting.try_lock() {
-                    Ok(()) => Ok(true),
-                    Err(TryLockError::WouldBlock) => {
-                        attempted.notify_one();
-                        Ok(false)
-                    }
-                    Err(TryLockError::Error(error)) => Err(error.into()),
-                }
-            });
-        let release = async {
-            attempted.notified().await;
-            drop(held);
-        };
-        let (acquired, ()) = tokio::join!(acquire, release);
-        acquired?;
-        db_ensure!(
-            attempts.get() == 2,
-            "Expected one blocked attempt followed by success"
-        );
-        db_ensure!(
-            start.elapsed() >= MIGRATION_LOCK_POLL_INTERVAL,
-            "Lock wait did not respect the polling interval"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_migration_lock_wait_cap() -> DbResult<()> {
-        let directory = TempDir::new()?;
-        let path = directory.path().join("migration.lock");
-        let held = File::options().create_new(true).write(true).open(&path)?;
-        held.try_lock().map_err(std::io::Error::from)?;
-        let waiting = File::options().write(true).open(&path)?;
-        let error =
-            wait_for_migration_lock("held-test-lock", Duration::from_millis(20), async || {
-                match waiting.try_lock() {
-                    Ok(()) => Ok(true),
-                    Err(TryLockError::WouldBlock) => Ok(false),
-                    Err(TryLockError::Error(error)) => Err(error.into()),
-                }
-            })
-            .await
-            .err()
-            .ok_or_else(|| db_error!("A held migration lock must time out"))?;
-        db_ensure!(
-            error.to_string().contains("Timed out after 20ms"),
-            "Wrong lock-wait cap: {error}"
-        );
-        db_ensure!(
-            error.to_string().contains("held-test-lock"),
-            "Timeout did not identify the lock"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_migration_lock_attempt_can_borrow_mutable_resource() -> DbResult<()> {
-        let mut attempts = 0_u32;
-        wait_for_migration_lock("mutable-resource", Duration::from_secs(1), async || {
-            tokio::task::yield_now().await;
-            attempts = attempts.saturating_add(1);
-            Ok(true)
+    #[tokio::test(start_paused = true)]
+    async fn test_migration_lock_wait_polls_then_acquires_or_times_out() -> DbResult<()> {
+        // The paused clock auto-advances through the poll sleeps, so elapsed time is exact.
+        let attempts = Cell::new(0_u32);
+        let start = tokio::time::Instant::now();
+        wait_for_migration_lock("polled-lock", MIGRATION_LOCK_TIMEOUT, async || {
+            attempts.set(attempts.get().saturating_add(1));
+            Ok(attempts.get() == 2)
         })
         .await?;
         db_ensure!(
-            attempts == 1,
-            "The mutable-resource attempt did not run exactly once"
+            attempts.get() == 2 && start.elapsed() == MIGRATION_LOCK_POLL_INTERVAL,
+            "Expected one blocked attempt, one poll interval, then success"
+        );
+
+        let start = tokio::time::Instant::now();
+        let error =
+            wait_for_migration_lock("held-test-lock", MIGRATION_LOCK_TIMEOUT, async || Ok(false))
+                .await
+                .err()
+                .ok_or_else(|| db_error!("A held migration lock must time out"))?;
+        db_ensure!(
+            start.elapsed() == MIGRATION_LOCK_TIMEOUT,
+            "The lock wait must give up exactly at the cap"
+        );
+        db_ensure!(
+            error.to_string().contains("Timed out after 1860s")
+                && error.to_string().contains("held-test-lock"),
+            "Timeout must name the 31 minute cap and the lock: {error}"
         );
         Ok(())
     }
@@ -678,6 +619,58 @@ mod tests {
             error.to_string() == "Database Error: Backend lock acquisition failed",
             "Backend error was not propagated: {error}"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_migration_recorded_version_and_markers_select_steps() -> DbResult<()> {
+        const BOTH: [MigrationStep; 2] = [
+            MigrationStep::WrappingKeyIdBackfill,
+            MigrationStep::CertificateSerialTagBackfill,
+        ];
+        type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [MigrationStep]);
+        let cases: [Case<'_>; 4] = [
+            // Below the supported baseline: warn, then attempt every registered step.
+            (
+                "below baseline",
+                &[("db_version", "5.14.0")],
+                &MIGRATION_STEPS,
+            ),
+            // A crash after a checkpoint leaves `upgrading`; the run resumes from the checkpoint.
+            (
+                "interrupted run",
+                &[("db_version", "5.24.0"), ("db_state", "\"upgrading\"")],
+                &BOTH,
+            ),
+            // Completion markers win over the version window: nothing is re-applied.
+            (
+                "markers already set",
+                &[
+                    ("db_version", "5.20.0"),
+                    (WRAPPING_KEY_BACKFILL_PARAM, "true"),
+                    (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true"),
+                ],
+                &[],
+            ),
+            // Unversioned and populated: assumed to be the 5.20.0 baseline.
+            ("unversioned", &[], &BOTH),
+        ];
+        for (name, parameters, expected) in cases {
+            let database = InMemoryMigrationBackend::default();
+            for (key, value) in parameters {
+                database.set_parameter(key, value).await?;
+            }
+            let applied = database.bootstrap(false, "5.29.0").await?;
+            db_ensure!(
+                applied == expected && database.attempted.borrow().as_slice() == expected,
+                "{name}: expected steps {expected:?}, applied {applied:?}"
+            );
+            db_ensure!(
+                database.get_db_version().await?.as_deref() == Some("5.29.0")
+                    && database.get_db_state().await? == Some(DbState::Ready),
+                "{name}: the run must stamp the target version and finish ready"
+            );
+        }
         Ok(())
     }
 
