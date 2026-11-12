@@ -4961,7 +4961,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/EncryptTransitResponse'
         '400':
-          description: Invalid request (bad base64, unknown key version, unsupported option).
+          description: Invalid request (missing `plaintext`, bad base64, unknown key version, unsupported option).
         '404':
           description: No `aes256-gcm96` key with this name is owned by the caller.
 
