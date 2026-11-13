@@ -1009,7 +1009,8 @@ fn mac_mechanisms_report_sign_verify_and_key_sizes() {
             unsafe { C_GetMechanismInfo(SLOT_ID, mechanism, &raw mut info) },
             CKR_OK
         );
-        assert_eq!(info.flags, CKF_SIGN | CKF_VERIFY);
+        let flags = info.flags; // by value: `assert_eq!` would take a reference to a packed field
+        assert_eq!(flags, CKF_SIGN | CKF_VERIFY);
         assert_eq!((info.ulMinKeySize, info.ulMaxKeySize), (16, 32));
     }
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
