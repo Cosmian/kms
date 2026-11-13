@@ -1625,14 +1625,18 @@ sequenceDiagram
 
 ---
 
-### `test:upgrade-db` and `test:upgrade-sqlite`
+### `test:upgrade-db` and `test:db:upgrade-sqlite`
 
 **Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification.
 
-- `test:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
+- `test:db:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
 - `test:upgrade-db` runs published release Docker images (`ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) against the candidate image (`--new-image` / `DOCKER_IMAGE_NAME`) across SQLite, PostgreSQL, MySQL, and (in `non-fips` mode) Redis-findex. When `--old-version nightly` is used, it tests `SUPPORTED_BASELINE` (`5.20.0`), the latest release (`N-1`), and 2 deterministic round-robin middle releases.
 
-Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS with both the deterministic `mig_*`/`bulk_*` coverage set (`populate_fixed_set.py`) and a seeded-random `rnd_*` layer (`verify_db_upgrade.py`), captures a pre-upgrade KMIP snapshot, takes a cold backup, upgrades with the candidate server (verifying attributes, user tags, key material digests, old ciphertexts/signatures, grants, Locate sets, post-upgrade mutations, and a second restart), and finally restores the pre-upgrade backup on the old server.
+Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS. `verify_db_upgrade.py seed` uses the same recipes for the deterministic `mig_*`/`bulk_*` set and seeded-random `rnd_*` layer, validates the old server, and writes one snapshot containing attributes, user tags, material digests, grants, Locate results, ciphertexts, signatures, and explicit optional-feature skips. `verify` checks the candidate and its restart; post-upgrade canary data is added to that snapshot without changing the pre-upgrade expectations. The old server then checks the untouched cold backup, including the canary's absence.
+
+`--seed` and `--random-count` retain reproducible population. A missing response field, malformed tag, transport failure, or HTTP 500 fails the gate rather than reducing coverage. The serial-tag API assertion remains SQL-only; Redis serial-tag backfills are covered by the Redis migration fixture tests in the following stack layer.
+
+Harness regression checks: `python3 -m unittest discover -s .mise/scripts/test -p test_db_upgrade.py`.
 
 ---
 
