@@ -310,9 +310,9 @@ def main(argv: list[str]) -> int:
         '',
         '## Scenario',
         '',
-        'Metacrypt receives JWEs from Estreem and sends each to the KMS: `POST /v1/crypto/decrypt` '
+        'A relay service receives JWEs from a producer application and sends each to the KMS: `POST /v1/crypto/decrypt` '
         '(RSA-OAEP unwrap of the CEK with the HSM private key), then `POST /v1/crypto/encrypt` '
-        '(`dir` + A256GCM under Ksymbank). Estreem keeps one AES CEK for an hour, then switches to a new one. '
+        '(`dir` + A256GCM under a target AES key). The producer keeps one AES CEK for an hour, then switches to a new one. '
         'It must wrap each CEK once: all messages of a CEK then carry the same `encrypted_key`. '
         'RSA-OAEP is randomized, so re-wrapping the same CEK for every message would unwrap on the HSM every time. '
         'Each KMS process caches the unwrapped CEK under `sha256(key uid ‖ encrypted_key)`; there is no cross-node '

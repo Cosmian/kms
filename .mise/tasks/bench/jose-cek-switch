@@ -112,8 +112,8 @@ if [ "${BENCH_HSM_MODEL}" != "kryoptic" ]; then
   trap 'cek_switch_destroy_keys; cek_switch_stop_servers; _bench_cleanup' EXIT
 fi
 
-# Ksymbank: same bytes on every server, each SQLite DB holds its own copy.
-AES_KID=bench_cek_switch_ksymbank
+# Target AES key: same bytes on every server, each SQLite DB holds its own copy.
+AES_KID=bench_cek_switch_aes
 B64=$(python3 -c 'import base64,os;print(base64.b64encode(os.urandom(32)).decode())')
 for url in "${URLS[@]}"; do
   "${CKMS_BIN}" --url "${url}" sym keys create --bytes-b64 "${B64}" "${AES_KID}"
@@ -157,7 +157,7 @@ BENCH_COMMAND_USED="mise run bench:jose-cek-switch${usage_args:+ $usage_args}"
 bench_collect_env "${RUN_DIR}/env.json" "${BENCH_HSM_MODEL}"
 
 # ── Performance gate: computed before the report, enforced after it ─────────────────
-# Thresholds: the 2,500 JWE/s Estreem peak, no failed message, and a CEK switch the
+# Thresholds: the 2,500 JWE/s producer peak, no failed message, and a CEK switch the
 # system absorbs. No absolute latency threshold (none was given): latencies are reported.
 require_cmd jq "jq is required for the bench:jose-cek-switch performance gate"
 jq -r '

@@ -132,8 +132,8 @@ pub(super) fn jose_jwe_decrypt_body(
         .into())
 }
 
-/// Build a `POST /v1/crypto/decrypt` body for a JWE made client-side (like the diagram's
-/// Estreem app): fresh CEK + IV, `RSA-OAEP-256` CEK wrap under `public_key`, `A256GCM`
+/// Build a `POST /v1/crypto/decrypt` body for a JWE made client-side (like a producer
+/// application): fresh CEK + IV, `RSA-OAEP-256` CEK wrap under `public_key`, `A256GCM`
 /// content encryption with AAD = ASCII(protected). Every call yields a new `encrypted_key`,
 /// so the server's CEK cache never holds it.
 pub(super) fn jose_rsa_oaep_decrypt_body(

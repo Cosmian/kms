@@ -1,7 +1,7 @@
 //! JOSE CEK-switch scenario (`ckms bench --cek-switch`): a fixed-rate, open-loop stream of JWEs
 //! (decrypt with an RSA-OAEP CEK unwrap, then re-encrypt with `dir` + A256GCM) spread round-robin
 //! over one or more KMS servers. Halfway through, the senders switch to a second CEK (hence a
-//! second `encrypted_key`), like Estreem rotating its AES CEK once an hour.
+//! second `encrypted_key`), like a producer rotating its AES CEK once an hour.
 
 use std::{fmt::Write as _, fs, sync::Arc, time::Duration};
 
