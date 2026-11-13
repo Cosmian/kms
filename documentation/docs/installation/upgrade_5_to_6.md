@@ -7,7 +7,7 @@ This guide is for operators moving a running KMS from a 5.x release to 6.0. 6.0 
 1. **Inventory the KMIP clients and integrations** that talk to the server, and for each one note which operations it sends (create/register, locate/get, encrypt/decrypt/MAC, rotate, revoke/destroy). The [client changes](#client-changes) table below tells you which of them can break.
 2. **Take a cold backup of the database** with the server stopped. For SQLite, copy the whole `sqlite_path` directory (`cp -a`). For the other backends, use the backend's own dump tool.
 3. **Plan recovery as "restore the backup with the old binary".** Opening a database written by 6.0 with a 5.x server is not supported: once 6.0 has written to the database, go back by restoring the pre-upgrade backup, not by starting the old binary on the new data.
-4. **Know what is verified.** The CI packaging gate (`mise run test:upgrade-db`) verifies live upgrades from `5.20.0`, the latest release, and two rotating middle releases across SQLite, PostgreSQL, MySQL, and (in non-FIPS mode) Redis-findex. You can also run `mise run test:upgrade-sqlite` locally against two `cosmian_kms` binaries (see [Verify the upgrade](#verify-the-upgrade)). If you run Redis-findex from a release older than 5.12, read the limits in [Redis migration](../configuration/database/redis.md#migration) first.
+4. **Know what is verified.** Only the SQLite path from 5.29.0 is covered by an automated upgrade proof (see [Verify the upgrade](#verify-the-upgrade)). PostgreSQL, MySQL and Redis upgrades are not covered by it. If you run Redis-findex from a release older than 5.12, read the limits in [Redis migration](../configuration/database/redis.md#migration) first.
 5. **If you use Set Constraints, configure a Crypto Officer first** (see the table below): `[roles] crypto_officer_users`.
 
 ## Client changes
@@ -36,31 +36,24 @@ The full list of fixes is in the branch changelog (`CHANGELOG/`).
 
 ### Automated SQLite upgrade and restore proof
 
-`mise run test:db:upgrade-sqlite` takes two `cosmian_kms` server binaries that you build yourself: the baseline binary (for example from the `5.29.0` tag) and the candidate binary. It drives both servers over mTLS KMIP 2.1 JSON (no `ckms` binary needed) and starts only its own servers on free ports.
+`mise run test:db:upgrade-sqlite` takes four binaries that you build yourself: the old `cosmian_kms` and `ckms` (for example from the `5.29.0` tag) and the new ones. The binaries decide FIPS or non-FIPS; the task builds and downloads nothing and starts only its own servers on free ports.
 
 ```bash
 mise run test:db:upgrade-sqlite \
   --old-kms /path/to/5.29.0/target/debug/cosmian_kms \
+  --old-ckms /path/to/5.29.0/target/debug/ckms \
   --new-kms target/debug/cosmian_kms \
-  --variant fips
+  --ckms target/debug/ckms
 ```
 
-To run the full multi-backend Docker upgrade gate (`sqlite`, `postgresql`, `mysql`, and in `non-fips` mode `redis`) against a local candidate Docker image:
+It runs four phases on temporary copies of a database:
 
-```bash
-mise run test:upgrade-db \
-  --variant fips \
-  --new-image kms-test:current
-```
+1. **Seed**: the old server creates keys (one wrapped by another), a name, a certificate with a link, a grant, and a revoked-then-destroyed key; it encrypts with two of them.
+2. **Cold backup**: the stopped database is copied twice.
+3. **Candidate**: the new server opens one copy. Old ciphertexts must decrypt byte-identically, grants and denials must be unchanged, attributes must match (every old digest must still be present). It then writes (new name, new key), restarts, and checks again.
+4. **Restore**: the old server opens the untouched backup: the original name is present and the key created by the new server does not exist.
 
-Each cell runs four phases on temporary databases:
-
-1. **Seed**: the old server populates the deterministic `mig_*` and `bulk_*` coverage set plus a seeded-random `rnd_*` layer over `/kmip/2_1` and `/access/grant`, then captures a snapshot of attributes, user tags, key material digests, access grants, Locate-by-tag sets, AES-GCM ciphertexts, and RSA-PSS/ECDSA signatures.
-2. **Cold backup**: the stopped database is backed up before the candidate server starts.
-3. **Candidate**: the new server opens the database, verifies that all attributes, user tags, key material digests, old ciphertexts, old signatures, grants, and Locate results match (and that `_serial=` certificate tags and `wrapping_key_id` KEK re-wrapping work), writes post-upgrade changes, restarts, and verifies again.
-4. **Restore**: the old server opens the untouched backup and verifies that the pre-upgrade state is intact and post-upgrade objects are absent.
-
-The comparison ignores `_`-prefixed server system tags and the synthetic `RandomNumberGenerator` attribute that 5.29.0 reported on every object. It has passed from `5.20.0` and `5.29.0` to this branch across both FIPS and non-FIPS variants.
+The attributes are read with the same KMIP 2.1 Get Attributes request on both servers, because `ckms attributes get` does not display State, Link or Digest. The comparison ignores nothing except that 6.0 no longer reports the invented Random Number Generator attribute. This proves only SQLite, only between the two binaries you pass, on this seed data. It does not test your data, your clients or other backends. It has passed from the 5.29.0 tag to this branch, with FIPS binaries and with non-FIPS binaries (debug builds, macOS arm64).
 
 ### Business-workflow checklist
 

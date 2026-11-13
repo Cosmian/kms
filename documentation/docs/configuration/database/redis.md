@@ -82,8 +82,8 @@ sequenceDiagram
     KMS->>KMS: Derive Database Key via Master Key (AES-256-GCM)
     KMS->>Redis: TCP / TLS Connect & AUTH
     Redis-->>KMS: Connection established
-    KMS->>Redis: Acquire kms_db_migration_lock, run pending migration steps, stamp db_version & db_state=ready
-    Redis-->>KMS: Lock released, State: ready
+    KMS->>Redis: Check metadata keys (db_state, db_version)
+    Redis-->>KMS: State: ready
 
     Note over Client,Redis: Storing an Object (e.g. Create Key)
     Client->>KMS: Create AES key request
@@ -116,24 +116,18 @@ Instead it stores:
 | Objects | AES-256-GCM encrypted values, keyed by object UID |
 | Permissions | Encrypted, indexed through Findex |
 | Searchable indexes | Findex encrypted indexes (Redis is used as the Findex memory layer) |
-| Database metadata | Internal keys holding `db_version`, `db_state` (`"ready"`/`"upgrading"`), step completion markers (`wrapping_key_id_backfilled`, `certificate_serial_tag_backfilled`), and the startup lock (`kms_db_migration_lock`) |
+| Database metadata | Internal keys holding the database state (`ready`/`upgrading`) and version |
 | Ceremony records | Encrypted records under key names obfuscated with the master key |
 
 ## Migration
 
-Redis-with-Findex uses the shared startup migration runner (see [Database migration](./configuration.md#database-migration) for the full decision flow, Mermaid diagram, and lock semantics):
-
-- **Transparent migration (`>= 5.20.0`)**: Databases recorded at `5.20.0` or later run any pending steps in `(recorded, target]` (`5.25.0` `wrapped_by::<uid>` Findex backfill and `5.29.0` `_serial=<HEX>` certificate tag backfill), checkpoint `db_version` after each step, and finish with `db_version = <current>` and `db_state = "ready"`.
-- **Pre-baseline Findex v8 (`5.12.0`–`5.19.x`)**: Databases created on `5.12.0` through `5.19.x` log a warning that transparent migration is supported from `5.20.0`, run all registered steps whose completion markers are not yet `"true"`, and advance `db_version` to the current server version.
-- **Interrupted upgrades (`db_state = "upgrading"`)**: An interrupted run is logged and resumed automatically at the next startup.
-- **Unsupported legacy databases (`< 5.12.0` or unversioned with data)**: Databases created before `5.12.0` (Findex v5, recorded as `5.0.x`–`5.11.x`, or `4.x` databases without `db_version`) are refused at startup. Export all objects from the legacy KMS and re-import them into a fresh instance.
-- **Newer databases (`db_version > current`)**: Refused before any data step runs.
-- **Concurrent startup lock**: Startup acquires `kms_db_migration_lock` via `SET ... NX PX 1800000` (30-minute lease, polled every 500 ms for up to 31 minutes) and releases it with a Lua compare-and-delete script.
+**Version boundary**: Redis-with-Findex databases created with KMS **5.12.0 or later** carry a `ready` state marker and a version key in Redis, and start cleanly with the current KMS (5.26).
+Databases created with KMS **earlier than 5.12.0** do not have these markers.
+The KMS refuses to start against a marker-less database and prints an error asking you to export and re-import; there is no in-place upgrade path for those databases.
 
 **Supported upgrade paths**:
 
-| Source version | Upgrade behavior |
-| -------------- | ---------------- |
-| `>= 5.20.0` | Transparent in-place migration of pending steps (`wrapped_by::<uid>` and `_serial=<HEX>` backfills). |
-| `5.12.0`–`5.19.x` | Logs a pre-baseline warning, runs all uncompleted steps, and stamps the current version. |
-| `< 5.12.0` or unversioned with data | Refused (`Legacy database`); export all objects from the old KMS, start a fresh instance, and re-import. |
+| Source version | Path to 5.26 |
+| -------------- | ------------ |
+| ≥ 5.12 | Upgrade directly; no data migration needed. |
+| < 5.12 | Export all objects from the old KMS, start a fresh 5.26 instance, re-import. |
