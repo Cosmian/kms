@@ -325,6 +325,19 @@ def main(argv: list[str]) -> int:
         '',
         '## Runs',
         '',
+        '**Columns of the per-run tables.** Latencies are per message (one decrypt + one re-encrypt), '
+        'in ms, measured from the scheduled send time. `all` is every server together; `kms1`, `kms2`... are one server each.',
+        '',
+        '| Column | Meaning |',
+        '|---|---|',
+        '| pre p50 ms / pre p99 ms | Median and 99th-percentile latency in the up-to-10 s just before the CEK switch: the normal latency, used as the baseline. |',
+        '| first 1 s p99 ms / max ms | 99th percentile and maximum latency of messages scheduled in the first second after the switch. |',
+        '| peak ms | Highest latency of any message scheduled after the switch. |',
+        '| recovery ms | Time after the switch until latency stays at most 2x the pre p99 for 1 s. `-` when it never does, or when there is no baseline. |',
+        '| slow messages | Number of messages after the switch slower than 2x the pre p99. |',
+        '| errors | Messages that failed: decrypt or encrypt not 2xx, or not answered before the end of the drain period. |',
+        '| HSM unwraps cek0 / cek1 | RSA-OAEP unwraps of the first and second CEK performed by that server (counted from `JOSE CEK cached` log lines). One per server and CEK is the ideal. `cek1` is 0 when the run never reached the switch. |',
+        '',
     ]
     for r in runs:
         md += run_section(r, out_dir)

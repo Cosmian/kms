@@ -1,1 +1,0 @@
-achieved 237 msg/s < 95% of target 1600 msg/s (37629 unsent)
