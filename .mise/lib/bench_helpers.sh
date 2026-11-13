@@ -275,6 +275,12 @@ bench_stop_server() {
   KMS_PID=""
 }
 
+# From rule://test-configs section 3: fails when the key is absent from the fixture.
+set_toml_value() { # <file> <key> <already-quoted-value>
+  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
+  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
 # Wait for a KMS server to accept HTTP requests, using curl flags appropriate for
 # optional TLS server/client verification. Exits 1 (like kms_wait_ready) on timeout.
 # Usage: bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]

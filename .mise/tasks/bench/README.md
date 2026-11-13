@@ -1,6 +1,6 @@
 # KMS Benchmarks
 
-Six independent benchmarks exist under `mise run bench:*`, each producing its own
+Seven independent benchmarks exist under `mise run bench:*`, each producing its own
 report under `documentation/docs/benchmarks/<dir>/` (linked from the mdBook
 "Benchmarks" nav section). It's easy to lose track of which is which — this table
 is the canonical reference.
@@ -13,6 +13,7 @@ is the canonical reference.
 | 4 | Real PKCS#11 DLL | `cosmian_pkcs11` shared library `dlopen()`-ed + KMS server — drives the real Cryptoki C ABI (`C_Sign`, `C_Encrypt`, ...) | `mise run bench:pkcs11` | `ckms_bench_pkcs11` |
 | 5 | PKCS#11 HSM-delegated | Same as Benchmark 4, but with `hsm::<slot>::<uuid>` HSM-resident keys — `cosmian_pkcs11` makes HTTPS calls to KMS, which routes crypto operations to the HSM's CryptoOracle via PKCS#11 | `mise run bench:pkcs11 --delegated --hsm-model <backend>` | `ckms_bench_pkcs11_hsm_delegated_<hsm_backend>` |
 | 6 | JOSE caches | `ckms` + two fresh KMS servers started from `test_data/configs/server/test/bench_jose_cache.toml`, one with `disable_unwrapped_cache = false` (CEK cache on) and one with `true` (off); same JOSE sweep (`dir`/A256GCM encrypt, RSA-OAEP decrypt replayed vs fresh token) | `mise run bench:jose-cache` | `ckms_bench_jose_cache_on` and `ckms_bench_jose_cache_off` |
+| 7 | JOSE CEK switch | `ckms bench --cek-switch` sends a fixed-rate stream of JWEs (RSA-OAEP decrypt, then `dir` re-encrypt) round-robin over N KMS servers sharing one Kryoptic (or real HSM) token, each with its own SQLite DB; the CEK changes mid-run. Latency timeline, HSM unwraps per CEK, and a performance gate (≥ 95 % of the target rate, 0 errors, recovery) that fails the task | `mise run bench:jose-cek-switch [--label before\|after]` | `ckms_bench_jose_cek_switch_<hsm_model>` |
 
 Benchmarks 2 and 3 are both driven by the same task (`bench/hsm`); the
 `--delegated` flag switches between them. Benchmarks 4 and 5 share the `bench/pkcs11` task;

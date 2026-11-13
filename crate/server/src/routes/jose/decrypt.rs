@@ -334,8 +334,25 @@ async fn decrypt_rsa_oaep(
     {
         cached_cek
     } else {
-        let unwrapper =
-            if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(private_key_owm.id()) {
+        // Single-flight: concurrent requests carrying the same `encrypted_key` (e.g. the first
+        // messages after a CEK switch) wait for the first HSM unwrap and reuse its cached CEK.
+        // The guard is held until the CEK is inserted; a failed unwrap inserts nothing, so the
+        // waiters then miss again and unwrap on their own.
+        let _miss_guard =
+            cek_cache::lock_cek_miss(kms, private_key_owm.id(), &encrypted_key_bytes).await;
+        if let Some(cached_cek) = cek_cache::peek_cek(
+            kms,
+            private_key_owm.id(),
+            &encrypted_key_bytes,
+            private_key_owm.object(),
+        )
+        .await
+        {
+            cached_cek
+        } else {
+            let unwrapper = if let ObjectHandle::Hsm { prefix, .. } =
+                ObjectHandle::from(private_key_owm.id())
+            {
                 // The HSM holds the key and rejects a non-RSA-OAEP-capable key at use time
                 OaepUnwrapper::Hsm {
                     prefix: prefix.to_owned(),
@@ -367,61 +384,64 @@ async fn decrypt_rsa_oaep(
                 OaepUnwrapper::Software(private_key)
             };
 
-        // Cache miss — perform RSA-OAEP unwrap.
-        // Implicit rejection: attempt unwrap; on failure substitute random CEK.
-        // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
-        let unwrapped = match &unwrapper {
-            OaepUnwrapper::Software(private_key) => ckm_rsa_pkcs_oaep_key_unwrap(
-                private_key,
-                oaep_hash,
-                mgf1_hash,
-                None,
-                &encrypted_key_bytes,
-            )
-            .ok(),
-            OaepUnwrapper::Hsm { prefix, uid } => {
-                let oaep_alg = if alg == JoseAlgorithm::RsaOaep {
-                    CryptoAlgorithm::RsaOaepSha1
-                } else {
-                    CryptoAlgorithm::RsaOaepSha256
-                };
-                let lock = kms.crypto_oracles.read().await;
-                let oracle = lock.get(prefix).ok_or_else(|| {
-                    CryptoApiError::InternalError(format!(
-                        "RSA-OAEP decrypt: unknown crypto oracle prefix: {prefix}"
-                    ))
-                })?;
-                let res = oracle
-                    .decrypt(uid, &encrypted_key_bytes, Some(oaep_alg), None)
-                    .await;
-                drop(lock);
-                res.inspect_err(|e| debug!("RSA-OAEP HSM unwrap failed: {e}"))
-                    .ok()
-            }
-        };
-        match unwrapped {
-            Some(unwrapped) if unwrapped.len() == expected_cek_len => {
-                // Cache the CEK for subsequent decryptions of this JWE token.
-                cek_cache::insert_cek(
-                    kms,
-                    private_key_owm.id(),
+            // Cache miss — perform RSA-OAEP unwrap.
+            // Implicit rejection: attempt unwrap; on failure substitute random CEK.
+            // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
+            let unwrapped = match &unwrapper {
+                OaepUnwrapper::Software(private_key) => ckm_rsa_pkcs_oaep_key_unwrap(
+                    private_key,
+                    oaep_hash,
+                    mgf1_hash,
+                    None,
                     &encrypted_key_bytes,
-                    private_key_owm.object(),
-                    &unwrapped,
                 )
-                .await;
-                unwrapped
-            }
-            _ => {
-                // Substitute random CEK — AES-GCM will fail on tag verification
-                debug!("RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection");
-                let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
-                kms.rng.fill_bytes(&mut random_cek).map_err(|e| {
-                    CryptoApiError::InternalError(format!(
-                        "Failed to generate random CEK for implicit rejection: {e}"
-                    ))
-                })?;
-                random_cek
+                .ok(),
+                OaepUnwrapper::Hsm { prefix, uid } => {
+                    let oaep_alg = if alg == JoseAlgorithm::RsaOaep {
+                        CryptoAlgorithm::RsaOaepSha1
+                    } else {
+                        CryptoAlgorithm::RsaOaepSha256
+                    };
+                    let lock = kms.crypto_oracles.read().await;
+                    let oracle = lock.get(prefix).ok_or_else(|| {
+                        CryptoApiError::InternalError(format!(
+                            "RSA-OAEP decrypt: unknown crypto oracle prefix: {prefix}"
+                        ))
+                    })?;
+                    let res = oracle
+                        .decrypt(uid, &encrypted_key_bytes, Some(oaep_alg), None)
+                        .await;
+                    drop(lock);
+                    res.inspect_err(|e| debug!("RSA-OAEP HSM unwrap failed: {e}"))
+                        .ok()
+                }
+            };
+            match unwrapped {
+                Some(unwrapped) if unwrapped.len() == expected_cek_len => {
+                    // Cache the CEK for subsequent decryptions of this JWE token.
+                    cek_cache::insert_cek(
+                        kms,
+                        private_key_owm.id(),
+                        &encrypted_key_bytes,
+                        private_key_owm.object(),
+                        &unwrapped,
+                    )
+                    .await;
+                    unwrapped
+                }
+                _ => {
+                    // Substitute random CEK — AES-GCM will fail on tag verification
+                    debug!(
+                        "RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection"
+                    );
+                    let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
+                    kms.rng.fill_bytes(&mut random_cek).map_err(|e| {
+                        CryptoApiError::InternalError(format!(
+                            "Failed to generate random CEK for implicit rejection: {e}"
+                        ))
+                    })?;
+                    random_cek
+                }
             }
         }
     };

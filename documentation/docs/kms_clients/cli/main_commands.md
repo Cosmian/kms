@@ -734,6 +734,26 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 `--hsm-slot <HSM_SLOT>` HSM slot id, used to build the `hsm::<slot>::` unique identifier prefix for `--hsm`. Must match the slot the server's legacy flat HSM config (`hsm_slot`) has registered
 
+`--cek-switch <ENABLED>` Run the JOSE CEK-switch scenario instead of the criterion or load benchmarks: JWEs are sent at a fixed rate, each decrypted (RSA-OAEP CEK unwrap, kid --cek-switch-rsa-kid) then re-encrypted (`dir` + A256GCM, kid --cek-switch-aes-kid). All JWEs reuse one CEK and one `encrypted_key` until --cek-switch-at seconds into the measurement, then a second CEK. Uses --time (measurement seconds), --warmup-time and --load-plaintext-size
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--cek-switch-url <URL>` Additional KMS URL; messages are spread round-robin over --url and these (repeatable)
+
+`--cek-switch-rsa-kid <RSA_KID>` Public key id of the RSA key pair wrapping the CEKs (required with --cek-switch)
+
+`--cek-switch-aes-kid <AES_KID>` AES-256 key id used to re-encrypt each plaintext (required with --cek-switch)
+
+`--cek-switch-alg <ALG>` JWE key-management algorithm
+
+Possible values:  `"RSA-OAEP", "RSA-OAEP-256"` [default: `"RSA-OAEP"`]
+
+`--cek-switch-rate <RATE>` Target messages per second (one message = one decrypt + one encrypt)
+
+`--cek-switch-workers <WORKERS>` Concurrent senders; must cover rate × per-message latency
+
+`--cek-switch-at <SWITCH_AT>` Seconds after the start of the measurement window at which the CEK changes
+
 
 
 ---

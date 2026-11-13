@@ -17,6 +17,7 @@ use cosmian_kms_crypto::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::runtime::Runtime;
+use zeroize::Zeroizing;
 
 use super::{
     transport::{bench_filter_matches, timed_group},
@@ -76,43 +77,51 @@ pub(super) fn jose_try_create_rsa_kp(
     Some((resp.kid, resp.kid_public?))
 }
 
-/// Build a `POST /v1/crypto/decrypt` body for a JWE made client-side (like the diagram's
-/// Estreem app): fresh CEK + IV, `RSA-OAEP-256` CEK wrap under `public_key`, `A256GCM`
-/// content encryption with AAD = ASCII(protected). Every call yields a new `encrypted_key`,
-/// so the server's CEK cache never holds it.
-pub(super) fn jose_rsa_oaep_decrypt_body(
+/// Base64url JWE protected header `{"alg":<alg>,"enc":"A256GCM","kid":<kid>}`.
+pub(super) fn jose_protected_header(alg: &str, kid: &str) -> KmsCliResult<String> {
+    Ok(b64url(
+        serde_json::to_string(&serde_json::json!({"alg": alg, "enc": "A256GCM", "kid": kid}))
+            .context("JOSE protected header serialization")?
+            .as_bytes(),
+    ))
+}
+
+/// Fresh random A256GCM CEK and its RSA-OAEP wrap under `public_key`, with `hash` for both
+/// OAEP and MGF1.
+pub(super) fn jose_wrap_new_cek(
     public_key: &Object,
-    kid: &str,
+    hash: HashingAlgorithm,
+) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
+    let cek = random_key(&KmsRng::new(), SymCipher::Aes256Gcm)?;
+    let encrypted_key = ckm_rsa_pkcs_oaep_key_wrap(
+        &kmip_public_key_to_openssl(public_key)?,
+        hash,
+        hash,
+        None,
+        &cek,
+    )?;
+    Ok((cek, encrypted_key))
+}
+
+/// `POST /v1/crypto/decrypt` body for an A256GCM JWE under `cek`: fresh IV, AAD = ASCII(`protected`).
+pub(super) fn jose_jwe_decrypt_body(
+    protected: &str,
+    cek: &[u8],
+    encrypted_key: &[u8],
     plaintext: &[u8],
 ) -> KmsCliResult<Bytes> {
-    let protected = b64url(
-        serde_json::to_string(
-            &serde_json::json!({"alg": "RSA-OAEP-256", "enc": "A256GCM", "kid": kid}),
-        )
-        .context("JOSE protected header serialization")?
-        .as_bytes(),
-    );
-    let rng = KmsRng::new();
-    let cek = random_key(&rng, SymCipher::Aes256Gcm)?;
-    let iv = random_nonce(&rng, SymCipher::Aes256Gcm)?;
+    let iv = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm)?;
     let (ciphertext, tag) = encrypt(
         SymCipher::Aes256Gcm,
-        &cek,
+        cek,
         &iv,
         protected.as_bytes(),
         plaintext,
         None,
     )?;
-    let encrypted_key = ckm_rsa_pkcs_oaep_key_wrap(
-        &kmip_public_key_to_openssl(public_key)?,
-        HashingAlgorithm::SHA256,
-        HashingAlgorithm::SHA256,
-        None,
-        &cek,
-    )?;
     let req = JoseDecryptReq {
-        protected,
-        encrypted_key: b64url(&encrypted_key),
+        protected: protected.to_owned(),
+        encrypted_key: b64url(encrypted_key),
         iv: b64url(&iv),
         ciphertext: b64url(&ciphertext),
         tag: b64url(&tag),
@@ -121,6 +130,20 @@ pub(super) fn jose_rsa_oaep_decrypt_body(
     Ok(serde_json::to_vec(&req)
         .context("JOSE decrypt JSON serialization")?
         .into())
+}
+
+/// Build a `POST /v1/crypto/decrypt` body for a JWE made client-side (like a producer
+/// application): fresh CEK + IV, `RSA-OAEP-256` CEK wrap under `public_key`, `A256GCM`
+/// content encryption with AAD = ASCII(protected). Every call yields a new `encrypted_key`,
+/// so the server's CEK cache never holds it.
+pub(super) fn jose_rsa_oaep_decrypt_body(
+    public_key: &Object,
+    kid: &str,
+    plaintext: &[u8],
+) -> KmsCliResult<Bytes> {
+    let protected = jose_protected_header("RSA-OAEP-256", kid)?;
+    let (cek, encrypted_key) = jose_wrap_new_cek(public_key, HashingAlgorithm::SHA256)?;
+    jose_jwe_decrypt_body(&protected, &cek, &encrypted_key, plaintext)
 }
 
 #[cfg(feature = "non-fips")]
