@@ -407,10 +407,10 @@ const KvSecrets: React.FC = () => {
                 activeKey={activeTab}
                 onChange={changeTab}
                 items={[
-                    { key: "put", label: t("kvSecrets.put"), children: putTab },
-                    { key: "get", label: t("kvSecrets.get"), children: getTab },
-                    { key: "list", label: t("kvSecrets.list"), children: listTab },
-                    { key: "delete", label: t("kvSecrets.delete"), children: deleteTab },
+                    { key: "put", label: <span data-testid="kv-tab-put">{t("kvSecrets.put")}</span>, children: putTab },
+                    { key: "get", label: <span data-testid="kv-tab-get">{t("kvSecrets.get")}</span>, children: getTab },
+                    { key: "list", label: <span data-testid="kv-tab-list">{t("kvSecrets.list")}</span>, children: listTab },
+                    { key: "delete", label: <span data-testid="kv-tab-delete">{t("kvSecrets.delete")}</span>, children: deleteTab },
                 ]}
             />
             {error && <Alert className="mt-4" type="error" showIcon message={error} data-testid="kv-error" />}

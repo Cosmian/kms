@@ -161,6 +161,7 @@ try {
         "--hostname", "127.0.0.1",
         "--port", "9998",
         "--vendor-identification", "test_vendor",
+        "--kv-enabled",
         "--cors-allowed-origins", "http://127.0.0.1:$PreviewPort"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `

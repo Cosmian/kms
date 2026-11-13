@@ -165,6 +165,9 @@ const GOOGLE_CSE_ROUTES: Route[] = [{ name: "Google CSE", path: "/ui/google-cse"
 
 const LOCATE_ROUTES: Route[] = [{ name: "locate", path: "/ui/locate" }];
 
+// ── Secrets (KV) ─────────────────────────────────────────────────────────────
+const KV_ROUTES: Route[] = [{ name: "Secrets (KV)", path: "/ui/kv-secrets" }];
+
 // ── MAC routes ───────────────────────────────────────────────────────────────
 const MAC_ROUTES: Route[] = [
     { name: "compute", path: "/ui/mac/compute" },
@@ -217,6 +220,7 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Google CSE", routes: GOOGLE_CSE_ROUTES },
     { section: "Derive Key", routes: DERIVE_KEY_ROUTE },
     { section: "Locate", routes: LOCATE_ROUTES },
+    { section: "Secrets (KV)", routes: KV_ROUTES },
     { section: "MAC", routes: MAC_ROUTES },
     { section: "FPE", routes: FPE_ROUTES },
     { section: "Anonymize", routes: TOKENIZE_ROUTES },
