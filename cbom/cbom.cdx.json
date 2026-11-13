@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:f1a070f9-2424-4a97-9fa0-45ce12066eac",
+  "serialNumber": "urn:uuid:d13c613f-ce25-49a7-8460-57ebfbba6128",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-30T11:02:33Z",
+    "timestamp": "2026-11-13T21:43:13Z",
     "tools": {
       "components": [
         {
@@ -34,8 +34,7 @@
       "type": "library",
       "bom-ref": "lib-aes-gcm-siv",
       "name": "aes-gcm-siv (RustCrypto)",
-      "version": "0.11.1",
-      "purl": "pkg:cargo/aes-gcm-siv@0.11.1"
+      "version": "unknown"
     },
     {
       "type": "library",
@@ -55,8 +54,8 @@
       "type": "library",
       "bom-ref": "lib-cosmian_cover_crypt",
       "name": "cosmian_cover_crypt (Cosmian ABE + hybrid KEM)",
-      "version": "16.0.0",
-      "purl": "pkg:cargo/cosmian_cover_crypt@16.0.0"
+      "version": "16.0.1",
+      "purl": "pkg:cargo/cosmian_cover_crypt@16.0.1"
     },
     {
       "type": "library",
@@ -2531,7 +2530,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2566,7 +2565,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2602,7 +2601,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2637,7 +2636,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2672,7 +2671,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2708,7 +2707,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2744,7 +2743,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2780,7 +2779,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2816,7 +2815,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2852,7 +2851,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2888,7 +2887,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2924,7 +2923,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2960,7 +2959,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -2996,7 +2995,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -3032,7 +3031,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -3068,7 +3067,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -3104,7 +3103,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -3140,7 +3139,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -3176,7 +3175,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     },
@@ -3212,7 +3211,7 @@
         },
         {
           "name": "cosmian:found-in-source",
-          "value": "true"
+          "value": "false"
         }
       ]
     }
