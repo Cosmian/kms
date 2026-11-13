@@ -159,12 +159,10 @@ A generic key/value store used internally by the KMS for database metadata.
 
 Known parameters:
 
-SQLite uses these keys for its startup migration runner. PostgreSQL and MySQL retain their existing initialization and backfill metadata until their runner wiring is added.
-
 | `name` | Meaning |
 | ------ | ------- |
-| `db_state` | The database migration state: `ready` or `upgrading`, stored as a JSON string. |
-| `db_version` | The KMS version the startup migration runner last migrated this database to. |
+| `db_state` | The database migration state: `ready` or `upgrading`. |
+| `db_version` | The version of the KMS software that last ran against this database. |
 | `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
 | `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
 | `kv_metadata_uid_key` | Hex-encoded 32-byte key, created on first use by the [KV secret store](../secret_backends.md#internal-record-identifiers) or the SSH CA/role API, from which the identifier of each KV path's metadata object (and of the SSH CA/role records) is derived. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
