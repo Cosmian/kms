@@ -185,16 +185,16 @@ The Redis-with-Findex backend stores each CRL as a JSON value under the key
 ## `cluster_nodes`
 
 Stores one heartbeat per running KMS process. Each node refreshes its row every five seconds;
-rows older than fifteen seconds are pruned. The node holding the cluster-election lock is marked
-as leader. Node IDs are regenerated on process restart, and stale rows are removed by the next
-heartbeat.
+rows older than fifteen seconds are pruned. One node is marked as leader for display; no work
+depends on it. Node IDs are regenerated on process restart, and stale rows are removed by the
+next heartbeat.
 
 | Column | Type | Description |
 | ------ | ---- | ----------- |
 | `node_id` | `VARCHAR(64)` | Process-specific UUID and primary key. |
 | `version` | `VARCHAR(64)` | KMS package version reported by the process. |
 | `last_heartbeat` | `BIGINT` | Last heartbeat as Unix seconds. |
-| `is_leader` | `BOOLEAN` | Whether this node most recently held the election lock. |
+| `is_leader` | `BOOLEAN` | Whether this node is the displayed cluster leader. |
 
 ## Links between tables
 

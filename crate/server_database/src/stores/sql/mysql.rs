@@ -523,13 +523,15 @@ impl MySqlPool {
         )
         .await
         .map_err(DbError::from)?;
-        tx.exec_drop(
+        tx.commit().await.map_err(DbError::from)?;
+        // Outside the transaction: this full scan would otherwise wait on another node's row
+        // while holding ours, and two concurrent heartbeats would deadlock.
+        conn.exec_drop(
             "DELETE FROM cluster_nodes WHERE last_heartbeat < ?",
             (stale_before,),
         )
         .await
-        .map_err(DbError::from)?;
-        tx.commit().await.map_err(DbError::from)
+        .map_err(DbError::from)
     }
 
     pub(crate) async fn list_cluster_nodes(
