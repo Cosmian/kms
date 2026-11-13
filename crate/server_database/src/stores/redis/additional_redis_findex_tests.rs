@@ -1276,10 +1276,9 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
 /// default database (0) shared by the other Redis tests.
 const ISOLATED_REDIS_DB: u8 = 15;
 
-/// Redis migration runner state transitions on isolated DB 15:
-/// fresh, `upgrading` resumes to `ready`, newer version is refused, unversioned populated
-/// database is refused with `Legacy database`, and a `5.16.0` database with an unindexed
-/// wrapped object is migrated to the current version with the wrapped object discoverable.
+/// Production [`RedisWithFindex::instantiate`] state transitions on isolated DB 15:
+/// fresh database stamped, ready reopen, `upgrading` resumes to `ready`, and an unversioned
+/// populated database is refused with `Legacy database`.
 pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
     use crate::stores::migrate::{DbParameters as _, DbState};
 
@@ -1309,70 +1308,16 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
         Some(env!("CARGO_PKG_VERSION"))
     );
 
-    // A recorded version newer than the server is refused.
-    resumed.set_db_version("99.0.0").await?;
-    let newer = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await;
-    assert!(
-        matches!(&newer, Err(DbError::DatabaseError(msg)) if msg.contains("99.0.0 is newer")),
-        "newer database must be refused, got: {:?}",
-        newer.map(|_| ())
-    );
-
-    // A database at 5.16.0 with an unindexed wrapped object runs the backfill and advances to current.
-    let owner = "legacy_5_16_owner";
-    let wrapping_key_uid = "legacy_5_16_kek";
-    let uid = "legacy_5_16_wrapped";
-    let wrapped_obj: Object = serde_json::from_value(serde_json::json!({
-        "SymmetricKey": {
-            "KeyBlock": {
-                "KeyFormatType": "TransparentSymmetricKey",
-                "CryptographicAlgorithm": "AES",
-                "CryptographicLength": 256,
-                "KeyWrappingData": {
-                    "WrappingMethod": "Encrypt",
-                    "EncryptionKeyInformation": { "UniqueIdentifier": wrapping_key_uid },
-                    "EncodingOption": "TTLVEncoding"
-                }
-            }
-        }
-    }))
-    .map_err(|e| DbError::DatabaseError(format!("failed to build wrapped object: {e}")))?;
-    let dbo = RedisDbObject::new(
-        wrapped_obj,
-        owner.to_owned(),
-        State::Active,
-        Some(HashSet::new()),
-        Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            state: Some(State::Active),
-            ..Default::default()
-        },
-    );
-    resumed.objects_db().object_upsert(uid, &dbo).await?;
-    resumed.set_db_version("5.16.0").await?;
-    redis::cmd("DEL")
-        .arg("wrapping_key_id_backfilled")
-        .query_async::<()>(&mut resumed.mgr.clone())
-        .await?;
-    let upgraded = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
-    assert_eq!(
-        upgraded.get_db_version().await?.as_deref(),
-        Some(env!("CARGO_PKG_VERSION"))
-    );
-    assert_eq!(upgraded.get_db_state().await?, Some(DbState::Ready));
-    let found = upgraded
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    assert!(
-        found.iter().any(|(id, _, _)| id.as_str() == uid),
-        "5.16.0 wrapped object must be found after startup migration"
-    );
-
     // An unversioned database with data is refused as legacy.
     redis::cmd("DEL")
         .arg("db_version")
         .arg("db_state")
-        .query_async::<()>(&mut upgraded.mgr.clone())
+        .query_async::<()>(&mut resumed.mgr.clone())
+        .await?;
+    redis::cmd("SET")
+        .arg("some_legacy_key")
+        .arg("v")
+        .query_async::<()>(&mut resumed.mgr.clone())
         .await?;
     let legacy = RedisWithFindex::instantiate(&redis_url, master_key, false).await;
     assert!(
@@ -1383,7 +1328,7 @@ pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
 
     // Leave nothing behind: this test intentionally corrupts the migration markers.
     redis::cmd("FLUSHDB")
-        .query_async::<()>(&mut upgraded.mgr.clone())
+        .query_async::<()>(&mut resumed.mgr.clone())
         .await?;
     Ok(())
 }

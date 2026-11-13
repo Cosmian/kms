@@ -11,10 +11,9 @@ use redis::aio::ConnectionManager;
 
 use super::{
     get_redis_url,
-    sql_migration_tests::assert_markers,
     sqlite_migration_tests::{
-        assert_ready, assert_serial_tag, assert_store_objects_and_grants, assert_wrapped_key_found,
-        expect_steps,
+        assert_markers, assert_ready, assert_serial_tag, assert_store_objects_and_grants,
+        assert_wrapped_key_found, expect_steps,
     },
 };
 use crate::{
@@ -410,38 +409,36 @@ async fn step_by_step_matches_all_at_once(fixture: &RedisFixture) -> DbResult<()
     Ok(())
 }
 
-async fn released_fixture(
-    fixture: &RedisFixture,
-    version: &str,
-    expected: &[MigrationStep],
-) -> DbResult<()> {
-    fixture.restore(version).await?;
-    let original = fixture.preserved_snapshot().await?;
-    let (pool, applied) = fixture.open(false, TARGET).await?;
-    expect_steps(&applied, expected)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true, true).await?;
-    assert_serial_findex_lookup(&pool, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
-}
-
-async fn markers_already_set(fixture: &RedisFixture) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_snapshot().await?;
-    fixture
-        .seed_parameters(&[
-            (WrappingKeyIdBackfill.marker(), "true"),
-            (CertificateSerialTagBackfill.marker(), "true"),
-        ])
-        .await?;
-    let (pool, applied) = fixture.open(false, TARGET).await?;
-    expect_steps(&applied, &[])?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_serial_tag(&pool, false, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
+/// Released databases migrate to the target. The last row is recorded after the oldest step
+/// (5.15.0) yet below the 5.20.0 baseline, so only the reset to 0.0.0 offers every step.
+async fn released_fixtures(fixture: &RedisFixture) -> DbResult<()> {
+    let cases: [(&str, Option<&str>, &[MigrationStep]); 3] = [
+        ("5.24.0", None, &BOTH_STEPS),
+        ("5.28.0", None, &[CertificateSerialTagBackfill]),
+        ("5.20.0", Some("5.16.0"), &MIGRATION_STEPS),
+    ];
+    for (version, recorded, expected) in cases {
+        fixture.restore(version).await?;
+        let original = fixture.preserved_snapshot().await?;
+        if let Some(recorded) = recorded {
+            fixture.seed_parameters(&[("db_version", recorded)]).await?;
+        }
+        let (pool, applied) = fixture.open(false, TARGET).await?;
+        expect_steps(&applied, expected)
+            .map_err(|error| db_error!("Fixture {version} recorded {recorded:?}: {error}"))?;
+        assert_ready(&pool, TARGET).await?;
+        let markers: &[MigrationStep] = if recorded.is_some() {
+            &MIGRATION_STEPS
+        } else {
+            &BOTH_STEPS
+        };
+        assert_markers(&pool, markers).await?;
+        assert_wrapped_key_found(&pool).await?;
+        assert_serial_tag(&pool, true, true).await?;
+        assert_serial_findex_lookup(&pool, true).await?;
+        assert_fixture_preserved(fixture, &pool, &original).await?;
+    }
+    Ok(())
 }
 
 async fn newer_and_invalid_versions_are_refused(fixture: &RedisFixture) -> DbResult<()> {
@@ -485,33 +482,6 @@ async fn newer_and_invalid_versions_are_refused(fixture: &RedisFixture) -> DbRes
     Ok(())
 }
 
-async fn interrupted_and_below_baseline(fixture: &RedisFixture) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_snapshot().await?;
-    fixture
-        .seed_parameters(&[("db_version", "5.24.0"), ("db_state", "\"upgrading\"")])
-        .await?;
-    let (pool, applied) = fixture.open(false, TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await?;
-    drop(pool);
-
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_snapshot().await?;
-    fixture.seed_parameters(&[("db_version", "5.16.0")]).await?;
-    let (pool, applied) = fixture.open(false, TARGET).await?;
-    expect_steps(&applied, &MIGRATION_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &MIGRATION_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
-}
-
 async fn clear_and_reopen(fixture: &RedisFixture) -> DbResult<()> {
     fixture.restore("5.20.0").await?;
     fixture.seed_parameters(&[("db_version", "99.0.0")]).await?;
@@ -537,6 +507,14 @@ async fn clear_and_reopen(fixture: &RedisFixture) -> DbResult<()> {
     db_ensure!(
         fixture.raw_do_blobs().await? == migrated_blobs,
         "Reopening a migrated Redis database changed object ciphertexts"
+    );
+    // Rewinding `db_version` puts both steps back in range so the completion markers in Redis
+    // — not the version check — are what keep the ciphertexts untouched.
+    fixture.seed_parameters(&[("db_version", "5.20.0")]).await?;
+    expect_steps(&pool.bootstrap(false, TARGET).await?, &[])?;
+    db_ensure!(
+        fixture.raw_do_blobs().await? == migrated_blobs,
+        "Completed-marker skip changed Redis object ciphertexts"
     );
     assert_ready(&pool, TARGET).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
@@ -625,11 +603,8 @@ pub(super) async fn redis_migration_scenarios() -> DbResult<()> {
         unversioned_with_data_is_refused(&fixture).await?;
         below_minimum_version_is_refused(&fixture).await?;
         step_by_step_matches_all_at_once(&fixture).await?;
-        released_fixture(&fixture, "5.24.0", &BOTH_STEPS).await?;
-        released_fixture(&fixture, "5.28.0", &[CertificateSerialTagBackfill]).await?;
-        markers_already_set(&fixture).await?;
+        released_fixtures(&fixture).await?;
         newer_and_invalid_versions_are_refused(&fixture).await?;
-        interrupted_and_below_baseline(&fixture).await?;
         clear_and_reopen(&fixture).await?;
         concurrent_startup_and_lock_semantics(&fixture).await
     }
