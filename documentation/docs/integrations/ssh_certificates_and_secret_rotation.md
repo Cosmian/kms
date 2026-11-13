@@ -4,6 +4,39 @@ This guide covers the KMS SSH certificate API and a rotation pattern for the cre
 
 For the separate OpenSSH PKCS#11 integration, see [OpenSSH keys in the KMS](openssh.md). For KV configuration and supported Vault-compatible operations, see [Vault-compatible KV Secret Store](../configuration/secret_backends.md#vault-compatible-kv-secret-store).
 
+## Overview
+
+The KMS plays two independent roles here: it signs short-lived SSH user certificates with a CA key that never leaves the KMS, and it generates passwords that an external orchestrator rotates and publishes to KV v2.
+
+```mermaid
+flowchart LR
+    Officer["Crypto Officer"]
+    User["SSH user"]
+    Orchestrator["Rotation orchestrator"]
+    ExtSystem["External system<br/>(database, directory, service)"]
+    SshHost["SSH host<br/>(sshd)"]
+    Consumer["KV consumer"]
+
+    subgraph KmsBox["Eviden KMS"]
+        SshApi["SSH API<br/>/v1/ssh/*"]
+        CaKey[("CA private key<br/>KMS or HSM")]
+        PwdApi["Password API<br/>/v1/secrets/password"]
+        KvApi["KV v2 API<br/>/v1/kv/*"]
+    end
+
+    Officer -- "configure CA and roles" --> SshApi
+    SshApi -- "sign" --> CaKey
+    User -- "public key" --> SshApi
+    SshApi -- "short-lived certificate" --> User
+    User -- "certificate login" --> SshHost
+    SshHost -. "TrustedUserCAKeys<br/>(CA public key)" .-> SshApi
+
+    Orchestrator -- "generate password" --> PwdApi
+    Orchestrator -- "change credential" --> ExtSystem
+    Orchestrator -- "publish password" --> KvApi
+    Consumer -- "read password" --> KvApi
+```
+
 ## Prerequisites
 
 - A running KMS instance with an active RSA or NIST ECDSA private key that permits `Sign`. Ed25519 CA keys are supported only in non-FIPS builds.
@@ -53,6 +86,16 @@ curl --fail-with-body --silent --show-error \
 
 Role names may contain ASCII letters, digits, `_`, `-`, and `.`. Principal names are exact login names; wildcard principals and duplicate entries are rejected. `allowed_users` lists the authenticated KMS user names (for example the JWT email, the client certificate subject, or the API-token user) that may sign with the role; wildcards are rejected, and an empty or omitted list restricts the role to active Crypto Officers. The certificate includes the `permit-pty` extension.
 
+```mermaid
+flowchart TD
+    Start["Crypto Officer"] --> SetCa["PUT /v1/ssh/config/ca<br/>with ca_key_uid"]
+    SetCa --> GetPub["GET /v1/ssh/public_key"]
+    GetPub --> Install["Install on each SSH host<br/>and set TrustedUserCAKeys"]
+    SetCa --> SetRole["PUT /v1/ssh/roles/NAME<br/>principals, users, TTLs"]
+    Install --> Ready["Role users can request certificates"]
+    SetRole --> Ready
+```
+
 ## Issue a short-lived user certificate
 
 Generate a user key pair locally. Use an algorithm permitted by your deployment policy; Ed25519 user keys require a non-FIPS build.
@@ -75,6 +118,25 @@ curl --fail-with-body --silent --show-error \
 ```
 
 Use `ssh-keygen -L -f "$HOME/.ssh/id_ecdsa-cert.pub"` to inspect the certificate. Configure the SSH client to use the certificate alongside its private key, then connect as one of the certificate's allowed principals.
+
+```mermaid
+sequenceDiagram
+    participant Alice as SSH user
+    participant Kms as Eviden KMS<br/>(SSH API)
+    participant Ca as CA key<br/>(KMS or HSM)
+    participant Sshd as SSH host<br/>(sshd)
+
+    Alice->>Alice: ssh-keygen (private key stays local)
+    Alice->>Kms: POST /v1/ssh/sign/ROLE (public key, principals, ttl)
+    Kms->>Kms: Check allowed_users, allowed_principals, max_ttl
+    Kms->>Ca: Sign certificate (internal SSH identity)
+    Ca-->>Kms: Signature
+    Kms-->>Alice: signed_key (certificate)
+    Note over Kms: Audit event SSH_CERTIFICATE_ISSUED
+    Alice->>Sshd: Connect with key and certificate
+    Sshd->>Sshd: Verify CA signature, principal and validity window
+    Sshd-->>Alice: Access granted until the certificate expires
+```
 
 ## Generate a password for an external rotation
 
@@ -101,6 +163,23 @@ The procedure has four steps. Only step 2 depends on the system being rotated; t
 4. Remove the pending file.
 
 The pending copy lets the same credential be published again if the KV write fails after the external system has changed. Set `API_URL`, `API_TOKEN` and `KV_TOKEN` in the environment, plus the connection details of the system being rotated (the examples use `DATABASE_URL`, `DB_HOST`, `DB_ADMIN_USER` and `DB_ADMIN_PASSWORD`). Use a TLS-verified connection to the external system. Protect the pending file's directory with encrypted storage and access controls.
+
+```mermaid
+sequenceDiagram
+    participant Orch as Orchestrator
+    participant Kms as Eviden KMS
+    participant Pending as Pending file<br/>(mode 0600)
+    participant Ext as External system
+
+    Orch->>Kms: POST /v1/secrets/password
+    Kms-->>Orch: data.password (not stored)
+    Orch->>Pending: Write password
+    Orch->>Ext: Change credential (step 2)
+    Ext-->>Orch: Accepted
+    Orch->>Kms: POST /v1/kv/data/PATH (X-Vault-Token)
+    Kms-->>Orch: Written
+    Orch->>Pending: Remove file
+```
 
 First generate the password and write it to the pending file without printing it:
 
@@ -160,6 +239,20 @@ After the KV write succeeds, remove the pending file:
 
 ```bash
 rm -f "$pending_file"
+```
+
+Failure handling, in order of what has already happened:
+
+```mermaid
+flowchart TD
+    Gen["Password generated<br/>and saved in pending file"] --> Change{"External system<br/>changed?"}
+    Change -- "no" --> Check["Do not publish<br/>Confirm system state"]
+    Check --> Discard["Remove pending file<br/>once no longer needed"]
+    Change -- "yes" --> Publish{"KV write<br/>succeeded?"}
+    Publish -- "yes" --> Cleanup["Remove pending file"]
+    Publish -- "no" --> Retry["Keep pending file<br/>Retry only the KV write<br/>Alert the operator"]
+    Retry --> Publish
+    Retry -. "pending file lost" .-> Recover["Use approved recovery procedure<br/>Set and publish a new password"]
 ```
 
 If the external system accepted the new password but the KV write failed, do not generate another password or change the external system again. Keep the pending file protected and retry only the KV publication step with that same file. Alert the operator and remove the file only after the secret is available to consumers. If the pending copy is lost, use the system's approved recovery procedure to set and publish a new password before resuming consumers.
