@@ -19,7 +19,8 @@ pub use hsm::{
 pub use object_handle::{HsmUidParts, ObjectHandle};
 pub use stores::{
     AtomicOperation, AuditSink, ChainHead, DestroyedFilter, FindOptions, GCM_MAX_INVOCATIONS,
-    ObjectWithMetadata, ObjectsStore, PermissionsStore, SealReason, WriteOutcome,
+    KeyInventoryBucket, ObjectWithMetadata, ObjectsStore, PermissionsStore, SealReason,
+    WriteOutcome,
 };
 pub use user_id::UserId;
 

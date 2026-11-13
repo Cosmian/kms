@@ -16,7 +16,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
-    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
+    KeyInventoryBucket, ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
@@ -24,13 +24,13 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::{
-    crl_number_from_sql, crl_number_to_sql,
+    crl_number_from_sql, crl_number_to_sql, key_inventory_row,
     locate_query::{
         LocateParam, LocateQuery, SqlitePlaceholder, filter_due_for_rotation,
         find_by_rotate_name_query, find_due_for_rotation_query, query_all_from_attributes,
         query_from_attributes,
     },
-    merge_granted_operations,
+    merge_granted_operations, parse_deactivation_dates,
 };
 use crate::{
     core::ClusterNode,
@@ -1164,6 +1164,44 @@ impl ObjectsStore for SqlitePool {
             )
             .await?;
         Ok(count)
+    }
+
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        let sql = get_sqlite_query!("key-inventory");
+        let rows = self
+            .reader()
+            .call(
+                |c: &mut rusqlite::Connection| -> Result<Vec<_>, rusqlite::Error> {
+                    let mut stmt = c.prepare(sql)?;
+                    let rows = stmt.query_map([], |row| {
+                        Ok(key_inventory_row(
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    })?;
+                    rows.collect()
+                },
+            )
+            .await?;
+        Ok(rows)
+    }
+
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
+        let sql = get_sqlite_query!("key-deactivation-dates");
+        let raw = self
+            .reader()
+            .call(
+                |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare(sql)?;
+                    let rows = stmt.query_map([], |row| row.get(0))?;
+                    rows.collect()
+                },
+            )
+            .await?;
+        Ok(parse_deactivation_dates(raw))
     }
 }
 
