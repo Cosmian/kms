@@ -23,7 +23,7 @@ where
     }
 }
 
-/// Publish this node's heartbeat and periodically elect a node for cluster-wide work.
+/// Publish this node's heartbeat and elect a leader, shown by `/cluster/status` only.
 pub fn spawn_cluster_heartbeat_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
@@ -86,7 +86,8 @@ async fn update_cluster_heartbeat(kms: &Arc<KMS>) {
         return;
     }
 
-    if !is_leader
+    // Only elect when no live leader exists; the check is repeated under the lock.
+    if !existing_nodes.iter().any(|node| node.is_leader)
         && let Err(e) = kms
             .database
             .with_cron_lock("cluster-heartbeat-leader", || async {
