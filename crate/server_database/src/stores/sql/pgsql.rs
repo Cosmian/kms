@@ -6,8 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -427,6 +427,7 @@ impl PgPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-gcm_invocations",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -583,6 +584,7 @@ impl PgPool {
                 "clean-table-tags",
                 "clean-table-objects",
                 "clean-table-crls",
+                "clean-table-gcm_invocations",
             ] {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -1292,6 +1294,34 @@ impl ObjectsStore for PgPool {
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let count: i64 = row.get(0);
             Ok(u64::try_from(count).unwrap_or(0))
+        })
+    }
+
+    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
+        if count > GCM_MAX_INVOCATIONS {
+            return Ok(None);
+        }
+        // within the cap, so they fit an i64
+        let (count, max) = (count.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
+        pg_retry!(self.pool, |client| {
+            let row = client
+                .query_opt(
+                    get_pgsql_query!("reserve-gcm-invocations"),
+                    &[&uid, &count, &max],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(row.map(|row| row.get::<_, i64>(0).cast_unsigned()))
+        })
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            client
+                .execute(get_pgsql_query!("delete-gcm-invocations"), &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
         })
     }
 

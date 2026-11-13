@@ -194,6 +194,14 @@ pub(crate) trait CryptoOpSpec {
     /// - MAC/MACVerify: data length
     fn usage_data_len(request: &Self::Request) -> usize;
 
+    /// Number of AES-GCM invocations with a server-generated IV that this request makes with the
+    /// key `owm`. NIST SP 800-38D §8.3 caps them at 2^32 per key; the server refuses more.
+    ///
+    /// Default: 0 - override for the operations that encrypt with AES-GCM.
+    fn gcm_invocations(_owm: &ObjectWithMetadata, _request: &Self::Request) -> u64 {
+        0
+    }
+
     /// Key states accepted by this operation.
     ///
     /// Per KMIP 2.1 §3.31:
@@ -553,6 +561,15 @@ impl KMS {
         // not, so it can run once on `owm`, before any unwrapping takes place.
         enforce_kmip_algorithm_policy_for_retrieved_key(&self.params, Op::OP_NAME, owm.id(), owm)?;
         owm.enforce_usage_limits(data_len)?;
+
+        // Reserved before the operation: a failure afterwards wastes invocations, it never lets
+        // one be used twice.
+        let gcm_invocations = Op::gcm_invocations(owm, request);
+        if gcm_invocations > 0 {
+            self.database
+                .reserve_gcm_invocations(owm.id(), gcm_invocations)
+                .await?;
+        }
 
         // Fast path: a non-wrapped key with no usage limits — by far the most
         // common crypto request (e.g. a plain symmetric key served from the

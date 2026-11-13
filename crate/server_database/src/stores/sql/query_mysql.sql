@@ -346,3 +346,29 @@ SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
 
 -- name: set-session-lock-wait-timeout
 SET SESSION innodb_lock_wait_timeout=10;
+
+-- ── AES-GCM invocation counter (NIST SP 800-38D §8.3) ──────────────────────────
+-- One row per key, apart from the objects table so that counting never changes an object's
+-- version. MySQL has no `RETURNING`: a reservation locks the row, checks the cap, then updates.
+
+-- name: create-table-gcm_invocations
+CREATE TABLE IF NOT EXISTS gcm_invocations
+(
+    object_id VARCHAR(128) NOT NULL PRIMARY KEY,
+    `count`   BIGINT       NOT NULL
+);
+
+-- name: clean-table-gcm_invocations
+DELETE FROM gcm_invocations;
+
+-- name: init-gcm-invocations
+INSERT IGNORE INTO gcm_invocations (object_id, `count`) VALUES (?, 0);
+
+-- name: select-gcm-invocations-for-update
+SELECT `count` FROM gcm_invocations WHERE object_id = ? FOR UPDATE;
+
+-- name: update-gcm-invocations
+UPDATE gcm_invocations SET `count` = `count` + ? WHERE object_id = ?;
+
+-- name: delete-gcm-invocations
+DELETE FROM gcm_invocations WHERE object_id = ?;

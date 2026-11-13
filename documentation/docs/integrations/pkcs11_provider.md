@@ -62,6 +62,11 @@ authenticated data (AAD), and tag length:
 `C_Decrypt` expects that same `ciphertext || tag` layout as input — this matches the convention
 used by OpenSSL's and most other PKCS#11 AES-GCM implementations.
 
+A FIPS build of the KMS generates the AES-GCM IV itself and refuses an encryption with the IV of `pIv`
+(FIPS 140-3 IG C.H): there, encrypt with `C_MessageEncryptInit` / `C_EncryptMessage` and
+`CK_GCM_MESSAGE_PARAMS.ivGenerator` = `CKG_GENERATE_RANDOM`, which returns the generated IV in `pIv`. `C_Decrypt`
+is not affected.
+
 ```c
 CK_BYTE iv[12] = { /* random IV */ };
 CK_BYTE aad[]  = "context-binding-data";
@@ -86,7 +91,8 @@ the provider buffers the data and sends it to the KMS once).
 - `CKM_AES_CMAC` takes no parameter and returns the 16-byte tag.
 - `CKM_AES_GMAC` takes a `CK_GCM_PARAMS` with a 12-byte IV (`pIv`/`ulIvLen`), `ulTagBits` = 128 and no
   AAD (`ulAADLen` = 0): the `C_Sign` data is the authenticated data and the signature is the 16-byte
-  tag. The IV must be unique for every message under one key.
+  tag. The IV must be unique for every message under one key. A FIPS build of the KMS refuses to sign with a
+  caller IV; verifying with one works.
 
 Both are computed by the KMIP `MAC` operation (the IV of GMAC travels in its `IVCounterNonce` field), as the
 OpenSSL provider's `CMAC` / `GMAC`, so the key needs the `MAC Generate` (sign) and `MAC Verify` (verify)

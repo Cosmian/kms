@@ -9,6 +9,21 @@ pub use password_derivation::FIPS_MIN_SALT_SIZE;
 
 use crate::error::CryptoError;
 
+/// Whether this is a FIPS build, where the KMS enforces the NIST parameter bounds that the
+/// OpenSSL FIPS provider does not check itself (e.g. through `PKCS5_PBKDF2_HMAC` or `HMAC`).
+#[cfg(not(feature = "non-fips"))]
+#[must_use]
+pub const fn is_fips_build() -> bool {
+    true
+}
+
+/// Whether this is a FIPS build (non-FIPS build: never).
+#[cfg(feature = "non-fips")]
+#[must_use]
+pub const fn is_fips_build() -> bool {
+    false
+}
+
 #[cfg(feature = "non-fips")]
 pub mod anonymization;
 pub mod certificates;

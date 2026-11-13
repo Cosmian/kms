@@ -13,9 +13,9 @@ order:
    first, then in the v3.0 interface table, so a v2.40 library that exports these names (even as stubs
    answering `CKR_FUNCTION_NOT_SUPPORTED`) is treated as v3-capable. If the call fails, the KMS continues
    with step 2 or 3 (versions without this fallback abort startup).
-2. **Classic `CKM_AES_GCM`, KMS-chosen random IV**: non-FIPS build with a profile that has
-   `supports_caller_iv`; FIPS build only for development-token profiles (`allows_caller_iv_in_fips`, SoftHSM2
-   and Kryoptic).
+2. **Classic `CKM_AES_GCM`, KMS-chosen random IV**: non-FIPS build only, with a profile that has
+   `supports_caller_iv`. A FIPS build never sends a KMS-chosen IV (FIPS 140-3 IG C.H), development tokens
+   (SoftHSM2, Kryoptic) included.
 3. **Classic `CKM_AES_GCM`, HSM-generated IV** (every other case, in particular the FIPS build): the KMS
    passes a zeroed IV buffer and the HSM must write the IV it generated back into it. An IV left at zero is
    refused, never used.
@@ -28,7 +28,7 @@ failures, are not retried).
 | KMS build | HSM library | HSM in FIPS mode | Result |
 | --- | --- | --- | --- |
 | FIPS | message API works | any | works, HSM-generated IV |
-| FIPS | no usable message API, classic returns the IV | any | works, HSM-generated IV (SoftHSM2 and Kryoptic development tokens: KMS-chosen IV) |
+| FIPS | no usable message API, classic returns the IV | any | works, HSM-generated IV |
 | FIPS | no usable message API, classic returns no IV | any | startup refused: `needs an IV generated inside the HSM`; use `aes-key-wrap-padding`, `aes-key-wrap` or `rsa-oaep` |
 | non-FIPS | message API works | any | works, HSM-generated IV |
 | non-FIPS | no usable message API, profile with `supports_caller_iv` | no | works, KMS-chosen IV |
@@ -57,10 +57,10 @@ sequenceDiagram
         Kms->>Hsm: Case A: PKCS#35;11 v3.0 message API, HSM generates the IV
         Hsm-->>Kms: ciphertext, tag, IV
     else Message API not usable, or it failed (see Case A)
-        alt Caller IV allowed: non-FIPS build with supports_caller_iv, or FIPS build with supports_caller_iv and allows_caller_iv_in_fips
+        alt Caller IV allowed: non-FIPS build with supports_caller_iv
             Kms->>Hsm: Case B: classic CKM_AES_GCM, KMS-chosen random IV
             Hsm-->>Kms: ciphertext and tag
-        else Every other case, in particular any FIPS build on a production HSM
+        else Every other case, in particular any FIPS build
             Kms->>Hsm: Case C: classic CKM_AES_GCM, zeroed IV buffer
             Hsm-->>Kms: ciphertext, tag, IV written back by the HSM
         end

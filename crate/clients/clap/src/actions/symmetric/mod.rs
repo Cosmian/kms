@@ -52,6 +52,7 @@ pub enum KeyEncryptionAlgorithm {
     #[cfg(feature = "non-fips")]
     Chacha20Poly1305,
     AesGcm,
+    #[cfg(feature = "non-fips")]
     AesXts,
     #[cfg(feature = "non-fips")]
     AesGcmSiv,
@@ -72,6 +73,7 @@ impl From<KeyEncryptionAlgorithm> for CryptographicParameters {
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..Self::default()
             },
+            #[cfg(feature = "non-fips")]
             KeyEncryptionAlgorithm::AesXts => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::XTS),

@@ -27,6 +27,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::{DerivationMethod, KeyFormatType, LinkType, UniqueIdentifier},
         },
     },
+    cosmian_kms_crypto::crypto::{FIPS_MIN_SALT_SIZE, is_fips_build},
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::debug;
@@ -965,6 +966,30 @@ fn get_message_digest(algorithm: HashingAlgorithm) -> KResult<MessageDigest> {
     }
 }
 
+/// NIST SP 800-132 §5: the derived key is at least 112 bits; §5.1: the salt is at least 128 bits;
+/// §5.2: an iteration count of at least 1,000 is recommended. `PKCS5_PBKDF2_HMAC` disables the
+/// FIPS provider's own lower bounds, so a FIPS build checks them here.
+fn ensure_fips_pbkdf2_parameters(salt: &[u8], iterations: u32, length: usize) -> KResult<()> {
+    const MIN_ITERATIONS: u32 = 1_000;
+    const MIN_LENGTH: usize = 14;
+    if !is_fips_build() {
+        return Ok(());
+    }
+    if salt.len() < FIPS_MIN_SALT_SIZE || iterations < MIN_ITERATIONS || length < MIN_LENGTH {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Bad_Cryptographic_Parameters,
+            format!(
+                "DeriveKey: PBKDF2 in FIPS mode needs a salt of at least {FIPS_MIN_SALT_SIZE} \
+                 bytes, at least {MIN_ITERATIONS} iterations and a derived key of at least \
+                 {MIN_LENGTH} bytes (NIST SP 800-132); got {} salt bytes, {iterations} \
+                 iterations, {length} key bytes",
+                salt.len()
+            )
+        ));
+    }
+    Ok(())
+}
+
 /// PBKDF2 key derivation using OpenSSL's `pbkdf2_hmac`
 ///
 /// Returns the derived key wrapped in [`Zeroizing`] so the bytes are scrubbed
@@ -976,6 +1001,7 @@ fn derive_pbkdf2(
     length: usize,
     hashing_algorithm: HashingAlgorithm,
 ) -> KResult<Zeroizing<Vec<u8>>> {
+    ensure_fips_pbkdf2_parameters(salt, iterations, length)?;
     let digest = get_message_digest(hashing_algorithm)?;
     let mut output = Zeroizing::new(vec![0_u8; length]);
 

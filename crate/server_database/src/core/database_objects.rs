@@ -10,7 +10,8 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, ObjectHandle, ObjectWithMetadata,
+    ObjectsStore, UserId,
 };
 use time::Date;
 
@@ -405,9 +406,44 @@ impl Database {
             Ok(db.update_state(uid, state).await?)
         })
         .await?;
+        if matches!(state, State::Destroyed | State::Destroyed_Compromised) {
+            self.delete_gcm_invocations(uid).await?;
+        }
         self.object_cache.invalidate(uid).await;
         self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
+    }
+
+    /// Reserve `count` AES-GCM (or GMAC) invocations with a random IV under the key `uid`
+    /// against the cap of NIST SP 800-38D §8.3, and return the key's new total.
+    ///
+    /// Call it before encrypting: a crash after the reservation wastes invocations, it never
+    /// lets one be used twice. A `count` of 0 returns the current total.
+    ///
+    /// # Errors
+    /// `Permission_Denied` when the key would exceed [`GCM_MAX_INVOCATIONS`] invocations
+    pub async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> DbResult<u64> {
+        self.record("reserve_gcm_invocations", async move {
+            let db = self.get_object_store(uid).await?;
+            db.reserve_gcm_invocations(uid, count)
+                .await?
+                .ok_or_else(|| {
+                    DbError::Kmip21Error(
+                        ErrorReason::Permission_Denied,
+                        format!(
+                            "AES-GCM invocation limit ({GCM_MAX_INVOCATIONS}) reached for {uid}: \
+                         rekey required (SP 800-38D §8.3)"
+                        ),
+                    )
+                })
+        })
+        .await
+    }
+
+    /// Forget the AES-GCM invocation count of a destroyed key.
+    async fn delete_gcm_invocations(&self, uid: &str) -> DbResult<()> {
+        let db = self.get_object_store(uid).await?;
+        Ok(db.delete_gcm_invocations(uid).await?)
     }
 
     /// Delete an object from the database.
@@ -417,6 +453,7 @@ impl Database {
             Ok(db.delete(uid).await?)
         })
         .await?;
+        self.delete_gcm_invocations(uid).await?;
         self.object_cache.invalidate(uid).await;
         self.unwrapped_cache.clear_cache(uid).await;
         self.rotate_name_cache.invalidate_member(uid, None);
@@ -785,9 +822,13 @@ impl Database {
                 AtomicOperation::Delete(uid) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
+                    self.delete_gcm_invocations(uid).await?;
                     self.rotate_name_cache.invalidate_member(uid, None);
                 }
-                AtomicOperation::UpdateState((uid, _)) => {
+                AtomicOperation::UpdateState((uid, state)) => {
+                    if matches!(state, State::Destroyed | State::Destroyed_Compromised) {
+                        self.delete_gcm_invocations(uid).await?;
+                    }
                     // Evict the stale object so the new lifecycle state is
                     // visible immediately on the next retrieve_object call.
                     self.object_cache.invalidate(uid).await;

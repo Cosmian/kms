@@ -570,6 +570,28 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
     Ok(())
 }
 
+/// RSAES-PKCS1-v1_5 is not approved: a FIPS build must refuse it before reaching the HSM.
+#[cfg(not(feature = "non-fips"))]
+pub fn rsa_pkcs_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let error = session
+        .encrypt(
+            0,
+            HsmEncryptionAlgorithm::RsaPkcsV15,
+            b"Hello, World!",
+            None,
+        )
+        .expect_err("RSA PKCS#1 v1.5 encryption must be refused in FIPS mode");
+    assert!(
+        error.to_string().contains("unavailable in FIPS mode"),
+        "{error}"
+    );
+    info!("RSA PKCS#1 v1.5 encryption is refused in FIPS mode");
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
 pub fn rsa_pkcs_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
@@ -669,6 +691,28 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with AES GCM");
+    Ok(())
+}
+
+/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`): a non-FIPS build encrypts
+/// with a KMS-chosen IV, a FIPS build must refuse rather than send one.
+#[cfg(feature = "non-fips")]
+pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> HResult<()> {
+    aes_gcm_encrypt(slot)
+}
+
+/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`): a non-FIPS build encrypts
+/// with a KMS-chosen IV, a FIPS build must refuse rather than send one.
+#[cfg(not(feature = "non-fips"))]
+pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> HResult<()> {
+    let Err(error) = aes_gcm_encrypt(slot) else {
+        return Err(HError::Default(
+            "The token accepted AES-GCM without generating an IV in FIPS mode".to_owned(),
+        ));
+    };
+    if !error.to_string().contains("did not generate an AES-GCM IV") {
+        return Err(error);
+    }
     Ok(())
 }
 

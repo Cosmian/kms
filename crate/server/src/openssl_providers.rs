@@ -1,6 +1,14 @@
 use std::ffi::{CStr, c_int};
+#[cfg(not(feature = "non-fips"))]
+use std::ffi::{c_char, c_void};
+#[cfg(not(feature = "non-fips"))]
+use std::ptr;
 
 use cosmian_logger::info;
+
+#[cfg(not(feature = "non-fips"))]
+use crate::error::KmsError;
+use crate::result::KResult;
 
 /// Minimum `OpenSSL_version_num()` value that indicates OpenSSL 3.x.
 /// Encoding: `MNNFFPPS` where M=major, NN=minor, etc.
@@ -386,6 +394,50 @@ fn init_optional_provider_once<T, E>(
     Ok(())
 }
 
+/// Make the FIPS provider the only source of algorithms: default fetch property `fips=yes`, and
+/// refuse to run when the unvalidated `default` provider is also in service.
+///
+/// The `OPENSSL_CONF` of an operator may activate `default`, and nothing else would stop
+/// implicit fetches from resolving to its non-validated implementations (including the DRBG).
+#[cfg(not(feature = "non-fips"))]
+#[expect(
+    unsafe_code,
+    reason = "OpenSSL provider/property queries not wrapped by the openssl crate"
+)]
+fn enforce_fips_provider_only() -> KResult<()> {
+    // SAFETY: a NULL library context selects the default one; no other pointer is passed.
+    let fips_enforced = unsafe {
+        openssl_sys::EVP_default_properties_enable_fips(ptr::null_mut(), 1) == 1
+            && openssl_sys::EVP_default_properties_is_fips_enabled(ptr::null_mut()) == 1
+    };
+    if !fips_enforced {
+        return Err(KmsError::ServerError(
+            "OpenSSL: unable to enforce the `fips=yes` default property".to_owned(),
+        ));
+    }
+    // SAFETY: a NULL library context selects the default one and the name is NUL-terminated.
+    let default_in_service =
+        unsafe { OSSL_PROVIDER_available(ptr::null_mut(), c"default".as_ptr()) } == 1;
+    if default_in_service {
+        return Err(KmsError::ServerError(
+            "OpenSSL: the non-validated `default` provider is active (check OPENSSL_CONF); the \
+             FIPS build must run on the FIPS provider only"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+// `OSSL_PROVIDER_available` is not exposed by `openssl-sys`.
+#[cfg(not(feature = "non-fips"))]
+#[expect(
+    unsafe_code,
+    reason = "FFI declaration of a provider API missing from openssl-sys"
+)]
+unsafe extern "C" {
+    fn OSSL_PROVIDER_available(ctx: *mut c_void, name: *const c_char) -> c_int;
+}
+
 /// Initialize OpenSSL providers for production KMS server.
 ///
 /// For FIPS mode: loads the FIPS provider.
@@ -398,15 +450,16 @@ fn init_optional_provider_once<T, E>(
 /// This function uses `OnceLock` to ensure providers are loaded only once and kept alive
 /// for the lifetime of the program.
 ///
-/// # Errors
-///
 /// Returns an error if the FIPS provider (FIPS mode) or the default provider
-/// (non-FIPS mode, pre-3.0 OpenSSL) fails to load. In non-FIPS mode with OpenSSL >= 3.0, a
+/// (non-FIPS mode, pre-3.0 OpenSSL) fails to load. In FIPS mode it also fails when the
+/// `fips=yes` default property cannot be enforced or when the unvalidated `default` provider is
+/// in service (an `OPENSSL_CONF` activating it): every algorithm must then come from the
+/// validated FIPS module. In non-FIPS mode with OpenSSL >= 3.0, a
 /// *legacy* provider load failure propagates as an error on every target **except** a fully
 /// static musl build (`target_env = "musl"` + `target_feature = "crt-static"`, i.e. the
 /// non-FIPS Alpine `.apk`), where `dlopen` can never succeed and the failure is instead
 /// logged as a warning — see below.
-pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
+pub fn init_openssl_providers() -> KResult<()> {
     use std::sync::OnceLock;
 
     use openssl::provider::Provider;
@@ -417,6 +470,7 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
         if PROVIDER.get().is_none() {
             info!("Load FIPS provider");
             let provider = Provider::load(None, "fips")?;
+            enforce_fips_provider_only()?;
             drop(PROVIDER.set(provider));
         }
         Ok(())
@@ -442,7 +496,7 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
         // initialized".
         static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
-        init_optional_provider_once(&PROVIDER, || {
+        Ok(init_optional_provider_once(&PROVIDER, || {
             let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
             if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
                 // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats.
@@ -463,7 +517,64 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
                 info!("Load default provider");
                 Ok(Some(Provider::load(None, "default")?))
             }
-        })
+        })?)
+    }
+}
+
+#[cfg(all(test, not(feature = "non-fips")))]
+mod fips_tests {
+    use std::{fs, process::Command, ptr};
+
+    use super::{init_openssl_providers, safe_openssl_version_info};
+
+    const CHILD_ENV: &str = "KMS_TEST_DEFAULT_PROVIDER_ACTIVATED";
+    const CHILD_TEST: &str =
+        "openssl_providers::fips_tests::test_init_refuses_active_default_provider";
+
+    #[test]
+    #[expect(unsafe_code, reason = "queries the OpenSSL default property state")]
+    fn test_init_enforces_fips_default_property() {
+        init_openssl_providers().unwrap();
+        // SAFETY: a NULL library context selects the default one.
+        let enforced =
+            unsafe { openssl_sys::EVP_default_properties_is_fips_enabled(ptr::null_mut()) };
+        assert_eq!(enforced, 1);
+    }
+
+    /// An `OPENSSL_CONF` that activates the unvalidated `default` provider must stop the server.
+    /// The OpenSSL configuration is read once per process, hence the re-executed child.
+    #[test]
+    fn test_init_refuses_active_default_provider() {
+        if std::env::var_os(CHILD_ENV).is_some() {
+            let error = init_openssl_providers().unwrap_err().to_string();
+            assert!(error.contains("`default` provider is active"), "{error}");
+            return;
+        }
+        let (_, version_dir, _) = safe_openssl_version_info();
+        let ssl_dir = version_dir
+            .trim_start_matches("OPENSSLDIR: \"")
+            .trim_end_matches('"');
+        let conf = format!(
+            "openssl_conf = openssl_init\n.include {ssl_dir}/fipsmodule.cnf\n[openssl_init]\n\
+             providers = provider_sect\n[provider_sect]\nfips = fips_sect\nbase = base_sect\n\
+             default = default_sect\n[base_sect]\nactivate = 1\n[default_sect]\nactivate = 1\n"
+        );
+        let conf_path =
+            std::env::temp_dir().join(format!("kms-default-active-{}.cnf", std::process::id()));
+        fs::write(&conf_path, conf).unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", CHILD_TEST, "--nocapture"])
+            .env(CHILD_ENV, "1")
+            .env("OPENSSL_CONF", &conf_path)
+            .output()
+            .unwrap();
+        drop(fs::remove_file(&conf_path));
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
 

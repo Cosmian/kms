@@ -238,9 +238,14 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
     }
 }
 
+/// A FIPS build refuses the RSA encryption schemes that are not approved (SHA-1 OAEP and
+/// PKCS#1 v1.5), like the server's own RSA code.
 #[cfg(not(feature = "non-fips"))]
 const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) -> bool {
-    !matches!(algorithm, HsmEncryptionAlgorithm::RsaOaepSha1)
+    !matches!(
+        algorithm,
+        HsmEncryptionAlgorithm::RsaOaepSha1 | HsmEncryptionAlgorithm::RsaPkcsV15
+    )
 }
 
 #[cfg(feature = "non-fips")]
@@ -248,10 +253,11 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
 }
 
-/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
+/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module, so a FIPS
+/// build never sends a caller-chosen IV.
 #[cfg(not(feature = "non-fips"))]
-const fn caller_gcm_iv_allowed(c: &AesGcmCapabilities) -> bool {
-    c.supports_caller_iv && c.allows_caller_iv_in_fips
+const fn caller_gcm_iv_allowed(_: &AesGcmCapabilities) -> bool {
+    false
 }
 
 #[cfg(feature = "non-fips")]
@@ -1236,9 +1242,9 @@ impl Session {
         iv_counter_nonce: Option<&[u8]>,
     ) -> HResult<EncryptedContent> {
         if !is_encryption_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "{algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
@@ -1336,9 +1342,9 @@ impl Session {
         ciphertext: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
         if !is_encryption_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "{algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => self.decrypt_aes_gcm(key_handle, ciphertext),
@@ -4325,22 +4331,11 @@ mod tests {
         assert_eq!(aad_len, 0);
     }
 
-    #[test]
-    fn caller_gcm_iv_policy_development_token() {
-        let development_token = AesGcmCapabilities {
-            supports_caller_iv: true,
-            allows_caller_iv_in_fips: true,
-            ..Default::default()
-        };
-        assert!(caller_gcm_iv_allowed(&development_token));
-    }
-
     #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_policy_production_non_fips() {
         let production = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(caller_gcm_iv_allowed(&production));
@@ -4351,7 +4346,6 @@ mod tests {
     fn caller_gcm_iv_policy_production_fips() {
         let production = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(!caller_gcm_iv_allowed(&production));
@@ -4412,8 +4406,8 @@ mod tests {
         assert_ne!(content.iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
     }
 
-    fn check_classic_gcm_policy(rows: &[(bool, bool, bool)]) -> HResult<()> {
-        for &(supports_caller_iv, allows_caller_iv_in_fips, expect_caller_iv) in rows {
+    fn check_classic_gcm_policy(rows: &[(bool, bool)]) -> HResult<()> {
+        for &(supports_caller_iv, expect_caller_iv) in rows {
             for supports_message in [false, true] {
                 let mut args = Vec::new();
                 if expect_caller_iv {
@@ -4425,7 +4419,6 @@ mod tests {
                 let content = fips_hsm_gcm_encrypt(
                     AesGcmCapabilities {
                         supports_caller_iv,
-                        allows_caller_iv_in_fips,
                         supports_message,
                     },
                     &args,
@@ -4442,40 +4435,27 @@ mod tests {
     #[cfg(not(feature = "non-fips"))]
     #[test]
     fn classic_gcm_policy_fips() -> HResult<()> {
-        check_classic_gcm_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, false),
-            (true, true, true),
-        ])
+        check_classic_gcm_policy(&[(false, false), (true, false)])
     }
 
     #[cfg(feature = "non-fips")]
     #[test]
     fn classic_gcm_policy_non_fips() -> HResult<()> {
-        check_classic_gcm_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, true),
-            (true, true, true),
-        ])
+        check_classic_gcm_policy(&[(false, false), (true, true)])
     }
 
     #[test]
     fn message_gcm_precedes_classic_iv_policy() -> HResult<()> {
         for supports_caller_iv in [false, true] {
-            for allows_caller_iv_in_fips in [false, true] {
-                let content = fips_hsm_gcm_encrypt(
-                    AesGcmCapabilities {
-                        supports_caller_iv,
-                        allows_caller_iv_in_fips,
-                        supports_message: true,
-                    },
-                    &["-DMESSAGE_SUCCESS"],
-                )?;
-                assert_fixture_encryption(&content);
-                assert_eq!(content.iv, Some((0xB0_u8..=0xBB).collect()));
-            }
+            let content = fips_hsm_gcm_encrypt(
+                AesGcmCapabilities {
+                    supports_caller_iv,
+                    supports_message: true,
+                },
+                &["-DMESSAGE_SUCCESS"],
+            )?;
+            assert_fixture_encryption(&content);
+            assert_eq!(content.iv, Some((0xB0_u8..=0xBB).collect()));
         }
         Ok(())
     }
@@ -4490,7 +4470,6 @@ mod tests {
             let content = fips_hsm_gcm_encrypt(
                 AesGcmCapabilities {
                     supports_caller_iv: false,
-                    allows_caller_iv_in_fips: false,
                     supports_message,
                 },
                 &args,
@@ -4501,11 +4480,10 @@ mod tests {
         Ok(())
     }
 
-    fn check_caller_iv_policy(rows: &[(bool, bool, bool)]) -> HResult<()> {
-        for &(supports_caller_iv, allows_caller_iv_in_fips, accepted) in rows {
+    fn check_caller_iv_policy(rows: &[(bool, bool)]) -> HResult<()> {
+        for &(supports_caller_iv, accepted) in rows {
             let gcm = AesGcmCapabilities {
                 supports_caller_iv,
-                allows_caller_iv_in_fips,
                 supports_message: true,
             };
             let rejecting = gcm_fixture_session(gcm.clone(), &["-DREJECT_DRIVER_OPERATIONS"])?;
@@ -4545,32 +4523,22 @@ mod tests {
     #[cfg(not(feature = "non-fips"))]
     #[test]
     fn caller_gcm_iv_policy_fips() -> HResult<()> {
-        check_caller_iv_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, false),
-            (true, true, true),
-        ])
+        check_caller_iv_policy(&[(false, false), (true, false)])
     }
 
     #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_policy_non_fips() -> HResult<()> {
-        check_caller_iv_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, true),
-            (true, true, true),
-        ])
+        check_caller_iv_policy(&[(false, false), (true, true)])
     }
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_driver_refusal_is_reported() -> HResult<()> {
         // Without EXPECT_CALLER_IV the fixture models an HSM that refuses a nonzero IV.
         let session = gcm_fixture_session(
             AesGcmCapabilities {
                 supports_caller_iv: true,
-                allows_caller_iv_in_fips: true,
                 supports_message: false,
             },
             &[],
@@ -4587,7 +4555,6 @@ mod tests {
         let session = gcm_fixture_session(
             AesGcmCapabilities {
                 supports_caller_iv: false,
-                allows_caller_iv_in_fips: false,
                 supports_message: false,
             },
             &["-DIGNORE_IV_BUFFER"],
@@ -4614,7 +4581,6 @@ mod tests {
         gcm_fixture_session(
             AesGcmCapabilities {
                 supports_caller_iv: false,
-                allows_caller_iv_in_fips: false,
                 supports_message,
             },
             args,
@@ -4675,11 +4641,11 @@ mod tests {
     }
 
     /// A driver that replaces the accepted caller IV must not have its output trusted.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_replaced_by_the_driver_is_rejected() -> HResult<()> {
         let gcm = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: true,
             supports_message: false,
         };
         let session = gcm_fixture_session(gcm, &["-DEXPECT_CALLER_IV", "-DOVERWRITE_CALLER_IV"])?;
@@ -4881,19 +4847,24 @@ mod tests {
 
     #[cfg(not(feature = "non-fips"))]
     #[test]
-    fn sha1_oaep_dispatchers_reject_before_driver_operation() -> HResult<()> {
+    fn unapproved_rsa_encryption_dispatchers_reject_before_driver_operation() -> HResult<()> {
         let session = decrypt_fixture_session(false, &["-DREJECT_DRIVER_OPERATIONS"])?;
-        let encrypt = session
-            .encrypt(1, HsmEncryptionAlgorithm::RsaOaepSha1, b"hello", None)
-            .expect_err("SHA1 OAEP is unavailable in FIPS");
-        let decrypt = session
-            .decrypt(1, HsmEncryptionAlgorithm::RsaOaepSha1, b"hello")
-            .expect_err("SHA1 OAEP is unavailable in FIPS");
-        for error in [encrypt, decrypt] {
-            assert_eq!(
-                error.to_string(),
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode"
-            );
+        for algorithm in [
+            HsmEncryptionAlgorithm::RsaOaepSha1,
+            HsmEncryptionAlgorithm::RsaPkcsV15,
+        ] {
+            let encrypt = session
+                .encrypt(1, algorithm, b"hello", None)
+                .expect_err("unapproved RSA encryption is unavailable in FIPS");
+            let decrypt = session
+                .decrypt(1, algorithm, b"hello")
+                .expect_err("unapproved RSA decryption is unavailable in FIPS");
+            for error in [encrypt, decrypt] {
+                assert_eq!(
+                    error.to_string(),
+                    format!("{algorithm:?} is unavailable in FIPS mode")
+                );
+            }
         }
         Ok(())
     }

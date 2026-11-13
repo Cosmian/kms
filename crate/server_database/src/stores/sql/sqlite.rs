@@ -14,8 +14,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
@@ -254,10 +254,12 @@ impl SqlitePool {
             .get_query("create-table-crypto_officer_activations")?
             .to_owned();
         let create_crls = pool.get_query("create-table-crls")?.to_owned();
+        let create_gcm_invocations = get_sqlite_query!("create-table-gcm_invocations").to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
         let clean_crls = pool.get_query("clean-table-crls")?.to_owned();
+        let clean_gcm_invocations = get_sqlite_query!("clean-table-gcm_invocations").to_owned();
         // The schema-bootstrap transaction needs a write lock; retry on a transient lock
         // (see `retry_on_transient_lock`) in case a previous writer connection to the same
         // file (e.g. from an immediately-preceding `KMS` instance in the same process) has
@@ -276,10 +278,12 @@ impl SqlitePool {
             let idx_objects_type_state = idx_objects_type_state.clone();
             let create_crypto_officer_activations = create_crypto_officer_activations.clone();
             let create_crls = create_crls.clone();
+            let create_gcm_invocations = create_gcm_invocations.clone();
             let clean_objects = clean_objects.clone();
             let clean_read_access = clean_read_access.clone();
             let clean_tags = clean_tags.clone();
             let clean_crls = clean_crls.clone();
+            let clean_gcm_invocations = clean_gcm_invocations.clone();
             async {
                 pool.writer
                     .call(
@@ -301,11 +305,13 @@ impl SqlitePool {
                                 [],
                             )?;
                             tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
+                            tx.execute(&create_gcm_invocations, [])?;
                             if clear_database {
                                 tx.execute(&clean_objects, [])?;
                                 tx.execute(&clean_read_access, [])?;
                                 tx.execute(&clean_tags, [])?;
                                 tx.execute(&clean_crls, [])?;
+                                tx.execute(&clean_gcm_invocations, [])?;
                             }
                             tx.commit()?;
                             Ok(())
@@ -1112,6 +1118,40 @@ impl ObjectsStore for SqlitePool {
             )
             .await?;
         Ok(count)
+    }
+
+    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
+        if count > GCM_MAX_INVOCATIONS {
+            return Ok(None);
+        }
+        let sql = get_sqlite_query!("reserve-gcm-invocations");
+        let uid = uid.to_owned();
+        // within the cap, so it fits an i64
+        let (count, max) = (count.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
+        let total = self
+            .writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
+                    c.query_row(sql, rusqlite::params![uid, count, max], |row| row.get(0))
+                        .optional()
+                },
+            )
+            .await?;
+        Ok(total.map(i64::cast_unsigned))
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        let sql = get_sqlite_query!("delete-gcm-invocations");
+        let uid = uid.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(sql, rusqlite::params![uid])?;
+                    Ok(())
+                },
+            )
+            .await?;
+        Ok(())
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {

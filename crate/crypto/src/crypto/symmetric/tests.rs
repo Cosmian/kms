@@ -6,8 +6,9 @@ use crate::crypto::symmetric::symmetric_ciphers::AES_128_GCM_SIV_MAC_LENGTH;
 use crate::crypto::{
     KmsRng,
     symmetric::symmetric_ciphers::{
-        AES_128_GCM_MAC_LENGTH, AES_256_GCM_MAC_LENGTH, Mode, SymCipher, decrypt, encrypt,
-        random_key, random_nonce,
+        AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH, AES_256_GCM_IV_LENGTH,
+        AES_256_GCM_MAC_LENGTH, Mode, SymCipher, aes_gcm_encrypt_generated_iv,
+        caller_gcm_iv_allowed, decrypt, encrypt, random_key, random_nonce,
     },
 };
 
@@ -22,13 +23,13 @@ fn test_encrypt_decrypt_aes_gcm_128() {
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes128Gcm).unwrap();
 
-    let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes128Gcm).unwrap();
-
     let mut aad = vec![0_u8; 24];
     KmsRng::new().fill_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) =
-        encrypt(SymCipher::Aes128Gcm, &key, &nonce, &aad, &message, None).unwrap();
+    let (nonce, ciphertext, tag) =
+        aes_gcm_encrypt_generated_iv(SymCipher::Aes128Gcm, &key, &aad, &message).unwrap();
+    assert_eq!(nonce.len(), AES_128_GCM_IV_LENGTH);
+    assert!(nonce.iter().any(|b| *b != 0));
     assert_eq!(ciphertext.len(), message.len());
     assert_eq!(tag.len(), AES_128_GCM_MAC_LENGTH);
 
@@ -44,13 +45,44 @@ fn test_encrypt_decrypt_aes_gcm_128() {
     .unwrap();
 
     assert_eq!(decrypted_data.to_vec(), message);
+
+    // every call draws a fresh IV
+    let (nonce2, _, _) =
+        aes_gcm_encrypt_generated_iv(SymCipher::Aes128Gcm, &key, &aad, &message).unwrap();
+    assert_ne!(nonce, nonce2);
+}
+
+/// FIPS build: a caller-supplied IV can no longer encrypt with AES-GCM (SP 800-38D §9.1).
+#[cfg(not(feature = "non-fips"))]
+#[test]
+fn test_fips_rejects_caller_gcm_iv() {
+    Provider::load(None, "fips").unwrap();
+    let key = random_key(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
+    let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
+    assert!(matches!(
+        encrypt(SymCipher::Aes256Gcm, &key, &nonce, b"aad", b"message", None),
+        Err(crate::CryptoError::NotSupported(_))
+    ));
+    assert!(matches!(
+        SymCipher::Aes256Gcm.stream_cipher(Mode::Encrypt, &key, &nonce, b"aad"),
+        Err(crate::CryptoError::NotSupported(_))
+    ));
+    // decryption (IG C.H Additional Comment 7) is unaffected
+    SymCipher::Aes256Gcm
+        .stream_cipher(Mode::Decrypt, &key, &nonce, b"aad")
+        .unwrap();
 }
 
 /// Decrypt with the tag truncated to `len` bytes: `[single-part, streaming]` results.
 fn decrypt_truncated(cipher: SymCipher, len: usize) -> [Result<Vec<u8>, crate::CryptoError>; 2] {
     let key = random_key(&KmsRng::new(), cipher).unwrap();
-    let nonce = random_nonce(&KmsRng::new(), cipher).unwrap();
-    let (ciphertext, mut tag) = encrypt(cipher, &key, &nonce, b"aad", b"message", None).unwrap();
+    let (nonce, ciphertext, mut tag) = if cipher.is_aes_gcm() {
+        aes_gcm_encrypt_generated_iv(cipher, &key, b"aad", b"message").unwrap()
+    } else {
+        let nonce = random_nonce(&KmsRng::new(), cipher).unwrap();
+        let (ciphertext, tag) = encrypt(cipher, &key, &nonce, b"aad", b"message", None).unwrap();
+        (nonce, ciphertext, tag)
+    };
     tag.truncate(len);
     let single = decrypt(cipher, &key, &nonce, b"aad", &ciphertext, &tag, None).map(|p| p.to_vec());
     let mut stream = cipher
@@ -104,15 +136,14 @@ fn test_encrypt_decrypt_aes_gcm_256() {
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
 
-    let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
-
     let mut aad = vec![0_u8; 24];
     KmsRng::new().fill_bytes(&mut aad).unwrap();
 
-    let (ciphertext, tag) =
-        encrypt(SymCipher::Aes256Gcm, &key, &nonce, &aad, &message, None).unwrap();
+    let (nonce, ciphertext, tag) =
+        aes_gcm_encrypt_generated_iv(SymCipher::Aes256Gcm, &key, &aad, &message).unwrap();
+    assert_eq!(nonce.len(), AES_256_GCM_IV_LENGTH);
     assert_eq!(ciphertext.len(), message.len());
-    assert_eq!(tag.len(), AES_128_GCM_MAC_LENGTH);
+    assert_eq!(tag.len(), AES_256_GCM_MAC_LENGTH);
 
     let decrypted_data = decrypt(
         SymCipher::Aes256Gcm,
@@ -128,6 +159,7 @@ fn test_encrypt_decrypt_aes_gcm_256() {
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
+#[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_aes_xts_128() {
     // Load FIPS provider module from OpenSSL.
@@ -160,6 +192,7 @@ fn test_encrypt_decrypt_aes_xts_128() {
     assert_eq!(decrypted_data.to_vec(), message);
 }
 
+#[cfg(feature = "non-fips")]
 #[test]
 fn test_encrypt_decrypt_aes_xts_256() {
     // Load FIPS provider module from OpenSSL.
@@ -404,14 +437,12 @@ fn aes_gcm_streaming_test() {
 
     let key = random_key(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
 
-    let nonce = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm).unwrap();
-
     let mut aad = vec![0_u8; 24];
     KmsRng::new().fill_bytes(&mut aad).unwrap();
 
-    // encrypt
+    // encrypt: the IV is drawn by the provider on the AAD update
     let mut encryption_cipher = SymCipher::Aes256Gcm
-        .stream_cipher(Mode::Encrypt, &key, &nonce, &aad)
+        .gcm_stream_cipher_generated_iv(&key, &aad)
         .unwrap();
     let mut result = Vec::<u8>::new();
     result.extend(encryption_cipher.update(&message1).unwrap());
@@ -419,6 +450,8 @@ fn aes_gcm_streaming_test() {
     result.extend(encryption_cipher.update(&message3).unwrap());
     let (remainder, tag) = encryption_cipher.finalize_encryption().unwrap();
     result.extend(remainder);
+    let nonce = encryption_cipher.generated_iv().unwrap().to_vec();
+    assert_eq!(nonce.len(), AES_256_GCM_IV_LENGTH);
     assert_eq!(
         result.len(),
         message1.len() + message2.len() + message3.len()
@@ -438,6 +471,22 @@ fn aes_gcm_streaming_test() {
         decrypted_data,
         [(&*message1), (&*message2), (&*message3)].concat()
     );
+}
+
+/// Without AAD the provider draws the IV on the first data update, not before.
+#[test]
+fn aes_gcm_streaming_iv_available_after_first_data() {
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+
+    let key = random_key(&KmsRng::new(), SymCipher::Aes128Gcm).unwrap();
+    let mut stream = SymCipher::Aes128Gcm
+        .gcm_stream_cipher_generated_iv(&key, &[])
+        .unwrap();
+    assert_eq!(stream.update(&[]).unwrap(), Vec::<u8>::new());
+    assert!(stream.generated_iv().is_none());
+    stream.update(b"first part").unwrap();
+    assert_eq!(stream.generated_iv().unwrap().len(), AES_128_GCM_IV_LENGTH);
 }
 
 #[cfg(feature = "non-fips")]
@@ -488,6 +537,7 @@ fn chacha_streaming_test() {
     );
 }
 
+#[cfg(feature = "non-fips")]
 #[test]
 fn aes_xts_streaming_test() {
     // Load FIPS provider module from OpenSSL.
@@ -560,7 +610,7 @@ mod mutation_regressions {
 
     #[test]
     fn aes_mode_and_key_size_selection() -> Result<(), CryptoError> {
-        let cases: [(BlockCipherMode, &[SymCipher]); 6] = [
+        let cases: &[(BlockCipherMode, &[SymCipher])] = &[
             (
                 BlockCipherMode::ECB,
                 &[
@@ -585,6 +635,7 @@ mod mutation_regressions {
                     SymCipher::Aes256Gcm,
                 ],
             ),
+            #[cfg(feature = "non-fips")]
             (
                 BlockCipherMode::XTS,
                 &[SymCipher::Aes128Xts, SymCipher::Aes256Xts],
@@ -606,7 +657,7 @@ mod mutation_regressions {
                 ],
             ),
         ];
-        for (mode, ciphers) in cases {
+        for &(mode, ciphers) in cases {
             for &expected in ciphers {
                 let actual = SymCipher::from_algorithm_and_key_size(
                     CryptographicAlgorithm::AES,
@@ -619,7 +670,7 @@ mod mutation_regressions {
                 );
                 assert_eq!(
                     actual.allows_variable_nonce(),
-                    matches!(mode, BlockCipherMode::GCM)
+                    matches!(mode, BlockCipherMode::GCM) && caller_gcm_iv_allowed()
                 );
             }
         }
@@ -663,6 +714,7 @@ mod mutation_regressions {
         Ok(())
     }
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn xts_accepts_one_block_and_rejects_short_plaintext() -> Result<(), CryptoError> {
         let _provider = provider()?;
@@ -686,6 +738,20 @@ mod mutation_regressions {
         Ok(())
     }
 
+    /// AES-XTS only protects storage devices (SP 800-38E): a FIPS build has no XTS cipher.
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn xts_is_not_available_in_fips() {
+        for key_size in [32, 64] {
+            SymCipher::from_algorithm_and_key_size(
+                CryptographicAlgorithm::AES,
+                Some(BlockCipherMode::XTS),
+                key_size,
+            )
+            .unwrap_err();
+        }
+    }
+
     #[test]
     fn cbc_streaming_has_no_authentication_tag() -> Result<(), CryptoError> {
         let _provider = provider()?;
@@ -706,6 +772,7 @@ mod mutation_regressions {
         Ok(())
     }
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn streaming_update_parks_only_the_tail() -> Result<(), CryptoError> {
         let _provider = provider()?;
@@ -829,7 +896,7 @@ mod mutation_regressions {
 mod properties {
     use proptest::{collection::vec, prelude::*};
 
-    use super::{SymCipher, decrypt, encrypt};
+    use super::{SymCipher, aes_gcm_encrypt_generated_iv, decrypt};
     use crate::crypto::symmetric::{
         rfc3394::{rfc3394_unwrap, rfc3394_wrap},
         rfc5649::{rfc5649_unwrap, rfc5649_wrap},
@@ -847,14 +914,9 @@ mod properties {
         prop_oneof![Just(16_usize), Just(24), Just(32)].prop_flat_map(|n| vec(any::<u8>(), n))
     }
 
-    fn gcm() -> impl Strategy<Value = (SymCipher, Vec<u8>, Vec<u8>)> {
-        prop_oneof![Just(SymCipher::Aes128Gcm), Just(SymCipher::Aes256Gcm)].prop_flat_map(|c| {
-            (
-                Just(c),
-                vec(any::<u8>(), c.key_size()),
-                vec(any::<u8>(), c.nonce_size()),
-            )
-        })
+    fn gcm() -> impl Strategy<Value = (SymCipher, Vec<u8>)> {
+        prop_oneof![Just(SymCipher::Aes128Gcm), Just(SymCipher::Aes256Gcm)]
+            .prop_flat_map(|c| (Just(c), vec(any::<u8>(), c.key_size())))
     }
 
     proptest! {
@@ -903,11 +965,11 @@ mod properties {
 
         #[test]
         fn aes_gcm_roundtrip(
-            (cipher, key, nonce) in gcm(),
+            (cipher, key) in gcm(),
             aad in vec(any::<u8>(), 0..=64), pt in vec(any::<u8>(), 0..=1024),
         ) {
             load_fips_provider();
-            let (ct, tag) = encrypt(cipher, &key, &nonce, &aad, &pt, None).unwrap();
+            let (nonce, ct, tag) = aes_gcm_encrypt_generated_iv(cipher, &key, &aad, &pt).unwrap();
             prop_assert_eq!(ct.len(), pt.len());
             let dec = decrypt(cipher, &key, &nonce, &aad, &ct, &tag, None).unwrap();
             prop_assert_eq!(dec.to_vec(), pt);
@@ -915,12 +977,12 @@ mod properties {
 
         #[test]
         fn aes_gcm_rejects_tampering(
-            (cipher, key, nonce) in gcm(),
+            (cipher, key) in gcm(),
             aad in vec(any::<u8>(), 0..=64), pt in vec(any::<u8>(), 0..=1024),
             idx in any::<prop::sample::Index>(), mask in 1_u8..,
         ) {
             load_fips_provider();
-            let (ct, tag) = encrypt(cipher, &key, &nonce, &aad, &pt, None).unwrap();
+            let (nonce, ct, tag) = aes_gcm_encrypt_generated_iv(cipher, &key, &aad, &pt).unwrap();
             let mut sealed = [ct.as_slice(), tag.as_slice()].concat();
             let i = idx.index(sealed.len());
             if let Some(b) = sealed.get_mut(i) {

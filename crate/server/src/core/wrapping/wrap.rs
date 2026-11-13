@@ -517,6 +517,18 @@ pub(crate) async fn wrap_with_local_key(
         key_wrapping_specification.get_encoding(),
         object.key_block()?.key_format_type
     );
+    // An AES-GCM wrap is one invocation of the KEK with a random IV (SP 800-38D §8.3).
+    if wrapping_key_object.object_type() == ObjectType::SymmetricKey
+        && key_wrapping_specification
+            .encryption_key_information
+            .as_ref()
+            .and_then(|info| info.cryptographic_parameters.as_ref())
+            .is_some_and(|cp| cp.block_cipher_mode == Some(BlockCipherMode::GCM))
+    {
+        kms.database
+            .reserve_gcm_invocations(wrapping_key_uid, 1)
+            .await?;
+    }
     // wrap the object
     wrap_object_with_key(
         object,

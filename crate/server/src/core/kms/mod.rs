@@ -264,8 +264,9 @@ impl KMS {
 
             let mut secret = [0_u8; CEREMONY_SECRET_LENGTH];
             secret.copy_from_slice(&raw_bytes);
-            let keys = Arc::new(CeremonyKeys::derive(&secret));
+            let keys = CeremonyKeys::derive(&secret);
             secret.fill(0);
+            let keys = Arc::new(keys?);
             database.set_ceremony_keys(keys);
             tracing::info!(
                 ceremony_key_id = %key_id,

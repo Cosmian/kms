@@ -947,6 +947,7 @@ impl ServerParams {
                         let keys = CeremonyKeys::derive(&secret);
                         // Zeroize the local copy
                         secret.fill(0);
+                        let keys = keys?;
                         tracing::warn!(
                             "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
                              variable is used in production to avoid persisting the secret to disk. \
