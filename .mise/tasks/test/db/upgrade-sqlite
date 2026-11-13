@@ -75,10 +75,8 @@ set_toml_value "${KMS_TOML}" kms_public_url "\"https://localhost:${HTTP_PORT}/go
 mkdir -p "${WORK_DIR}/workspace" "${WORK_DIR}/tmp"
 
 PHASE="init"
-MANIFEST="${WORK_DIR}/manifest.json"
 SNAPSHOT="${WORK_DIR}/snapshot.json"
-CANARY="${WORK_DIR}/canary.json"
-REPLAY_CMD="mise run test:upgrade-sqlite --old-kms ${OLD_KMS} --new-kms ${NEW_KMS} --variant ${VARIANT} --seed ${SEED}"
+REPLAY_CMD="mise run test:db:upgrade-sqlite --old-kms ${OLD_KMS} --new-kms ${NEW_KMS} --variant ${VARIANT} --seed ${SEED} --random-count ${RANDOM_COUNT}"
 
 # Print phase and server log tail before exiting on error.
 fail_phase() {
@@ -141,21 +139,12 @@ VERIFY_PY_ARGS=(
 print_header "Phase 1: seed (old server)"
 mkdir -p "${WORK_DIR}/db-seed"
 start_server seed "${OLD_KMS}" "${WORK_DIR}/db-seed"
-python3 "${REPO_ROOT}/.mise/scripts/test/populate_fixed_set.py" \
-  "${COMMON_PY_ARGS[@]}" \
-  --variant "${VARIANT}" \
-  --manifest "${MANIFEST}" \
-  --sample-cert "${SERVER_CERT}" || fail_phase "fixed-set population failed"
-python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" populate-random \
+python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" seed \
   "${VERIFY_PY_ARGS[@]}" \
-  --manifest "${MANIFEST}" \
+  --snapshot "${SNAPSHOT}" \
   --seed "${SEED}" \
   --count "${RANDOM_COUNT}" \
-  --sample-cert "${SERVER_CERT}" || fail_phase "random-layer population failed"
-python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" snapshot \
-  "${VERIFY_PY_ARGS[@]}" \
-  --manifest "${MANIFEST}" \
-  --snapshot "${SNAPSHOT}" || fail_phase "pre-upgrade snapshot failed"
+  --sample-cert "${SERVER_CERT}" || fail_phase "population or snapshot failed"
 kms_stop
 
 # ── Phase 2: cold backup ─────────────────────────────────────────────────────
@@ -171,16 +160,14 @@ python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
   --phase candidate \
-  --mutate \
-  --canary-file "${CANARY}" || fail_phase "candidate verification failed"
+  --mutate || fail_phase "candidate verification failed"
 kms_stop
 
 start_server candidate-restart "${NEW_KMS}" "${WORK_DIR}/db-candidate"
 python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
-  --phase candidate-restart \
-  --canary-file "${CANARY}" || fail_phase "candidate-restart verification failed"
+  --phase candidate-restart || fail_phase "candidate-restart verification failed"
 kms_stop
 
 # ── Phase 4: restore the pre-upgrade backup with the old server ─────────────
@@ -191,8 +178,7 @@ start_server restore "${OLD_KMS}" "${WORK_DIR}/db-restore"
 python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
-  --phase restore \
-  --canary-file "${CANARY}" || fail_phase "restore verification failed"
+  --phase restore || fail_phase "restore verification failed"
 kms_stop
 
 print_success "SQLite upgrade from ${OLD_VERSION} and pre-upgrade backup restore verified"

@@ -291,7 +291,7 @@ prepare_restore_db() {
   fi
 }
 
-# Copy logs, manifest, snapshot, and database backup to ARTIFACTS_DIR when a cell fails.
+# Copy logs, snapshot, and database backup to ARTIFACTS_DIR when a cell fails.
 save_failure_artifacts() {
   local backend="$1" version="$2" cell_dir="$3"
   local dest="${ARTIFACTS_DIR}/${backend}-${version}"
@@ -332,23 +332,10 @@ run_py_verifier() {
 # Seed the database with the old KMS container and capture the pre-upgrade snapshot.
 seed_cell_db() {
   local backend="$1" old_version="$2" old_image="$3" seed="$4" cell_dir="$5" seed_target="$6"
-  local cert_dir="${REPO_ROOT}/test_data/certificates/client_server"
-  local replay
-  replay="$(format_replay_cmd "${backend}" "${old_version}" "${seed}")"
   start_kms_container "${old_image}" "${backend}" "${seed_target}" "${cell_dir}/old-seed.log" &&
-    python3 "${REPO_ROOT}/.mise/scripts/test/populate_fixed_set.py" \
-      --url "https://127.0.0.1:${KMS_HOST_PORT}" --ca-cert "${cert_dir}/ca/ca.crt" \
-      --client-cert "${cert_dir}/owner/owner.client.acme.com.crt" \
-      --client-key "${cert_dir}/owner/owner.client.acme.com.key" \
-      --variant "${VARIANT}" --manifest "${cell_dir}/manifest.json" \
-      --sample-cert "${cert_dir}/server/kmserver.acme.com.crt" \
-      --old-version "${old_version}" --new-version "${NEW_IMAGE}" \
-      --backend "${backend}" --replay-cmd "${replay}" &&
-    run_py_verifier populate-random "${backend}" "${old_version}" "${seed}" \
-      --manifest "${cell_dir}/manifest.json" --seed "${seed}" --count "${RANDOM_COUNT}" \
-      --sample-cert "${cert_dir}/server/kmserver.acme.com.crt" &&
-    run_py_verifier snapshot "${backend}" "${old_version}" "${seed}" \
-      --manifest "${cell_dir}/manifest.json" --snapshot "${cell_dir}/snapshot.json" &&
+    run_py_verifier seed "${backend}" "${old_version}" "${seed}" \
+      --snapshot "${cell_dir}/snapshot.json" --seed "${seed}" --count "${RANDOM_COUNT}" \
+      --sample-cert "${REPO_ROOT}/test_data/certificates/client_server/server/kmserver.acme.com.crt" &&
     stop_kms_container "${backend}" "${cell_dir}/old-seed.log"
 }
 
@@ -369,16 +356,16 @@ run_upgrade_cell() {
     backup_seeded_db "${backend}" "${cell_dir}" &&
     start_kms_container "${NEW_IMAGE}" "${backend}" "${cand_target}" "${cell_dir}/new-candidate.log" &&
     run_py_verifier verify "${backend}" "${old_version}" "${seed}" \
-      --snapshot "${cell_dir}/snapshot.json" --phase candidate --mutate --canary-file "${cell_dir}/canary.json" &&
+      --snapshot "${cell_dir}/snapshot.json" --phase candidate --mutate &&
     stop_kms_container "${backend}" "${cell_dir}/new-candidate.log" &&
     start_kms_container "${NEW_IMAGE}" "${backend}" "${cand_target}" "${cell_dir}/new-restart.log" &&
     run_py_verifier verify "${backend}" "${old_version}" "${seed}" \
-      --snapshot "${cell_dir}/snapshot.json" --phase candidate-restart --canary-file "${cell_dir}/canary.json" &&
+      --snapshot "${cell_dir}/snapshot.json" --phase candidate-restart &&
     stop_kms_container "${backend}" "${cell_dir}/new-restart.log" &&
     prepare_restore_db "${backend}" "${cell_dir}" &&
     start_kms_container "${old_image}" "${backend}" "${rest_target}" "${cell_dir}/old-restore.log" &&
     run_py_verifier verify "${backend}" "${old_version}" "${seed}" \
-      --snapshot "${cell_dir}/snapshot.json" --phase restore --canary-file "${cell_dir}/canary.json" &&
+      --snapshot "${cell_dir}/snapshot.json" --phase restore &&
     stop_kms_container "${backend}" "${cell_dir}/old-restore.log"
   local rc="$?"
   docker rm --force "${DB_CONTAINER}" >/dev/null 2>&1 || true
