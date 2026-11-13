@@ -44,6 +44,7 @@ pub(crate) const MIGRATION_STEPS: [MigrationStep; 3] = [
     MigrationStep::AttributesJsonb,
     MigrationStep::WrappingKeyIdBackfill,
     MigrationStep::CertificateSerialTagBackfill,
+    // Adding a new migration step starts here.
 ];
 
 impl MigrationStep {
