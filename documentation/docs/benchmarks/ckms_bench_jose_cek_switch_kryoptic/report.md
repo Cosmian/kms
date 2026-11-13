@@ -4,7 +4,7 @@
 |---|---|
 | KMS servers | 2 |
 | Target rate | 2500, 400, 800, 1200, 1600 msg/s (one message = one decrypt + one re-encrypt) |
-| Achieved rate | before: 259 msg/s, after: 232 msg/s, after-r400: 400 msg/s, after-r800: 514 msg/s, after-r1200: 382 msg/s, after-r1600: 237 msg/s, before-r400: 400 msg/s, before-r800: 484 msg/s, before-r1200: 330 msg/s, before-r1600: 219 msg/s |
+| Achieved rate | rate-2500: 232 msg/s, rate-400: 400 msg/s, rate-800: 514 msg/s, rate-1200: 382 msg/s, rate-1600: 237 msg/s |
 | Senders | 256 |
 | JWE algorithm | RSA-OAEP + A256GCM |
 | Plaintext | 256 bytes |
@@ -20,24 +20,7 @@ Metacrypt receives JWEs from Estreem and sends each to the KMS: `POST /v1/crypto
 
 ## Runs
 
-### Run `before`
-
-Target 2500 msg/s, 256 senders, warmup 10 s, measurement 60 s, CEK switch at +20 s; achieved 259 msg/s (131253 messages unsent).
-
-The senders saturated the servers and never reached the CEK switch: no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.
-
-Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 259 msg/s < 95% of target 2500 msg/s (131253 unsent)
-
-| server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| all | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 |  |  |
-| kms1 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 128 | 0 |
-| kms2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 115 | 0 |
-
-![before timeline](timeline_before.svg)
-![before per-server p99](timeline_before_servers.svg)
-
-### Run `after`
+### Run `rate-2500`
 
 Target 2500 msg/s, 256 senders, warmup 10 s, measurement 60 s, CEK switch at +20 s; achieved 232 msg/s (133050 messages unsent).
 
@@ -51,10 +34,10 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 | kms1 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 1 | 0 |
 | kms2 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | - | 0 | 0 | 1 | 0 |
 
-![after timeline](timeline_after.svg)
-![after per-server p99](timeline_after_servers.svg)
+![rate-2500 timeline](timeline_rate-2500.svg)
+![rate-2500 per-server p99](timeline_rate-2500_servers.svg)
 
-### Run `after-r400`
+### Run `rate-400`
 
 Target 400 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 400 msg/s (0 messages unsent).
 
@@ -66,10 +49,10 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 | kms1 | 6.2 | 8.9 | 9.4 | 11.1 | 13.0 | 0 | 0 | 0 | 1 | 1 |
 | kms2 | 6.9 | 9.7 | 10.5 | 15.0 | 15.0 | 0 | 0 | 0 | 1 | 1 |
 
-![after-r400 timeline](timeline_after-r400.svg)
-![after-r400 per-server p99](timeline_after-r400_servers.svg)
+![rate-400 timeline](timeline_rate-400.svg)
+![rate-400 per-server p99](timeline_rate-400_servers.svg)
 
-### Run `after-r800`
+### Run `rate-800`
 
 Target 800 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 514 msg/s (5429 messages unsent).
 
@@ -81,10 +64,10 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 | kms1 | 5897.2 | 11055.8 | 12856.0 | 13414.8 | 16459.9 | 0 | 0 | 0 | 1 | 1 |
 | kms2 | 5503.1 | 10162.1 | 12074.5 | 13062.5 | 15305.0 | 0 | 0 | 0 | 1 | 1 |
 
-![after-r800 timeline](timeline_after-r800.svg)
-![after-r800 per-server p99](timeline_after-r800_servers.svg)
+![rate-800 timeline](timeline_rate-800.svg)
+![rate-800 per-server p99](timeline_rate-800_servers.svg)
 
-### Run `after-r1200`
+### Run `rate-1200`
 
 Target 1200 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 382 msg/s (21275 messages unsent).
 
@@ -96,10 +79,10 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 | kms1 | 15486.5 | 23293.0 | 24550.8 | 25046.4 | 25046.4 | 0 | 0 | 0 | 1 | 1 |
 | kms2 | 16049.5 | 23755.3 | 24756.2 | 25192.0 | 25192.0 | 0 | 0 | 0 | 1 | 1 |
 
-![after-r1200 timeline](timeline_after-r1200.svg)
-![after-r1200 per-server p99](timeline_after-r1200_servers.svg)
+![rate-1200 timeline](timeline_rate-1200.svg)
+![rate-1200 per-server p99](timeline_rate-1200_servers.svg)
 
-### Run `after-r1600`
+### Run `rate-1600`
 
 Target 1600 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 237 msg/s (37629 messages unsent).
 
@@ -113,80 +96,21 @@ Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within t
 | kms1 | 23169.9 | 29453.1 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 1 | 0 |
 | kms2 | 23573.3 | 29571.3 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 1 | 0 |
 
-![after-r1600 timeline](timeline_after-r1600.svg)
-![after-r1600 per-server p99](timeline_after-r1600_servers.svg)
-
-### Run `before-r400`
-
-Target 400 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 400 msg/s (0 messages unsent).
-
-Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **PASS**
-
-| server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| all | 6.7 | 9.0 | 9.3 | 10.7 | 12.4 | 0 | 0 | 0 |  |  |
-| kms1 | 6.5 | 8.9 | 9.0 | 10.7 | 12.1 | 0 | 0 | 0 | 41 | 1 |
-| kms2 | 7.0 | 9.0 | 9.3 | 10.1 | 12.4 | 0 | 0 | 0 | 27 | 1 |
-
-![before-r400 timeline](timeline_before-r400.svg)
-![before-r400 per-server p99](timeline_before-r400_servers.svg)
-
-### Run `before-r800`
-
-Target 800 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 484 msg/s (6368 messages unsent).
-
-Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 484 msg/s < 95% of target 800 msg/s (6368 unsent)
-
-| server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| all | 6293.6 | 11728.8 | 13417.4 | 14108.9 | 17814.6 | 0 | 0 | 0 |  |  |
-| kms1 | 6259.9 | 11846.3 | 13291.8 | 14108.9 | 17210.1 | 0 | 0 | 0 | 42 | 1 |
-| kms2 | 6320.7 | 11459.2 | 13630.2 | 14054.2 | 17814.6 | 0 | 0 | 0 | 113 | 1 |
-
-![before-r800 timeline](timeline_before-r800.svg)
-![before-r800 per-server p99](timeline_before-r800_servers.svg)
-
-### Run `before-r1200`
-
-Target 1200 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 330 msg/s (23024 messages unsent).
-
-Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 330 msg/s < 95% of target 1200 msg/s (23024 unsent)
-
-| server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| all | 17838.0 | 25621.8 | 25085.3 | 25324.8 | 25324.8 | 0 | 0 | 0 |  |  |
-| kms1 | 17936.9 | 25637.4 | 25208.3 | 25324.8 | 25324.8 | 0 | 0 | 0 | 79 | 1 |
-| kms2 | 17724.5 | 25593.6 | 24954.2 | 25239.0 | 25239.0 | 0 | 0 | 0 | 105 | 1 |
-
-![before-r1200 timeline](timeline_before-r1200.svg)
-![before-r1200 per-server p99](timeline_before-r1200_servers.svg)
-
-### Run `before-r1600`
-
-Target 1600 msg/s, 256 senders, warmup 10 s, measurement 30 s, CEK switch at +10 s; achieved 219 msg/s (38336 messages unsent).
-
-The senders saturated the servers and never reached the CEK switch: no cek1 unwrap was recorded, and the cek0 unwraps are those of the cold-start burst.
-
-Performance gate (≥ 95 % of target rate completed, 0 errors, recovery within the window): **FAIL** — achieved 218 msg/s < 95% of target 1600 msg/s (38336 unsent)
-
-| server | pre p50 ms | pre p99 ms | first 1 s p99 ms | first 1 s max ms | peak ms | recovery ms | slow messages | errors | HSM unwraps cek0 | HSM unwraps cek1 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| all | 23935.8 | 29908.3 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 |  |  |
-| kms1 | 23936.8 | 29898.3 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 128 | 0 |
-| kms2 | 23935.0 | 29927.4 | 0.0 | 0.0 | 0.0 | 0 | 0 | 0 | 91 | 0 |
-
-![before-r1600 timeline](timeline_before-r1600.svg)
-![before-r1600 per-server p99](timeline_before-r1600_servers.svg)
+![rate-1600 timeline](timeline_rate-1600.svg)
+![rate-1600 per-server p99](timeline_rate-1600_servers.svg)
 
 ## Comparison
 
-| | before | after | after-r400 | after-r800 | after-r1200 | after-r1600 | before-r400 | before-r800 | before-r1200 | before-r1600 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| achieved msg/s | 259 | 232 | 400 | 514 | 382 | 237 | 400 | 484 | 330 | 219 |
-| gate | FAIL | FAIL | PASS | FAIL | FAIL | FAIL | PASS | FAIL | FAIL | FAIL |
-| peak message ms (all) | 0.0 | 0.0 | 15.0 | 16459.9 | 25192.0 | 0.0 | 12.4 | 17814.6 | 25324.8 | 0.0 |
-| recovery ms (all) | - | - | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| HSM unwraps of cek0, kms1 | 128 | 1 | 1 | 1 | 1 | 1 | 41 | 42 | 79 | 128 |
-| HSM unwraps of cek1, kms1 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 1 | 1 | 0 |
-| HSM unwraps of cek0, kms2 | 115 | 1 | 1 | 1 | 1 | 1 | 27 | 113 | 105 | 91 |
-| HSM unwraps of cek1, kms2 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 1 | 1 | 0 |
+| | rate-2500 | rate-400 | rate-800 | rate-1200 | rate-1600 |
+|---|---|---|---|---|---|
+| achieved msg/s | 232 | 400 | 514 | 382 | 237 |
+| gate | FAIL | PASS | FAIL | FAIL | FAIL |
+| peak message ms (all) | n/a | 15.0 | 16459.9 | 25192.0 | n/a |
+| recovery ms (all) | n/a | 0 | n/a | n/a | n/a |
+| measurement s / switch at s | 60 / +20 | 30 / +10 | 30 / +10 | 30 / +10 | 30 / +10 |
+| HSM unwraps of cek0, kms1 | 1 | 1 | 1 | 1 | 1 |
+| HSM unwraps of cek1, kms1 | 0 | 1 | 1 | 1 | 0 |
+| HSM unwraps of cek0, kms2 | 1 | 1 | 1 | 1 | 1 |
+| HSM unwraps of cek1, kms2 | 0 | 1 | 1 | 1 | 0 |
+
+n/a: peak is n/a when the run never reached the CEK switch (no cek1 unwrap: rate-2500, rate-1600); recovery is n/a there and when the run could not sustain 95 % of its target rate (latency was already growing before the switch, so "back to normal" is undefined: rate-2500, rate-800, rate-1200, rate-1600). Runs may use different measurement lengths and switch times (see the table row).

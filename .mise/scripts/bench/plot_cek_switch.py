@@ -126,6 +126,10 @@ def reached_switch(r: dict) -> bool:
     return any(len(u) > 1 for u in r['unwraps'].values())
 
 
+def keeps_rate(r: dict) -> bool:
+    return r['summary']['rate_achieved'] >= 0.95 * r['summary']['rate_target']
+
+
 def fmt(v, digits: int = 1) -> str:
     return '-' if v is None else (f'{v:.{digits}f}' if isinstance(v, float) else str(v))
 
@@ -203,11 +207,25 @@ def comparison(runs: list[dict]) -> list[str]:
         ('gate', ['PASS' if not r['gate'] else 'FAIL' for r in runs]),
         (
             'peak message ms (all)',
-            [fmt(r['summary']['per_server'][0]['peak_message_ms']) for r in runs],
+            [
+                fmt(r['summary']['per_server'][0]['peak_message_ms'])
+                if reached_switch(r)
+                else 'n/a'
+                for r in runs
+            ],
         ),
         (
             'recovery ms (all)',
-            [fmt(recovery(r['summary']['per_server'][0])) for r in runs],
+            [
+                fmt(recovery(r['summary']['per_server'][0]))
+                if reached_switch(r) and keeps_rate(r)
+                else 'n/a'
+                for r in runs
+            ],
+        ),
+        (
+            'measurement s / switch at s',
+            [f"{r['summary']['duration_s']} / +{r['summary']['switch_at_s']}" for r in runs],
         ),
     ]
     servers = [
@@ -237,7 +255,16 @@ def comparison(runs: list[dict]) -> list[str]:
             '|---|' + '---|' * len(labels),
         ]
         + [f'| {name} | ' + ' | '.join(vals) + ' |' for name, vals in rows]
-        + ['']
+        + [
+            '',
+            'n/a: peak is n/a when the run never reached the CEK switch (no cek1 unwrap: '
+            + (', '.join(r['label'] for r in runs if not reached_switch(r)) or 'none')
+            + '); recovery is n/a there and when the run could not sustain 95 % of its target rate '
+            '(latency was already growing before the switch, so "back to normal" is undefined: '
+            + (', '.join(r['label'] for r in runs if not keeps_rate(r)) or 'none')
+            + '). Runs may use different measurement lengths and switch times (see the table row).',
+            '',
+        ]
     )
 
 
