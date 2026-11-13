@@ -11,7 +11,7 @@ use cosmian_kms_crypto::{
     crypto::{
         KmsRng,
         rsa::ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
-        symmetric::symmetric_ciphers::{SymCipher, encrypt, random_key, random_nonce},
+        symmetric::symmetric_ciphers::{SymCipher, aes_gcm_encrypt_generated_iv, random_key},
     },
     openssl::kmip_public_key_to_openssl,
 };
@@ -110,14 +110,23 @@ pub(super) fn jose_jwe_decrypt_body(
     encrypted_key: &[u8],
     plaintext: &[u8],
 ) -> KmsCliResult<Bytes> {
-    let iv = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm)?;
-    let (ciphertext, tag) = encrypt(
-        SymCipher::Aes256Gcm,
-        cek,
-        &iv,
-        protected.as_bytes(),
-        plaintext,
+    let protected = b64url(
+        serde_json::to_string(
+            &serde_json::json!({"alg": "RSA-OAEP-256", "enc": "A256GCM", "kid": kid}),
+        )
+        .context("JOSE protected header serialization")?
+        .as_bytes(),
+    );
+    let rng = KmsRng::new();
+    let cek = random_key(&rng, SymCipher::Aes256Gcm)?;
+    let (iv, ciphertext, tag) =
+        aes_gcm_encrypt_generated_iv(SymCipher::Aes256Gcm, &cek, protected.as_bytes(), plaintext)?;
+    let encrypted_key = ckm_rsa_pkcs_oaep_key_wrap(
+        &kmip_public_key_to_openssl(public_key)?,
+        HashingAlgorithm::SHA256,
+        HashingAlgorithm::SHA256,
         None,
+        &cek,
     )?;
     let req = JoseDecryptReq {
         protected: protected.to_owned(),
