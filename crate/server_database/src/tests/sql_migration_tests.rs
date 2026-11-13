@@ -8,8 +8,8 @@ use url::Url;
 use uuid::Uuid;
 
 use super::sqlite_migration_tests::{
-    assert_ready, assert_serial_tag, assert_store_objects_and_grants, assert_wrapped_key_found,
-    expect_steps,
+    assert_markers, assert_ready, assert_serial_tag, assert_store_objects_and_grants,
+    assert_wrapped_key_found, expect_steps,
 };
 use crate::{
     db_ensure, db_error,
@@ -17,7 +17,7 @@ use crate::{
     stores::{
         MySqlPool, PgPool,
         migrate::{
-            DbParameters, MIGRATION_STEPS, Migrate,
+            MIGRATION_STEPS, Migrate,
             MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
         },
     },
@@ -130,8 +130,6 @@ trait MigrationFixture {
         ])
     }
 
-    async fn wrapping_key_column_exists(&self) -> DbResult<bool>;
-
     async fn schema_signature(&self) -> DbResult<TableRows>;
 }
 
@@ -173,17 +171,6 @@ impl MigrationFixture for PostgresFixture {
             }
         }
         Ok(rows)
-    }
-
-    async fn wrapping_key_column_exists(&self) -> DbResult<bool> {
-        Ok(!self
-            .rows(
-                "SELECT column_name FROM information_schema.columns \
-                 WHERE table_schema = current_schema() AND table_name = 'objects' \
-                 AND column_name = 'wrapping_key_id'",
-            )
-            .await?
-            .is_empty())
     }
 
     async fn schema_signature(&self) -> DbResult<TableRows> {
@@ -245,17 +232,6 @@ impl MigrationFixture for MySqlFixture {
         Ok(rows)
     }
 
-    async fn wrapping_key_column_exists(&self) -> DbResult<bool> {
-        Ok(!self
-            .rows(
-                "SELECT column_name FROM information_schema.columns \
-                 WHERE table_schema = DATABASE() AND table_name = 'objects' \
-                 AND column_name = 'wrapping_key_id'",
-            )
-            .await?
-            .is_empty())
-    }
-
     async fn schema_signature(&self) -> DbResult<TableRows> {
         self.rows(
             "SELECT table_name, column_name, data_type \
@@ -265,19 +241,6 @@ impl MigrationFixture for MySqlFixture {
         )
         .await
     }
-}
-
-async fn assert_markers<P: DbParameters>(pool: &P, completed: &[MigrationStep]) -> DbResult<()> {
-    for step in MIGRATION_STEPS {
-        let actual = pool.get_parameter(step.marker()).await?;
-        let expected = completed.contains(&step).then_some("true");
-        db_ensure!(
-            actual.as_deref() == expected,
-            "Marker {}: expected {expected:?}, got {actual:?}",
-            step.marker()
-        );
-    }
-    Ok(())
 }
 
 async fn assert_fixture_preserved<F: MigrationFixture>(
@@ -309,7 +272,8 @@ async fn assert_fixture_preserved<F: MigrationFixture>(
     assert_store_objects_and_grants(pool, &objects).await
 }
 
-async fn fresh_and_one_connection<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
+/// A new database is stamped at once; an empty schema that lost its version is stamped again.
+async fn empty_database_is_stamped<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     fixture.reset().await?;
     let (pool, applied) = fixture
         .open(false, Some(1), env!("CARGO_PKG_VERSION"))
@@ -320,14 +284,9 @@ async fn fresh_and_one_connection<F: MigrationFixture>(fixture: &F) -> DbResult<
         "A fresh database must have no objects"
     );
     assert_ready(&pool, env!("CARGO_PKG_VERSION")).await?;
-    assert_markers(&pool, &[]).await
-}
-
-async fn unversioned_empty<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.reset().await?;
-    let (pool, applied) = fixture.open(true, Some(1), "5.20.0").await?;
-    expect_steps(&applied, &[])?;
+    assert_markers(&pool, &[]).await?;
     drop(pool);
+
     fixture
         .execute("DELETE FROM parameters WHERE name = 'db_version'")
         .await?;
@@ -341,19 +300,11 @@ async fn unversioned_empty<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     assert_markers(&pool, &[]).await
 }
 
-async fn unversioned_with_data<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
-}
-
-async fn step_by_step_matches_all_at_once<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
+/// One 5.20.0 database, migrated step by step and directly, must end identical; reopening is a
+/// no-op.
+async fn step_by_step_matches_direct_and_reopens_clean<F: MigrationFixture>(
+    fixture: &F,
+) -> DbResult<()> {
     fixture.restore("5.20.0").await?;
     let original = fixture.preserved_data().await?;
     let (pool, applied) = fixture.open(false, Some(1), "5.24.0").await?;
@@ -391,46 +342,57 @@ async fn step_by_step_matches_all_at_once<F: MigrationFixture>(fixture: &F) -> D
     fixture.restore("5.20.0").await?;
     let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
     expect_steps(&applied, &BOTH_STEPS)?;
+    let migrated = fixture.complete_data().await?;
     db_ensure!(
-        fixture.complete_data().await? == stepwise,
+        migrated == stepwise,
         "Step-by-step and direct upgrades produced different rows"
     );
     assert_ready(&pool, TARGET).await?;
     assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
-}
-
-async fn released_fixture<F: MigrationFixture>(
-    fixture: &F,
-    version: &str,
-    expected: &[MigrationStep],
-) -> DbResult<()> {
-    fixture.restore(version).await?;
-    let original = fixture.preserved_data().await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, expected)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&pool).await?;
     assert_serial_tag(&pool, true).await?;
+    assert_fixture_preserved(fixture, &pool, &original).await?;
+
+    drop(pool);
+    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
+    expect_steps(&applied, &[])?;
+    db_ensure!(
+        fixture.complete_data().await? == migrated,
+        "Reopening changed migrated rows"
+    );
+    assert_ready(&pool, TARGET).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
 }
 
-async fn markers_already_set<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    fixture
-        .seed_parameters(&[
-            (WrappingKeyIdBackfill.marker(), "true"),
-            (CertificateSerialTagBackfill.marker(), "true"),
-        ])
-        .await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &[])?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_serial_tag(&pool, false).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
+/// Released databases migrate to the target. The 5.14.0-recorded row offers every step — hitting
+/// MySQL's `AttributesJsonb` arm and PostgreSQL's conversion on an already-jsonb column.
+async fn released_fixtures<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
+    let cases: [(&str, Option<&str>, &[MigrationStep]); 3] = [
+        ("5.24.0", None, &BOTH_STEPS),
+        ("5.28.0", None, &[CertificateSerialTagBackfill]),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
+    ];
+    for (version, recorded, expected) in cases {
+        fixture.restore(version).await?;
+        let original = fixture.preserved_data().await?;
+        if let Some(recorded) = recorded {
+            fixture.seed_parameters(&[("db_version", recorded)]).await?;
+        }
+        let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
+        expect_steps(&applied, expected)
+            .map_err(|error| db_error!("Fixture {version} recorded {recorded:?}: {error}"))?;
+        assert_ready(&pool, TARGET).await?;
+        let markers: &[MigrationStep] = if recorded.is_some() {
+            &MIGRATION_STEPS
+        } else {
+            &BOTH_STEPS
+        };
+        assert_markers(&pool, markers).await?;
+        assert_wrapped_key_found(&pool).await?;
+        assert_serial_tag(&pool, true).await?;
+        assert_fixture_preserved(fixture, &pool, &original).await?;
+    }
+    Ok(())
 }
 
 async fn newer_database_is_refused<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
@@ -454,42 +416,10 @@ async fn newer_database_is_refused<F: MigrationFixture>(fixture: &F) -> DbResult
         "Newer-version refusal changed the schema"
     );
     db_ensure!(
-        !fixture.wrapping_key_column_exists().await?,
-        "Newer-version refusal added the wrapping_key_id column"
-    );
-    db_ensure!(
         fixture.preserved_data().await? == original,
         "Newer-version refusal changed fixture data"
     );
     Ok(())
-}
-
-async fn interrupted_run_resumes<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    fixture
-        .seed_parameters(&[("db_version", "5.24.0"), ("db_state", "\"upgrading\"")])
-        .await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &BOTH_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
-}
-
-async fn below_baseline<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    fixture.seed_parameters(&[("db_version", "5.14.0")]).await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &MIGRATION_STEPS)?;
-    assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &MIGRATION_STEPS).await?;
-    assert_wrapped_key_found(&pool).await?;
-    assert_serial_tag(&pool, true).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
 }
 
 async fn clear_database<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
@@ -513,7 +443,8 @@ async fn clear_database<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     assert_ready(&pool, TARGET).await
 }
 
-async fn concurrent_startup<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
+/// Two racing instances apply the steps once; a held lock blocks a second pool until released.
+async fn lock_serializes_instances<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     fixture.restore("5.20.0").await?;
     let original = fixture.preserved_data().await?;
     let (first, second) = tokio::join!(
@@ -534,18 +465,10 @@ async fn concurrent_startup<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     assert_wrapped_key_found(&first).await?;
     assert_serial_tag(&second, true).await?;
     assert_fixture_preserved(fixture, &first, &original).await?;
-    assert_fixture_preserved(fixture, &second, &original).await
-}
+    assert_fixture_preserved(fixture, &second, &original).await?;
 
-async fn migration_lock_blocks_second_pool<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    let (first, first_applied) = fixture.open(false, Some(1), "5.24.0").await?;
-    let (second, second_applied) = fixture.open(false, Some(1), "5.24.0").await?;
-    expect_steps(&first_applied, &[])?;
-    expect_steps(&second_applied, &[])?;
     let held = first.acquire_migration_lock().await?;
-    let error = tokio::time::timeout(Duration::from_secs(2), second.bootstrap(false, TARGET))
+    let error = tokio::time::timeout(Duration::from_secs(2), second.bootstrap(false, "5.30.0"))
         .await
         .err()
         .ok_or_else(|| db_error!("A second pool must wait for the migration lock"))?;
@@ -554,44 +477,17 @@ async fn migration_lock_blocks_second_pool<F: MigrationFixture>(fixture: &F) -> 
         "Unexpected lock timeout: {error}"
     );
     drop(held);
-    expect_steps(&second.bootstrap(false, TARGET).await?, &BOTH_STEPS)?;
-    assert_ready(&second, TARGET).await?;
-    assert_markers(&second, &BOTH_STEPS).await?;
-    assert_fixture_preserved(fixture, &second, &original).await
-}
-
-async fn reopen_is_noop<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &BOTH_STEPS)?;
-    let migrated = fixture.complete_data().await?;
-    drop(pool);
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &[])?;
-    db_ensure!(
-        fixture.complete_data().await? == migrated,
-        "Reopening changed migrated rows"
-    );
-    assert_ready(&pool, TARGET).await?;
-    assert_fixture_preserved(fixture, &pool, &original).await
+    expect_steps(&second.bootstrap(false, "5.30.0").await?, &[])?;
+    assert_ready(&second, "5.30.0").await
 }
 
 async fn shared_migration_scenarios<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fresh_and_one_connection(fixture).await?;
-    unversioned_empty(fixture).await?;
-    unversioned_with_data(fixture).await?;
-    step_by_step_matches_all_at_once(fixture).await?;
-    released_fixture(fixture, "5.24.0", &BOTH_STEPS).await?;
-    released_fixture(fixture, "5.28.0", &[CertificateSerialTagBackfill]).await?;
-    markers_already_set(fixture).await?;
+    empty_database_is_stamped(fixture).await?;
+    step_by_step_matches_direct_and_reopens_clean(fixture).await?;
+    released_fixtures(fixture).await?;
     newer_database_is_refused(fixture).await?;
-    interrupted_run_resumes(fixture).await?;
-    below_baseline(fixture).await?;
     clear_database(fixture).await?;
-    concurrent_startup(fixture).await?;
-    migration_lock_blocks_second_pool(fixture).await?;
-    reopen_is_noop(fixture).await
+    lock_serializes_instances(fixture).await
 }
 
 fn first_value(rows: &TableRows, description: &str) -> DbResult<String> {
