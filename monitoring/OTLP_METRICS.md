@@ -162,6 +162,9 @@ Both key gauges are refreshed by the metrics cron (`metrics_count_interval_secs`
 server startup. With the Redis-findex backend they are computed from a full scan cached by the
 5-minute reconcile, so they can lag by up to 5 minutes.
 
+`kms.keys.active.count` has no series until the first key exists; use
+`sum(kms_keys_active_count) or vector(0)` to display 0 on an empty KMS.
+
 ### Tagging keys for reporting
 
 Metric labels are restricted to enumerated KMIP values to keep the number of series bounded.

@@ -268,13 +268,13 @@ impl RedisWithFindex {
         Ok(scan)
     }
 
-    /// Return the cached key snapshot, bootstrapping it with a full scan when
-    /// no reconcile has run yet.
-    async fn cached_key_scan(&self) -> DbResult<KeyScan> {
+    /// Read the cached key snapshot through `read`, bootstrapping it with a
+    /// full scan when no reconcile has run yet.
+    async fn with_cached_key_scan<T>(&self, read: impl Fn(&KeyScan) -> T) -> DbResult<T> {
         if let Some(scan) = self.key_scan.read().await.as_ref() {
-            return Ok(scan.clone());
+            return Ok(read(scan));
         }
-        self.refresh_key_scan().await
+        Ok(read(&self.refresh_key_scan().await?))
     }
 
     pub(crate) async fn instantiate(
@@ -1497,12 +1497,16 @@ impl ObjectsStore for RedisWithFindex {
     /// Served from the snapshot cached by the last reconcile (at most ~5
     /// minutes old); the first call bootstraps it with a full scan.
     async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
-        Ok(self.cached_key_scan().await?.inventory)
+        Ok(self
+            .with_cached_key_scan(|scan| scan.inventory.clone())
+            .await?)
     }
 
     /// Same caching as [`Self::key_inventory`].
     async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
-        Ok(self.cached_key_scan().await?.deactivation_dates)
+        Ok(self
+            .with_cached_key_scan(|scan| scan.deactivation_dates.clone())
+            .await?)
     }
 }
 

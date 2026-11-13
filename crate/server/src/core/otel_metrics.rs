@@ -612,18 +612,16 @@ impl OtelMetrics {
                 bucket.object_type.clone(),
                 bucket
                     .algorithm
-                    .clone()
-                    .unwrap_or_else(|| UNKNOWN_LABEL.to_owned()),
+                    .as_deref()
+                    .unwrap_or(UNKNOWN_LABEL)
+                    .to_owned(),
                 bucket
                     .key_length
                     .map_or_else(|| UNKNOWN_LABEL.to_owned(), |l| l.to_string()),
-                bucket
-                    .state
-                    .clone()
-                    .unwrap_or_else(|| UNKNOWN_LABEL.to_owned()),
+                bucket.state.as_deref().unwrap_or(UNKNOWN_LABEL).to_owned(),
             ];
             if current.len() >= MAX_KEY_BUCKETS && !current.contains_key(&labels) {
-                labels = [0; 4].map(|_| OVERFLOW_USER_LABEL.to_owned());
+                labels = std::array::from_fn(|_| OVERFLOW_USER_LABEL.to_owned());
             }
             let entry = current.entry(labels).or_default();
             *entry = entry.saturating_add(i64::try_from(*count).unwrap_or(i64::MAX));
