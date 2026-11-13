@@ -121,13 +121,6 @@ Instead it stores:
 
 ## Migration
 
-**Version boundary**: Redis-with-Findex databases created with KMS **5.12.0 or later** carry a `ready` state marker and a version key in Redis, and start cleanly with the current KMS (5.26).
-Databases created with KMS **earlier than 5.12.0** do not have these markers.
-The KMS refuses to start against a marker-less database and prints an error asking you to export and re-import; there is no in-place upgrade path for those databases.
+Redis-with-Findex databases created on KMS `5.12.0` or later upgrade in place at server startup. Databases created before `5.12.0` are refused at startup and must be exported from the old KMS and imported into a fresh Redis database on the new release.
 
-**Supported upgrade paths**:
-
-| Source version | Path to 5.26 |
-| -------------- | ------------ |
-| ≥ 5.12 | Upgrade directly; no data migration needed. |
-| < 5.12 | Export all objects from the old KMS, start a fresh 5.26 instance, re-import. |
+For full upgrade procedures and multi-instance startup behavior, see [Database Migrations](../../installation/upgrading/database_migrations.md).
