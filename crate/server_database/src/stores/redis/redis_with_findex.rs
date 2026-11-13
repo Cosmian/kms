@@ -19,8 +19,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectHandle, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, InterfaceError, InterfaceResult, KeyInventoryBucket, ObjectHandle,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, error, trace, warn};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -30,7 +30,7 @@ use uuid::Uuid;
 use super::{
     FINDEX_KEY_LENGTH,
     objects_db::{
-        ACTIVE_KEY_COUNT_KEY, DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject,
+        ACTIVE_KEY_COUNT_KEY, DB_KEY_LENGTH, KeyScan, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject,
         keywords_from_attributes,
     },
     permissions::PermissionDB,
@@ -129,6 +129,9 @@ pub(crate) struct RedisWithFindex {
     /// Obfuscated Redis SET key tracking the set of currently-active CO usernames.
     /// Used for efficient `is_any_crypto_officer_activated` without scanning all keys.
     ceremony_active_cos_key: String,
+    /// Key inventory and deactivation dates from the last full scan, refreshed
+    /// by `reconcile_counts`; `None` until the first scan.
+    key_scan: Arc<tokio::sync::RwLock<Option<KeyScan>>>,
 }
 
 /// How a `UidState`'s physical write must be guarded.
@@ -258,6 +261,22 @@ fn has_all_keywords<'a>(
 }
 
 impl RedisWithFindex {
+    /// Run a full key scan and replace the cached snapshot with it.
+    async fn refresh_key_scan(&self) -> DbResult<KeyScan> {
+        let scan = self.objects_db.scan_keys().await?;
+        *self.key_scan.write().await = Some(scan.clone());
+        Ok(scan)
+    }
+
+    /// Return the cached key snapshot, bootstrapping it with a full scan when
+    /// no reconcile has run yet.
+    async fn cached_key_scan(&self) -> DbResult<KeyScan> {
+        if let Some(scan) = self.key_scan.read().await.as_ref() {
+            return Ok(scan.clone());
+        }
+        self.refresh_key_scan().await
+    }
+
     pub(crate) async fn instantiate(
         redis_url: &str,
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
@@ -311,6 +330,7 @@ impl RedisWithFindex {
             findex,
             ceremony_derivation_key,
             ceremony_active_cos_key,
+            key_scan: Arc::new(tokio::sync::RwLock::new(None)),
         };
 
         if count == 0 {
@@ -1448,7 +1468,7 @@ impl ObjectsStore for RedisWithFindex {
         if let Some(count) = self.objects_db.get_active_key_count().await? {
             return Ok(count);
         }
-        let count = self.objects_db.scan_count_non_destroyed_keys().await?;
+        let count = self.refresh_key_scan().await?.key_count();
         self.objects_db.set_active_key_count(count).await?;
         debug!(
             "[redis-metrics] bootstrapped {} non-destroyed key(s) into `{}`",
@@ -1466,12 +1486,23 @@ impl ObjectsStore for RedisWithFindex {
     async fn reconcile_counts(&self) -> InterfaceResult<()> {
         let live_count = self.objects_db.scan_count_non_destroyed().await?;
         self.objects_db.set_live_count(live_count).await?;
-        let key_count = self.objects_db.scan_count_non_destroyed_keys().await?;
+        let key_count = self.refresh_key_scan().await?.key_count();
         self.objects_db.set_active_key_count(key_count).await?;
         debug!(
             "[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}"
         );
         Ok(())
+    }
+
+    /// Served from the snapshot cached by the last reconcile (at most ~5
+    /// minutes old); the first call bootstraps it with a full scan.
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        Ok(self.cached_key_scan().await?.inventory)
+    }
+
+    /// Same caching as [`Self::key_inventory`].
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
+        Ok(self.cached_key_scan().await?.deactivation_dates)
     }
 }
 

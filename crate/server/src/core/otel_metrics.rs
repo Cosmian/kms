@@ -11,15 +11,23 @@
 //! - HTTP request metrics
 //! - Server uptime and health metrics
 
-use std::{borrow::Cow, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex, PoisonError},
+};
 
-use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
+use cosmian_kms_server_database::{
+    Database, DbMetricsRecorder, MainDbKind, reexport::cosmian_kms_interfaces::KeyInventoryBucket,
+};
+use cosmian_logger::{debug, warn};
 use dashmap::DashMap;
 use opentelemetry::{
     KeyValue,
     metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use time::{Duration, OffsetDateTime};
 
 use crate::{error::KmsError, result::KResult};
 
@@ -37,6 +45,29 @@ pub(crate) const MAX_TRACKED_CARDINALITY: usize = 10_000;
 
 /// Sentinel label value emitted when the cardinality cap is reached.
 const OVERFLOW_USER_LABEL: &str = "__overflow__";
+
+/// Maximum distinct `kms.keys.active.count` attribute sets.
+///
+/// Kept below the OpenTelemetry SDK's default per-instrument limit (2000),
+/// which would otherwise merge extra buckets into its own
+/// `otel.metric.overflow` series before ours applies.
+const MAX_KEY_BUCKETS: usize = 1_000;
+
+/// Label value used when a key-inventory dimension is not set on the object.
+const UNKNOWN_LABEL: &str = "unknown";
+
+/// Look-ahead windows, in days, of `kms.keys.expiring_soon.count`. The
+/// windows are cumulative: a key expiring in 3 days is counted in all three.
+pub(crate) const EXPIRY_WINDOWS_DAYS: [i64; 3] = [7, 30, 90];
+
+/// `outcome` label value of a KMIP or HSM operation result: `"success"` or `"error"`.
+pub(crate) const fn outcome_label<T, E>(result: &Result<T, E>) -> &'static str {
+    if result.is_ok() { "success" } else { "error" }
+}
+
+/// `object_type`, `algorithm`, `key_length`, `state` label values of one
+/// `kms.keys.active.count` series.
+type KeyBucketLabels = [String; 4];
 
 /// Number of hex characters kept from the SHA-256 digest used for the `user`
 /// metric label (64 bits — negligible collision risk at `MAX_TRACKED_CARDINALITY`
@@ -131,8 +162,18 @@ pub struct OtelMetrics {
     /// Total number of objects in the KMS (gauge — records absolute count directly)
     pub kms_objects_total: Gauge<i64>,
 
-    /// Current number of active keys in Active state (gauge — records absolute count directly)
+    /// Non-destroyed keys per `object_type`/`algorithm`/`key_length`/`state`
+    /// (gauge — records absolute counts directly).
     pub active_keys_count: Gauge<i64>,
+
+    /// Label sets reported by the last `kms.keys.active.count` update, so a
+    /// bucket that empties out is reset to 0 instead of keeping its last
+    /// value forever (cumulative gauges never forget an attribute set).
+    active_keys_buckets: Mutex<HashSet<KeyBucketLabels>>,
+
+    /// `PreActive`/`Active` keys whose `DeactivationDate` falls within the
+    /// next N days, labelled with `days_until_expiry`.
+    pub keys_expiring_soon_count: Gauge<i64>,
 
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
@@ -280,6 +321,13 @@ impl OtelMetrics {
             "Number of non-destroyed key objects across all backends",
             "{key}"
         );
+        let keys_expiring_soon_count = metric!(
+            meter,
+            i64_gauge,
+            "kms.keys.expiring_soon.count",
+            "Number of active or pre-active keys whose deactivation date falls within the window",
+            "{key}"
+        );
         let cache_operations_total = metric!(
             meter,
             u64_counter,
@@ -318,9 +366,6 @@ impl OtelMetrics {
             .map_err(|e| KmsError::ServerError(format!("Start time conversion error: {e}")))?;
         server_start_time.add(start_time_i64, &[]);
 
-        // Seed the time series so it is visible in the backend from server start.
-        active_keys_count.record(0, &[]);
-
         Ok(Self {
             meter,
             _meter_provider: meter_provider,
@@ -341,6 +386,8 @@ impl OtelMetrics {
             active_connections,
             kms_objects_total,
             active_keys_count,
+            active_keys_buckets: Mutex::new(HashSet::new()),
+            keys_expiring_soon_count,
             cache_operations_total,
             hsm_operations_total,
             key_auto_rotation_total,
@@ -350,14 +397,21 @@ impl OtelMetrics {
 
     /// Record a KMIP operation.
     ///
+    /// `outcome` (`"success"` / `"error"`) labels `kms.kmip.operations.total`
+    /// only, to keep the per-user series count unchanged.
     /// `user` is only ever used to update the in-process active-user tracker
     /// and, hashed, as the `kms.kmip.operations.per_user.total` label — see
     /// [`Self::bounded_user_label`].
-    pub fn record_kmip_operation(&self, operation: &str, user: &str) {
+    pub fn record_kmip_operation(&self, operation: &str, user: &str, outcome: &'static str) {
         // One shared allocation for both label sets.
         let operation: Arc<str> = Arc::from(operation);
-        self.kmip_operations_total
-            .add(1, &[KeyValue::new("operation", Arc::clone(&operation))]);
+        self.kmip_operations_total.add(
+            1,
+            &[
+                KeyValue::new("operation", Arc::clone(&operation)),
+                KeyValue::new("outcome", outcome),
+            ],
+        );
         let effective_user = self.bounded_user_label(user);
         self.kmip_operations_per_user.add(
             1,
@@ -539,9 +593,94 @@ impl OtelMetrics {
         self.active_connections.add(-1, &[]);
     }
 
-    /// Set the current active keys count from an absolute Locate response.
-    pub fn update_active_keys_count(&self, absolute_count: i64) {
-        self.active_keys_count.record(absolute_count, &[]);
+    /// Set `kms.keys.active.count` from a key inventory.
+    ///
+    /// Unset dimensions are labelled `"unknown"`. Beyond
+    /// [`MAX_KEY_BUCKETS`] distinct buckets, the remaining counts are
+    /// folded into an all-`"__overflow__"` bucket so the total stays exact.
+    /// The largest buckets are kept, in a deterministic order, so the same
+    /// series survive every update instead of accumulating in the SDK.
+    /// Buckets reported by the previous update but absent now are set to 0.
+    pub fn update_active_keys_breakdown(&self, inventory: &[(KeyInventoryBucket, u64)]) {
+        let mut ordered: Vec<&(KeyInventoryBucket, u64)> = inventory.iter().collect();
+        ordered.sort_unstable_by(|(a, a_count), (b, b_count)| {
+            b_count.cmp(a_count).then_with(|| a.cmp(b))
+        });
+        let mut current: HashMap<KeyBucketLabels, i64> = HashMap::new();
+        for (bucket, count) in ordered {
+            let mut labels = [
+                bucket.object_type.clone(),
+                bucket
+                    .algorithm
+                    .clone()
+                    .unwrap_or_else(|| UNKNOWN_LABEL.to_owned()),
+                bucket
+                    .key_length
+                    .map_or_else(|| UNKNOWN_LABEL.to_owned(), |l| l.to_string()),
+                bucket
+                    .state
+                    .clone()
+                    .unwrap_or_else(|| UNKNOWN_LABEL.to_owned()),
+            ];
+            if current.len() >= MAX_KEY_BUCKETS && !current.contains_key(&labels) {
+                labels = [0; 4].map(|_| OVERFLOW_USER_LABEL.to_owned());
+            }
+            let entry = current.entry(labels).or_default();
+            *entry = entry.saturating_add(i64::try_from(*count).unwrap_or(i64::MAX));
+        }
+
+        let mut previous = self
+            .active_keys_buckets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        for stale in previous.iter().filter(|l| !current.contains_key(*l)) {
+            self.active_keys_count
+                .record(0, &key_bucket_attributes(stale));
+        }
+        for (labels, count) in &current {
+            self.active_keys_count
+                .record(*count, &key_bucket_attributes(labels));
+        }
+        *previous = current.into_keys().collect();
+    }
+
+    /// Refresh `kms.keys.active.count` and `kms.keys.expiring_soon.count` from
+    /// the database (all registered stores, no ACL filtering).
+    ///
+    /// Failures are logged at `warn`, not returned: a persistently failing
+    /// query (e.g. a backend-specific SQL bug) must be visible without debug
+    /// logging, but must not stop the caller (startup or the metrics cron).
+    pub async fn sync_key_gauges(&self, database: &Database) {
+        match database.key_inventory().await {
+            Ok(inventory) => {
+                debug!(
+                    "[metrics] kms.keys.active.count synced: {} bucket(s)",
+                    inventory.len()
+                );
+                self.update_active_keys_breakdown(&inventory);
+            }
+            Err(e) => warn!("[metrics] Failed to sync kms.keys.active.count: {e}"),
+        }
+        match database.key_deactivation_dates().await {
+            Ok(dates) => self.update_keys_expiring_soon(OffsetDateTime::now_utc(), &dates),
+            Err(e) => warn!("[metrics] Failed to sync kms.keys.expiring_soon.count: {e}"),
+        }
+    }
+
+    /// Set `kms.keys.expiring_soon.count` for every window of
+    /// [`EXPIRY_WINDOWS_DAYS`] from the deactivation dates of the
+    /// `PreActive`/`Active` keys.
+    pub fn update_keys_expiring_soon(
+        &self,
+        now: OffsetDateTime,
+        deactivation_dates: &[OffsetDateTime],
+    ) {
+        for (days, count) in expiring_soon_counts(now, deactivation_dates) {
+            self.keys_expiring_soon_count.record(
+                count,
+                &[KeyValue::new("days_until_expiry", days.to_string())],
+            );
+        }
     }
 
     /// Set `kms.objects.total` to the current absolute object count.
@@ -603,12 +742,19 @@ impl OtelMetrics {
     ///
     /// `operation` must be a `'static` literal (e.g. `Op::OP_NAME`, `"Wrap"`, `"Unwrap"`).
     /// `hsm_model` is a runtime label from `hsm_model_from_prefix` and still requires allocation.
-    pub fn record_hsm_operation(&self, operation: &'static str, hsm_model: &str) {
+    /// `outcome` is `"success"` or `"error"`.
+    pub fn record_hsm_operation(
+        &self,
+        operation: &'static str,
+        hsm_model: &str,
+        outcome: &'static str,
+    ) {
         self.hsm_operations_total.add(
             1,
             &[
                 KeyValue::new("hsm_model", hsm_model.to_owned()),
                 KeyValue::new("operation", operation),
+                KeyValue::new("outcome", outcome),
             ],
         );
     }
@@ -623,6 +769,34 @@ impl OtelMetrics {
     pub const fn meter(&self) -> &Meter {
         &self.meter
     }
+}
+
+/// `kms.keys.active.count` attributes of one bucket.
+fn key_bucket_attributes(labels: &KeyBucketLabels) -> [KeyValue; 4] {
+    let [object_type, algorithm, key_length, state] = labels.clone();
+    [
+        KeyValue::new("object_type", object_type),
+        KeyValue::new("algorithm", algorithm),
+        KeyValue::new("key_length", key_length),
+        KeyValue::new("state", state),
+    ]
+}
+
+/// Number of dates in `(now, now + days]` for every window of
+/// [`EXPIRY_WINDOWS_DAYS`]. Dates already past are not "expiring soon": the
+/// key is (or is about to be) deactivated.
+fn expiring_soon_counts(
+    now: OffsetDateTime,
+    deactivation_dates: &[OffsetDateTime],
+) -> [(i64, i64); EXPIRY_WINDOWS_DAYS.len()] {
+    EXPIRY_WINDOWS_DAYS.map(|days| {
+        let horizon = now.saturating_add(Duration::days(days));
+        let count = deactivation_dates
+            .iter()
+            .filter(|date| **date > now && **date <= horizon)
+            .count();
+        (days, i64::try_from(count).unwrap_or(i64::MAX))
+    })
 }
 
 impl DbMetricsRecorder for OtelMetrics {
@@ -716,6 +890,57 @@ mod tests {
         0
     }
 
+    /// Sorted `(key, value)` attribute pairs, for comparing data points.
+    fn attrs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        let mut v: Vec<_> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Value of every data point of an i64 gauge or u64 counter in the last
+    /// exported batch, keyed by its sorted attributes.
+    fn data_points(
+        exporter: &InMemoryMetricExporter,
+        name: &str,
+    ) -> HashMap<Vec<(String, String)>, i64> {
+        fn key<'a>(kvs: impl Iterator<Item = &'a KeyValue>) -> Vec<(String, String)> {
+            let mut v: Vec<_> = kvs
+                .map(|kv| (kv.key.to_string(), kv.value.to_string()))
+                .collect();
+            v.sort();
+            v
+        }
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let mut points = HashMap::new();
+        let Some(last) = batches.last() else {
+            return points;
+        };
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics().filter(|m| m.name() == name) {
+                match metric.data() {
+                    AggregatedMetrics::I64(MetricData::Gauge(g)) => {
+                        for dp in g.data_points() {
+                            points.insert(key(dp.attributes()), dp.value());
+                        }
+                    }
+                    AggregatedMetrics::U64(MetricData::Sum(sum)) => {
+                        for dp in sum.data_points() {
+                            points.insert(
+                                key(dp.attributes()),
+                                i64::try_from(dp.value()).unwrap_or(i64::MAX),
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        points
+    }
+
     /// Collects every `user` attribute value recorded for a `u64` counter metric
     /// across all data points in the last exported batch.
     fn user_labels(exporter: &InMemoryMetricExporter, name: &str) -> Vec<String> {
@@ -764,9 +989,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_kmip_operation_recording() {
         let (metrics, provider, exporter) = setup_observing_metrics();
-        metrics.record_kmip_operation("Create", "user1");
-        metrics.record_kmip_operation("Get", "user1");
-        metrics.record_kmip_operation("Create", "user2");
+        metrics.record_kmip_operation("Create", "user1", "success");
+        metrics.record_kmip_operation("Get", "user1", "error");
+        metrics.record_kmip_operation("Create", "user2", "success");
         provider.force_flush().expect("flush");
         assert_eq!(last_counter_u64(&exporter, "kms.kmip.operations.total"), 3);
 
@@ -785,8 +1010,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_per_user_metric_labels() {
         let (metrics, provider, exporter) = setup_observing_metrics();
-        metrics.record_kmip_operation("Create", "alice");
-        metrics.record_kmip_operation("Get", "bob");
+        metrics.record_kmip_operation("Create", "alice", "success");
+        metrics.record_kmip_operation("Get", "bob", "success");
         provider.force_flush().expect("flush");
         let mut labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
         labels.sort();
@@ -808,7 +1033,7 @@ mod tests {
                 .active_users_tracker
                 .insert(format!("user{i}"), i64::MAX);
         }
-        metrics.record_kmip_operation("Create", "new_user");
+        metrics.record_kmip_operation("Create", "new_user", "success");
         provider.force_flush().expect("flush");
         let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
         assert_eq!(labels, vec![OVERFLOW_USER_LABEL.to_owned()]);
@@ -864,7 +1089,7 @@ mod tests {
                 .active_users_tracker
                 .insert(format!("user{i}"), i64::MAX);
         }
-        metrics.record_kmip_operation("Create", "new_user");
+        metrics.record_kmip_operation("Create", "new_user", "success");
         provider.force_flush().expect("flush");
         let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
         assert!(
@@ -921,10 +1146,184 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_record_hsm_operation_increments_counter() {
         let (metrics, provider, exporter) = setup_observing_metrics();
-        metrics.record_hsm_operation("Encrypt", "softhsm2");
-        metrics.record_hsm_operation("Decrypt", "softhsm2");
+        metrics.record_hsm_operation("Encrypt", "softhsm2", "success");
+        metrics.record_hsm_operation("Decrypt", "softhsm2", "error");
         provider.force_flush().expect("flush");
         assert_eq!(last_counter_u64(&exporter, "kms.hsm.operations.total"), 2);
+        let points = data_points(&exporter, "kms.hsm.operations.total");
+        assert_eq!(
+            points.get(&attrs(&[
+                ("hsm_model", "softhsm2"),
+                ("operation", "Decrypt"),
+                ("outcome", "error"),
+            ])),
+            Some(&1)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_kmip_operation_outcome_label() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_kmip_operation("Encrypt", "alice", "success");
+        metrics.record_kmip_operation("Encrypt", "alice", "success");
+        metrics.record_kmip_operation("Encrypt", "alice", "error");
+        provider.force_flush().expect("flush");
+        let points = data_points(&exporter, "kms.kmip.operations.total");
+        assert_eq!(
+            points.get(&attrs(&[("operation", "Encrypt"), ("outcome", "success")])),
+            Some(&2)
+        );
+        assert_eq!(
+            points.get(&attrs(&[("operation", "Encrypt"), ("outcome", "error")])),
+            Some(&1)
+        );
+    }
+
+    fn bucket(
+        object_type: &str,
+        algorithm: Option<&str>,
+        key_length: Option<i32>,
+        state: Option<&str>,
+    ) -> KeyInventoryBucket {
+        KeyInventoryBucket {
+            object_type: object_type.to_owned(),
+            algorithm: algorithm.map(str::to_owned),
+            key_length,
+            state: state.map(str::to_owned),
+        }
+    }
+
+    fn key_attrs(
+        object_type: &str,
+        algorithm: &str,
+        key_length: &str,
+        state: &str,
+    ) -> Vec<(String, String)> {
+        attrs(&[
+            ("algorithm", algorithm),
+            ("key_length", key_length),
+            ("object_type", object_type),
+            ("state", state),
+        ])
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_active_keys_breakdown_labels_and_zeroes_vanished_buckets() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.update_active_keys_breakdown(&[
+            (
+                bucket("SymmetricKey", Some("AES"), Some(256), Some("Active")),
+                3,
+            ),
+            (
+                bucket("PrivateKey", Some("RSA"), Some(2048), Some("Active")),
+                1,
+            ),
+            (bucket("SymmetricKey", None, None, None), 2),
+        ]);
+        provider.force_flush().expect("flush");
+        let points = data_points(&exporter, "kms.keys.active.count");
+        assert_eq!(points.len(), 3, "no unlabelled seed series: {points:?}");
+        assert_eq!(
+            points.get(&key_attrs("SymmetricKey", "AES", "256", "Active")),
+            Some(&3)
+        );
+        assert_eq!(
+            points.get(&key_attrs("SymmetricKey", "unknown", "unknown", "unknown")),
+            Some(&2)
+        );
+
+        metrics.update_active_keys_breakdown(&[(
+            bucket("SymmetricKey", Some("AES"), Some(256), Some("Active")),
+            4,
+        )]);
+        provider.force_flush().expect("flush");
+        let points = data_points(&exporter, "kms.keys.active.count");
+        assert_eq!(
+            points.get(&key_attrs("SymmetricKey", "AES", "256", "Active")),
+            Some(&4)
+        );
+        assert_eq!(
+            points.get(&key_attrs("PrivateKey", "RSA", "2048", "Active")),
+            Some(&0)
+        );
+        assert_eq!(points.values().sum::<i64>(), 4);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_active_keys_breakdown_folds_overflow_buckets() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        let inventory: Vec<_> = (0..=MAX_KEY_BUCKETS)
+            .map(|i| {
+                (
+                    bucket(
+                        "SymmetricKey",
+                        Some("AES"),
+                        Some(i32::try_from(i).expect("small")),
+                        Some("Active"),
+                    ),
+                    1,
+                )
+            })
+            .chain([(bucket("PublicKey", Some("EC"), None, Some("Active")), 5)])
+            .collect();
+        metrics.update_active_keys_breakdown(&inventory);
+        provider.force_flush().expect("flush");
+        let points = data_points(&exporter, "kms.keys.active.count");
+        assert_eq!(points.len(), MAX_KEY_BUCKETS + 1);
+        // The largest bucket is kept; the two smallest-ordered 1-key buckets overflow.
+        assert_eq!(
+            points.get(&key_attrs("PublicKey", "EC", "unknown", "Active")),
+            Some(&5)
+        );
+        let overflow = key_attrs(
+            OVERFLOW_USER_LABEL,
+            OVERFLOW_USER_LABEL,
+            OVERFLOW_USER_LABEL,
+            OVERFLOW_USER_LABEL,
+        );
+        assert_eq!(points.get(&overflow), Some(&2));
+        let total = i64::try_from(MAX_KEY_BUCKETS).expect("small") + 6;
+        assert_eq!(points.values().sum::<i64>(), total);
+
+        // Same inventory in another order: the same buckets survive, so no
+        // series accumulate across updates.
+        let reversed: Vec<_> = inventory.into_iter().rev().collect();
+        metrics.update_active_keys_breakdown(&reversed);
+        provider.force_flush().expect("flush");
+        let points = data_points(&exporter, "kms.keys.active.count");
+        assert_eq!(points.len(), MAX_KEY_BUCKETS + 1);
+        assert_eq!(points.get(&overflow), Some(&2));
+    }
+
+    #[test]
+    fn test_expiring_soon_counts_cumulative_windows() {
+        let now = time::macros::datetime!(2026-01-01 00:00 UTC);
+        let dates = [
+            now - Duration::days(1),
+            now,
+            now + Duration::days(3),
+            now + Duration::days(7),
+            now + Duration::days(20),
+            now + Duration::days(90),
+            now + Duration::days(91),
+        ];
+        assert_eq!(
+            expiring_soon_counts(now, &dates),
+            [(7, 2), (30, 3), (90, 4)]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_keys_expiring_soon_records_each_window() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        let now = OffsetDateTime::now_utc();
+        metrics.update_keys_expiring_soon(now, &[now + Duration::days(3)]);
+        provider.force_flush().expect("flush");
+        let points = data_points(&exporter, "kms.keys.expiring_soon.count");
+        for days in ["7", "30", "90"] {
+            assert_eq!(points.get(&attrs(&[("days_until_expiry", days)])), Some(&1));
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -557,15 +557,17 @@ impl KMS {
 
     /// Record metrics for a cascading (linked-object) operation.
     ///
-    /// Used by `destroy` and `revoke` when they cascade to related keys.
+    /// Used by `destroy` and `revoke` when they cascade to related keys;
+    /// `outcome` is `"success"` or `"error"`.
     pub(crate) fn record_cascading_metrics(
         &self,
         op_name: &str,
         op_start: std::time::Instant,
         user: &UserId,
+        outcome: &'static str,
     ) {
         if let Some(metrics) = &self.metrics {
-            metrics.record_kmip_operation(op_name, user);
+            metrics.record_kmip_operation(op_name, user, outcome);
             metrics.record_kmip_operation_duration(op_name, op_start.elapsed().as_secs_f64());
         }
     }

@@ -307,6 +307,56 @@ create_aes_key_wrapped_by() {
   kmip_post "{\"tag\":\"Create\",\"type\":\"Structure\",\"value\":[{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attributes\",\"value\":[{\"tag\":\"CryptographicAlgorithm\",\"type\":\"Enumeration\",\"value\":\"AES\"},{\"tag\":\"CryptographicLength\",\"type\":\"Integer\",\"value\":256},{\"tag\":\"CryptographicUsageMask\",\"type\":\"Integer\",\"value\":12},{\"tag\":\"KeyFormatType\",\"type\":\"Enumeration\",\"value\":\"TransparentSymmetricKey\"},{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attribute\",\"value\":[{\"tag\":\"VendorIdentification\",\"type\":\"TextString\",\"value\":\"cosmian\"},{\"tag\":\"AttributeName\",\"type\":\"TextString\",\"value\":\"wrapping_key_id\"},{\"tag\":\"AttributeValue\",\"type\":\"TextString\",\"value\":\"${kek_uid}\"}]}]}]}"
 }
 
+# Key pairs and soon-to-expire keys for the kms.keys.* label assertions.
+# A past ActivationDate creates the objects directly in the Active state.
+create_key_pair() {
+  local algorithm_attrs="$1"
+  kmip_post "{\"tag\":\"CreateKeyPair\",\"type\":\"Structure\",\"value\":[{\"tag\":\"CommonAttributes\",\"type\":\"Structure\",\"value\":[${algorithm_attrs},{\"tag\":\"ActivationDate\",\"type\":\"DateTime\",\"value\":\"2024-01-01T00:00:00Z\"}]},{\"tag\":\"PrivateKeyAttributes\",\"type\":\"Structure\",\"value\":[{\"tag\":\"CryptographicUsageMask\",\"type\":\"Integer\",\"value\":1}]},{\"tag\":\"PublicKeyAttributes\",\"type\":\"Structure\",\"value\":[{\"tag\":\"CryptographicUsageMask\",\"type\":\"Integer\",\"value\":2}]}]}"
+}
+
+create_aes_key_deactivating_at() {
+  local deactivation_date="$1"
+  kmip_post "{\"tag\":\"Create\",\"type\":\"Structure\",\"value\":[{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attributes\",\"type\":\"Structure\",\"value\":[{\"tag\":\"CryptographicAlgorithm\",\"type\":\"Enumeration\",\"value\":\"AES\"},{\"tag\":\"CryptographicLength\",\"type\":\"Integer\",\"value\":256},{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"ActivationDate\",\"type\":\"DateTime\",\"value\":\"2024-01-01T00:00:00Z\"},{\"tag\":\"DeactivationDate\",\"type\":\"DateTime\",\"value\":\"${deactivation_date}\"}]}]}"
+}
+
+# Wait until one series of `metric_name` carries every `label="value"`
+# fragment given after the timeout (values without spaces) and has a value
+# >= min. Other labels on the series (job, instance, ...) are ignored.
+wait_for_series_ge() {
+  local metric_name="$1"
+  local min="$2"
+  local timeout_secs="$3"
+  shift 3
+  local labels="$*"
+  local start now
+  start=$(date +%s)
+
+  while true; do
+    body=$(collector_metrics_body)
+    if echo "${body}" | awk -v name="${metric_name}" -v min="${min}" -v labels="${labels}" '
+      BEGIN { n = split(labels, want, " ") }
+      index($0, name "{") == 1 {
+        for (i = 1; i <= n; i++) if (index($0, want[i]) == 0) next
+        value = $0
+        sub(/^.*\} /, "", value)
+        split(value, fields, " ")
+        if ((fields[1] + 0) >= (min + 0)) { ok = 1 }
+      }
+      END { exit(ok ? 0 : 1) }
+    '; then
+      return 0
+    fi
+
+    now=$(date +%s)
+    if [ $((now - start)) -ge "${timeout_secs}" ]; then
+      echo "Timed out waiting for ${metric_name}{${labels}} >= ${min}. Matching series:" >&2
+      echo "${body}" | grep "^${metric_name}{" >&2 || echo "<none>" >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+}
+
 wait_for_metric_gt() {
   local metric_name="$1"
   local min="$2"
@@ -663,6 +713,47 @@ EOF
     exit 1
   fi
   wait_for_metric_gt "kms_cache_operations_total" 0 60
+
+  # ── Step 5: kms.keys.active.count labels ────────────────────────────────
+  # The gauge is broken down by object_type/algorithm/key_length/state and
+  # refreshed by the metrics cron (metrics_count_interval_secs, 30 s default).
+  echo "Creating RSA, EC and soon-to-expire AES keys for kms.keys.* labels..."
+  rsa_resp=$(create_key_pair '{"tag":"CryptographicAlgorithm","type":"Enumeration","value":"RSA"},{"tag":"CryptographicLength","type":"Integer","value":2048},{"tag":"KeyFormatType","type":"Enumeration","value":"TransparentRSAPrivateKey"}')
+  if ! printf '%s' "${rsa_resp}" | grep -q '"PrivateKeyUniqueIdentifier"'; then
+    print_error "RSA CreateKeyPair failed: ${rsa_resp}"
+  fi
+  ec_resp=$(create_key_pair '{"tag":"CryptographicAlgorithm","type":"Enumeration","value":"ECDSA"},{"tag":"CryptographicDomainParameters","type":"Structure","value":[{"tag":"RecommendedCurve","type":"Enumeration","value":"P256"}]},{"tag":"KeyFormatType","type":"Enumeration","value":"ECPrivateKey"}')
+  if ! printf '%s' "${ec_resp}" | grep -q '"PrivateKeyUniqueIdentifier"'; then
+    print_error "EC CreateKeyPair failed: ${ec_resp}"
+  fi
+  # Deactivates in 3 days: inside every window (7, 30 and 90 days).
+  expiring_date=$(perl -MPOSIX -e 'print strftime("%Y-%m-%dT%H:%M:%SZ", gmtime(time + 3 * 86400))')
+  expiring_resp=$(create_aes_key_deactivating_at "${expiring_date}")
+  if [ -z "$(printf '%s' "${expiring_resp}" | extract_uid)" ]; then
+    print_error "Create of the expiring AES key failed: ${expiring_resp}"
+  fi
+
+  wait_for_series_ge "kms_keys_active_count" 10 120 \
+    'object_type="SymmetricKey"' 'algorithm="AES"' 'key_length="256"' 'state="Active"'
+  wait_for_series_ge "kms_keys_active_count" 1 120 \
+    'object_type="PrivateKey"' 'algorithm="RSA"' 'key_length="2048"' 'state="Active"'
+  wait_for_series_ge "kms_keys_active_count" 1 120 \
+    'object_type="PublicKey"' 'algorithm="RSA"' 'key_length="2048"' 'state="Active"'
+  wait_for_series_ge "kms_keys_active_count" 1 120 \
+    'object_type="PrivateKey"' 'algorithm="ECDSA"' 'state="Active"'
+
+  # ── Step 6: kms.keys.expiring_soon.count ────────────────────────────────
+  for window in 7 30 90; do
+    wait_for_series_ge "kms_keys_expiring_soon_count" 1 120 "days_until_expiry=\"${window}\""
+  done
+
+  # ── Step 7: kms.kmip.operations.total outcome label ─────────────────────
+  # Encrypt with an unknown key fails: recorded with outcome="error".
+  encrypt_with_key "otel-e2e-missing-key" >/dev/null
+  wait_for_series_ge "kms_kmip_operations_total" 1 60 'operation="Encrypt"' 'outcome="success"'
+  wait_for_series_ge "kms_kmip_operations_total" 1 60 'operation="Encrypt"' 'outcome="error"'
+  # kms.hsm.operations.total carries the same outcome label; this SQLite
+  # scenario has no HSM, so it is covered by the server unit tests.
 
   # Echo what we observed to help diagnose CI flakiness.
   body=$(collector_metrics_body)
