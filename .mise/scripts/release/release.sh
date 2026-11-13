@@ -88,7 +88,8 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" charts/cosmia
 # Skip all pre-commit hooks when running in CI mode.
 # The workflow handles each concern as a dedicated job:
 #   - Nix hash updates  : the `update-nix-hashes` CI job
-#   - SBOM / CBOM       : the `commit-sbom` CI job
+#   - Docs / CBOM       : the `update-generated-docs` CI job
+#   - SBOMs             : the `package-and-commit-sbom` CI job
 #   - Full lint pass    : the regular CI pipeline that is already triggered
 #                         by the branch push
 if [ "$CI_MODE" = "true" ]; then

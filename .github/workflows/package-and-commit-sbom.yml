@@ -1,0 +1,178 @@
+---
+# Local reusable workflow — Package, wait, and commit SBOMs.
+#
+# Dispatches packaging.yml on `ref` through `workflow_dispatch` (the
+# `publish-sbom` job in packaging.yml runs only on PR, tag, or
+# workflow_dispatch; dispatching builds the ref's current HEAD, which includes
+# the bot commits made earlier). Polls until the run completes, retrieves the
+# SBOMs from package.cosmian.com/kms/last_build/<ref>/sbom/ and commits them
+# to `ref`.
+#
+# Callers / triggers
+# ──────────────────
+# release.yml — after update-nix-hashes and update-generated-docs.
+# nightly.yml — non-tag refs, after update-nix-hashes and update-generated-docs.
+
+name: Package and commit SBOM
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: >
+          Git ref (branch name) to package and to push the SBOMs to.
+        required: true
+        type: string
+      new_version:
+        description: >
+          Optional version string appended to the commit message (e.g. "5.20.0").
+        required: false
+        type: string
+        default: ''
+    secrets:
+      PAT_TOKEN:
+        description: >
+          Personal Access Token with `repo` + `workflow` scopes.
+          Required to dispatch packaging.yml and so that the push re-triggers
+          other workflows (GITHUB_TOKEN cannot do this).
+        required: true
+    outputs:
+      packaging_run_id:
+        description: ID of the dispatched packaging.yml run.
+        value: ${{ jobs.trigger-packaging.outputs.packaging_run_id }}
+
+jobs:
+  trigger-packaging:
+    name: Trigger & await packaging CI
+    runs-on: ubuntu-24.04
+    outputs:
+      packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
+
+    steps:
+      - name: Dispatch packaging.yml on ${{ inputs.ref }}
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          BRANCH: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          echo "Dispatching packaging.yml on branch '$BRANCH'…"
+
+          # Capture the timestamp before dispatch so we can find the new run
+          BEFORE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          gh workflow run packaging.yml \
+            --repo Cosmian/kms \
+            --ref "$BRANCH"
+
+          # Wait a few seconds for the run to register in the API
+          sleep 10
+
+          # Find the run that was created after our dispatch timestamp
+          RUN_ID=$(GH_PAGER=cat gh run list \
+            --repo Cosmian/kms \
+            --branch "$BRANCH" \
+            --workflow packaging.yml \
+            --limit 5 \
+            --json databaseId,createdAt \
+            --jq "[.[] | select(.createdAt > \"$BEFORE\")] | .[0].databaseId // empty")
+
+          if [ -z "${RUN_ID:-}" ] || [ "$RUN_ID" = "null" ]; then
+            echo "ERROR: Could not find the dispatched packaging.yml run." >&2
+            exit 1
+          fi
+
+          echo "Dispatched run ID: $RUN_ID"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for packaging run to complete
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for packaging run $RUN_ID to complete…"
+          echo "  (packaging takes 40-70 min to run; self-hosted runners may"
+          echo "   also be pending/queued for hours — timeout set to 360 min)"
+
+          MAX_WAIT=21600
+          INTERVAL=60
+          elapsed=0
+
+          while true; do
+            STATUS=$(GH_PAGER=cat gh run view "$RUN_ID" \
+              --repo Cosmian/kms \
+              --json status,conclusion \
+              --jq '.status')
+            CONCLUSION=$(GH_PAGER=cat gh run view "$RUN_ID" \
+              --repo Cosmian/kms \
+              --json status,conclusion \
+              --jq '.conclusion // empty')
+
+            echo "  $(date -u +"%H:%M:%SZ") — Run $RUN_ID: status=$STATUS conclusion=${CONCLUSION:-pending}"
+
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "Packaging run $RUN_ID completed successfully."
+                break
+              else
+                echo "ERROR: Packaging run $RUN_ID finished with conclusion '$CONCLUSION'." >&2
+                echo "       Review: https://github.com/Cosmian/kms/actions/runs/$RUN_ID" >&2
+                echo "       Fix the packaging failure and re-run the calling workflow." >&2
+                exit 1
+              fi
+            fi
+
+            if [ "$elapsed" -ge "$MAX_WAIT" ]; then
+              echo "ERROR: Timed out waiting for packaging CI after ${MAX_WAIT}s." >&2
+              exit 1
+            fi
+
+            sleep "$INTERVAL"
+            elapsed=$((elapsed + INTERVAL))
+          done
+
+  commit-sbom:
+    name: Retrieve & commit SBOM
+    needs: trigger-packaging
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Retrieve SBOMs from package.cosmian.com
+        run: |
+          # The packaging CI publishes SBOMs under:
+          #   last_build/<ref>/sbom/
+          mise run sbom:generate --retrieve \
+            --branch "last_build/${{ inputs.ref }}"
+
+      - name: Commit SBOMs
+        run: |
+          REF="${{ inputs.ref }}"
+          git add sbom/
+          if git diff --cached --quiet; then
+            echo "SBOMs are already committed - nothing to do."
+          else
+            MSG="build: update SBOM reports"
+            if [ -n "${{ inputs.new_version }}" ]; then MSG="$MSG for ${{ inputs.new_version }}"; fi
+            # [skip ci] stops this commit from re-triggering nightly.yml.
+            git commit -m "$MSG [skip ci]"
+            # develop/main can move during the long packaging wait.
+            git pull --rebase origin "$REF"
+            git push origin "$REF"
+          fi
