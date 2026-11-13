@@ -42,6 +42,19 @@ SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
 AND json_extract(attributes, '$.ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
+-- name: key-inventory
+SELECT json_extract(attributes, '$.ObjectType'), json_extract(attributes, '$.CryptographicAlgorithm'),
+CAST(json_extract(attributes, '$.CryptographicLength') AS INTEGER), state, COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND json_extract(attributes, '$.ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey')
+GROUP BY 1, 2, 3, 4;
+
+-- name: key-deactivation-dates
+SELECT attributes -> '$.DeactivationDate' FROM objects
+WHERE state IN ('PreActive', 'Active')
+AND json_extract(attributes, '$.ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey')
+AND json_extract(attributes, '$.DeactivationDate') IS NOT NULL;
+
 -- name: create-index-objects-rotate-lookup
 CREATE INDEX IF NOT EXISTS idx_objects_rotate_name ON objects (json_extract(attributes, '$.RotateName'), owner) WHERE json_extract(attributes, '$.RotateName') IS NOT NULL;
 

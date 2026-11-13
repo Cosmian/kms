@@ -9,10 +9,11 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+use cosmian_kms_interfaces::{KeyInventoryBucket, ObjectsStore, PermissionsStore};
 pub use db_metrics::DbMetricsRecorder;
 #[cfg(feature = "non-fips")]
 use redis::AsyncCommands;
+use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
 use crate::{CeremonyKeys, error::DbResult};
@@ -313,16 +314,30 @@ impl Database {
         Ok(total)
     }
 
-    /// Count non-destroyed key objects across all registered stores.
-    ///
-    /// Returns the number of key objects (symmetric, asymmetric) whose state is not `Destroyed`.
-    pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
+    /// Key inventory across all registered stores, with the counts of
+    /// identical buckets summed (e.g. the same algorithm in the database and
+    /// on an HSM).
+    pub async fn key_inventory(&self) -> DbResult<Vec<(KeyInventoryBucket, u64)>> {
         let map = self.objects.read().await;
-        let mut total = 0_u64;
+        let mut merged: HashMap<KeyInventoryBucket, u64> = HashMap::new();
         for store in map.values() {
-            total += store.count_non_destroyed_keys().await?;
+            for (bucket, count) in store.key_inventory().await? {
+                let entry = merged.entry(bucket).or_default();
+                *entry = entry.saturating_add(count);
+            }
         }
-        Ok(total)
+        Ok(merged.into_iter().collect())
+    }
+
+    /// `DeactivationDate` of every `PreActive`/`Active` key across all
+    /// registered stores.
+    pub async fn key_deactivation_dates(&self) -> DbResult<Vec<OffsetDateTime>> {
+        let map = self.objects.read().await;
+        let mut dates = Vec::new();
+        for store in map.values() {
+            dates.extend(store.key_deactivation_dates().await?);
+        }
+        Ok(dates)
     }
 
     /// Reconcile all object-count metrics across all registered stores.

@@ -112,6 +112,23 @@ impl FindOptions {
     }
 }
 
+/// One group of the key inventory exported as the `kms.keys.active.count` metric.
+///
+/// Values are the KMIP names as stored by the backend (`"SymmetricKey"`, `"AES"`,
+/// `"Active"`, …). `None` means the attribute is absent on the stored key, or the
+/// backend cannot know it (an HSM does not expose the KMIP state or key length).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct KeyInventoryBucket {
+    /// KMIP `ObjectType`.
+    pub object_type: String,
+    /// KMIP `CryptographicAlgorithm`.
+    pub algorithm: Option<String>,
+    /// KMIP `CryptographicLength`, in bits.
+    pub key_length: Option<i32>,
+    /// KMIP `State`.
+    pub state: Option<String>,
+}
+
 /// Trait that must implement all object stores (DBs, HSMs, etc.) that store objects
 #[async_trait(?Send)]
 pub trait ObjectsStore {
@@ -326,6 +343,32 @@ pub trait ObjectsStore {
              kms.keys.active.count will read 0 until a real implementation is provided"
         );
         Ok(0)
+    }
+
+    /// Returns the non-destroyed key objects of this store grouped by object
+    /// type, algorithm, key length and state (same population as
+    /// [`Self::count_non_destroyed_keys`]).
+    ///
+    /// Like the other counting methods it bypasses access control and feeds
+    /// metrics only — never expose it to client requests.
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        warn!(
+            "key_inventory not implemented for this ObjectsStore backend — \
+             kms.keys.active.count will not include its keys"
+        );
+        Ok(vec![])
+    }
+
+    /// Returns the `DeactivationDate` of every `PreActive` or `Active` key object
+    /// of this store that has one. Feeds the `kms.keys.expiring_soon.count` metric.
+    ///
+    /// Bypasses access control — never expose the result to client requests.
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<OffsetDateTime>> {
+        warn!(
+            "key_deactivation_dates not implemented for this ObjectsStore backend — \
+             kms.keys.expiring_soon.count will not include its keys"
+        );
+        Ok(vec![])
     }
 
     /// Perform an authoritative reconciliation of any cached object-count

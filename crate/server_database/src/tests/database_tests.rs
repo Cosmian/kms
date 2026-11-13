@@ -18,10 +18,11 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, KeyInventoryBucket,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::log_init;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -752,6 +753,120 @@ pub(super) async fn count_non_destroyed_keys_test<DB: ObjectsStore>(db: &DB) -> 
     if got != expected {
         return Err(DbError::ServerError(format!(
             "count_non_destroyed_keys: expected {expected}, got {got}"
+        )));
+    }
+
+    for uid in &uids {
+        db.delete(uid).await?;
+    }
+
+    Ok(())
+}
+
+/// Verify `key_inventory` and `key_deactivation_dates`:
+/// - keys are grouped by object type, algorithm, length and state;
+/// - destroyed keys and non-key objects are left out of the inventory;
+/// - only `PreActive`/`Active` keys report their deactivation date.
+///
+/// The keys use a random `CryptographicLength` and random deactivation dates
+/// so the assertions ignore rows left by other tests in a shared database.
+pub(super) async fn key_inventory_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    let owner = UserId::from("key_inventory_test_owner");
+    let mut rng = KmsRng::new().seeded_csrng()?;
+    let key_length = i32::try_from(rng.next_u32() % 1_000_000)
+        .map_err(|e| DbError::ServerError(e.to_string()))?
+        .saturating_add(1_000_000);
+    let random_date = |rng: &mut SeededCsRng| {
+        OffsetDateTime::from_unix_timestamp(4_000_000_000 + i64::from(rng.next_u32()))
+            .map_err(|e| DbError::ServerError(e.to_string()))
+    };
+    let active_date = random_date(&mut rng)?;
+    let deactivated_date = random_date(&mut rng)?;
+
+    let mut uids = Vec::with_capacity(5);
+    for (final_state, deactivation_date) in [
+        (State::Active, Some(active_date)),
+        (State::Active, None),
+        (State::Deactivated, Some(deactivated_date)),
+        (State::Destroyed, None),
+    ] {
+        let mut bytes = vec![0_u8; 32];
+        rng.fill_bytes(&mut bytes);
+        let key = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| DbError::ServerError(e.to_string()))?;
+        let uid = Uuid::new_v4().to_string();
+        db.create(
+            Some(uid.clone()),
+            &owner,
+            &key,
+            &Attributes {
+                object_type: Some(ObjectType::SymmetricKey),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(key_length),
+                state: Some(State::Active),
+                deactivation_date,
+                ..Default::default()
+            },
+            &HashSet::new(),
+        )
+        .await?;
+        if final_state != State::Active {
+            db.update_state(&uid, final_state).await?;
+        }
+        uids.push(uid);
+    }
+
+    let uid_opaque = Uuid::new_v4().to_string();
+    db.create(
+        Some(uid_opaque.clone()),
+        &owner,
+        &Object::OpaqueObject(OpaqueObject {
+            opaque_data_type: OpaqueDataType::Unknown,
+            opaque_data_value: b"inventory-test".to_vec(),
+        }),
+        &Attributes {
+            object_type: Some(ObjectType::OpaqueObject),
+            cryptographic_length: Some(key_length),
+            state: Some(State::Active),
+            ..Default::default()
+        },
+        &HashSet::new(),
+    )
+    .await?;
+    uids.push(uid_opaque);
+
+    let mut got: Vec<(KeyInventoryBucket, u64)> = db
+        .key_inventory()
+        .await?
+        .into_iter()
+        .filter(|(bucket, _)| bucket.key_length == Some(key_length))
+        .collect();
+    got.sort();
+    let bucket = |state: &str| KeyInventoryBucket {
+        object_type: "SymmetricKey".to_owned(),
+        algorithm: Some("AES".to_owned()),
+        key_length: Some(key_length),
+        state: Some(state.to_owned()),
+    };
+    let expected = vec![(bucket("Active"), 2), (bucket("Deactivated"), 1)];
+    if got != expected {
+        return Err(DbError::ServerError(format!(
+            "key_inventory: expected {expected:?}, got {got:?}"
+        )));
+    }
+
+    let dates = db.key_deactivation_dates().await?;
+    if !dates.contains(&active_date) || dates.contains(&deactivated_date) {
+        return Err(DbError::ServerError(format!(
+            "key_deactivation_dates: expected {active_date} and not {deactivated_date}, got \
+             {dates:?}"
         )));
     }
 

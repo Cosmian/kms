@@ -294,19 +294,9 @@ impl KMS {
                     cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
-            // Seed kms.keys.active.count from the real DB count on startup.
-            match database.count_non_destroyed_key_objects().await {
-                Ok(count) => {
-                    m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
-                }
-                Err(e) => {
-                    // Non-fatal: the cron will correct the value within one
-                    // `metrics_count_interval_secs` period, but a
-                    // persistently failing query (e.g. a backend-specific SQL bug)
-                    // should be visible without enabling debug logging.
-                    cosmian_logger::warn!("[kms-init] Failed to seed kms.keys.active.count: {e}");
-                }
-            }
+            // Seed the key inventory and expiry gauges on startup; the cron
+            // corrects any failure within one `metrics_count_interval_secs` period.
+            m.sync_key_gauges(&database).await;
         }
 
         // Seed the CRL sequence counter (RFC 5280 §5.2.3 — monotonically increasing).

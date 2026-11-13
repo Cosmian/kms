@@ -86,9 +86,11 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 
 | Metric                               | Type          | Labels              |
 | ------------------------------------ | ------------- | ------------------- |
-| `kms.kmip.operations.total`          | counter       | `operation`         |
+| `kms.kmip.operations.total`          | counter       | `operation`, `outcome` |
 | `kms.kmip.operations.per_user.total` | counter       | `operation`, `user` |
 | `kms.kmip.operation.duration`        | histogram (s) | `operation`         |
+
+`outcome`: `success` · `error`
 
 > **Note:** The `user` label in `kms.kmip.operations.per_user.total` and `kms.permissions.granted.per_user.total` is a truncated SHA-256 hash of the identity string extracted by the authentication middleware (e.g. an OAuth subject, email address, or service-account identifier), not the raw value. The hash is deterministic (the same user always produces the same label, so per-user trend/cardinality analysis still works) but non-reversible, so it cannot be used to identify a real user from the OTLP backend alone. The authoritative record of which user performed which operation is the audit log, not OTEL metrics.
 
@@ -127,13 +129,58 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 
 ### Objects & Keys
 
-| Metric                  | Type  | Labels |
-| ----------------------- | ----- | ------ |
-| `kms.objects.total`     | gauge | —      |
-| `kms.keys.active.count` | gauge | —      |
+| Metric                         | Type  | Labels                                         |
+| ------------------------------ | ----- | ---------------------------------------------- |
+| `kms.objects.total`            | gauge | —                                              |
+| `kms.keys.active.count`        | gauge | `object_type`, `algorithm`, `key_length`, `state` |
+| `kms.keys.expiring_soon.count` | gauge | `days_until_expiry` (`7` · `30` · `90`)        |
 
-`kms.keys.active.count` counts all **non-destroyed** key objects (SymmetricKey, PrivateKey,
-PublicKey, SplitKey) across all non-terminal states: PreActive, Active, Deactivated, Compromised.
+`kms.keys.active.count` counts the **non-destroyed** key objects (SymmetricKey, PrivateKey,
+PublicKey, SplitKey) in every non-terminal state: PreActive, Active, Deactivated, Compromised.
+One series is emitted per combination of:
+
+- `object_type`: `SymmetricKey` · `PrivateKey` · `PublicKey` · `SplitKey`
+- `algorithm`: the KMIP `CryptographicAlgorithm` (`AES`, `RSA`, `ECDSA`, …)
+- `key_length`: the KMIP `CryptographicLength` in bits
+- `state`: the KMIP `State`
+
+A dimension that is not set on the object is labelled `unknown`. HSM keys report only
+`object_type` and `algorithm` (AES, RSA, EC); other HSM objects are labelled `Unknown`.
+Beyond 1000 distinct combinations, the remaining keys are folded into one series whose labels
+are all `__overflow__`, so the total stays exact. A combination that disappears (for example
+when its last key is destroyed) is set to `0` instead of keeping its last value.
+
+Use `sum(kms_keys_active_count)` for the total, and `sum by (algorithm)` (or any label) for a
+breakdown.
+
+`kms.keys.expiring_soon.count` counts the PreActive and Active keys whose `DeactivationDate`
+falls within the next 7, 30 or 90 days (`days_until_expiry` label). The windows are
+cumulative: a key expiring in 3 days is counted in all three series. Keys stored in an HSM are
+not counted.
+
+Both key gauges are refreshed by the metrics cron (`metrics_count_interval_secs`) and seeded at
+server startup. With the Redis-findex backend they are computed from a full scan cached by the
+5-minute reconcile, so they can lag by up to 5 minutes.
+
+`kms.keys.active.count` has no series until the first key exists; use
+`sum(kms_keys_active_count) or vector(0)` to display 0 on an empty KMS.
+
+### Tagging keys for reporting
+
+Metric labels are restricted to enumerated KMIP values to keep the number of series bounded.
+Organisational metadata (ticket number, environment, team, application) belongs on the keys
+themselves, as KMIP vendor attributes, where reporting and inventory tools can filter on it:
+
+```bash
+# Value is hex-encoded: 70726f64756374696f6e = "production"
+ckms attributes set --id <KEY_ID> \
+  --vendor-identification acme \
+  --attribute-name environment \
+  --attribute-value 70726f64756374696f6e
+ckms attributes get --id <KEY_ID>
+```
+
+These attributes are never exported as metric labels.
 
 ### Cache
 
@@ -145,7 +192,7 @@ PublicKey, SplitKey) across all non-terminal states: PreActive, Active, Deactiva
 
 | Metric                     | Type    | Labels                   |
 | -------------------------- | ------- | ------------------------ |
-| `kms.hsm.operations.total` | counter | `operation`, `hsm_model` |
+| `kms.hsm.operations.total` | counter | `operation`, `hsm_model`, `outcome` |
 
 ## OTLP Collector Configuration
 

@@ -17,6 +17,7 @@ use cosmian_kms_crypto::{
         Aes256Gcm, Dem, Instantiable, Nonce, RandomFixedSizeCBytes, SymmetricKey,
     },
 };
+use cosmian_kms_interfaces::KeyInventoryBucket;
 use cosmian_logger::debug;
 use redis::{AsyncCommands, Script, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,22 @@ use crate::{
     DbError, db_bail, error::DbResult, migrate_block_cipher_mode_if_needed,
     stores::redis::findex::Keyword,
 };
+
+/// Snapshot of the non-destroyed key objects built by a full scan; Redis
+/// cannot aggregate encrypted blobs server-side, so the snapshot is cached
+/// between reconciles.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct KeyScan {
+    pub(crate) inventory: Vec<(KeyInventoryBucket, u64)>,
+    pub(crate) deactivation_dates: Vec<OffsetDateTime>,
+}
+
+impl KeyScan {
+    /// Total number of non-destroyed keys.
+    pub(crate) fn key_count(&self) -> u64 {
+        self.inventory.iter().map(|(_, n)| n).sum()
+    }
+}
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -645,13 +662,16 @@ impl ObjectsDB {
         Ok(())
     }
 
-    /// One-time bootstrap: scan every `do::*` key, decrypt each blob, and count
-    /// objects that are both a key type (`SymmetricKey`, `PrivateKey`, `PublicKey`,
-    /// `SplitKey`) **and** non-destroyed.
+    /// Scan every `do::*` key, decrypt each blob, and build a [`KeyScan`] of the
+    /// non-destroyed key objects (`SymmetricKey`, `PrivateKey`, `PublicKey`,
+    /// `SplitKey`): their inventory breakdown and the `DeactivationDate` of the
+    /// `PreActive`/`Active` ones.
     ///
-    /// Same cost and error-handling semantics as `scan_count_non_destroyed`.
-    pub(crate) async fn scan_count_non_destroyed_keys(&self) -> DbResult<u64> {
-        let mut count: u64 = 0;
+    /// Same cost and error-handling semantics as `scan_count_non_destroyed`:
+    /// O(N) decryptions, corrupted blobs are skipped.
+    pub(crate) async fn scan_keys(&self) -> DbResult<KeyScan> {
+        let mut inventory: HashMap<KeyInventoryBucket, u64> = HashMap::new();
+        let mut deactivation_dates = Vec::new();
         let mut cursor: u64 = 0;
         loop {
             let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
@@ -684,12 +704,28 @@ impl ObjectsDB {
                                     | ObjectType::PublicKey
                                     | ObjectType::SplitKey
                             );
-                            let is_non_destroyed = !matches!(
-                                obj.state,
-                                State::Destroyed | State::Destroyed_Compromised
-                            );
-                            if is_key && is_non_destroyed {
-                                count += 1;
+                            if !is_key
+                                || matches!(
+                                    obj.state,
+                                    State::Destroyed | State::Destroyed_Compromised
+                                )
+                            {
+                                continue;
+                            }
+                            let attributes = obj.attributes.as_ref();
+                            let bucket = KeyInventoryBucket {
+                                object_type: obj.object_type.to_string(),
+                                algorithm: attributes
+                                    .and_then(|a| a.cryptographic_algorithm)
+                                    .map(|a| a.to_string()),
+                                key_length: attributes.and_then(|a| a.cryptographic_length),
+                                state: Some(obj.state.to_string()),
+                            };
+                            *inventory.entry(bucket).or_default() += 1;
+                            if matches!(obj.state, State::PreActive | State::Active)
+                                && let Some(date) = attributes.and_then(|a| a.deactivation_date)
+                            {
+                                deactivation_dates.push(date);
                             }
                         }
                         Err(e) => {
@@ -704,7 +740,10 @@ impl ObjectsDB {
                 break;
             }
         }
-        Ok(count)
+        Ok(KeyScan {
+            inventory: inventory.into_iter().collect(),
+            deactivation_dates,
+        })
     }
 
     /// Scan all `do::*` keys and return `(uid, owner)` pairs for every `Active`

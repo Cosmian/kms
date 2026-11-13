@@ -24,6 +24,7 @@ use crate::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
             attributes::get_attribute_list, check, mac::mac_verify,
         },
+        otel_metrics::outcome_label,
     },
     error::KmsError,
     kms_bail,
@@ -173,7 +174,7 @@ pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &UserId) -> KResult<Op
         let operation_tag = ttlv.tag.clone();
         let result = Box::pin(dispatch_inner(kms, ttlv, user, &operation_tag)).await;
         let duration = start.elapsed().as_secs_f64();
-        metrics.record_kmip_operation(&operation_tag, user);
+        metrics.record_kmip_operation(&operation_tag, user, outcome_label(&result));
         metrics.record_kmip_operation_duration(&operation_tag, duration);
         if result.is_err() {
             metrics.record_error(&operation_tag);

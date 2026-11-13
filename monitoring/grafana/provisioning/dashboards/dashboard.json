@@ -137,7 +137,7 @@
       "pluginVersion": "12.3.3",
       "targets": [
         {
-          "expr": "kms_keys_active_count",
+          "expr": "sum(kms_keys_active_count) or vector(0)",
           "refId": "A"
         }
       ],
@@ -636,7 +636,7 @@
       "pluginVersion": "12.3.3",
       "targets": [
         {
-          "expr": "rate(kms_kmip_operations_total[5m])",
+          "expr": "sum by (operation) (rate(kms_kmip_operations_total[5m]))",
           "legendFormat": "{{operation}}",
           "refId": "A"
         }
