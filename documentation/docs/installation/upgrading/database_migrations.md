@@ -36,13 +36,15 @@ Every migration step is safe to resume. If the KMS process or database stops bef
 
 ## Downgrades and recovery
 
-Starting an older KMS binary against a database that has already been opened by a newer version is refused before any schema or data changes run:
+KMS binaries using the version-sequenced migration runner refuse startup when the recorded database version is newer than the binary, before applying application schema or data migrations:
 
 ```text
 Database version X is newer than this KMS server version Y: refusing to start. Upgrade the KMS server to X or later.
 ```
 
-To revert to a previous KMS release without losing data, stop the new KMS instances, restore your pre-upgrade database backup, and start the previous KMS binary.
+Older releases without the version-sequenced runner do not necessarily enforce this check. Do not treat an older binary starting successfully as proof that it can safely use an upgraded database.
+
+To revert to a previous KMS release, stop the new KMS instances, restore your pre-upgrade database backup, and start the previous KMS binary. Restoring that backup restores its earlier state: keys and other changes made after the backup are not retained. In-place down-migration is not currently supported.
 
 !!! note "Resetting a test database"
     Starting the server with `--clear-database` (or `clear_database = true` under `[db]` in `kms.toml`) deletes all stored objects and resets the recorded database version to the running binary. Never use `--clear-database` on production data you intend to keep.
