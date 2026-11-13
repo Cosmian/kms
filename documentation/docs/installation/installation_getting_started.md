@@ -215,7 +215,7 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
     - The KMS UI is available at `http://localhost:9998/ui`.
     - **Known limitations** on the Alpine packages (see the
-      [Alpine support note](../../../README.md#alpine-linux-musl) for details):
+      [Alpine support note](https://github.com/Cosmian/kms/blob/develop/README.md#alpine-linux-musl) for details):
         - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported —
           vendor PKCS#11 drivers are glibc-only.
         - non-FIPS: old PKCS#12/RC2 import is unsupported (musl's static libc cannot

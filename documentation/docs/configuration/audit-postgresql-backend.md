@@ -19,7 +19,7 @@ otherwise. Sharing one database would let the KMS's own object-store role bypass
 database's append-only grants.
 
 `--audit-postgres-url` supports the same `sslmode`/`sslrootcert`/`sslcert`/`sslkey` query
-parameters as `--database-url`; see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls-mtls).
+parameters as `--database-url`; see [PostgreSQL TLS / mTLS](./database/configuration.md#postgresql-tls--mtls).
 The server logs a warning at startup when the URL does not verify the server certificate (the default
 `sslmode=prefer` does not); use `sslmode=verify-full` with `sslrootcert`. As with `libpq`,
 `sslmode=verify-ca` without `sslrootcert` is refused at startup.
