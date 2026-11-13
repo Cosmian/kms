@@ -610,7 +610,9 @@ mod tests {
             MigrationStep::CertificateSerialTagBackfill,
         ];
         type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [MigrationStep]);
-        let cases: [Case<'_>; 3] = [
+        let cases: [Case<'_>; 4] = [
+            // Recorded before the 5.15.0 step: every registered step is offered.
+            ("pre-5.15", &[("db_version", "5.14.0")], &MIGRATION_STEPS),
             // A crash after a checkpoint leaves `upgrading`; the run resumes from the checkpoint.
             (
                 "interrupted run",

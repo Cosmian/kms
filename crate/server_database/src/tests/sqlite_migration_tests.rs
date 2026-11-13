@@ -118,8 +118,11 @@ pub(super) fn expect_steps(actual: &[MigrationStep], expected: &[MigrationStep])
     Ok(())
 }
 
-async fn assert_markers(pool: &SqlitePool, completed: &[MigrationStep]) -> DbResult<()> {
-    for step in BOTH_STEPS {
+pub(super) async fn assert_markers<P: DbParameters>(
+    pool: &P,
+    completed: &[MigrationStep],
+) -> DbResult<()> {
+    for step in MIGRATION_STEPS {
         let actual = pool.get_parameter(step.marker()).await?;
         let expected = completed.contains(&step).then_some("true");
         db_ensure!(
@@ -441,8 +444,8 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
 async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
     const MIGRATION_PARAMETERS: &str = "SELECT name, value FROM parameters \
          WHERE name NOT IN ('db_version', 'db_state') ORDER BY name";
-    // The last row recorded below the baseline: every step is offered, and the PostgreSQL-only
-    // `AttributesJsonb` conversion must complete as a no-op on SQLite.
+    // A 5.0–5.14 database recorded its creation version, so 5.14.0 offers every step and
+    // `AttributesJsonb` completes as a no-op on SQLite.
     let fixtures: [(&str, Option<&str>, &[MigrationStep]); 4] = [
         ("5.24.0", None, &BOTH_STEPS),
         ("5.28.0", None, &[CertificateSerialTagBackfill]),
@@ -473,7 +476,12 @@ async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
         expect_steps(&applied, expected)
             .map_err(|error| db_error!("Fixture {version}: {error}"))?;
         assert_ready(&pool, TARGET).await?;
-        assert_markers(&pool, &BOTH_STEPS).await?;
+        let markers: &[MigrationStep] = if recorded.is_some() {
+            &MIGRATION_STEPS
+        } else {
+            &BOTH_STEPS
+        };
+        assert_markers(&pool, markers).await?;
         assert_wrapped_key_found(&pool).await?;
         assert_serial_tag(&pool, true).await?;
         assert_fixture_preserved(&pool, &path, &original).await?;
