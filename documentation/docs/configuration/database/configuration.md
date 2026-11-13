@@ -215,7 +215,7 @@ The KMS supports MySQL-compatible databases including MySQL, MariaDB, and Percon
 All use the same configuration with `database-type=mysql`.
 
 !!! note Clustering Support
-    As of version 5.14.0, the KMS schema includes PRIMARY KEY constraints on all tables,
+    As of version 5.13.0, the KMS schema includes PRIMARY KEY constraints on all tables,
     making it fully compatible with:
 
     - **Percona XtraDB Cluster** (with `pxc_strict_mode=ENFORCING`)
@@ -409,95 +409,37 @@ The KMS server can be configured to clear the database on restart automatically.
 
 ## Database migration
 
-The startup migration runner supports **SQLite**, **PostgreSQL**, **MySQL**, **MariaDB**, and **Percona XtraDB Cluster**. Redis runner wiring follows separately.
+Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
+written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
 
-Transparent migration is supported for databases created by KMS **5.20.0 or later**. An unversioned, populated SQL database is treated as `5.20.0`. Older recorded SQL versions trigger a warning and an attempt to run all registered steps, subject to their completion markers. Pre-5.0.0 databases and pre-5.12.0 Redis/Findex databases require export and re-import.
+At first, the table `parameters` is responsible for storing the software run's version and the database's state.
+The state can be one of the following:
 
-The runner stores `db_version`, `db_state` and completion markers in the SQL [parameters table](tables.md#parameters); Redis uses plain keys. `db_version` records the version the runner last migrated to, not the database creation version. `db_state` is persisted as a JSON string: `"ready"` or `"upgrading"`.
+- `ready`: the database is ready to be used
+- `upgrading`: the database is being upgraded
 
-On each supported SQL backend, the server acquires a migration lock and checks the recorded version before application schema DDL. A newer database or an invalid version refuses startup. Idempotent schema additions run next; data transformations run only when their release boundary satisfies `recorded < step <= target`. Release comparison uses numeric `MAJOR.MINOR.PATCH`, ignoring any `-…` or `+…` suffix. The target is the running KMS package version.
+On startup, the server checks if the software version is greater than the last version run:
 
-```mermaid
-flowchart TD
-    Start["KMS server starts"] --> Connect["Connect to database"]
-    Connect --> Lock["Acquire migration lock<br/>SQLite: sidecar file<br/>PostgreSQL: advisory lock<br/>MySQL family: row lock"]
-    Lock -- "held by another instance" --> Wait["Wait 500 ms and retry<br/>give up after 31 min"]
-    Wait --> Lock
-    Lock -- "acquired" --> ReadVersion["Read db_version without DDL"]
-    ReadVersion -- "invalid version" --> Invalid["Refuse to start"]
-    ReadVersion --> Compare{"Recorded version newer<br/>and no clear request?"}
-    Compare -- "yes" --> Refuse["Refuse before DDL<br/>Upgrade the KMS server"]
-    Compare -- "no" --> Schema["Ensure idempotent schema<br/>Clear object data if requested"]
-    Schema --> Clear{"Clear requested?"}
-    Clear -- "yes" --> Stamp["Write db_version = target<br/>db_state = ready"]
-    Clear -- "no" --> Recorded{"Version recorded?"}
-    Recorded -- "no" --> Data{"Database holds objects?"}
-    Data -- "no" --> Stamp
-    Data -- "yes, SQL" --> Baseline["Treat as 5.20.0"]
-    Data -- "yes, Redis" --> Legacy["Refuse unsupported legacy data<br/>Export and re-import"]
-    Recorded -- "yes" --> UseRecorded["Use recorded version<br/>below 5.20.0: warn, all steps pending"]
-    Baseline --> Steps
-    UseRecorded --> Steps["Pending steps in ascending order<br/>Set upgrading once<br/>Skip completed markers or apply and mark<br/>Checkpoint db_version after each step"]
-    Steps --> Stamp
-    Stamp --> Unlock["Release migration lock"]
-    Unlock --> Serve["Bind HTTP and serve requests"]
-```
+- if no, it simply starts;
+- If yes:
 
-| Recorded `db_version` | Holds objects | Backend | Runner action |
-|---|---|---|---|
-| none | no | all | Stamp target version and `ready`; no data step |
-| none | yes | SQL | Treat as `5.20.0`, apply pending steps unless their markers are `true`, then stamp target and `ready` |
-| none | yes | Redis | Refuse unsupported pre-5.12.0 Findex data; export and re-import |
-| below `5.20.0` | any | all | Warn that transparent migration is supported from `5.20.0`; offer all steps up to target, with marker checks |
-| `5.20.0 <= v < target` | any | all | Apply steps with `v < step <= target`, ascending; stamp target and `ready` |
-| equal to target | any | all | No step; force `ready` |
-| newer than target | any | all | Refuse before schema DDL |
-| any, with `db_state = upgrading` | any | all | Log the interrupted run and resume eligible steps |
-| valid version or none, with `--clear-database` | wiped | all | Wipe object data under the lock, stamp target and `ready`; no data step |
+    - it looks for all upgrades to apply in order from the last version run to this version;
+    - if there is any to run, it sets an upgrading flag on the db state field in the `parameters` table;
+    - it runs all the upgrades in order.
+    - it sets the flag from upgrading to ready;
 
-Version refusals take precedence over interrupted-run recovery. `--clear-database` overrides the newer-version refusal, but an invalid version is still an error.
+On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
+calls fail.
 
-The SQL runner currently registers three data steps:
+Upgrades resist being interrupted in the middle and resumed from the start if that happens.
 
-- `5.15.0`: convert PostgreSQL `objects.attributes` from `json` to `jsonb`; completion marker `attributes_jsonb_converted`. This step is a no-op on SQLite and the MySQL family.
-- `5.25.0`: derive `objects.wrapping_key_id` from stored objects; completion marker `wrapping_key_id_backfilled`.
-- `5.29.0`: add `_serial=<HEX>` lookup tags to existing certificates; completion marker `certificate_serial_tag_backfilled`.
+### MySQL schema update (5.13.0)
 
-The runner reads a step's marker before applying it, writes `true` after it succeeds, then advances the version checkpoint. Each data transformation is idempotent, so an interrupted run can resume even if it committed data before writing its marker. Version selection still applies: removing a marker alone does not rerun a step when the database is already at the target version.
+As of version 5.13.0, the MySQL schema was updated to include PRIMARY KEY constraints on the `tags` and `read_access` tables to ensure compatibility with MySQL clustering solutions (e.g., Percona XtraDB Cluster with `pxc_strict_mode=ENFORCING`, MariaDB Galera).
 
-A newer database is refused with this message:
+New installations of 5.13.0+ automatically create the corrected tables.
 
-```text
-Database version X is newer than this KMS server version Y: refusing to start. Upgrade the KMS server to X or later.
-```
-
-### Startup locks and multiple instances
-
-Each startup retries its backend lock every 500 ms for at most 31 minutes:
-
-- SQLite locks the database filename followed by `.migration.lock`: for the server, `<sqlite-path>/kms.db.migration.lock`. It is an OS file lock, not a check for the file's presence. The sidecar remains after release; **do not delete it**. Closing the handle releases the lock, including on startup errors.
-- PostgreSQL takes the session-level advisory lock `(1263358785, 2)` in the target database. Dropping the dedicated connection releases it.
-- MySQL, MariaDB, and Percona XtraDB Cluster lock row `id = 1` in the `kms_migration_lock` table with `FOR UPDATE NOWAIT` on a dedicated connection. Disconnecting rolls back the transaction and releases the row.
-
-The lock covers the version check, schema initialization, every data step and the final `ready` stamp. Other starting instances wait, then observe the completed version and apply no steps. No waiting instance binds its HTTP listener before its own bootstrap completes. SQLite instances sharing a database must also share storage that supports file locking and resolve the same database and sidecar paths.
-
-!!! warning "Rolling upgrades do not stop older instances"
-    The lock serializes startup only. It cannot stop older binaries that are already serving requests and writing to the database. Stop those instances before upgrading when writes must be quiesced; the migration state is not checked on every request.
-
-!!! warning "Backend lock limits"
-    PostgreSQL migrations require a direct connection or a PgBouncer session-pooling connection. PgBouncer transaction pooling does not preserve session-level advisory locks.
-
-    PostgreSQL failover drops the lock session. The migration steps are idempotent, but the lock has no fencing token.
-
-    MySQL-family row locks are local to a database server. In a multi-node Galera or Percona XtraDB Cluster deployment, start all migrating KMS instances against the same node.
-
-### MySQL schema update (5.14.0)
-
-As of version 5.14.0, the MySQL schema was updated to include PRIMARY KEY constraints on the `tags` and `read_access` tables to ensure compatibility with MySQL clustering solutions (e.g., Percona XtraDB Cluster with `pxc_strict_mode=ENFORCING`, MariaDB Galera).
-
-New installations of 5.14.0+ automatically create the corrected tables.
-
-Existing installations upgrading to 5.14.0 will keep the old table definitions if those tables already exist. If you rely on clustering/replication that requires PRIMARY KEYs, apply the following manual migration before starting the KMS:
+Existing installations upgrading to 5.13.0 will keep the old table definitions if those tables already exist. If you rely on clustering/replication that requires PRIMARY KEYs, apply the following manual migration before starting the KMS:
 
         -- Fix tags table
         ALTER TABLE tags
