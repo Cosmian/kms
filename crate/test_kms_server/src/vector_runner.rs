@@ -6028,6 +6028,11 @@ ObjectType = "SymmetricKey"
     /// as a Bearer token; since KMS test mode uses `insecure_decode`, no real
     /// JWKS fetch occurs and the JWT is accepted as-is.
     ///
+    /// This only emulates a generic OIDC provider. A real Auth Verifier token has no `kid`
+    /// header and no `iss` claim, so a validating server refuses it on this path: a
+    /// production Auth Verifier is configured through `[auth_verifier]`, which
+    /// `get_or_init_opa_auth_verifier_server` covers.
+    ///
     /// Returns `None` when `KMS_OPA_URL`, `KMS_AUTH_SERVER_URL`, or
     /// `KMS_TEST_OPA_OFFICER_JWT` is not set.
     async fn get_or_init_opa_allowed_server(
@@ -6064,7 +6069,7 @@ ObjectType = "SymmetricKey"
                             cfg.opa.opa_url = Some(opa_url_c);
                             cfg.opa.opa_mode = opa_mode.to_owned();
                             cfg.idp_auth.jwt_auth_provider = Some(vec![format!(
-                                "cosmian-auth-test,{auth_url_c}/public/jwks"
+                                "cosmian-auth-test,{auth_url_c}/.well-known/jwks.json"
                             )]);
                             // Disable Google CSE: auth/plain.toml enables it, but server
                             // startup tries to create the CSE RSA key as the default user
@@ -6114,9 +6119,9 @@ ObjectType = "SymmetricKey"
                         move |cfg| {
                             cfg.opa.opa_url = Some(opa_url_c);
                             cfg.opa.opa_mode = opa_mode.to_owned();
-                            // Use a dedicated port so the OPA denied server does not
-                            // conflict with ONCE_VECTOR_CERT_AUTH (auth/cert.toml port 9999).
-                            cfg.http.port = 13001;
+                            // `start_test_server_with_patch` pre-binds a free port before applying
+                            // this patch: do not override `http.port`, the client would then
+                            // target a port nobody listens on.
                             // Disable Google CSE: auth/cert.toml enables it, but the OPA
                             // server startup would try to create the CSE RSA key as the
                             // default user who has no OPA roles → denied in enforcing mode.
@@ -6124,8 +6129,7 @@ ObjectType = "SymmetricKey"
                             // The test vector owner uses mTLS cert with CN "owner.client@acme.com".
                             // Cert-auth users carry no JWT roles, so OPA would deny their Create.
                             // Adding the owner as a privileged_user lets the KMS bypass OPA for
-                            // the Create step while OPA still denies the non-owner cert user for
-                            // all subsequent operations (Get, Destroy).
+                            // the Create step while OPA still denies the non-owner cert user's Get.
                             cfg.privileged_users = Some(vec!["owner.client@acme.com".to_owned()]);
                             // Disable the socket server to avoid conflicting on the
                             // fixed socket port across concurrent test processes.
@@ -6240,7 +6244,7 @@ ObjectType = "SymmetricKey"
     /// must NOT access objects created in domain `kms-opa-test`.
     ///
     /// The `same_domain` helper in `kms.rego` requires `input.user_domain ==
-    /// input.object_domain`.  A `CryptoOfficer` with `as_domain = "kms-opa-other"` trying
+    /// input.object_domain`.  A `CryptoOfficer` with `as_rid = "kms-opa-other"` trying
     /// to `Get` a key owned by `kms-opa-test` fails this check → `allow = false`.
     ///
     /// Requires `KMS_OPA_URL` + `KMS_AUTH_SERVER_URL`; JWT env vars are provisioned by
@@ -6472,8 +6476,8 @@ ObjectType = "SymmetricKey"
         run_test_vector_with_context("test_data/vectors/opa/mode_enforcing_wrong_domain", ctx).await
     }
 
-    /// Multi-tenant isolation: `SuperAdmin` is allowed to `Get` and `Destroy` a
-    /// key across domain boundaries (positive isolation-bypass test).
+    /// Multi-tenant isolation: `SuperAdmin` is allowed to `Get` a key across
+    /// domain boundaries (positive isolation-bypass test).
     ///
     /// The `SuperAdmin` rule in `kms.rego` is unconditional — the `same_domain`
     /// helper is not invoked.  This test proves that cross-domain access is
@@ -6562,12 +6566,10 @@ ObjectType = "SymmetricKey"
                             cfg.opa.opa_url = Some(opa_url_c);
                             cfg.opa.opa_mode = opa_mode.to_owned();
                             // Configure the AuthVerifier middleware — the path under test.
-                            // Use `/public/jwks` (the auth server's JWKS endpoint) as the
-                            // explicit JWKS URI; the default `/.well-known/jwks.json` may not
-                            // be available on the test auth server.
-                            cfg.auth_verifier.auth_verifier_url = Some(auth_url_c.clone());
-                            cfg.auth_verifier.auth_verifier_jwks_uri =
-                                Some(format!("{auth_url_c}/public/jwks"));
+                            // The JWKS URI is left unset on purpose: it defaults to
+                            // `{auth_verifier_url}/.well-known/jwks.json`, the endpoint a real
+                            // Auth Verifier serves (`/public/jwks` returns 404).
+                            cfg.auth_verifier.auth_verifier_url = Some(auth_url_c);
                             cfg.auth_verifier.auth_verifier_realm =
                                 Some(vec!["kms-opa-test".to_owned()]);
                             // Accept the self-signed test TLS certificate.
