@@ -13,7 +13,7 @@ use cosmian_logger::{trace, warn};
 use crate::{
     core::{
         KMS,
-        opa::{OpaInput, OpaMode, get_opa_user_context},
+        opa::{OpaClient, OpaInput, OpaMode, get_opa_user_context},
         uid_utils::ObjectHandle,
     },
     error::KmsError,
@@ -297,7 +297,8 @@ fn build_opa_input(
         || {
             (
                 // Object-less operations (Create, Locate, …): use wildcard UID and derive the
-                // object domain from the caller's domain so that same_domain rules pass.
+                // object domain from the caller's domain so that the `same_domain` rule passes
+                // for a caller that has a domain (an empty domain never matches).
                 "*".to_owned(),
                 user_domain.unwrap_or_default().to_owned(),
                 false,
@@ -323,6 +324,50 @@ fn build_opa_input(
     }
 }
 
+/// Ask OPA whether `user` may perform `operation_type` on `owm`, and record a denial.
+///
+/// Fail-closed: a transport or parsing error counts as a denial (the client has already
+/// logged the cause). Every denial is written to the `audit` target, with the identity, roles,
+/// domains, operation and object, so that blocked access attempts and an unavailable policy
+/// engine can be alerted on. The claim-derived values use `Debug` formatting so that control
+/// characters cannot forge log lines.
+async fn opa_decision(
+    opa_client: &OpaClient,
+    mode: OpaMode,
+    user: &UserId,
+    owm: Option<&ObjectWithMetadata>,
+    operation_type: KmipOperation,
+) -> bool {
+    let opa_ctx = get_opa_user_context();
+    let input = build_opa_input(
+        user,
+        &opa_ctx.roles,
+        opa_ctx.domain.as_deref(),
+        owm,
+        operation_type,
+    );
+    let allowed = opa_client.query(&input).await.unwrap_or(false);
+    if allowed {
+        trace!(
+            "OPA {mode} decision for user={:?} op={} obj={:?}: allowed",
+            input.user, input.operation, input.object_uid
+        );
+    } else {
+        warn!(
+            target: "audit",
+            user = ?input.user,
+            roles = ?input.roles,
+            user_domain = ?input.user_domain,
+            operation = %input.operation,
+            object_id = ?input.object_uid,
+            object_domain = ?input.object_domain,
+            mode = %mode,
+            "OPA_DENIED: request denied by the OPA policy, or OPA was unavailable (fail-closed)",
+        );
+    }
+    allowed
+}
+
 /// Check if a user has permission to perform an operation on an object.
 ///
 /// When OPA is configured, its mode decides which checks run:
@@ -335,6 +380,9 @@ fn build_opa_input(
 ///
 /// KMS permission logic:
 ///  If the user is the owner of the object, it will always return true.
+///  An active Crypto Officer is granted every operation on every non-HSM object, across
+///  domains (each use is logged as `CRYPTO_OFFICER_ACCESS`), so in `enforcing` mode an active
+///  Crypto Officer is effectively outside the OPA policy.
 ///  For non-HSM objects, having the `Get` permission implies all other operations.
 ///  For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
 ///  # Arguments
@@ -362,20 +410,7 @@ pub(crate) async fn user_has_permission(
         match mode {
             OpaMode::Disabled => { /* fall through to legacy logic */ }
             OpaMode::Exclusive => {
-                let opa_ctx = get_opa_user_context();
-                let input = build_opa_input(
-                    user,
-                    &opa_ctx.roles,
-                    opa_ctx.domain.as_deref(),
-                    owm,
-                    *operation_type,
-                );
-                let allowed = opa_client.query(&input).await.unwrap_or(false);
-                trace!(
-                    "OPA exclusive decision for user={} op={} obj={}: {}",
-                    user, operation_type, input.object_uid, allowed
-                );
-                return Ok(allowed);
+                return Ok(opa_decision(opa_client, mode, user, owm, *operation_type).await);
             }
             OpaMode::Enforcing => {
                 // ── Native KMS CO bypass ────────────────────────────────────────────
@@ -394,9 +429,11 @@ pub(crate) async fn user_has_permission(
                 //   a) activated COs   (`is_crypto_officer()` = true)
                 //   b) ceremony candidates listed in `co_users` (not yet activated)
                 //
-                // Both groups are evaluated by the legacy KMS permission logic, which
-                // enforces ownership and explicit DB grant checks — so bypassing OPA
-                // does NOT grant unconditional access.
+                // Both groups are evaluated by the legacy KMS permission logic below:
+                //   a) an activated CO reaches the CryptoOfficer bypass there and is
+                //      granted every operation on every non-HSM object, across domains
+                //      (an audited, deliberate super-admin power outside the OPA policy);
+                //   b) a ceremony candidate is held to ownership and explicit DB grants.
                 //
                 // HSM keys are excluded: their access model is separate and requires
                 // explicit HSM-admin grants.
@@ -411,20 +448,7 @@ pub(crate) async fn user_has_permission(
                             .any(|u| u == user.as_str()));
                 if !is_native_co {
                     // ── OPA ────────────────────────────────────────────────────
-                    let opa_ctx = get_opa_user_context();
-                    let input = build_opa_input(
-                        user,
-                        &opa_ctx.roles,
-                        opa_ctx.domain.as_deref(),
-                        owm,
-                        *operation_type,
-                    );
-                    let allowed = opa_client.query(&input).await.unwrap_or(false);
-                    trace!(
-                        "OPA enforcing decision for user={} op={} obj={}: {}",
-                        user, operation_type, input.object_uid, allowed
-                    );
-                    if !allowed {
+                    if !opa_decision(opa_client, mode, user, owm, *operation_type).await {
                         return Ok(false);
                     }
                     // OPA approved. In enforcing mode OPA is the authoritative
@@ -570,8 +594,9 @@ mod tests {
     }
 
     /// When no user domain is supplied (`None`) for an object-less operation,
-    /// both `user_domain` and `object_domain` default to empty string so the
-    /// `same_domain` check in Rego still passes (both are `""`).
+    /// both `user_domain` and `object_domain` default to the empty string. The shipped
+    /// Rego policy treats an empty domain as "no domain" and never matches it, so such a
+    /// caller is denied unless it is a `SuperAdmin`.
     #[test]
     fn test_build_opa_input_objectless_no_domain_defaults_to_empty_string() {
         let input = build_opa_input("alice@acme.com", &[], None, None, KmipOperation::Create);

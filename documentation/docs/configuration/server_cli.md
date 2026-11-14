@@ -604,11 +604,11 @@ Options:
       --ceremony-key-id <CEREMONY_KEY_ID>
           UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
 
-          When set, key material is fetched from the KMS object store via a direct DB read
-          (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
-            - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
-            - HSM-backed sealing when the referenced key is HSM-resident.
-            - Audit trail: each `Get` of the ceremony key is logged.
+          When set, the key material is read once at startup from the KMS object store (a direct
+          database read that bypasses KMIP authorization) and used in place of `ceremony_secret`.
+          The key must exist and be an AES-256 symmetric key (32 bytes of key material): the
+          server refuses to start otherwise. It protects the ceremony records at rest, so keep
+          access to this object restricted to the administrators of the server.
 
           **Bootstrap constraint**: the ceremony sealing key must be created before
           enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -624,8 +624,9 @@ Options:
 
           If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
 
-          **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
-          functional. Set `ceremony_secret` in the meantime.
+          **Status**: implemented. The key is loaded once at startup (the log line
+          `ceremony sealing key loaded from object store` confirms it): restart the server after
+          changing the referenced key or the setting.
 
           [env: KMS_CEREMONY_KEY_ID=]
 
@@ -675,12 +676,12 @@ Options:
           [env: KMS_AWS_XKS_SIGV4_SECRET_ACCESS_KEY=]
 
       --opa-url <OPA_URL>
-          OPA sidecar base URL. Setting this enables OPA authorization. Example: `http://localhost:8181`
+          OPA sidecar base URL (`http://` or `https://`). Requires `--opa-mode exclusive` or `--opa-mode enforcing`: a URL combined with the default `disabled` mode is refused at startup. The KMS has no OPA-specific authentication (no bearer token, no client certificate) and trusts the answers it gets, so keep OPA on the loopback interface or a trusted private network, or reach it through a TLS-terminating proxy that authenticates callers. Example: `http://localhost:8181`
 
           [env: KMS_OPA_URL=]
 
       --opa-mode <OPA_MODE>
-          OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial, error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it after OPA allows. Ignored when `--opa-url` is not set
+          OPA evaluation mode: `"disabled"` (default; OPA is not consulted), `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial, error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it after OPA allows. `"exclusive"` and `"enforcing"` require `--opa-url`
 
           [env: KMS_OPA_MODE=]
           [default: disabled]

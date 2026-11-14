@@ -9,9 +9,13 @@ use serde::Serialize;
 /// See `test_data/opa/kms.rego` for the Rego policy that consumes this input.
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct OpaInput {
-    /// Authenticated identity (JWT `sub`, TLS CN, or API-token id).
+    /// Authenticated identity: the JWT `email` claim (falling back to `sub` when it is absent
+    /// or blank), the TLS client-certificate CN, or the API-token id.
     pub user: String,
-    /// Domain from the `as_domain` JWT private claim; `""` for non-JWT auth.
+    /// Domain from the JWT `as_rid` claim (`as_domain` is accepted as a legacy alias); `""`
+    /// when the claim is absent and for non-JWT auth. An empty domain is "no domain": the
+    /// shipped policy never matches it, so only owners (on their own objects) and `SuperAdmin`s
+    /// are allowed.
     pub user_domain: String,
     /// Roles from the JWT `roles` claim (RFC 9068); `[]` for non-JWT auth (fail-closed).
     pub roles: Vec<String>,
@@ -21,7 +25,7 @@ pub(crate) struct OpaInput {
     /// UID of the target KMIP object; `"*"` for object-less operations.
     pub object_uid: String,
     /// Domain the target object belongs to.
-    /// For object-less operations (e.g. `Create`, `Locate`) this is set to `user_domain` so
+    /// For object-less operations (e.g. `Create`) this is set to `user_domain` so
     /// that the `same_domain` Rego rule passes for the caller's own domain.
     /// For operations on existing objects this is the `domain` column value stored with the object.
     pub object_domain: String,

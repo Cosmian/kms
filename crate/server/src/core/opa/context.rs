@@ -18,7 +18,7 @@ use tokio::task_local;
 pub(crate) struct OpaUserContext {
     /// RBAC roles from the JWT (empty if not present or not authenticated via JWT).
     pub roles: Vec<String>,
-    /// Domain from the JWT `as_domain` private claim.
+    /// Domain from the JWT `as_rid` claim (`as_domain` is a legacy alias).
     pub domain: Option<String>,
 }
 

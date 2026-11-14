@@ -50,11 +50,11 @@ pub struct RolesConfig {
 
     /// UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
     ///
-    /// When set, key material is fetched from the KMS object store via a direct DB read
-    /// (bypassing KMIP auth) and used in place of `ceremony_secret`. This enables:
-    ///   - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
-    ///   - HSM-backed sealing when the referenced key is HSM-resident.
-    ///   - Audit trail: each `Get` of the ceremony key is logged.
+    /// When set, the key material is read once at startup from the KMS object store (a direct
+    /// database read that bypasses KMIP authorization) and used in place of `ceremony_secret`.
+    /// The key must exist and be an AES-256 symmetric key (32 bytes of key material): the
+    /// server refuses to start otherwise. It protects the ceremony records at rest, so keep
+    /// access to this object restricted to the administrators of the server.
     ///
     /// **Bootstrap constraint**: the ceremony sealing key must be created before
     /// enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -70,8 +70,9 @@ pub struct RolesConfig {
     ///
     /// If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
     ///
-    /// **Status**: ADP-26 (planned). This field is accepted by the config parser but is not yet
-    /// functional. Set `ceremony_secret` in the meantime.
+    /// **Status**: implemented. The key is loaded once at startup (the log line
+    /// `ceremony sealing key loaded from object store` confirms it): restart the server after
+    /// changing the referenced key or the setting.
     #[clap(long, env = "KMS_CEREMONY_KEY_ID", verbatim_doc_comment)]
     pub ceremony_key_id: Option<String>,
 

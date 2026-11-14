@@ -589,9 +589,6 @@ Crate path: `crate/server`
 | `error` | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | - | - |
 | `warn` | `OPA request failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
 | `warn` | `OPA response parse failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
-| `warn` | `OPA returned non-2xx (fail-closed deny): {status} — {body_text}` | `src/core/opa/client.rs` | `status`, `body_text` | - |
-| `trace` | `OPA enforcing decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
-| `trace` | `OPA exclusive decision for user={} op={} obj={}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | `ceremony_key_id`: KMS UID of the AES-256 ceremony sealing key | Confirms the sealing key was loaded successfully; key material is never logged. |
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
@@ -784,6 +781,12 @@ Crate path: `crate/server`
 | `trace` | `Sign request` | `src/core/operations/sign.rs` | - | - |
 | `trace` | `SignatureVerify request` | `src/core/operations/signature_verify.rs` | - | - |
 | `trace` | `Validate request` | `src/core/operations/validate.rs` | - | - |
+| `warn` | `OPA is enabled with the Redis-Findex backend, which does not store the per-object domain: the DomainAdmin, CryptoOfficer, Auditor and User roles can never act on other users' objects (only SuperAdmins can). Use SQLite, PostgreSQL or MySQL for domain-based RBAC.` | `src/config/params/server_params.rs` | - | Logged once at startup when an OPA mode is combined with the Redis-Findex backend, which does not persist the per-object domain. Use a SQL backend for domain-based RBAC. |
+| `warn` | `OPA returned non-2xx (fail-closed deny): {status}` | `src/core/opa/client.rs` | `status`: HTTP status returned by OPA | The request is denied (fail-closed). A redirect is a non-2xx answer too, because redirects are not followed. The response body is only logged at `debug` level. |
+| `warn` | `OPA_DENIED: request denied by the OPA policy, or OPA was unavailable (fail-closed)` | `src/core/retrieve_object_utils.rs` | Structured fields: `user`, `roles`, `user_domain`, `operation`, `object_id`, `object_domain`, `mode` | Audit event on the `audit` log target, emitted only when `RUST_LOG` enables it (for example `audit=warn`). Also raised when OPA is unreachable (fail-closed). Identity and domain fields use `Debug` formatting, so control characters are escaped. |
+| `warn` | `` SECURITY: `--opa-url` uses cleartext http:// to a non-loopback host. Authorization decisions travel unauthenticated and unencrypted: keep OPA on the KMS host's loopback or a trusted private network, or put it behind a TLS-terminating proxy and use https://. `` | `src/config/params/server_params.rs` | - | Logged once at startup. Cleartext HTTP is acceptable only on a trusted private network such as the Compose network of `deploy/rbac_rego`: the KMS has no OPA-specific authentication and cannot authenticate its answers. |
+| `debug` | `OPA non-2xx response body: {body_text:?}` | `src/core/opa/client.rs` | `body_text`: body of the non-2xx OPA response | May echo policy or input details; enable `debug` only while troubleshooting. |
+| `trace` | `OPA {mode} decision for user={:?} op={} obj={:?}: allowed` | `src/core/retrieve_object_utils.rs` | `mode`: `exclusive` or `enforcing` | Only allowed decisions are traced; a denial is logged as `OPA_DENIED` (`warn`, `audit` target). |
 
 ### `cosmian_kms_server_database`
 

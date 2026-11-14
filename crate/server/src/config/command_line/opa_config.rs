@@ -10,17 +10,23 @@ fn default_opa_mode() -> String {
 /// OPA sidecar integration configuration.
 #[derive(Parser, Serialize, Deserialize, Clone, Debug)]
 pub struct OpaConfig {
-    /// OPA sidecar base URL. Setting this enables OPA authorization.
+    /// OPA sidecar base URL (`http://` or `https://`). Requires `--opa-mode exclusive` or
+    /// `--opa-mode enforcing`: a URL combined with the default `disabled` mode is refused at
+    /// startup. The KMS has no OPA-specific authentication (no bearer token, no client
+    /// certificate) and trusts the answers it gets, so keep OPA on the loopback interface or a
+    /// trusted private network, or reach it through a TLS-terminating proxy that authenticates
+    /// callers.
     /// Example: `http://localhost:8181`
     #[clap(long, env = "KMS_OPA_URL")]
     pub opa_url: Option<String>,
 
-    /// OPA evaluation mode: `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative:
-    /// an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial,
-    /// error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies
-    /// to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on
-    /// non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it
-    /// after OPA allows. Ignored when `--opa-url` is not set.
+    /// OPA evaluation mode: `"disabled"` (default; OPA is not consulted), `"exclusive"` (OPA
+    /// only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no
+    /// ownership or DB grant check, and an OPA denial, error or timeout is final). In
+    /// `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and
+    /// the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to
+    /// HSM-backed objects, which must also pass it after OPA allows. `"exclusive"` and
+    /// `"enforcing"` require `--opa-url`.
     #[clap(long, env = "KMS_OPA_MODE", default_value = "disabled")]
     #[serde(default = "default_opa_mode")]
     pub opa_mode: String,
