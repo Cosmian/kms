@@ -110,24 +110,8 @@ pub(super) fn jose_jwe_decrypt_body(
     encrypted_key: &[u8],
     plaintext: &[u8],
 ) -> KmsCliResult<Bytes> {
-    let protected = b64url(
-        serde_json::to_string(
-            &serde_json::json!({"alg": "RSA-OAEP-256", "enc": "A256GCM", "kid": kid}),
-        )
-        .context("JOSE protected header serialization")?
-        .as_bytes(),
-    );
-    let rng = KmsRng::new();
-    let cek = random_key(&rng, SymCipher::Aes256Gcm)?;
     let (iv, ciphertext, tag) =
-        aes_gcm_encrypt_generated_iv(SymCipher::Aes256Gcm, &cek, protected.as_bytes(), plaintext)?;
-    let encrypted_key = ckm_rsa_pkcs_oaep_key_wrap(
-        &kmip_public_key_to_openssl(public_key)?,
-        HashingAlgorithm::SHA256,
-        HashingAlgorithm::SHA256,
-        None,
-        &cek,
-    )?;
+        aes_gcm_encrypt_generated_iv(SymCipher::Aes256Gcm, cek, protected.as_bytes(), plaintext)?;
     let req = JoseDecryptReq {
         protected: protected.to_owned(),
         encrypted_key: b64url(encrypted_key),
