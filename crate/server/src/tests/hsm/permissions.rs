@@ -4,12 +4,13 @@ use cosmian_kms_access::access::Access;
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN,
     kmip_operations::{Decrypt, Destroy, Encrypt, Operation, Sign},
-    kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+    kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     requests::symmetric_key_create_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason, kmip_2_1::KmipOperation,
+    kmip_0::kmip_types::{BlockCipherMode, ErrorReason, PaddingMethod},
+    kmip_2_1::KmipOperation,
 };
 use cosmian_logger::info;
 use uuid::Uuid;
@@ -37,7 +38,7 @@ use crate::{
         hsm::{
             EMPTY_TAGS, create_kek, create_key_pair, create_sym_key, delete_all_keys, delete_key,
             export_object, hsm_clap_config, locate_keys, revoke_key, send_message,
-            test_helpers::{assert_gcm_encrypt_refused, hsm_cannot_generate_gcm_iv},
+            test_helpers::hsm_cannot_generate_gcm_iv,
         },
         test_utils::get_tmp_sqlite_path,
     },
@@ -99,7 +100,7 @@ async fn revoke_ops(
 async fn encrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KResult<Vec<u8>> {
     let request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        cryptographic_parameters: None,
+        cryptographic_parameters: hsm_cipher_params(),
         data: Some(data.to_vec().into()),
         i_v_counter_nonce: None,
         correlation_value: None,
@@ -121,28 +122,22 @@ async fn encrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KRe
     Ok(full)
 }
 
-/// Encrypts with a key the user is allowed to use. A FIPS build refuses AES-GCM on a token that
-/// generates no IV: that refusal comes after the permission check, so it proves the grant
-/// and no ciphertext exists (`None`).
-async fn authorized_encrypt(
-    kms: &Arc<KMS>,
-    user: &str,
-    uid: &str,
-    data: &[u8],
-) -> KResult<Option<Vec<u8>>> {
-    let result = encrypt_data(kms, user, uid, data).await;
-    if hsm_cannot_generate_gcm_iv() {
-        assert_gcm_encrypt_refused(result);
-        return Ok(None);
-    }
-    result.map(Some)
+/// AES-CBC on a token that generates no AES-GCM IV: a FIPS build refuses AES-GCM there, and the
+/// permission scenarios must still run on a cipher the HSM accepts.
+fn hsm_cipher_params() -> Option<CryptographicParameters> {
+    hsm_cannot_generate_gcm_iv().then(|| CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(BlockCipherMode::CBC),
+        padding_method: Some(PaddingMethod::PKCS5),
+        ..Default::default()
+    })
 }
 
 /// Helper: decrypt data using a key
 async fn decrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, ciphertext: &[u8]) -> KResult<()> {
     let request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        cryptographic_parameters: None,
+        cryptographic_parameters: hsm_cipher_params(),
         data: Some(ciphertext.to_vec()),
         i_v_counter_nonce: None,
         correlation_value: None,
@@ -433,7 +428,7 @@ async fn test_non_admin_revoke_fails(kms: &Arc<KMS>, aes_uid: &str) -> KResult<(
 /// #20: Admin can encrypt with HSM key
 async fn test_admin_encrypt(kms: &Arc<KMS>, aes_uid: &str) -> KResult<()> {
     info!("Permissions #20: Admin encrypts with HSM key");
-    authorized_encrypt(kms, ADMIN, aes_uid, b"admin test data").await?;
+    encrypt_data(kms, ADMIN, aes_uid, b"admin test data").await?;
     Ok(())
 }
 
@@ -452,7 +447,7 @@ async fn test_non_admin_encrypt_no_grant(kms: &Arc<KMS>, aes_uid: &str) -> KResu
 async fn test_non_admin_encrypt_with_grant(kms: &Arc<KMS>, aes_uid: &str) -> KResult<()> {
     info!("Permissions #22: Non-admin encrypts with Encrypt grant");
     grant_ops(kms, ADMIN, USER, aes_uid, vec![KmipOperation::Encrypt]).await?;
-    authorized_encrypt(kms, USER, aes_uid, b"user test data").await?;
+    encrypt_data(kms, USER, aes_uid, b"user test data").await?;
     revoke_ops(kms, ADMIN, USER, aes_uid, vec![KmipOperation::Encrypt]).await?;
     Ok(())
 }
@@ -462,10 +457,7 @@ async fn test_non_admin_decrypt_with_encrypt_only(kms: &Arc<KMS>, aes_uid: &str)
     info!("Permissions #23: Non-admin cannot decrypt with Encrypt-only grant");
     grant_ops(kms, ADMIN, USER, aes_uid, vec![KmipOperation::Encrypt]).await?;
     // Admin encrypts to get valid ciphertext
-    let ciphertext = authorized_encrypt(kms, ADMIN, aes_uid, b"test data")
-        .await?
-        // no ciphertext can exist on this token: the authorization check comes first anyway
-        .unwrap_or_else(|| vec![0; 12 + 16 + 9]);
+    let ciphertext = encrypt_data(kms, ADMIN, aes_uid, b"test data").await?;
     // User tries to decrypt — should fail (only has Encrypt, not Decrypt)
     let result = decrypt_data(kms, USER, aes_uid, &ciphertext).await;
     assert!(
@@ -487,9 +479,8 @@ async fn test_non_admin_decrypt_with_grant(kms: &Arc<KMS>, aes_uid: &str) -> KRe
         vec![KmipOperation::Encrypt, KmipOperation::Decrypt],
     )
     .await?;
-    if let Some(ciphertext) = authorized_encrypt(kms, USER, aes_uid, b"decrypt test").await? {
-        decrypt_data(kms, USER, aes_uid, &ciphertext).await?;
-    }
+    let ciphertext = encrypt_data(kms, USER, aes_uid, b"decrypt test").await?;
+    decrypt_data(kms, USER, aes_uid, &ciphertext).await?;
     revoke_ops(
         kms,
         ADMIN,
