@@ -781,6 +781,7 @@ pub fn aes_mac_known_answers(slot: &Arc<SlotManager>) -> HResult<()> {
                     || format!("{id}: AES-CMAC verify accepted a bad tag"),
                 )
             })?;
+            info!("{id}: AES-CMAC known answer matches");
         }
     } else {
         info!("token lacks CKM_AES_CMAC: AES-CMAC known answers skipped");
@@ -810,6 +811,7 @@ pub fn aes_mac_known_answers(slot: &Arc<SlotManager>) -> HResult<()> {
                     || format!("{id}: AES-GMAC generated MAC does not verify"),
                 )
             })?;
+            info!("{id}: AES-GMAC known answer verified");
         }
     } else {
         info!("token lacks CKM_AES_GMAC: AES-GMAC known answers skipped");
@@ -847,6 +849,7 @@ pub fn aes_gcm_known_answers(slot: &Arc<SlotManager>) -> HResult<()> {
             ensure(plaintext.as_slice() == v.pt, || {
                 format!("{}: AES-GCM decrypt", v.id)
             })?;
+            info!("{}: AES-GCM decrypt known answer matches", v.id);
             match session.encrypt(h, HsmEncryptionAlgorithm::AesGcm, &v.pt, None) {
                 Ok(enc) => {
                     let back = decrypt(
@@ -861,7 +864,9 @@ pub fn aes_gcm_known_answers(slot: &Arc<SlotManager>) -> HResult<()> {
                     .map_err(|e| HError::Default(format!("{}: {e}", v.id)))?;
                     ensure(back.as_slice() == v.pt, || {
                         format!("{}: the returned IV is not the one the token used", v.id)
-                    })
+                    })?;
+                    info!("{}: token-generated AES-GCM IV is the one used", v.id);
+                    Ok(())
                 }
                 Err(e) if e.to_string().contains("did not generate an AES-GCM IV") => {
                     info!("token does not generate AES-GCM IVs: generated-IV check skipped");
