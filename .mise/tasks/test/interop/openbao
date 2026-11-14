@@ -70,9 +70,7 @@ if [[ -n "${OPENBAO_DATABASE_URL:-}" ]]; then
     *) print_error "OPENBAO_DATABASE_URL must start with postgresql:// or mysql://" ;;
   esac
   set_toml_value "${KMS_CONFIG_FILE}" database_type "\"${OPENBAO_DATABASE_TYPE}\""
-  # The fixture has no database_url key (only used for non-SQLite backends): insert it after database_type.
-  awk -v url="${OPENBAO_DATABASE_URL}" '{ print } /^database_type *= /{ print "database_url = \"" url "\"" }' \
-    "${KMS_CONFIG_FILE}" >"${KMS_CONFIG_FILE}.tmp" && mv "${KMS_CONFIG_FILE}.tmp" "${KMS_CONFIG_FILE}"
+  set_toml_value "${KMS_CONFIG_FILE}" database_url "\"${OPENBAO_DATABASE_URL}\""
 fi
 
 print_status "Building KMS server..."
