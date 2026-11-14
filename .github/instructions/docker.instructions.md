@@ -1,7 +1,7 @@
 ---
 name: 'Docker and Kubernetes'
 description: 'Docker image build/test conventions and Kubernetes deployment patterns for the Eviden KMS project'
-applyTo: 'nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/pkg/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*, .github/workflows/packaging-docker.yml'
+applyTo: 'nix/docker.nix, nix/k8s-images.nix, docker-compose.yml, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/pkg/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*, .github/workflows/packaging-docker.yml'
 ---
 
 # Docker and Kubernetes conventions
@@ -171,6 +171,23 @@ DOCKER_IMAGE_NAME=cosmian-kms:5.26.0-fips mise run test:pkg:docker --variant fip
 7. **Load balancer shutdown test** — `.mise/scripts/test/test_lb_kms_shutdown.sh`.
 8. **Oracle TDE HSM test** — PKCS#11 TDE migration `software → HSM → software`.
 
+### Third-party image catalog — root `docker-compose.yml`
+
+The root `docker-compose.yml` is the **single place** where third-party test images and their versions are
+defined (databases, OpenBao/Vault, SIEM/observability stacks, Keycloak, nginx, busybox, curl, …).
+
+- A service that compose actually starts keeps its own `image:` there. An image only started through
+  `docker run`/`docker pull`, or referenced from another compose file or a Kubernetes manifest, is declared
+  as an image-only service in the `images` profile at the end of the file (`image:` and `profiles: [images]`,
+  nothing else; compose never starts it).
+- Scripts read an image with `compose_image <service>` (`.mise/lib/common.sh`). Never write a literal
+  `repo/name:tag` in a script, a task, a heredoc manifest or another compose file. Bump a version in the root
+  file only.
+- Other compose files (`.mise/scripts/docker-compose.yml`, `saml_sso/docker-compose.yml`) take images from
+  variables (`image: ${LB_NGINX_IMAGE:?…}`) that their driving script sets from `compose_image`.
+- Out of scope: the KMS's own images (`DOCKER_IMAGE_NAME`, `${IMAGE_REF}`, `local/*:e2e`), Dockerfile `FROM`
+  lines, and images in GitHub workflows (they cannot read the compose file).
+
 ---
 
 ## 3. Kubernetes — Helm chart
@@ -278,6 +295,7 @@ After modifying any of the covered files, run `/kms-sync-rules` and check these 
 
 - `nix/docker.nix` → rebuild both variants locally, run `test:pkg:docker` for both
 - `.mise/scripts/docker-compose.yml` → run `test:pkg:docker` for both variants
+- `docker-compose.yml` (root) → run `docker compose --profile '*' config -q`, and the scripts that read the changed image through `compose_image` (`grep -rn 'compose_image <service>' .mise`)
 - `.mise/scripts/test/test_docker_image.sh` → run `test:pkg:docker --variant fips` locally
 - `.mise/lib/k8s.sh` or `.mise/tasks/test/k8s/**` → run `test:k8s:kms-image` locally
 - `charts/cosmian-kms/**` → run `test:k8s:kms-image` and `helm lint charts/cosmian-kms`
