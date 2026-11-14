@@ -28,6 +28,7 @@ use cosmian_kms_client::{
         },
     },
 };
+use cosmian_kms_crypto::crypto::is_fips_build;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -1518,16 +1519,22 @@ pub(super) fn bench_hsm_encrypt(
     let slug = transport.slug();
     let ledger = HsmKeyLedger::new();
 
-    // AES-GCM
-    if let Some(key_id) = try_create_hsm_sym_key(
-        rt,
-        client,
-        hsm_prefix,
-        "encrypt-aes-gcm-256",
-        256,
-        CryptographicAlgorithm::AES,
-        &ledger,
-    ) {
+    // AES-GCM. A FIPS build refuses it on an HSM that does not generate the IV itself
+    // (FIPS 140-3 IG C.H), as SoftHSM2 and Kryoptic do not.
+    if let Some(key_id) = (!is_fips_build())
+        .then(|| {
+            try_create_hsm_sym_key(
+                rt,
+                client,
+                hsm_prefix,
+                "encrypt-aes-gcm-256",
+                256,
+                CryptographicAlgorithm::AES,
+                &ledger,
+            )
+        })
+        .flatten()
+    {
         let mut group = timed_group(c, format!("{slug}/encrypt/hsm-aes-gcm"));
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
@@ -1588,11 +1595,15 @@ pub(super) fn bench_hsm_encrypt(
     if let Some((pub_id, _priv_id)) =
         try_create_hsm_rsa_kp(rt, client, hsm_prefix, "encrypt-rsa-2048", 2048, &ledger)
     {
+        // A FIPS build refuses RSA PKCS#1 v1.5 encryption (NIST SP 800-131A r2).
         for (label, params) in [
             ("hsm-rsa-oaep", rsa_oaep_params()),
             ("hsm-rsa-oaep-sha1", rsa_oaep_sha1_params()),
             ("hsm-rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
-        ] {
+        ]
+        .into_iter()
+        .filter(|(label, _)| !(is_fips_build() && *label == "hsm-rsa-pkcs1v15"))
+        {
             let mut group = timed_group(c, format!("{slug}/encrypt/{label}"));
             let enc_req = Encrypt {
                 unique_identifier: Some(pub_id.clone()),
