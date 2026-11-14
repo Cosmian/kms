@@ -19,33 +19,51 @@
 #
 # Requires: cargo, docker (for OPA container), curl
 set -euo pipefail
-set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../lib/kms_server.sh"
 
 init_build_env "$@"
 setup_test_logging
 
 # ── Configuration ────────────────────────────────────────────────────────────
-KMS_PORT=9991
+# Free ports are picked at run time so concurrent runs and local services never collide.
+KMS_PORT="$(kms_pick_free_port)"
 KMS_URL="http://127.0.0.1:${KMS_PORT}"
-OPA_PORT=8182 # separate port to avoid conflict with docker-compose opa on 8181
+OPA_PORT="$(kms_pick_free_port)"
 OPA_URL="http://127.0.0.1:${OPA_PORT}"
 OPA_CONTAINER="kms-opa-rbac-test-$$"
+# Pinned by digest, like deploy/rbac_rego/docker-compose.yml: a mutable tag would let an
+# upstream image change decide the policy under test.
+OPA_IMAGE="openpolicyagent/opa:1.22.0-static-debug@sha256:b5dde1457f91dd775a72b7865e6b3d0deb537ddf474726dc356ecb01f970ac4d"
 
 KMS_PID=""
 SQLITE_PATH=""
 KMS_CONF_PATH=""
+AUTH_SERVER_PID=""
+AUTH_VERIFIER_CONF=""
+AUTH_DB_DIR=""
 
+# Single EXIT handler for every phase: a later `trap ... EXIT` would silently replace it
+# and leak the KMS process and the OPA container.
 cleanup() {
   [ -n "${KMS_PID:-}" ] && {
     kill "${KMS_PID}" 2>/dev/null || true
     wait "${KMS_PID}" 2>/dev/null || true
   }
+  [ -n "${AUTH_SERVER_PID:-}" ] && {
+    kill "${AUTH_SERVER_PID}" 2>/dev/null || true
+    wait "${AUTH_SERVER_PID}" 2>/dev/null || true
+  }
   docker rm -f "${OPA_CONTAINER}" 2>/dev/null || true
-  [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
-  [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
+  [ -n "${SQLITE_PATH:-}" ] && { rm -rf -- "${SQLITE_PATH:?}" || true; }
+  [ -n "${KMS_CONF_PATH:-}" ] && { rm -f -- "${KMS_CONF_PATH:?}" || true; }
+  [ -n "${AUTH_VERIFIER_CONF:-}" ] && { rm -f -- "${AUTH_VERIFIER_CONF:?}" || true; }
+  [ -n "${AUTH_DB_DIR:-}" ] && { rm -rf -- "${AUTH_DB_DIR:?}" || true; }
+  # Without this, an unset trailing variable makes `cleanup` return 1 and `set -e` turns a
+  # passing run (e.g. Phase 3 skipped) into a failing one.
+  return 0
 }
 trap cleanup EXIT
 
@@ -63,7 +81,7 @@ make_jwt() {
   local sub="$1" domain="$2" roles="$3"
   local header='{"alg":"RS256","typ":"JWT"}'
   local payload
-  payload=$(printf '{"sub":"%s","iss":"test","iat":1000000,"exp":9999999999,"roles":%s,"as_domain":"%s"}' \
+  payload=$(printf '{"sub":"%s","iss":"test","iat":1000000,"exp":9999999999,"roles":%s,"as_rid":"%s"}' \
     "$sub" "$roles" "$domain")
   printf '%s.%s.fakesig' "$(b64url "$header")" "$(b64url "$payload")"
 }
@@ -175,9 +193,9 @@ fi
 
 docker run -d \
   --name "${OPA_CONTAINER}" \
-  -p "${OPA_PORT}:8181" \
+  -p "127.0.0.1:${OPA_PORT}:8181" \
   -v "${REGO_FILE}:/policies/kms.rego:ro" \
-  openpolicyagent/opa:edge-static-debug \
+  "${OPA_IMAGE}" \
   run --server --log-level=error --addr=0.0.0.0:8181 /policies/kms.rego
 
 echo "==> Waiting for OPA to be ready..."
@@ -276,12 +294,20 @@ assert_opa "Auditor denied destroy" "false" \
   "$(opa_input "au@acme.com" "acme.com" '["Auditor"]' "destroy" "uid-1" "acme.com" "false")"
 assert_opa "Auditor denied in other domain" "false" \
   "$(opa_input "au@acme.com" "acme.com" '["Auditor"]' "get_attributes" "uid-1" "other.com" "false")"
+# `get` returns key material: an Auditor is metadata-only and must not receive it.
+assert_opa "Auditor denied get (key material)" "false" \
+  "$(opa_input "au@acme.com" "acme.com" '["Auditor"]' "get" "uid-1" "acme.com" "false")"
+assert_opa "Auditor can locate in own domain" "true" \
+  "$(opa_input "au@acme.com" "acme.com" '["Auditor"]' "locate" "*" "acme.com" "false")"
 
 # User — crypto-use only, no lifecycle
 assert_opa "User can encrypt in own domain" "true" \
   "$(opa_input "u@acme.com" "acme.com" '["User"]' "encrypt" "uid-1" "acme.com" "false")"
 assert_opa "User can decrypt in own domain" "true" \
   "$(opa_input "u@acme.com" "acme.com" '["User"]' "decrypt" "uid-1" "acme.com" "false")"
+# KmipOperation's Display string for the KMIP Signature Verify operation.
+assert_opa "User can signature_verify in own domain" "true" \
+  "$(opa_input "u@acme.com" "acme.com" '["User"]' "signature_verify" "uid-1" "acme.com" "false")"
 assert_opa "User denied create" "false" \
   "$(opa_input "u@acme.com" "acme.com" '["User"]' "create" "*" "acme.com" "false")"
 assert_opa "User denied destroy" "false" \
@@ -298,6 +324,21 @@ assert_opa "No role denied encrypt" "false" \
 # Owner rule — owner always allowed regardless of role
 assert_opa "Owner always allowed (no role)" "true" \
   "$(opa_input "anon@acme.com" "acme.com" '[]' "destroy" "uid-1" "acme.com" "true")"
+
+# Empty user domain — a role-bearing caller whose token carries no domain claim must not
+# reach unstamped (empty-domain) objects through the role rules; the policy fails closed.
+assert_opa "CryptoOfficer without domain denied get on unstamped object" "false" \
+  "$(opa_input "co@acme.com" "" '["CryptoOfficer"]' "get" "uid-1" "" "false")"
+assert_opa "CryptoOfficer without domain denied create" "false" \
+  "$(opa_input "co@acme.com" "" '["CryptoOfficer"]' "create" "*" "" "false")"
+assert_opa "DomainAdmin without domain denied destroy on unstamped object" "false" \
+  "$(opa_input "da@acme.com" "" '["DomainAdmin"]' "destroy" "uid-1" "" "false")"
+assert_opa "User without domain denied encrypt on unstamped object" "false" \
+  "$(opa_input "u@acme.com" "" '["User"]' "encrypt" "uid-1" "" "false")"
+assert_opa "SuperAdmin without domain still allowed" "true" \
+  "$(opa_input "sa@acme.com" "" '["SuperAdmin"]' "destroy" "uid-1" "" "false")"
+assert_opa "Owner without domain still allowed" "true" \
+  "$(opa_input "anon@acme.com" "" '[]' "destroy" "uid-1" "" "true")"
 
 echo ""
 echo "Phase 1 results: ${PASS} passed, ${FAIL} failed"
@@ -506,9 +547,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Phase 3: Rust vector_runner.rs integration tests (real auth server)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-AUTH_SERVER_PORT=8444 # Use 8444 to avoid conflict with any running 8443
+AUTH_SERVER_PORT="$(kms_pick_free_port)"
 AUTH_SERVER_URL="https://127.0.0.1:${AUTH_SERVER_PORT}"
-AUTH_SERVER_PID=""
 AUTH_VERIFIER_BIN=""
 
 # Locate auth_verifier binary (prefer release, fall back to debug).
@@ -536,18 +576,8 @@ fi
 if [[ "${PHASE3_SKIPPED:-false}" != "true" ]]; then
   # ── Create a dedicated auth verifier config for integration tests ─────────
   AUTH_VERIFIER_CONF=$(mktemp -t kms-opa-auth-XXXXXX.toml)
+  AUTH_DB_DIR=$(mktemp -d -t kms-opa-auth-db-XXXXXX)
   CA_CERT="${REPO_ROOT}/authentication/server/src/tests/certificates/ec/auth.ca.pem"
-  # Update cleanup to also stop the auth server
-  cleanup_phase3() {
-    [ -n "${AUTH_SERVER_PID:-}" ] && {
-      kill "${AUTH_SERVER_PID}" 2>/dev/null || true
-      wait "${AUTH_SERVER_PID}" 2>/dev/null || true
-    }
-    [ -n "${AUTH_VERIFIER_CONF:-}" ] && rm -f "${AUTH_VERIFIER_CONF}" || true
-    # Remove ephemeral auth DB
-    rm -f /tmp/kms_opa_integration_auth.db 2>/dev/null || true
-  }
-  trap cleanup_phase3 EXIT
 
   # Write a minimal auth verifier config (dev mode, ephemeral SQLite).
   cat >"${AUTH_VERIFIER_CONF}" <<EOF
@@ -571,9 +601,9 @@ jwt_ec_public_key  = "server/src/tests/certificates/ec/auth.server.cert.pem"
 [database_params]
 auto_init_schema = true
 backend = "sqlite"
-connection_url = "sqlite:///tmp/kms_opa_integration_auth.db"
+connection_url = "sqlite://${AUTH_DB_DIR}/auth.db"
 
-allowed_origins = ["http://127.0.0.1:9991"]
+allowed_origins = ["${KMS_URL}"]
 EOF
 
   # ── Start auth verifier ───────────────────────────────────────────────────
@@ -584,12 +614,13 @@ EOF
     >"${REPO_ROOT}/target/auth_verifier_integration.log" 2>&1 &
   AUTH_SERVER_PID=$!
 
-  # Wait for auth verifier to be ready (HTTPS health check).
+  # Wait for auth verifier to be ready (HTTPS health check; the certificate must verify
+  # against the test CA, so TLS verification stays on).
   echo "==> Waiting for auth verifier to be ready..."
   ready=false
   for i in $(seq 1 30); do
     if env -u LD_LIBRARY_PATH -u LD_PRELOAD \
-      curl -sk --cacert "${CA_CERT}" \
+      curl -s --cacert "${CA_CERT}" \
       "${AUTH_SERVER_URL}/health" >/dev/null 2>&1; then
       ready=true
       break
@@ -606,8 +637,19 @@ EOF
   # ── Provision users ───────────────────────────────────────────────────────
   echo "==> Provisioning auth verifier test users..."
   PROVISION_SCRIPT="${REPO_ROOT}/test_data/configs/auth_verifier/provision_opa_users.sh"
-  eval "$(AUTH_URL="${AUTH_SERVER_URL}" CA_CERT="${CA_CERT}" \
-    REPO_ROOT="${REPO_ROOT}" bash "${PROVISION_SCRIPT}")"
+  # The script prints `export KMS_TEST_OPA_*_JWT='<jwt>'` lines. Parse them strictly instead
+  # of `eval`-ing the output, so nothing but a JWT can ever be assigned.
+  PROVISION_OUT=$(AUTH_URL="${AUTH_SERVER_URL}" CA_CERT="${CA_CERT}" \
+    REPO_ROOT="${REPO_ROOT}" bash "${PROVISION_SCRIPT}")
+  while IFS= read -r line; do
+    if [[ "${line}" =~ ^export\ (KMS_TEST_OPA_[A-Z_]+_JWT)=\'([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\'$ ]]; then
+      export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+    else
+      echo "ERROR: unexpected output from ${PROVISION_SCRIPT}" >&2
+      exit 1
+    fi
+  done <<<"${PROVISION_OUT}"
+  unset PROVISION_OUT line
   echo "Provisioning complete."
   echo "  KMS_TEST_OPA_SUPER_ADMIN_JWT     set (length ${#KMS_TEST_OPA_SUPER_ADMIN_JWT})"
   echo "  KMS_TEST_OPA_OFFICER_JWT         set (length ${#KMS_TEST_OPA_OFFICER_JWT})"
@@ -621,7 +663,7 @@ EOF
   # ── Export required env vars for the Rust tests ───────────────────────────
   export KMS_OPA_URL="${OPA_URL}"
   export KMS_AUTH_SERVER_URL="${AUTH_SERVER_URL}"
-  # JWT vars already exported by provision script eval above.
+  # JWT vars already exported by the provisioning step above.
 
   # ── Run Rust vector_runner.rs OPA tests ───────────────────────────────────
   echo ""
@@ -640,7 +682,7 @@ EOF
     -- \
     --include-ignored \
     test_vec_opa_ \
-    2>&1 | tee /tmp/kms_opa_rust_tests.log; then
+    2>&1 | tee "${REPO_ROOT}/target/kms_opa_rust_tests.log"; then
     echo "Phase 3: Rust OPA tests PASSED."
   else
     PHASE3_FAIL=1

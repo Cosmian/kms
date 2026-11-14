@@ -60,9 +60,11 @@ declare -A OPA_OPERATION=(
 )
 # Roles allowed to run each operation on a key of their own domain they do not
 # own. Mirrors test_data/opa/kms.rego; SuperAdmin is also allowed across domains.
+# Auditor is deliberately absent from Get: it is read-only on metadata (GetAttributes,
+# Locate) and must not be able to read key material.
 declare -A ALLOWED_ROLES=(
   [Create]="SuperAdmin DomainAdmin CryptoOfficer"
-  [Get]="SuperAdmin DomainAdmin CryptoOfficer Auditor"
+  [Get]="SuperAdmin DomainAdmin CryptoOfficer"
   [GetAttributes]="SuperAdmin DomainAdmin CryptoOfficer Auditor User"
   [Activate]="SuperAdmin DomainAdmin CryptoOfficer"
   [Encrypt]="SuperAdmin DomainAdmin User"
