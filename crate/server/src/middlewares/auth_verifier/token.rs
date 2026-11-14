@@ -73,8 +73,9 @@ pub(crate) struct AuthVerifierClaims {
     /// Realm / domain the authenticated user belongs to.
     ///
     /// The auth server sets this as `as_rid` (realm ID). The legacy `as_domain`
-    /// claim is also accepted for tokens issued before the field was renamed.
-    #[serde(alias = "as_domain", alias = "as_rid")]
+    /// claim is also accepted for tokens issued before the field was renamed. A bare
+    /// `domain` claim is not read.
+    #[serde(rename = "as_rid", alias = "as_domain")]
     pub domain: Option<String>,
 }
 

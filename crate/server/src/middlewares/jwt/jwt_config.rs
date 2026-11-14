@@ -117,8 +117,10 @@ pub(crate) struct UserClaim {
     pub roles: Option<Vec<String>>,
     // OPA RBAC: domain claim — read from `as_rid` (auth server realm ID).
     // `as_domain` is accepted as a legacy alias for tokens issued before the
-    // domain field was removed from AuthPrivateClaims.
-    #[serde(alias = "as_domain", alias = "as_rid")]
+    // domain field was removed from AuthPrivateClaims. A bare `domain` claim is
+    // deliberately NOT read: it is a common IdP attribute name with unrelated
+    // semantics and must not be able to scope a user to a tenant.
+    #[serde(rename = "as_rid", alias = "as_domain")]
     pub domain: Option<String>,
     // Google CSE
     pub role: Option<String>,
@@ -296,6 +298,10 @@ impl JwtConfig {
     /// Fully validate a JWT: algorithm allow-list, `kid` lookup in the JWKS, signature,
     /// issuer, expiry and (when configured) audience.
     ///
+    /// The validated claims are also required: a token without `exp`, without `iss` (unless
+    /// SPIFFE JWT-SVIDs are accepted) or, when an audience is configured, without `aud` is
+    /// rejected rather than skipping the corresponding check.
+    ///
     /// This is the production validation path. It is compiled in every build except
     /// `insecure` so that unit tests can exercise it directly even though
     /// [`Self::validate_authentication_token`] short-circuits to an unverified decode
@@ -321,22 +327,27 @@ impl JwtConfig {
         validation.algorithms = vec![header.alg];
         validation.set_issuer(&[&self.jwt_issuer_uri]);
         validation.validate_exp = true;
-        validation.required_spec_claims.clear();
+        // `jsonwebtoken` compares `iss` and `aud` only when the token carries them, so a token
+        // that omits a claim the server is configured to check would skip that check. Every
+        // claim validated below is therefore also required.
+        let mut required_claims = vec!["exp"];
         if validate_subject {
-            // Require both subject and expiration in production
-            validation.set_required_spec_claims(&["sub", "exp"]);
-        } else {
-            // At minimum, always require expiration
-            validation.set_required_spec_claims(&["exp"]);
+            required_claims.push("sub");
+        }
+        // SPIFFE JWT-SVIDs are not required to carry `iss`; their `aud` is enforced instead.
+        if !self.accept_spiffe_subject {
+            required_claims.push("iss");
         }
         if let Some(jwt_audience) = &self.jwt_audience {
             validation.set_audience(jwt_audience.as_slice());
+            required_claims.push("aud");
         } else {
             // jsonwebtoken 10.x rejects tokens that carry an `aud` claim when no
             // expected audience is configured in the Validation struct (InvalidAudience).
             // When the server does not restrict by audience, skip audience validation.
             validation.validate_aud = false;
         }
+        validation.set_required_spec_claims(&required_claims);
 
         // OIDC/IdP tokens are required to carry a `kid` so we can look up the exact
         // signing key in the JWKS.  Auth-verifier tokens intentionally omit `kid`

@@ -3991,7 +3991,7 @@ paths:
         ('AS') using username/password (and optionally a TOTP code), mirroring `ckms
         login cosmian`. On success, only the validated username is stored in the
         session cookie — the AS's JWT never reaches the browser. Only available when
-        `cosmian_auth_server_url` and `cosmian_auth_realm` are both configured.
+        `auth_verifier_url` and `auth_verifier_realm` are both configured.
       operationId: uiLoginAs
       requestBody:
         required: true

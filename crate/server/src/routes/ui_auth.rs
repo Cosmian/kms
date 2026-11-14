@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use actix_session::Session;
+use actix_session::{Session, SessionInsertError};
 use actix_web::{
     HttpRequest, HttpResponse,
     cookie::{Cookie, SameSite},
@@ -36,6 +36,32 @@ fn random_b64url(rng: &KmsRng, len_bytes: usize) -> Result<String, ()> {
 fn pkce_challenge_from_verifier(verifier: &str) -> String {
     let digest = openssl::sha::sha256(verifier.as_bytes());
     URL_SAFE_NO_PAD.encode(digest)
+}
+
+/// Start a fresh authenticated browser session for `user_id`.
+///
+/// The previous session state is discarded and the session key renewed, so neither a
+/// session planted before authentication (session fixation) nor the `roles` / `domain` of an
+/// earlier login that used the same cookie can be inherited by the new identity. Those two
+/// values feed the OPA input via `SessionAuth`, so a stale `domain` or `CryptoOfficer` role
+/// would silently grant the new user someone else's authorizations.
+///
+/// `roles` is always written (empty when the identity has none); `domain` is written only
+/// when present, `clear` having already removed any previous one.
+fn establish_session(
+    session: &Session,
+    user_id: &UserId,
+    roles: &[String],
+    domain: Option<&str>,
+) -> Result<(), SessionInsertError> {
+    session.clear();
+    session.renew();
+    session.insert("user_id", user_id)?;
+    session.insert("roles", roles)?;
+    if let Some(domain) = domain {
+        session.insert("domain", domain)?;
+    }
+    Ok(())
 }
 
 #[cfg(all(not(test), not(feature = "insecure")))]
@@ -348,7 +374,9 @@ pub(crate) async fn callback(
             .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
     }
 
-    if session.insert("user_id", &user_id).is_err() {
+    // The OIDC flow carries no RBAC context into the session: start from a clean one so the
+    // `roles`/`domain` of a previous login on this cookie are not inherited.
+    if establish_session(&session, &user_id, &[], None).is_err() {
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
     }
@@ -578,17 +606,11 @@ pub(crate) async fn login_as(
 
             // Store username, roles, and domain in the server-side session so that
             // subsequent browser requests (via SessionAuth) carry the full OPA context.
-            if session.insert("user_id", &user_id).is_err()
-                || session.insert("roles", &claims.roles).is_err()
+            if establish_session(&session, &user_id, &claims.roles, claims.domain.as_deref())
+                .is_err()
             {
                 return HttpResponse::InternalServerError()
                     .json(serde_json::json!({ "error": "Failed to store session data" }));
-            }
-            if let Some(ref domain) = claims.domain
-                && session.insert("domain", domain).is_err()
-            {
-                return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": "Failed to store domain in session" }));
             }
 
             HttpResponse::Ok().json(AuthVerifierLoginResponse {
@@ -627,25 +649,20 @@ pub(crate) async fn login_svid(
         }
     };
 
-    // Issue a fresh session ID on login so a session ID planted before authentication
-    // (session fixation) never becomes an authenticated session.
-    session.renew();
-    if session.insert("user_id", &authenticated.username).is_err() {
-        return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
-    }
-
-    // Keep the SVID's `roles`/`domain` claims in the session so that `SessionAuth`
-    // rebuilds the same OPA context as bearer-token authentication would.
-    if session.insert("roles", &authenticated.roles).is_err() {
-        return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to store roles in session" }));
-    }
-    if let Some(ref domain) = authenticated.domain
-        && session.insert("domain", domain).is_err()
+    // Fresh session ID and state: a session ID planted before authentication (session
+    // fixation) never becomes an authenticated session, and the `roles`/`domain` of an earlier
+    // login are not inherited. The SVID's own `roles`/`domain` claims are kept in the session
+    // so that `SessionAuth` rebuilds the same OPA context as bearer-token authentication.
+    if establish_session(
+        &session,
+        &authenticated.username,
+        &authenticated.roles,
+        authenticated.domain.as_deref(),
+    )
+    .is_err()
     {
         return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to store domain in session" }));
+            .json(serde_json::json!({ "error": "Failed to store session data" }));
     }
 
     HttpResponse::Ok().json(serde_json::json!({ "next_step": "Authenticated" }))
@@ -905,18 +922,19 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 
 #[cfg(test)]
 mod tests {
+    use actix_session::Session;
     use actix_web::{
-        App,
+        App, FromRequest,
         cookie::Cookie,
         http::{StatusCode, header},
         test, web,
     };
 
-    use super::{get_auth_method, login_saml, logout, saml_login_url, whoami};
+    use super::{establish_session, get_auth_method, login_saml, logout, saml_login_url, whoami};
     use crate::{
         config::{AuthVerifierConfig, AuthVerifierRuntimeConfig, OidcConfig, OidcRuntimeConfig},
         middlewares::{
-            AUTH_VERIFIER_SESSION_COOKIE,
+            AUTH_VERIFIER_SESSION_COOKIE, UserId,
             auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier},
         },
     };
@@ -926,6 +944,56 @@ mod tests {
     }
 
     const KMS_URL: &str = "https://kms.example.com";
+
+    /// A second login on the same cookie must not inherit the `roles` / `domain` of the first:
+    /// they feed the OPA input, so a stale `CryptoOfficer` role or domain would hand the new
+    /// identity someone else's authorizations.
+    #[actix_web::test]
+    async fn establish_session_drops_the_roles_and_domain_of_a_previous_login() {
+        let req = test::TestRequest::default().to_http_request();
+        let session = Session::extract(&req).await.expect("session extractor");
+
+        establish_session(
+            &session,
+            &UserId::from("officer@acme.com"),
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+        )
+        .expect("first login");
+        assert_eq!(
+            session.get::<Vec<String>>("roles").expect("roles"),
+            Some(vec!["CryptoOfficer".to_owned()])
+        );
+        assert_eq!(
+            session.get::<String>("domain").expect("domain").as_deref(),
+            Some("acme.com")
+        );
+
+        establish_session(&session, &UserId::from("bob@other.org"), &[], None)
+            .expect("second login");
+        assert_eq!(
+            session
+                .get::<String>("user_id")
+                .expect("user_id")
+                .as_deref(),
+            Some("bob@other.org")
+        );
+        assert_eq!(
+            session.get::<Vec<String>>("roles").expect("roles"),
+            Some(Vec::new()),
+            "roles of the previous login must not survive"
+        );
+        assert_eq!(
+            session.get::<String>("domain").expect("domain"),
+            None,
+            "domain of the previous login must not survive"
+        );
+        assert_eq!(
+            session.status(),
+            actix_session::SessionStatus::Renewed,
+            "the session key must be renewed on login"
+        );
+    }
 
     // Test setup must fail loudly if the ephemeral loopback listener cannot be created.
     async fn saml_runtime(saml_realm: Option<&str>) -> AuthVerifierRuntimeConfig {

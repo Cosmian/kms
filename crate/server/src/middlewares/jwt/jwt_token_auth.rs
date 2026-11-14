@@ -86,12 +86,12 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
         .as_ref()
         .is_some_and(|aud| aud.iter().any(|audience| !audience.is_empty()))
     {
-        warn!("JWT-SVID for {sub} rejected: missing or empty 'aud' claim");
+        warn!("JWT-SVID for {sub:?} rejected: missing or empty 'aud' claim");
         return Err(KmsError::InvalidRequest(
             "JWT-SVID must carry a non-empty 'aud' claim".to_owned(),
         ));
     }
-    debug!("JWT-SVID access granted to {sub}!");
+    debug!("JWT-SVID access granted to {sub:?}!");
     let username = UserId::from(sub);
     reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
@@ -108,7 +108,9 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
 /// The `roles` and `domain` private claims are propagated so OPA can evaluate
 /// role-based and domain-scoped policies.
 fn oidc_authenticated_user(username: &str, user_claim: &UserClaim) -> KResult<AuthenticatedUser> {
-    let username = UserId::from(username.to_owned());
+    // An empty identity would be shared by every token carrying an empty claim.
+    let username = UserId::try_new(username)
+        .map_err(|e| KmsError::Unauthorized(format!("JWT identity claim is unusable: {e}")))?;
     reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
@@ -132,14 +134,20 @@ fn oidc_authenticated_user(username: &str, user_claim: &UserClaim) -> KResult<Au
 ///
 /// A `spiffe://` subject without the opt-in is deliberately rejected instead of falling
 /// back to rule 3, so a SPIFFE workload identity can never be used as a plain username.
-/// A token carrying neither a usable `email` nor a usable `sub` is rejected too.
+/// A token carrying neither a usable `email` nor a usable `sub` is rejected too. A blank
+/// `email` is not usable: it is treated as absent, so that rule 2 or 3 applies instead of
+/// every such token sharing one empty identity.
 fn resolve_authenticated_user(
     user_claim: &UserClaim,
     accept_spiffe_subject: bool,
 ) -> KResult<AuthenticatedUser> {
-    if let Some(email) = user_claim.email.as_deref() {
-        // Authentication successful with valid email
-        debug!("JWT Access granted to {email}!");
+    if let Some(email) = user_claim
+        .email
+        .as_deref()
+        .filter(|email| !email.trim().is_empty())
+    {
+        // Claims are attacker-influenced text: log them escaped (`{:?}`), never raw.
+        debug!("JWT Access granted to {email:?}!");
         return oidc_authenticated_user(email, user_claim);
     }
     match user_claim.sub.as_deref() {
@@ -149,9 +157,11 @@ fn resolve_authenticated_user(
             spiffe_authenticated_user(user_claim)
         }
         Some(sub)
-            if !accept_spiffe_subject && !sub.is_empty() && !sub.starts_with(SPIFFE_ID_PREFIX) =>
+            if !accept_spiffe_subject
+                && !sub.trim().is_empty()
+                && !sub.starts_with(SPIFFE_ID_PREFIX) =>
         {
-            debug!("JWT Access granted to {sub} (no email claim, using sub)!");
+            debug!("JWT Access granted to {sub:?} (no email claim, using sub)!");
             oidc_authenticated_user(sub, user_claim)
         }
         // JWT is valid but carries no usable identity (or a `spiffe://` subject while
@@ -409,6 +419,32 @@ mod rbac_claims_tests {
         assert_eq!(user.username.as_ref(), "sub-only@acme.com");
     }
 
+    /// A blank `email` claim is not an identity: the `sub` fallback applies instead of every
+    /// such token sharing one empty username.
+    #[tokio::test]
+    async fn test_handle_jwt_blank_email_falls_back_to_sub() {
+        for blank in ["", "   "] {
+            let token = make_test_jwt(Some(blank), "sub-only@acme.com", &[], None);
+            let configs = Arc::new(vec![test_jwt_config()]);
+            let req = srv_req_with_bearer(&token);
+            let user = handle_jwt(configs, &req)
+                .await
+                .expect("blank email must fall back to sub");
+            assert_eq!(user.username.as_ref(), "sub-only@acme.com", "{blank:?}");
+        }
+    }
+
+    /// A token whose `email` and `sub` are both blank carries no usable identity.
+    #[tokio::test]
+    async fn test_handle_jwt_blank_email_and_sub_is_rejected() {
+        let token = make_test_jwt(Some(""), "", &["SuperAdmin"], None);
+        let configs = Arc::new(vec![test_jwt_config()]);
+        let req = srv_req_with_bearer(&token);
+        handle_jwt(configs, &req)
+            .await
+            .expect_err("a token without any usable identity must be rejected");
+    }
+
     /// When the JWT carries both `email` and `sub`, `email` wins as the username
     /// (Google / Auth0 style `IdPs` set `email` as the primary identity).
     #[tokio::test]
@@ -437,6 +473,41 @@ mod rbac_claims_tests {
             "domain must be None when claim is absent, got {:?}",
             user.domain
         );
+    }
+
+    /// Build an unsigned JWT with a verbatim payload (see [`make_test_jwt`]).
+    fn jwt_with_payload(payload: &str) -> String {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+        format!("{header}.{}._", URL_SAFE_NO_PAD.encode(payload))
+    }
+
+    /// Only `as_rid` (and its legacy alias `as_domain`) carry the RBAC domain. A bare `domain`
+    /// claim is an unrelated, IdP-defined attribute: it must not scope a user to a tenant.
+    #[tokio::test]
+    async fn test_handle_jwt_bare_domain_claim_is_not_the_rbac_domain() {
+        let bare = jwt_with_payload(
+            r#"{"email":"m@evil.example","sub":"m","roles":["DomainAdmin"],"domain":"acme.com","exp":9999999999}"#,
+        );
+        let configs = Arc::new(vec![test_jwt_config()]);
+        let user = handle_jwt(configs, &srv_req_with_bearer(&bare))
+            .await
+            .expect("the token itself is valid");
+        assert!(
+            user.domain.is_none(),
+            "a bare `domain` claim must be ignored, got {:?}",
+            user.domain
+        );
+
+        let legacy = jwt_with_payload(
+            r#"{"email":"a@acme.com","sub":"a","roles":["DomainAdmin"],"as_domain":"acme.com","exp":9999999999}"#,
+        );
+        let configs = Arc::new(vec![test_jwt_config()]);
+        let user = handle_jwt(configs, &srv_req_with_bearer(&legacy))
+            .await
+            .expect("the token itself is valid");
+        assert_eq!(user.domain.as_deref(), Some("acme.com"));
     }
 }
 
@@ -774,6 +845,59 @@ mod real_validation {
         claims.as_object_mut().expect("object").remove("aud");
         let token = sign(&key, KID, Algorithm::ES256, &claims);
         accept(&config, &token).expect_err("missing audience must be rejected");
+    }
+
+    /// With an audience configured, the signature validation itself (the path shared by
+    /// every bearer token, SPIFFE or not) must refuse a token that carries no `aud`.
+    #[tokio::test]
+    async fn token_without_audience_is_rejected_when_an_audience_is_configured() {
+        let key = generate_key();
+        let config = config(&key).await;
+        let mut claims = valid_claims();
+        claims.as_object_mut().expect("object").remove("aud");
+        let token = sign(&key, KID, Algorithm::ES256, &claims);
+        config
+            .validate_signed_token(&token, true)
+            .expect_err("a token without `aud` must not skip the audience check");
+    }
+
+    /// Without a configured audience the server does not restrict by audience.
+    #[tokio::test]
+    async fn token_without_audience_is_accepted_when_no_audience_is_configured() {
+        let key = generate_key();
+        let config = JwtConfig {
+            jwt_audience: None,
+            ..config(&key).await
+        };
+        let mut claims = valid_claims();
+        claims.as_object_mut().expect("object").remove("aud");
+        let token = sign(&key, KID, Algorithm::ES256, &claims);
+        config
+            .validate_signed_token(&token, true)
+            .expect("no audience configured: `aud` is not required");
+    }
+
+    /// The configured issuer must not be skippable by omitting `iss`, except for SPIFFE
+    /// JWT-SVIDs, which are not required to carry it.
+    #[tokio::test]
+    async fn token_without_issuer_is_rejected_unless_spiffe_svids_are_accepted() {
+        let key = generate_key();
+        let mut claims = valid_claims();
+        claims.as_object_mut().expect("object").remove("iss");
+        let token = sign(&key, KID, Algorithm::ES256, &claims);
+
+        let strict = JwtConfig {
+            accept_spiffe_subject: false,
+            ..config(&key).await
+        };
+        strict
+            .validate_signed_token(&token, true)
+            .expect_err("a token without `iss` must not skip the issuer check");
+
+        config(&key)
+            .await
+            .validate_signed_token(&token, true)
+            .expect("SPIFFE JWT-SVIDs may omit `iss`");
     }
 
     /// `jsonwebtoken` parses but never enforces `crit` (RFC 7515 §4.1.11): the production
