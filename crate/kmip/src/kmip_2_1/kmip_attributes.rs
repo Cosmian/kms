@@ -492,6 +492,15 @@ impl Attributes {
         self
     }
 
+    /// The server sets the Usage Limits Count to the Total when the attribute is created
+    /// (KMIP 2.1 §4.59: a client Count is ignored on object creation).
+    pub const fn reset_usage_limits_count(&mut self) -> &mut Self {
+        if let Some(limits) = self.usage_limits.as_mut() {
+            limits.reset_count();
+        }
+        self
+    }
+
     /// Initialize the `NeverExtractable` attribute at object creation time
     /// (KMIP 2.1 §4.33 / KMIP 1.4 §3.51).
     ///
@@ -2048,9 +2057,7 @@ impl Attributes {
             }
             new_attrs.activation_date = Some(activation_date);
         }
-        if let Some(usage_limits) = new_attrs.usage_limits.as_mut() {
-            usage_limits.usage_limits_count = Some(usage_limits.usage_limits_total);
-        }
+        new_attrs.reset_usage_limits_count();
 
         Ok(new_attrs)
     }

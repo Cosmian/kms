@@ -37,9 +37,7 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
-            kmip_types::{
-                CryptographicAlgorithm, RandomNumberGenerator, UniqueIdentifier, UsageLimitsUnit,
-            },
+            kmip_types::{CryptographicAlgorithm, RandomNumberGenerator, UniqueIdentifier},
         },
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
@@ -52,6 +50,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, digest::digest,
+            rekey::versioned_update_op,
         },
         uid_utils::{
             KeysetVersion, ObjectHandle, as_keyset_ref, resolve_keyset_to_single_uid, resolve_uids,
@@ -62,6 +61,9 @@ use crate::{
     middlewares::UserId,
     result::{KResult, KResultHelper},
 };
+
+/// Attempts made to reserve usage limits against concurrent updates of the same key.
+const USAGE_LIMITS_MAX_ATTEMPTS: usize = 8;
 
 // ─── Key lifecycle initialization ─────────────────────────────────────────────
 
@@ -574,9 +576,9 @@ impl KMS {
         // Fast path: a non-wrapped key with no usage limits — by far the most
         // common crypto request (e.g. a plain symmetric key served from the
         // object cache). There is nothing to unwrap, so no plaintext key material
-        // ever needs to leave `owm`, and `decrement_usage_limits` would be a
-        // no-op. Operate directly on the cached `owm`, skipping both the
-        // ~800-byte deep clone and the persistence round-trip.
+        // ever needs to leave `owm`, and there are no usage limits to reserve.
+        // Operate directly on the cached `owm`, skipping both the ~800-byte deep
+        // clone and the persistence round-trip.
         //
         // COSMIAN-2026-015 does not apply here: the key is not wrapped, so nothing
         // is unwrapped and no key material is ever written back to storage.
@@ -584,19 +586,21 @@ impl KMS {
             return Op::execute_local(self, owm, request, user);
         }
 
-        // Slow path: the key is wrapped and/or carries usage limits, so a clone is
-        // required.
+        // Reserved before the operation, atomically: concurrent requests can never overrun the
+        // budget, a failure afterwards wastes units. The still-wrapped stored object is what
+        // gets persisted (COSMIAN-2026-015).
+        if owm.attributes().usage_limits.is_some() {
+            self.reserve_usage_limits(owm, user, Op::OP_NAME, data_len)
+                .await?;
+        }
+
+        // Slow path: the key is wrapped, so a clone is required.
         //
-        // - Wrapped keys: unwrapping mutates the object, replacing the wrapped key
-        //   material with plaintext. `decrement_usage_limits` below persists
-        //   `owm.object()` back to the database, so unwrapping `owm` directly would
-        //   leak the plaintext key to storage (COSMIAN-2026-015). Only the
-        //   disposable `local_owm` clone may ever hold plaintext key material --
-        //   `owm` must remain wrapped for persistence.
-        // - Usage limits: `local_owm.attributes_mut()` holds the decremented
-        //   counter, while the still-wrapped `owm.object()` is persisted alongside
-        //   it -- no second clone needed (COSMIAN-2026-015).
-        let (mut local_owm, _is_wrapped) = if owm.object().is_wrapped() {
+        // Unwrapping mutates the object, replacing the wrapped key material with
+        // plaintext. Only the disposable `local_owm` clone may ever hold plaintext
+        // key material -- `owm` must remain wrapped, as it is what the usage-limit
+        // reservation persisted (COSMIAN-2026-015).
+        if owm.object().is_wrapped() {
             let unwrapped = Box::pin(self.get_unwrapped(owm.id(), owm.object(), user))
                 .await
                 .with_context(|| {
@@ -613,34 +617,9 @@ impl KMS {
                 owm.state(),
                 owm.attributes().clone(),
             );
-            (Some(local_owm), true)
-        } else {
-            (None, false)
-        };
-
-        let res = if let Some(local) = &local_owm {
-            Op::execute_local(self, local, request, user)?
-        } else {
-            Op::execute_local(self, owm, request, user)?
-        };
-
-        // Persist usage limits: `owm.object()` is still wrapped, avoiding
-        // plaintext leakage; decremented counter is computed on attributes.
-        if let Some(local) = &mut local_owm {
-            self.decrement_usage_limits(
-                owm.id(),
-                owm.object(),
-                local.attributes_mut(),
-                Op::OP_NAME,
-                data_len,
-            )
-            .await?;
-        } else {
-            let mut attrs = owm.attributes().clone();
-            self.decrement_usage_limits(owm.id(), owm.object(), &mut attrs, Op::OP_NAME, data_len)
-                .await?;
+            return Op::execute_local(self, &local_owm, request, user);
         }
-        Ok(res)
+        Op::execute_local(self, owm, request, user)
     }
 
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.
@@ -799,53 +778,61 @@ impl KMS {
             .any(|p| *p == operation || *p == KmipOperation::Get))
     }
 
-    /// Decrement and persist `UsageLimits` after a successful cryptographic operation.
-    ///
-    /// For `Byte`-based limits, `data_len` bytes are subtracted from the remaining total.
-    /// For `Object`, `Block`, and `Operation` units, one unit is consumed.
-    ///
-    /// Persistence is skipped when no usage limits are set on the key,
-    /// avoiding unnecessary row-level lock contention on the hot path.
-    /// Decrement the `UsageLimits` counter on `attributes` and persist the original
-    /// `object` together with the updated attributes to the database.
-    ///
-    /// The `object` and `attributes` are split so the caller can pass the
-    /// original (still-wrapped) key material alongside the decremented
-    /// attributes from a disposable clone — this avoids a full second clone
-    /// just for persistence (COSMIAN-2026-015).
-    async fn decrement_usage_limits(
+    /// Consume `data_len` from the key's Usage Limits before the operation runs. The update is
+    /// conditional on the stored version, so concurrent requests can never overrun the budget.
+    /// The stored (still wrapped) object is persisted, never an unwrapped copy (COSMIAN-2026-015).
+    async fn reserve_usage_limits(
         &self,
-        id: &str,
-        object: &Object,
-        attributes: &mut Attributes,
+        owm: &ObjectWithMetadata,
+        user: &UserId,
         op_name: &str,
         data_len: usize,
     ) -> KResult<()> {
-        let mut decremented = false;
-        if let Some(ul) = attributes.usage_limits.as_mut() {
-            match ul.usage_limits_unit {
-                UsageLimitsUnit::Byte => {
-                    let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
-                    ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
-                    decremented = true;
+        let mut fresh: Option<Arc<ObjectWithMetadata>> = None;
+        for _ in 0..USAGE_LIMITS_MAX_ATTEMPTS {
+            // `Database::atomic` invalidates the cache on `Conflict`, so a re-read is fresh.
+            let current: &ObjectWithMetadata = fresh.as_deref().unwrap_or(owm);
+            current.enforce_usage_limits(data_len)?;
+            // The limit may have been deleted concurrently.
+            let Some(mut limits) = current.attributes().usage_limits.clone() else {
+                return Ok(());
+            };
+            limits.consume(data_len);
+            let mut attributes = current.attributes().clone();
+            attributes.usage_limits = Some(limits.clone());
+            // GetAttributes lets the key-block copy win over the column: keep both in step.
+            // A wrapped object has no readable key-block attributes and stays untouched.
+            let mut object = current.object().clone();
+            if let Ok(object_attributes) = object.attributes_mut() {
+                object_attributes.usage_limits = Some(limits);
+            }
+            let op = versioned_update_op(current, object, attributes);
+            match self
+                .database
+                .atomic(user, &[op])
+                .await
+                .map_err(KmsError::from)
+            {
+                Ok(_) => return Ok(()),
+                Err(KmsError::Conflict(_)) => {
+                    fresh = Some(
+                        self.database
+                            .retrieve_object_arc(owm.id())
+                            .await?
+                            .ok_or_else(|| KmsError::ItemNotFound(owm.id().to_owned()))?,
+                    );
                 }
-                UsageLimitsUnit::Object => {
-                    ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
-                    decremented = true;
+                Err(e) => {
+                    return Err(KmsError::ServerError(format!(
+                        "{op_name}: failed to persist updated usage limits: {e}"
+                    )));
                 }
             }
         }
-        if decremented {
-            self.database
-                .update_object(id, object, attributes, None)
-                .await
-                .map_err(|e| {
-                    KmsError::ServerError(format!(
-                        "{op_name}: failed to persist updated usage limits: {e}"
-                    ))
-                })?;
-        }
-        Ok(())
+        Err(KmsError::Conflict(format!(
+            "{op_name}: the usage limits of {} changed concurrently, retry the request",
+            owm.id()
+        )))
     }
 
     /// Collect the single eligible crypto-oracle UID for a cryptographic operation.

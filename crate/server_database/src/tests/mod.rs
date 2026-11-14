@@ -115,6 +115,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
     Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
+    gcm_invocations_test(&get_redis_with_findex().await?).await?;
     Ok(())
 }
 

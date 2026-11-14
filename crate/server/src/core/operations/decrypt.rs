@@ -932,8 +932,11 @@ mod tests {
                     BulkData,
                     tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
                 },
-                kmip_operations::{Decrypt, Encrypt, ReKey},
-                kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+                kmip_operations::{Decrypt, Encrypt, GetAttributes, ReKey},
+                kmip_types::{
+                    CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier, UsageLimits,
+                    UsageLimitsUnit,
+                },
                 requests::symmetric_key_create_request,
             },
         },
@@ -1364,6 +1367,70 @@ mod tests {
                 assert!(!matches!(e, KmsError::Conflict(_)), "{e:?}");
             }
         }
+        Ok(())
+    }
+
+    /// Usage Limits are reserved atomically before the operation: concurrent requests never
+    /// overrun the budget, the client Count is ignored and the Count (not the Total) is consumed.
+    #[tokio::test]
+    async fn test_usage_limits_are_consumed_atomically() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let mut create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        create.attributes.usage_limits = Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(999),
+            usage_limits_total: 4,
+        });
+        let uid = kms
+            .create(create, &user)
+            .await?
+            .unique_identifier
+            .to_string();
+
+        let results =
+            join_all((0..12).map(|_| kms.encrypt(gcm_encrypt(&uid, b"message"), &user))).await;
+        let succeeded = results.iter().filter(|r| r.is_ok()).count();
+        assert_eq!(succeeded, 4);
+        for result in results.into_iter().filter(Result::is_err) {
+            assert_eq!(reason(result), Some(ErrorReason::Permission_Denied));
+        }
+
+        // The view clients get must report the consumed Count too.
+        let reported = kms
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    attribute_reference: None,
+                },
+                &user,
+            )
+            .await?;
+        assert_eq!(
+            reported
+                .attributes
+                .usage_limits
+                .map(|l| l.usage_limits_count),
+            Some(Some(0))
+        );
+
+        let stored = kms.database.retrieve_object(&uid).await?.unwrap();
+        assert_eq!(
+            stored.attributes().usage_limits,
+            Some(UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: Some(0),
+                usage_limits_total: 4,
+            })
+        );
         Ok(())
     }
 }

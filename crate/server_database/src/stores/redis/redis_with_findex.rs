@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -19,12 +19,12 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectHandle, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult, ObjectHandle,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, error, trace, warn};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
-use redis::aio::ConnectionManager;
+use redis::{Script, aio::ConnectionManager};
 use uuid::Uuid;
 
 use super::{
@@ -54,6 +54,23 @@ use crate::{
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+
+/// Adds ARGV[1] to the AES-GCM invocation count in KEYS[1] unless the result exceeds ARGV[2];
+/// returns the new count, or nil (nothing reserved) when it would exceed the cap.
+/// Lua numbers are doubles, exact up to 2^53, so they hold the 2^32 cap.
+const RESERVE_GCM_INVOCATIONS_LUA: &str = "
+local total = tonumber(redis.call('GET', KEYS[1]) or '0') + tonumber(ARGV[1])
+if total > tonumber(ARGV[2]) then return false end
+redis.call('SET', KEYS[1], total)
+return total
+";
+
+static RESERVE_GCM_INVOCATIONS_SCRIPT: LazyLock<Script> =
+    LazyLock::new(|| Script::new(RESERVE_GCM_INVOCATIONS_LUA));
+
+fn gcm_invocations_key(uid: &str) -> String {
+    format!("gcm_invocations::{uid}")
+}
 
 /// Returns `true` when an object's state counts toward the live-object total.
 ///
@@ -1455,6 +1472,28 @@ impl ObjectsStore for RedisWithFindex {
             count, ACTIVE_KEY_COUNT_KEY
         );
         Ok(count)
+    }
+
+    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
+        RESERVE_GCM_INVOCATIONS_SCRIPT
+            .key(gcm_invocations_key(uid))
+            .arg(count)
+            .arg(GCM_MAX_INVOCATIONS)
+            .invoke_async::<Option<u64>>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to reserve AES-GCM invocations: {e}"))
+            })
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        redis::cmd("DEL")
+            .arg(gcm_invocations_key(uid))
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to delete AES-GCM invocations: {e}"))
+            })
     }
 
     /// Authoritative reconcile: recompute both Redis counter keys from a full

@@ -154,7 +154,7 @@ pub(crate) async fn generate_csr(
         )));
     }
     sk.check_process_window()?;
-    // shortcut: usage limits are checked, not decremented (a CSR signs no caller data); decrement like crypto_op::decrement_usage_limits if CSRs must consume a Sign budget
+    // shortcut: usage limits are checked, not decremented (a CSR signs no caller data); decrement like crypto_op::reserve_usage_limits if CSRs must consume a Sign budget
     sk.enforce_usage_limits(0)?;
     if is_hsm && sk.attributes().sensitive != Some(true) {
         kms_bail!(KmsError::InvalidRequest(format!(

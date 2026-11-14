@@ -121,10 +121,14 @@ pub(crate) async fn create_key_pair(
     // The server SHALL create the AlwaysSensitive attribute (KMIP 2.1 §4.3):
     // True iff the private key is created Sensitive.
     private_key_attributes.initialize_always_sensitive();
+    private_key_attributes.reset_usage_limits_count();
     private_key_attributes.initialize_never_extractable();
     if let Ok(object_attributes) = private_key.attributes_mut() {
         object_attributes.always_sensitive = private_key_attributes.always_sensitive;
         object_attributes.never_extractable = private_key_attributes.never_extractable;
+        object_attributes
+            .usage_limits
+            .clone_from(&private_key_attributes.usage_limits);
     }
     // Initialise keyset metadata for gen-0 on SQL key pairs only.
     if sk_rotate_name.is_some() && !ObjectHandle::from(&sk_uid).is_hsm() {
@@ -151,8 +155,12 @@ pub(crate) async fn create_key_pair(
     // Public keys are never Sensitive; AlwaysSensitive SHALL always have a value
     // (KMIP 2.1 §4.3, Table 34: applies to all objects).
     public_key_attributes.initialize_always_sensitive();
+    public_key_attributes.reset_usage_limits_count();
     if let Ok(object_attributes) = public_key.attributes_mut() {
         object_attributes.always_sensitive = public_key_attributes.always_sensitive;
+        object_attributes
+            .usage_limits
+            .clone_from(&public_key_attributes.usage_limits);
     }
     trace!("Public key lifecycle attributes initialized");
     let public_key_tags = public_key_attributes.get_tags(kms.vendor_id());
@@ -648,17 +656,23 @@ mod tests {
         cosmian_kmip::{
             kmip_0::kmip_types::ErrorReason,
             kmip_2_1::{
+                extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
                 kmip_attributes::Attributes,
+                kmip_operations::GetAttributes,
                 kmip_types::{
                     CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve,
+                    UniqueIdentifier, UsageLimits, UsageLimitsUnit,
                 },
+                requests::create_ec_key_pair_request,
             },
         },
         cosmian_kms_crypto::crypto::is_fips_build,
     };
 
     use super::{reject_eddsa_key_pair, resolve_shared_attribute};
-    use crate::error::KmsError;
+    use crate::{
+        error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
+    };
 
     fn curve(recommended_curve: RecommendedCurve) -> Attributes {
         Attributes {
@@ -740,5 +754,57 @@ mod tests {
             reject_eddsa_key_pair(CryptographicAlgorithm::ECDSA),
             Ok(())
         ));
+    }
+
+    /// The server owns the Usage Limits Count: a client Count is ignored on both keys, and
+    /// `GetAttributes` (which prefers the key-block copy) reports the Total.
+    #[tokio::test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "tests: a panic is the failure signal"
+    )]
+    async fn key_pair_usage_limits_count_is_reset_to_total() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let mut request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            EMPTY_TAGS,
+            RecommendedCurve::P256,
+            false,
+            None,
+        )?;
+        request
+            .common_attributes
+            .get_or_insert_with(Attributes::default)
+            .usage_limits = Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(999),
+            usage_limits_total: 4,
+        });
+        let pair = kms.create_key_pair(request, &user).await?;
+        for uid in [
+            pair.private_key_unique_identifier,
+            pair.public_key_unique_identifier,
+        ] {
+            let reported = kms
+                .get_attributes(
+                    GetAttributes {
+                        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+                        attribute_reference: None,
+                    },
+                    &user,
+                )
+                .await?;
+            assert_eq!(
+                reported
+                    .attributes
+                    .usage_limits
+                    .map(|l| l.usage_limits_count),
+                Some(Some(4)),
+                "{uid}"
+            );
+        }
+        Ok(())
     }
 }
