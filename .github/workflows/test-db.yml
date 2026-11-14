@@ -25,6 +25,11 @@ jobs:
           - {leaf: mariadb, variant: non-fips}
           - {leaf: percona, variant: fips}
           - {leaf: percona, variant: non-fips}
+          # multi-region active-active PostgreSQL (pgEdge); the guard suite re-runs the behavioral
+          # proofs, so it is non-FIPS only to avoid duplicating the pgEdge job time
+          - {leaf: pgedge, variant: fips}
+          - {leaf: pgedge, variant: non-fips}
+          - {leaf: multi-region-guards, variant: non-fips}
           # redis (Findex) is non-FIPS only
           - {leaf: redis, variant: non-fips}
     uses: ./.github/workflows/test-group.yml

@@ -284,3 +284,56 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active
 
 -- name: select-pg-backend-ssl
 SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid();
+
+-- name: create-table-object_state_events
+CREATE TABLE IF NOT EXISTS object_state_events (
+        event_id UUID PRIMARY KEY,
+        object_id VARCHAR(128) NOT NULL,
+        state VARCHAR(32) NOT NULL,
+        object VARCHAR,
+        wrapping_key_id VARCHAR(128),
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+
+-- name: create-table-object_state_event_tombstones
+CREATE TABLE IF NOT EXISTS object_state_event_tombstones (
+        event_id UUID PRIMARY KEY
+);
+
+-- name: create-index-object_state_events-object_id
+CREATE INDEX IF NOT EXISTS idx_object_state_events_object_id ON object_state_events (object_id);
+
+-- name: insert-object-state-event
+INSERT INTO object_state_events (event_id, object_id, state, object, wrapping_key_id)
+SELECT gen_random_uuid(), id, $2::varchar,
+       CASE WHEN $2::varchar IN ('Destroyed', 'Destroyed_Compromised') THEN object END,
+       CASE WHEN $2::varchar IN ('Destroyed', 'Destroyed_Compromised') THEN wrapping_key_id END
+FROM objects WHERE id = $1;
+
+-- name: tombstone-object-state-events
+INSERT INTO object_state_event_tombstones (event_id)
+SELECT e.event_id FROM object_state_events e
+WHERE e.object_id = $1
+  AND NOT EXISTS (SELECT 1 FROM object_state_event_tombstones t WHERE t.event_id = e.event_id);
+
+-- name: backfill-object-state-events
+INSERT INTO object_state_events (event_id, object_id, state, object, wrapping_key_id)
+SELECT gen_random_uuid(), o.id, o.state,
+       CASE WHEN o.state IN ('Destroyed', 'Destroyed_Compromised') THEN o.object END,
+       CASE WHEN o.state IN ('Destroyed', 'Destroyed_Compromised') THEN o.wrapping_key_id END
+FROM objects o
+WHERE o.state IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM object_state_events e WHERE e.object_id = o.id);
+
+-- name: delete-object-state-event-tombstones
+DELETE FROM object_state_event_tombstones
+WHERE event_id IN (SELECT event_id FROM object_state_events WHERE object_id = $1);
+
+-- name: delete-object-state-events
+DELETE FROM object_state_events WHERE object_id = $1;
+
+-- name: clean-table-object_state_event_tombstones
+DELETE FROM object_state_event_tombstones;
+
+-- name: clean-table-object_state_events
+DELETE FROM object_state_events;

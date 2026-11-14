@@ -27,6 +27,7 @@ fn parse(flags: &[&str]) -> ClapConfig {
 const DEFAULT_TOML: &str = r#"vendor_identification = "cosmian"
 default_username = "admin"
 force_default_username = false
+region_role = "leader"
 info = false
 hsm_model = ""
 hsm_admin = []
@@ -197,14 +198,14 @@ fn characterization_clap_config_flags_and_redaction() {
         r#" { config_path: None, print_default_config: true, db: sqlite: /tmp/x.db, clear_database?: false, proxy: Proxy URL: http://p:3128, Basic Auth Username: alice, Basic Auth Password: ***, No Custom Auth Header, No Proxy Exclusion List: ["a.com"], socket server: tls socket: 0.0.0.0:6000, TLS: No TLS config, socket server: tls socket: 0.0.0.0:6000, ui_index_html_folder: "#
     ));
     assert!(debug.contains(
-        r#", KMS http: "http://example.org:9999", KMS public URL: None, workspace: WorkspaceConfig { root_data_path: "./cosmian-kms", tmp_path: "/tmp" }, vendor identification: "cosmian", default username: "admin", force default username: false, google_cse_enable: false, azure_ekm_enable: false, Microsoft Double Key Encryption URL: None"#
+        r#", KMS http: "http://example.org:9999", KMS public URL: None, workspace: WorkspaceConfig { root_data_path: "./cosmian-kms", tmp_path: "/tmp" }, vendor identification: "cosmian", default username: "admin", force default username: false, region_role: Leader, google_cse_enable: false, azure_ekm_enable: false, Microsoft Double Key Encryption URL: None"#
     ));
     let params = ServerParams::try_from(c).unwrap();
     let params_debug = format!("{params:?}");
     // BASE behavior: `ProxyParams`'s Debug prints the proxy password in clear text.
     assert!(params_debug.contains(r#"basic_auth_password: Some("s3cr3t-pw")"#));
     assert!(params_debug.starts_with(
-        r#"ServerParams { jwt_svid_auth_enabled: false, default_username: "admin", force_default_username: false, vendor_identification: "cosmian", main_db_params: sqlite: "#
+        r#"ServerParams { jwt_svid_auth_enabled: false, default_username: "admin", force_default_username: false, region_role: Leader, vendor_identification: "cosmian", main_db_params: sqlite: "#
     ));
     assert!(params_debug.contains(
         r#"x.db, clear_db_on_start: false, unwrapped_cache_max_age: 900s, unwrapped_cache_max_size: 1000, unwrapped_cache_max_ttl: None, disable_unwrapped_cache: false, otel_params: OpenTelemetryConfig { otlp_url: None, otlp_allow_insecure: false, enable_metering: false, environment: Some("development") }, kmip_policy_id: None, kmip_algorithm_policy: "no restrictions — all supported algorithms are allowed", socket_server_hostname: "0.0.0.0", socket_server_port: 6000, google_cse_enable: false, aws_xks_params: "not configured", azure_ekm_enable: false, hsm_instances: "no HSM configure"#

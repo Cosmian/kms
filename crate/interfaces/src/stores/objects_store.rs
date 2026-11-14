@@ -159,6 +159,14 @@ pub trait ObjectsStore {
     /// Update the state of an object in the database.
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()>;
 
+    /// Replace the lifecycle state this store has observed (backward transition, e.g. KMIP
+    /// batch UNDO). On replicated PostgreSQL, higher transitions made concurrently in another
+    /// region and not yet received still win. Default implementation delegates to
+    /// `update_state`.
+    async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        self.update_state(uid, state).await
+    }
+
     /// Delete an object from the database.
     async fn delete(&self, uid: &str) -> InterfaceResult<()>;
 

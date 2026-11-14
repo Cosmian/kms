@@ -19,6 +19,10 @@ pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled
 /// backfill for certificates stored before that tag existed has completed.
 pub(crate) const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
 
+/// Name of the `parameters` row that records whether the one-time lifecycle-state
+/// event backfill (one event per pre-existing object) has completed.
+pub(crate) const OBJECT_STATE_EVENTS_BACKFILL_PARAM: &str = "object_state_events_backfilled";
+
 /// `_serial=<HEX>` tag for a certificate object (same value as `set_certificate_serial_tag`),
 /// `None` for any other object or an unparsable certificate.
 pub(crate) fn certificate_serial_tag(object: &Object) -> Option<String> {
