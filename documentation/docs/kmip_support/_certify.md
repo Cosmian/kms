@@ -45,7 +45,7 @@ The KMIP specification leaves several aspects of `Certify` open. In particular, 
 - how the X.509 certificate extensions (e.g. `basicConstraints`, `keyUsage`) are provided
 - how the subject name is provided when neither a CSR nor an existing certificate is given
 
-Eviden KMS fills these gaps with the conventions below, and offers 4 ways to generate a
+Eviden KMS fills these gaps with the conventions below, and offers 5 ways to generate a
 certificate:
 
 1. Providing a Certificate Signing Request (CSR)
@@ -53,6 +53,13 @@ certificate:
 3. Providing an existing certificate id to re-certify
 4. Generating a keypair then signing the public key to generate a certificate
    specifying a subject name and an algorithm
+5. Providing the Unique Identifier of a managed Certificate Request object
+
+The certificate starts `Pre-Active` unless the Activation Date of the request has passed.
+A Certificate Request Value requires a Certificate Request Type, otherwise the server returns `Invalid_Field`.
+An issuer private key that is not `Active` returns `Invalid_Field`.
+Other object types return `Invalid_Object_Type`.
+A request that breaches the server constraints returns `Constraint_Violation`.
 
 The signer is specified by providing an issuer private key id
 and/or an issuer certificate via the Links in the attributes of the request. If only

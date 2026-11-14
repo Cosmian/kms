@@ -234,18 +234,18 @@ pub(crate) async fn post_ocsp(
 fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseFuture<'a> {
     Box::pin(async move {
         // ── 1. Enabled gate ─────────────────────────────────────────────────────
-        if !kms.params.ocsp_enabled {
+        if !kms.params.ocsp.enabled {
             return Ok(HttpResponse::NotFound().finish());
         }
 
-        let ca_uid = kms.params.ocsp_ca_uid.as_deref().ok_or_else(|| {
+        let ca_uid = kms.params.ocsp.ca_uid.as_deref().ok_or_else(|| {
             KmsError::InvalidRequest(
                 "OCSP responder enabled but `ocsp_ca_uid` is not configured".to_owned(),
             )
         })?;
 
-        let ttl_secs = kms.params.ocsp_cache_ttl_secs;
-        let nonce_policy = map_nonce_policy(&kms.params.ocsp_nonce_policy);
+        let ttl_secs = kms.params.ocsp.cache_ttl_secs;
+        let nonce_policy = map_nonce_policy(&kms.params.ocsp.nonce_policy);
 
         // ── 2. Parse request and verify issuer ──────────────────────────────────
         let queries = parse_ocsp_request(request_der)
@@ -360,8 +360,8 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
             Box::pin(retrieve_signer_cert_and_key(kms, ca_uid, &ca_cert)).await?;
 
         // ── 7. Sign BasicResponse ─────────────────────────────────────────────────
-        let archive_cutoff = if kms.params.ocsp_archive_cutoff_secs > 0 {
-            Some(kms.params.ocsp_archive_cutoff_secs)
+        let archive_cutoff = if kms.params.ocsp.archive_cutoff_secs > 0 {
+            Some(kms.params.ocsp.archive_cutoff_secs)
         } else {
             None
         };
@@ -369,7 +369,7 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
         let config = OcspBuildConfig {
             ttl_secs,
             nonce_policy,
-            include_signer_cert: kms.params.ocsp_include_cert_chain,
+            include_signer_cert: kms.params.ocsp.include_cert_chain,
             archive_cutoff_secs: archive_cutoff,
         };
 
@@ -409,20 +409,20 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
         // ── 8. Cache + respond ────────────────────────────────────────────────────
         // `unknown` responses are not cached: they are what random-serial requests
         // produce, and caching them would let unauthenticated clients grow the map.
-        if let (Some(query), [entry]) = (cacheable_query, entries.as_slice()) {
-            if !matches!(entry.status, OcspCertStatus::Unknown) {
-                let expires_at = Instant::now() + std::time::Duration::from_secs(ttl_secs);
-                let mut cache = OCSP_CACHE.write().await;
-                if cache.len() >= MAX_OCSP_CACHE_ENTRIES {
-                    let now = Instant::now();
-                    cache.retain(|_, (_, entry_expires_at)| *entry_expires_at > now);
-                }
-                if cache.len() < MAX_OCSP_CACHE_ENTRIES {
-                    cache.insert(
-                        ocsp_cache_key(ca_uid, query),
-                        (resp_der.clone(), expires_at),
-                    );
-                }
+        if let (Some(query), [entry]) = (cacheable_query, entries.as_slice())
+            && !matches!(entry.status, OcspCertStatus::Unknown)
+        {
+            let expires_at = Instant::now() + std::time::Duration::from_secs(ttl_secs);
+            let mut cache = OCSP_CACHE.write().await;
+            if cache.len() >= MAX_OCSP_CACHE_ENTRIES {
+                let now = Instant::now();
+                cache.retain(|_, (_, entry_expires_at)| *entry_expires_at > now);
+            }
+            if cache.len() < MAX_OCSP_CACHE_ENTRIES {
+                cache.insert(
+                    ocsp_cache_key(ca_uid, query),
+                    (resp_der.clone(), expires_at),
+                );
             }
         }
 
@@ -486,7 +486,8 @@ fn look_up_cert_status<'a>(
         {
             return Ok(OcspCertStatus::Revoked {
                 revocation_time: attributes
-                    .deactivation_date
+                    .compromise_date
+                    .or(attributes.deactivation_date)
                     .unwrap_or_else(OffsetDateTime::now_utc),
                 reason: attributes
                     .revocation_reason
@@ -523,7 +524,8 @@ fn retrieve_signer_cert_and_key<'a>(
     Box::pin(async move {
         let signer_cert_uid = kms
             .params
-            .ocsp_responder_cert_uid
+            .ocsp
+            .responder_cert_uid
             .as_deref()
             .unwrap_or(ca_uid);
 
@@ -550,7 +552,7 @@ fn retrieve_signer_cert_and_key<'a>(
         // truthfully reporting `revoked`/`cACompromise` for every certificate the CA
         // issued precisely *because* the CA was compromised — refusing to sign at all in
         // that case would silence the cascade this feature exists to provide, which is
-        // exercised end-to-end by `mise run test:ocsp` (step 7). Once a CA key is truly
+        // exercised end-to-end by `mise run test:pki:ocsp` (step 7). Once a CA key is truly
         // compromised, an attacker holding it can already forge arbitrary responses
         // without the KMS's help, so continuing to use it here for an accurate,
         // already-forced `revoked` statement adds no meaningful additional exposure.
@@ -728,7 +730,6 @@ fn build_malformed_request_response() -> HttpResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

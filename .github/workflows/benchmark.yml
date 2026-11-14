@@ -37,16 +37,24 @@ on:
         required: false
         default: all
 
+  # Nightly on the default branch (develop; schedules only run there): benchmark develop and
+  # compare it against the last released version. Inputs are empty on this trigger, so the
+  # `inputs.* ||` defaults below select non-fips / all.
+  schedule:
+    - cron: 0 2 * * * # Daily at 02:00 UTC
+
 jobs:
   # ── Job 1: run the benchmark suite ─────────────────────────────────────────
   benchmark:
-    name: Benchmark KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
+    name: Benchmark KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant || 'non-fips' }})
     # Benchmarks require a stable, dedicated machine to produce comparable results.
     # See https://github.com/Cosmian/kms/issues/776
+    # Forks have no self-hosted benchmark runner: do not queue the nightly there.
+    if: github.event_name != 'schedule' || github.repository == 'Cosmian/kms'
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 600
     concurrency:
-      group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+      group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}
       cancel-in-progress: true
 
     steps:
@@ -67,7 +75,7 @@ jobs:
 
       # bench:hsm / bench:pkcs11 re-exec inside nix-shell (not preinstalled on the benchmark runner).
       - uses: ./.github/actions/setup-nix
-        if: inputs.server_version == ''
+        if: inputs.server_version == '' && github.event_name != 'schedule'
 
       - name: Install system dependencies
         run: |
@@ -80,35 +88,35 @@ jobs:
 
       - name: Run software baseline benchmark (bench:load)
         run: |
-          ARGS=(--variant "${{ inputs.variant }}" --mode "${{ inputs.bench_mode }}" --criterion)
+          ARGS=(--variant "${{ inputs.variant || 'non-fips' }}" --mode "${{ inputs.bench_mode || 'all' }}" --criterion)
           [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
           mise run bench:load "${ARGS[@]}"
 
       # The steps below always benchmark the checked-out code (no --server-version support), so
       # running them for a released version would publish checkout numbers under that version.
       - name: Run HSM-backed KEK benchmark (bench:hsm)
-        if: inputs.server_version == ''
+        if: inputs.server_version == '' && github.event_name != 'schedule'
         run: |
           mise run bench:hsm \
-            --variant "${{ inputs.variant }}" \
-            --mode "${{ inputs.bench_mode }}" \
+            --variant "${{ inputs.variant || 'non-fips' }}" \
+            --mode "${{ inputs.bench_mode || 'all' }}" \
             --criterion
 
       - name: Run HSM-delegated crypto benchmark (bench:hsm --delegated)
-        if: inputs.server_version == ''
+        if: inputs.server_version == '' && github.event_name != 'schedule'
         run: |
           mise run bench:hsm --delegated \
-            --variant "${{ inputs.variant }}" \
-            --mode "${{ inputs.bench_mode }}" \
+            --variant "${{ inputs.variant || 'non-fips' }}" \
+            --mode "${{ inputs.bench_mode || 'all' }}" \
             --criterion
 
       - name: Run PKCS#11 benchmark (bench:pkcs11)
-        if: inputs.server_version == ''
+        if: inputs.server_version == '' && github.event_name != 'schedule'
         run: |
           # bench:pkcs11's --mode choices are a different, narrower set than the other
           # three tasks (no "sign-verify"/"batch"). Fall back to "all" when the shared
           # bench_mode input picked one of those two, instead of failing the whole job.
-          PKCS11_MODE="${{ inputs.bench_mode }}"
+          PKCS11_MODE="${{ inputs.bench_mode || 'all' }}"
           case "${PKCS11_MODE}" in
             all | encrypt | key-creation) ;;
             *)
@@ -117,15 +125,15 @@ jobs:
               ;;
           esac
           mise run bench:pkcs11 \
-            --variant "${{ inputs.variant }}" \
+            --variant "${{ inputs.variant || 'non-fips' }}" \
             --mode "${PKCS11_MODE}" \
             --criterion
 
       - name: Run HSM-delegated PKCS#11 benchmark (bench:pkcs11 --delegated)
-        if: inputs.server_version == ''
+        if: inputs.server_version == '' && github.event_name != 'schedule'
         run: |
           # Same PKCS11_MODE fallback logic for the delegated step
-          PKCS11_MODE_DELEGATED="${{ inputs.bench_mode }}"
+          PKCS11_MODE_DELEGATED="${{ inputs.bench_mode || 'all' }}"
           case "${PKCS11_MODE_DELEGATED}" in
             all | encrypt | key-creation) ;;
             *)
@@ -134,7 +142,7 @@ jobs:
               ;;
           esac
           mise run bench:pkcs11 --delegated \
-            --variant "${{ inputs.variant }}" \
+            --variant "${{ inputs.variant || 'non-fips' }}" \
             --mode "${PKCS11_MODE_DELEGATED}" \
             --criterion
 
@@ -143,7 +151,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}
           # Reports generated per HSM backend: ckms_bench/, ckms_bench_hsm_kek_<backend>/,
           # ckms_bench_hsm_delegated_<backend>/, ckms_bench_pkcs11/, ckms_bench_pkcs11_hsm_delegated_<backend>/
           # mirroring the existing pattern in .github/workflows/flamegraph.yml.
@@ -164,7 +172,7 @@ jobs:
       - name: Download benchmark artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}
           path: report
 
       - name: Push benchmark report to package.cosmian.com
@@ -189,3 +197,56 @@ jobs:
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_hsm_delegated_softhsm2/report.md"
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11/report.md"
           echo "  https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/ckms_bench_pkcs11_hsm_delegated_softhsm2/report.md"
+
+  # ── Job 3: compare the published report against the last released version ──
+  # Runs for every build-from-source run (nightly develop, manual branch runs); skipped when a
+  # released version is itself being benchmarked (nothing to compare it against here).
+  compare:
+    name: Compare against last release
+    needs: publish
+    # Published paths carry no variant, so only the non-fips report is comparable to the release baseline.
+    if: inputs.server_version == '' && (inputs.variant || 'non-fips') == 'non-fips'
+    runs-on: [self-hosted, benchmark]
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          clean: false
+
+      - uses: ./.github/actions/install-mise
+
+      # Highest released X.Y.Z listed on package.cosmian.com that has a published ckms_bench report.
+      - name: Find last released version
+        id: base
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=https://package.cosmian.com/kms
+          for v in $(curl -fsSL "${URL}/" | grep -oE 'href="[0-9]+\.[0-9]+\.[0-9]+/"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sort -rV); do
+            if curl -fsSI -o /dev/null "${URL}/${v}/benchmarks/ckms_bench/env.json"; then
+              echo "Last released version with benchmarks: ${v}"
+              echo "version=${v}" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          done
+          echo "::error::No released version with a published ckms_bench report"
+          exit 1
+
+      - name: Compare benchmark reports
+        run: |
+          mise run bench:compare "${{ steps.base.outputs.version }}" "${{ github.ref_name }}" 5 --fail \
+            --output target/bench_compare/report.md
+
+      - name: Publish comparison to the job summary
+        if: always()
+        run: '[[ -f target/bench_compare/report.md ]] && cat target/bench_compare/report.md >> "${GITHUB_STEP_SUMMARY}" || true'
+
+      - name: Upload comparison report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: benchmark-compare-${{ github.ref_name }}
+          path: target/bench_compare/report.md
+          if-no-files-found: ignore
+          retention-days: 30

@@ -69,19 +69,14 @@ const ImportAwsKekForm: React.FC = () => {
                 return t("awsImportKek.provideKek");
             }
 
-            const request = wasm.import_ttlv_request(
-                values.keyId || null, // Custom key ID
-                kekData, // Key bytes
-                kekFormat, // Format type
-                null, // Public key ID
-                null, // Private key ID
-                null, // Certificate ID
-                false, // Unwrap flag
-                true, // Replace existing
+            const request = wasm.import_ttlv_request(kekData, {
+                unique_identifier: values.keyId || null, // Custom key ID
+                key_format: kekFormat, // Format type
+                unwrap: false,
+                replace_existing: true,
                 tags,
-                keyUsage, // Key usage
-                null, // Wrapping key ID
-            );
+                key_usage: keyUsage,
+            });
 
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {

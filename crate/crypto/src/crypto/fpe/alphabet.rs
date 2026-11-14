@@ -1,7 +1,5 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use itertools::Itertools;
-
 use super::{
     FPEError, KEY_LENGTH,
     ff1::{FF1h, FlexibleNumeralString},
@@ -145,7 +143,9 @@ impl FromStr for Alphabet {
 
     /// Returns an error if the alphabet contains fewer than 2 or 2^16 or more characters.
     fn from_str(alphabet: &str) -> Result<Self, Self::Err> {
-        let chars = alphabet.chars().sorted().unique().collect_vec();
+        let mut chars: Vec<char> = alphabet.chars().collect();
+        chars.sort_unstable();
+        chars.dedup();
         if chars.len() < 2 || chars.len() >= 1 << 16 {
             return Err(FPEError::AlphabetError(format!(
                 "Alphabet must contain between 2 and 2^16 characters. This alphabet contains {} \
@@ -178,13 +178,8 @@ impl Alphabet {
 
     fn extend_(&mut self, additional_characters: Vec<char>) {
         self.chars.extend(additional_characters);
-        self.chars = self
-            .chars
-            .iter()
-            .sorted()
-            .unique()
-            .copied()
-            .collect::<Vec<_>>();
+        self.chars.sort_unstable();
+        self.chars.dedup();
         self.min_text_length = min_plaintext_length(self.chars.len());
     }
 
@@ -367,7 +362,9 @@ impl Display for Alphabet {
 /// Builds an `Alphabet` from a preset character string.
 /// Preset strings are guaranteed to produce a valid alphabet (2 ≤ chars < 2^16).
 fn build_from_chars(s: &str) -> Alphabet {
-    let chars = s.chars().sorted().unique().collect_vec();
+    let mut chars: Vec<char> = s.chars().collect();
+    chars.sort_unstable();
+    chars.dedup();
     Alphabet {
         min_text_length: min_plaintext_length(chars.len()),
         chars,

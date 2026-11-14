@@ -39,18 +39,17 @@ const CertificateImportForm: React.FC = () => {
     const onFinish = async (values: ImportCertificateFormData) => {
         await execute(async () => {
             if (values.certificateFile) {
-                const request = import_certificate_ttlv_request(
-                    values.certificateId,
-                    values.certificateFile,
-                    values.inputFormat,
-                    values.privateKeyId,
-                    values.publicKeyId,
-                    values.issuerCertificateId,
-                    values.pkcs12Password,
-                    values.replaceExisting,
-                    values.tags,
-                    values.keyUsage,
-                );
+                const request = import_certificate_ttlv_request(values.certificateFile, {
+                    certificate_id: values.certificateId,
+                    input_format: values.inputFormat,
+                    private_key_id: values.privateKeyId,
+                    public_key_id: values.publicKeyId,
+                    issuer_certificate_id: values.issuerCertificateId,
+                    pkcs12_password: values.pkcs12Password,
+                    replace_existing: values.replaceExisting,
+                    tags: values.tags,
+                    key_usage: values.keyUsage,
+                });
                 const result_str = await sendKmipRequest(request, serverUrl);
                 if (result_str) {
                     const result: CertificateImportResponse = await parse_import_ttlv_response(result_str);

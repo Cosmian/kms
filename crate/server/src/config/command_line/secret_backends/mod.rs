@@ -154,7 +154,6 @@ pub(crate) fn resolve_config(value: &mut toml::Value, config: &SecretBackendConf
 // ─── Integration tests ──────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

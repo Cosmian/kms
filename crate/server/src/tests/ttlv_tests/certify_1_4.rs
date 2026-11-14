@@ -65,7 +65,7 @@ fn send_1_4(
 ) -> kmip_1_4::kmip_operations::Operation {
     let request = RequestMessage {
         request_header: header(1, 4),
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             kmip_1_4::kmip_messages::RequestMessageBatchItem {
                 operation,
                 ephemeral: None,
@@ -73,7 +73,7 @@ fn send_1_4(
                 request_payload: payload,
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let response = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request)
@@ -98,7 +98,7 @@ fn send_2_1(
 ) -> Operation21 {
     let request = RequestMessage {
         request_header: header(2, 1),
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             kmip_2_1::kmip_messages::RequestMessageBatchItem {
                 operation,
                 ephemeral: None,
@@ -106,7 +106,7 @@ fn send_2_1(
                 request_payload: payload,
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let response = client
         .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip2, &request)

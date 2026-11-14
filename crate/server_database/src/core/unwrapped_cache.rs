@@ -83,7 +83,6 @@ impl UnwrappedCache {
     ///   plaintext key residency for continuously-accessed (hot) keys.
     /// * `disabled` — when `true`, bypasses the cache entirely.
     #[must_use]
-    #[allow(clippy::as_conversions)]
     pub fn new(
         max_age: Duration,
         max_size: NonZeroUsize,
@@ -91,7 +90,7 @@ impl UnwrappedCache {
         disabled: bool,
     ) -> Self {
         let mut builder = Cache::builder()
-            .max_capacity(max_size.get() as u64)
+            .max_capacity(u64::try_from(max_size.get()).unwrap_or(u64::MAX))
             .time_to_idle(max_age);
         if let Some(ttl) = max_ttl {
             builder = builder.time_to_live(ttl);
@@ -115,11 +114,11 @@ impl UnwrappedCache {
     /// If the object fingerprint is different, the cache is invalidated and the
     /// value is removed.
     pub async fn validate_cache(&self, uid: &str, object: &Object) -> DbResult<()> {
-        if let Some(cached_object) = self.inner.get(uid).await {
-            if cached_object.fingerprint() != self.fingerprint(object)? {
-                trace!("Invalidating the cache for {}", uid);
-                self.inner.invalidate(uid).await;
-            }
+        if let Some(cached_object) = self.inner.get(uid).await
+            && cached_object.fingerprint() != self.fingerprint(object)?
+        {
+            trace!("Invalidating the cache for {}", uid);
+            self.inner.invalidate(uid).await;
         }
         Ok(())
     }
@@ -190,15 +189,11 @@ impl UnwrappedCache {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
-    #![allow(
-        clippy::panic_in_result_fn,
-        clippy::unwrap_in_result,
-        clippy::assertions_on_result_states,
-        clippy::assertions_on_constants,
-        // Test helpers use NonZeroUsize::new(N).expect() with literal non-zero constants.
-        clippy::expect_used
-    )]
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroUsize,
@@ -217,7 +212,7 @@ mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::{Database, core::main_db_params::MainDbParams, error::DbResult};
+    use crate::{CacheParams, Database, core::main_db_params::MainDbParams, error::DbResult};
 
     #[tokio::test]
     async fn test_lru_cache() -> DbResult<()> {
@@ -230,12 +225,14 @@ mod tests {
             &main_db_params,
             true,
             HashMap::new(),
-            Duration::from_millis(100),
-            NonZeroUsize::new(100).expect("100 is non-zero"),
-            None,  // cache_max_ttl
-            false, // disable_unwrapped_cache
-            None,  // recorder
-            None,  // ceremony_keys
+            CacheParams {
+                max_age: Duration::from_millis(100),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
+            None, // recorder
+            None, // ceremony_keys
         )
         .await?;
 
@@ -282,7 +279,7 @@ mod tests {
         let owm = database.retrieve_object(&uid).await?;
         match owm {
             Some(obj) => assert_eq!(obj.id(), &uid),
-            None => assert!(false, "expected object to be present"),
+            None => panic!("expected object to be present"),
         }
         // Non-wrapped keys must NOT be placed in the unwrapped cache.
         assert!(!database.unwrapped_cache.contains(&uid).await);
@@ -297,7 +294,7 @@ mod tests {
 
         // Create a cache with a short GC interval and max age
         let cache = super::UnwrappedCache::new(
-            Duration::from_millis(100), // Keys expire after 100 ms, GC runs every 150 ms.
+            Duration::from_millis(100),
             NonZeroUsize::new(100).expect("100 is non-zero"),
             None,
             false,
@@ -395,5 +392,148 @@ mod tests {
         // We can't directly test that the thread has been terminated,
         // but this test ensures the Drop implementation is called properly
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests pinning the BASE capacity / expiry / disabled behavior of
+    //! [`UnwrappedCache::new`].
+
+    use std::{num::NonZeroUsize, time::Duration};
+
+    use cosmian_kmip::kmip_2_1::{
+        extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_objects::Object,
+        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+    };
+
+    use super::UnwrappedCache;
+
+    fn size(n: usize) -> NonZeroUsize {
+        NonZeroUsize::new(n).unwrap()
+    }
+
+    fn key(fill: u8) -> Object {
+        create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[fill; 32],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Attributes::default()
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_capacity_is_max_size() {
+        let cache = UnwrappedCache::new(Duration::from_secs(3600), size(2), None, false);
+        let wrapped = key(1);
+        for i in 0..10_u8 {
+            cache
+                .insert(format!("uid-{i}"), &wrapped, key(i.saturating_add(10)))
+                .await
+                .unwrap();
+        }
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_capacity_one() {
+        let cache = UnwrappedCache::new(Duration::from_secs(3600), size(1), None, false);
+        let wrapped = key(1);
+        for i in 0..5_u8 {
+            cache
+                .insert(format!("uid-{i}"), &wrapped, key(i.saturating_add(10)))
+                .await
+                .unwrap();
+        }
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_large_capacity_keeps_all() {
+        let cache = UnwrappedCache::new(Duration::from_secs(3600), size(usize::MAX), None, false);
+        let wrapped = key(1);
+        for i in 0..20_u8 {
+            cache
+                .insert(format!("uid-{i}"), &wrapped, key(i.saturating_add(10)))
+                .await
+                .unwrap();
+        }
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 20);
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_disabled_is_noop() {
+        let cache = UnwrappedCache::new(Duration::from_secs(3600), size(100), None, true);
+        let wrapped = key(1);
+        // insert is a silent no-op, even for identical wrapped/unwrapped objects
+        cache
+            .insert("uid".to_owned(), &wrapped, key(2))
+            .await
+            .unwrap();
+        cache
+            .insert("same".to_owned(), &wrapped, wrapped.clone())
+            .await
+            .unwrap();
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 0);
+        assert!(cache.peek("uid", &wrapped).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_enabled_roundtrip() {
+        let cache = UnwrappedCache::new(Duration::from_secs(3600), size(100), None, false);
+        let wrapped = key(1);
+        let unwrapped = key(2);
+        cache
+            .insert("uid".to_owned(), &wrapped, unwrapped.clone())
+            .await
+            .unwrap();
+        assert_eq!(cache.peek("uid", &wrapped).await.unwrap(), Some(unwrapped));
+        // a different wrapped object (other fingerprint) must not be answered
+        assert!(cache.peek("uid", &key(3)).await.unwrap().is_none());
+        let err = cache
+            .insert("same".to_owned(), &wrapped, wrapped.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Unwrapped cache error: wrapped and unwrapped objects should be different"
+        );
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_max_ttl_expires_hot_entry() {
+        let cache = UnwrappedCache::new(
+            Duration::from_secs(3600),
+            size(100),
+            Some(Duration::from_millis(300)),
+            false,
+        );
+        let wrapped = key(1);
+        cache
+            .insert("hot".to_owned(), &wrapped, key(2))
+            .await
+            .unwrap();
+        assert!(cache.peek("hot", &wrapped).await.unwrap().is_some());
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert!(cache.peek("hot", &wrapped).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn characterization_unwrapped_cache_new_without_max_ttl_keeps_entry() {
+        let cache = UnwrappedCache::new(Duration::from_secs(3600), size(100), None, false);
+        let wrapped = key(1);
+        cache
+            .insert("cold".to_owned(), &wrapped, key(2))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert!(cache.peek("cold", &wrapped).await.unwrap().is_some());
     }
 }

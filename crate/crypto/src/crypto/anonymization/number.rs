@@ -2,6 +2,7 @@ use chrono::{DateTime, Datelike, TimeZone, Timelike};
 use rand_distr::num_traits::Pow;
 
 use super::{AnoError, TimeUnit, datetime_to_rfc3339};
+use crate::crypto::float_conv::{f64_to_i64_saturating, i64_to_f64};
 
 /// The `NumberAggregator` is a data anonymization technique used to round
 /// sensitive measurements to the desired power of ten.
@@ -76,11 +77,10 @@ impl NumberAggregator {
     ///
     /// A string representation of the rounded number.
     #[must_use]
+    // The integer is rounded to a power of ten via f64 arithmetic.
     pub fn apply_on_int(&self, data: i64) -> String {
         let r = 10_f64.pow(self.power_of_ten_exponent);
-        // Precision loss is intentional: integer is rounded to a power of ten via f64 arithmetic.
-        #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
-        let as_float = data as f64;
+        let as_float = i64_to_f64(data);
         format!("{:.0}", (as_float / r).round() * r)
     }
 }
@@ -220,15 +220,8 @@ impl NumberScaler {
     ///
     /// The scaled value as an integer.
     #[must_use]
+    // z-score scaling operates in f64; the integer result is the rounded scaled value.
     pub fn apply_on_int(&self, data: i64) -> i64 {
-        // Precision loss and rounding truncation are intentional: z-score scaling
-        // operates in f64, and the integer result is the rounded scaled value.
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_possible_truncation,
-            clippy::as_conversions
-        )]
-        let result = self.apply_on_float(data as f64).round() as i64;
-        result
+        f64_to_i64_saturating(self.apply_on_float(i64_to_f64(data)).round())
     }
 }

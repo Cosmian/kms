@@ -1,5 +1,7 @@
 use std::{
+    fmt::Write as _,
     fs,
+    io::Write as _,
     time::{Duration, Instant},
 };
 
@@ -17,6 +19,7 @@ use cosmian_kms_client::{
         requests::{create_rsa_key_pair_request, encrypt_request, symmetric_key_create_request},
     },
 };
+use num_traits::ToPrimitive as _;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
@@ -36,7 +39,10 @@ use super::{
     transport::{make_wire_request, to_wire_bytes, wire_response_ok},
     types::{BenchMode, BenchProtocol},
 };
-use crate::error::{KmsCliError, result::KmsCliResult};
+use crate::error::{
+    KmsCliError,
+    result::{KmsCliResult, KmsCliResultHelper as _},
+};
 
 // LOAD TESTING
 // =============================================================================
@@ -215,32 +221,53 @@ impl PreparedLoadOp {
 /// binary wire path — so both protocols exercise the same server-side code path
 /// (`from_ttlv::<RequestMessage>` + `message()` dispatch) and the load numbers
 /// are directly comparable.
-fn preserialized_op(name: &'static str, client: &KmsClient, op: Operation) -> PreparedLoadOp {
+fn preserialized_op(
+    name: &'static str,
+    client: &KmsClient,
+    op: Operation,
+) -> KmsCliResult<PreparedLoadOp> {
     use cosmian_kms_client::cosmian_kmip::ttlv::to_ttlv;
     let req = make_wire_request(op);
-    let ttlv = to_ttlv(&req).expect("TTLV serialization");
+    let ttlv = to_ttlv(&req).context("TTLV serialization")?;
     let body = serde_json::to_vec(&ttlv)
-        .expect("JSON serialization")
+        .context("JSON serialization")?
         .into();
     let url = format!("{}/kmip/2_1", client.client.server_url);
-    PreparedLoadOp::PreSerialized { name, url, body }
+    Ok(PreparedLoadOp::PreSerialized { name, url, body })
 }
 
 /// Serialize a KMIP operation to binary TTLV wire bytes (one-time cost at preparation).
 /// Wraps the operation in a `RequestMessage` as required by the binary wire endpoint.
-fn preserialized_wire_op(name: &'static str, client: &KmsClient, op: Operation) -> PreparedLoadOp {
-    let body = to_wire_bytes(&make_wire_request(op)).into();
+fn preserialized_wire_op(
+    name: &'static str,
+    client: &KmsClient,
+    op: Operation,
+) -> KmsCliResult<PreparedLoadOp> {
+    let body = to_wire_bytes(&make_wire_request(op))?.into();
     let url = format!("{}/kmip", client.client.server_url);
-    PreparedLoadOp::PreSerializedBinary { name, url, body }
+    Ok(PreparedLoadOp::PreSerializedBinary { name, url, body })
+}
+
+/// Push a prepared optional op, or skip it with a notice when it cannot be serialized.
+#[cfg(feature = "non-fips")]
+fn push_op(ops: &mut Vec<PreparedLoadOp>, op: KmsCliResult<PreparedLoadOp>) {
+    match op {
+        Ok(op) => ops.push(op),
+        Err(e) => eprintln!("[load] cannot prepare operation, skipping: {e}"),
+    }
 }
 
 fn load_percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
-    #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
-    let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
-    sorted[idx.min(sorted.len() - 1)]
+    let last = sorted.len() - 1;
+    // `p` is in [0, 1]: the rounded rank is a non-negative index below `len`.
+    let idx = (last.to_f64().unwrap_or(f64::NAN) * p)
+        .round()
+        .to_usize()
+        .unwrap_or(0);
+    sorted.get(idx.min(last)).copied().unwrap_or(0.0)
 }
 
 pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
@@ -274,7 +301,7 @@ fn prepare_load_ops(
     hsm_prefix: Option<&str>,
     spec: &LoadOpSpec<'_>,
     ledger: &HsmKeyLedger,
-) -> Vec<PreparedLoadOp> {
+) -> KmsCliResult<Vec<PreparedLoadOp>> {
     if let Some(hsm_prefix) = hsm_prefix {
         return prepare_hsm_load_ops(rt, client, hsm_prefix, spec, ledger);
     }
@@ -303,7 +330,7 @@ fn prepare_load_ops(
             "load-json-encrypt-aes-128",
             128,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -314,7 +341,7 @@ fn prepare_load_ops(
             "ttlv-json/encrypt/aes-gcm",
             client,
             Operation::Encrypt(Box::new(req)),
-        ));
+        )?);
     }
 
     if run_json && needs_key_create {
@@ -344,7 +371,7 @@ fn prepare_load_ops(
                 "ttlv-json/sign-verify/ecdsa-p256",
                 client,
                 Operation::Sign(req),
-            ));
+            )?);
         } else {
             eprintln!("[load] ECDSA P-256 key creation failed, skipping sign load test");
         }
@@ -359,11 +386,11 @@ fn prepare_load_ops(
             "load-json-batch-aes-128",
             128,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let key_str = key_id.to_string();
         let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; plaintext_size]); 10])
             .serialize()
-            .expect("BulkData serialize");
+            .context("BulkData serialize")?;
         let req = encrypt_request(
             &key_str,
             None,
@@ -372,12 +399,12 @@ fn prepare_load_ops(
             None,
             Some(aes_gcm_params()),
         )
-        .expect("batch encrypt request");
+        .context("batch encrypt request")?;
         ops.push(preserialized_op(
             "ttlv-json/batch/aes-gcm-10",
             client,
             Operation::Encrypt(Box::new(req)),
-        ));
+        )?);
     }
 
     // ── TTLV Bytes load ops ───────────────────────────────────────────────
@@ -388,7 +415,7 @@ fn prepare_load_ops(
             "load-bytes-encrypt-aes-128",
             128,
             CryptographicAlgorithm::AES,
-        );
+        )?;
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
@@ -399,7 +426,7 @@ fn prepare_load_ops(
             "ttlv-bytes/encrypt/aes-gcm",
             client,
             Operation::Encrypt(Box::new(req)),
-        ));
+        )?);
     }
 
     if run_wire && needs_sign {
@@ -422,7 +449,7 @@ fn prepare_load_ops(
                 "ttlv-bytes/sign-verify/ecdsa-p256",
                 client,
                 Operation::Sign(req),
-            ));
+            )?);
         }
 
         push_non_fips_wire_sign_ops(rt, client, &mut ops);
@@ -438,7 +465,8 @@ fn prepare_load_ops(
                 data: b64url(&vec![1_u8; plaintext_size]),
                 aad: None,
             };
-            let body = serde_json::to_vec(&jose_enc_req).expect("JOSE encrypt JSON serialization");
+            let body =
+                serde_json::to_vec(&jose_enc_req).context("JOSE encrypt JSON serialization")?;
             let url = format!("{}/v1/crypto/encrypt", client.client.server_url);
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/encrypt/aes-gcm",
@@ -457,7 +485,8 @@ fn prepare_load_ops(
                 alg: "ES256",
                 data: b64url(&[0x42_u8; 32]),
             };
-            let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
+            let body =
+                serde_json::to_vec(&jose_sign_req).context("JOSE sign JSON serialization")?;
             let url = format!("{}/v1/crypto/sign", client.client.server_url);
             ops.push(PreparedLoadOp::PreSerialized {
                 name: "jose/sign-verify/ecdsa-p256",
@@ -474,7 +503,7 @@ fn prepare_load_ops(
     if let Some(filter) = filter {
         ops.retain(|op| filter.matches(op.name(), None));
     }
-    ops
+    Ok(ops)
 }
 
 /// TTLV-JSON sign load ops on the non-FIPS curves (Ed25519, secp256k1).
@@ -493,11 +522,14 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_op(
-            "ttlv-json/sign-verify/eddsa-ed25519",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_op(
+                "ttlv-json/sign-verify/eddsa-ed25519",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     } else {
         eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
     }
@@ -517,11 +549,14 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_op(
-            "ttlv-json/sign-verify/ecdsa-secp256k1",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_op(
+                "ttlv-json/sign-verify/ecdsa-secp256k1",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     } else {
         eprintln!("[load] secp256k1 key creation failed, skipping sign load test");
     }
@@ -550,11 +585,14 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_wire_op(
-            "ttlv-bytes/sign-verify/eddsa-ed25519",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_wire_op(
+                "ttlv-bytes/sign-verify/eddsa-ed25519",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     }
 
     if let Some((_, priv_id)) = try_create_ec_kp(
@@ -572,11 +610,14 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             data: Some(Zeroizing::new(vec![0x42_u8; 32])),
             ..Default::default()
         };
-        ops.push(preserialized_wire_op(
-            "ttlv-bytes/sign-verify/ecdsa-secp256k1",
-            client,
-            Operation::Sign(req),
-        ));
+        push_op(
+            ops,
+            preserialized_wire_op(
+                "ttlv-bytes/sign-verify/ecdsa-secp256k1",
+                client,
+                Operation::Sign(req),
+            ),
+        );
     }
 }
 
@@ -598,13 +639,14 @@ fn push_jose_eddsa_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<Prepa
             alg: "EdDSA",
             data: b64url(&[0x42_u8; 32]),
         };
-        let body = serde_json::to_vec(&jose_sign_req).expect("JOSE sign JSON serialization");
-        let url = format!("{}/v1/crypto/sign", client.client.server_url);
-        ops.push(PreparedLoadOp::PreSerialized {
-            name: "jose/sign-verify/eddsa-ed25519",
-            url,
-            body: body.into(),
-        });
+        match serde_json::to_vec(&jose_sign_req) {
+            Ok(body) => ops.push(PreparedLoadOp::PreSerialized {
+                name: "jose/sign-verify/eddsa-ed25519",
+                url: format!("{}/v1/crypto/sign", client.client.server_url),
+                body: body.into(),
+            }),
+            Err(e) => eprintln!("[load] JOSE EdDSA sign request not serializable, skipping: {e}"),
+        }
     } else {
         eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");
     }
@@ -637,7 +679,7 @@ fn prepare_hsm_load_ops(
     hsm_prefix: &str,
     spec: &LoadOpSpec<'_>,
     ledger: &HsmKeyLedger,
-) -> Vec<PreparedLoadOp> {
+) -> KmsCliResult<Vec<PreparedLoadOp>> {
     let LoadOpSpec {
         mode,
         protocol,
@@ -707,7 +749,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/encrypt/aes-gcm",
                     client,
                     Operation::Encrypt(Box::new(req)),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM AES-GCM not available, skipping HSM encrypt load test");
@@ -737,7 +779,7 @@ fn prepare_hsm_load_ops(
                         Box::leak(format!("ttlv-json/hsm/encrypt/{label}").into_boxed_str()),
                         client,
                         Operation::Encrypt(Box::new(req)),
-                    ));
+                    )?);
                 }
             }
         } else {
@@ -766,7 +808,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/encrypt/aes-cbc",
                     client,
                     Operation::Encrypt(Box::new(req)),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM AES-CBC not available, skipping HSM encrypt load test");
@@ -797,7 +839,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/sign-verify/rsa-pss",
                     client,
                     Operation::Sign(req),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM RSA-PSS not available, skipping HSM sign load test");
@@ -842,7 +884,7 @@ fn prepare_hsm_load_ops(
                         Box::leak(format!("ttlv-json/hsm/sign-verify/{label}").into_boxed_str()),
                         client,
                         Operation::Sign(req),
-                    ));
+                    )?);
                 }
             }
         } else {
@@ -873,7 +915,7 @@ fn prepare_hsm_load_ops(
                     "ttlv-json/hsm/sign-verify/ecdsa-p256",
                     client,
                     Operation::Sign(req),
-                ));
+                )?);
             }
         } else {
             eprintln!("[load] HSM ECDSA P-256 not available, skipping HSM sign load test");
@@ -885,7 +927,7 @@ fn prepare_hsm_load_ops(
     if let Some(filter) = filter {
         ops.retain(|op| filter.matches(op.name(), None));
     }
-    ops
+    Ok(ops)
 }
 
 /// HSM `EdDSA` (Ed25519/Ed448) sign load ops — pure, un-hashed `CKM_EDDSA`. See
@@ -933,7 +975,7 @@ fn push_hsm_eddsa_sign_ops(
                 ..Default::default()
             };
             if run_json {
-                ops.push(preserialized_op(op_name, client, Operation::Sign(req)));
+                push_op(ops, preserialized_op(op_name, client, Operation::Sign(req)));
             }
         } else {
             eprintln!("[load] HSM {label} not available, skipping HSM sign load test");
@@ -1004,13 +1046,13 @@ fn run_load_level(
             let client_config = client.config.clone();
             let op = shared_op.clone();
             let barrier = barrier.clone();
-            std::thread::spawn(move || {
+            std::thread::spawn(move || -> KmsCliResult<(Vec<f64>, usize)> {
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
-                    .expect("per-thread runtime");
+                    .context("per-thread runtime")?;
                 let task_client =
-                    KmsClient::new_with_config(client_config).expect("per-thread KmsClient");
+                    KmsClient::new_with_config(client_config).context("per-thread KmsClient")?;
 
                 // Warmup: run the exact same operation at target concurrency.
                 // This warms HTTP/TLS connections AND server-side caches.
@@ -1043,7 +1085,7 @@ fn run_load_level(
                         error_count += 1;
                     }
                 }
-                (timings, error_count)
+                Ok((timings, error_count))
             })
         })
         .collect();
@@ -1052,9 +1094,14 @@ fn run_load_level(
     let mut total_errors: usize = 0;
     for handle in handles {
         match handle.join() {
-            Ok((timings, error_count)) => {
+            Ok(Ok((timings, error_count))) => {
                 all_timings.extend(timings);
                 total_errors += error_count;
+            }
+            Ok(Err(e)) => {
+                eprintln!(
+                    "[load] Warning: a worker thread could not start ({e}); benchmark results may be incomplete"
+                );
             }
             Err(_) => {
                 eprintln!(
@@ -1066,9 +1113,7 @@ fn run_load_level(
 
     let samples = all_timings.len();
     let throughput_rps = if duration.as_secs_f64() > 0.0 {
-        #[allow(clippy::cast_precision_loss)]
-        let s = samples as f64;
-        s / duration.as_secs_f64()
+        samples.to_f64().unwrap_or(f64::NAN) / duration.as_secs_f64()
     } else {
         0.0
     };
@@ -1086,23 +1131,38 @@ fn run_load_level(
     }
 }
 
+/// Parameters of a load-benchmark sweep.
+pub(super) struct LoadBenchParams<'a> {
+    pub mode: BenchMode,
+    pub protocol: &'a BenchProtocol,
+    pub concurrency_levels: &'a [usize],
+    pub warmup: Duration,
+    pub duration: Duration,
+    pub cooldown: Duration,
+    pub plaintext_size: usize,
+    pub hsm_prefix: Option<&'a str>,
+    pub filter: Option<&'a super::types::BenchFilter>,
+}
+
 /// Run each prepared operation across all concurrency levels sequentially.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn bench_load(
     rt: &Runtime,
     client: &KmsClient,
-    mode: BenchMode,
-    protocol: &BenchProtocol,
-    concurrency_levels: &[usize],
-    warmup: Duration,
-    duration: Duration,
-    cooldown: Duration,
-    plaintext_size: usize,
-    hsm_prefix: Option<&str>,
-    filter: Option<&super::types::BenchFilter>,
-) -> Vec<LoadResult> {
+    params: &LoadBenchParams<'_>,
+) -> KmsCliResult<Vec<LoadResult>> {
+    let LoadBenchParams {
+        mode,
+        protocol,
+        concurrency_levels,
+        warmup,
+        duration,
+        cooldown,
+        plaintext_size,
+        hsm_prefix,
+        filter,
+    } = *params;
     let ledger = HsmKeyLedger::new();
-    let ops = prepare_load_ops(
+    let ops = match prepare_load_ops(
         rt,
         client,
         hsm_prefix,
@@ -1113,7 +1173,16 @@ pub(super) fn bench_load(
             filter,
         },
         &ledger,
-    );
+    ) {
+        Ok(ops) => ops,
+        Err(e) => {
+            // Do not leak the HSM keys created before the failure.
+            if let Err(cleanup) = rt.block_on(ledger.destroy_all(client)) {
+                eprintln!("[load] Cleanup warning: {cleanup}");
+            }
+            return Err(e);
+        }
+    };
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
     }
@@ -1170,13 +1239,12 @@ pub(super) fn bench_load(
         eprintln!("[load] Cleanup warning: {e}");
     }
 
-    results
+    Ok(results)
 }
 
-#[allow(clippy::print_stdout)]
-pub(super) fn print_load_results(results: &[LoadResult]) {
+pub(super) fn print_load_results(results: &[LoadResult]) -> KmsCliResult<()> {
     if results.is_empty() {
-        return;
+        return Ok(());
     }
     let mut seen: Vec<&str> = Vec::new();
     for r in results {
@@ -1186,19 +1254,32 @@ pub(super) fn print_load_results(results: &[LoadResult]) {
     }
     for op in seen {
         let op_rows: Vec<&LoadResult> = results.iter().filter(|r| r.operation == op).collect();
-        println!("\n── {op} ──");
-        println!(
+        writeln!(std::io::stdout().lock(), "\n── {op} ──")?;
+        writeln!(
+            std::io::stdout().lock(),
             "{:<14} {:>12}  {:>10} {:>10} {:>10}  {:>8}",
-            "Concurrency", "Throughput", "p50", "p95", "p99", "Samples"
-        );
-        println!("{}", "─".repeat(70));
+            "Concurrency",
+            "Throughput",
+            "p50",
+            "p95",
+            "p99",
+            "Samples"
+        )?;
+        writeln!(std::io::stdout().lock(), "{}", "─".repeat(70))?;
         for r in op_rows {
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
                 "{:<14} {:>10.1}/s  {:>8.1}ms {:>8.1}ms {:>8.1}ms  {:>8}",
-                r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-            );
+                r.concurrency,
+                r.throughput_rps,
+                r.p50_ms,
+                r.p95_ms,
+                r.p99_ms,
+                r.samples
+            )?;
         }
     }
+    Ok(())
 }
 
 /// Write `target/criterion/load_{protocol_slug}.json` — one JSON object per line.
@@ -1227,12 +1308,13 @@ pub(crate) fn generate_load_json_output(
             .strip_prefix(&prefix)
             .unwrap_or(&r.operation)
             .to_owned();
-        lines.push_str(&format!(
+        let _ = writeln!(
+            lines,
             "{{\"protocol\":\"{protocol_slug}\",\"operation\":\"{operation}\",\
              \"concurrency\":{},\"throughput_rps\":{:.2},\
-             \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3}}}\n",
+             \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3}}}",
             r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms,
-        ));
+        );
     }
 
     let json_path = home.join(format!("load_{protocol_slug}.json"));
@@ -1294,10 +1376,10 @@ pub(super) fn generate_markdown_load_output_combined(
 
     let mut md = String::new();
     for op in &ops {
-        md.push_str(&format!("### {op}\n\n"));
+        let _ = write!(md, "### {op}\n\n");
         let mut header = "| Concurrency |".to_owned();
         for slug in &slugs {
-            header.push_str(&format!(" {slug} (req/s) |"));
+            let _ = write!(header, " {slug} (req/s) |");
         }
         md.push_str(&header);
         md.push('\n');
@@ -1315,7 +1397,7 @@ pub(super) fn generate_markdown_load_output_combined(
                             && r.operation.strip_prefix(&prefix).unwrap_or(&r.operation) == op
                     })
                     .map_or_else(|| "-".to_owned(), |r| format!("{:.1}", r.throughput_rps));
-                row.push_str(&format!(" {rps:<15} |"));
+                let _ = write!(row, " {rps:<15} |");
             }
             md.push_str(&row);
             md.push('\n');
@@ -1365,10 +1447,11 @@ pub(super) fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
         let mut dat =
             String::from("# concurrency  throughput_rps  p50_ms  p95_ms  p99_ms  samples\n");
         for r in &op_rows {
-            dat.push_str(&format!(
-                "{:<14} {:<15.2} {:<8.2} {:<8.2} {:<8.2} {}\n",
+            let _ = writeln!(
+                dat,
+                "{:<14} {:<15.2} {:<8.2} {:<8.2} {:<8.2} {}",
                 r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-            ));
+            );
         }
         fs::write(&dat_path, &dat)
             .map_err(|e| KmsCliError::Default(format!("Write {}: {e}", dat_path.display())))?;
@@ -1421,25 +1504,27 @@ pub(super) fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
         }
 
         // ── HTML section ──────────────────────────────────────────────────
-        sections.push_str(&format!("<section>\n<h2>{op}</h2>\n"));
+        let _ = write!(sections, "<section>\n<h2>{op}</h2>\n");
         if gnuplot_ok {
-            sections.push_str(&format!(
+            let _ = writeln!(
+                sections,
                 "<div class=\"charts\">\
                  <img src=\"{tp_svg}\" alt=\"Throughput\">\
                  <img src=\"{lat_svg}\" alt=\"Latency\">\
-                 </div>\n"
-            ));
+                 </div>"
+            );
         }
         sections.push_str(
             "<table>\n<tr><th>Concurrency</th><th>Throughput (req/s)</th>\
              <th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>Samples</th></tr>\n",
         );
         for r in &op_rows {
-            sections.push_str(&format!(
+            let _ = writeln!(
+                sections,
                 "<tr><td>{}</td><td>{:.1}</td><td>{:.1}</td>\
-                 <td>{:.1}</td><td>{:.1}</td><td>{}</td></tr>\n",
+                 <td>{:.1}</td><td>{:.1}</td><td>{}</td></tr>",
                 r.concurrency, r.throughput_rps, r.p50_ms, r.p95_ms, r.p99_ms, r.samples
-            ));
+            );
         }
         sections.push_str("</table>\n</section>\n");
     }
@@ -1484,3 +1569,255 @@ pub(super) fn generate_html_output(results: &[LoadResult]) -> KmsCliResult<()> {
 }
 
 // =============================================================================
+
+#[cfg(test)]
+mod characterization_tests {
+    use std::{
+        env,
+        ffi::OsString,
+        fs,
+        sync::{Mutex, MutexGuard, PoisonError},
+    };
+
+    use serial_test::serial;
+
+    use super::{
+        LoadResult, criterion_home, generate_html_output, generate_load_json_output,
+        generate_markdown_load_output_combined, load_percentile, parse_concurrency_levels,
+    };
+
+    /// Serializes every test that mutates `PATH`.
+    static PATH_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Replaces `PATH` for its lifetime and restores the previous value on drop
+    /// (also when the test panics).
+    struct PathGuard {
+        previous: Option<OsString>,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl PathGuard {
+        /// `unsafe` is forced by `env::set_var` (edition 2024); `Command::new("gnuplot")`
+        /// can only be steered through the process-wide `PATH`.
+        #[expect(unsafe_code, reason = "env::set_var is unsafe in edition 2024")]
+        fn set(value: &OsString) -> Self {
+            let lock = PATH_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+            let previous = env::var_os("PATH");
+            // SAFETY: the mutation is serialized by `PATH_LOCK` and `#[serial(bench_files)]`.
+            unsafe { env::set_var("PATH", value) };
+            Self {
+                previous,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for PathGuard {
+        #[expect(
+            unsafe_code,
+            reason = "env::set_var/remove_var are unsafe in edition 2024"
+        )]
+        fn drop(&mut self) {
+            // SAFETY: still protected by `_lock`, which is released after this body.
+            unsafe {
+                match &self.previous {
+                    Some(value) => env::set_var("PATH", value),
+                    None => env::remove_var("PATH"),
+                }
+            }
+        }
+    }
+
+    /// Writes an executable `gnuplot` stub (`exit 0`) into `dir`.
+    #[cfg(unix)]
+    fn write_gnuplot_stub(dir: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt as _;
+        let path = dir.join("gnuplot");
+        fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn html_results() -> Vec<LoadResult> {
+        vec![
+            result("characterization/html op", 1, 1.0),
+            result("characterization/html op", 8, 2.0),
+        ]
+    }
+
+    fn result(operation: &str, concurrency: usize, scale: f64) -> LoadResult {
+        LoadResult {
+            operation: operation.to_owned(),
+            concurrency,
+            throughput_rps: 1234.5678 * scale,
+            p50_ms: 1.23456 * scale,
+            p95_ms: 4.56789 * scale,
+            p99_ms: 9.87654 * scale,
+            samples: 100 * concurrency,
+            errors: 0,
+        }
+    }
+
+    fn sorted(len: u32) -> Vec<f64> {
+        (1..=len).map(f64::from).collect()
+    }
+
+    #[test]
+    fn characterization_load_percentile_table() {
+        let ps = [0.0, 0.5, 0.95, 0.99, 1.0];
+        let mut got: Vec<Vec<f64>> = Vec::new();
+        for len in [1_u32, 2, 5, 100] {
+            let data = sorted(len);
+            got.push(ps.iter().map(|p| load_percentile(&data, *p)).collect());
+        }
+        let expected: Vec<Vec<f64>> = vec![
+            vec![1.0, 1.0, 1.0, 1.0, 1.0],
+            vec![1.0, 2.0, 2.0, 2.0, 2.0],
+            vec![1.0, 3.0, 5.0, 5.0, 5.0],
+            vec![1.0, 51.0, 95.0, 99.0, 100.0],
+        ];
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn characterization_load_percentile_empty() {
+        assert_eq!(load_percentile(&[], 0.5).to_bits(), 0.0_f64.to_bits());
+    }
+
+    #[test]
+    fn characterization_parse_concurrency_levels_values() {
+        assert_eq!(parse_concurrency_levels("1, 2,16").unwrap(), vec![1, 2, 16]);
+        assert_eq!(parse_concurrency_levels("0").unwrap(), vec![0]);
+        assert_eq!(parse_concurrency_levels("1,,2,").unwrap(), vec![1, 2]);
+        assert_eq!(
+            parse_concurrency_levels("a").unwrap_err().to_string(),
+            "Invalid concurrency level 'a': invalid digit found in string"
+        );
+    }
+
+    #[test]
+    #[serial(bench_files)]
+    fn characterization_generate_load_json_output_lines() {
+        let slug = "characterization-json";
+        let results = vec![
+            result("characterization-json/encrypt/aes-gcm", 1, 1.0),
+            result("other/sign/rsa", 16, 2.5),
+        ];
+        generate_load_json_output(&results, slug).unwrap();
+        let path = criterion_home().join("load_characterization-json.json");
+        let content = fs::read_to_string(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(
+            content,
+            "{\"protocol\":\"characterization-json\",\"operation\":\"encrypt/aes-gcm\",\"concurrency\":1,\"throughput_rps\":1234.57,\"p50_ms\":1.235,\"p95_ms\":4.568,\"p99_ms\":9.877}\n{\"protocol\":\"characterization-json\",\"operation\":\"other/sign/rsa\",\"concurrency\":16,\"throughput_rps\":3086.42,\"p50_ms\":3.086,\"p95_ms\":11.420,\"p99_ms\":24.691}\n"
+        );
+    }
+
+    #[test]
+    fn characterization_generate_load_json_output_empty() {
+        generate_load_json_output(&[], "characterization-empty").unwrap();
+        assert!(
+            !criterion_home()
+                .join("load_characterization-empty.json")
+                .exists()
+        );
+    }
+
+    #[test]
+    #[serial(bench_files)]
+    fn characterization_generate_markdown_load_output_combined_tables() {
+        let proto = vec![
+            (
+                "ttlv-json",
+                vec![
+                    result("ttlv-json/encrypt/aes-gcm", 1, 1.0),
+                    result("ttlv-json/encrypt/aes-gcm", 4, 2.0),
+                    result("ttlv-json/sign/rsa", 4, 0.5),
+                ],
+            ),
+            (
+                "jose",
+                vec![
+                    result("jose/encrypt/aes-gcm", 1, 3.0),
+                    result("jose/encrypt/aes-gcm", 16, 4.0),
+                ],
+            ),
+        ];
+        generate_markdown_load_output_combined(&proto).unwrap();
+        let path = criterion_home().join("load.md");
+        let content = fs::read_to_string(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(
+            content,
+            "### encrypt/aes-gcm\n\n| Concurrency | ttlv-json (req/s) | jose (req/s) |\n|-------------|-----------------|-----------------|\n| 1           | 1234.6          | 3703.7          |\n| 4           | 2469.1          | -               |\n| 16          | -               | 4938.3          |\n\n### sign/rsa\n\n| Concurrency | ttlv-json (req/s) | jose (req/s) |\n|-------------|-----------------|-----------------|\n| 1           | -               | -               |\n| 4           | 617.3           | -               |\n| 16          | -               | -               |\n\n"
+        );
+    }
+
+    #[test]
+    fn characterization_generate_markdown_load_output_combined_empty() {
+        generate_markdown_load_output_combined(&[]).unwrap();
+    }
+
+    #[test]
+    #[serial(bench_files)]
+    fn characterization_generate_html_output_dat_and_sections() {
+        let empty = tempfile::tempdir().unwrap();
+        let _path = PathGuard::set(&empty.path().as_os_str().to_owned());
+        generate_html_output(&html_results()).unwrap();
+        let dir = criterion_home().join("load-report");
+        let dat = fs::read_to_string(dir.join("characterization_html-op.dat")).unwrap();
+        let html = fs::read_to_string(dir.join("index.html")).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(
+            dat,
+            "# concurrency  throughput_rps  p50_ms  p95_ms  p99_ms  samples\n1              1234.57         1.23     4.57     9.88     100\n8              2469.14         2.47     9.14     19.75    800\n"
+        );
+        assert!(!html.contains("<div class=\"charts\">"));
+        assert!(html.contains("<p class=\"warn\">"));
+        let start = html.find("<section>").unwrap();
+        let end = html.find("</section>").unwrap();
+        let section = html.get(start..end).unwrap();
+        let table = section.get(section.find("<table>").unwrap()..).unwrap();
+        assert_eq!(
+            section.lines().nth(1).unwrap(),
+            "<h2>characterization/html op</h2>"
+        );
+        assert_eq!(
+            table,
+            "<table>\n<tr><th>Concurrency</th><th>Throughput (req/s)</th><th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>Samples</th></tr>\n<tr><td>1</td><td>1234.6</td><td>1.2</td><td>4.6</td><td>9.9</td><td>100</td></tr>\n<tr><td>8</td><td>2469.1</td><td>2.5</td><td>9.1</td><td>19.8</td><td>800</td></tr>\n</table>\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial(bench_files)]
+    fn characterization_generate_html_output_with_gnuplot_charts() {
+        let stub = tempfile::tempdir().unwrap();
+        write_gnuplot_stub(stub.path());
+        let mut path = stub.path().as_os_str().to_owned();
+        path.push(":");
+        path.push(env::var_os("PATH").unwrap_or_default());
+        let _path = PathGuard::set(&path);
+        generate_html_output(&html_results()).unwrap();
+        let dir = criterion_home().join("load-report");
+        let html = fs::read_to_string(dir.join("index.html")).unwrap();
+        let throughput_script =
+            fs::read_to_string(dir.join("characterization_html-op-throughput.gnuplot")).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(!html.contains("<p class=\"warn\">"));
+        let start = html.find("<section>").unwrap();
+        let end = html.find("</section>").unwrap();
+        let section = html.get(start..end).unwrap();
+        assert_eq!(
+            section.lines().take(3).collect::<Vec<_>>(),
+            vec![
+                "<section>",
+                "<h2>characterization/html op</h2>",
+                "<div class=\"charts\"><img src=\"characterization_html-op-throughput.svg\" alt=\"Throughput\"><img src=\"characterization_html-op-latency.svg\" alt=\"Latency\"></div>",
+            ]
+        );
+        assert_eq!(
+            throughput_script,
+            "set terminal svg size 800,400 enhanced font 'Helvetica,12'\nset output 'characterization_html-op-throughput.svg'\nset title 'Throughput — characterization/html op'\nset xlabel 'Concurrency'\nset ylabel 'req/s'\nset grid\nset key top left\nplot 'characterization_html-op.dat' using 1:2 with linespoints lw 2 pt 7 title 'throughput'\n"
+        );
+    }
+}

@@ -35,14 +35,14 @@ impl ProxyParams {
     /// This function can return an error if there is an issue parsing the URL or if the URL is invalid.
     pub fn try_from(config: &ProxyConfig) -> KResult<Option<Self>> {
         debug!("proxy_config: {config:#?}");
-        if let Some(url) = &config.proxy_url {
-            let exclusion_list = config.proxy_exclusion_list.clone().unwrap_or_default();
+        if let Some(url) = &config.url {
+            let exclusion_list = config.exclusion_list.clone().unwrap_or_default();
             Ok(Some(Self {
                 url: Url::parse(url)
                     .map_err(|e| kms_error!("Failed parsing the Proxy URL: {e}"))?,
-                basic_auth_username: config.proxy_basic_auth_username.clone(),
-                basic_auth_password: config.proxy_basic_auth_password.clone(),
-                custom_auth_header: config.proxy_custom_auth_header.clone(),
+                basic_auth_username: config.basic_auth_username.clone(),
+                basic_auth_password: config.basic_auth_password.clone(),
+                custom_auth_header: config.custom_auth_header.clone(),
                 exclusion_list,
             }))
         } else {

@@ -183,13 +183,48 @@ fn aead_decrypt(
     ctx: &[u8],
     ad: Option<&[u8]>,
 ) -> CryptoResult<Zeroizing<Vec<u8>>> {
-    #![allow(clippy::indexing_slicing)]
-    if ctx.len() < Aes256Gcm::NONCE_LENGTH {
-        return Err(CryptoError::Default("encrypted block too short".to_owned()));
-    }
-    let nonce = Nonce::try_from_slice(&ctx[..Aes256Gcm::NONCE_LENGTH])?;
+    let (nonce, ciphertext) = ctx
+        .split_at_checked(Aes256Gcm::NONCE_LENGTH)
+        .ok_or_else(|| CryptoError::Default("encrypted block too short".to_owned()))?;
+    let nonce = Nonce::try_from_slice(nonce)?;
     Aes256Gcm::new(key)
-        .decrypt(&nonce, &ctx[Aes256Gcm::NONCE_LENGTH..], ad)
+        .decrypt(&nonce, ciphertext, ad)
         .map(Zeroizing::new)
         .map_err(CryptoError::from)
+}
+#[cfg(test)]
+mod characterization_tests {
+    use cosmian_crypto_core::{Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, SymmetricKey};
+
+    use super::aead_decrypt;
+
+    #[test]
+    fn characterization_aead_decrypt_short_block_error() {
+        let key_bytes = [0x42_u8; 32];
+        let key = SymmetricKey::<32>::try_from_slice(&key_bytes).unwrap();
+        let short_ctx = [0x11_u8; 11]; // Aes256Gcm::NONCE_LENGTH is 12
+
+        let result = aead_decrypt(&key, &short_ctx, None);
+        let err = result.unwrap_err();
+        assert_eq!(err.to_string(), "encrypted block too short");
+    }
+
+    #[test]
+    fn characterization_aead_decrypt_valid_block() {
+        let key_bytes = [0x42_u8; 32];
+        let key = SymmetricKey::<32>::try_from_slice(&key_bytes).unwrap();
+        let nonce_bytes = [0x01_u8; 12];
+        let nonce = Nonce::try_from_slice(&nonce_bytes).unwrap();
+        let pt = b"characterization test for cover_crypt aead";
+
+        let ct = Aes256Gcm::new(&key)
+            .encrypt(&nonce, pt.as_slice(), None)
+            .unwrap();
+        let mut full_ctx = Vec::new();
+        full_ctx.extend_from_slice(&nonce_bytes);
+        full_ctx.extend_from_slice(&ct);
+
+        let decrypted = aead_decrypt(&key, &full_ctx, None).unwrap();
+        assert_eq!(decrypted.as_slice(), pt.as_slice());
+    }
 }

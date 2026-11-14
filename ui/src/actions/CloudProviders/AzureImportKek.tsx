@@ -31,19 +31,14 @@ const ImportAzureKekForm: React.FC = () => {
             const tags = azureKekTags(values.kid);
             const keyUsage = azureKekKeyUsage;
 
-            const request = import_ttlv_request(
-                values.keyId,
-                values.kekFile,
-                "pem", // KEK file is in PKCS#8 PEM format
-                undefined, // publicKeyId
-                undefined, // privateKeyId
-                undefined, // certificateId
-                false, // unwrap
-                true, // replaceExisting
+            const request = import_ttlv_request(values.kekFile, {
+                unique_identifier: values.keyId,
+                key_format: "pem", // KEK file is in PKCS#8 PEM format
+                unwrap: false,
+                replace_existing: true,
                 tags,
-                keyUsage,
-                undefined, // wrappingKeyId
-            );
+                key_usage: keyUsage,
+            });
 
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {

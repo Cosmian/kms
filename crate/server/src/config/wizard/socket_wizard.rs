@@ -1,13 +1,13 @@
 //! KMIP socket server configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub, clippy::print_stdout)]
+use std::io::Write as _;
 
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use super::PromptResultExt;
 use crate::{config::SocketServerConfig, result::KResult};
 
-pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConfig> {
+pub(crate) fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConfig> {
     let theme = ColorfulTheme::default();
 
     let enable: bool = Confirm::with_theme(&theme)
@@ -21,11 +21,12 @@ pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConf
     }
 
     if !has_clients_ca {
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "  ⚠  Warning: the KMIP socket server requires a client CA certificate \
              (--clients-ca-cert-file) configured in the TLS section. \
              Make sure to set it before starting the server."
-        );
+        )?;
     }
 
     #[cfg(target_os = "windows")]
@@ -46,8 +47,8 @@ pub fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConf
         .prompt_err()?;
 
     Ok(SocketServerConfig {
-        socket_server_start: true,
-        socket_server_port: port,
-        socket_server_hostname: hostname,
+        start: true,
+        port,
+        hostname,
     })
 }

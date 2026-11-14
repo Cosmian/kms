@@ -61,10 +61,11 @@ kms_write_ckms_conf "${KMS_URL}" >/dev/null
 export CKMS_CONF="${KMS_CKMS_CONF}"
 
 PKCS11_CHECK_VENV="${PKCS11_CHECK_VENV:-${REPO_ROOT}/target/pkcs11-check-venv}"
-if [ ! -x "${PKCS11_CHECK_VENV}/bin/pkcs11-check" ]; then
-  require_cmd python3 "Python 3.12 or newer is required for pkcs11-check"
+# A venv left by an older python3 (macOS ships 3.9) cannot install the 3.12 lock: recreate it.
+if [ ! -x "${PKCS11_CHECK_VENV}/bin/pkcs11-check" ] ||
+  ! "${PKCS11_CHECK_VENV}/bin/python" -c 'import sys; sys.exit(sys.version_info < (3, 12))'; then
   rm -rf "${PKCS11_CHECK_VENV}"
-  python3 -m venv "${PKCS11_CHECK_VENV}"
+  "$(pick_python312)" -m venv "${PKCS11_CHECK_VENV}"
   "${PKCS11_CHECK_VENV}/bin/python" -m pip install --quiet --require-hashes \
     -r "${SCRIPT_DIR}/requirements-pkcs11-check.txt"
 fi

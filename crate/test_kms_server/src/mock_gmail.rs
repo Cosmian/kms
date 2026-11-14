@@ -50,7 +50,7 @@ pub struct MockGoogle {
 ///
 /// # Panics
 /// Panics if no loopback port can be bound.
-#[expect(clippy::expect_used)]
+#[expect(clippy::expect_used, reason = "tests: a panic is the failure signal")]
 #[must_use]
 pub fn start() -> MockGoogle {
     let listener = StdTcpListener::bind("127.0.0.1:0").expect("cannot bind the mock Google server");
@@ -95,7 +95,7 @@ pub fn start() -> MockGoogle {
 ///
 /// # Panics
 /// Panics if the RSA key cannot be generated.
-#[expect(clippy::expect_used)]
+#[expect(clippy::expect_used, reason = "tests: a panic is the failure signal")]
 #[must_use]
 pub fn gmail_api_conf(base: &str, token_path: &str) -> GmailApiConf {
     let pem = Rsa::generate(2048)

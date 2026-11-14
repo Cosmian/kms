@@ -5,12 +5,12 @@ import { useTranslation } from "react-i18next";
 import { useBranding } from "../../contexts/useBranding";
 import { DOCS_BASE_URL } from "../../utils/utils";
 
-export interface HsmSlotStatus {
+interface HsmSlotStatus {
     slot_id: number;
     accessible: boolean;
 }
 
-export interface HsmInstanceStatus {
+interface HsmInstanceStatus {
     prefix: string;
     model: string;
     slots: HsmSlotStatus[];

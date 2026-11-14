@@ -132,9 +132,9 @@ enum BasicLogin {
 
 fn check_basic(kms: &KMS, req: &HttpRequest) -> BasicLogin {
     let (Some(expected_user), Some(expected_password), false) = (
-        kms.params.est_bootstrap_username.as_deref(),
-        kms.params.est_bootstrap_password.as_deref(),
-        kms.params.est_require_client_cert,
+        kms.params.est.bootstrap_username.as_deref(),
+        kms.params.est.bootstrap_password.as_deref(),
+        kms.params.est.require_client_cert,
     ) else {
         return BasicLogin::Absent;
     };
@@ -154,12 +154,14 @@ fn check_basic(kms: &KMS, req: &HttpRequest) -> BasicLogin {
 async fn issue_and_respond(kms: &KMS, csr: &X509Req) -> KResult<HttpResponse> {
     let ca_uid = kms
         .params
-        .est_ca_uid
+        .est
+        .ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("EST enabled without est_ca_uid".to_owned()))?;
     let template = kms
         .params
-        .est_template
+        .est
+        .template
         .as_ref()
         .ok_or_else(|| KmsError::ServerError("EST enabled without est_template".to_owned()))?;
     let issued = issue_from_csr(kms, ca_uid, csr, template).await?;
@@ -182,7 +184,7 @@ pub(crate) async fn post_simpleenroll(
     kms: Data<Arc<KMS>>,
     payload: Payload,
 ) -> KResult<HttpResponse> {
-    if !kms.params.est_enabled {
+    if !kms.params.est.enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     let started = Instant::now();
@@ -204,16 +206,16 @@ pub(crate) async fn post_simpleenroll(
                 kms.enrollment_guard.record_success(client);
                 format!(
                     "est-basic:{}",
-                    kms.params.est_bootstrap_username.as_deref().unwrap_or("")
+                    kms.params.est.bootstrap_username.as_deref().unwrap_or("")
                 )
             }
             login => {
                 if matches!(login, BasicLogin::Wrong) {
                     kms.enrollment_guard.record_failure(client);
                 }
-                let basic_allowed = !kms.params.est_require_client_cert
-                    && kms.params.est_bootstrap_username.is_some()
-                    && kms.params.est_bootstrap_password.is_some();
+                let basic_allowed = !kms.params.est.require_client_cert
+                    && kms.params.est.bootstrap_username.is_some()
+                    && kms.params.est.bootstrap_password.is_some();
                 audit_enrollment_result(
                     &kms,
                     OP_SIMPLEENROLL,
@@ -232,7 +234,7 @@ pub(crate) async fn post_simpleenroll(
     };
     let body = match read_limited_body(payload).await {
         Ok(body) => body,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let tls_unique = connection_tls_unique(&req);
     let result = async {
@@ -261,7 +263,7 @@ pub(crate) async fn enroll_for_peer(
 ) -> KResult<HttpResponse> {
     if let Some(peer) = peer {
         let ca_uid =
-            kms.params.est_ca_uid.as_deref().ok_or_else(|| {
+            kms.params.est.ca_uid.as_deref().ok_or_else(|| {
                 KmsError::ServerError("EST enabled without est_ca_uid".to_owned())
             })?;
         let chain = load_ca_chain(kms, ca_uid).await?;
@@ -270,11 +272,11 @@ pub(crate) async fn enroll_for_peer(
             None => false,
         };
         if issued_by_est_ca {
-            if let Some(ca_cert) = chain.first() {
-                if let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await {
-                    warn!("EST simpleenroll rejected: {e}");
-                    return Ok(plain_response(StatusCode::FORBIDDEN, CERTIFICATE_REFUSED));
-                }
+            if let Some(ca_cert) = chain.first()
+                && let Err(e) = ensure_active_certificate_of_ca(kms, ca_uid, ca_cert, peer).await
+            {
+                warn!("EST simpleenroll rejected: {e}");
+                return Ok(plain_response(StatusCode::FORBIDDEN, CERTIFICATE_REFUSED));
             }
             if !csr_matches_certificate_identity(csr, peer)? {
                 return Ok(plain_response(
@@ -305,7 +307,8 @@ pub(crate) async fn simple_reenroll(
     };
     let ca_uid = kms
         .params
-        .est_ca_uid
+        .est
+        .ca_uid
         .as_deref()
         .ok_or_else(|| KmsError::ServerError("EST enabled without est_ca_uid".to_owned()))?;
     let chain = load_ca_chain(kms, ca_uid).await?;
@@ -342,7 +345,7 @@ pub(crate) async fn post_simplereenroll(
     kms: Data<Arc<KMS>>,
     payload: Payload,
 ) -> KResult<HttpResponse> {
-    if !kms.params.est_enabled {
+    if !kms.params.est.enabled {
         return Ok(HttpResponse::NotFound().finish());
     }
     let started = Instant::now();
@@ -358,7 +361,7 @@ pub(crate) async fn post_simplereenroll(
     };
     let body = match read_limited_body(payload).await {
         Ok(body) => body,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let tls_unique = connection_tls_unique(&req);
     let result = simple_reenroll(&kms, peer.as_ref(), tls_unique.as_deref(), &body).await;
@@ -374,7 +377,6 @@ pub(crate) async fn post_simplereenroll(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kms_crypto::openssl::csr_attrs::csr_with_challenge_password;
     use openssl::{hash::MessageDigest, pkey::PKey, rsa::Rsa, x509::X509NameBuilder};

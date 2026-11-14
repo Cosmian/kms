@@ -122,10 +122,10 @@ async fn test_certificate_import_encrypt(
     debug!("\n\nImport Key");
     let private_key_id = import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "ec".to_string(),
+        sub_command: "ec".to_owned(),
         key_file: format!("../../../test_data/certificates/{key_path}"),
         key_format: Some(ImportKeyFormat::Pem),
-        tags: tags.iter().map(|&s| s.to_string()).collect::<Vec<String>>(),
+        tags: tags.iter().map(|&s| s.to_owned()).collect::<Vec<String>>(),
         replace_existing: true,
         ..Default::default()
     })?;
@@ -229,11 +229,11 @@ async fn import_encrypt_decrypt(
     debug!("\n\nImport Private key");
     let private_key_id = import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "ec".to_string(),
+        sub_command: "ec".to_owned(),
         key_file: format!("../../../test_data/certificates/openssl/{filename}-private-key.pem"),
         key_format: Some(ImportKeyFormat::Pem),
         key_id: Some(Uuid::new_v4().to_string()),
-        tags: tags.iter().map(|&s| s.to_string()).collect::<Vec<String>>(),
+        tags: tags.iter().map(|&s| s.to_owned()).collect::<Vec<String>>(),
         key_usage_vec: Some(vec![KeyUsage::Decrypt, KeyUsage::UnwrapKey]),
         replace_existing: true,
         ..Default::default()
@@ -288,7 +288,7 @@ async fn import_encrypt_decrypt(
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
     import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "ec".to_string(),
+        sub_command: "ec".to_owned(),
         key_file: private_key_wrapped.clone(),
         key_format: Some(ImportKeyFormat::JsonTtlv),
         key_id: Some(Uuid::new_v4().to_string()),
@@ -304,7 +304,7 @@ async fn import_encrypt_decrypt(
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
     let wrapped_private_key_uid = import_key(ImportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
-        sub_command: "ec".to_string(),
+        sub_command: "ec".to_owned(),
         key_file: private_key_wrapped,
         key_format: Some(ImportKeyFormat::JsonTtlv),
         key_id: Some(Uuid::new_v4().to_string()),

@@ -20,6 +20,37 @@ response header.
 
 Decryption is supported for symmetric keys, private keys, and OpenPGP secret keys (`PGPKey`, non-FIPS mode). To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
+AEAD tags (GCM, ChaCha20-Poly1305) must be 12 to 16 bytes long, and match the `Tag Length` when the request gives one;
+a shorter or mismatching tag fails with `Invalid Field`, and an invalid declared `Tag Length` with
+`Bad Cryptographic Parameters`. A mode that needs an IV fails with `Missing Initialization Vector` when none is sent;
+an empty IV means an all-zero IV, and an IV of the wrong length fails with `Invalid Field`.
+
+A key in the wrong state fails with `Wrong Key Lifecycle State`, a usable object of the wrong type with
+`Invalid Object Type`, and a key whose Cryptographic Usage Mask lacks `Decrypt` with
+`Incompatible Cryptographic Usage Mask`.
+
+### Multi-part decryption
+
+Symmetric decryption (AES ECB, CBC, GCM and, in non-FIPS mode, ChaCha20-Poly1305) can be split into parts: the first
+request sets `Init Indicator`, the following ones send back the returned `Correlation Value`, and the last one sets
+`Final Indicator`. Cryptographic Parameters, IV and Additional Authenticated Data are fixed by the first part; a later
+part that changes them fails with `Invalid Field`. `Init Indicator` and `Final Indicator` together without a
+`Correlation Value` make a single-part request. The `Correlation Value` is bound to the user, the operation and the
+key. The AEAD tag may be sent on the first or the final part; a final part with no tag fails with `Invalid Field`.
+Non-symmetric keys, HSM keys, XTS, key wrapping, GCM-SIV and pure ChaCha20 fail with `Feature Not Supported`.
+
+!!! warning "Plaintext is unauthenticated until the final part succeeds"
+    As the KMIP profiles require, every part returns its plaintext at once. With an AEAD cipher the
+    authentication tag is only checked by the final part, so the plaintext of the earlier parts is
+    unauthenticated and may have been tampered with. Discard everything received if the final part fails, or
+    use single-part decryption, which checks the tag before returning any plaintext. Any failed part ends the
+    operation.
+
+Open multi-part operations are kept in server memory: at most 1024 (64 per user), each abandoned after 5 idle minutes
+or one hour in total, and when its key is destroyed or revoked as compromised. Multi-part Sign and Signature Verify
+buffer their input, within 16 MiB per operation, 64 MiB per user and 256 MiB in total. Going beyond any of these
+limits fails with `Server Limit Exceeded`.
+
 ## Example - AES GCM decryption
 
 Decrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md) to see how to create the symmetric key).

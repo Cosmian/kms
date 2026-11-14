@@ -299,7 +299,6 @@ async fn verify_auth_verifier_jwt_subject(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 pub(crate) mod tests {
     use std::{
         collections::HashMap,
@@ -411,7 +410,7 @@ pub(crate) mod tests {
         assert!(result.is_ok(), "JWT decode must succeed: {result:?}");
         if let Ok(claims) = result {
             assert_eq!(claims.sub, "user@acme.com");
-            assert!(claims.roles.is_empty());
+            assert_eq!(claims.roles, Vec::<String>::new());
             assert!(claims.domain.is_none());
         }
     }

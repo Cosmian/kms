@@ -7,14 +7,14 @@ on:
       toolchain:
         required: true
         type: string
-        default: 1.97.0
+        default: 1.99.1
   workflow_dispatch:
     inputs:
       toolchain:
         description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
         required: true
         type: string
-        default: 1.97.0
+        default: 1.99.1
 
 jobs:
   nix-docker-image:
@@ -61,9 +61,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
 
       - name: Login to GHCR
         uses: ./.github/actions/docker-login-ghcr
@@ -71,7 +69,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Extract base Docker metadata
         id: meta
@@ -188,7 +186,23 @@ jobs:
           ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
           COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
         run: |
-          mise run test:docker --variant ${{ matrix.features }}
+          mise run test:pkg:docker --variant ${{ matrix.features }}
+
+      # Syft SBOM + Grype on the image under test, Cargo.lock and ui/pnpm-lock.yaml.
+      # Fails on any fixable High/Critical finding. Syft and Grype come from the hash-pinned
+      # nixos-26.05 (`image-scan-tools`); the image is scanned from the local Docker daemon.
+      - name: Scan Docker image with Syft and Grype
+        env:
+          DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+        run: mise run test:pkg:docker-scan --variant ${{ matrix.features }}
+
+      - name: Upload SBOM and vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: image-scan-${{ matrix.features }}-${{ steps.arch.outputs.arch }}
+          path: target/image-scan/${{ matrix.features }}/
+          if-no-files-found: warn
 
       # - name: Oracle TDE remote upgrade and smoke test
       #   if: matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
@@ -197,7 +211,7 @@ jobs:
       #     ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
       #     COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
       #   run: |
-      #     mise run test:docker-oracle
+      #     mise run test:pkg:docker-oracle
 
       # - name: Disconnect from Netbird (non-fips amd64 only)
       #   if: always() && matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
@@ -229,14 +243,14 @@ jobs:
       REGISTRY_IMAGE: ${{ (matrix.features == 'fips' && 'ghcr.io/cosmian/kms-fips' || 'ghcr.io/cosmian/kms') }}
     steps:
       - name: Login to GHCR
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
@@ -353,14 +367,8 @@ jobs:
           docker tag "${ARCH_TAG}" kms-test:current
           echo "DOCKER_IMAGE_NAME=kms-test:current" >> "$GITHUB_ENV"
 
-      - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
-
-      - name: Start Minikube
-        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
-        with:
-          driver: docker
-          kubernetes-version: v1.32.0
+      - name: Install Helm and start Minikube
+        uses: ./.github/actions/setup-helm-minikube
 
       - name: Test KMS image in Kubernetes pod
         run: mise run test:k8s:kms-image --variant ${{ matrix.features }}
@@ -383,15 +391,13 @@ jobs:
   # Deploys the images built above (FIPS and non-FIPS) with the documented Helm values
   # (documentation/docs/hsm_support/<model>.md), so they are not built a second time. The vendor
   # libraries are x86_64 only, hence amd64. The HSMs refuse concurrent CI runs, hence the same
-  # per-HSM concurrency group as the `hsm-upstream` job of test_all.yml. Upstream repository only.
+  # per-HSM concurrency group as the `test-hsm-hardware` job of test_all.yml. Upstream repository only,
+  # never on pull requests (real HSMs: nightly, tag and dispatch runs).
 
   test-k8s-hsm:
     name: k8s-hsm-${{ matrix.hsm-type }}
     needs: nix-docker-image
-    if: >-
-      github.repository == 'Cosmian/kms' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.repository == 'Cosmian/kms' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     concurrency:
@@ -466,14 +472,8 @@ jobs:
           OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: bash ".github/reusable_scripts/prepare_${{ matrix.hsm-type }}.sh"
 
-      - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-
-      - name: Start Minikube
-        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
-        with:
-          driver: docker
-          kubernetes-version: v1.32.0
+      - name: Install Helm and start Minikube
+        uses: ./.github/actions/setup-helm-minikube
 
       - name: Test Kubernetes deployment (FIPS and non-FIPS images)
         env:
@@ -526,9 +526,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
 
       - name: Login to GHCR
         uses: ./.github/actions/docker-login-ghcr
@@ -549,14 +547,8 @@ jobs:
       - name: Build and load Operator image
         run: mise run build:k8s-operator-image --load
 
-      - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
-
-      - name: Start Minikube
-        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
-        with:
-          driver: docker
-          kubernetes-version: v1.32.0
+      - name: Install Helm and start Minikube
+        uses: ./.github/actions/setup-helm-minikube
 
       - name: Test Operator image via Minikube
         run: mise run test:k8s:operator-image
@@ -612,9 +604,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: ./.github/actions/setup-nix
-
-      - uses: ./.github/actions/install-mise
+      - uses: ./.github/actions/setup-nix-mise
 
       - name: Login to GHCR
         uses: ./.github/actions/docker-login-ghcr
@@ -635,14 +625,8 @@ jobs:
       - name: Build and load CSI Provider image
         run: mise run build:k8s-csi-provider-image --load
 
-      - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
-
-      - name: Start Minikube
-        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
-        with:
-          driver: docker
-          kubernetes-version: v1.32.0
+      - name: Install Helm and start Minikube
+        uses: ./.github/actions/setup-helm-minikube
 
       - name: Test CSI Provider image via Minikube
         run: mise run test:k8s:csi-provider-image

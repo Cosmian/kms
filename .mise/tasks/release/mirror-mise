@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#MISE description="Publish verified copies of the pinned mise binaries to package.cosmian.com (CI fallback source)"
+#USAGE flag "--upload" help="Upload to package.cosmian.com (default: download and verify only)"
+#USAGE flag "--ssh-key <path>" env="SSH_KEY" help="SSH private key used for the upload"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# .github/actions/install-mise downloads the pinned mise binary from
+# https://package.cosmian.com/mise/<version>/ (GitHub releases only as a fallback) and
+# verifies the SHA-256 pin. Run this task with --upload after bumping MISE_VERSION in that
+# action, so CI does not depend on GitHub releases being available.
+
+ACTION="${MISE_CONFIG_ROOT}/.github/actions/install-mise/action.yml"
+VERSION="$(sed -n 's/^ *MISE_VERSION="\(v[0-9.]*\)"/\1/p' "${ACTION}" | head -n 1)"
+[ -n "${VERSION}" ] || print_error "MISE_VERSION not found in ${ACTION}"
+require_cmd curl
+
+print_header "Mirroring mise ${VERSION}"
+
+work="$(mktemp -d)"
+trap 'rm -rf -- "${work:?}"' EXIT
+base="https://github.com/jdx/mise/releases/download/${VERSION}"
+curl --retry 5 --retry-delay 10 --retry-all-errors -fsSL "${base}/SHASUMS256.txt" -o "${work}/SHASUMS256.txt"
+
+for asset in linux-x64 linux-arm64 linux-x64-musl linux-arm64-musl macos-x64 macos-arm64; do
+  file="mise-${VERSION}-${asset}"
+  pin="$(grep -A1 "asset=\"${asset}\"" "${ACTION}" | sed -n 's/.*checksum="\([0-9a-f]*\)".*/\1/p')"
+  published="$(grep " \./${file}\$" "${work}/SHASUMS256.txt" | cut -d' ' -f1)"
+  if [ -z "${pin}" ] || [ "${pin}" != "${published}" ]; then
+    print_error "${file}: pin in action.yml (${pin:-none}) differs from SHASUMS256.txt (${published:-none})"
+  fi
+  curl --retry 5 --retry-delay 10 --retry-all-errors -fsSL "${base}/${file}" -o "${work}/${file}"
+  if [ "$(compute_sha256 "${work}/${file}")" != "${pin}" ]; then
+    print_error "${file}: downloaded checksum differs from the pin"
+  fi
+  print_status "verified ${file}"
+done
+
+if [ "${usage_upload:-false}" = "true" ]; then
+  dest="/mnt/package/mise/${VERSION}"
+  ssh_opts=(-o StrictHostKeyChecking=accept-new)
+  [ -n "${usage_ssh_key:-}" ] && ssh_opts+=(-i "${usage_ssh_key}")
+  ssh "${ssh_opts[@]}" cosmian@package.cosmian.com mkdir -p "${dest}"
+  scp "${ssh_opts[@]}" "${work}"/mise-"${VERSION}"-* "cosmian@package.cosmian.com:${dest}/"
+  print_success "Uploaded to https://package.cosmian.com/mise/${VERSION}/"
+else
+  print_success "Verified (dry run): pass --upload to publish"
+fi

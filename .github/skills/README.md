@@ -14,6 +14,58 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 ---
 
+## Agent decision and verification flow
+
+This flow documents what an agent can show: observable scope, loaded rules, decisions, evidence and outcomes — not private reasoning.
+
+```mermaid
+flowchart TD
+    Request["Task and acceptance criteria"] --> Scope["Inspect code and affected callers"]
+    Scope --> Rules["Load applicable instructions and skills"]
+    Rules --> Conflict{"Conflicting guidance?"}
+    Conflict -->|Yes| Resolve["Resolve against canonical owners or ask"]
+    Resolve --> Rules
+    Conflict -->|No| Work["Plan or implement approved scope"]
+    Work --> Sync["Check callers and synchronization rules"]
+    Sync --> Triage["Reuse or run mechanical triage"]
+    Triage --> Reviews["Run applicable semantic and domain reviews"]
+    Reviews --> Proof["Compiler checks and behavioral smoke proof"]
+    Proof --> Gate{"Complete evidence and no blockers?"}
+    Gate -->|No| Fix["Fix and repeat affected checks"]
+    Fix --> Work
+    Gate -->|Yes| Deliver["Report evidence, skips and limits"]
+```
+
+### Rule ownership
+
+| Topic | Canonical owner |
+|-------|-----------------|
+| Workspace lints | [`Cargo.toml`](../../Cargo.toml) `[workspace.lints]`, [`clippy.toml`](../../clippy.toml) |
+| KMS Rust rules | [`rust.instructions.md`](../instructions/rust.instructions.md) plus the matching domain instruction files |
+| Generic Rust idioms | [`rust-best-practices/SKILL.md`](rust-best-practices/SKILL.md) |
+| Workflow and reporting | [`shared/orchestrator-contract.md`](shared/orchestrator-contract.md) |
+| Skill index | this README |
+
+Skills cannot loosen instructions or configured lints. Report an unresolved conflict between peer rules before editing.
+
+### Selecting a review
+
+- `/rust-review-all` — significant or full Rust changes.
+- `/code-quality` — quality-only passes or mixed-language changes.
+- `/kms-pr-review` — PR verification.
+- `/pre-release` — release readiness.
+
+Orchestrators delegate to or reuse specialist skills; they never repeat a whole pipeline. Phase orders and the report schema are in [`shared/orchestrator-contract.md`](shared/orchestrator-contract.md). A focused skip needs inspected evidence; full and release phases keep their requirements.
+
+### What is actually enforced
+
+- Deterministic: the metadata/reference validator (`mise run docs:check-ai`, the pre-commit hook `check-ai-docs` with `--fix`, and the `build-documentation` CI step) and Clippy.
+- Not deterministic: semantic correctness needs an evidence-backed review. No prompt and no green check guarantees agent behavior.
+- Where a harness does not auto-attach instruction files, read the rules explicitly; do not assume identical attachment behavior across harnesses.
+- Required-status checks and branch protection are repository admin configuration, not workflow YAML.
+
+---
+
 ## Skill Index
 
 ### Issue → PR Workflow
@@ -65,14 +117,12 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **Code Quality** | `/code-quality [path]` | Starts with KMS Caveman, then runs applicable Rust, Clippy, MISE, and CI-efficiency checks. Deduplicates ranked findings. |
-| KMS Caveman | `/kms-caveman [path]` | Read-only Rust triage for panic hazards, lint suppressions, observed compiler diagnostics, and structural candidates. Not a security review. |
+| KMS Caveman | `/kms-caveman [path]` | Read-only Rust triage for panic hazards (also the dedicated panic/brutal-exit audit), lint suppressions, observed compiler diagnostics, and structural candidates. Not a security review. |
 | **Rust Review All** | `/rust-review-all [path]` | KMS Caveman first, then applicable Rust review phases and Clippy; writes `./review-YYYY-MM-DD/SUMMARY.md` with a go/no-go verdict. |
-| **Rust Panic Audit** | `/rust-panic-audit [path]` | Standalone panic/brutal-exit scan for production Rust; writes `./review-YYYY-MM-DD/rust-panic-audit.md`. |
+| Rust Best Practices | `/rust-best-practices` | Idiomatic Rust guidance adapted from BeautifulRust (MIT) for KMS: ownership, types and API design, concurrency, unsafe/FFI, documentation, behavioral tests. Includes non-normative KMS patterns reference. |
 | Refactor Plan | `/refactor-plan` | Investigate a refactor, produce a phased plan with cargo verification steps. Wait for confirmation before implementing. |
-| Rust Refactor | `/rust-refactor` | Find duplication in Rust code and consolidate with Traits, Generics, macros. Ranked impact/risk plan before touching code. |
-| Rust Simplify | `/rust-simplify [path]` | Find simplification opportunities: nested control flow, long functions, dead code, bool param traps, iterator anti-patterns, and Clippy-flagged complexity. Ranked list before touching code. |
-| Rust Patterns | `/rust-patterns` | KMS-specific Rust design patterns: newtype, builder, command, trait abstraction, key lifecycle state machine. |
-| Rust Signature Design | `/rust-signature-design` | Classify function parameters, flag omitted/swapped/drifting-argument defects, and pick the narrowest struct/enum fix before `clippy::too_many_arguments` forces an `#[allow]`. |
+| Rust Refactor | `/rust-refactor` | Review Rust duplication and structural complexity (nesting, long functions, bool-parameter traps, dead code) while preserving behavior; ranked plan before touching code. |
+| Rust Signature Design | `/rust-signature-design` | Classify function parameters, flag omitted/swapped/drifting-argument defects, and pick the narrowest struct/enum fix before `clippy::too_many_arguments` fires. |
 | Rust Clone Audit | `/rust-clone-audit` | Classify `.clone()`/`.to_owned()`/`.to_vec()` call sites (handle, thread-move, Copy-type, borrow-checker-dodge, API-forced); pick borrow vs. `Arc`/`Rc` vs. `Cow` vs. keep before accepting a clone. |
 | Rust Error Propagation | `/rust-error-propagation [path]` | Review fallible Rust paths for missed `?` propagation, error conversion, and lost context. |
 | Rust Async Refactor | `/rust-async-refactor [path]` | Detect sequential `.await` chains parallelizable with `tokio::join!`, blocking calls on async paths, unnecessary `Arc/Box::pin`. Report: `./review-YYYY-MM-DD/rust-async-refactor.md`. |
@@ -133,7 +183,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 # /kms-caveman crate/server/src/
 
 # Dedicated panic/brutal-exit audit:
-# /rust-panic-audit crate/server/src/core/
+# /kms-caveman crate/server/src/core/
 
 # Error propagation audit:
 # /rust-error-propagation crate/server/src/
@@ -153,6 +203,8 @@ Team-wide GitHub Copilot skills for the KMS repository.
 # /playwright-kms        ← write E2E tests
 # /kms-sync-rules        ← UI sync checklist (rules 4.1, 4.4, 4.5)
 ```
+
+See [Selecting a review](#selecting-a-review) to choose between the review entry points.
 
 ---
 

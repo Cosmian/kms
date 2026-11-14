@@ -50,10 +50,10 @@ async fn test_locate() -> KResult<()> {
                 protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
-            batch_count: 2,
+            batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(Operation::CreateKeyPair(Box::new(
                 create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
@@ -64,7 +64,7 @@ async fn test_locate() -> KResult<()> {
                     None,
                 )?,
             ))),
-        )],
+        ))],
     };
 
     let response = kms.message(request, &owner).await?;
@@ -100,7 +100,7 @@ async fn test_locate() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[actix_web::test]
 async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
     // Use sqlite-backed test app
     let app = test_app(None).await;
@@ -188,7 +188,7 @@ async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[actix_web::test]
 async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     // Start test app (KMIP 2.1 endpoint)
     let app = test_app(None).await;

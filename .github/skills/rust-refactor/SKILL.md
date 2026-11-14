@@ -1,125 +1,85 @@
 ---
 name: rust-refactor
-description: 'Find duplication in Rust code and consolidate it using Traits, Generics, shared functions, and macros. Use when asked to reduce Rust code duplication.'
+description: 'Review Rust duplication and structural complexity while preserving behavior; use for Rust refactoring or simplification.'
 ---
 
 # Rust Refactor
 
-Find opportunities to reduce LOC and consolidate duplicated behavior using Traits, Generics, shared functions, and macros.
+Find duplicated behavior and unnecessary structural complexity in Rust code, then (if asked to implement) consolidate it without changing behavior. Baseline idioms: [`../rust-best-practices/SKILL.md`](../rust-best-practices/SKILL.md); KMS rules: [`../../instructions/rust.instructions.md`](../../instructions/rust.instructions.md).
+
+**Usage**: `/rust-refactor` (current diff) or `/rust-refactor crate/server/src/core/`
 
 ## Workflow
 
-### Phase 1 — Discover (always run first)
+One pass: discover → classify → plan → implement → behavior proof. Findings are advisory until the user approves a plan; preserve behavior, errors, authorization checks and serialization.
 
-```bash
-# Find clone-heavy code
-rg "\.clone\(\)" --stats | tail -5
+### 1. Discover
 
-# Spot copy-paste (identical blocks ≥ 5 lines) across target crate(s)
-rg -l "fn create_" crate/server/src/core/operations/
-```
+Scope: the supplied path, else the changed Rust files. Read the code; text searches only produce candidates and a negative search proves nothing. Reuse `/kms-caveman` evidence for the same scope and revision instead of re-scanning.
 
-Run the **Duplication Scan** checklist:
+#### Duplication
 
-- [ ] Functions with near-identical signatures/bodies
-- [ ] `match` arms that repeat the same multi-line logic
-- [ ] `impl` blocks that repeat the same methods on different types
-- [ ] Error conversions repeated across files (`From` / `Into` candidates)
-- [ ] Struct fields sharing a common subset (candidate for composition or a base trait)
-- [ ] Repeated `if cfg!(feature = "...")` guards around the same pattern
-- [ ] Repeated access-control check sequences in KMIP operation handlers
+- Functions with near-identical signatures or bodies.
+- `match` arms repeating the same multi-line logic.
+- `impl` blocks repeating the same methods on different types.
+- Error conversions repeated across files (`From` candidates).
+- Struct fields sharing a common subset (composition candidate).
+- Repeated access-control check sequences in KMIP operation handlers.
 
-### Phase 2 — Classify each finding
+#### Structural review
 
-For each duplicate, pick the **minimum sufficient** Rust pattern:
+- Nesting ≥ 3 levels: flatten with guard clauses, `let-else` or `?`.
+- Functions over 60 lines: readability-review candidates, not failures; extract a helper only when it names a real concept.
+- `bool` parameters (especially several): replace with a two-variant enum, updating every call site first.
+- Redundant iterator chains and manual collect loops: replace with the clearer form, keep an explicit loop when the body is large.
+- Sentinel values (`-1`, `""`, `0`): `Option` / `Result`.
+- `Arc<Mutex<T>>` around data that is never mutated: `Arc<T>`.
+- `#[cfg(feature)]` inside a function body: hoist to item level (split into two functions with opposite `#[cfg]`).
+- Dead code: report only with workspace-wide evidence accounting for callers, macros and generated uses; delete after checking every crate.
+
+### 2. Classify
+
+Pick the **minimum sufficient** pattern, in this order: reuse an existing helper → a concrete helper function → generics / traits / macros only when the duplication really spans types.
 
 | Smell | Pattern |
 |-------|---------|
 | Same logic on N types | Generic function / `impl<T: Bound>` |
 | Same interface, different impls | Trait + `impl Trait for Type` |
-| Repetitive `match` / boilerplate impls | Declarative macro (`macro_rules!`) |
-| Cross-cutting behaviour (logging, auth) | Blanket `impl` or extension trait |
+| Repetitive `match` / boilerplate impls | `macro_rules!` only if functions cannot do it |
 | Repeated struct field group | Composition / newtype |
-| Repeated `From`/`Into` conversions | Derive macro or `impl From<X> for Y` |
-| Repeated KMIP operation boilerplate | `macro_rules!` dispatch helpers |
+| Repeated conversions | `impl From<X> for Y` |
 
-### Phase 3 — Plan
+Prefer generics over `dyn Trait` unless the set of types is open at runtime. KMS design shapes: [`../rust-best-practices/references/kms-patterns.md`](../rust-best-practices/references/kms-patterns.md).
 
-Create a ranked list ordered by: **impact (lines saved) ÷ risk (tests affected)**.
-Present it to the user before touching code:
+### 3. Plan
+
+Rank by impact (lines removed or complexity reduced) ÷ risk (tests and callers affected) and present the list before touching code:
 
 ```text
-[HIGH] Extract `KeyOperations` trait — saves ~120 LOC, touches 3 files
-[MED]  Generic `retrieve<T: KmipObject>` — saves ~60 LOC, touches 2 files
-[LOW]  `macro_rules! impl_kmip_response!` — saves ~30 LOC, touches 5 files
+[HIGH] Extract shared access check — removes ~60 LOC, touches 3 files
+[MED]  Replace `bool` parameter with enum — touches 4 call sites
+[LOW]  Flatten nested match with let-else — one function
 ```
 
-### Phase 4 — Implement (one finding at a time)
+### 4. Implement (one finding at a time)
 
-1. Create the trait / generic / helper in its own commit scope.
-2. Migrate callers one file at a time; keep the build green after each file.
-3. Delete the old code only after all callers compile.
-4. After each change: `cargo clippy-all` and `cargo fmt --all`.
-5. Run the narrowest test scope that covers the changed code: `cargo test -p <crate>`.
+1. Add the shared item, migrate callers file by file, delete the old code only after all callers compile.
+2. Never remove a public item without checking every crate (`rg "name" --type rust`).
+3. Never add `#[allow]` / `#[expect]` to get a refactor through: fix the lint (policy in `rust.instructions.md` § Clippy and lint suppression).
 
-### Phase 5 — Verify
+### 5. Behavior proof
+
+Run once after the batch, scoped to what changed, and record the commands actually run:
 
 ```bash
-cargo clippy-all        # zero warnings
-cargo fmt --all         # no formatting drift
-cargo test -p <crate>   # affected crate(s) only
-git diff --stat         # every hunk explainable by the task
+cargo fmt --all
+cargo clippy-all
+cargo test -p <crate>
+git diff --stat   # every hunk explainable by the task
 ```
 
-## Quick Rules
+A refactor that cannot be covered by an existing or new behavioral test is reported as unverified, not as safe.
 
-- Prefer **generics** over `dyn Trait` unless the set of types is open at runtime.
-- Never add `#[allow(clippy::...)]` / `#[expect(...)]` on new code: fix the lint or restructure. See `rust.instructions.md` § Clippy and lint suppression.
-- Never remove a public function without checking all crates: `rg "fn_name" --type rust`.
-- Keep functions under 50 lines after refactoring. Extract helpers rather than growing functions.
-- Imports (`use` statements) always go at the top of the file — never inline inside function bodies.
-- Feature-flag gating stays at function/module level, not inline: `#[cfg(feature = "non-fips")]` on the `fn`, not inside the body.
+## Report
 
-## Pattern Cookbook
-
-### Generic function over KMIP objects
-
-```rust
-// Before: duplicated retrieve logic in get.rs, export.rs, decrypt.rs
-async fn get_object(uid: &str, db: &dyn Database) -> KResult<KmipObject> { ... }
-async fn export_object(uid: &str, db: &dyn Database) -> KResult<KmipObject> { ... }
-
-// After: shared generic with trait bound
-async fn retrieve_object<P: Permission>(
-    uid: &str,
-    caller: &str,
-    db: &dyn Database,
-) -> KResult<KmipObject>
-where P: CheckAccess { ... }
-```
-
-### Declarative macro for KMIP dispatch boilerplate
-
-```rust
-macro_rules! dispatch_operation {
-    ($op:expr, $kms:expr, $params:expr) => {
-        match $op {
-            Operation::Get(req) => get::get($kms, req, $params).await,
-            Operation::Locate(req) => locate::locate($kms, req, $params).await,
-            // ...
-        }
-    };
-}
-```
-
-### Newtype for key identifiers
-
-```rust
-// Before: raw String everywhere — easy to mix up key UID and user ID
-fn get_key(uid: String, owner: String) -> ...
-
-// After: newtypes prevent accidental parameter swap
-struct KeyUid(String);
-struct UserId(String);
-fn get_key(uid: KeyUid, owner: UserId) -> ...
-```
+If an orchestrator writes reports, use `./review-YYYY-MM-DD/rust-refactor.md` and the schema in [`../shared/orchestrator-contract.md`](../shared/orchestrator-contract.md) §4; otherwise return the ranked list.

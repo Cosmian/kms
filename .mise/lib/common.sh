@@ -187,28 +187,22 @@ retry() {
   done
 }
 
-# Ensure pnpm >= 10 is available on PATH.
+# Put a Corepack pnpm shim first on PATH.
 #
-# The UI lockfile uses lockfileVersion 9.0 which requires pnpm 10+. Some
-# environments (e.g. nix-shell, fresh CI runners) only provide pnpm 9.x or no
-# pnpm at all, so this installs pnpm 10.17.1 from npm into a temp dir and
-# prepends it to PATH when the installed pnpm is too old or missing.
-# Usage: ensure_pnpm_v10
-ensure_pnpm_v10() {
-  local pnpm_major
-  pnpm_major=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
-  if [ "${pnpm_major}" -ge 10 ]; then
-    return 0
-  fi
-  if command -v npm >/dev/null 2>&1; then
-    local _pnpm_tmp
-    _pnpm_tmp="$(mktemp -d)"
-    npm install "pnpm@10.17.1" --prefix "${_pnpm_tmp}" --no-save --quiet >/dev/null 2>&1 || true
-    if [ -f "${_pnpm_tmp}/node_modules/.bin/pnpm" ]; then
-      export PATH="${_pnpm_tmp}/node_modules/.bin:${PATH}"
-      echo "Upgraded to pnpm $(pnpm --version)"
-    fi
-  fi
+# Corepack runs the exact pnpm pinned in ui/package.json "packageManager" and
+# refuses a download whose sha512 does not match; `npm install pnpm` checks nothing.
+# Usage: ensure_pnpm
+ensure_pnpm() {
+  require_cmd corepack "Corepack (bundled with Node.js 22) is required to run the hash-pinned pnpm."
+  local shim_dir="${TMPDIR:-/tmp}/kms-corepack-shims"
+  mkdir -p "${shim_dir}"
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  # Skip the "latest pnpm" lookup: Corepack < 0.31 (Node 23.2 in nix-shell) cannot verify npm's rotated
+  # signing key and fails on it. The pinned version is still checked against its sha512.
+  export COREPACK_DEFAULT_TO_LATEST=0
+  run_isolated corepack enable --install-directory "${shim_dir}" pnpm
+  export PATH="${shim_dir}:${PATH}"
+  (cd "$(get_repo_root)/ui" && run_isolated pnpm --version >/dev/null)
 }
 
 # Returns success only if every named environment variable is set and non-empty.
@@ -324,12 +318,19 @@ _run_workspace_tests() {
       export REDIS_HOST REDIS_PORT
       ;;
   esac
-  if [ "$db" != "sqlite" ]; then
+  if [ "$db" = "sqlite" ]; then
+    # sqlite runs the whole workspace once per variant (DB-agnostic tests included).
+    cargo test --workspace --lib --all-targets "${FEATURES_FLAG[@]}" --bench benches --no-run
+    cargo test --workspace --lib --bins "${FEATURES_FLAG[@]}" -- --nocapture
+  else
     cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
       -- --ignored --nocapture "test_db_${db}" test_certificate_validate
+    # Only the packages whose lib tests start the shared test server (dev-dependency on
+    # `test_kms_server`) read KMS_TEST_DB (crate/test_kms_server/src/test_server.rs).
+    # Re-derive the list with: grep -rl --include=Cargo.toml test_kms_server crate
+    cargo test --lib -p test_kms_server -p ckms -p cosmian_kms_cli_actions -p cosmian_pkcs11 \
+      -p cosmian_kms_k8s_plugin -p cosmian_cng "${FEATURES_FLAG[@]}" -- --nocapture
   fi
-  cargo test --workspace --lib --all-targets "${FEATURES_FLAG[@]}" --bench benches --no-run
-  cargo test --workspace --lib "${FEATURES_FLAG[@]}" -- --nocapture
 }
 
 run_db_tests() {
@@ -476,4 +477,55 @@ pkcs11_check_warnings() {
     return 1
   fi
   return 0
+}
+
+# Exit status of a test task that cannot run on this machine; run_test_leaves counts it as SKIP.
+skip_test() {
+  print_warning "SKIP: $*"
+  exit 77
+}
+
+# Prints the first python3 >= 3.12 on PATH. The hash-pinned requirements-*.txt are pip-compiled for 3.12,
+# but the first python3 can be older (macOS Command Line Tools ships 3.9), so never use bare python3 -m venv.
+# Usage: "$(pick_python312)" -m venv "${VENV_DIR}"
+pick_python312() {
+  local cand
+  for cand in python3 python3.12 python3.13 python3.14; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import sys; sys.exit(sys.version_info < (3, 12))'; then
+      echo "$cand"
+      return 0
+    fi
+  done
+  print_error "Python >= 3.12 is required (found: $(python3 --version 2>&1))"
+}
+
+# Runs the test scripts $2... (paths relative to directory $1) one after the other under VARIANT/LINK,
+# never stopping on a failure, then prints a PASS/SKIP/FAIL summary. Returns 1 if any script failed.
+# Leaves named <group>:<leaf> in the space-separated TEST_SKIP_LEAVES count as SKIP without running.
+# Usage: run_test_leaves "$(dirname "$0")" <leaf>...
+run_test_leaves() {
+  local dir="$1" leaf rc
+  local -a pass=() skip=() fail=()
+  shift
+  for leaf in "$@"; do
+    print_header "test ${leaf} (${VARIANT})"
+    if [[ " ${TEST_SKIP_LEAVES:-} " == *" $(basename "$dir"):${leaf} "* ]]; then
+      print_warning "SKIP: listed in TEST_SKIP_LEAVES"
+      skip+=("$leaf")
+      continue
+    fi
+    if usage_variant="$VARIANT" usage_link="$LINK" bash "${dir}/${leaf}"; then rc=0; else rc=$?; fi
+    case "$rc" in
+      0) pass+=("$leaf") ;;
+      77) skip+=("$leaf") ;;
+      *) fail+=("$leaf") ;;
+    esac
+  done
+  echo ""
+  echo "============================================"
+  for leaf in ${pass[@]+"${pass[@]}"}; do echo "  [PASS] ${leaf}"; done
+  for leaf in ${skip[@]+"${skip[@]}"}; do echo "  [SKIP] ${leaf}"; done
+  for leaf in ${fail[@]+"${fail[@]}"}; do echo "  [FAIL] ${leaf}"; done
+  printf '  PASS: %d  SKIP: %d  FAIL: %d\n' "${#pass[@]}" "${#skip[@]}" "${#fail[@]}"
+  [ "${#fail[@]}" -eq 0 ]
 }

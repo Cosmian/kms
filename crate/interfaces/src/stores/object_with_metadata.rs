@@ -238,9 +238,7 @@ impl ObjectWithMetadata {
                 let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
                 ul.usage_limits_total >= needed
             }
-            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-                ul.usage_limits_total > 0
-            }
+            UsageLimitsUnit::Object => ul.usage_limits_total > 0,
         }
     }
 
@@ -286,7 +284,10 @@ impl Display for ObjectWithMetadata {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -310,7 +311,7 @@ mod tests {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
-                    attributes: Some(Attributes::default()),
+                    attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -418,7 +419,7 @@ mod tests {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
-                    attributes: Some(kb_attrs),
+                    attributes: Some(Box::new(kb_attrs)),
                 }),
                 key_compression_type: None,
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

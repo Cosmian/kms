@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use base64::{Engine, engine::general_purpose};
 use clap::Parser;
@@ -138,23 +138,23 @@ pub struct CreateKeyPairsAction {
 }
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct KeyPairInfo {
     pkcs7: String,
-    privateKeyMetadata: Vec<PrivateKeyMetadata>,
+    private_key_metadata: Vec<PrivateKeyMetadata>,
 }
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct PrivateKeyMetadata {
-    kaclsKeyMetadata: KaclsKeyMetadata,
+    kacls_key_metadata: KaclsKeyMetadata,
 }
 
 #[derive(Serialize, Deserialize)]
-#[expect(non_snake_case)]
+#[serde(rename_all = "camelCase")]
 struct KaclsKeyMetadata {
-    kaclsUri: String,
-    kaclsData: String,
+    kacls_uri: String,
+    kacls_data: String,
 }
 
 impl CreateKeyPairsAction {
@@ -166,10 +166,10 @@ impl CreateKeyPairsAction {
     ) -> Result<(), KmsCliError> {
         let key_pair_info = KeyPairInfo {
             pkcs7: pem::encode(&pem::Pem::new(String::from("PKCS7"), certificate_value)),
-            privateKeyMetadata: vec![PrivateKeyMetadata {
-                kaclsKeyMetadata: KaclsKeyMetadata {
-                    kaclsUri: kacls_url,
-                    kaclsData: wrapped_private_key,
+            private_key_metadata: vec![PrivateKeyMetadata {
+                kacls_key_metadata: KaclsKeyMetadata {
+                    kacls_uri: kacls_url,
+                    kacls_data: wrapped_private_key,
                 },
             }],
         };
@@ -206,7 +206,6 @@ impl CreateKeyPairsAction {
     }
 
     /// Resolve or create the RSA key pair and export the wrapped private key.
-    #[expect(clippy::print_stdout)]
     async fn resolve_key_pair(
         &self,
         kms_rest_client: &KmsClient,
@@ -252,10 +251,11 @@ impl CreateKeyPairsAction {
             )
         };
 
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "[{email}] - RSA keypair ID used: private_key {private_key_id} - public_key \
              {public_key_id}"
-        );
+        )?;
 
         // Export wrapped private key with google CSE key
         let (_, wrapped_private_key, _attributes) = export_object(
@@ -281,7 +281,6 @@ impl CreateKeyPairsAction {
     }
 
     /// Resolve the leaf certificate: use an existing one, create from extensions, or import PKCS12.
-    #[expect(clippy::print_stdout)]
     async fn resolve_certificate(
         &self,
         kms_rest_client: &KmsClient,
@@ -346,7 +345,10 @@ impl CreateKeyPairsAction {
                     })?
                     .unique_identifier;
 
-                println!("[{email}] - certificate ID: {certificate_unique_identifier}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[{email}] - certificate ID: {certificate_unique_identifier}"
+                )?;
                 Ok(certificate_unique_identifier)
             }
             (None, None, None, Some(p12_file), Some(p12_password)) => {
@@ -374,11 +376,17 @@ impl CreateKeyPairsAction {
 
                 let certificate_unique_identifier =
                     private_unique_identifier.replace(SYSTEM_TAG_PRIVATE_KEY, "");
-                println!("[{email}] - certificate ID: {certificate_unique_identifier}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[{email}] - certificate ID: {certificate_unique_identifier}"
+                )?;
                 Ok(UniqueIdentifier::TextString(certificate_unique_identifier))
             }
             (Some(leaf_cert_id), None, None, None, None) => {
-                println!("[{email}] - Using existing leaf certificate ID: {leaf_cert_id}");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "[{email}] - Using existing leaf certificate ID: {leaf_cert_id}"
+                )?;
                 Ok(UniqueIdentifier::TextString(leaf_cert_id.clone()))
             }
             _ => Err(KmsCliError::InvalidRequest(
@@ -392,7 +400,6 @@ impl CreateKeyPairsAction {
     }
 
     /// Export the PKCS7 certificate chain and push the key pair to Gmail.
-    #[expect(clippy::print_stdout)]
     async fn push_to_gmail(
         &self,
         kms_rest_client: &KmsClient,
@@ -426,14 +433,20 @@ impl CreateKeyPairsAction {
         }
 
         if self.dry_run {
-            println!("Dry run mode - key pair not pushed to Gmail API");
+            writeln!(
+                std::io::stdout().lock(),
+                "Dry run mode - key pair not pushed to Gmail API"
+            )?;
         } else {
-            println!("[{email}] - Pushing new keypair to Gmail API");
+            writeln!(
+                std::io::stdout().lock(),
+                "[{email}] - Pushing new keypair to Gmail API"
+            )?;
             if let Object::Certificate(Certificate {
                 certificate_value, ..
             }) = pkcs7_object
             {
-                println!("Processing {email:?}.");
+                writeln!(std::io::stdout().lock(), "Processing {email:?}.")?;
                 let gmail_client =
                     GmailClient::new(kms_rest_client.config.clone(), &self.user_id).await?;
                 let kacls_url = kms_rest_client.google_cse_status().await?.kacls_url;
@@ -444,7 +457,7 @@ impl CreateKeyPairsAction {
                     kacls_url,
                 )
                 .await?;
-                println!("Key pair inserted for {email:?}.");
+                writeln!(std::io::stdout().lock(), "Key pair inserted for {email:?}.")?;
             } else {
                 return Err(KmsCliError::ServerError(format!(
                     "Error inserting key pair for {email:?} - exported object is not a Certificate"
@@ -452,5 +465,38 @@ impl CreateKeyPairsAction {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    use super::{KaclsKeyMetadata, KeyPairInfo, PrivateKeyMetadata};
+
+    fn build_key_pair_info() -> KeyPairInfo {
+        KeyPairInfo {
+            pkcs7: "PKCS7DATA".to_owned(),
+            private_key_metadata: vec![PrivateKeyMetadata {
+                kacls_key_metadata: KaclsKeyMetadata {
+                    kacls_uri: "https://kacls.example.com/v1".to_owned(),
+                    kacls_data: "wrapped-data".to_owned(),
+                },
+            }],
+        }
+    }
+
+    #[test]
+    fn characterization_key_pair_info_serializes_camel_case() {
+        let json = serde_json::to_string(&build_key_pair_info()).unwrap();
+        assert_eq!(
+            json,
+            r#"{"pkcs7":"PKCS7DATA","privateKeyMetadata":[{"kaclsKeyMetadata":{"kaclsUri":"https://kacls.example.com/v1","kaclsData":"wrapped-data"}}]}"#
+        );
+    }
+
+    #[test]
+    fn characterization_key_pair_info_round_trips() {
+        let json = serde_json::to_string(&build_key_pair_info()).unwrap();
+        let parsed: KeyPairInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), json);
     }
 }

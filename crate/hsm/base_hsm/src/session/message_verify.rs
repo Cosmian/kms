@@ -68,7 +68,7 @@ impl Session {
         let mut signature = signature.to_vec();
         let data_len = CK_ULONG::try_from(data.len())?;
         let signature_len = CK_ULONG::try_from(signature.len())?;
-        #[expect(unsafe_code)]
+        #[expect(unsafe_code, reason = "PKCS#11 MessageVerify C calls")]
         // SAFETY: `data` and `signature` are live owned buffers whose lengths are passed
         // alongside their pointers; a null `pParameter` with length 0 is valid for mechanisms
         // without per-message parameters.

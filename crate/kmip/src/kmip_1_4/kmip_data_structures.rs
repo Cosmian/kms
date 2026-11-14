@@ -270,10 +270,10 @@ impl Serialize for KeyValueSerializer {
                         key_material: key_material.clone(),
                     },
                 )?;
-                if let Some(attributes) = &attribute {
-                    if !attributes.is_empty() {
-                        st.serialize_field("Attribute", &attribute)?;
-                    }
+                if let Some(attributes) = &attribute
+                    && !attributes.is_empty()
+                {
+                    st.serialize_field("Attribute", &attribute)?;
                 }
                 st.end()
             }
@@ -373,7 +373,7 @@ impl From<KeyValue> for kmip_2_1::kmip_data_structures::KeyValue {
                 attribute,
             } => Self::Structure {
                 key_material: key_material.into(),
-                attributes: attribute.map(Into::into),
+                attributes: attribute.map(|attr| Box::new(attr.into())),
             },
         }
     }
@@ -393,7 +393,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
             } => {
                 let attributes_1_4 = attributes
                     .map(|attr| {
-                        let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = attr.into();
+                        let attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = (*attr).into();
                         attrs
                             .into_iter()
                             .map(TryInto::try_into)
@@ -617,7 +617,7 @@ impl Serialize for KeyMaterialSerializer {
                         st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
                     }
                     if let Some(crt_coefficient) = crt_coefficient {
-                        st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
+                        st.serialize_field("CRTCoefficient", &***crt_coefficient)?;
                     }
                     st.end()
                 }
@@ -709,7 +709,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
             PublicExponent,
             PrimeExponentP,
             PrimeExponentQ,
-            CrtCoefficient,
+            #[serde(rename = "CRTCoefficient", alias = "CrtCoefficient")]
+            CRTCoefficient,
             RecommendedCurve,
             QString,
         }
@@ -757,21 +758,20 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
             }
 
-            #[expect(clippy::many_single_char_names)]
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
             where
                 V: MapAccess<'de>,
             {
                 let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
-                // Here `p` and `q` describes either a public value for DH or
+                // Here `prime_p` and `prime_q` describe either a public value for DH or
                 // a prime secret factor for RSA. Kept as `BigInt`` and wrapped
                 // as `SafeBigInt` in RSA.
-                let mut p: Option<Box<BigInt>> = None;
-                let mut q: Option<Box<BigInt>> = None;
-                let mut g: Option<Box<BigInt>> = None;
-                let mut j: Option<Box<BigInt>> = None;
-                let mut y: Option<Box<BigInt>> = None;
-                let mut x: Option<Box<SafeBigInt>> = None;
+                let mut prime_p: Option<Box<BigInt>> = None;
+                let mut prime_q: Option<Box<BigInt>> = None;
+                let mut generator_g: Option<Box<BigInt>> = None;
+                let mut factor_j: Option<Box<BigInt>> = None;
+                let mut public_y: Option<Box<BigInt>> = None;
+                let mut private_x: Option<Box<SafeBigInt>> = None;
                 let mut key: Option<Zeroizing<Vec<u8>>> = None;
                 let mut modulus: Option<Box<BigInt>> = None;
                 let mut public_exponent: Option<Box<BigInt>> = None;
@@ -798,40 +798,40 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                             d = Some(Box::new(map.next_value()?));
                         }
                         Field::P => {
-                            if p.is_some() {
+                            if prime_p.is_some() {
                                 return Err(de::Error::duplicate_field("P"));
                             }
-                            p = Some(Box::new(map.next_value()?));
+                            prime_p = Some(Box::new(map.next_value()?));
                         }
                         Field::Q => {
-                            if q.is_some() {
+                            if prime_q.is_some() {
                                 return Err(de::Error::duplicate_field("Q"));
                             }
-                            q = Some(Box::new(map.next_value()?));
+                            prime_q = Some(Box::new(map.next_value()?));
                         }
                         Field::G => {
-                            if g.is_some() {
+                            if generator_g.is_some() {
                                 return Err(de::Error::duplicate_field("G"));
                             }
-                            g = Some(Box::new(map.next_value()?));
+                            generator_g = Some(Box::new(map.next_value()?));
                         }
                         Field::J => {
-                            if j.is_some() {
+                            if factor_j.is_some() {
                                 return Err(de::Error::duplicate_field("J"));
                             }
-                            j = Some(Box::new(map.next_value()?));
+                            factor_j = Some(Box::new(map.next_value()?));
                         }
                         Field::X => {
-                            if x.is_some() {
+                            if private_x.is_some() {
                                 return Err(de::Error::duplicate_field("X"));
                             }
-                            x = Some(Box::new(map.next_value()?));
+                            private_x = Some(Box::new(map.next_value()?));
                         }
                         Field::Y => {
-                            if y.is_some() {
+                            if public_y.is_some() {
                                 return Err(de::Error::duplicate_field("Y"));
                             }
-                            y = Some(Box::new(map.next_value()?));
+                            public_y = Some(Box::new(map.next_value()?));
                         }
                         Field::Key => {
                             if key.is_some() {
@@ -869,9 +869,9 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                             }
                             prime_exponent_q = Some(Box::new(map.next_value()?));
                         }
-                        Field::CrtCoefficient => {
+                        Field::CRTCoefficient => {
                             if crt_coefficient.is_some() {
-                                return Err(de::Error::duplicate_field("CrtCoefficient"));
+                                return Err(de::Error::duplicate_field("CRTCoefficient"));
                             }
                             crt_coefficient = Some(Box::new(map.next_value()?));
                         }
@@ -896,29 +896,56 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     Ok(match &self.key_format_type {
                         KeyFormatType::TransparentDHPublicKey
                         | KeyFormatType::TransparentDHPrivateKey => {
-                            let p = p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
-                            let g = g.ok_or_else(|| de::Error::missing_field("G for DH key"))?;
-                            if let Some(x) = x {
-                                KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x }
+                            let prime_p =
+                                prime_p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
+                            let generator_g = generator_g
+                                .ok_or_else(|| de::Error::missing_field("G for DH key"))?;
+                            if let Some(private_x) = private_x {
+                                KeyMaterial::TransparentDHPrivateKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    j: factor_j,
+                                    x: private_x,
+                                }
                             } else {
-                                let y = y.ok_or_else(|| {
+                                let public_y = public_y.ok_or_else(|| {
                                     de::Error::missing_field("Y for DH public key")
                                 })?;
-                                KeyMaterial::TransparentDHPublicKey { p, q, g, j, y }
+                                KeyMaterial::TransparentDHPublicKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    j: factor_j,
+                                    y: public_y,
+                                }
                             }
                         }
                         KeyFormatType::TransparentDSAPublicKey
                         | KeyFormatType::TransparentDSAPrivateKey => {
-                            let p = p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
-                            let g = g.ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
-                            let q = q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
-                            if let Some(x) = x {
-                                KeyMaterial::TransparentDSAPrivateKey { p, q, g, x }
+                            let prime_p =
+                                prime_p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
+                            let generator_g = generator_g
+                                .ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
+                            let prime_q =
+                                prime_q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
+                            if let Some(private_x) = private_x {
+                                KeyMaterial::TransparentDSAPrivateKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    x: private_x,
+                                }
                             } else {
-                                let y = y.ok_or_else(|| {
+                                let public_y = public_y.ok_or_else(|| {
                                     de::Error::missing_field("Y for DSA public key")
                                 })?;
-                                KeyMaterial::TransparentDSAPublicKey { p, q, g, y }
+                                KeyMaterial::TransparentDSAPublicKey {
+                                    p: prime_p,
+                                    q: prime_q,
+                                    g: generator_g,
+                                    y: public_y,
+                                }
                             }
                         }
                         KeyFormatType::TransparentRSAPublicKey => {
@@ -941,8 +968,8 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                                 modulus,
                                 public_exponent,
                                 private_exponent,
-                                p: p.map(|p| Box::new(SafeBigInt::from(*p))),
-                                q: q.map(|q| Box::new(SafeBigInt::from(*q))),
+                                p: prime_p.map(|p| Box::new(SafeBigInt::from(*p))),
+                                q: prime_q.map(|q| Box::new(SafeBigInt::from(*q))),
                                 prime_exponent_p,
                                 prime_exponent_q,
                                 crt_coefficient,
@@ -1269,6 +1296,7 @@ pub struct KeyWrappingData {
     pub mac_signature_key_information: Option<MacSignatureKeyInformation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature: Option<Vec<u8>>,
+    #[serde(rename = "IVCounterNonce", alias = "IvCounterNonce")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_counter_nonce: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1394,8 +1422,13 @@ pub struct KeyWrappingSpecification {
     pub wrapping_method: WrappingMethod,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_information: Option<EncryptionKeyInformation>,
+    #[serde(
+        rename = "MACSignatureKeyInformation",
+        alias = "MacSignatureKeyInformation"
+    )]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_signature_key_information: Option<MacSignatureKeyInformation>,
+    #[serde(rename = "AttributeName", alias = "AttributeNames")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_names: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1430,8 +1463,10 @@ pub struct CryptographicParameters {
     pub digital_signature_algorithm: Option<DigitalSignatureAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    #[serde(rename = "RandomIV", alias = "RandomIv")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub random_iv: Option<bool>,
+    #[serde(rename = "IVLength", alias = "IvLength")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1807,6 +1842,7 @@ pub struct RngParameters {
 #[serde(rename_all = "PascalCase")]
 pub struct ProfileInformation {
     pub profile_name: ProfileName,
+    #[serde(rename = "ServerURI", alias = "ServerUri")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1861,6 +1897,7 @@ pub struct CapabilityInformation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shredding_algorithm: Option<ShreddingAlgorithm>,
 
+    #[serde(rename = "RNGMode", alias = "RngMode")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rng_mode: Option<kmip_2_1::kmip_types::RNGMode>,
 }
@@ -1959,6 +1996,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::DerivationParameters> for Derivatio
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGParameters {
+    #[serde(rename = "RNGAlgorithm", alias = "RngAlgorithm")]
     pub rng_algorithm: RNGAlgorithm,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
@@ -1966,10 +2004,12 @@ pub struct RNGParameters {
     pub cryptographic_length: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashing_algorithm: Option<HashingAlgorithm>,
+    #[serde(rename = "DRBGAlgorithm", alias = "DrbgAlgorithm")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drbg_algorithm: Option<DRBGAlgorithm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_curve: Option<RecommendedCurve>,
+    #[serde(rename = "FIPS186Variation", alias = "Fips186Variation")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fips186_variation: Option<FIPS186Variation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2033,22 +2073,11 @@ pub struct ServerInformation {
     pub alternative_failover_endpoints: Option<Vec<String>>,
 }
 
-impl TryFrom<kmip_2_1::kmip_data_structures::ServerInformation> for ServerInformation {
-    type Error = KmipError;
-
-    fn try_from(
-        value: kmip_2_1::kmip_data_structures::ServerInformation,
-    ) -> Result<Self, Self::Error> {
-        Ok(Self {
-            server_name: value.server_name,
-            server_serial_number: value.server_serial_number,
-            server_version: value.server_version,
-            server_load: value.server_load,
-            product_name: value.product_name,
-            build_level: value.build_level,
-            build_date: value.build_date,
-            cluster_info: value.cluster_info,
-            alternative_failover_endpoints: value.alternative_failover_endpoints,
-        })
+/// KMIP 1.4 Server Information content is vendor-specific and the standardized fields
+/// (Server Name, Server Version, ...) only exist from KMIP 2.0: their tags cannot be encoded
+/// on a KMIP 1.x wire, so the conversion yields an empty structure.
+impl From<kmip_2_1::kmip_data_structures::ServerInformation> for ServerInformation {
+    fn from(_value: kmip_2_1::kmip_data_structures::ServerInformation) -> Self {
+        Self::default()
     }
 }

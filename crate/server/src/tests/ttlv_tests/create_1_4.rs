@@ -43,7 +43,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
+            Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
@@ -68,7 +68,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
                     },
                 }),
                 message_extension: None,
-            },
+            }),
         )],
     };
 
@@ -101,7 +101,7 @@ pub(super) fn create_symmetric_key(client: &SocketClient, name: &str) -> String 
     };
 
     assert_eq!(create_response.object_type, ObjectType::SymmetricKey);
-    assert!(!create_response.unique_identifier.is_empty());
+    assert_ne!(create_response.unique_identifier.len(), 0);
     assert!(create_response.template_attribute.is_none());
     create_response.unique_identifier.clone()
 }

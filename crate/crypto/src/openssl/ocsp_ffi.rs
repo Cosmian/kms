@@ -15,7 +15,7 @@
 //!
 //! This module is intentionally allowed to use `unsafe` code: it is the FFI
 //! boundary layer and cannot be expressed without `unsafe extern` blocks.
-#![allow(unsafe_code)]
+#![expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 
 use std::ffi::{c_int, c_long, c_uchar, c_ulong};
 
@@ -28,7 +28,6 @@ use openssl_sys::{
 ///
 /// Zero-sized, `!Send`/`!Sync`/`!Unpin` as recommended for FFI opaque types.
 #[repr(C)]
-#[allow(non_camel_case_types)]
 pub(crate) struct OCSP_SINGLERESP {
     _data: [u8; 0],
     _marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,

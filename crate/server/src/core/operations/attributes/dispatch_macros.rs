@@ -17,7 +17,6 @@ macro_rules! with_common_simple_attributes {
                 CryptographicParameters => cryptographic_parameters,
                 CryptographicDomainParameters => cryptographic_domain_parameters,
                 CryptographicUsageMask => cryptographic_usage_mask,
-                Digest => digest,
                 DeactivationDate => deactivation_date,
                 ObjectGroup => object_group,
                 ContactInformation => contact_information,
@@ -54,7 +53,7 @@ macro_rules! with_common_simple_attributes {
                 ProtectStopDate => protect_stop_date,
                 ProtectionLevel => protection_level,
                 ProtectionPeriod => protection_period,
-                ProtectionStorageMasks => protection_storage_masks,
+                ProtectionStorageMask => protection_storage_masks,
                 QuantumSafe => quantum_safe,
                 RandomNumberGenerator => random_number_generator,
                 RevocationReason => revocation_reason,
@@ -77,7 +76,6 @@ macro_rules! with_common_simple_attributes {
 
 /// Generate the full match block for `AddAttribute` with simple (check-then-assign) arms
 /// and custom arms for special-case attributes.
-#[allow(unused_macros)]
 macro_rules! match_add_attribute {
     (
         $scrutinee:expr, $attrs:expr,
@@ -89,11 +87,12 @@ macro_rules! match_add_attribute {
                 Attribute::$variant(value) => {
                     trace!(concat!(stringify!($variant), ": {:?}"), value);
                     if $attrs.$field.is_some() {
-                        return Err(KmsError::InvalidRequest(
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Attribute_Single_Valued,
                             concat!(stringify!($variant), " already exists").to_owned(),
                         ));
                     }
-                    $attrs.$field = Some(value);
+                    $attrs.$field = Some(value.into());
                 }
             )*
             $($custom)*
@@ -104,7 +103,6 @@ macro_rules! match_add_attribute {
 /// Generate the full match block for `SetAttribute`/`ModifyAttribute` with simple
 /// (unconditional assign) arms and custom arms for special-case attributes.
 /// The `$prefix` is included in the trace output (e.g. "`SetAttribute`" or "`ModifyAttribute`").
-#[allow(unused_macros)]
 macro_rules! match_set_attribute {
     (
         $prefix:expr, $scrutinee:expr, $attrs:expr,
@@ -115,7 +113,7 @@ macro_rules! match_set_attribute {
             $(
                 Attribute::$variant(value) => {
                     trace!(concat!($prefix, ": ", stringify!($variant), ": {:?}"), value);
-                    $attrs.$field = Some(value);
+                    $attrs.$field = Some(value.into());
                 }
             )*
             $($custom)*
@@ -125,7 +123,6 @@ macro_rules! match_set_attribute {
 
 /// Generate the full match block for `DeleteAttribute` with simple (compare-then-clear) arms
 /// and custom arms for special-case attributes.
-#[allow(unused_macros)]
 macro_rules! match_delete_attribute {
     (
         $scrutinee:expr, $attrs:expr,
@@ -135,7 +132,7 @@ macro_rules! match_delete_attribute {
         match $scrutinee {
             $(
                 Attribute::$variant(value) => {
-                    if Some(value) == $attrs.$field {
+                    if Some(value.into()) == $attrs.$field {
                         $attrs.$field = None;
                     }
                 }
@@ -152,7 +149,6 @@ macro_rules! match_delete_attribute {
 /// covers the name-based form, clearing the matching field unconditionally.
 ///
 /// KMIP 1.4 §4.16 / KMIP 2.1 §6.1.13.
-#[allow(unused_macros)]
 macro_rules! match_delete_attribute_by_tag {
     (
         $scrutinee:expr, $attrs:expr,

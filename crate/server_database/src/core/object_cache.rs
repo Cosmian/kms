@@ -63,10 +63,9 @@ impl ObjectCache {
     /// * `max_ttl` — optional absolute time-to-live; when set, an entry expires
     ///   at `min(last_access + max_age, insert_time + max_ttl)`.
     #[must_use]
-    #[allow(clippy::as_conversions)]
     pub fn new(max_age: Duration, max_size: NonZeroUsize, max_ttl: Option<Duration>) -> Self {
         let mut builder = Cache::builder()
-            .max_capacity(max_size.get() as u64)
+            .max_capacity(u64::try_from(max_size.get()).unwrap_or(u64::MAX))
             .time_to_idle(max_age);
         if let Some(ttl) = max_ttl {
             builder = builder.time_to_live(ttl);
@@ -124,10 +123,10 @@ impl ObjectCache {
     /// Call this whenever a fresh DB copy of the object is available (e.g.
     /// after a forced re-fetch) to detect out-of-band mutations.
     pub async fn validate_cache(&self, uid: &str, current_object: &Object) -> DbResult<()> {
-        if let Some(entry) = self.inner.get(uid).await {
-            if entry.fingerprint != self.fingerprinter.fingerprint(current_object)? {
-                self.inner.invalidate(uid).await;
-            }
+        if let Some(entry) = self.inner.get(uid).await
+            && entry.fingerprint != self.fingerprinter.fingerprint(current_object)?
+        {
+            self.inner.invalidate(uid).await;
         }
         Ok(())
     }
@@ -175,12 +174,6 @@ impl ObjectCache {
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::unwrap_used,
-        clippy::panic,
-        // Test helper uses NonZeroUsize::new(1000).expect() with a literal non-zero constant.
-        clippy::expect_used
-    )]
     use std::{num::NonZeroUsize, time::Duration};
 
     use cosmian_kmip::{
@@ -292,5 +285,105 @@ mod tests {
         let other = make_owm("uid-other");
         c.validate_cache("uid-v2", other.object()).await.unwrap();
         assert!(c.get("uid-v2").await.is_none());
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests pinning the BASE capacity / expiry behavior of [`ObjectCache::new`].
+
+    use std::{num::NonZeroUsize, time::Duration};
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::{Object, OpaqueObject},
+            kmip_types::OpaqueDataType,
+        },
+    };
+    use cosmian_kms_interfaces::ObjectWithMetadata;
+
+    use super::ObjectCache;
+
+    fn make_owm(uid: &str) -> ObjectWithMetadata {
+        ObjectWithMetadata::new(
+            uid.to_owned(),
+            Object::OpaqueObject(OpaqueObject {
+                opaque_data_type: OpaqueDataType::Unknown,
+                opaque_data_value: uid.as_bytes().to_vec(),
+            }),
+            "test-owner".to_owned(),
+            State::Active,
+            Attributes::default(),
+            String::new(),
+        )
+    }
+
+    fn size(n: usize) -> NonZeroUsize {
+        NonZeroUsize::new(n).unwrap()
+    }
+
+    #[tokio::test]
+    async fn characterization_object_cache_new_capacity_is_max_size() {
+        let cache = ObjectCache::new(Duration::from_secs(3600), size(2), None);
+        for i in 0..10 {
+            let uid = format!("uid-{i}");
+            cache.insert(uid.clone(), make_owm(&uid)).await.unwrap();
+        }
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn characterization_object_cache_new_capacity_one() {
+        let cache = ObjectCache::new(Duration::from_secs(3600), size(1), None);
+        for i in 0..5 {
+            let uid = format!("uid-{i}");
+            cache.insert(uid.clone(), make_owm(&uid)).await.unwrap();
+        }
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn characterization_object_cache_new_large_capacity_keeps_all() {
+        let cache = ObjectCache::new(Duration::from_secs(3600), size(usize::MAX), None);
+        for i in 0..20 {
+            let uid = format!("uid-{i}");
+            cache.insert(uid.clone(), make_owm(&uid)).await.unwrap();
+        }
+        cache.inner.run_pending_tasks().await;
+        assert_eq!(cache.inner.entry_count(), 20);
+        for i in 0..20 {
+            assert!(cache.get(&format!("uid-{i}")).await.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn characterization_object_cache_new_max_ttl_expires_hot_entry() {
+        let cache = ObjectCache::new(
+            Duration::from_secs(3600),
+            size(100),
+            Some(Duration::from_millis(300)),
+        );
+        cache
+            .insert("hot".to_owned(), make_owm("hot"))
+            .await
+            .unwrap();
+        assert!(cache.get("hot").await.is_some());
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert!(cache.get("hot").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn characterization_object_cache_new_without_max_ttl_keeps_entry() {
+        let cache = ObjectCache::new(Duration::from_secs(3600), size(100), None);
+        cache
+            .insert("cold".to_owned(), make_owm("cold"))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert!(cache.get("cold").await.is_some());
     }
 }

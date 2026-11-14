@@ -1,14 +1,6 @@
-// `collection_is_never_read`: the `ConfigArgs` derive generates intermediate
-// Vec collections used only as building blocks in the arg-merge logic; clippy
-// cannot see through the macro boundary.
-// `struct_field_names`: `ui_oidc_*` fields share a prefix because they are
-// flattened into the CLI namespace and serde keys.
-#![allow(clippy::collection_is_never_read, clippy::struct_field_names)]
-
 use std::{fmt, sync::Arc};
 
 use clap::Args;
-use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 /// Default UI distribution folder path on Linux.
@@ -44,7 +36,7 @@ pub fn get_default_ui_dist_path() -> String {
     "/Applications/Cosmian KMS Server.app/Contents/Resources/ui/".to_owned()
 }
 
-#[derive(Default, Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
+#[derive(Default, Debug, Args, Deserialize, Serialize, Clone)]
 #[serde(default, deny_unknown_fields)]
 pub struct UiConfig {
     /// Disable the embedded web UI. When set to false, the UI HTML assets are
@@ -54,31 +46,40 @@ pub struct UiConfig {
     pub enable: bool,
 
     /// The UI distribution folder
-    #[arg(short, env = "COSMIAN_UI_DIST_PATH", long)]
-    pub ui_index_html_folder: Option<String>,
+    #[arg(
+        short = 'u',
+        env = "COSMIAN_UI_DIST_PATH",
+        long = "ui-index-html-folder",
+        id = "ui_index_html_folder",
+        value_name = "UI_INDEX_HTML_FOLDER"
+    )]
+    #[serde(rename = "ui_index_html_folder")]
+    pub index_html_folder: Option<String>,
 
     /// A secret salt used to derive the session cookie encryption key.
     /// This MUST be identical across all KMS instances behind the same load balancer.
     /// This should only be provided when `ui_index_html_folder` is explicitly defined.
-    #[clap(verbatim_doc_comment, long, env = "KMS_SESSION_SALT")]
-    pub ui_session_salt: Option<String>,
+    #[clap(
+        verbatim_doc_comment,
+        long = "ui-session-salt",
+        id = "ui_session_salt",
+        value_name = "UI_SESSION_SALT",
+        env = "KMS_SESSION_SALT"
+    )]
+    #[serde(rename = "ui_session_salt")]
+    pub session_salt: Option<String>,
 
-    // `#[config(no_flatten)]` tells `clap_config_fallback` NOT to flatten this
-    // nested struct into the parent TOML table: the KMS config file must use a
+    // `#[command(flatten)]` inlines the CLI flags of `OidcConfig`; the TOML layout is the
     // `[ui_config.ui_oidc_auth]` sub-table.
-    // `#[command(flatten)]` is a clap directive that inlines CLI flags from
-    // `OidcConfig` into the parent struct; it is unrelated to TOML layout.
-    // The two attributes operate at different layers (config file vs CLI) and
-    // are intentionally used together.
-    #[config(no_flatten)]
     #[command(flatten)]
-    pub ui_oidc_auth: OidcConfig,
+    #[serde(rename = "ui_oidc_auth")]
+    pub oidc_auth: OidcConfig,
 }
 
 impl UiConfig {
     /// Get the UI distribution folder path, resolving the default if not set
     pub fn get_ui_index_html_folder(&self) -> String {
-        self.ui_index_html_folder
+        self.index_html_folder
             .clone()
             .unwrap_or_else(get_default_ui_dist_path)
     }
@@ -88,24 +89,48 @@ const fn default_true() -> bool {
     true
 }
 
-#[derive(Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
+#[derive(Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default, deny_unknown_fields)]
 pub struct OidcConfig {
     /// The client ID of the configured OIDC tenant for UI Auth
-    #[clap(long, env = "UI_OIDC_CLIENT_ID")]
-    pub ui_oidc_client_id: Option<String>,
+    #[clap(
+        long = "ui-oidc-client-id",
+        id = "ui_oidc_client_id",
+        value_name = "UI_OIDC_CLIENT_ID",
+        env = "UI_OIDC_CLIENT_ID"
+    )]
+    #[serde(rename = "ui_oidc_client_id")]
+    pub client_id: Option<String>,
 
     /// The client secret of the configured OIDC tenant for UI Auth
-    #[clap(long, env = "UI_OIDC_CLIENT_SECRET")]
-    pub ui_oidc_client_secret: Option<String>,
+    #[clap(
+        long = "ui-oidc-client-secret",
+        id = "ui_oidc_client_secret",
+        value_name = "UI_OIDC_CLIENT_SECRET",
+        env = "UI_OIDC_CLIENT_SECRET"
+    )]
+    #[serde(rename = "ui_oidc_client_secret")]
+    pub client_secret: Option<String>,
 
     /// The issuer URI of the configured OIDC tenant for UI Auth
-    #[clap(long, env = "UI_OIDC_ISSUER_URL")]
-    pub ui_oidc_issuer_url: Option<String>,
+    #[clap(
+        long = "ui-oidc-issuer-url",
+        id = "ui_oidc_issuer_url",
+        value_name = "UI_OIDC_ISSUER_URL",
+        env = "UI_OIDC_ISSUER_URL"
+    )]
+    #[serde(rename = "ui_oidc_issuer_url")]
+    pub issuer_url: Option<String>,
 
     /// The logout URI of the configured OIDC tenant for UI Auth
-    #[clap(long, env = "UI_OIDC_LOGOUT_URL")]
-    pub ui_oidc_logout_url: Option<String>,
+    #[clap(
+        long = "ui-oidc-logout-url",
+        id = "ui_oidc_logout_url",
+        value_name = "UI_OIDC_LOGOUT_URL",
+        env = "UI_OIDC_LOGOUT_URL"
+    )]
+    #[serde(rename = "ui_oidc_logout_url")]
+    pub logout_url: Option<String>,
 }
 
 /// OIDC endpoints discovered at server startup from the `IdP`'s
@@ -161,16 +186,16 @@ impl fmt::Debug for OidcConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug_struct = f.debug_struct("OidcConfig");
 
-        if let Some(ui_oidc_client_id) = &self.ui_oidc_client_id {
+        if let Some(ui_oidc_client_id) = &self.client_id {
             debug_struct.field("ui_oidc_client_id", ui_oidc_client_id);
         }
-        if self.ui_oidc_client_secret.is_some() {
+        if self.client_secret.is_some() {
             debug_struct.field("ui_oidc_client_secret", &"****");
         }
-        if let Some(ui_oidc_issuer_url) = &self.ui_oidc_issuer_url {
+        if let Some(ui_oidc_issuer_url) = &self.issuer_url {
             debug_struct.field("ui_oidc_issuer_url", ui_oidc_issuer_url);
         }
-        if let Some(ui_oidc_logout_url) = &self.ui_oidc_logout_url {
+        if let Some(ui_oidc_logout_url) = &self.logout_url {
             debug_struct.field("ui_oidc_logout_url", ui_oidc_logout_url);
         }
 

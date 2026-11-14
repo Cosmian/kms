@@ -7,7 +7,7 @@
 #USAGE   choices "static" "dynamic"
 #USAGE }
 #USAGE flag "--target <target>" help="SBOM target" {
-#USAGE   choices "openssl_3_1_2" "openssl_3_6_2" "server" "ckms"
+#USAGE   choices "openssl_3_1_2" "openssl_3_6_5" "server" "ckms"
 #USAGE }
 #USAGE flag "--retrieve" help="Download SBOMs instead of generating"
 #USAGE flag "--branch <branch>" help="Remote branch/tag to retrieve"

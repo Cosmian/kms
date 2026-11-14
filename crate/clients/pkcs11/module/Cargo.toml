@@ -21,18 +21,12 @@ default = []
 non-fips = []
 
 [dependencies]
-const-oid = { workspace = true }
 cosmian_kms_crypto = { workspace = true }
 cosmian_logger = { workspace = true }
+der = { workspace = true, features = ["alloc", "oid", "std"] }
 hex = { workspace = true, features = ["std"] }
 log = { workspace = true, default-features = false }
 openssl = { workspace = true }
-p256 = { workspace = true, features = [
-  "arithmetic",
-  "pkcs8",
-  "std",
-] }
-pkcs1 = { workspace = true }
 pkcs11-sys = { workspace = true }
 strum_macros = { workspace = true }
 thiserror = { workspace = true }

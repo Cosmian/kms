@@ -1,0 +1,26 @@
+[package]
+name = "cosmian_kms_csi_provider_proto"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["kms", "kubernetes", "k8s", "cosmian", "grpc"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Generated gRPC bindings for the Secrets Store CSI driver provider API"
+readme = "../../../../README.md"
+
+# prost is a false positive: it is used by the generated code in src/provider.rs
+[package.metadata.cargo-machete]
+ignored = ["prost"]
+
+[lints.rust]
+non_camel_case_types = "allow"
+
+[lints.clippy]
+result_large_err = "allow"
+
+[dependencies]
+prost = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }

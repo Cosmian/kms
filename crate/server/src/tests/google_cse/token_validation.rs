@@ -94,9 +94,7 @@ async fn validating_app_with_config(
     google_cse_config: GoogleCseConfig,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let mut clap_config = https_clap_config_opts(Some(LOCAL_KMS_PUBLIC_URL.to_owned()));
-    clap_config
-        .google_cse_config
-        .google_cse_disable_tokens_validation = false;
+    clap_config.google_cse_config.disable_tokens_validation = false;
     let app = Box::pin(test_app_with_google_cse(
         clap_config,
         Some(google_cse_config),
@@ -432,7 +430,7 @@ async fn private_key_sign_and_decrypt_with_tokens() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(!field(&body, "signature").is_empty());
+    assert_ne!(field(&body, "signature").len(), 0);
 
     let dek = [7_u8; 32];
     let encrypted = rsa_encrypt(
@@ -681,9 +679,7 @@ async fn two_kacls(
     impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
 > {
     let mut clap_a = https_clap_config_opts(Some(LOCAL_KMS_PUBLIC_URL.to_owned()));
-    clap_a
-        .google_cse_config
-        .google_cse_disable_tokens_validation = false;
+    clap_a.google_cse_config.disable_tokens_validation = false;
     let kms_a = Box::pin(test_utils::test_kms_with_google_cse(clap_a)).await;
     let config_a = local_google_cse_config(rsa);
     let app_a = test_utils::test_app_with_kms(kms_a.clone(), Some(config_a.clone())).await;
@@ -695,9 +691,7 @@ async fn two_kacls(
         .unwrap();
 
     let mut clap_b = https_clap_config_opts(Some("https://kms-original.example.com".to_owned()));
-    clap_b
-        .google_cse_config
-        .google_cse_disable_tokens_validation = false;
+    clap_b.google_cse_config.disable_tokens_validation = false;
     clap_b.db.sqlite_path.set_extension("original.sqlite");
     let mut config_b = local_google_cse_config(rsa);
     config_b.authentication = Arc::new(vec![

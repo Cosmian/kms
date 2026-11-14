@@ -19,21 +19,20 @@ const OPENSSL_3_0_VERSION_NUMBER: u64 = 0x3000_0000;
 /// # Returns
 ///
 /// Returns a tuple of `(version_string, dir_string, version_number)` where:
-/// - `version_string` is the OpenSSL version text (e.g., "OpenSSL 3.6.2")
+/// - `version_string` is the OpenSSL version text (e.g., "OpenSSL 3.6.5")
 /// - `dir_string` is the OpenSSL installation directory
 /// - `version_number` is the numeric version (e.g., 0x30600000 for version 3.6.0)
 ///
 /// If OpenSSL is not available, returns `("<unavailable>", "<unavailable>", 0)`.
-#[allow(unsafe_code)]
 #[must_use]
+#[expect(
+    unsafe_code,
+    reason = "raw openssl-sys FFI, NULL-checked before dereferencing"
+)]
 pub fn safe_openssl_version_info() -> (String, String, u64) {
-    // SAFETY: `OpenSSL_version_num` returns a plain integer and never
-    // dereferences any pointer, so it is safe to call even when OpenSSL is not
-    // fully initialised.  We call it first as a cheap liveness check.
-    // Note: Returns `c_ulong` which is u32 on Windows and u64 on Unix.
-    // We need `u64::from()` for cross-platform compatibility (widening is safe).
-    #[allow(clippy::useless_conversion)]
-    let num = u64::from(unsafe { openssl_sys::OpenSSL_version_num() });
+    // `version::number()` returns a `c_ulong` (u32 on Windows, u64 on Unix); a value that
+    // does not fit u64 or is 0 means OpenSSL is unavailable.
+    let num = u64::try_from(openssl::version::number()).unwrap_or(0);
     if num == 0 {
         return ("<unavailable>".to_owned(), "<unavailable>".to_owned(), 0);
     }
@@ -88,8 +87,11 @@ pub fn safe_openssl_version_info() -> (String, String, u64) {
 /// ```text
 /// OpenSSL CPU features (x86_64): AES-NI, PCLMULQDQ, AVX, AVX2, SHA, RDRAND
 /// ```
-#[allow(unsafe_code)]
 #[must_use]
+#[expect(
+    unsafe_code,
+    reason = "raw openssl-sys FFI, NULL-checked before dereferencing"
+)]
 pub fn cpu_features_info() -> String {
     // OPENSSL_CPU_INFO = 9; this constant is not yet exposed by openssl-sys.
     const OPENSSL_CPU_INFO_QUERY: c_int = 9;
@@ -302,15 +304,13 @@ fn decode_ppccap(hex: &str) -> String {
 
 /// Initialize OpenSSL providers for test environments.
 ///
-/// In non-FIPS mode with OpenSSL >= 3.0: loads the legacy provider for old PKCS#12 formats
+/// In non-FIPS mode: loads the legacy provider for old PKCS#12 formats
 /// (falls back to a warning if it can't be loaded — see [`init_openssl_providers`]).
-/// In non-FIPS mode with OpenSSL < 3.0: loads the default provider.
 /// In FIPS mode: no-op (FIPS provider is loaded via openssl.cnf).
 ///
 /// Note: The default provider is already active via openssl.cnf configuration.
 /// This function only adds the legacy provider on top of it.
 #[cfg(feature = "non-fips")]
-#[allow(clippy::missing_panics_doc, clippy::expect_used)]
 pub fn init_openssl_providers_for_tests() {
     use std::sync::OnceLock;
 
@@ -323,22 +323,17 @@ pub fn init_openssl_providers_for_tests() {
     static PROVIDER: OnceLock<Option<Provider>> = OnceLock::new();
 
     PROVIDER.get_or_init(|| {
-        let ossl_number = u64::try_from(openssl::version::number()).unwrap_or(0);
-        if ossl_number >= OPENSSL_3_0_VERSION_NUMBER {
-            // OpenSSL 3.x: load the legacy provider for old PKCS#12 formats
-            match Provider::try_load(None, "legacy", true) {
-                Ok(provider) => Some(provider),
-                Err(e) => {
-                    warn!(
-                        "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats \
-                         are unsupported in this test run. All other algorithms are unaffected."
-                    );
-                    None
-                }
+        // `openssl::provider::Provider` only exists for OpenSSL >= 3: load the legacy
+        // provider for old PKCS#12 formats.
+        match Provider::try_load(None, "legacy", true) {
+            Ok(provider) => Some(provider),
+            Err(e) => {
+                warn!(
+                    "Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats \
+                     are unsupported in this test run. All other algorithms are unaffected."
+                );
+                None
             }
-        } else {
-            // OpenSSL < 3.0: load the default provider
-            Some(Provider::load(None, "default").expect("Failed to load default provider"))
         }
     });
 }
@@ -473,10 +468,6 @@ pub fn init_openssl_providers() -> Result<(), openssl::error::ErrorStack> {
 }
 
 #[cfg(all(test, feature = "non-fips"))]
-// `clippy::expect_used` is `deny`d workspace-wide (see `Cargo.toml`'s
-// `[workspace.lints.clippy]`); `.expect("reason")` in test assertions is the sanctioned
-// exception called out in `rust.instructions.md`'s error-handling rules.
-#[expect(clippy::expect_used)]
 mod tests {
     use super::{init_openssl_providers, resolve_optional_provider};
 

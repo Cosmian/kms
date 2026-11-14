@@ -34,7 +34,7 @@ fn configure_kryoptic_token() -> PathBuf {
     )
     .expect("failed to write kryoptic token.conf");
 
-    #[allow(
+    #[expect(
         unsafe_code,
         reason = "single-threaded, one-time env setup before any HSM code runs"
     )]
@@ -44,6 +44,10 @@ fn configure_kryoptic_token() -> PathBuf {
     conf_path
 }
 
+#[expect(
+    unsafe_code,
+    reason = "loads the kryoptic cdylib and calls through its PKCS#11 function table"
+)]
 fn bootstrap_kryoptic_token(lib_path: &Path) -> Library {
     let library = unsafe { Library::new(lib_path) }.expect("failed to load kryoptic cdylib");
     unsafe {

@@ -30,6 +30,8 @@ use tokio::runtime::Runtime;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use crate::error::result::{KmsCliResult, KmsCliResultHelper as _};
+
 /// Track HSM keys created during benchmark for cleanup
 #[derive(Default, Clone)]
 pub(super) struct HsmKeyLedger {
@@ -89,9 +91,9 @@ impl HsmKeyLedger {
 
 /// Send lightweight requests to the KMS server for `warmup_secs` seconds to
 /// warm up HTTP connection pools, TLS sessions, and server-side caches.
-pub(super) fn run_warmup(rt: &Runtime, client: &KmsClient, warmup_secs: u64) {
+pub(super) fn run_warmup(rt: &Runtime, client: &KmsClient, warmup_secs: u64) -> KmsCliResult<()> {
     if warmup_secs == 0 {
-        return;
+        return Ok(());
     }
     let warmup_duration = Duration::from_secs(warmup_secs);
     eprintln!("[bench] Warmup: {warmup_secs}s...");
@@ -104,7 +106,7 @@ pub(super) fn run_warmup(rt: &Runtime, client: &KmsClient, warmup_secs: u64) {
         "warmup-aes-128",
         128,
         CryptographicAlgorithm::AES,
-    );
+    )?;
     let params = aes_gcm_params();
     let data = Zeroizing::new(vec![0xAB_u8; 64]);
 
@@ -130,6 +132,7 @@ pub(super) fn run_warmup(rt: &Runtime, client: &KmsClient, warmup_secs: u64) {
         "[bench] Warmup complete: {count} requests in {:.1}s",
         start.elapsed().as_secs_f64()
     );
+    Ok(())
 }
 
 // =============================================================================
@@ -348,7 +351,6 @@ pub(super) async fn remove_leftover_key(client: &KmsClient, uid: &UniqueIdentifi
 
 /// Set the private key identifier of a key pair request built without one; the server derives
 /// the public key identifier as `<uid>_pk`.
-#[cfg(feature = "non-fips")]
 pub(super) fn with_private_key_uid(mut req: CreateKeyPair, uid: UniqueIdentifier) -> CreateKeyPair {
     req.private_key_attributes
         .get_or_insert_with(cosmian_kms_client::kmip_2_1::kmip_attributes::Attributes::default)
@@ -366,7 +368,7 @@ pub(super) fn create_sym_key(
     name: &str,
     bits: usize,
     algo: CryptographicAlgorithm,
-) -> UniqueIdentifier {
+) -> KmsCliResult<UniqueIdentifier> {
     rt.block_on(async {
         let uid = bench_uid(None, name);
         remove_leftover_key(client, &uid).await;
@@ -379,12 +381,12 @@ pub(super) fn create_sym_key(
             false,
             None,
         )
-        .expect("symmetric key request");
-        client
+        .context("symmetric key request")?;
+        Ok(client
             .create(req)
             .await
-            .expect("create symmetric key")
-            .unique_identifier
+            .context("create symmetric key")?
+            .unique_identifier)
     })
 }
 
@@ -418,7 +420,7 @@ pub(super) fn create_rsa_kp(
     client: &KmsClient,
     name: &str,
     bits: usize,
-) -> (UniqueIdentifier, UniqueIdentifier) {
+) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
     rt.block_on(async {
         let uid = bench_uid(None, name);
         remove_leftover_key(client, &uid).await;
@@ -431,16 +433,16 @@ pub(super) fn create_rsa_kp(
                 false,
                 None,
             )
-            .expect("RSA key pair request"),
+            .context("RSA key pair request")?,
         );
         let resp = client
             .create_key_pair(req)
             .await
-            .expect("create RSA key pair");
-        (
+            .context("create RSA key pair")?;
+        Ok((
             resp.public_key_unique_identifier,
             resp.private_key_unique_identifier,
-        )
+        ))
     })
 }
 

@@ -25,13 +25,13 @@ crate, package, module, base image, action and installer as untrusted code.
 
 ## 2. Rust (Cargo)
 
-Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.yml`, pre-commit hook `cargo-deny`), `cargo machete` (CI job `cargo-machete`, pre-commit hook `cargo-machete`), `cargo vet check --locked` (CI job `cargo-vet`, pre-commit hook `cargo-vet`).
+Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main.yml`, pre-commit hook `cargo-deny`), `cargo machete` (CI job `cargo-machete`, pre-commit hook `cargo-machete`), `cargo vet check --locked` (CI job `cargo-vet` in `.github/workflows/supply-chain.yml`, pre-commit hook `cargo-vet`).
 
 - [ ] Declare the crate once in `[workspace.dependencies]` of the root `Cargo.toml` with an explicit version (`default-features = false` when it has default features); member crates use `<crate> = { workspace = true }`, adding `features = [...]` as needed (`toml.instructions.md`).
 - [ ] crates.io only: no `git =`, no `path =` outside the workspace, no `[patch.crates-io]` (`deny.toml` `[sources]` has `allow-git = []`).
 - [ ] FIPS-mode cryptography goes through OpenSSL (`rust-crypto.instructions.md`). A crate implementing a cryptographic primitive needs `/cryptography-review` first and, unless that review approves it for FIPS builds, is `optional = true` and enabled only through `dep:<crate>` in the member crate's `non-fips` feature (pattern: `crate/crypto/Cargo.toml`).
 - [ ] The crate's license is in the `allow` list of `deny.toml` `[licenses]`. Never extend that list, add a `[[licenses.clarify]]`, or add an advisory ignore without explicit user approval; an approved ignore is `{ id = "RUSTSEC-…", reason = "…" }` in `deny.toml` plus the same ID in `.cargo/audit.toml`.
-- [ ] `cargo deny check` passes. Run it yourself: its pre-commit hook only fires when `.rs` files change.
+- [ ] `cargo deny check` passes. Its pre-commit hook fires when `Cargo.toml`, `Cargo.lock` or `deny.toml` changes.
 - [ ] `cargo machete` reports no unused dependency; a false positive goes into `[package.metadata.cargo-machete] ignored = [...]` of that crate's `Cargo.toml`.
 - [ ] `cargo vet check --locked` prints `Vetting Succeeded`. For each `<crate>:<version> missing ["<criteria>"]` line it prints instead:
     1. Run `cargo vet check` once without `--locked`: it fetches newer Mozilla, Google and Bytecode Alliance audits into `supply-chain/imports.lock` and prunes exemptions they make unused. Keep the resulting `supply-chain/` changes either way; never revert them with `git checkout`.
@@ -46,9 +46,9 @@ Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main_base.y
 
 ## 3. JavaScript (pnpm, `ui/`)
 
-`ui/` is the only npm project of this repository (`"packageManager": "pnpm@10.17.1"`, lockfile `ui/pnpm-lock.yaml`). `crate/clients/wasm/package.json` is the wasm-pack input manifest (only `repository`): never add npm dependencies to it.
+`ui/` is the only npm project of this repository (`"packageManager": "pnpm@10.34.9"`, lockfile `ui/pnpm-lock.yaml`). `crate/clients/wasm/package.json` is the wasm-pack input manifest (only `repository`): never add npm dependencies to it.
 
-No CI gate covers npm yet (open tasks of #1265), so these checks are mandatory for agents. Run them from `ui/`:
+Gates: CI job `npm-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-commit hooks `npm-policy` and `pnpm-frozen-lockfile`, pre-push hook `npm-audit` (`mise run audit:npm --base origin/develop`: npm policy, OSV-Scanner, registry signatures). On a PR, OSV-Scanner fails only on advisories absent from the base branch, and on any `MAL-*` (malicious package); the daily develop run fails on any advisory. `ui/.npmrc` enforces the 7-day cooldown and `strict-dep-builds`. Run these checks from `ui/`:
 
 - [ ] Release-age cooldown: the version was published at least 7 days ago. List the eligible versions:
 
@@ -57,16 +57,17 @@ No CI gate covers npm yet (open tasks of #1265), so these checks are mandatory f
     ```
 
     Then `pnpm add <pkg>@<version>` (`pnpm add -D` for build and test tooling). Never an unversioned `pnpm add <pkg>` or `@latest`.
-- [ ] Install scripts: pnpm 10 runs dependency lifecycle scripts only for packages listed in `pnpm.onlyBuiltDependencies` of `ui/package.json`. Leave packages reported under "Ignored build scripts" ignored and never run `pnpm approve-builds`; add an allowlist entry only when the feature cannot work without the script, and justify it in the PR.
-- [ ] Fix a vulnerable transitive package with a `pnpm.overrides` entry in the style of the existing ones (`"ws": ">=8.20.1"`) and cite the advisory ID in the commit message.
+- [ ] Skip the cooldown only to fix an advisory that develop already ships and that a human judged urgent: add one `minimum-release-age-exclude[]=<name>@<exact version>` line per too-recent version (the fix and any new dependency it pulls in) to `ui/.npmrc`, under a comment citing the advisory (`npm-policy` hook). Never exclude a package name or pattern. `mise run audit:npm` warns once an exclusion is no longer needed; then remove it.
+- [ ] Install scripts: `pnpm.onlyBuiltDependencies` of `ui/package.json` stays empty (`npm-policy` hook), so pnpm runs no dependency lifecycle script, and `strict-dep-builds` fails the install on any script not listed in `pnpm.ignoredBuiltDependencies`. Never run `pnpm approve-builds`; add an `ignoredBuiltDependencies` entry only when the package works without its script, and justify it in the PR.
+- [ ] Fix a vulnerable transitive package with a `pnpm.overrides` entry in the style of the existing ones (`"ws": "^8.20.1"`; the `npm-policy` hook rejects unbounded `>=` ranges) and cite the advisory ID in the commit message.
 - [ ] `pnpm install --frozen-lockfile` succeeds with the committed `ui/pnpm-lock.yaml`.
-- [ ] `pnpm audit` reports no advisory whose path goes through a package you added or bumped.
+- [ ] OSV-Scanner (`mise run audit:npm --base origin/develop`) reports no advisory on a package you added or bumped. Ignore an advisory in `ui/osv-scanner.toml` only with a reachability reason and an `ignoreUntil` date.
 - [ ] `pnpm run check:dedup` (knip) does not report the new package as unused.
 - [ ] `ui/pnpm-lock.yaml` changed → also `lockfile-hashes.instructions.md` (`ui.pnpm.{linux,darwin}.sha256`).
 
 ## 4. Python (test and docs helpers)
 
-Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/main_base.yml`), pre-push hook `pip-audit-lockfiles`.
+Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
 
 - [ ] Prefer the standard library (`python.instructions.md`).
 - [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/requirements-jose.in`).
@@ -77,12 +78,12 @@ Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/
 
 ## 5. Go (`.mise/scripts/kmip-go`)
 
-Gates: CI job `govulncheck` (`.github/workflows/main_base.yml`), pre-push hook `govulncheck`.
+Gates: CI job `govulncheck` (`.github/workflows/supply-chain.yml`), pre-push hook `govulncheck`.
 
 - [ ] From the module directory: `go get <module>@vX.Y.Z` (never `@latest`), `go mod tidy`, `go mod verify`; commit `go.mod` and `go.sum`.
 - [ ] Bump the `toolchain` line only to a Go release that fixes a standard-library vulnerability reported by govulncheck.
 - [ ] `govulncheck -test ./...` reports no vulnerability.
-- [ ] A new Go module: add a `gomod` entry to `.github/dependabot.yml`, a govulncheck run to `.github/workflows/main_base.yml`, and its path to the `govulncheck` hook of `.pre-commit-config.yaml`.
+- [ ] A new Go module: add a `gomod` entry to `.github/dependabot.yml`, a govulncheck run to `.github/workflows/supply-chain.yml`, and its path to the `govulncheck` hook of `.pre-commit-config.yaml`.
 
 ## 6. Docker base images
 
@@ -97,7 +98,7 @@ Gate: pre-commit hook `github-actions-sha-pin`; Dependabot (`github-actions`) ke
 
 - [ ] Reuse an action already pinned under `.github/` (copy its `uses:` line).
 - [ ] A new action or reusable workflow is `uses: <owner>/<repo>[/<path>]@<40-hex commit SHA> # <tag or branch>`; resolve the SHA with `GH_PAGER=cat gh api repos/<owner>/<repo>/commits/<tag or branch> --jq .sha`. Local `./.github/...` references are exempt.
-- [ ] A tool installed by a step pins an exact version: `cargo install --locked <tool>@<x.y.z>`, `go install <module>@vX.Y.Z`, `pip install <tool>==<x.y.z>`, `npm install -g <tool>@<x.y.z>` (pattern: the supply-chain jobs of `.github/workflows/main_base.yml`).
+- [ ] A tool installed by a step pins an exact version: `cargo install --locked <tool>@<x.y.z>`, `go install <module>@vX.Y.Z`, `pip install <tool>==<x.y.z>`, `npm install -g <tool>@<x.y.z>` (pattern: the supply-chain jobs of `.github/workflows/supply-chain.yml`).
 - [ ] Least-privilege `permissions:` (`github-actions.instructions.md`). Never give release, signing or registry secrets to a job that installs or builds third-party code; publish from a separate job.
 
 ## 8. Downloaded installers and binaries
@@ -111,7 +112,6 @@ Gate: pre-commit hook `no-curl-pipe-shell` (workflows, actions, `.mise/`, `scrip
 
 - `.mise/scripts/edb_tde/Dockerfile.edb`: tag-only `FROM` (the digest needs `EDB_SUBSCRIPTION_TOKEN`; excluded from the digest hook).
 - `.mise/scripts/pykmip/setup_pykmip.sh`: unpinned `pip install PyKMIP`, with a `git+https://github.com/OpenKMIP/PyKMIP.git` fallback.
-- `.mise/tasks/build/ui` and `.mise/scripts/windows/windows_ui.ps1`: `pnpm install` without `--frozen-lockfile`.
 - `documentation/theme/scripts/setup-mdbook.sh` (submodule): `curl | sh` rustup fallback when `cargo` is missing; `cargo install` without `--locked` for `mdbook-admonish`, `mdbook-mermaid` and `mdbook-linkcheck`.
 
 > Rule 4.19 of `/kms-sync-rules`. Lock-file hash sync: `lockfile-hashes.instructions.md` (rule 4.11).

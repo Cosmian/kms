@@ -178,7 +178,9 @@ def main():
                 }
 
             # Output result as JSON for easy parsing
-            print(json.dumps(result, indent=2))
+            print(json.dumps(result, indent=2, default=str))
+            if result.get('status') != 'success':
+                sys.exit(1)
 
         except Exception as operation_error:
             # Catch any unhandled exceptions from operations
@@ -581,6 +583,7 @@ def perform_destroy(proxy, verbose=False):
         print('Creating, revoking, and destroying symmetric key...')
 
     try:
+        from datetime import datetime, timezone
         # First create a key using proper template approach
         from kmip.core import objects as cobjects
         from kmip.core.factories.attributes import AttributeFactory
@@ -594,7 +597,14 @@ def perform_destroy(proxy, verbose=False):
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH, 256
         )
 
-        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        # Activation Date is required: a PreActive key cannot be revoked
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, activation_date_attr]
+        )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
         # Check if create operation succeeded
@@ -623,75 +633,51 @@ def perform_destroy(proxy, verbose=False):
             revocation_message='Key being prepared for destruction',
         )
 
-        # Check if revoke succeeded
-        revoke_success = True
-        revoke_error = None
+        if (
+            not hasattr(revoke_result, 'result_status')
+            or revoke_result.result_status.value != enums.ResultStatus.SUCCESS
+        ):
+            error_msg = f'Revoke failed: {getattr(revoke_result, "result_reason", "no result_status")}'
+            if getattr(revoke_result, 'result_message', None):
+                error_msg += f' - {revoke_result.result_message}'
+            return {
+                'operation': 'Destroy',
+                'status': 'error',
+                'uid': uid,
+                'error': error_msg,
+            }
 
-        if hasattr(revoke_result, 'result_status'):
-            if revoke_result.result_status.value != enums.ResultStatus.SUCCESS:
-                revoke_success = False
-                revoke_error = f'Revoke failed: {revoke_result.result_reason}'
-                if (
-                    hasattr(revoke_result, 'result_message')
-                    and revoke_result.result_message
-                ):
-                    revoke_error += f' - {revoke_result.result_message}'
-
-                if verbose:
-                    print(f'Warning: {revoke_error}')
-
-        if verbose and revoke_success:
+        if verbose:
             print(f'Revoked key with UID: {uid}')
 
         # Then destroy it
         destroy_result = proxy.destroy(uuid=uid)
 
-        # Check if destroy actually succeeded
-        if hasattr(destroy_result, 'result_status'):
-            if destroy_result.result_status.value == enums.ResultStatus.SUCCESS:
-                response = {
-                    'operation': 'Destroy',
-                    'status': 'success',
-                    'uid': uid,
-                    'revoke_success': revoke_success,
-                    'message': f"Key created, {'revoked, ' if revoke_success else 'revoke failed, '}and destroyed successfully",
-                }
-
-                if revoke_error:
-                    response['revoke_error'] = revoke_error
-
-            else:
-                # Destroy failed
-                error_msg = f'Destroy operation failed: {destroy_result.result_reason}'
-                if (
-                    hasattr(destroy_result, 'result_message')
-                    and destroy_result.result_message
-                ):
-                    error_msg += f' - {destroy_result.result_message}'
-
-                response = {
-                    'operation': 'Destroy',
-                    'status': 'error',
-                    'uid': uid,
-                    'error': error_msg,
-                    'revoke_success': revoke_success,
-                    'note': f"Key was created and {'revoked' if revoke_success else 'revoke attempted'} but destroy failed",
-                }
-
-                if revoke_error:
-                    response['revoke_error'] = revoke_error
-        else:
-            # Fallback if result structure is unexpected
+        if not hasattr(destroy_result, 'result_status'):
+            response = {
+                'operation': 'Destroy',
+                'status': 'error',
+                'uid': uid,
+                'error': 'Destroy result has no result_status',
+            }
+        elif destroy_result.result_status.value == enums.ResultStatus.SUCCESS:
             response = {
                 'operation': 'Destroy',
                 'status': 'success',
                 'uid': uid,
-                'revoke_success': revoke_success,
-                'message': f"Key created, {'revoked, ' if revoke_success else 'revoke failed, '}and destroyed successfully (result status unknown)",
+                'message': 'Key created, revoked, and destroyed successfully',
             }
-
-            if revoke_error:
-                response['revoke_error'] = revoke_error
+        else:
+            error_msg = f'Destroy operation failed: {destroy_result.result_reason}'
+            if getattr(destroy_result, 'result_message', None):
+                error_msg += f' - {destroy_result.result_message}'
+            response = {
+                'operation': 'Destroy',
+                'status': 'error',
+                'uid': uid,
+                'error': error_msg,
+                'note': 'Key was created and revoked but destroy failed',
+            }
 
         if verbose:
             print(f'Destroyed key with UID: {uid}')
@@ -1013,7 +999,16 @@ def perform_revoke(proxy, verbose=False):
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH, 256
         )
 
-        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        # Revoke (non-compromise) is only valid from Active: activate at creation.
+        from datetime import datetime, timezone
+
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, activation_date_attr]
+        )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
         # Check if create operation succeeded
@@ -1059,12 +1054,11 @@ def perform_revoke(proxy, verbose=False):
                     'error': error_msg,
                 }
         else:
-            # Fallback - assume success if no status field (shouldn't happen)
             response = {
                 'operation': 'Revoke',
-                'status': 'success',
+                'status': 'error',
                 'uid': uid,
-                'message': 'Key revoked successfully (result status unknown)',
+                'error': 'Revoke result has no result_status',
             }
         if verbose:
             print(f'Revoke operation completed for UID: {uid}')
@@ -1496,8 +1490,12 @@ def perform_mac(proxy, verbose=False):
             int(datetime.now(timezone.utc).timestamp()),
         )
 
+        mask_attr = attribute_factory.create_attribute(
+            enums.AttributeType.CRYPTOGRAPHIC_USAGE_MASK,
+            [enums.CryptographicUsageMask.MAC_GENERATE],
+        )
         template = cobjects.TemplateAttribute(
-            attributes=[algorithm_attr, length_attr, activation_date_attr]
+            attributes=[algorithm_attr, length_attr, activation_date_attr, mask_attr]
         )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
@@ -1860,18 +1858,6 @@ def perform_get(proxy, verbose=False):
             if verbose:
                 print(f'Get error traceback:\n{full_traceback}')
 
-            # PyKMIP 0.10.0 cannot deserialise attributes it does not know about
-            # (e.g. ALWAYS_SENSITIVE added in KMIP 2.1). The batch status SUCCESS
-            # was confirmed before the parse step, so the Get DID succeed on the
-            # server side — treat unknown-attribute parse errors as success.
-            if 'No value type for' in error_msg:
-                return {
-                    'operation': 'Get',
-                    'status': 'success',
-                    'uid': uid,
-                    'message': f'Object retrieved successfully (PyKMIP 0.10.0 response parse limitation: {error_msg})',
-                }
-
             return {
                 'operation': 'Get',
                 'status': 'error',
@@ -2049,25 +2035,12 @@ def perform_modify_attribute(proxy, verbose=False):
                 'error': str(exc),
             }
         except Exception as exc:
-            msg = str(exc)
-            # PyKMIP 0.10.0 cannot deserialize the COMMENT placeholder the server
-            # includes in the KMIP 1.x ModifyAttributeResponse for shape compatibility.
-            # The batch status SUCCESS is confirmed before this parse step, so the
-            # server request DID succeed — treat non-OperationFailure parse errors as success.
-            if 'No value type for' in msg:
-                return {
-                    'operation': 'ModifyAttribute',
-                    'status': 'success',
-                    'uid': uid,
-                    'attribute': 'ActivationDate',
-                    'value': activation_date,
-                    'message': f'ActivationDate set (PyKMIP 0.10.0 response parse limitation: {msg})',
-                }
+            # Decoder failures (e.g. 'No value type for') are errors, never success.
             return {
                 'operation': 'ModifyAttribute',
                 'status': 'error',
                 'uid': uid,
-                'error': msg,
+                'error': str(exc),
             }
 
     except (

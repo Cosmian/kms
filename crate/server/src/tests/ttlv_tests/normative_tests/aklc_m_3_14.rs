@@ -1,4 +1,3 @@
-use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_1_4::kmip_operations::ModifyAttribute;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -6,8 +5,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ResponseMessage, ResponseMessageBatchItemVersioned,
         },
         kmip_types::{
-            CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
-            RevocationReason, RevocationReasonCode,
+            CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration, RevocationReason,
+            RevocationReasonCode,
         },
     },
     kmip_1_4::{
@@ -22,10 +21,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, log_init};
 use time::OffsetDateTime;
 
-use crate::{
-    error::KmsError,
-    tests::ttlv_tests::{get_client, socket_client::SocketClient},
-};
+use crate::tests::ttlv_tests::{get_client, socket_client::SocketClient};
 
 /// This test implements the Asymmetric Key Lifecycle test case AKLC-M-3-14
 /// which tests the following operations:
@@ -59,7 +55,6 @@ fn test_aklc_m_3_14() {
 
     // FIXME: Not Yet Supported
     // // Step 5: Try to modify activation date (expected to fail)
-    // try_modify_activation_date(&client, &private_key_id);
 
     // Step 6: Revoke the private key
     revoke_key(&client, &private_key_id);
@@ -89,7 +84,7 @@ fn create_key_pair(client: &SocketClient) -> (String, String) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::CreateKeyPair,
                 ephemeral: None,
@@ -122,7 +117,7 @@ fn create_key_pair(client: &SocketClient) -> (String, String) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -166,7 +161,7 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -189,7 +184,7 @@ fn get_private_key_attributes(client: &SocketClient, private_key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -328,17 +323,17 @@ fn activate_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Activate,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Activate(Activate {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -366,7 +361,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -381,7 +376,7 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -434,59 +429,6 @@ fn get_activation_attributes(client: &SocketClient, key_id: &str) {
     info!("Successfully verified activation attributes");
 }
 
-// FIXME: Not Yet Supported
-/// Try to modify activation date (expected to fail)
-fn try_modify_activation_date(client: &SocketClient, key_id: &str) {
-    // Get current time in UTC
-    let now = cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize()
-        .map_err(|e| KmsError::Default(e.to_string()))
-        .unwrap();
-
-    let request_message = RequestMessage {
-        request_header: RequestMessageHeader {
-            protocol_version: ProtocolVersion {
-                protocol_version_major: 1,
-                protocol_version_minor: 4,
-            },
-            batch_count: 1,
-            ..Default::default()
-        },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
-                operation: OperationEnumeration::ModifyAttribute,
-                ephemeral: None,
-                unique_batch_item_id: Some(b"0752c951bb9926cc".to_vec()), /* Using the same ID as in the XML */
-                request_payload: Operation::ModifyAttribute(ModifyAttribute {
-                    unique_identifier: Some(key_id.to_owned()),
-                    attribute: Attribute::ActivationDate(now),
-                }),
-                message_extension: None,
-            },
-        )],
-    };
-
-    let response = client
-        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
-        .expect("Failed to send ModifyAttribute request");
-
-    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
-    else {
-        panic!("Expected V14 response message");
-    };
-
-    // The operation is expected to fail with permission denied
-    assert_eq!(
-        batch_item.result_status,
-        ResultStatusEnumeration::OperationFailed
-    );
-    assert_eq!(
-        batch_item.result_reason,
-        Some(ErrorReason::Permission_Denied)
-    );
-
-    info!("Successfully verified ModifyAttribute failure as expected");
-}
-
 /// Revoke the key
 fn revoke_key(client: &SocketClient, key_id: &str) {
     let request_message = RequestMessage {
@@ -498,7 +440,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Revoke,
                 ephemeral: None,
@@ -516,7 +458,7 @@ fn revoke_key(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -544,7 +486,7 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -555,7 +497,7 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -601,7 +543,7 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
@@ -612,7 +554,7 @@ fn check_public_key_state(client: &SocketClient, key_id: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -664,17 +606,17 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Destroy,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Destroy(Destroy {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

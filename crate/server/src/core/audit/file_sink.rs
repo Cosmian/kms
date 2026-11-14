@@ -326,23 +326,17 @@ fn try_acquire_lock(lock_path: &Path) -> std::io::Result<std::fs::File> {
         .truncate(false)
         .write(true)
         .open(lock_path)?;
-    if fs4::fs_std::FileExt::try_lock_exclusive(&file)? {
-        Ok(file)
-    } else {
-        Err(std::io::Error::new(
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(std::fs::TryLockError::WouldBlock) => Err(std::io::Error::new(
             std::io::ErrorKind::WouldBlock,
             "audit log lock is held by another instance",
-        ))
+        )),
+        Err(std::fs::TryLockError::Error(error)) => Err(error),
     }
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::io::Read;
 
@@ -350,6 +344,41 @@ mod tests {
     use time::OffsetDateTime;
 
     use super::*;
+
+    #[test]
+    fn lock_is_exclusive_released_on_drop_and_preserves_contents() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let path = dir.path().join("audit.lock");
+        std::fs::write(&path, b"existing lock bytes").expect("seed lock file");
+
+        let held = try_acquire_lock(&path).expect("first acquisition");
+        let error = try_acquire_lock(&path).expect_err("independent open must contend");
+        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+        assert_eq!(
+            error.to_string(),
+            "audit log lock is held by another instance"
+        );
+        drop(held);
+
+        let reacquired = try_acquire_lock(&path).expect("reacquire after release");
+        // Windows locks also prevent reads through independently opened handles.
+        drop(reacquired);
+        assert_eq!(
+            std::fs::read(&path).expect("read lock file"),
+            b"existing lock bytes"
+        );
+    }
+
+    #[test]
+    fn invalid_lock_parent_is_not_contention() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let parent = dir.path().join("not-a-directory");
+        std::fs::write(&parent, b"file").expect("create file parent");
+
+        let error = try_acquire_lock(&parent.join("audit.lock"))
+            .expect_err("a file cannot be the lock directory");
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    }
 
     fn temp_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

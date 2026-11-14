@@ -152,7 +152,7 @@ impl Session {
         let data_len = CK_ULONG::try_from(data.len())?;
         let data_ptr = data.as_mut_ptr();
         Self::call_into_signature_buffer("C_SignMessage", |sig_ptr, sig_len| {
-            #[expect(unsafe_code)]
+            #[expect(unsafe_code, reason = "PKCS#11 MessageSign C calls")]
             // SAFETY: `data_ptr`/`data_len` describe the live `data` buffer; `sig_ptr` points to
             // a buffer of `*sig_len` bytes owned by `call_into_signature_buffer`; a null
             // `pParameter` with length 0 is valid for mechanisms without per-message parameters.

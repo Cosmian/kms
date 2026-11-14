@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, io::Write as _, path::PathBuf};
 
 use base64::Engine;
 use clap::Parser;
@@ -6,7 +6,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
         kmip_data_structures::KeyValue,
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters, Tag},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Tag},
     },
 };
 use cosmian_kms_client::{ExportObjectParams, KmsClient, export_object};
@@ -47,17 +47,24 @@ pub struct ExportByokAction {
 }
 
 impl ExportByokAction {
-    #[allow(clippy::print_stdout, clippy::or_fun_call)] // the kms console wrapper forces a println but this function does not want a line return for proper display
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<String> {
         let (wrapping_cryptographic_parameters, key_arn) =
             self.resolve_kek_wrapping_params(&kms_client).await?;
+
+        // AWS requires asymmetric key material as PKCS#8 (RFC 5208): a private key stored in
+        // another format (e.g. PKCS#1) is wrapped as it is stored unless converted.
+        let (_, key_attributes) =
+            get_attributes(&kms_client, &self.key_id, &[Tag::ObjectType], &[]).await?;
+        let key_format_type = (key_attributes.get("ObjectType").and_then(|v| v.as_str())
+            == Some("PrivateKey"))
+        .then_some(KeyFormatType::PKCS8);
 
         // Export the key wrapped with the KEK
         let export_params = ExportObjectParams {
             unwrap: false,
             wrapping_key_id: Some(&self.kek_id),
             allow_revoked: false,
-            key_format_type: None,
+            key_format_type,
             encode_to_ttlv: false,
             wrapping_cryptographic_parameters,
         };
@@ -76,7 +83,7 @@ impl ExportByokAction {
 
             // Print all formatting and instructions to stderr to not interfere with pipes. THIS IS NOT A MISTAKE, THIS WAS INTENTIONAL, and editing the lines below might break all the bash automated byok scripts, so be mindful of that if ever you will change this code.
             eprint!("The encrypted key material was successfully written to ");
-            print!("{}", file_path.display());
+            write!(std::io::stdout().lock(), "{}", file_path.display())?;
             eprintln!(
                 "{} for key {}.\n\n\
          To import into AWS KMS using the API, run:\n\

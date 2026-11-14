@@ -238,7 +238,7 @@ async fn generate_ec_key_pair(
     let recommended_curve = curve_from_crv(crv)?;
     let alg = body.alg.as_deref();
 
-    let tags: &[&str] = if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
+    let tags: &[&str] = if kms.params.jwks_endpoint.auto_tag {
         &[JWKS_TAG]
     } else {
         &[]
@@ -260,19 +260,19 @@ async fn generate_ec_key_pair(
     // `alg=ES256/384`) instead of a pure encryption/key-agreement key. Override
     // the usage mask on every attribute set to the KeyAgreement-only mask in
     // that case.
-    if let Some(alg) = alg {
-        if matches!(alg, "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW") {
-            let key_agreement_mask = usage_mask_from_alg(alg);
-            for attrs in [
-                create_req.common_attributes.as_mut(),
-                create_req.private_key_attributes.as_mut(),
-                create_req.public_key_attributes.as_mut(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
-            }
+    if let Some(alg) = alg
+        && matches!(alg, "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A256KW")
+    {
+        let key_agreement_mask = usage_mask_from_alg(alg);
+        for attrs in [
+            create_req.common_attributes.as_mut(),
+            create_req.private_key_attributes.as_mut(),
+            create_req.public_key_attributes.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            attrs.cryptographic_usage_mask = Some(key_agreement_mask);
         }
     }
 
@@ -333,7 +333,7 @@ async fn generate_rsa_key_pair(
     let mut create_req = create_rsa_key_pair_request(
         kms.vendor_id(),
         None, // auto-generate UID
-        if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
+        if kms.params.jwks_endpoint.auto_tag {
             vec![JWKS_TAG]
         } else {
             vec![]
@@ -425,7 +425,7 @@ async fn generate_okp_key_pair(
 
     let recommended_curve = curve_from_crv(crv)?;
 
-    let tags: &[&str] = if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
+    let tags: &[&str] = if kms.params.jwks_endpoint.auto_tag {
         &[JWKS_TAG]
     } else {
         &[]
@@ -439,19 +439,19 @@ async fn generate_okp_key_pair(
     // a generated X25519 key authorized for arbitrary operations (e.g. generic
     // encrypt/decrypt) even though the validation above only permits it to be used
     // for ECDH-ES key agreement. Restrict it to KeyAgreement explicitly.
-    if crv == "X25519" {
-        if let Some(alg) = alg {
-            let key_agreement_mask = usage_mask_from_alg(alg);
-            for attrs in [
-                create_req.common_attributes.as_mut(),
-                create_req.private_key_attributes.as_mut(),
-                create_req.public_key_attributes.as_mut(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                attrs.cryptographic_usage_mask = Some(key_agreement_mask);
-            }
+    if crv == "X25519"
+        && let Some(alg) = alg
+    {
+        let key_agreement_mask = usage_mask_from_alg(alg);
+        for attrs in [
+            create_req.common_attributes.as_mut(),
+            create_req.private_key_attributes.as_mut(),
+            create_req.public_key_attributes.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            attrs.cryptographic_usage_mask = Some(key_agreement_mask);
         }
     }
 
@@ -560,7 +560,7 @@ async fn import_symmetric_key(
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes),
                 },
-                attributes: Some(attributes.clone()),
+                attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_algorithm: Some(crypto_alg),
             cryptographic_length: Some(key_len_bits),
@@ -609,7 +609,7 @@ fn spki_public_key_object(spki_der: Vec<u8>, attributes: Attributes) -> Object {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(spki_der)),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -807,7 +807,7 @@ async fn import_ec_key(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
-                attributes: Some(ec_attributes.clone()),
+                attributes: Some(Box::new(ec_attributes.clone())),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -948,7 +948,7 @@ async fn import_rsa_key(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
-                attributes: Some(rsa_attributes.clone()),
+                attributes: Some(Box::new(rsa_attributes.clone())),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -1198,7 +1198,7 @@ async fn import_okp_key(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
-                attributes: Some(okp_attributes.clone()),
+                attributes: Some(Box::new(okp_attributes.clone())),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,

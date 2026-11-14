@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 cargo build -p ckms --features non-fips
 
 # Regenerate the detailed per-subcommand reference.
-"${REPO_ROOT}/target/debug/ckms" markdown \
+"${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/ckms" markdown \
   "${REPO_ROOT}/documentation/docs/kms_clients/cli/main_commands.md"
 
 # Strip trailing whitespace the generator may emit for subcommands with an
@@ -26,7 +26,7 @@ USAGE_MD="${REPO_ROOT}/documentation/docs/kms_clients/usage.md"
   echo "# Usage"
   echo ""
   echo '```sh'
-  "${REPO_ROOT}/target/debug/ckms" --help 2>&1 | sed 's/[[:space:]]*$//'
+  "${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/ckms" --help 2>&1 | sed 's/[[:space:]]*$//'
   echo '```'
 } >"${USAGE_MD}"
 echo "Markdown generated to ${USAGE_MD}"

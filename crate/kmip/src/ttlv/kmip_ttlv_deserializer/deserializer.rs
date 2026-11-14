@@ -31,16 +31,12 @@ use crate::{
 /// case, the tag is the name of the variant.
 ///
 /// #see `Object::post_fix()`
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "public API taken by value by ~160 call sites; the deserializer borrows it internally"
-)]
-pub fn from_ttlv<'a, T>(s: TTLV) -> Result<T>
+pub fn from_ttlv<'a, T>(s: &TTLV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
     trace!("from_ttlv: {s:?}");
-    let mut deserializer = TtlvDeserializer::from_ttlv(&s);
+    let mut deserializer = TtlvDeserializer::from_ttlv(s);
     T::deserialize(&mut deserializer)
 }
 
@@ -585,6 +581,14 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
                 "deserialize_str: expected a TextString value in TTLV; tag='{}' actual={}",
                 element.tag, actual
             )))
+        } else if let (TTLValue::DateTime(date), "ValidityTime" | "ValidityDate") =
+            (&element.value, &*element.tag)
+        {
+            // The Validity fields are modelled as ASN.1 time strings: read a Date-Time as RFC 3339.
+            let formatted = date
+                .format(&time::format_description::well_known::Rfc3339)
+                .map_err(|e| TtlvError::from(e.to_string()))?;
+            visitor.visit_string(formatted)
         } else if let TTLValue::Integer(i) = &element.value {
             // KMIP 2.1 allows Unique Identifier (and Linked Object Identifier) to be Integer.
             // If the target expects a string, coerce by rendering the integer.

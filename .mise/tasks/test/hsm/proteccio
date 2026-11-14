@@ -6,5 +6,47 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/hsm-proteccio" "$@"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+[ "$(uname -s)" = Linux ] || skip_test "Linux only"
+# shellcheck source=/dev/null
+if [ -f "${HOME}/.cosmian/proteccio.sh" ]; then source "${HOME}/.cosmian/proteccio.sh"; fi
+if ! has_env_vars PROTECCIO_PASSWORD PROTECCIO_SLOT; then
+  if [ "${CI:-}" = true ]; then print_error "env PROTECCIO_PASSWORD PROTECCIO_SLOT not set (CI secret missing)"; fi
+  skip_test "env PROTECCIO_PASSWORD PROTECCIO_SLOT not set"
+fi
+if [ "${CI:-}" != true ]; then
+  has_cmd nix-shell || skip_test "nix-shell not found"
+fi
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "Running Proteccio HSM tests (${VARIANT_NAME})"
+
+# Prepare Proteccio HSM libraries: downloads, extracts, and installs to /lib/.
+bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_proteccio.sh"
+
+require_cmd cargo
+
+# PROTECCIO_PKCS11_LIB matches the crate constant in proteccio_pkcs11_loader.
+# HSM_USER_PASSWORD and HSM_SLOT_ID are read by the Rust test harness.
+# The vendor library (libnethsm.so) fails in C_Initialize (CKR_FUNCTION_FAILED) when the
+# nix-shell FIPS OpenSSL bootstrap variables are inherited, so run the test with a clean
+# OpenSSL environment (same as the nethsmstatus check in prepare_proteccio.sh).
+env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
+  HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}" \
+  HSM_SLOT_ID="${PROTECCIO_SLOT}" \
+  cargo test \
+  -p proteccio_pkcs11_loader \
+  --features proteccio \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- --nocapture tests::test_hsm_proteccio_all --ignored --exact
+
+print_success "Proteccio HSM tests completed"

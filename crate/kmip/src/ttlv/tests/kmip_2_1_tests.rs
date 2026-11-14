@@ -20,7 +20,7 @@ use crate::{
     },
     kmip_2_1::{
         kmip_attributes::{Attribute, Attributes},
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, SupportedProtectionStorageMasks},
         kmip_messages::{RequestMessageBatchItem, ResponseMessageBatchItem},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey, SymmetricKey},
         kmip_operations::{
@@ -45,14 +45,14 @@ fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
 fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue::Structure {
         key_material: aes_key_material(key_value),
-        attributes: Some(Attributes {
+        attributes: Some(Box::new(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(key_value.len() as i32 * 8),
+            cryptographic_length: Some(i32::try_from(key_value.len()).unwrap() * 8),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::default()
-        }),
+        })),
     }
 }
 
@@ -62,7 +62,7 @@ fn aes_key_block(key_value: &[u8]) -> KeyBlock {
         key_compression_type: None,
         key_value: Some(aes_key_value(key_value)),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        cryptographic_length: Some(key_value.len() as i32 * 8),
+        cryptographic_length: Some(i32::try_from(key_value.len()).unwrap() * 8),
         key_wrapping_data: None,
     }
 }
@@ -100,7 +100,7 @@ fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                     },
                     TTLV {
                         tag: "CryptographicLength".into(),
-                        value: TTLValue::Integer(key_value.len() as i32 * 8),
+                        value: TTLValue::Integer(i32::try_from(key_value.len()).unwrap() * 8),
                     },
                     TTLV {
                         tag: "CryptographicUsageMask".into(),
@@ -147,7 +147,7 @@ fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
             },
             TTLV {
                 tag: "CryptographicLength".into(),
-                value: TTLValue::Integer(key_value.len() as i32 * 8),
+                value: TTLValue::Integer(i32::try_from(key_value.len()).unwrap() * 8),
             },
         ]),
     }
@@ -178,7 +178,7 @@ fn test_ser_aes_key() {
     assert_eq!(ttlv, ttlv_from_json);
 
     // Deserializer
-    let rec: Object = from_ttlv(ttlv.clone()).unwrap();
+    let rec: Object = from_ttlv(&ttlv).unwrap();
     assert_eq!(aes_key, rec);
 
     assert_eq!(aes_key_ttlv(key_bytes), ttlv);
@@ -208,7 +208,7 @@ fn test_des_int() {
         ]),
     };
 
-    let rec: Test = from_ttlv(ttlv).unwrap();
+    let rec: Test = from_ttlv(&ttlv).unwrap();
     assert_eq!(
         &Test {
             an_int: 2,
@@ -241,7 +241,7 @@ fn test_des_array() {
         ]),
     };
 
-    let rec: Test = from_ttlv(ttlv).unwrap();
+    let rec: Test = from_ttlv(&ttlv).unwrap();
     assert_eq!(&Test { ints: vec![2, 4] }, &rec);
 }
 
@@ -265,7 +265,7 @@ fn test_des_enum() {
         }]),
     };
 
-    let rec: Test = from_ttlv(ttlv).unwrap();
+    let rec: Test = from_ttlv(&ttlv).unwrap();
     assert_eq!(
         &Test {
             crypto_algo: CryptographicAlgorithm::AES
@@ -284,7 +284,7 @@ fn test_aes_key_block() {
     assert_eq!(aes_key_block(key_bytes), kb);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
-    let rec: KeyBlock = from_ttlv(ttlv).unwrap();
+    let rec: KeyBlock = from_ttlv(&ttlv).unwrap();
     assert_eq!(aes_key_block(key_bytes), rec);
 }
 
@@ -307,7 +307,7 @@ fn test_des_aes_key() {
     assert_eq!(ttlv, ttlv_from_json);
 
     // Deserializer
-    let rec: Object = from_ttlv(ttlv).unwrap();
+    let rec: Object = from_ttlv(&ttlv).unwrap();
     assert_eq!(aes_key(key_bytes), rec);
 }
 
@@ -334,7 +334,7 @@ fn test_object_inside_struct() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: Wrapper = from_ttlv(ttlv).unwrap();
+    let rec: Wrapper = from_ttlv(&ttlv).unwrap();
     assert_eq!(wrapper, rec);
 }
 
@@ -361,7 +361,7 @@ fn test_vendor_attribute_value() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: VendorAttributeValue = from_ttlv(ttlv).unwrap();
+    let rec: VendorAttributeValue = from_ttlv(&ttlv).unwrap();
     assert_eq!(vendor_attribute_value, rec);
 }
 
@@ -392,7 +392,7 @@ fn test_vendor_attribute() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: VendorAttribute = from_ttlv(ttlv).unwrap();
+    let rec: VendorAttribute = from_ttlv(&ttlv).unwrap();
     assert_eq!(vendor_attribute, rec);
 }
 
@@ -458,7 +458,7 @@ fn test_import_symmetric_key() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: Import = from_ttlv(ttlv).unwrap();
+    let rec: Import = from_ttlv(&ttlv).unwrap();
     assert_eq!(import, rec);
 }
 
@@ -471,14 +471,14 @@ fn test_object_public_key() {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(b"1231456".to_vec())),
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(256),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                     ..Attributes::default()
-                }),
+                })),
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
@@ -495,7 +495,7 @@ fn test_object_public_key() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: Object = from_ttlv(ttlv).unwrap();
+    let rec: Object = from_ttlv(&ttlv).unwrap();
     assert_eq!(key, rec);
 
     // JSON
@@ -517,14 +517,14 @@ fn test_import_public_key() {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(256),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                     ..Attributes::default()
-                }),
+                })),
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
@@ -549,7 +549,7 @@ fn test_import_public_key() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: Import = from_ttlv(ttlv).unwrap();
+    let rec: Import = from_ttlv(&ttlv).unwrap();
     assert_eq!(import, rec);
 }
 
@@ -571,7 +571,7 @@ fn test_attributes() {
     let json = serde_json::to_value(&ttlv).unwrap();
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
-    let rec: Wrapper = from_ttlv(ttlv_).unwrap();
+    let rec: Wrapper = from_ttlv(&ttlv_).unwrap();
     assert_eq!(wrapper, rec);
 }
 
@@ -579,7 +579,10 @@ fn test_attributes() {
 fn test_some_attributes() {
     #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
     #[serde(untagged)]
-    #[expect(clippy::large_enum_variant)]
+    #[expect(
+        clippy::large_enum_variant,
+        reason = "test-local serde wrapper around a KMIP wire type"
+    )]
     enum Wrapper {
         #[serde(rename_all = "PascalCase")]
         Attr {
@@ -602,7 +605,7 @@ fn test_some_attributes() {
     let json = serde_json::to_value(&ttlv).unwrap();
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
-    let rec: Wrapper = from_ttlv(ttlv_).unwrap();
+    let rec: Wrapper = from_ttlv(&ttlv_).unwrap();
     assert_eq!(value, rec);
 }
 
@@ -643,7 +646,7 @@ fn test_untagged_enum() {
     assert_eq!(ttlv, ttlv_from_json);
 
     // Deserializer
-    let rec: Untagged = from_ttlv(ttlv).unwrap();
+    let rec: Untagged = from_ttlv(&ttlv).unwrap();
     assert_eq!(value, rec);
 }
 
@@ -654,7 +657,7 @@ fn test_java_import_response() {
         unique_identifier: UniqueIdentifier::TextString("blah".to_owned()),
     };
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
-    let ir_ = from_ttlv(serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
+    let ir_ = from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
     assert_eq!(ir, ir_);
 }
 
@@ -664,7 +667,7 @@ fn test_aes_key_full() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
-    let aes_key_: Object = from_ttlv(ttlv).unwrap();
+    let aes_key_: Object = from_ttlv(&ttlv).unwrap();
     assert_eq!(aes_key, aes_key_);
 }
 
@@ -695,7 +698,7 @@ fn test_attributes_with_links() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: Attributes = from_ttlv(ttlv).unwrap();
+    let rec: Attributes = from_ttlv(&ttlv).unwrap();
     assert_eq!(attributes, rec);
 }
 
@@ -717,7 +720,7 @@ pub(super) fn test_create() {
         protection_storage_masks: None,
     };
     let ttlv = to_ttlv(&create).unwrap();
-    let create_: Create = from_ttlv(ttlv).unwrap();
+    let create_: Create = from_ttlv(&ttlv).unwrap();
     assert_eq!(ObjectType::SymmetricKey, create_.object_type);
     assert_eq!(
         CryptographicAlgorithm::AES,
@@ -768,7 +771,7 @@ fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: &T) -> Result<
     let json = serde_json::to_string_pretty(&object_ttlv)?;
     // deserialize
     let ttlv: TTLV = serde_json::from_str(&json)?;
-    let t: T = from_ttlv(ttlv)?;
+    let t: T = from_ttlv(&ttlv)?;
     Ok(t)
 }
 
@@ -877,7 +880,7 @@ fn get_key_block() -> KeyBlock {
                 ),
             },
             // TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
-            attributes: Some(Attributes::default()),
+            attributes: Some(Box::new(Attributes::default())),
         }),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
@@ -900,7 +903,7 @@ pub(super) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Create,
                 ephemeral: None,
@@ -909,7 +912,7 @@ pub(super) fn test_message_enforce_enum() {
                 request_payload: Operation::Locate(Box::default()),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -927,9 +930,9 @@ pub(super) fn test_message_enforce_enum() {
             batch_count: 15,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem::new(Operation::Locate(Box::default())),
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -946,7 +949,7 @@ pub(super) fn test_message_enforce_enum() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Decrypt,
                 ephemeral: None,
@@ -959,7 +962,7 @@ pub(super) fn test_message_enforce_enum() {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -977,7 +980,7 @@ pub(super) fn test_message_enforce_enum() {
             time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(Box::new(
             ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: None,
@@ -989,7 +992,7 @@ pub(super) fn test_message_enforce_enum() {
                 result_message: None,
                 asynchronous_correlation_value: None,
             },
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1008,7 +1011,7 @@ pub(super) fn test_message_enforce_enum() {
             time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(Box::new(
             ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: None,
@@ -1020,7 +1023,7 @@ pub(super) fn test_message_enforce_enum() {
                 result_message: None,
                 asynchronous_correlation_value: Some("0, 0, 1".to_owned()),
             },
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1037,9 +1040,9 @@ pub(super) fn test_message_enforce_enum() {
             time_stamp: OffsetDateTime::from_unix_timestamp(1_697_201_574).unwrap(),
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(Box::new(
             ResponseMessageBatchItem::new(ResultStatusEnumeration::OperationPending),
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1065,7 +1068,7 @@ pub(super) fn test_message_enforce_enum() {
             }),
             server_hashed_password: Some(b"5e8953ab".to_vec()),
         },
-        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(Box::new(
             ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Locate),
                 unique_batch_item_id: Some(b"1234".to_vec()),
@@ -1075,14 +1078,14 @@ pub(super) fn test_message_enforce_enum() {
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }),
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
                 result_message: None,
                 asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
             },
-        )],
+        ))],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1110,7 +1113,7 @@ fn test_serde_attribute() {
     let ttlv_from_json = serde_json::from_str::<TTLV>(&json).unwrap();
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
-    let rec: Attribute = from_ttlv(ttlv).unwrap();
+    let rec: Attribute = from_ttlv(&ttlv).unwrap();
     assert_eq!(attribute, rec);
 }
 
@@ -1154,7 +1157,7 @@ fn test_deserialization_set_attribute() -> KmipResult<()> {
     "#;
     let ttlv: TTLV = serde_json::from_str(set_attribute_request)?;
     trace!("ttlv: {:?}", &ttlv);
-    let _set_attribute_request: SetAttribute = from_ttlv(ttlv)?;
+    let _set_attribute_request: SetAttribute = from_ttlv(&ttlv)?;
 
     Ok(())
 }
@@ -1184,7 +1187,7 @@ fn test_deserialization_attribute() -> KmipResult<()> {
     let ttlv: TTLV = serde_json::from_str(attribute_str)?;
     debug!("ttlv: {:?}", ttlv);
 
-    let _unused: Attribute = from_ttlv(ttlv)?;
+    let _unused: Attribute = from_ttlv(&ttlv)?;
 
     Ok(())
 }
@@ -1213,7 +1216,7 @@ fn test_deserialization_link() -> KmipResult<()> {
     let ttlv: TTLV = serde_json::from_str(link_str)?;
     trace!("ttlv: {:?}", ttlv);
 
-    let _unused: Link = from_ttlv(ttlv)?;
+    let _unused: Link = from_ttlv(&ttlv)?;
 
     Ok(())
 }
@@ -1237,7 +1240,7 @@ fn test_serialization_set_attribute() -> KmipResult<()> {
     let set_attribute = to_ttlv(&set_attribute_request)?;
     debug!("set_attribute: {:#?}", set_attribute);
 
-    let set_attribute_deserialized: SetAttribute = from_ttlv(set_attribute)?;
+    let set_attribute_deserialized: SetAttribute = from_ttlv(&set_attribute)?;
     debug!("set_attribute_deserialized: {}", set_attribute_deserialized);
 
     Ok(())
@@ -1254,7 +1257,7 @@ fn test_serialization_link() -> KmipResult<()> {
     let link = to_ttlv(&link_request)?;
     trace!("link: {:#?}", link);
 
-    let link_deserialized: Vec<Link> = from_ttlv(link)?;
+    let link_deserialized: Vec<Link> = from_ttlv(&link)?;
     // Avoid Debug on Link; just check lengths
     trace!(
         "set_attribute_deserialized: count={}",
@@ -1359,7 +1362,7 @@ fn normative_request_message_test() {
     assert_eq!(ttlv, ttlv_);
 
     // Deserializer
-    let norm_req: RequestMessage = from_ttlv(ttlv.clone()).unwrap();
+    let norm_req: RequestMessage = from_ttlv(&ttlv).unwrap();
 
     // KMIP Request Message in Rust
     let request_message = RequestMessage {
@@ -1372,7 +1375,7 @@ fn normative_request_message_test() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Query,
                 ephemeral: None,
@@ -1382,10 +1385,11 @@ fn normative_request_message_test() {
                         QueryFunction::QueryOperations,
                         QueryFunction::QueryObjects,
                     ]),
+                    ..Default::default()
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     assert_eq!(request_message, norm_req);
 
@@ -1412,11 +1416,10 @@ fn test_locate_with_empty_attributes() {
     assert_eq!(ttlv, ttlv_from_json);
 
     // Deserializer
-    let locate_: Locate = from_ttlv(ttlv).unwrap();
+    let locate_: Locate = from_ttlv(&ttlv).unwrap();
     assert_eq!(locate, locate_);
 }
 
-// TODO: implement the Query operation in 2.1 first
 #[test]
 fn test_query_response() {
     log_init(option_env!("RUST_LOG"));
@@ -1439,7 +1442,7 @@ fn test_query_response() {
             validation_information: None,
             capability_information: None,
             defaults_information: None,
-            protection_storage_masks: None,
+            protection_storage_masks: Some(SupportedProtectionStorageMasks::default()),
             rng_parameters: None,
             profiles_information: None,
         }))),
@@ -1453,10 +1456,37 @@ fn test_query_response() {
     let ttlv = to_ttlv(&response_batch_item).unwrap();
     trace!("batch item: {:#?}", ttlv);
 
-    let response_batch_item_: ResponseMessageBatchItem = from_ttlv(ttlv).unwrap();
-    trace!("query_response_deserialized: {}", response_batch_item_);
+    // KMIP 2.1 Table 283: the requested masks are a Structure, empty when none is supported
+    let TTLValue::Structure(batch_item_children) = &ttlv.value else {
+        panic!("batch item is not a structure");
+    };
+    let payload = batch_item_children
+        .iter()
+        .find(|child| child.tag == "ResponsePayload")
+        .expect("missing ResponsePayload");
+    let TTLValue::Structure(payload_children) = &payload.value else {
+        panic!("ResponsePayload is not a structure");
+    };
+    let masks = payload_children
+        .iter()
+        .find(|child| child.tag == "ProtectionStorageMasks")
+        .expect("missing ProtectionStorageMasks");
+    assert_eq!(masks.value, TTLValue::Structure(vec![]));
 
+    let response_batch_item_: ResponseMessageBatchItem = from_ttlv(&ttlv).unwrap();
+    trace!("query_response_deserialized: {}", response_batch_item_);
     assert_eq!(response_batch_item, response_batch_item_);
+
+    // JSON TTLV round trip (the transport used by the ckms client)
+    let json = serde_json::to_string(&to_ttlv(&response_batch_item).unwrap()).unwrap();
+    let from_json: ResponseMessageBatchItem =
+        from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
+    assert_eq!(response_batch_item, from_json);
+
+    // binary wire round trip of the empty structure
+    let bytes = masks.to_bytes(crate::ttlv::KmipFlavor::Kmip2).unwrap();
+    let masks_from_bytes = TTLV::from_bytes(&bytes, crate::ttlv::KmipFlavor::Kmip2).unwrap();
+    assert_eq!(*masks, masks_from_bytes);
 }
 
 #[test]
@@ -1472,21 +1502,22 @@ pub(super) fn test_simple_message_request() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Query,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Query(Query {
                     query_function: Some(vec![QueryFunction::QueryOperations]),
+                    ..Default::default()
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let ttlv = to_ttlv(&req).unwrap();
     info!("TTLV: {:#?}", ttlv);
-    let req_: RequestMessage = from_ttlv(ttlv).unwrap();
+    let req_: RequestMessage = from_ttlv(&ttlv).unwrap();
     info!("{}", req_);
     let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
         panic!("not a v2.1 batch item");
@@ -1538,7 +1569,7 @@ pub(super) fn test_message_request() {
             batch_order_option: Some(true),
             time_stamp: Some(OffsetDateTime::from_unix_timestamp(1_950_940_403).unwrap()),
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Encrypt,
                 ephemeral: None,
@@ -1550,14 +1581,14 @@ pub(super) fn test_message_request() {
                 message_extension: Some(vec![MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }]),
             },
-        )],
+        ))],
     };
     let ttlv = to_ttlv(&req).unwrap();
     info!("TTLV: {:#?}", ttlv);
-    let req_: RequestMessage = from_ttlv(ttlv).unwrap();
+    let req_: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V21(batch_item) = &req_.batch_item[0] else {
         panic!("not a v2.1 batch item");
     };
@@ -1591,7 +1622,7 @@ pub(super) fn test_message_response() {
             server_hashed_password: Some(b"5e8953ab".to_vec()),
         },
         batch_item: vec![
-            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
+            ResponseMessageBatchItemVersioned::V21(Box::new(ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Locate),
                 unique_batch_item_id: Some(b"1234".to_vec()),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
@@ -1603,14 +1634,14 @@ pub(super) fn test_message_response() {
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: false,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }),
                 result_status: ResultStatusEnumeration::OperationPending,
                 result_reason: None,
                 result_message: None,
                 asynchronous_correlation_value: Some("42_u8, 5".to_owned()),
-            }),
-            ResponseMessageBatchItemVersioned::V21(ResponseMessageBatchItem {
+            })),
+            ResponseMessageBatchItemVersioned::V21(Box::new(ResponseMessageBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: Some(b"1235".to_vec()),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
@@ -1621,17 +1652,17 @@ pub(super) fn test_message_response() {
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_owned(),
                     criticality_indicator: true,
-                    vendor_extension: vec![42_u8],
+                    vendor_extension: crate::kmip_0::kmip_types::VendorExtension {},
                 }),
                 result_status: ResultStatusEnumeration::OperationUndone,
                 result_reason: Some(ErrorReason::Response_Too_Large),
                 result_message: Some("oversized data".to_owned()),
                 asynchronous_correlation_value: Some("43_u8, 6".to_owned()),
-            }),
+            })),
         ],
     };
     let ttlv = to_ttlv(&res).unwrap();
-    let res_: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let res_: ResponseMessage = from_ttlv(&ttlv).unwrap();
     assert_eq!(res_.batch_item.len(), 2);
     let ResponseMessageBatchItemVersioned::V21(batch_item) = &res_.batch_item[0] else {
         panic!("not a v2.1 batch item");
@@ -1685,7 +1716,7 @@ fn test_object_raw() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {}", deserialized_object);
     assert!(
@@ -1727,7 +1758,7 @@ fn test_object_structured_sym() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {}", deserialized_object);
     assert!(
@@ -1777,7 +1808,7 @@ fn test_object_structured_rsa() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {}", deserialized_object);
     assert!(
@@ -1801,7 +1832,7 @@ fn test_key_value_ttlv() {
     let key_format_type = KeyFormatType::Raw;
     let kv = KeyValue::Structure {
         key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3])),
-        attributes: Some(Attributes {
+        attributes: Some(Box::new(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             vendor_attributes: Some(vec![VendorAttribute {
                 vendor_identification: "VENDOR".to_owned(),
@@ -1809,7 +1840,7 @@ fn test_key_value_ttlv() {
                 attribute_value: VendorAttributeValue::BigInteger(BigInt::from(12_345_678)),
             }]),
             ..Default::default()
-        }),
+        })),
     };
     assert_eq!(
         kv,
@@ -1826,7 +1857,7 @@ fn test_key_value_ttlv() {
             modulus: Box::new(BigInt::from(1)),
             public_exponent: Box::new(BigInt::from(2)),
         },
-        attributes: Some(Attributes {
+        attributes: Some(Box::new(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             vendor_attributes: Some(vec![VendorAttribute {
                 vendor_identification: "VENDOR".to_owned(),
@@ -1834,7 +1865,7 @@ fn test_key_value_ttlv() {
                 attribute_value: VendorAttributeValue::DateTime(time),
             }]),
             ..Default::default()
-        }),
+        })),
     };
     assert_eq!(
         kv,
@@ -1851,10 +1882,10 @@ fn test_key_value_ttlv_round_trip_configurable_kem() {
     ] {
         let kv = KeyValue::Structure {
             key_material: KeyMaterial::ByteString(Zeroizing::new(vec![3, 1, 2, 193, 9])),
-            attributes: Some(Attributes {
+            attributes: Some(Box::new(Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
                 ..Default::default()
-            }),
+            })),
         };
         assert_eq!(
             kv,
@@ -1881,7 +1912,7 @@ fn test_set_attribute() {
 
     // Deserialize the TTLV back to Object
     let deserialized_set_attribute: SetAttribute =
-        from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+        from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {}", deserialized_set_attribute);
     assert_eq!(set_attribute, deserialized_set_attribute);
@@ -1908,7 +1939,7 @@ fn test_set_attribute_with_link() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![ResponseMessageBatchItemVersioned::V21(
+        batch_item: vec![ResponseMessageBatchItemVersioned::V21(Box::new(
             ResponseMessageBatchItem {
                 result_status: ResultStatusEnumeration::OperationFailed,
                 result_reason: Some(ErrorReason::Operation_Not_Supported),
@@ -1919,7 +1950,7 @@ fn test_set_attribute_with_link() {
                 response_payload: None,
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let ttlv = to_ttlv(&response_message).unwrap();
@@ -1928,4 +1959,180 @@ fn test_set_attribute_with_link() {
         .to_bytes(crate::ttlv::KmipFlavor::Kmip2)
         .expect("Failed to convert TTLV to bytes");
     info!("Serialized TTLV bytes: {:?}", bytes);
+}
+
+/// Login, Set Constraints and Get Constraints (KMIP 2.1 §6.1.30, §6.1.52, §6.1.22) and a
+/// Ticket credential survive the binary TTLV and the JSON TTLV encodings.
+#[test]
+fn test_login_and_constraints_round_trip() {
+    use crate::{
+        kmip_0::kmip_types::{Ticket, TicketType},
+        kmip_2_1::kmip_operations::{
+            Constraint, Constraints, GetConstraints, GetConstraintsResponse, Login, LoginResponse,
+            ObjectGroups, ObjectTypes, SetConstraints, SetConstraintsResponse,
+        },
+        ttlv::{Interval, KmipFlavor},
+    };
+
+    fn round_trip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: &T) {
+        let mut ttlv = to_ttlv(value).unwrap();
+        // A response batch item is encoded under the `BatchItem` tag in a message.
+        if ttlv.tag == "MessageResponseBatchItem" {
+            ttlv.tag = "BatchItem".into();
+        }
+        let bytes = ttlv.to_bytes(KmipFlavor::Kmip2).unwrap();
+        let from_bytes: T =
+            from_ttlv(&TTLV::from_bytes(&bytes, KmipFlavor::Kmip2).unwrap()).unwrap();
+        assert_eq!(&from_bytes, value);
+        let json = serde_json::to_string(&ttlv).unwrap();
+        let from_json: T = from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
+        assert_eq!(&from_json, value);
+    }
+
+    let ticket = Ticket {
+        ticket_type: TicketType::Login,
+        ticket_value: vec![7; 32],
+    };
+    let constraints = Constraints {
+        constraint: vec![
+            Constraint {
+                object_types: Some(ObjectTypes {
+                    object_type: vec![ObjectType::SymmetricKey],
+                }),
+                object_groups: Some(ObjectGroups {
+                    object_group: vec!["Group1".to_owned()],
+                }),
+                attributes: Some(Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    cryptographic_length: Some(256),
+                    ..Attributes::default()
+                }),
+            },
+            Constraint::default(),
+        ],
+    };
+    let item = |op: Operation| {
+        RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+    };
+    let request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            authentication: Some(Authentication {
+                credential: vec![Credential {
+                    credential_type: CredentialType::Ticket,
+                    credential_value: CredentialValue::Ticket {
+                        ticket: ticket.clone(),
+                    },
+                }],
+            }),
+            batch_count: 4,
+            ..Default::default()
+        },
+        batch_item: vec![
+            item(Operation::Login(Login {
+                lease_time: Some(Interval(0)),
+                request_count: Some(3),
+                usage_limits: None,
+            })),
+            item(Operation::SetConstraints(SetConstraints {
+                constraints: Some(constraints.clone()),
+            })),
+            item(Operation::SetConstraints(SetConstraints::default())),
+            item(Operation::GetConstraints(GetConstraints)),
+        ],
+    };
+    round_trip(&request);
+
+    for response in [
+        Operation::LoginResponse(LoginResponse { ticket }),
+        Operation::SetConstraintsResponse(SetConstraintsResponse),
+        Operation::GetConstraintsResponse(GetConstraintsResponse { constraints }),
+        Operation::GetConstraintsResponse(GetConstraintsResponse::default()),
+    ] {
+        round_trip(&ResponseMessageBatchItem::new_with_response(
+            ResultStatusEnumeration::Success,
+            response,
+        ));
+    }
+}
+
+/// KMIP 2.1 §6.1.57 Table 340: a Validate request carries Certificate structures (Certificate
+/// Type + Certificate Value), not bare byte strings.
+#[test]
+fn test_validate_certificate_is_a_structure() {
+    use crate::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_2_1::{kmip_objects::Certificate, kmip_operations::Validate},
+        ttlv::{KmipFlavor, TTLValue},
+    };
+
+    let validate = Validate {
+        // Several entries, like a leaf + intermediate + root chain.
+        certificate: Some(
+            (1_u8..=3)
+                .map(|i| Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: vec![0x30, 0x03, 0x02, 0x01, i],
+                })
+                .collect(),
+        ),
+        unique_identifier: None,
+        validity_time: None,
+    };
+    let mut ttlv = to_ttlv(&validate).unwrap();
+    // A request payload is encoded under the `RequestPayload` tag in a message.
+    ttlv.tag = "RequestPayload".into();
+    let TTLValue::Structure(fields) = &ttlv.value else {
+        panic!("Validate must be a structure");
+    };
+    assert!(
+        fields
+            .iter()
+            .any(|f| f.tag == "Certificate" && matches!(f.value, TTLValue::Structure(_))),
+        "Certificate must be encoded as a structure: {fields:?}"
+    );
+    let direct: Validate = from_ttlv(&ttlv).unwrap();
+    assert_eq!(direct, validate, "direct");
+    let bytes = ttlv.to_bytes(KmipFlavor::Kmip2).unwrap();
+    let decoded: Validate =
+        from_ttlv(&TTLV::from_bytes(&bytes, KmipFlavor::Kmip2).unwrap()).unwrap();
+    assert_eq!(decoded, validate, "bytes");
+}
+
+/// Same for KMIP 1.4 §4.24, whose Validate already used Certificate structures.
+#[test]
+fn test_validate_certificates_round_trip_1_4() {
+    use crate::{
+        kmip_0::kmip_types::CertificateType,
+        kmip_1_4::{kmip_objects::Certificate, kmip_operations::Validate},
+        ttlv::{KmipFlavor, TTLValue},
+    };
+
+    let validate = Validate {
+        certificate: Some(
+            (1_u8..=3)
+                .map(|i| Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: vec![0x30, 0x03, 0x02, 0x01, i],
+                })
+                .collect(),
+        ),
+        unique_identifier: None,
+        validity_time: None,
+    };
+    let mut ttlv = to_ttlv(&validate).unwrap();
+    ttlv.tag = "RequestPayload".into();
+    let direct: Validate = from_ttlv(&ttlv).unwrap();
+    assert!(direct.certificate == validate.certificate, "direct");
+    let bytes = ttlv.to_bytes(KmipFlavor::Kmip1).unwrap();
+    let decoded: Validate =
+        from_ttlv(&TTLV::from_bytes(&bytes, KmipFlavor::Kmip1).unwrap()).unwrap();
+    assert!(decoded.certificate == validate.certificate, "bytes");
+    let TTLValue::Structure(fields) = &ttlv.value else {
+        panic!("Validate must be a structure");
+    };
+    assert_eq!(fields.iter().filter(|f| f.tag == "Certificate").count(), 3);
 }

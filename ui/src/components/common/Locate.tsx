@@ -273,16 +273,16 @@ const LocateForm: React.FC = () => {
         objectType: string | undefined,
         serverUrl: string,
     ): Promise<string[]> => {
-        const req = wasm.locate_ttlv_request(
-            values.tags,
-            cryptographicAlgorithm,
-            values.cryptographicLength,
-            keyFormatType,
-            objectType,
-            values.publicKeyId,
-            values.privateKeyId,
-            values.certificateId,
-        );
+        const req = wasm.locate_ttlv_request({
+            tags: values.tags,
+            cryptographic_algorithm: cryptographicAlgorithm,
+            cryptographic_length: values.cryptographicLength,
+            key_format_type: keyFormatType,
+            object_type: objectType,
+            public_key_id: values.publicKeyId,
+            private_key_id: values.privateKeyId,
+            certificate_id: values.certificateId,
+        });
         const respStr = await sendKmipRequest(req, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
         if (!respStr) return [];
         const resp = await wasm.parse_locate_ttlv_response(respStr);
@@ -487,16 +487,15 @@ const LocateForm: React.FC = () => {
                 // No results returned by Locate: if Key Format Type filter is set, try fallback client-side filtering
                 if (keyFormatType) {
                     try {
-                        const fallbackReq = wasm.locate_ttlv_request(
-                            values.tags,
-                            cryptographicAlgorithm,
-                            values.cryptographicLength,
-                            undefined,
-                            objectType,
-                            values.publicKeyId,
-                            values.privateKeyId,
-                            values.certificateId,
-                        );
+                        const fallbackReq = wasm.locate_ttlv_request({
+                            tags: values.tags,
+                            cryptographic_algorithm: cryptographicAlgorithm,
+                            cryptographic_length: values.cryptographicLength,
+                            object_type: objectType,
+                            public_key_id: values.publicKeyId,
+                            private_key_id: values.privateKeyId,
+                            certificate_id: values.certificateId,
+                        });
                         const fallbackStr = await sendKmipRequest(fallbackReq, serverUrl, { timeoutMs: LOCATE_REQUEST_TIMEOUT_MS });
                         if (fallbackStr) {
                             const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
@@ -596,6 +595,21 @@ const LocateForm: React.FC = () => {
                 setDetailsForId(uid);
                 setDetailsVisible(true);
             }
+        } catch {
+            /* ignore */
+        } finally {
+            setActionLoadingId(undefined);
+        }
+    };
+
+    const handleActivate = async (uid: string) => {
+        if (!uid) return;
+        setActionLoadingId(uid);
+        try {
+            const req = wasm.activate_ttlv_request(uid);
+            await sendKmipRequest(req, serverUrl);
+            await handleRefreshRow(uid);
+            setResult({ kind: "message", text: t("actionCompleted") });
         } catch {
             /* ignore */
         } finally {
@@ -910,6 +924,16 @@ const LocateForm: React.FC = () => {
                                             key: "actions",
                                             render: (row: LocateObjectRow) => (
                                                 <Space size="small">
+                                                    {normalizeState(row.state) === "preactive" && (
+                                                        <Button
+                                                            size="small"
+                                                            type="primary"
+                                                            onClick={() => handleActivate(row.object_id)}
+                                                            loading={actionLoadingId === row.object_id}
+                                                        >
+                                                            {t("common:activate")}
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         size="small"
                                                         onClick={() => handleRevoke(row.object_id)}

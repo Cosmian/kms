@@ -7,12 +7,6 @@
 //! - any `SigV4`-authenticated caller ARN can use a key (the #1093 regression);
 //! - the XKS endpoints cannot reach arbitrary non-XKS keys owned by `default_username`;
 //! - already-shipped keys are migrated so the reserved identity can operate them.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::panic_in_result_fn
-)]
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -248,7 +242,7 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
         &kms,
     )
     .await?;
-    assert!(!enc.ciphertext.is_empty());
+    assert_ne!(enc.ciphertext.len(), 0);
     Ok(())
 }
 
@@ -332,7 +326,7 @@ async fn create_key_rejects_existing_non_xks_symmetric_key() -> KResult<()> {
 
     assert!(matches!(
         err.errorName,
-        super::error::XksErrorName::InternalException
+        super::error::XksErrorName::Internal
     ));
     assert_eq!(
         err.errorMessage.as_deref(),
@@ -508,8 +502,8 @@ async fn get_key_metadata_works_for_any_arn() -> KResult<()> {
 
     assert_eq!(md.keySpec, "AES_256");
     assert_eq!(md.keyStatus, "ENABLED");
-    assert!(md.keyUsage.contains(&KeyUsage::ENCRYPT));
-    assert!(md.keyUsage.contains(&KeyUsage::DECRYPT));
+    assert!(md.keyUsage.contains(&KeyUsage::Encrypt));
+    assert!(md.keyUsage.contains(&KeyUsage::Decrypt));
     Ok(())
 }
 

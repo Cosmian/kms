@@ -53,7 +53,7 @@ Route by plan content:
 ## 5. Implement (test-first)
 
 - Write the step 3 tests first and confirm they fail. Then implement until they pass.
-- Run the matching domain skill: KMIP operation → `/kmip-compliance`; REST endpoint → `/openapi-endpoint`; test vector → `/kms-test-vector`; `ckms` subcommand or flag → `/ckms-subcommand-test`; UI → `/react-ant-patterns`, plus `/playwright-kms` for E2E; MISE scripts → `/mise`; Rust design → `/rust-patterns`.
+- Run the matching domain skill: KMIP operation → `/kmip-compliance`; REST endpoint → `/openapi-endpoint`; test vector → `/kms-test-vector`; `ckms` subcommand or flag → `/ckms-subcommand-test`; UI → `/react-ant-patterns`, plus `/playwright-kms` for E2E; MISE scripts → `/mise`; Rust idioms/design → `/rust-best-practices`.
 - Keep the diff to the issue (`AGENTS.md` §4 "Commit scope"). Unrelated defects go into a new issue, not this branch.
 
 ## 6. Test

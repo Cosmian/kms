@@ -50,7 +50,7 @@ fn test_import_2_1() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Import,
                 ephemeral: None,
@@ -74,7 +74,7 @@ fn test_import_2_1() {
                 })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

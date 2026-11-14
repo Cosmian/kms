@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use cosmian_config_utils::{ConfigUtils, location};
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClientConfig;
@@ -17,7 +17,6 @@ pub struct ClientConfig {
     pub kms_config: KmsClientConfig,
 }
 
-#[expect(clippy::print_stdout)]
 impl ClientConfig {
     /// Load the default location of the configuration file.
     ///
@@ -57,7 +56,11 @@ impl ClientConfig {
     /// not a valid toml file.
     pub fn save(&self, conf_path: Option<PathBuf>) -> Result<(), CosmianError> {
         let conf_path_buf = Self::location(conf_path)?;
-        println!("Saving configuration to: {}", conf_path_buf.display());
+        writeln!(
+            std::io::stdout().lock(),
+            "Saving configuration to: {}",
+            conf_path_buf.display()
+        )?;
 
         Ok(self.to_toml(conf_path_buf.to_str().ok_or_else(|| {
             CosmianError::Default("Unable to convert the configuration path to a string".to_owned())
@@ -67,8 +70,6 @@ impl ClientConfig {
 
 impl ConfigUtils for ClientConfig {}
 
-#[allow(clippy::assertions_on_result_states, clippy::unwrap_used)]
-#[allow(clippy::expect_used, clippy::print_stdout)]
 #[cfg(test)]
 mod tests {
     use std::{env, fs, path::PathBuf};
@@ -152,7 +153,7 @@ mod tests {
         drop(std::fs::remove_file(tmp_str));
     }
 
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
     #[test]
     pub(crate) fn test_load() {
         log_init(None);
@@ -163,7 +164,7 @@ mod tests {
                 "../../../test_data/configs/client/default.toml",
             );
         }
-        assert!(ClientConfig::load(None).is_ok());
+        ClientConfig::load(None).unwrap();
 
         // another valid conf
         unsafe {
@@ -172,7 +173,7 @@ mod tests {
                 "../../../test_data/configs/client/partial.toml",
             );
         }
-        assert!(ClientConfig::load(None).is_ok());
+        ClientConfig::load(None).unwrap();
 
         // Default conf file
         unsafe {
@@ -180,7 +181,7 @@ mod tests {
         }
         let default_conf = get_default_conf_path(CKMS_CONF_PATH).unwrap();
         drop(fs::remove_file(&default_conf));
-        assert!(ClientConfig::load(None).is_ok());
+        ClientConfig::load(None).unwrap();
         let resolved_conf = ClientConfig::location(None).unwrap();
         assert!(resolved_conf.exists());
         if resolved_conf == default_conf {
@@ -203,7 +204,7 @@ mod tests {
         )))
         .unwrap();
 
-        assert!(ClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
+        ClientConfig::from_toml(conf_path.to_str().unwrap()).unwrap();
     }
 
     /// An unknown key in the client TOML config must be rejected.

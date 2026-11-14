@@ -11,6 +11,8 @@ mod sql;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
         kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
         kmip_types::UniqueIdentifier,
     },
@@ -36,7 +38,9 @@ use crate::{
 /// - Sets `ReplacementObjectLink` on both old private and public keys.
 /// - Sets `ReplacedObjectLink` on both new private and public keys.
 /// - The replacement keys take over the Name attributes of the existing keys.
-/// - The existing keys' State is NOT changed.
+/// - An Active existing key is retired: its Deactivation Date is set to now, which
+///   moves it to Deactivated (KMIP 2.1 §4.18, §4.57 transition 6). Keys in any other
+///   state keep their state.
 /// - If `offset` is provided, date computation per Table 176 is applied.
 /// - Rotation metadata is set on both old and new keys.
 ///
@@ -47,7 +51,7 @@ pub(crate) async fn rekey_keypair(
     request: ReKeyKeyPair,
     user: &UserId,
 ) -> KResult<ReKeyKeyPairResponse> {
-    trace!("ReKeyKeyPair: {}", serde_json::to_string(&request)?);
+    trace!("ReKeyKeyPair request");
 
     // Covercrypt early-return: uses a completely different code path (in-place attribute rekey)
     // that doesn't fit the rotation trait pattern.
@@ -81,35 +85,53 @@ pub(crate) async fn rekey_keypair(
         request
     };
 
-    Box::pin(execute_rekey(
-        &SqlKeypairRekeyer {
-            offset: request.offset,
-        },
-        kms,
-        &request,
-        user,
-    ))
-    .await
+    // Desired attributes of each replacement key: the common ones, overridden by the
+    // key-specific ones (KMIP 2.1 Table 310).
+    let requested = |specific: Option<&Attributes>| {
+        let mut attributes = request.common_attributes.clone()?;
+        if let Some(specific) = specific {
+            attributes.merge(specific, true);
+        }
+        Some(attributes)
+    };
+    let rekeyer = SqlKeypairRekeyer {
+        offset: request.offset,
+        private_key_attributes: requested(request.private_key_attributes.as_ref())
+            .or_else(|| request.private_key_attributes.clone()),
+        public_key_attributes: requested(request.public_key_attributes.as_ref())
+            .or_else(|| request.public_key_attributes.clone()),
+    };
+    Box::pin(execute_rekey(&rekeyer, kms, &request, user)).await
 }
 
 impl KMS {
-    /// Retrieve the linked public key from the database.
+    /// Retrieve the public key linked from a private key being re-keyed.
+    ///
+    /// The link is client-editable, so the caller must hold `Rekey` on the public key
+    /// too; otherwise it is reported as not found (no existence oracle).
     pub(super) async fn retrieve_linked_public_key(
         &self,
         pk_uid: &str,
+        user: &UserId,
     ) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata>
     {
-        self.database
-            .retrieve_objects(ObjectHandle::from(pk_uid))
+        let not_found = || {
+            KmsError::Kmip21Error(
+                ErrorReason::Object_Not_Found,
+                format!("ReKeyKeyPair: linked public key '{pk_uid}' not found"),
+            )
+        };
+        let owm = self
+            .database
+            .retrieve_object(pk_uid)
             .await?
-            .into_values()
-            .next()
-            .map(std::sync::Arc::unwrap_or_clone)
-            .ok_or_else(|| {
-                KmsError::Kmip21Error(
-                    ErrorReason::Item_Not_Found,
-                    format!("ReKeyKeyPair: linked public key '{pk_uid}' not found in database"),
-                )
-            })
+            .ok_or_else(not_found)?;
+        if !self
+            .user_can_perform_operation(&owm, user, &KmipOperation::Rekey)
+            .await?
+        {
+            return Err(not_found());
+        }
+        Ok(owm)
     }
 }

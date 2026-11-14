@@ -1,0 +1,139 @@
+---
+name: Test MISE group
+
+on:
+  workflow_call:
+    inputs:
+      suite:
+        description: test:<suite> task to run (a .mise/tasks/test group, or a leaf for real HSMs)
+        required: true
+        type: string
+      variant:
+        description: fips or non-fips
+        required: true
+        type: string
+      skip:
+        description: Space-separated <group>:<leaf> ids exported as TEST_SKIP_LEAVES
+        required: false
+        type: string
+        default: ''
+      bench:
+        description: Space-separated HSM models benchmarked after the tests (never on pull requests)
+        required: false
+        type: string
+        default: ''
+      extra-env:
+        description: KEY=VALUE lines appended to GITHUB_ENV before the tests
+        required: false
+        type: string
+        default: ''
+    secrets:
+      DOCKERHUB_USERNAME: {required: false}
+      DOCKERHUB_TOKEN: {required: false}
+      EDB_SUBSCRIPTION_TOKEN: {required: false}
+      IRIS_LICENSE_KEY: {required: false}
+      AUDIT_COMPAT_SPLUNK_PASSWORD: {required: false}
+      TEST_GOOGLE_OAUTH_CLIENT_ID: {required: false}
+      TEST_GOOGLE_OAUTH_CLIENT_SECRET: {required: false}
+      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: {required: false}
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: {required: false}
+      KMS_CI_AWS_ACCESS_KEY_ID: {required: false}
+      KMS_CI_AWS_SECRET_ACCESS_KEY: {required: false}
+      KMS_CI_AWS_REGION: {required: false}
+      KMS_CI_AZURE_TENANT_ID: {required: false}
+      KMS_CI_AZURE_CLIENT_ID: {required: false}
+      KMS_CI_AZURE_CLIENT_SECRET: {required: false}
+      KMS_CI_AZURE_KV_NAME: {required: false}
+      PROTECCIO_IP: {required: false}
+      PROTECCIO_PASSWORD: {required: false}
+      PROTECCIO_SLOT: {required: false}
+      CRYPT2PAY_PASSWORD: {required: false}
+      OVPN_CONF: {required: false}
+
+jobs:
+  test:
+    name: test:${{ inputs.suite }} - ${{ inputs.variant }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      # `secrets` is unavailable in step-level `if:`; empty when the caller does not pass it.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/cache-openssl-buildrs
+        with:
+          variant: ${{ inputs.variant }}
+
+      - uses: ./.github/actions/setup-nix-mise
+        with:
+          cleanup-runner: 'true'
+          dev-shell-cache: 'true'
+
+      - name: Export suite environment
+        if: inputs.extra-env != ''
+        env:
+          EXTRA_ENV: ${{ inputs.extra-env }}
+        run: printf '%s\n' "$EXTRA_ENV" >> "$GITHUB_ENV"
+
+      - name: Docker login (Docker Hub)
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # An upstream leaf fails, never skips, when a secret it needs is empty: a green upstream job proves it ran.
+      - name: Test
+        env:
+          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+          IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
+          SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
+          PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
+          PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
+          PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
+          CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
+          OVPN_CONF: ${{ secrets.OVPN_CONF }}
+          # Lets mise install tools from GitHub releases without the unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
+          TEST_SKIP_LEAVES: ${{ inputs.skip }}
+          SUITE: ${{ inputs.suite }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          st=0
+          mise run "test:${SUITE}" --variant "$VARIANT" || st=$?
+          if [ "$st" -eq 77 ]; then echo "::warning::test:${SUITE} skipped (see its SKIP line)"; st=0; fi
+          exit "$st"
+
+      - name: Bench (PKCS#11 load, HSM-delegated)
+        if: inputs.bench != '' && github.event_name != 'pull_request'
+        env:
+          BENCH: ${{ inputs.bench }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          # shellcheck disable=SC2086 # BENCH is a space-separated model list
+          for m in $BENCH; do mise run bench:pkcs11 --delegated --hsm-model "$m" --variant "$VARIANT" -s; done
+
+      - name: Bench (HSM-delegated)
+        if: inputs.bench != '' && github.event_name != 'pull_request'
+        env:
+          BENCH: ${{ inputs.bench }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          # shellcheck disable=SC2086 # BENCH is a space-separated model list
+          for m in $BENCH; do mise run bench:hsm --delegated --hsm-model "$m" --variant "$VARIANT" -s; done

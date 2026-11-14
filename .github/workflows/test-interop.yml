@@ -1,0 +1,39 @@
+---
+name: Test interop
+
+# Third-party client / product interoperability, one job per leaf of .mise/tasks/test/interop so a leaf's
+# hang, leftover state or missing secret never affects another. Leaves that need non-FIPS only run there.
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME: {required: false}
+      DOCKERHUB_TOKEN: {required: false}
+      EDB_SUBSCRIPTION_TOKEN: {required: false}
+      IRIS_LICENSE_KEY: {required: false}
+
+jobs:
+  leaf:
+    name: Test interop ${{ matrix.leaf }} (${{ matrix.variant }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {leaf: ase, variant: non-fips}
+          - {leaf: db2, variant: non-fips}
+          - {leaf: edb-tde, variant: non-fips}
+          - {leaf: iris, variant: non-fips}
+          - {leaf: jose, variant: non-fips}
+          - {leaf: kmip-go, variant: fips}
+          - {leaf: kmip-go, variant: non-fips}
+          - {leaf: kmipkit, variant: non-fips}
+          - {leaf: opa-rbac, variant: non-fips}
+          - {leaf: pykmip, variant: non-fips}
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: interop:${{ matrix.leaf }}
+      variant: ${{ matrix.variant }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+      IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}

@@ -6,9 +6,10 @@
 //!
 //! Key sizes: RSA-4096 for the CA, RSA-4096 for leaf certificates (FIPS-safe).
 
-#![allow(unreachable_pub, clippy::print_stdout)]
-
-use std::path::{Path, PathBuf};
+use std::{
+    io::Write as _,
+    path::{Path, PathBuf},
+};
 
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 use openssl::{
@@ -25,30 +26,30 @@ use openssl::{
 use crate::{core::operations::certify::generate_serial_number, error::KmsError, result::KResult};
 
 /// Paths to all generated certificate/key PEM files.
-pub struct CertPaths {
-    pub ca_cert: PathBuf,
-    pub server_cert: PathBuf,
-    pub server_key: PathBuf,
-    pub client_cert: PathBuf,
-    pub client_key: PathBuf,
+pub(crate) struct CertPaths {
+    pub(crate) ca_cert: PathBuf,
+    pub(crate) server_cert: PathBuf,
+    pub(crate) server_key: PathBuf,
+    pub(crate) client_cert: PathBuf,
+    pub(crate) client_key: PathBuf,
 }
 
 /// Options for the self-signed PKI generator.
-pub struct CertGenOptions {
+pub(crate) struct CertGenOptions {
     /// Directory where PEM files will be written.
-    pub output_dir: PathBuf,
+    pub(crate) output_dir: PathBuf,
     /// Common Name for the CA certificate.
-    pub ca_cn: String,
+    pub(crate) ca_cn: String,
     /// Common Name for the server leaf certificate.
-    pub server_cn: String,
+    pub(crate) server_cn: String,
     /// Common Name for the client leaf certificate.
-    pub client_cn: String,
+    pub(crate) client_cn: String,
     /// Validity (days) for the CA certificate.
-    pub ca_validity_days: u32,
+    pub(crate) ca_validity_days: u32,
     /// Validity (days) for the server leaf certificate.
-    pub server_validity_days: u32,
+    pub(crate) server_validity_days: u32,
     /// Validity (days) for the client leaf certificate.
-    pub client_validity_days: u32,
+    pub(crate) client_validity_days: u32,
 }
 
 impl Default for CertGenOptions {
@@ -234,8 +235,8 @@ fn issue_leaf_cert(
 /// Generate a complete self-signed PKI (CA + server cert + client cert) and write PEM files.
 ///
 /// Returns [`CertPaths`] with the paths of the generated files.
-pub fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
-    println!("  Generating CA key (RSA-4096)…");
+pub(crate) fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
+    writeln!(std::io::stdout().lock(), "  Generating CA key (RSA-4096)…")?;
     let ca_key = gen_rsa_key(4096)?;
     let ca_cert = build_ca_cert(&ca_key, opts)?;
     let ca_cert_pem = ca_cert
@@ -243,7 +244,10 @@ pub fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
         .map_err(|e| KmsError::ServerError(e.to_string()))?;
     let ca_cert_path = write_pem(&opts.output_dir, "ca.crt", &ca_cert_pem)?;
 
-    println!("  Generating server key (RSA-4096)…");
+    writeln!(
+        std::io::stdout().lock(),
+        "  Generating server key (RSA-4096)…"
+    )?;
     let server_key = gen_rsa_key(4096)?;
     let server_csr = build_csr(&server_key, &opts.server_cn)?;
     let server_cert = issue_leaf_cert(&server_csr, &ca_cert, &ca_key, opts.server_validity_days)?;
@@ -256,7 +260,10 @@ pub fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
     let server_cert_path = write_pem(&opts.output_dir, "server.crt", &server_cert_pem)?;
     let server_key_path = write_pem(&opts.output_dir, "server.key", &server_key_pem)?;
 
-    println!("  Generating client key (RSA-4096)…");
+    writeln!(
+        std::io::stdout().lock(),
+        "  Generating client key (RSA-4096)…"
+    )?;
     let client_key = gen_rsa_key(4096)?;
     let client_csr = build_csr(&client_key, &opts.client_cn)?;
     let client_cert = issue_leaf_cert(&client_csr, &ca_cert, &ca_key, opts.client_validity_days)?;
@@ -269,11 +276,31 @@ pub fn generate_self_signed_pki(opts: &CertGenOptions) -> KResult<CertPaths> {
     let client_cert_path = write_pem(&opts.output_dir, "client.crt", &client_cert_pem)?;
     let client_key_path = write_pem(&opts.output_dir, "client.key", &client_key_pem)?;
 
-    println!("  Certificates written to {}", opts.output_dir.display());
-    println!("    CA cert     : {}", ca_cert_path.display());
-    println!("    Server cert : {}", server_cert_path.display());
-    println!("    Server key  : {}", server_key_path.display());
-    println!("    Client cert : {}", client_cert_path.display());
+    writeln!(
+        std::io::stdout().lock(),
+        "  Certificates written to {}",
+        opts.output_dir.display()
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "    CA cert     : {}",
+        ca_cert_path.display()
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "    Server cert : {}",
+        server_cert_path.display()
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "    Server key  : {}",
+        server_key_path.display()
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "    Client cert : {}",
+        client_cert_path.display()
+    )?;
 
     Ok(CertPaths {
         ca_cert: ca_cert_path,

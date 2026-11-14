@@ -19,7 +19,9 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 
-use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid};
+use super::super::common::{
+    RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid, rekey_state_error,
+};
 use crate::{
     core::{
         KMS,
@@ -36,6 +38,10 @@ pub(in crate::core::operations::rekey) struct SqlKeypairRekeyer {
     /// The `offset` from the `ReKeyKeyPair` request (date computation per KMIP 1.4 Table
     /// 176 / KMIP 2.1 Table 308).
     pub offset: Option<i64>,
+    /// Desired attributes of the replacement private key (KMIP 2.1 Table 310).
+    pub private_key_attributes: Option<Attributes>,
+    /// Desired attributes of the replacement public key (KMIP 2.1 Table 310).
+    pub public_key_attributes: Option<Attributes>,
 }
 
 impl KeySelectionSpec for SqlKeypairRekeyer {
@@ -111,7 +117,8 @@ impl RekeyOperation for SqlKeypairRekeyer {
                 )?;
                 Ok(())
             })
-            .await?;
+            .await
+            .map_err(rekey_state_error)?;
 
         // Reject Re-Key on a retired (non-latest) member of a named keyset.
         kms.enforce_keyset_latest(owm.id(), owm.attributes(), user, "ReKeyKeyPair")
@@ -124,7 +131,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
             owm,
         };
         let old_pk_uid = sk_candidate.public_key_uid()?;
-        let old_pk_owm = kms.retrieve_linked_public_key(&old_pk_uid).await?;
+        let old_pk_owm = kms.retrieve_linked_public_key(&old_pk_uid, user).await?;
 
         Ok([
             sk_candidate,
@@ -138,6 +145,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
     fn generate_replacement(
         &self,
         kms: &KMS,
+        _user: &UserId,
         candidates: &[RotationCandidate; 2],
     ) -> impl Future<Output = KResult<[ReplacementObject; 2]>> {
         // Key-pair generation is synchronous CPU work: no suspension point is needed.
@@ -169,6 +177,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
         // Private key slot
         sk_rep.finalize(
             &new_sk_attributes,
+            self.private_key_attributes.as_ref(),
             ObjectType::PrivateKey,
             &sk_candidate.uid,
             Some((&pk_new_uid, LinkType::PublicKeyLink)),
@@ -185,6 +194,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
         // Public key slot — rewrap target: dependants wrapped by old PK get re-wrapped to new PK
         pk_rep.finalize(
             &new_pk_attributes,
+            self.public_key_attributes.as_ref(),
             ObjectType::PublicKey,
             &pk_candidate.uid,
             Some((&sk_new_uid, LinkType::PrivateKeyLink)),

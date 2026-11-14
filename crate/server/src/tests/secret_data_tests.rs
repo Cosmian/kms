@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 use cosmian_kms_client_utils::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{KeyWrapType, SecretDataType},
     kmip_2_1::{
@@ -246,11 +244,11 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(key_material.clone()),
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::SecretData),
                     unique_identifier: Some(secret_id.clone()),
                     ..Default::default()
-                }),
+                })),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -355,18 +353,8 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         key_material.to_vec()
     );
 
-    let revoke_request = Revoke {
-        unique_identifier: Some(secret_id.clone()),
-        revocation_reason: RevocationReason {
-            revocation_reason_code: RevocationReasonCode::Unspecified,
-            revocation_message: None,
-        },
-        compromise_occurrence_date: None,
-        cascade: true,
-    };
-
-    kms.revoke(revoke_request, &owner).await?;
-
+    // The imported secret is Pre-Active: it can be destroyed without a Revoke (KMIP 2.1
+    // §6.1.15), and a non-compromise Revoke would fail (§4.57).
     let destroy_request = Destroy {
         unique_identifier: Some(secret_id.clone()),
         remove: true,

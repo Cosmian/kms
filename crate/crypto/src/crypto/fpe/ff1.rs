@@ -1,9 +1,11 @@
 use core::{cmp, fmt};
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use num_traits::{ToPrimitive, identities::Zero};
 use openssl::symm::{Cipher, Crypter, Mode};
 use zeroize::{Zeroize, Zeroizing};
+
+use crate::crypto::float_conv::{f64_to_usize_saturating, usize_to_f64};
 
 /// AES-256 block length in bytes (NIST SP 800-38G mandates a 128-bit block cipher for FF1).
 const BLOCK_LEN: usize = 16;
@@ -12,28 +14,26 @@ const KEY_LEN: usize = 32;
 
 /// Encrypt a single 128-bit block with AES-256-ECB via OpenSSL (no padding).
 ///
-/// The key and block lengths are invariants enforced by the call sites; an
-/// OpenSSL error here would indicate a programming error, so we propagate it
-/// as a string rather than exposing the full `ErrorStack` type to callers.
-#[allow(clippy::expect_used, clippy::indexing_slicing)]
-fn aes256_ecb_block(key: &[u8; KEY_LEN], block: &[u8; BLOCK_LEN]) -> [u8; BLOCK_LEN] {
+/// The key and block lengths are invariants enforced by the call sites; an OpenSSL error here
+/// would indicate a programming error and is reported as [`NumeralStringError::Internal`].
+fn aes256_ecb_block(
+    key: &[u8; KEY_LEN],
+    block: &[u8; BLOCK_LEN],
+) -> Result<[u8; BLOCK_LEN], NumeralStringError> {
+    const FAILED: NumeralStringError = NumeralStringError::Internal("AES-256-ECB block encryption");
     // OpenSSL's Crypter::update writes at most input_len + block_len bytes.
-    let mut out = [0_u8; 2 * BLOCK_LEN];
-    let mut cr = Crypter::new(Cipher::aes_256_ecb(), Mode::Encrypt, key, None)
-        // Invariant: key is KEY_LEN bytes and AES-256-ECB is always available.
-        .expect("AES-256-ECB init");
+    let mut out = Zeroizing::new([0_u8; 2 * BLOCK_LEN]);
+    let mut cr =
+        Crypter::new(Cipher::aes_256_ecb(), Mode::Encrypt, key, None).map_err(|_e| FAILED)?;
     cr.pad(false); // exact-block input — no PKCS#7 padding
-    let n1 = cr.update(block, &mut out).expect("AES-256-ECB update");
-    let n2 = cr.finalize(&mut out[n1..]).expect("AES-256-ECB finalize");
-    debug_assert_eq!(
-        n1 + n2,
-        BLOCK_LEN,
-        "AES-256-ECB must output exactly one block"
-    );
-    let mut result = [0_u8; BLOCK_LEN];
-    result.copy_from_slice(&out[..BLOCK_LEN]);
-    out.zeroize();
-    result
+    let n1 = cr.update(block, &mut *out).map_err(|_e| FAILED)?;
+    let n2 = cr
+        .finalize(out.get_mut(n1..).ok_or(FAILED)?)
+        .map_err(|_e| FAILED)?;
+    if n1 + n2 != BLOCK_LEN {
+        return Err(FAILED);
+    }
+    <[u8; BLOCK_LEN]>::try_from(out.get(..BLOCK_LEN).ok_or(FAILED)?).map_err(|_e| FAILED)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,9 +80,17 @@ impl std::error::Error for FF1Error {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NumeralStringError {
     InvalidForRadix(u32),
-    TooLong { ns_len: usize, max_len: usize },
-    TooShort { ns_len: usize, min_len: usize },
+    TooLong {
+        ns_len: usize,
+        max_len: usize,
+    },
+    TooShort {
+        ns_len: usize,
+        min_len: usize,
+    },
     TweakTooLong,
+    /// An internal invariant was violated (names the failing operation).
+    Internal(&'static str),
 }
 
 impl fmt::Display for NumeralStringError {
@@ -102,6 +110,7 @@ impl fmt::Display for NumeralStringError {
             Self::TweakTooLong => {
                 write!(f, "The tweak is longer than u32::MAX bytes")
             }
+            Self::Internal(operation) => write!(f, "FF1 internal error: {operation} failed"),
         }
     }
 }
@@ -194,13 +203,8 @@ impl Radix {
             Self::Any { radix, .. } => {
                 // NIST SP 800-38G §6.1 step 6: b = ⌈⌈v × log₂(radix)⌉ / 8⌉
                 // Use exact floating-point log2 to match the spec precisely.
-                #[allow(
-                    clippy::cast_precision_loss,
-                    clippy::cast_sign_loss,
-                    clippy::cast_possible_truncation,
-                    clippy::as_conversions
-                )]
-                let bit_count = (v as f64 * f64::from(radix).log2()).ceil() as usize;
+                let bit_count =
+                    f64_to_usize_saturating((usize_to_f64(v) * f64::from(radix).log2()).ceil());
                 bit_count.div_ceil(8)
             }
             Self::PowerTwo { log_radix, .. } => (v * usize::from(log_radix)).div_ceil(8),
@@ -268,24 +272,25 @@ impl Prf {
         }
     }
 
-    #[allow(clippy::indexing_slicing)]
-    fn update(&mut self, mut data: &[u8]) {
-        while !data.is_empty() {
-            let to_read = cmp::min(BLOCK_LEN - self.offset, data.len());
-            self.buf[self.offset..self.offset + to_read].copy_from_slice(&data[..to_read]);
-            self.offset += to_read;
-            data = &data[to_read..];
+    fn update(&mut self, data: &[u8]) -> Result<(), NumeralStringError> {
+        for &byte in data {
+            *self
+                .buf
+                .get_mut(self.offset)
+                .ok_or(NumeralStringError::Internal("CBC-MAC buffer offset"))? = byte;
+            self.offset += 1;
 
             if self.offset == BLOCK_LEN {
                 // CBC: XOR plaintext block with previous ciphertext block, then ECB-encrypt.
                 for (b, s) in self.buf.iter_mut().zip(self.state.iter()) {
                     *b ^= s;
                 }
-                self.state = aes256_ecb_block(&self.key, &self.buf);
+                self.state = aes256_ecb_block(&self.key, &self.buf)?;
                 self.buf = [0_u8; BLOCK_LEN];
                 self.offset = 0;
             }
         }
+        Ok(())
     }
 
     fn output(&self) -> &[u8; BLOCK_LEN] {
@@ -299,7 +304,11 @@ impl Prf {
 /// S = R || `CIPH_K`(R XOR \[1\]_16) || `CIPH_K`(R XOR \[2\]_16) || ...
 /// truncated to `d` bytes, where each `[j]_16` is j big-endian–encoded into
 /// 16 bytes XOR'd element-wise with R.
-fn generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
+fn generate_s(
+    key: &[u8; KEY_LEN],
+    r: &[u8; BLOCK_LEN],
+    d: usize,
+) -> Result<Vec<u8>, NumeralStringError> {
     let mut s = Vec::with_capacity(d);
     s.extend_from_slice(r);
     let num_extra = d.div_ceil(BLOCK_LEN).saturating_sub(1);
@@ -308,12 +317,12 @@ fn generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
         for (b, j_byte) in block.iter_mut().zip(j.to_be_bytes().iter()) {
             *b ^= j_byte;
         }
-        let encrypted = aes256_ecb_block(key, &block);
+        let encrypted = aes256_ecb_block(key, &block)?;
         block.zeroize();
         s.extend_from_slice(&encrypted);
     }
     s.truncate(d);
-    s
+    Ok(s)
 }
 
 pub(crate) type FF1h = FF1fr<18>;
@@ -327,12 +336,6 @@ pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8> {
     /// AES-256 key — zeroised when the struct is dropped.
     key: Zeroizing<[u8; KEY_LEN]>,
     radix: Radix,
-}
-
-impl<const FEISTEL_ROUNDS: u8> Drop for FF1fr<FEISTEL_ROUNDS> {
-    fn drop(&mut self) {
-        // Zeroizing<> handles the key; nothing else to explicitly wipe.
-    }
 }
 
 impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
@@ -352,9 +355,9 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
 }
 
 impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
-    // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
-    // to allow line-by-line verification against the specification.
-    #[allow(clippy::many_single_char_names)]
+    // NIST SP 800-38G §6 letters: `len_n`=n, `tweak_len_t`=t, `len_u`=u, `len_v`=v,
+    // `bytes_b`=b, `bytes_d`=d, `block_p`=P, `round`=i, `block_r`=R, `block_s`=S, `num_y`=y,
+    // `len_m`=m, `num_c`=c (A/B/C halves are `x_a`/`x_b`/`x_c`).
     pub(crate) fn encrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
@@ -365,54 +368,53 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         }
         self.radix.check_ns_length(x.numeral_count())?;
 
-        let n = x.numeral_count();
-        let t = tweak.len();
+        let len_n = x.numeral_count();
+        let tweak_len_t = tweak.len();
 
-        if t > MAX_NS_LEN {
+        if tweak_len_t > MAX_NS_LEN {
             return Err(NumeralStringError::TweakTooLong);
         }
 
-        let u = n / 2;
-        let v = n - u;
+        let len_u = len_n / 2;
+        let len_v = len_n - len_u;
 
-        let (mut x_a, mut x_b) = x.split(u);
+        let (mut x_a, mut x_b) = x.split(len_u);
 
-        let b = self.radix.calculate_b(v);
-        let d = 4 * b.div_ceil(4) + 4;
+        let bytes_b = self.radix.calculate_b(len_v);
+        let bytes_d = 4 * bytes_b.div_ceil(4) + 4;
 
-        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
-        let [u_byte, ..] = (u & 0xFF).to_le_bytes();
-        let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
-        let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
-        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
-        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
-        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
-        let p: [u8; 16] = [
-            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
-        ];
+        let block_p = self.header_block(len_n, len_u, tweak_len_t);
 
         let mut prf = Prf::new(&self.key);
-        prf.update(&p);
-        prf.update(tweak);
-        let padding = (16 - (t + b + 1) % 16) % 16;
+        prf.update(&block_p)?;
+        prf.update(tweak)?;
+        let padding = (16 - (tweak_len_t + bytes_b + 1) % 16) % 16;
         for _ in 0..padding {
-            prf.update(&[0]);
+            prf.update(&[0])?;
         }
-        for i in 0..FEISTEL_ROUNDS {
+        for round in 0..FEISTEL_ROUNDS {
             let mut prf = prf.clone();
-            prf.update(&[i]);
-            prf.update(x_b.num_radix(self.radix.to_u32()).to_bytes(b).as_ref());
-            let r = *prf.output();
+            prf.update(&[round])?;
+            prf.update(
+                x_b.num_radix(self.radix.to_u32())
+                    .to_bytes(bytes_b)
+                    .as_ref(),
+            )?;
+            let block_r = *prf.output();
 
-            let s = generate_s(&self.key, &r, d);
-            let y = NS::Num::from_bytes(s.into_iter());
-            let m = if i.is_multiple_of(2) { u } else { v };
+            let block_s = generate_s(&self.key, &block_r, bytes_d)?;
+            let num_y = NS::Num::from_bytes(block_s.into_iter());
+            let len_m = if round.is_multiple_of(2) {
+                len_u
+            } else {
+                len_v
+            };
 
-            let c = x_a
-                .num_radix(self.radix.to_u32())
-                .add_mod_exp(y, self.radix.to_u32(), m);
+            let num_c =
+                x_a.num_radix(self.radix.to_u32())
+                    .add_mod_exp(num_y, self.radix.to_u32(), len_m);
 
-            let x_c = NS::str_radix(c, self.radix.to_u32(), m);
+            let x_c = NS::str_radix(num_c, self.radix.to_u32(), len_m);
 
             x_a = x_b;
             x_b = x_c;
@@ -421,9 +423,21 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         Ok(NS::concat(x_a, x_b))
     }
 
-    // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
-    // to allow line-by-line verification against the specification.
-    #[allow(clippy::many_single_char_names)]
+    /// Builds the 16-byte FF1 header block P (NIST SP 800-38G §6 step 5).
+    fn header_block(&self, len_n: usize, len_u: usize, tweak_len_t: usize) -> [u8; 16] {
+        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
+        let [u_byte, ..] = (len_u & 0xFF).to_le_bytes();
+        let n_u32 = u32::try_from(len_n).unwrap_or(u32::MAX);
+        let t_u32 = u32::try_from(tweak_len_t).unwrap_or(u32::MAX);
+        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
+        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
+        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
+        [
+            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
+        ]
+    }
+
+    // Same NIST SP 800-38G §6 letter mapping as `encrypt`.
     pub(crate) fn decrypt<NS: NumeralString>(
         &self,
         tweak: &[u8],
@@ -434,55 +448,53 @@ impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
         }
         self.radix.check_ns_length(x.numeral_count())?;
 
-        let n = x.numeral_count();
-        let t = tweak.len();
+        let len_n = x.numeral_count();
+        let tweak_len_t = tweak.len();
 
-        if t > MAX_NS_LEN {
+        if tweak_len_t > MAX_NS_LEN {
             return Err(NumeralStringError::TweakTooLong);
         }
 
-        let u = n / 2;
-        let v = n - u;
+        let len_u = len_n / 2;
+        let len_v = len_n - len_u;
 
-        let (mut x_a, mut x_b) = x.split(u);
+        let (mut x_a, mut x_b) = x.split(len_u);
 
-        let b = self.radix.calculate_b(v);
-        let d = 4 * b.div_ceil(4) + 4;
+        let bytes_b = self.radix.calculate_b(len_v);
+        let bytes_d = 4 * bytes_b.div_ceil(4) + 4;
 
-        // Low 8 bits of u (u mod 256), encoded without fallible conversion or indexing.
-        let [u_byte, ..] = (u & 0xFF).to_le_bytes();
-        let n_u32 = u32::try_from(n).unwrap_or(u32::MAX);
-        let t_u32 = u32::try_from(t).unwrap_or(u32::MAX);
-        let [_, r1, r2, r3] = self.radix.to_u32().to_be_bytes();
-        let [n0, n1, n2, n3] = n_u32.to_be_bytes();
-        let [t0, t1, t2, t3] = t_u32.to_be_bytes();
-        let p: [u8; 16] = [
-            1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
-        ];
+        let block_p = self.header_block(len_n, len_u, tweak_len_t);
 
         let mut prf = Prf::new(&self.key);
-        prf.update(&p);
-        prf.update(tweak);
-        let padding = (16 - (t + b + 1) % 16) % 16;
+        prf.update(&block_p)?;
+        prf.update(tweak)?;
+        let padding = (16 - (tweak_len_t + bytes_b + 1) % 16) % 16;
         for _ in 0..padding {
-            prf.update(&[0]);
+            prf.update(&[0])?;
         }
-        for i in 0..FEISTEL_ROUNDS {
-            let i = FEISTEL_ROUNDS - 1 - i;
+        for round in (0..FEISTEL_ROUNDS).rev() {
             let mut prf = prf.clone();
-            prf.update(&[i]);
-            prf.update(x_a.num_radix(self.radix.to_u32()).to_bytes(b).as_ref());
-            let r = *prf.output();
+            prf.update(&[round])?;
+            prf.update(
+                x_a.num_radix(self.radix.to_u32())
+                    .to_bytes(bytes_b)
+                    .as_ref(),
+            )?;
+            let block_r = *prf.output();
 
-            let s = generate_s(&self.key, &r, d);
-            let y = NS::Num::from_bytes(s.into_iter());
-            let m = if i.is_multiple_of(2) { u } else { v };
+            let block_s = generate_s(&self.key, &block_r, bytes_d)?;
+            let num_y = NS::Num::from_bytes(block_s.into_iter());
+            let len_m = if round.is_multiple_of(2) {
+                len_u
+            } else {
+                len_v
+            };
 
-            let c = x_b
-                .num_radix(self.radix.to_u32())
-                .sub_mod_exp(y, self.radix.to_u32(), m);
+            let num_c =
+                x_b.num_radix(self.radix.to_u32())
+                    .sub_mod_exp(num_y, self.radix.to_u32(), len_m);
 
-            let x_c = NS::str_radix(c, self.radix.to_u32(), m);
+            let x_c = NS::str_radix(num_c, self.radix.to_u32(), len_m);
 
             x_b = x_a;
             x_a = x_c;
@@ -597,5 +609,172 @@ impl NumeralString for FlexibleNumeralString {
             x /= radix;
         }
         Self(res)
+    }
+}
+#[cfg(test)]
+mod ff1_characterization_tests {
+    use super::{
+        BLOCK_LEN, FF1fr, FF1h, FlexibleNumeralString, KEY_LEN, Prf, aes256_ecb_block, generate_s,
+    };
+
+    fn hex_to_key(hex_str: &str) -> [u8; KEY_LEN] {
+        let bytes = hex::decode(hex_str).unwrap();
+        let mut key = [0_u8; KEY_LEN];
+        key.copy_from_slice(&bytes);
+        key
+    }
+
+    fn call_aes256_ecb_block(key: &[u8; KEY_LEN], block: &[u8; BLOCK_LEN]) -> [u8; BLOCK_LEN] {
+        aes256_ecb_block(key, block).unwrap()
+    }
+
+    fn call_generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
+        generate_s(key, r, d).unwrap()
+    }
+
+    #[test]
+    fn characterization_ff1_nist_sample_7() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        let ff1 = FF1fr::<10>::new(&key, 10).unwrap();
+        let tweak: &[u8] = &[];
+        let pt_digits = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let pt = FlexibleNumeralString::from(pt_digits.clone());
+
+        let ct: FlexibleNumeralString = ff1.encrypt(tweak, &pt).unwrap();
+        let ct_digits: Vec<u16> = ct.into();
+        let expected_ct_digits: Vec<u16> = vec![6, 6, 5, 7, 6, 6, 7, 0, 0, 9];
+        assert_eq!(ct_digits, expected_ct_digits);
+
+        let ct_for_dec = FlexibleNumeralString::from(expected_ct_digits);
+        let decrypted: FlexibleNumeralString = ff1.decrypt(tweak, &ct_for_dec).unwrap();
+        let dec_digits: Vec<u16> = decrypted.into();
+        assert_eq!(dec_digits, pt_digits);
+    }
+
+    #[test]
+    fn characterization_ff1_nist_sample_8() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        let ff1 = FF1fr::<10>::new(&key, 10).unwrap();
+        let tweak = hex::decode("39383736353433323130").unwrap();
+        let pt_digits = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let pt = FlexibleNumeralString::from(pt_digits.clone());
+
+        let ct: FlexibleNumeralString = ff1.encrypt(&tweak, &pt).unwrap();
+        let ct_digits: Vec<u16> = ct.into();
+        let expected_ct_digits: Vec<u16> = vec![1, 0, 0, 1, 6, 2, 3, 4, 6, 3];
+        assert_eq!(ct_digits, expected_ct_digits);
+
+        let ct_for_dec = FlexibleNumeralString::from(expected_ct_digits);
+        let decrypted: FlexibleNumeralString = ff1.decrypt(&tweak, &ct_for_dec).unwrap();
+        let dec_digits: Vec<u16> = decrypted.into();
+        assert_eq!(dec_digits, pt_digits);
+    }
+
+    #[test]
+    fn characterization_ff1_nist_sample_9() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        let ff1 = FF1fr::<10>::new(&key, 36).unwrap();
+        let tweak = hex::decode("3737373770717273373737").unwrap();
+        // PT: 0123456789abcdefghi (radix 36: 0-9 -> 0-9, a-z -> 10-35)
+        let pt_digits: Vec<u16> = vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+        ];
+        let pt = FlexibleNumeralString::from(pt_digits.clone());
+
+        let ct: FlexibleNumeralString = ff1.encrypt(&tweak, &pt).unwrap();
+        let ct_digits: Vec<u16> = ct.into();
+        // xs8a0azh2avyalyzuwd
+        let expected_ct_digits: Vec<u16> = vec![
+            33, 28, 8, 10, 0, 10, 35, 17, 2, 10, 31, 34, 10, 21, 34, 35, 30, 32, 13,
+        ];
+        assert_eq!(ct_digits, expected_ct_digits);
+
+        let ct_for_dec = FlexibleNumeralString::from(expected_ct_digits);
+        let decrypted: FlexibleNumeralString = ff1.decrypt(&tweak, &ct_for_dec).unwrap();
+        let dec_digits: Vec<u16> = decrypted.into();
+        assert_eq!(dec_digits, pt_digits);
+    }
+
+    #[test]
+    fn characterization_ff1h_tweaks_and_decrypt() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        let ff1h = FF1h::new(&key, 10).unwrap();
+        let pt_digits: Vec<u16> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let pt = FlexibleNumeralString::from(pt_digits.clone());
+
+        let tweak_sizes = [0, 15, 16, 17, 33];
+        let expected_goldens: [&[u16]; 5] = [
+            &[2, 9, 7, 0, 4, 9, 4, 7, 3, 7],
+            &[5, 1, 4, 7, 6, 7, 0, 6, 2, 3],
+            &[8, 2, 2, 0, 3, 5, 9, 8, 0, 0],
+            &[2, 5, 7, 2, 0, 7, 5, 8, 0, 5],
+            &[2, 7, 9, 6, 7, 8, 4, 4, 1, 3],
+        ];
+
+        for (tweak_len, expected) in tweak_sizes.iter().zip(expected_goldens.iter()) {
+            let tweak = vec![0xA5_u8; *tweak_len];
+            let ct: FlexibleNumeralString = ff1h.encrypt(&tweak, &pt).unwrap();
+            let ct_digits: Vec<u16> = ct.into();
+            assert_eq!(ct_digits, *expected);
+
+            let ct_for_dec = FlexibleNumeralString::from(ct_digits);
+            let decrypted: FlexibleNumeralString = ff1h.decrypt(&tweak, &ct_for_dec).unwrap();
+            let dec_digits: Vec<u16> = decrypted.into();
+            assert_eq!(dec_digits, pt_digits);
+        }
+    }
+
+    #[test]
+    fn characterization_prf_update_chunk_splits() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        // 0 + 1 + 15 + 16 + 17 + 31 = 80 bytes (exactly 5 blocks of 16)
+        let full_data = vec![0x42_u8; 80];
+
+        let mut prf_full = Prf::new(&key);
+        prf_full.update(&full_data).unwrap();
+        let out_full = *prf_full.output();
+
+        let mut prf_chunks = Prf::new(&key);
+        let chunk_sizes = [0, 1, 15, 16, 17, 31];
+        let mut offset = 0;
+        for &size in &chunk_sizes {
+            let chunk = &full_data[offset..offset + size];
+            prf_chunks.update(chunk).unwrap();
+            offset += size;
+        }
+        let out_chunks = *prf_chunks.output();
+
+        assert_eq!(out_chunks, out_full);
+        let expected_hex = "2843af0e33ae5c7b798dd53ade128656";
+        assert_eq!(hex::encode(out_chunks), expected_hex);
+    }
+
+    #[test]
+    fn characterization_generate_s_direct() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        let r = [0x5A_u8; BLOCK_LEN];
+        let d = 40;
+        let s = call_generate_s(&key, &r, d);
+        assert_eq!(s.len(), d);
+        let expected_hex =
+            "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5aa5bd3ee26b6fd900170f34420e09906a060de4c57003c1ff";
+        assert_eq!(hex::encode(&s), expected_hex);
+    }
+
+    #[test]
+    fn characterization_aes256_ecb_block_direct() {
+        let key = hex_to_key("2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94");
+        let block = [0x11_u8; BLOCK_LEN];
+        let out = call_aes256_ecb_block(&key, &block);
+        let expected_hex = "8c0dc059e5bb21fbc37442f7c0878022";
+        assert_eq!(hex::encode(out), expected_hex);
+    }
+
+    #[test]
+    fn characterization_ff1_internal_error_display_names_the_operation() {
+        assert_eq!(
+            super::NumeralStringError::Internal("AES-256-ECB block encryption").to_string(),
+            "FF1 internal error: AES-256-ECB block encryption failed"
+        );
     }
 }

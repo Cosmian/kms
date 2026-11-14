@@ -159,7 +159,7 @@ async fn test_hsm_all() {
     }
 }
 
-/// JOSE flow A against the HSM (runs standalone via `mise run test:jose-hsm`).
+/// JOSE flow A against the HSM (runs standalone via `mise run test:hsm:jose`).
 #[tokio::test]
 #[ignore = "Requires a working HSM setup"]
 async fn test_hsm_jose() {
@@ -238,8 +238,12 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
         false,
         None,
     )?;
-    let response =
-        send_message(kms.clone(), owner, vec![Operation::Create(create_request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        owner,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
@@ -387,7 +391,8 @@ async fn revoke_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     let revoke_request = Revoke {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         revocation_reason: RevocationReason {
-            revocation_reason_code: RevocationReasonCode::Unspecified,
+            // Keys here are never activated; only a compromise revoke is valid from PreActive.
+            revocation_reason_code: RevocationReasonCode::KeyCompromise,
             revocation_message: Some("revoke".to_owned()),
         },
         compromise_occurrence_date: None,
@@ -423,7 +428,9 @@ async fn send_message(
         },
         batch_item: operations
             .into_iter()
-            .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)))
+            .map(|op| {
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+            })
             .collect(),
     };
 

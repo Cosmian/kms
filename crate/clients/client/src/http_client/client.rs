@@ -52,7 +52,7 @@ pub struct HttpClientConfig {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS server
     // running an invalid or insecure TLS certificate
     #[serde(default)]
-    #[serde(skip_serializing_if = "not")]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub accept_invalid_certs: bool,
     pub server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,12 +120,6 @@ impl Default for HttpClientConfig {
             custom_headers: None,
         }
     }
-}
-
-/// used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
-const fn not(b: &bool) -> bool {
-    !*b
 }
 
 /// Intermediate struct used to deserialise `HttpClientConfig` from TOML/JSON.
@@ -314,7 +308,7 @@ impl HttpClient {
 
     /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
     ///
-    /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
+    /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.5.
     ///
     /// # Errors
     /// Will return an error if the client cannot be instantiated
@@ -645,7 +639,6 @@ impl HttpClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod default_header_tests {
     use super::{HttpClient, HttpClientConfig};
 
@@ -762,5 +755,32 @@ mod error_chain_tests {
         let embedded = Layer("connect: tls failure".to_owned(), Some(Box::new(root)));
         let top = Layer("client error".to_owned(), Some(Box::new(embedded)));
         assert_eq!(error_chain(&top), "client error: connect: tls failure");
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests for the `accept_invalid_certs` serialization rule of
+    //! `HttpClientConfig`.
+
+    use super::HttpClientConfig;
+
+    #[test]
+    fn characterization_http_client_config_serialization_skips_false_accept_invalid_certs() {
+        let json = serde_json::to_string(&HttpClientConfig::default()).unwrap();
+        assert_eq!(json, r#"{"server_url":"http://127.0.0.1:9998"}"#);
+    }
+
+    #[test]
+    fn characterization_http_client_config_serialization_keeps_true_accept_invalid_certs() {
+        let config = HttpClientConfig {
+            accept_invalid_certs: true,
+            ..HttpClientConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert_eq!(
+            json,
+            r#"{"accept_invalid_certs":true,"server_url":"http://127.0.0.1:9998"}"#
+        );
     }
 }

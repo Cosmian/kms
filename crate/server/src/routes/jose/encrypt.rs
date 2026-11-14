@@ -69,17 +69,7 @@ pub(crate) async fn encrypt(
 
     match body.alg {
         JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {
-            Box::pin(encrypt_rsa_oaep(
-                &kms,
-                &user,
-                body.kid,
-                body.alg,
-                body.enc,
-                &plaintext,
-                body.aad,
-                body.cek_kid,
-            ))
-            .await
+            Box::pin(encrypt_rsa_oaep(&kms, &user, body, &plaintext)).await
         }
         JoseAlgorithm::Dir => {
             if body.cek_kid.is_some() {
@@ -157,17 +147,20 @@ async fn encrypt_dir(
 /// 2. Wrap CEK with RSA-OAEP using the recipient's public key
 /// 3. Encrypt plaintext with AES-GCM using the CEK
 /// 4. Return JWE Flattened JSON with `encrypted_key` populated
-#[allow(clippy::too_many_arguments)]
 async fn encrypt_rsa_oaep(
     kms: &KMS,
     user: &UserId,
-    kid: String,
-    alg: JoseAlgorithm,
-    enc: super::JoseEncAlgorithm,
+    body: EncryptRequest,
     plaintext: &[u8],
-    aad: Option<String>,
-    cek_kid: Option<String>,
 ) -> CryptoResult<CryptoEncryptResponse> {
+    let EncryptRequest {
+        kid,
+        alg,
+        enc,
+        aad,
+        cek_kid,
+        data: _,
+    } = body;
     // Resolve the key — accept either private or public key UID
     let owm = Box::pin(retrieve_object_for_operation(
         ObjectHandle::from(&kid),

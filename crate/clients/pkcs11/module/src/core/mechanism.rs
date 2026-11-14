@@ -17,8 +17,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::as_conversions)]
-
 use std::slice;
 
 use cosmian_logger::{debug, error};
@@ -52,6 +50,18 @@ pub const AES_GCM_MAX_AAD_SIZE: usize = 1 << 20; // 1 MiB
 /// bytes), matching `AES_128_GCM_MAC_LENGTH`/`AES_192_GCM_MAC_LENGTH`/`AES_256_GCM_MAC_LENGTH`
 /// in `crate/crypto`.
 pub const AES_GCM_TAG_BITS: pkcs11_sys::CK_ULONG = 128;
+
+/// `CK_ULONG` is `u32` on Windows and `u64` elsewhere; widen it to `u64`.
+#[cfg(windows)]
+fn ck_ulong_to_u64(value: pkcs11_sys::CK_ULONG) -> u64 {
+    u64::from(value)
+}
+
+/// `CK_ULONG` is `u32` on Windows and `u64` elsewhere; widen it to `u64`.
+#[cfg(not(windows))]
+const fn ck_ulong_to_u64(value: pkcs11_sys::CK_ULONG) -> u64 {
+    value
+}
 
 pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_RSA_PKCS,
@@ -104,7 +114,16 @@ pub enum Mechanism {
     RsaOaep,
 }
 
-#[expect(clippy::missing_safety_doc)]
+/// Parses a raw `CK_MECHANISM` into a [`Mechanism`].
+///
+/// # Safety
+///
+/// `mechanism.pParameter` must be null or point to `mechanism.ulParameterLen` readable bytes
+/// laid out as the parameter structure required by `mechanism.mechanism`.
+#[expect(
+    unsafe_code,
+    reason = "dereferences the C caller's mechanism parameter pointer"
+)]
 pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, ModuleError> {
     debug!("parse_mechanism: {mechanism:?}");
     match mechanism.mechanism {
@@ -261,9 +280,7 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             Ok(Mechanism::RsaPss {
                 digest_algorithm: hash_alg,
                 mask_generation_function: mgf,
-                // CK_ULONG is u32 on Windows, u64 on Linux; the conversion is needed for Windows
-                #[allow(clippy::useless_conversion)]
-                salt_length: u64::from(salt_len),
+                salt_length: ck_ulong_to_u64(salt_len),
             })
         }
         CKM_RSA_PKCS_OAEP => {
@@ -388,7 +405,10 @@ impl TryFrom<Mechanism> for KeyAlgorithm {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
+#[expect(
+    unsafe_code,
+    reason = "tests call the unsafe `parse_mechanism` with in-scope buffers"
+)]
 mod tests {
     use pkcs11_sys::CK_MECHANISM;
 

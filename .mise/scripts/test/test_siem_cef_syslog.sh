@@ -60,7 +60,7 @@ ckms_bin=$(get_ckms_bin)
 
 echo "==> Setting up Python virtualenv (no extra packages needed)..."
 VENV_DIR="$(mktemp -d -t siem-venv-XXXXXX)"
-python3 -m venv "${VENV_DIR}"
+"$(pick_python312)" -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 

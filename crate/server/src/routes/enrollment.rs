@@ -29,6 +29,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::Certify,
             kmip_types::{CertificateRequestType, LinkType, LinkedObjectIdentifier},
         },
+        time_normalize,
     },
     cosmian_kms_crypto::openssl::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, oid::nid_of,
@@ -43,7 +44,6 @@ use openssl::{
     sha::sha256,
     x509::{X509, X509Req},
 };
-use subtle::ConstantTimeEq;
 use uuid::Uuid;
 use x509_parser::{
     asn1_rs::{Any, Tag},
@@ -94,7 +94,7 @@ fn log_ca_use_failure(ca_uid: &str, error: &KmsError) {
 
 /// Compare two secrets in constant time (both are hashed first so that the length is not leaked).
 pub(crate) fn secrets_equal(a: &str, b: &str) -> bool {
-    sha256(a.as_bytes()).ct_eq(&sha256(b.as_bytes())).into()
+    openssl::memcmp::eq(&sha256(a.as_bytes()), &sha256(b.as_bytes()))
 }
 
 /// Address of the client of `req`, honouring `X-Forwarded-For` only from the configured
@@ -210,11 +210,11 @@ pub(crate) const MAX_ENROLLMENT_BODY: usize = 64 * 1024;
 
 /// Read a request body of at most [`MAX_ENROLLMENT_BODY`] bytes; the error is the response to
 /// send back.
-pub(crate) async fn read_limited_body(payload: Payload) -> Result<Bytes, HttpResponse> {
+pub(crate) async fn read_limited_body(payload: Payload) -> Result<Bytes, Box<HttpResponse>> {
     match payload.to_bytes_limited(MAX_ENROLLMENT_BODY).await {
         Ok(Ok(body)) => Ok(body),
-        Ok(Err(_)) => Err(HttpResponse::BadRequest().finish()),
-        Err(_) => Err(HttpResponse::PayloadTooLarge().finish()),
+        Ok(Err(_)) => Err(Box::new(HttpResponse::BadRequest().finish())),
+        Err(_) => Err(Box::new(HttpResponse::PayloadTooLarge().finish())),
     }
 }
 
@@ -402,6 +402,9 @@ pub(crate) async fn issue_from_csr(
         LinkedObjectIdentifier::TextString(ca_uid.to_owned()),
     );
     template.apply(csr, kms.vendor_id(), &mut attributes)?;
+    // A device certificate is usable (and renewable) as soon as it is issued: without an
+    // Activation Date Certify leaves it Pre-Active (KMIP 2.1 §4.57).
+    attributes.activation_date = Some(time_normalize()?);
     let response = Box::pin(certify_for_owner(
         kms,
         Certify {
@@ -613,14 +616,13 @@ fn csr_san_set(csr: &X509Req) -> KResult<Vec<Vec<u8>>> {
     let (_, parsed) = X509CertificationRequest::from_der(&der)
         .map_err(|e| KmsError::InvalidRequest(format!("invalid CSR: {e}")))?;
     for attr in parsed.certification_request_info.iter_attributes() {
-        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute() {
-            if let Some(ext) = requested
+        if let ParsedCriAttribute::ExtensionRequest(requested) = attr.parsed_attribute()
+            && let Some(ext) = requested
                 .extensions
                 .iter()
                 .find(|e| nid_of(&e.oid.to_id_string()) == Nid::SUBJECT_ALT_NAME)
-            {
-                return san_entries(ext.value);
-            }
+        {
+            return san_entries(ext.value);
         }
     }
     Ok(Vec::new())

@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::{
@@ -8,7 +6,8 @@ use cosmian_kms_server_database::reexport::{
                 ResponseMessageBatchItemVersioned,
             },
             kmip_types::{
-                CryptographicUsageMask, ErrorReason, ProtocolVersion, ResultStatusEnumeration,
+                BatchErrorContinuationOption, CryptographicUsageMask, ErrorReason, ProtocolVersion,
+                ResultStatusEnumeration,
             },
         },
         kmip_2_1::{
@@ -222,7 +221,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -231,9 +230,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(Operation::Locate(
-                Box::default(),
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
+                Operation::Locate(Box::default()),
             ))),
         ],
     };
@@ -248,11 +247,12 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                 protocol_version_minor: 1,
             },
             maximum_response_size: Some(9999),
+            batch_error_continuation_option: Some(BatchErrorContinuationOption::Continue),
             batch_count: 4,
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -261,8 +261,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -271,8 +271,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -281,8 +281,8 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
                     VENDOR_ID_COSMIAN,
                     None,
@@ -291,7 +291,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
+            ))),
         ],
     };
 
@@ -336,7 +336,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
     assert_eq!(
         batch_item.result_reason,
-        Some(ErrorReason::Operation_Not_Supported)
+        Some(ErrorReason::Feature_Not_Supported)
     );
     assert_eq!(
         batch_item.result_message,

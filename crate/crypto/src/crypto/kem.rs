@@ -53,7 +53,6 @@ fn recommended_curve_to_pre_quantum_kem_tag(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn kem_keygen(
     vendor_id: &str,
     dk_uid: String,
@@ -242,7 +241,7 @@ fn create_dk_object(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(dk_bytes),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -282,7 +281,7 @@ fn create_ek_object(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(ek_bytes),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -290,7 +289,6 @@ fn create_ek_object(
     }))
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use zeroize::Zeroizing;

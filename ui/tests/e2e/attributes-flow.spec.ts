@@ -9,7 +9,7 @@
  *       - set
  *       - set → get (value readable, not hex bytes in VendorExtension)
  *       - set → modify → delete (full lifecycle)
- *   • key_usage: set → delete
+ *   • key_usage: set and modify succeed, delete rejected (usage mask is not deletable)
  *   • multiple link attributes set in one key
  *   • error handling: non-existent object ID returns a response (no UI crash)
  */
@@ -198,7 +198,7 @@ test.describe("Object attributes", () => {
 
     // ── Key Usage ─────────────────────────────────────────────────────────────
 
-    test("set and delete a key_usage attribute", async ({ page }) => {
+    test("delete of a key_usage attribute is rejected as read-only", async ({ page }) => {
         const keyId = await createSymKey(page);
 
         // Set usage to Encrypt ─────────────────────────────────────────────────
@@ -214,7 +214,8 @@ test.describe("Object attributes", () => {
         await page.fill('input[placeholder="Enter object ID"]', keyId);
         await selectOption(page, "attribute-name-select", "Key Usage");
         const deleteText = await submitAndWaitForResponse(page);
-        expect(deleteText).toMatch(/has been deleted for/i);
+        // Cryptographic Usage Mask is server-managed: deletion is refused.
+        expect(deleteText).toMatch(/Attribute_Read_Only|Read_Only_Attribute/);
     });
 
     test("modify key_usage attribute", async ({ page }) => {

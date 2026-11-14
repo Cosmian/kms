@@ -116,10 +116,8 @@ pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> CryptoResult<Zeroizing<V
     Ok(plaintext)
 }
 
-#[expect(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
-    use aes_kw::KeyInit;
     use zeroize::Zeroizing;
 
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
@@ -310,27 +308,5 @@ mod tests {
             .unwrap(),
         );
         assert_eq!(openssl_wrapped_key, rfc5649_wrapped_key);
-    }
-
-    #[test]
-    fn test_aes_kw_compat() {
-        setup_openssl_fips_provider();
-        // Test the compatibility with AES_KEY_WRAP_PAD (RFC 5649) implemented by the aes_kw crate.
-        let kek = "5840df6e29b02af1ab493b705bf16ea1ae8338f4dcc176a85840df6e29b02af1";
-        let dek = "afbeb0f07dfbf5419200f2ccb50bb24aafbeb0f07dfbf5419200f2ccb50bb24a";
-
-        let aes_kw_kek = aes_kw::KwpAes256::new_from_slice(&hex::decode(kek).unwrap()).unwrap();
-        let input_key = hex::decode(dek).unwrap();
-        let mut buf = [0_u8; 128];
-        let aes_kw_wrapped_key = hex::encode(aes_kw_kek.wrap_key(&input_key, &mut buf).unwrap());
-
-        let rfc5649_wrapped_key = hex::encode(
-            rfc5649_wrap(
-                hex::decode(dek).unwrap().as_slice(),
-                hex::decode(kek).unwrap().as_slice(),
-            )
-            .unwrap(),
-        );
-        assert_eq!(aes_kw_wrapped_key, rfc5649_wrapped_key);
     }
 }

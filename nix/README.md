@@ -10,7 +10,7 @@ flowchart TB
     kms_nix["kms-server.nix<br/>(Main derivation)"]
     src --> kms_nix
     cargo["Cargo Hash Verify"]
-    openssl["OpenSSL 3.6.2 Build"]
+    openssl["OpenSSL 3.6.5 Build"]
     rust["Rust 1.97.0 Toolchain"]
     kms_nix --> cargo & openssl & rust
     compile["Compilation (Static linking)"]
@@ -62,7 +62,7 @@ Modern software projects face critical challenges in build reproducibility and s
 
 1. **Supply Chain Security & Auditability**: Reproducible builds with cryptographic hash verification enable independent verification of binaries. While not required by FIPS 140-3, this provides strong supply chain security guarantees.
 
-2. **Static OpenSSL Linking**: KMS links against OpenSSL 3.6.2, but needs to bundle the OpenSSL 3.1.2 FIPS provider without runtime dependencies (official FIPS provider version; no more recent FIPS provider version). Nix allows precise control over linkage and eliminates `/nix/store` paths in final binaries.
+2. **Static OpenSSL Linking**: KMS links against OpenSSL 3.6.5, but needs to bundle the OpenSSL 3.1.2 FIPS provider without runtime dependencies (official FIPS provider version; no more recent FIPS provider version). Nix allows precise control over linkage and eliminates `/nix/store` paths in final binaries.
 
 3. **Multi-Platform Support**: Single build system for Linux (x86_64, ARM64) and macOS (Apple Silicon) without Docker limitations.
 
@@ -180,15 +180,15 @@ Every dependency (80+ Rust crates, OpenSSL, glibc) is pinned by cryptographic ha
 cargoHash = "sha256-xyz789...";  # Locks ALL Cargo dependencies
 
 # OpenSSL note:
-# - KMS links against OpenSSL 3.6.2 (runtime/library)
+# - KMS links against OpenSSL 3.6.5 (runtime/library)
 # - FIPS variants also ship the OpenSSL 3.1.2 FIPS provider + fipsmodule.cnf
 openssl36 = opensslPkgs.callPackage ./openssl.nix {
    static = true;
-   version = "3.6.2";
+   version = "3.6.5";
    enableLegacy = true;
-   srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
-   sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
-   expectedHash = "b6a5f44b7eb69e3fa35dbf15.29.05b44837a481d43d81daddde3ff21fcbb8e9";
+   srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
+   sha256SRI = "sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=";
+   expectedHash = "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
 };
 
 openssl312 = opensslPkgs.callPackage ./openssl.nix {
@@ -251,7 +251,7 @@ All Linux builds (FIPS and non-FIPS) achieve bit-for-bit deterministic reproduci
    - `-C strip=symbols` — Strip all symbols
    - `-C symbol-mangling-version=v0` — Stable symbol mangling
    - `SOURCE_DATE_EPOCH` — Normalized embedded timestamps
-5. **Pinned OpenSSL 3.6.2 (runtime) + 3.1.2 (FIPS provider)**: Fetched by SRI hash (FIPS 140-3 certified)
+5. **Pinned OpenSSL 3.6.5 (runtime) + 3.1.2 (FIPS provider)**: Fetched by SRI hash (FIPS 140-3 certified)
    - Note: OpenSSL 3.1.2 is kept for the FIPS provider.
 6. **Sanitized binaries**: RPATH removed, interpreter fixed to avoid volatile store paths
 7. **No host-path leakage**: Build uses only `/build` and `/tmp` remap prefixes (no workspace paths in derivation)
@@ -266,20 +266,20 @@ flowchart TB
         nixpkgs["Pinned nixpkgs 24.11<br/>Hash: sha256-abc123...<br/>Frozen package set<br/>Provides: gcc, binutils, coreutils (glibc 2.34)"]
         rust_tc["Rust Toolchain 1.97.0<br/>Exact version from nixpkgs<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1<br/>SOURCE_DATE_EPOCH=1"]
         cargo_hash["Cargo Dependencies (cargoHash)<br/>Hash: sha256-xyz789...<br/>Vendored mode (no network)<br/>Locks ALL transitive deps"]
-        openssl_src["OpenSSL 3.6.2 + 3.1.2 Source<br/>Both verified by SRI hash<br/>FIPS 140-3 certified source (3.1.2)"]
+        openssl_src["OpenSSL 3.6.5 + 3.1.2 Source<br/>Both verified by SRI hash<br/>FIPS 140-3 certified source (3.1.2)"]
         clean_src["Cleaned Source Tree<br/>Filters: result-*, sbom/, target/<br/>Only source code + Cargo.toml/lock"]
         nixpkgs --> rust_tc --> cargo_hash --> openssl_src --> clean_src
     end
     subgraph build["BUILD LAYER (Hermetic Execution)"]
         sandbox["Nix Build Sandbox<br/>Isolated /tmp · No /home access<br/>No network · Fixed PATH"]
         det_comp["Deterministic Compilation<br/>-Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false<br/>-Clink-arg=-Wl,--build-id=none -Cstrip=symbols<br/>-Csymbol-mangling-version=v0<br/>SOURCE_DATE_EPOCH=1"]
-        static_link["Static Linking<br/>OpenSSL 3.6.2 statically linked<br/>GLIBC dynamically linked (≤ 2.34)<br/>No RPATH"]
+        static_link["Static Linking<br/>OpenSSL 3.6.5 statically linked<br/>GLIBC dynamically linked (≤ 2.34)<br/>No RPATH"]
         sanitize["Binary Sanitization (Linux)<br/>Strip /nix/store ELF paths<br/>Fix interpreter to /lib64/ld-linux-x86-64.so.2<br/>(macOS: no sanitization)"]
         sandbox --> det_comp --> static_link --> sanitize
     end
     subgraph output["OUTPUT LAYER (Hash Verification)"]
         check_phase["installCheckPhase<br/>Expected: nix/expected-hashes/<variant>.<system>.sha256<br/>Actual: sha256($out/bin/cosmian_kms)<br/>Linux: MUST match (bit-for-bit)<br/>macOS: tracked for consistency"]
-        verified["Verified Binary Output<br/>/nix/store/<hash>-cosmian-kms-server/bin/cosmian_kms<br/>Portable (GLIBC ≥ 2.34) · Static OpenSSL 3.6.2"]
+        verified["Verified Binary Output<br/>/nix/store/<hash>-cosmian-kms-server/bin/cosmian_kms<br/>Portable (GLIBC ≥ 2.34) · Static OpenSSL 3.6.5"]
         check_phase --> verified
     end
     inputs --> build --> output
@@ -299,7 +299,7 @@ Cargo/UI vendor hashes are committed in the repository and verified during build
 | Hash Type             | Purpose                                                 | Location                                                   | Example (x86_64-linux FIPS)                                        |
 | --------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
 | **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix`                                       | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
-| **OpenSSL sources**   | OpenSSL 3.6.2 (runtime) + OpenSSL 3.1.2 (FIPS provider) | `nix/kms-server.nix` + `nix/openssl.nix`                   | `sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=`              |
+| **OpenSSL sources**   | OpenSSL 3.6.5 (runtime) + OpenSSL 3.1.2 (FIPS provider) | `nix/kms-server.nix` + `nix/openssl.nix`                   | `sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=`              |
 | **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`     | `528e0f2019769afb8016bb822f640b2b8b5c5711a0e13f59062c84f9b772bed6` |
 | **Binary (non-FIPS)** | Deterministic non-FIPS server executable                | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256` | `a921942fd81bedca3438789be5580bde794d5569ce3e955f692d44391f99ff02` |
 
@@ -329,10 +329,10 @@ During the build process, Nix enforces all hashes at multiple stages:
 flowchart TB
     s1["Step 1: Source Preparation<br/>cleanSourceWith removes artifacts<br/>(result-*, sbom/, target/)"]
     s2["Step 2: Cargo Vendor Hash Check<br/>Expected: cargoHash in kms-server.nix<br/>Actual: SHA-256 of vendored deps<br/>❌ Mismatch → BUILD FAILS<br/>✅ Match → Continue"]
-    s3["Step 3: OpenSSL Source Hash Check<br/>Expected: pinned SRI/hash for OpenSSL 3.6.2 + 3.1.2<br/>Actual: SHA-256 of openssl-*.tar.gz<br/>❌ Mismatch → BUILD FAILS"]
-    s4["Step 4: Compilation (deterministic)<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false<br/>-Cstrip=symbols -Csymbol-mangling-version=v0<br/>Static OpenSSL 3.6.2"]
+    s3["Step 3: OpenSSL Source Hash Check<br/>Expected: pinned SRI/hash for OpenSSL 3.6.5 + 3.1.2<br/>Actual: SHA-256 of openssl-*.tar.gz<br/>❌ Mismatch → BUILD FAILS"]
+    s4["Step 4: Compilation (deterministic)<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1 -Cincremental=false<br/>-Cstrip=symbols -Csymbol-mangling-version=v0<br/>Static OpenSSL 3.6.5"]
     s5["Step 5: Binary Hash Verification (installCheckPhase)<br/>Expected: nix/expected-hashes/<variant>.<system>.sha256<br/>Actual: SHA-256 of $out/bin/cosmian_kms<br/>❌ Mismatch → BUILD FAILS"]
-    s6["Step 6: Runtime Validation<br/>• OpenSSL 3.6.2 statically linked<br/>• Static linkage (no libssl.so)<br/>• GLIBC symbols ≤ 2.34<br/>• FIPS mode if variant=fips"]
+    s6["Step 6: Runtime Validation<br/>• OpenSSL 3.6.5 statically linked<br/>• Static linkage (no libssl.so)<br/>• GLIBC symbols ≤ 2.34<br/>• FIPS mode if variant=fips"]
     out["Output: Hash-Verified Binary<br/>result-server-<variant>/bin/cosmian_kms<br/>Deterministically reproducible (Linux)"]
     s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> out
 ```
@@ -342,7 +342,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     l1["Layer 1: Cargo Dependencies<br/>cargoHash in kms-server.nix<br/>Locks ALL transitive deps<br/>Nix: sha256(Cargo.lock + all crate sources)<br/>1 byte change in any crate = build fail"]
-    l2["Layer 2: System Dependencies<br/>OpenSSL 3.6.2 (runtime) + 3.1.2 (FIPS) tarball hashes<br/>FIPS 140-3 certified source (3.1.2)<br/>Protection: supply chain attacks on OpenSSL"]
+    l2["Layer 2: System Dependencies<br/>OpenSSL 3.6.5 (runtime) + 3.1.2 (FIPS) tarball hashes<br/>FIPS 140-3 certified source (3.1.2)<br/>Protection: supply chain attacks on OpenSSL"]
     l3["Layer 3: Final Binary<br/>nix/expected-hashes/<variant>.<platform>.sha256<br/>Linux (FIPS + non-FIPS): Bit-for-bit reproducible<br/>macOS: Hash tracking (consistency monitoring)"]
     l4["Layer 4: Runtime Assertions (installCheckPhase)<br/>OpenSSL linkage checks (static vs dynamic)<br/>GLIBC symbol version ≤ 2.34<br/>FIPS mode operational check (if FIPS variant)"]
     result["✅ 4-layer defense against supply chain attacks and build drift"]
@@ -358,12 +358,12 @@ flowchart TB
     rebuild["Rebuild: nix-build -A <target> -o result"]
     copy["Copy hash from build output to expected-hashes/<br/>• Vendor: cargoHash error<br/>• Binary: installCheckPhase output"]
     script["Script performs:<br/>1. Build with Nix<br/>2. Compute SHA-256<br/>3. Update hash files"]
-    verify["Verify: mise run test:sqlite"]
+    verify["Verify: mise run test:db:sqlite"]
     commit["Commit updated hashes"]
     change --> fail --> rebuild --> copy --> script --> verify --> commit
 ```
 
-Tip: for a quick end-to-end check after updates, use `mise run test:sqlite` or build a package with `mise run package`.
+Tip: for a quick end-to-end check after updates, use `mise run test:db:sqlite` or build a package with `mise run package`.
 
 Hash enforcement is configurable: some expected-hash checks are only enforced when `enforceDeterministicHash`/`--enforce-deterministic-hash true` is enabled.
 
@@ -623,7 +623,7 @@ Benefits: consistent versions, no rustup downloads, contributes to build reprodu
 ## Files overview
 
 - `kms-server.nix` — derivation + install checks
-- `openssl.nix` — OpenSSL builder (used for 3.6.2 runtime and 3.1.2 FIPS provider)
+- `openssl.nix` — OpenSSL builder (used for 3.6.5 runtime and 3.1.2 FIPS provider)
 - `expected-hashes/` — vendor/UI hash inputs + optional expected binary hashes (when enforcement is enabled)
 - `scripts/package_common.sh` — shared packaging logic
 - `scripts/package_deb.sh` / `scripts/package_rpm.sh` — thin wrappers
@@ -664,7 +664,7 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 ```mermaid
 flowchart TB
     nix_sh[".mise/scripts/nix.sh<br/>(Dispatcher, via `mise run`)"]
-    build_sh["build.sh<br/>Core server compilation<br/>Static link OpenSSL 3.6.2<br/>Validates: hash, GLIBC ≤ 2.34, version"]
+    build_sh["build.sh<br/>Core server compilation<br/>Static link OpenSSL 3.6.5<br/>Validates: hash, GLIBC ≤ 2.34, version"]
     pkg_sh["package_*.sh<br/>• package_deb.sh<br/>• package_rpm.sh<br/>• package_dmg.sh<br/>Common: package_common.sh"]
     utils_sh["Utilities<br/>• get_version.sh<br/>• update_hashes.sh<br/>• generate_sbom.sh<br/>• signing_key.sh"]
     nix_sh --> build_sh & pkg_sh & utils_sh
@@ -730,7 +730,7 @@ flowchart TB
     tools --> deb_rpm & dmg
     create["Create Package<br/>• Extract binary from result-server symlink<br/>• Apply variant naming (-fips suffix)<br/>• Include systemd/launchd config"]
     deb_rpm & dmg --> create
-    smoke{"Smoke Test (Mandatory)<br/>1. Extract to temp dir<br/>2. Run cosmian_kms --info<br/>3. Verify version + OpenSSL 3.6.2"}
+    smoke{"Smoke Test (Mandatory)<br/>1. Extract to temp dir<br/>2. Run cosmian_kms --info<br/>3. Verify version + OpenSSL 3.6.5"}
     create --> smoke
     pass["Generate .sha256 checksum"]
     gpg["Optional: GPG Sign (.asc)"]

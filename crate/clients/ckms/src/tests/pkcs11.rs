@@ -24,14 +24,11 @@ static BUILD_PKCS11: Once = Once::new();
 
 /// Ensures the `libcosmian_pkcs11` shared library (cdylib) is built.
 /// Mirrors the pattern from `ensure_binary.rs`.
-#[allow(clippy::print_stdout)]
 fn ensure_pkcs11_lib() {
     BUILD_PKCS11.call_once(|| {
         build_pkcs11_lib();
     });
 }
-
-#[allow(clippy::print_stdout)]
 fn build_pkcs11_lib() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let workspace_root = Path::new(manifest_dir)
@@ -104,7 +101,10 @@ fn pkcs11_lib_path() -> PathBuf {
         "libcosmian_pkcs11.so"
     };
 
-    workspace_root.join("target").join(profile).join(lib_name)
+    // Honour CARGO_TARGET_DIR (set per variant inside nix-shell, see shell.nix).
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map_or_else(|| workspace_root.join("target"), PathBuf::from);
+    target_dir.join(profile).join(lib_name)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,10 +360,10 @@ fn assert_mechanism_names_covered(stdout: &str, expected_names: usize) {
         .map_or(stdout.len(), |offset| section_start + offset);
     let mut names: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for line in stdout[section_start..section_end].lines() {
-        if let Some(rest) = line.split(' ').nth(1) {
-            if rest.starts_with("CKM_") {
-                names.insert(rest);
-            }
+        if let Some(rest) = line.split(' ').nth(1)
+            && rest.starts_with("CKM_")
+        {
+            names.insert(rest);
         }
     }
     assert_eq!(

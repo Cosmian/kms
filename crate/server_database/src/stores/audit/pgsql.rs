@@ -49,7 +49,7 @@ use deadpool_postgres::{
 use openssl::hash::{Hasher, MessageDigest};
 use tokio_postgres::{GenericClient, error::SqlState};
 
-use super::{AUDIT_QUERIES, row::event_from_row};
+use super::{audit_queries, row::event_from_row};
 use crate::{
     db_error,
     error::{DbError, DbResult},
@@ -61,7 +61,7 @@ use crate::{
 
 macro_rules! get_audit_query {
     ($name:literal) => {
-        AUDIT_QUERIES
+        audit_queries()?
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
@@ -290,7 +290,7 @@ impl PgAuditSink {
         ]
         .into_iter()
         .map(|name| {
-            AUDIT_QUERIES
+            audit_queries()?
                 .get(name)
                 .map(String::as_str)
                 .ok_or_else(|| db_error!("{} SQL query can't be found", name))
@@ -952,12 +952,6 @@ impl PgAuditReader {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod live_tests {
     use std::time::Duration;
 

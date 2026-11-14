@@ -67,19 +67,14 @@ describe.sequential("Azure BYOK flow (import KEK → export .byok)", () => {
         const kekKeyUsage = ["WrapKey", "Encrypt"];
         const kekPemBytes = new TextEncoder().encode(publicKey);
 
-        const importKekReq = wasm.import_ttlv_request(
-            `vitest-azure-kek-${run}`,
-            kekPemBytes,
-            "pem",
-            undefined,
-            undefined,
-            undefined,
-            false,
-            true,
-            kekTags,
-            kekKeyUsage,
-            undefined,
-        );
+        const importKekReq = wasm.import_ttlv_request(kekPemBytes, {
+            unique_identifier: `vitest-azure-kek-${run}`,
+            key_format: "pem",
+            unwrap: false,
+            replace_existing: true,
+            tags: kekTags,
+            key_usage: kekKeyUsage,
+        });
 
         const importKekStr = await sendKmipRequest(importKekReq, null, KMS_URL);
         const importKekResp = (await wasm.parse_import_ttlv_response(importKekStr)) as { UniqueIdentifier: string };

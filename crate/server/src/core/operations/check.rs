@@ -20,8 +20,8 @@ use crate::{
 /// - If a `cryptographic_usage_mask` is supplied, ensure all requested bits are permitted by object usage mask
 /// - Succeeds (returns unique identifier) if compatible; otherwise returns `IncompatibleCryptographicUsageMask`
 pub(crate) async fn check(kms: &KMS, request: Check, owner: &UserId) -> KResult<CheckResponse> {
-    trace!("{request}");
-    // Unique Identifier is optional per spec; use ID Placeholder if missing (not yet supported here).
+    trace!("Check request");
+    // `message` resolves an omitted Unique Identifier from the batch ID Placeholder.
     let object_handle = from_request(request.unique_identifier.as_ref(), "Check")?;
 
     // Retrieve the object (any state except Destroyed/Compromised accepted similar to Get)
@@ -37,13 +37,43 @@ pub(crate) async fn check(kms: &KMS, request: Check, owner: &UserId) -> KResult<
         .attributes()
         .unwrap_or_else(|_| owm.attributes());
 
-    if let Some(request_mask) = request.cryptographic_usage_mask {
-        if !attributes.is_usage_authorized_for(request_mask)? {
+    if let Some(request_mask) = request.cryptographic_usage_mask
+        && !attributes.is_usage_authorized_for(request_mask)?
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "Check Failed".to_owned(),
+        ));
+    }
+
+    // Usage Limits Count (KMIP 2.1 Table 183): the units to protect must still be available.
+    if let Some(count) = request.usage_limits_count {
+        if count < 0 {
             return Err(KmsError::Kmip21Error(
-                ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+                ErrorReason::Invalid_Field,
+                "Check: the Usage Limits Count must not be negative".to_owned(),
+            ));
+        }
+        if owm
+            .attributes()
+            .usage_limits
+            .as_ref()
+            .is_some_and(|limits| count > limits.usage_limits_total)
+        {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Usage_Limit_Exceeded,
                 "Check Failed".to_owned(),
             ));
         }
+    }
+
+    // The server never grants leases (there is no Obtain Lease operation), so no Lease Time
+    // can be validated against its policy (KMIP 2.1 Table 183).
+    if request.lease_time.is_some() {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            "Check: Lease Time is not supported".to_owned(),
+        ));
     }
 
     Ok(CheckResponse {

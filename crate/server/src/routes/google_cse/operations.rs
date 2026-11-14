@@ -285,7 +285,7 @@ async fn get_user_and_resource_name(
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<(String, Option<Vec<u8>>)> {
-    if kms.params.google_cse.google_cse_disable_tokens_validation {
+    if kms.params.google_cse.disable_tokens_validation {
         debug!("no token validation");
         Ok((kms.params.default_username.clone(), None))
     } else {
@@ -780,7 +780,7 @@ pub async fn privileged_unwrap(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedUnwrapResponse> {
     debug!("entering");
-    let user = if kms.params.google_cse.google_cse_disable_tokens_validation {
+    let user = if kms.params.google_cse.disable_tokens_validation {
         debug!("Authentication token check: validation disabled");
         kms.params.default_username.clone()
     } else {
@@ -1331,7 +1331,6 @@ mod tests {
     use super::{Role, get_hash_algorithm, kacls_client};
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn get_hash_algorithm_all_names() {
         for (name, size) in [
             ("sha-256", 32),

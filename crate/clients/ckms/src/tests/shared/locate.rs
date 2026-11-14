@@ -38,7 +38,7 @@ pub(crate) fn locate(
     if let Some(tags) = tags {
         for tag in tags {
             args.push("--tag".to_owned());
-            args.push((*tag).to_string());
+            args.push((*tag).to_owned());
         }
     }
     if let Some(algorithm) = algorithm {
@@ -51,7 +51,7 @@ pub(crate) fn locate(
     }
     if let Some(key_format_type) = key_format_type {
         args.push("--key-format-type".to_owned());
-        args.push(key_format_type.to_string());
+        args.push(key_format_type.to_owned());
     }
 
     let mut cmd = ckms_bin();

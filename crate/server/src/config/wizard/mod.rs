@@ -16,7 +16,7 @@
 //! 9. Advanced (workspace, key management, MS DKE, KMIP policy, Google CSE,
 //!    Azure EKM, AWS XKS, UI)
 
-#![allow(clippy::print_stdout)]
+use std::io::Write as _;
 
 mod advanced_wizard;
 mod auth_wizard;
@@ -34,7 +34,6 @@ mod tls_wizard;
 /// Write `content` to `path`, readable by the owner only: the file can hold the EST bootstrap
 /// password, the SCEP challenge and other secrets.
 fn write_owner_only(path: &std::path::Path, content: &[u8]) -> std::io::Result<()> {
-    use std::io::Write as _;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -80,66 +79,105 @@ pub fn run_configure_wizard() -> KResult<()> {
     // Handle --help / -h early
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "cosmian_kms configure\n\n\
              Interactive configuration wizard for the Cosmian KMS server.\n\n\
              USAGE:\n    cosmian_kms configure [OPTIONS]\n\n\
              OPTIONS:\n    -h, --help    Print this help message\n\n\
              The wizard guides you through all server configuration options and\n\
              writes the result to {output_path}.\n"
-        );
+        )?;
         return Ok(());
     }
 
-    println!();
-    println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║         Cosmian KMS — Interactive Configuration Wizard       ║");
-    println!("╚══════════════════════════════════════════════════════════════╝");
-    println!();
-    println!("This wizard will guide you through all server configuration options.");
-    println!("The resulting configuration will be written to: {output_path}");
-    println!();
+    writeln!(std::io::stdout().lock())?;
+    writeln!(
+        std::io::stdout().lock(),
+        "╔══════════════════════════════════════════════════════════════╗"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "║         Cosmian KMS — Interactive Configuration Wizard       ║"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "╚══════════════════════════════════════════════════════════════╝"
+    )?;
+    writeln!(std::io::stdout().lock())?;
+    writeln!(
+        std::io::stdout().lock(),
+        "This wizard will guide you through all server configuration options."
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "The resulting configuration will be written to: {output_path}"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     // ── [1/9] Database ────────────────────────────────────────────────────────
-    println!("[1/9] Database configuration");
-    println!("──────────────────────────────");
+    writeln!(std::io::stdout().lock(), "[1/9] Database configuration")?;
+    writeln!(std::io::stdout().lock(), "──────────────────────────────")?;
     let db = db_wizard::configure_db()?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [2/9] HTTP server ─────────────────────────────────────────────────────
-    println!("[2/9] HTTP server configuration");
-    println!("──────────────────────────────");
+    writeln!(std::io::stdout().lock(), "[2/9] HTTP server configuration")?;
+    writeln!(std::io::stdout().lock(), "──────────────────────────────")?;
     let mut http = http_wizard::configure_http()?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [3/9] TLS / certificates ──────────────────────────────────────────────
-    println!("[3/9] TLS / Certificate configuration");
-    println!("──────────────────────────────────────");
+    writeln!(
+        std::io::stdout().lock(),
+        "[3/9] TLS / Certificate configuration"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "──────────────────────────────────────"
+    )?;
     let tls_result = tls_wizard::configure_tls()?;
     let mut tls = tls_result.tls;
     let has_clients_ca = tls.clients_ca_cert_file.is_some();
     // Build default CORS origins now that TLS is known (determines scheme).
     let scheme = http.scheme(&tls);
     http.cors_allowed_origins = Some(http_wizard::default_cors_origins(scheme, http.port));
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [4/9] KMIP socket server ──────────────────────────────────────────────
-    println!("[4/9] KMIP socket server configuration");
-    println!("───────────────────────────────────────");
+    writeln!(
+        std::io::stdout().lock(),
+        "[4/9] KMIP socket server configuration"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "───────────────────────────────────────"
+    )?;
     let socket_server = socket_wizard::configure_socket_server(has_clients_ca)?;
 
     // The KMIP socket server authenticates clients exclusively via mTLS.
     // If it was just enabled but `clients_ca_cert_file` is not set, fix that now.
-    if socket_server.socket_server_start && tls.clients_ca_cert_file.is_none() {
+    if socket_server.start && tls.clients_ca_cert_file.is_none() {
         if let Some(ca_cert) = tls_result.generated_ca_cert {
-            println!("  ℹ  KMIP socket server requires mTLS — enabling it automatically.");
-            println!("     clients_ca_cert_file = {}", ca_cert.display());
+            writeln!(
+                std::io::stdout().lock(),
+                "  ℹ  KMIP socket server requires mTLS — enabling it automatically."
+            )?;
+            writeln!(
+                std::io::stdout().lock(),
+                "     clients_ca_cert_file = {}",
+                ca_cert.display()
+            )?;
             tls.clients_ca_cert_file = Some(ca_cert);
         } else {
-            println!("  ⚠  The KMIP socket server requires mutual TLS (mTLS).");
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
+                "  ⚠  The KMIP socket server requires mutual TLS (mTLS)."
+            )?;
+            writeln!(
+                std::io::stdout().lock(),
                 "     Please provide the CA certificate that will be used to validate client certificates."
-            );
+            )?;
             let ca: String = Input::with_theme(&ColorfulTheme::default())
                 .with_prompt("Clients CA certificate file path (--clients-ca-cert-file)")
                 .interact_text()
@@ -147,38 +185,56 @@ pub fn run_configure_wizard() -> KResult<()> {
             tls.clients_ca_cert_file = Some(std::path::PathBuf::from(ca));
         }
     }
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [5/9] Authentication ──────────────────────────────────────────────────
-    println!("[5/9] Authentication configuration");
-    println!("───────────────────────────────────");
+    writeln!(
+        std::io::stdout().lock(),
+        "[5/9] Authentication configuration"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "───────────────────────────────────"
+    )?;
     let mut ui_config = UiConfig::default();
     let auth_result = auth_wizard::configure_auth(&mut http, &mut ui_config)?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [6/9] HSM ─────────────────────────────────────────────────────────────
-    println!("[6/9] Hardware Security Module (HSM) configuration");
-    println!("───────────────────────────────────────────────────");
+    writeln!(
+        std::io::stdout().lock(),
+        "[6/9] Hardware Security Module (HSM) configuration"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "───────────────────────────────────────────────────"
+    )?;
     let hsm = hsm_wizard::configure_hsm()?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [7/9] Logging ─────────────────────────────────────────────────────────
-    println!("[7/9] Logging configuration");
-    println!("────────────────────────────");
+    writeln!(std::io::stdout().lock(), "[7/9] Logging configuration")?;
+    writeln!(std::io::stdout().lock(), "────────────────────────────")?;
     let logging = logging_wizard::configure_logging()?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [8/9] Proxy ───────────────────────────────────────────────────────────
-    println!("[8/9] Proxy configuration");
-    println!("──────────────────────────");
+    writeln!(std::io::stdout().lock(), "[8/9] Proxy configuration")?;
+    writeln!(std::io::stdout().lock(), "──────────────────────────")?;
     let proxy = proxy_wizard::configure_proxy()?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // ── [9/9] Advanced ────────────────────────────────────────────────────────
-    println!("[9/9] Advanced / miscellaneous configuration");
-    println!("─────────────────────────────────────────────");
+    writeln!(
+        std::io::stdout().lock(),
+        "[9/9] Advanced / miscellaneous configuration"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "─────────────────────────────────────────────"
+    )?;
     let advanced = advanced_wizard::configure_advanced(ui_config, &tls)?;
-    println!();
+    writeln!(std::io::stdout().lock())?;
 
     // Prepend kms_public_url to CORS origins if it was set and is not already present.
     if let Some(ref public_url) = advanced.kms_public_url {
@@ -241,30 +297,48 @@ pub fn run_configure_wizard() -> KResult<()> {
     write_owner_only(output_file, toml_content.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Cannot write {output_path}: {e}")))?;
 
-    println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║                  Configuration complete!                     ║");
-    println!("╚══════════════════════════════════════════════════════════════╝");
-    println!();
-    println!("Configuration written to: {output_path}");
-    println!();
+    writeln!(
+        std::io::stdout().lock(),
+        "╔══════════════════════════════════════════════════════════════╗"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "║                  Configuration complete!                     ║"
+    )?;
+    writeln!(
+        std::io::stdout().lock(),
+        "╚══════════════════════════════════════════════════════════════╝"
+    )?;
+    writeln!(std::io::stdout().lock())?;
+    writeln!(
+        std::io::stdout().lock(),
+        "Configuration written to: {output_path}"
+    )?;
+    writeln!(std::io::stdout().lock())?;
 
     if let Some(client_cert) = tls_result.generated_client_cert {
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "  Self-signed client certificate: {}",
             client_cert.display()
-        );
+        )?;
         if let Some(client_key) = tls_result.generated_client_key {
-            println!("  Matching client private key:    {}", client_key.display());
+            writeln!(
+                std::io::stdout().lock(),
+                "  Matching client private key:    {}",
+                client_key.display()
+            )?;
         }
-        println!(
+        writeln!(
+            std::io::stdout().lock(),
             "  Distribute this certificate (and its private key, securely) to clients that need \
              to authenticate via mTLS.\n"
-        );
+        )?;
     }
 
-    println!("Start the server with:");
-    println!("  cosmian_kms -c {output_path}");
-    println!();
+    writeln!(std::io::stdout().lock(), "Start the server with:")?;
+    writeln!(std::io::stdout().lock(), "  cosmian_kms -c {output_path}")?;
+    writeln!(std::io::stdout().lock())?;
 
     Ok(())
 }

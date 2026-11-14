@@ -1,7 +1,7 @@
 ---
 name: 'Docker and Kubernetes'
 description: 'Docker image build/test conventions and Kubernetes deployment patterns for the Eviden KMS project'
-applyTo: 'nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*, .github/workflows/packaging-docker.yml'
+applyTo: 'nix/docker.nix, nix/k8s-images.nix, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/pkg/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*, .github/workflows/packaging-docker.yml'
 ---
 
 # Docker and Kubernetes conventions
@@ -98,7 +98,7 @@ mise run build:docker --variant non-fips
 mise run build:docker --variant fips --load
 
 # Build and run smoke tests (requires Docker daemon)
-mise run build:docker --variant fips --load && mise run test:docker --variant fips
+mise run build:docker --variant fips --load && mise run test:pkg:docker --variant fips
 ```
 
 ### Verification after every `nix/docker.nix` change
@@ -116,8 +116,8 @@ docker run --rm --entrypoint '' cosmian-kms:<VERSION>-fips sh -c \
 # Must print ≥ 50
 
 # 3. Full smoke test suite (TLS, non-root, CA bundle, Oracle TDE…)
-DOCKER_IMAGE_NAME=cosmian-kms:<VERSION>-fips mise run test:docker --variant fips
-DOCKER_IMAGE_NAME=cosmian-kms:<VERSION>-non-fips mise run test:docker --variant non-fips
+DOCKER_IMAGE_NAME=cosmian-kms:<VERSION>-fips mise run test:pkg:docker --variant fips
+DOCKER_IMAGE_NAME=cosmian-kms:<VERSION>-non-fips mise run test:pkg:docker --variant non-fips
 ```
 
 ---
@@ -151,7 +151,7 @@ test runs execute concurrently on the same machine.
 
 ```bash
 # The DOCKER_IMAGE_NAME variable selects the image under test
-DOCKER_IMAGE_NAME=cosmian-kms:5.26.0-fips mise run test:docker --variant fips
+DOCKER_IMAGE_NAME=cosmian-kms:5.26.0-fips mise run test:pkg:docker --variant fips
 
 # CI sets it to the GHCR arch-specific tag, e.g.:
 # DOCKER_IMAGE_NAME=ghcr.io/cosmian/kms-fips:fix-branch-amd64
@@ -240,7 +240,7 @@ The `packaging-docker.yml` workflow tests the following combinations:
 
 | Job | fips | non-fips | amd64 | arm64 |
 |-----|------|----------|-------|-------|
-| `nix-docker-image` (build + `test:docker`) | ✅ | ✅ | ✅ | ✅ |
+| `nix-docker-image` (build + `test:pkg:docker` + `test:pkg:docker-scan`, Syft + Grype, fails on fixable High/Critical) | ✅ | ✅ | ✅ | ✅ |
 | `test-k8s-kms-pod` (`test:k8s:kms-image`) | ✅ | ✅ | ✅ | ✅ |
 | `k8s-operator-image` (build + `test:k8s:operator-image`) | n/a | n/a | ✅ | ✅ |
 | `k8s-csi-provider-image` (build + `test:k8s:csi-provider-image`) | n/a | n/a | ✅ | ✅ |
@@ -252,11 +252,11 @@ If you add a new image or new runner, update this table.
 ### Triggering the workflow manually
 
 ```bash
-# Requires toolchain input; default is 1.97.0
+# Requires toolchain input; default is 1.99.1
 GH_PAGER=cat gh workflow run "Packaging - Docker" \
   --repo Cosmian/kms \
   --ref <branch> \
-  -f toolchain=1.97.0
+  -f toolchain=1.99.1
 ```
 
 The workflow is `workflow_call` + `workflow_dispatch` only — it does **not** trigger
@@ -278,9 +278,9 @@ automatically on push to feature branches.
 
 After modifying any of the covered files, run `/kms-sync-rules` and check these rules:
 
-- `nix/docker.nix` → rebuild both variants locally, run `test:docker` for both
-- `.mise/scripts/docker-compose.yml` → run `test:docker` for both variants
-- `.mise/scripts/test/test_docker_image.sh` → run `test:docker --variant fips` locally
+- `nix/docker.nix` → rebuild both variants locally, run `test:pkg:docker` for both
+- `.mise/scripts/docker-compose.yml` → run `test:pkg:docker` for both variants
+- `.mise/scripts/test/test_docker_image.sh` → run `test:pkg:docker --variant fips` locally
 - `.mise/lib/k8s.sh` or `.mise/tasks/test/k8s/**` → run `test:k8s:kms-image` locally
 - `charts/cosmian-kms/**` → run `test:k8s:kms-image` and `helm lint charts/cosmian-kms`
 - `.github/workflows/packaging-docker.yml` → verify the CI matrix table in section 5 is still accurate

@@ -46,6 +46,7 @@ import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
 import HsmStatus from "./actions/Objects/HsmStatus";
+import ActivateForm from "./actions/Objects/ObjectsActivate";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
 import ObjectsReKeyForm from "./actions/Objects/ObjectsReKey";
 import ObjectsOwnedList from "./actions/Objects/ObjectsOwned";
@@ -335,6 +336,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
                             <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="symmetric" />} />
+                            <Route path="keys/activate" element={<ActivateForm objectType="symmetric" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
                             <Route path="encrypt" element={<SymmetricEncryptForm />} />
@@ -346,6 +348,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/export" element={<KeyExportForm key_type={"rsa"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="rsa" />} />
                             <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="rsa" />} />
+                            <Route path="keys/activate" element={<ActivateForm objectType="rsa" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="rsa" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="rsa" />} />
                             <Route path="encrypt" element={<RsaEncryptForm />} />
@@ -358,6 +361,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/export" element={<KeyExportForm key_type={"ec"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="ec" />} />
                             <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="ec" />} />
+                            <Route path="keys/activate" element={<ActivateForm objectType="ec" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="ec" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="ec" />} />
                             <Route path="encrypt" element={<ECEncryptForm />} />
@@ -370,6 +374,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/export" element={<KeyExportForm key_type={"pqc"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pqc" />} />
                             <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="pqc" />} />
+                            <Route path="keys/activate" element={<ActivateForm objectType="pqc" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="pqc" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="pqc" />} />
                             <Route path="encapsulate" element={<PqcEncapsulateForm />} />
@@ -414,6 +419,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<FpeKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"fpe"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="fpe" />} />
+                            <Route path="keys/activate" element={<ActivateForm objectType="fpe" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="fpe" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="fpe" />} />
                             <Route path="encrypt" element={<FpeEncryptForm />} />
@@ -425,6 +431,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                                 <Route path="keys/create-user-key" element={<CovercryptUserKeyForm />} />
                                 <Route path="keys/export" element={<KeyExportForm key_type={"covercrypt"} />} />
                                 <Route path="keys/import" element={<KeyImportForm key_type={"covercrypt"} />} />
+                                <Route path="keys/activate" element={<ActivateForm objectType="covercrypt" />} />
                                 <Route path="keys/revoke" element={<RevokeForm objectType="covercrypt" />} />
                                 <Route path="keys/destroy" element={<DestroyForm objectType="covercrypt" />} />
                                 <Route path="encrypt" element={<CCEncryptForm />} />
@@ -435,6 +442,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="create" element={<SecretDataCreateForm />} />
                             <Route path="export" element={<KeyExportForm key_type={"secret-data"} />} />
                             <Route path="import" element={<KeyImportForm key_type={"secret-data"} />} />
+                            <Route path="activate" element={<ActivateForm objectType="secret-data" />} />
                             <Route path="revoke" element={<RevokeForm objectType="secret-data" />} />
                             <Route path="destroy" element={<DestroyForm objectType="secret-data" />} />
                         </Route>
@@ -458,6 +466,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         <Route path="certificates">
                             <Route path="certs/import" element={<CertificateImportForm />} />
                             <Route path="certs/export" element={<CertificateExportForm />} />
+                            <Route path="certs/activate" element={<ActivateForm objectType="certificate" />} />
                             <Route path="certs/revoke" element={<RevokeForm objectType="certificate" />} />
                             <Route path="certs/destroy" element={<DestroyForm objectType="certificate" />} />
                             <Route path="certs/validate" element={<CertificateValidateForm />} />

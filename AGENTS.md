@@ -49,7 +49,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `markdown.instructions.md` | `**/*.md` | README, CHANGELOG, skill/instruction docs |
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` | mdBook site (Diátaxis framework); sync rule 4.14 — documentation ⇔ mdBook ⇔ README |
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
-| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
+| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
 | `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check |
 | `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
@@ -142,7 +142,7 @@ crate/
       module/       cosmian_pkcs11_module      — PKCS#11 module implementation
       provider/     cosmian_pkcs11             — PKCS#11 provider binary
     wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.2
+  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.5
   hsm/
     base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
     softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
@@ -252,7 +252,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **No `.unwrap()`** in production code. Use `?` propagation everywhere; never ignore errors in tests.
 - **No inline feature gating**: put `#[cfg(feature = "non-fips")]` on a function, module, `impl`, struct field, enum variant or match arm. Never wrap statements or blocks inside a function body (`#[cfg(..)] { .. }`, `#[cfg(..)] let ..`, paired `#[cfg(feature..)]`/`#[cfg(not(feature..))]` statements) and never branch on `cfg!(feature = "non-fips")` at runtime: split into two functions with opposite `#[cfg]` and call the right one. About 30 existing files violate this (e.g. `create_key_pair.rs`, `export_get.rs`, `decrypt.rs`): legacy — when you touch one, fix it in the same change.
 - **Unsafe code**: every `unsafe` block requires a `// SAFETY:` comment explaining the invariant that makes it sound.
-- **Clippy**: zero warnings (`cargo clippy-all`). `#[allow]` / `#[expect]` is forbidden on new or AI-generated code: fix the lint or refactor. The only exception is a confirmed false positive on pre-existing code, with an inline `// tracked in #<N>` comment; otherwise report the exact warning to the user. Full policy: `.github/instructions/rust.instructions.md` § Clippy and lint suppression.
+- **Clippy**: zero warnings (`cargo clippy-all`) and zero clippy suppressions in non-test source; tests may use only `#[expect(<lint>, reason = "…")]`. Fix the lint or refactor instead of suppressing. Full policy: `.github/instructions/rust.instructions.md` § Clippy and lint suppression; idioms: `.github/skills/rust-best-practices/SKILL.md`.
 - **Tests**: unit tests go in a `#[cfg(test)]` submodule in the same file.
 - **Public API**: all public items that are not trivial require `///` doc comments that explain _why_, _constraints_, _non obvious behaviors_, etc. Comments should not be a paraphrase of the code.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
@@ -265,7 +265,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Secrets**: compare in constant time, keep in `Zeroizing`, never log — see `rust-security.instructions.md`.
 - **Commit subjects**: conventional-commit type + a descriptive subject (`fix(server): reject MAC with wrong length`); never `fix: PR review`, `fix: commit`, `fix: last fixes`.
 
-For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
+For idiomatic Rust (ownership, API design, naming, iterators) → run `/rust-best-practices`; KMS-specific rules stay in `.github/instructions/rust.instructions.md`.
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.
 For FIPS feature-flag gating discipline, multi-standard algorithm compliance, and key lifecycle → run `/cryptography-review`.
 
@@ -276,6 +276,7 @@ For FIPS feature-flag gating discipline, multi-standard algorithm compliance, an
 - Keep full, release, and pre-release gates complete; use skips only for confirmed inapplicable scope and record the reason.
 - Do not claim model selection, latency targets, percentages, or token savings unless the platform supports the measurement and actual usage data was observed.
 - `/kms-pr-review` Phase 1 overlaps `/kms-caveman`; if `/kms-caveman` already ran this session, feed its findings into `/kms-pr-review` instead of re-scanning.
+- Review and audit reports follow the schema in [`.github/skills/shared/orchestrator-contract.md` §4](.github/skills/shared/orchestrator-contract.md): per-phase `PASS | FAIL | SKIPPED | INCOMPLETE` with evidence; a missing required check is `INCOMPLETE`, never `PASS`.
 
 ### Feature rollout order & commit layering
 
@@ -441,14 +442,12 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |
-| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 10 review phases, reports in `./review-YYYY-MM-DD/`, go/no-go verdict |
-| `/rust-panic-audit [path]` | Scan for panics, `.unwrap()`, `.expect()`, `process::exit`, unchecked indexing |
+| `/rust-review-all [path]` | **Hardcore Rust gate** — runs all 9 review phases, reports in `./review-YYYY-MM-DD/`, go/no-go verdict; report schema in `.github/skills/shared/orchestrator-contract.md` §4 |
 | `/refactor-plan` | Before any multi-file refactor |
-| `/rust-refactor` | To find and consolidate Rust code duplication |
-| `/rust-simplify [path]` | Find simplification opportunities: nesting, long functions, dead code, bool traps, iterator anti-patterns |
+| `/rust-refactor` | Rust duplication and structural-complexity review (nesting, long functions, bool traps, sentinel values), behavior-preserving |
 | `/rust-error-propagation [path]` | Analyze `Result` chains: missed `?`, lost context, `.to_string()` anti-patterns |
 | `/rust-async-refactor [path]` | Detect sequential `.await` chains, blocking calls on async paths |
-| `/rust-patterns` | KMS-specific Rust design patterns reference |
+| `/rust-best-practices` | Generic idiom baseline for writing, reviewing, or refactoring Rust (adapted from BeautifulRust) plus a KMS patterns reference |
 | `/docs-writer` | For documentation pages (Diátaxis framework) |
 | `/adr` | For architectural decisions |
 | `/playwright-kms` | For E2E test creation |
@@ -457,7 +456,7 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 | `/kms-docs-verify [all]` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |
 | `/actix-web-middleware-audit` | When modifying actix-web middleware ordering, `.wrap()`, or extensions in `start_kms_server.rs` |
 | `/ci-dedupe` | Audit GitHub Actions workflows for duplicated step sequences across jobs/files |
-| `/kms-caveman` | One read-only mechanical Rust triage pass (panic/exit patterns, new lint suppressions) before deeper reviews |
+| `/kms-caveman` | One read-only mechanical Rust triage pass (panic/exit patterns, unchecked arithmetic/indexing, new lint suppressions) before deeper reviews; also the dedicated panic audit (`/kms-caveman [path]`) |
 | `/mise` | When writing or editing Bash scripts in `.mise/tasks/`, `.mise/lib/`, or `.mise/scripts/` |
 | `/pkcs11-check` | Run the external PKCS#11 battle-test suite (`mise run test:pkcs11:tool`) and interpret its report |
 | `/rust-clone-audit` | When writing, reviewing, or refactoring Rust — find avoidable `.clone()` calls |
@@ -538,7 +537,7 @@ mise run [task] --variant [fips|non-fips] [args]
 
 ### 8.3 OpenSSL handling
 
-**No external OpenSSL needed.** OpenSSL 3.6.2 is downloaded, SHA-256-verified,
+**No external OpenSSL needed.** OpenSSL 3.6.5 is downloaded, SHA-256-verified,
 and built from source by `crate/crypto/build.rs` into `target/` on first build.
 
 At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:

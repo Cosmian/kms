@@ -6,8 +6,6 @@
 //! the CA's CRL, and keeping one active must not make OCSP answer `good` for a revoked
 //! certificate.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::{collections::HashSet, sync::Arc};
 
 use actix_web::{App, test, web::Data};
@@ -65,6 +63,7 @@ async fn certify(
     issuer: Option<(&str, &str)>,
 ) -> KResult<String> {
     let mut attributes = Attributes {
+        activation_date: Some(time::OffsetDateTime::now_utc() - time::Duration::seconds(1)),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(2048),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(subject)?),

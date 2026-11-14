@@ -96,13 +96,14 @@ pub(super) fn locate_with_template_attribute(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"locate-fg".to_vec()),
                 request_payload: Operation::Locate(Locate {
                     maximum_items: Some(1),
+                    offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attribute: None,
@@ -119,7 +120,7 @@ pub(super) fn locate_with_template_attribute(
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -191,13 +192,14 @@ pub(super) fn locate_symmetric_keys(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::Locate(Locate {
                     maximum_items: None,
+                    offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attribute: Some(attributes),
@@ -205,7 +207,7 @@ pub(super) fn locate_symmetric_keys(
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

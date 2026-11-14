@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use base64::{Engine as _, engine::general_purpose};
 use clap::Parser;
@@ -79,7 +79,6 @@ impl WrapSecretDataOrKeyAction {
     /// - The key block cannot be wrapped with the wrapping key.
     /// - The wrapped key object cannot be written to the output file.
     /// - The console output cannot be written.
-    #[expect(clippy::print_stdout)]
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<String> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
@@ -107,10 +106,11 @@ impl WrapSecretDataOrKeyAction {
                     ..Default::default()
                 },
             )?;
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
                 "Wrapping key: {}. This is the only time that this wrapping key will be printed.",
                 general_purpose::STANDARD.encode(&*key_bytes)
-            );
+            )?;
             symmetric_key_object
         } else {
             resolve_key_from_options(

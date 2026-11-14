@@ -9,7 +9,7 @@ use cosmian_kms_client::{
     KmsClient, KmsClientConfig, KmsClientError,
     cosmian_kmip::{
         kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
-        ttlv::{KmipFlavor, TTLV, enum_lookup::lookup_enum_code},
+        ttlv::{KmipFlavor, TTLV, TTLValue, enum_lookup::lookup_enum_code},
     },
     reexport::cosmian_kms_access::access::Access,
 };
@@ -22,6 +22,9 @@ use crate::TestsContext;
 static ONCE_VECTOR_SQLITE: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests on the `PostgreSQL` backend.
 static ONCE_VECTOR_POSTGRESQL: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for the Set Constraints vector (`cert_constraints.toml`): the constraint set
+/// is server-wide, so it must not leak into other vectors.
+static ONCE_VECTOR_CERT_CONSTRAINTS: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests on the `MySQL` backend.
 static ONCE_VECTOR_MYSQL: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests on the `Redis-findex` backend.
@@ -262,8 +265,8 @@ pub struct TestStep {
     /// contains exactly 2 `UniqueIdentifier` tags.
     #[serde(default)]
     pub assert_count: HashMap<String, usize>,
-    /// When `assert_success` is `false`, optionally assert that the error response
-    /// contains a specific `ResultReason` value (e.g. `"Item_Not_Found"`).
+    /// When `assert_success` is `false`, require the exact `ResultReason` value
+    /// expected from the error response (e.g. `"Item_Not_Found"`).
     pub assert_error_reason: Option<String>,
     /// When `assert_success` is `false`, optionally assert that `ResultMessage`
     /// contains this substring.
@@ -316,6 +319,14 @@ pub struct TestStep {
     /// ```
     #[serde(default)]
     pub capture_nth: HashMap<String, CaptureNthEntry>,
+    /// The step passes only if the HTTP exchange fails at the transport level (TLS handshake
+    /// refused, connection closed): for vectors whose server rejects the client before HTTP.
+    /// Without it (or `allow_failure`), a transport error fails the step even when
+    /// `assert_success = false`, because a dropped connection may be a server crash.
+    #[serde(default)]
+    pub expect_transport_error: bool,
+    /// `RawHttp` only: required HTTP status code of the response.
+    pub assert_http_status: Option<u16>,
 }
 
 const fn default_true() -> bool {
@@ -392,6 +403,43 @@ fn wrap_in_request_message(
                 ]
             }
         ]
+    })
+}
+
+const VENDOR_EXTENSION_TAGS: &[&str] = &[
+    "Remove",
+    "Cascade",
+    "ExpectedObjectType",
+    "AttributeIndex",
+    "Critical",
+];
+
+fn strip_vendor_extension_fields(ttlv: &mut TTLV) {
+    if let TTLValue::Structure(children) = &mut ttlv.value {
+        children.retain(|child| !VENDOR_EXTENSION_TAGS.contains(&child.tag.as_ref()));
+        for child in children {
+            strip_vendor_extension_fields(child);
+        }
+    }
+}
+
+fn assert_binary_encodable(
+    json: &serde_json::Value,
+    flavor: KmipFlavor,
+    step: usize,
+    op: &str,
+) -> Result<(), KmsClientError> {
+    let mut ttlv = serde_json::from_value::<TTLV>(json.clone()).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Step {step} '{op}': not encodable as binary TTLV: {e}"
+        ))
+    })?;
+    ttlv.resolve_enumeration_values();
+    strip_vendor_extension_fields(&mut ttlv);
+    ttlv.to_bytes(flavor).map(|_| ()).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Step {step} '{op}': not encodable as binary TTLV: {e}"
+        ))
     })
 }
 
@@ -477,6 +525,166 @@ async fn send_binary_request(
     })?;
 
     Ok(response_json)
+}
+
+/// Synthetic KMIP-style error body for HTTP responses that are not JSON.
+fn synthetic_error_response(text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "tag": "ErrorResponse",
+        "value": [
+            { "tag": "ResultStatus", "type": "Enumeration", "value": "OperationFailed" },
+            { "tag": "ResultMessage", "type": "TextString", "value": text }
+        ]
+    })
+}
+
+/// Parse a response body as JSON; non-JSON error bodies become a synthetic error response.
+fn parse_response_body(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap_or_else(|_| synthetic_error_response(text))
+}
+
+/// A transport-level failure (connection closed, TLS refused) is only acceptable when the step
+/// declares it: otherwise a request that crashes the server would pass as an "expected failure".
+const fn tolerates_transport_error(step: &TestStep) -> bool {
+    step.expect_transport_error || step.allow_failure
+}
+
+/// Accept a transport error if the step tolerates it, fail the step otherwise.
+fn accept_transport_error(
+    step: &TestStep,
+    i: usize,
+    e: &dyn std::fmt::Display,
+) -> Result<(), KmsClientError> {
+    if tolerates_transport_error(step) {
+        eprintln!(
+            "Step {i} '{}': transport error (expected): {e}",
+            step.operation
+        );
+        return Ok(());
+    }
+    Err(KmsClientError::UnexpectedError(format!(
+        "Step {i} '{}': HTTP request failed: {e}",
+        step.operation
+    )))
+}
+
+/// Fail a step that expected a transport error but received an HTTP response.
+fn reject_unexpected_response(step: &TestStep, i: usize, got: &str) -> Result<(), KmsClientError> {
+    if step.expect_transport_error {
+        return Err(KmsClientError::UnexpectedError(format!(
+            "Step {i} '{}': expected a transport error but got {got}",
+            step.operation
+        )));
+    }
+    Ok(())
+}
+
+/// Request file of a `RawHttp` step: an arbitrary HTTP body, endpoint and content type.
+#[derive(Debug, Deserialize)]
+struct RawHttpRequest {
+    /// Path appended to the server base URL, e.g. `/kmip/2_1` or `/kmip`.
+    path: String,
+    content_type: String,
+    /// Body = concatenation of the segments, each repeated `repeat` times.
+    body: Vec<RawSegment>,
+}
+
+/// One body segment: UTF-8 `text` or hex-decoded `hex` bytes, repeated `repeat` times.
+#[derive(Debug, Deserialize)]
+struct RawSegment {
+    text: Option<String>,
+    hex: Option<String>,
+    #[serde(default = "one")]
+    repeat: usize,
+}
+
+const fn one() -> usize {
+    1
+}
+
+/// Assemble the body of a `RawHttp` request, allocating it once.
+fn raw_http_body(segments: &[RawSegment]) -> Result<Vec<u8>, String> {
+    let mut units: Vec<std::borrow::Cow<'_, [u8]>> = Vec::with_capacity(segments.len());
+    let mut total: usize = 0;
+    for (k, segment) in segments.iter().enumerate() {
+        let unit = match (&segment.text, &segment.hex) {
+            (Some(text), None) => std::borrow::Cow::Borrowed(text.as_bytes()),
+            (None, Some(hex)) => std::borrow::Cow::Owned(
+                hex::decode(hex).map_err(|e| format!("segment {k}: invalid hex: {e}"))?,
+            ),
+            _ => return Err(format!("segment {k} needs exactly one of text/hex")),
+        };
+        total = unit
+            .len()
+            .checked_mul(segment.repeat)
+            .and_then(|n| total.checked_add(n))
+            .ok_or_else(|| format!("segment {k}: body length overflows"))?;
+        units.push(unit);
+    }
+    let mut body = Vec::with_capacity(total);
+    for (segment, unit) in segments.iter().zip(&units) {
+        for _ in 0..segment.repeat {
+            body.extend_from_slice(unit);
+        }
+    }
+    Ok(body)
+}
+
+/// Send a `RawHttp` step. Returns `None` when a tolerated transport error occurred.
+async fn send_raw_http(
+    client: &KmsClient,
+    base_url: &str,
+    request_json: &serde_json::Value,
+    kmip_version: [i32; 2],
+    i: usize,
+    step: &TestStep,
+) -> Result<Option<(bool, serde_json::Value, Option<u16>)>, KmsClientError> {
+    let err = |m: String| KmsClientError::UnexpectedError(format!("Step {i} 'RawHttp': {m}"));
+    let req: RawHttpRequest = serde_json::from_value(request_json.clone())
+        .map_err(|e| err(format!("invalid request file: {e}")))?;
+    let body = raw_http_body(&req.body).map_err(err)?;
+
+    let response = match client
+        .client
+        .post_bytes(&format!("{base_url}{}", req.path), body, &req.content_type)
+        .await
+    {
+        Ok(response) => response,
+        Err(e) => {
+            accept_transport_error(step, i, &e)?;
+            return Ok(None);
+        }
+    };
+    let status = response.status;
+    reject_unexpected_response(step, i, &format!("HTTP {status}"))?;
+
+    let is_ttlv = status.is_success()
+        && response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("application/octet-stream"));
+    let response_json = if is_ttlv {
+        let flavor = if kmip_version[0] == 1 {
+            KmipFlavor::Kmip1
+        } else {
+            KmipFlavor::Kmip2
+        };
+        let ttlv = TTLV::from_bytes(response.bytes(), flavor)
+            .map_err(|e| err(format!("failed to parse binary TTLV response: {e}")))?;
+        serde_json::to_value(&ttlv)
+            .map_err(|e| err(format!("failed to convert TTLV response to JSON: {e}")))?
+    } else {
+        let text = response
+            .text()
+            .map_err(|e| err(format!("cannot read response body: {e}")))?;
+        parse_response_body(&text)
+    };
+    Ok(Some((
+        status.is_success(),
+        response_json,
+        Some(status.as_u16()),
+    )))
 }
 
 /// Load a test vector manifest from a TOML file.
@@ -601,14 +809,14 @@ fn resolve_assertion_value(
         result = result.replace(&format!("{{{{{name}}}}}"), value);
     }
     // Fail loudly if any unresolved placeholder remains (typo in capture name)
-    if let Some(pos) = result.find("{{") {
-        if result[pos..].contains("}}") {
-            return Err(KmsClientError::UnexpectedError(format!(
-                "resolve_assertion_value: unresolved placeholder in assertion \
+    if let Some(pos) = result.find("{{")
+        && result[pos..].contains("}}")
+    {
+        return Err(KmsClientError::UnexpectedError(format!(
+            "resolve_assertion_value: unresolved placeholder in assertion \
                  template '{template}' — result after substitution: '{result}'. \
                  Check for typos in capture variable names."
-            )));
-        }
+        )));
     }
     Ok(result)
 }
@@ -623,20 +831,19 @@ fn find_all_fields_in_json(value: &serde_json::Value, tag: &str) -> Vec<String> 
 fn find_all_fields_impl(value: &serde_json::Value, tag: &str, out: &mut Vec<String>) {
     match value {
         serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::String(t)) = map.get("tag") {
-                if t == tag {
-                    if let Some(v) = map.get("value") {
-                        let s = match v {
-                            serde_json::Value::String(s) => Some(s.clone()),
-                            serde_json::Value::Number(n) => Some(n.to_string()),
-                            serde_json::Value::Bool(b) => Some(b.to_string()),
-                            serde_json::Value::Array(_) => None,
-                            _ => Some(v.to_string()),
-                        };
-                        if let Some(s) = s {
-                            out.push(s);
-                        }
-                    }
+            if let Some(serde_json::Value::String(t)) = map.get("tag")
+                && t == tag
+                && let Some(v) = map.get("value")
+            {
+                let s = match v {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    serde_json::Value::Bool(b) => Some(b.to_string()),
+                    serde_json::Value::Array(_) => None,
+                    _ => Some(v.to_string()),
+                };
+                if let Some(s) = s {
+                    out.push(s);
                 }
             }
             if let Some(serde_json::Value::Array(children)) = map.get("value") {
@@ -671,21 +878,22 @@ fn assert_response_fields(
                 "Step '{step_operation}': expected field '{tag}' not found in response"
             ))
         })?;
-        if actual != *expected {
-            // Binary TTLV responses encode enumerations as hex (e.g. "0x00000002").
-            // If the expected value is a known enum name, resolve it and compare
-            // against the hex form.
-            let matches_via_enum = actual.starts_with("0x")
-                && lookup_enum_code(expected)
-                    .is_some_and(|(code, _)| actual == format!("0x{code:08X}"));
-            if !matches_via_enum {
-                return Err(KmsClientError::UnexpectedError(format!(
-                    "Step '{step_operation}': field '{tag}' expected '{expected}', got '{actual}'"
-                )));
-            }
+        if !enum_value_matches(&actual, expected) {
+            return Err(KmsClientError::UnexpectedError(format!(
+                "Step '{step_operation}': field '{tag}' expected '{expected}', got '{actual}'"
+            )));
         }
     }
     Ok(())
+}
+
+/// Compare a response value with its expected text. Binary TTLV responses encode
+/// enumerations as hex (e.g. "0x00000002"), so a known enum name also matches its hex code.
+fn enum_value_matches(actual: &str, expected: &str) -> bool {
+    actual == expected
+        || (actual.starts_with("0x")
+            && lookup_enum_code(expected)
+                .is_some_and(|(code, _)| actual == format!("0x{code:08X}")))
 }
 
 /// Assert that the response indicates success.
@@ -708,7 +916,7 @@ fn assert_success(
             let msg = find_field_in_json(response, "ResultMessage")
                 .unwrap_or_else(|| "(no message)".to_owned());
             Err(KmsClientError::UnexpectedError(format!(
-                "Step '{step_operation}': expected success, got ResultStatus='{other}', \
+                "Step {step_operation}: expected success, got ResultStatus='{other}', \
                  ResultMessage='{msg}'"
             )))
         }
@@ -726,7 +934,7 @@ fn assert_all_success(
     {
         if status != "Success" && status != "0x00000000" {
             return Err(KmsClientError::UnexpectedError(format!(
-                "Step '{step_operation}': batch item {idx} expected success, \
+                "Step {step_operation}: batch item {idx} expected success, \
                  got ResultStatus='{status}'"
             )));
         }
@@ -859,10 +1067,10 @@ fn backend_available(backend: &str) -> bool {
     {
         return true;
     }
-    if let Ok(v) = std::env::var("KMS_TEST_BACKENDS") {
-        if v.split(',').any(|b| b.trim() == backend) {
-            return true;
-        }
+    if let Ok(v) = std::env::var("KMS_TEST_BACKENDS")
+        && v.split(',').any(|b| b.trim() == backend)
+    {
+        return true;
     }
     // Fall back to checking the legacy per-backend connection env var.
     match backend {
@@ -1097,6 +1305,11 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                 }
                 "test_data/configs/server/auth/cert_roles.toml" => {
                     ONCE_VECTOR_CERT_AUTH_OPERATOR_CRYPTO_OFFICER
+                        .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
+                        .await?
+                }
+                "test_data/configs/server/auth/cert_constraints.toml" => {
+                    ONCE_VECTOR_CERT_CONSTRAINTS
                         .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
                         .await?
                 }
@@ -1459,13 +1672,15 @@ async fn execute_steps(
     let binary_url = format!("{base_url}/kmip");
 
     let mut captures: HashMap<String, String> = HashMap::new();
+    // One owner client per vector: clones share the hyper connection pool, so steps reuse one connection.
+    let owner_client = context.get_owner_client();
 
     for (i, step) in manifest.steps.iter().enumerate() {
         // Resolve which client to use for this step
         let step_identity = step.identity.as_deref().unwrap_or("owner");
         let client = identity_clients
             .get(step_identity)
-            .map_or_else(|| context.get_owner_client(), Clone::clone);
+            .map_or_else(|| owner_client.clone(), Clone::clone);
 
         let request_path = vector_path.join(&step.request);
         let request_json = load_request_json(&request_path, &captures)?;
@@ -1491,9 +1706,19 @@ async fn execute_steps(
         // Send the request via JSON or binary wire format.
         // When `raw_request` is true, the JSON is already a complete RequestMessage;
         // otherwise, wrap the bare operation in a standard KMIP RequestMessage envelope.
-        let (http_success, response_json) = if is_binary {
+        let sent: Option<(bool, serde_json::Value, Option<u16>)> = if step.operation == "RawHttp" {
+            send_raw_http(
+                &client,
+                &base_url,
+                &request_json,
+                manifest.kmip_version,
+                i,
+                step,
+            )
+            .await?
+        } else if is_binary {
             // Binary: always HTTP 200; success/failure is in ResultStatus
-            let json = send_binary_request(
+            match send_binary_request(
                 &client,
                 &binary_url,
                 &request_json,
@@ -1502,8 +1727,21 @@ async fn execute_steps(
                 &step.operation,
                 step.raw_request,
             )
-            .await?;
-            (true, json)
+            .await
+            {
+                Ok(json) => {
+                    reject_unexpected_response(step, i, "HTTP 200")?;
+                    Some((true, json, None))
+                }
+                Err(e) if tolerates_transport_error(step) => {
+                    eprintln!(
+                        "Step {i} '{}': transport error (expected): {e}",
+                        step.operation
+                    );
+                    None
+                }
+                Err(e) => return Err(e),
+            }
         } else {
             // JSON wire format: wrap or use as-is depending on raw_request
             let request_message = if step.raw_request {
@@ -1515,53 +1753,55 @@ async fn execute_steps(
                     manifest.kmip_version[1],
                 )
             };
+            let kmip_flavor = if manifest.kmip_version[0] == 1 {
+                KmipFlavor::Kmip1
+            } else {
+                KmipFlavor::Kmip2
+            };
+            assert_binary_encodable(&request_message, kmip_flavor, i, &step.operation)?;
 
             // POST the wrapped JSON TTLV to the KMIP /kmip/2_1 endpoint
-            let send_result = client.client.post_json(&json_url, &request_message).await;
-
-            match send_result {
+            match client.client.post_json(&json_url, &request_message).await {
                 Ok(response) => {
                     let status = response.status;
+                    reject_unexpected_response(step, i, &format!("HTTP {status}"))?;
                     let response_text = response.text().map_err(|e| {
                         KmsClientError::UnexpectedError(format!(
                             "Step {i} '{}': cannot read response body: {e}",
                             step.operation
                         ))
                     })?;
-
-                    // Try to parse as JSON; for non-JSON error responses, create
-                    // a synthetic JSON
-                    let response_json: serde_json::Value =
-                        serde_json::from_str(&response_text).unwrap_or_else(|_| {
-                            serde_json::json!({
-                                "tag": "ErrorResponse",
-                                "value": [
-                                    { "tag": "ResultStatus", "type": "Enumeration", "value": "OperationFailed" },
-                                    { "tag": "ResultMessage", "type": "TextString", "value": response_text }
-                                ]
-                            })
-                        });
-
-                    (status.is_success(), response_json)
+                    let response_json = parse_response_body(&response_text);
+                    if status.is_success() {
+                        assert_binary_encodable(&response_json, kmip_flavor, i, &step.operation)?;
+                    }
+                    Some((status.is_success(), response_json, None))
                 }
                 Err(e) => {
-                    // Transport-level failure (server crash, connection reset,
-                    // etc.). When assert_success is false or allow_failure is set,
-                    // treat it as an expected failure and continue.
-                    if !step.assert_success || step.allow_failure {
-                        eprintln!(
-                            "Step {i} '{}': transport error (expected failure): {e}",
-                            step.operation
-                        );
-                        continue;
-                    }
-                    return Err(KmsClientError::UnexpectedError(format!(
-                        "Step {i} '{}': HTTP request failed: {e}",
-                        step.operation
-                    )));
+                    accept_transport_error(step, i, &e)?;
+                    None
                 }
             }
         };
+        let Some((http_success, response_json, http_status)) = sent else {
+            continue;
+        };
+
+        if let Some(expected) = step.assert_http_status {
+            if step.operation != "RawHttp" {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {i} '{}': assert_http_status is only supported on RawHttp steps",
+                    step.operation
+                )));
+            }
+            if http_status != Some(expected) {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {i} '{}': expected HTTP status {expected}, got {http_status:?}; body: {}",
+                    step.operation,
+                    serde_json::to_string(&response_json).unwrap_or_default()
+                )));
+            }
+        }
 
         // Optionally record the response for debugging / capture mode
         if std::env::var("RECORD_VECTORS").is_ok() {
@@ -1585,10 +1825,11 @@ async fn execute_steps(
                 )));
             }
             // For raw (batched) requests, verify ALL ResultStatus fields succeed
+            let step_label = format!("{i} '{}'", step.operation);
             if step.raw_request {
-                assert_all_success(&response_json, &step.operation)?;
+                assert_all_success(&response_json, &step_label)?;
             } else {
-                assert_success(&response_json, &step.operation)?;
+                assert_success(&response_json, &step_label)?;
             }
         } else {
             // Expect failure: HTTP non-2xx or ResultStatus != Success
@@ -1604,42 +1845,61 @@ async fn execute_steps(
                 }
             }
 
-            // Optionally check the specific error reason
-            if let Some(expected_reason) = &step.assert_error_reason {
+            if http_success {
+                // A KMIP response must carry an exact ResultReason for every expected failure.
+                let Some(expected_reason) = &step.assert_error_reason else {
+                    let actual_reason =
+                        find_field_in_json(&response_json, "ResultReason").unwrap_or_default();
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "Step {i} '{}': assert_success=false but 'assert_error_reason' is not set; \
+                         response ResultReason is '{actual_reason}'. \
+                         Add a ResultReason assertion to the manifest.",
+                        step.operation
+                    )));
+                };
                 let actual_reason =
                     find_field_in_json(&response_json, "ResultReason").unwrap_or_default();
-                if actual_reason != *expected_reason {
+                if !enum_value_matches(&actual_reason, expected_reason) {
                     return Err(KmsClientError::UnexpectedError(format!(
                         "Step {i} '{}': expected ResultReason='{expected_reason}', \
                          got '{actual_reason}'",
                         step.operation
                     )));
                 }
-            }
-
-            // Optionally check that the error message contains a substring
-            if let Some(expected_substr) = &step.assert_error_contains {
-                let actual_msg =
+                if let Some(expected_substr) = &step.assert_error_contains {
+                    let actual_message =
+                        find_field_in_json(&response_json, "ResultMessage").unwrap_or_default();
+                    if !actual_message.contains(expected_substr) {
+                        return Err(KmsClientError::UnexpectedError(format!(
+                            "Step {i} '{}': expected ResultMessage to contain \
+                             '{expected_substr}', got '{actual_message}'",
+                            step.operation
+                        )));
+                    }
+                }
+            } else {
+                // HTTP error responses are not KMIP ResponseMessage values, so accept either
+                // a declared ResultReason or a declared diagnostic substring.
+                let actual_reason =
+                    find_field_in_json(&response_json, "ResultReason").unwrap_or_default();
+                let actual_message =
                     find_field_in_json(&response_json, "ResultMessage").unwrap_or_default();
-                if !actual_msg.contains(expected_substr.as_str()) {
+                let matches_reason = step
+                    .assert_error_reason
+                    .as_ref()
+                    .is_some_and(|expected| actual_reason == *expected);
+                let matches_message = step
+                    .assert_error_contains
+                    .as_ref()
+                    .is_some_and(|expected| actual_message.contains(expected));
+                if !matches_reason && !matches_message && step.assert_http_status.is_none() {
                     return Err(KmsClientError::UnexpectedError(format!(
-                        "Step {i} '{}': expected ResultMessage to contain \
-                         '{expected_substr}', got '{actual_msg}'",
+                        "Step {i} '{}': HTTP error did not match assert_error_reason or \
+                         assert_error_contains; got ResultReason='{actual_reason}', \
+                         ResultMessage='{actual_message}'",
                         step.operation
                     )));
                 }
-            }
-
-            // Require at least one error assertion when assert_success=false.
-            // Without this guard, any failure would silently pass the test.
-            if step.assert_error_reason.is_none() && step.assert_error_contains.is_none() {
-                return Err(KmsClientError::UnexpectedError(format!(
-                    "Step {i} '{}': assert_success=false but neither \
-                     'assert_error_reason' nor 'assert_error_contains' is set — \
-                     refusing to accept any arbitrary error as expected. \
-                     Add an error assertion to the manifest.",
-                    step.operation
-                )));
             }
 
             // Expected failure — skip further assertions and captures
@@ -1761,11 +2021,6 @@ async fn execute_steps(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::assertions_on_result_states
-)]
 mod tests {
     use super::*;
 
@@ -1793,6 +2048,19 @@ mod tests {
         assert!(kem_packed_part(&hex_data, "other").is_none());
         assert!(kem_packed_part(&hex_data[..hex_data.len() - 2], "kem_encapsulation").is_none());
         assert!(kem_packed_part(&format!("{hex_data}00"), "kem_encapsulation").is_none());
+    }
+
+    #[test]
+    fn raw_http_body_concatenates_repeated_segments() {
+        let segment = |text: Option<&str>, hex: Option<&str>, repeat| RawSegment {
+            text: text.map(str::to_owned),
+            hex: hex.map(str::to_owned),
+            repeat,
+        };
+        let body = raw_http_body(&[segment(Some("ab"), None, 2), segment(None, Some("00ff"), 1)]);
+        assert_eq!(body.unwrap(), b"abab\x00\xff");
+        raw_http_body(&[segment(Some("ab"), Some("00"), 1)]).unwrap_err();
+        raw_http_body(&[segment(None, Some("zz"), 1)]).unwrap_err();
     }
 
     #[test]
@@ -1878,7 +2146,7 @@ mod tests {
                 ]
             }]
         });
-        assert!(assert_success(&response, "test_op").is_ok());
+        assert_success(&response, "test_op").unwrap();
     }
 
     #[test]
@@ -3619,9 +3887,35 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_neg_hash_init_and_final_both_true() -> Result<(), KmsClientError> {
+    async fn test_kat_hash_sha256_init_and_final_single_part() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/hash/hash_init_and_final_both_true").await
+        run_test_vector("test_data/vectors/kat/hash/sha256_init_and_final_single_part").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_hash_unknown_correlation_value() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/hash/hash_unknown_correlation_value").await
+    }
+
+    // ── Multi-part (streaming) operations: KMIP 2.1 §6.1 ─────────────────
+
+    #[tokio::test]
+    async fn test_kat_hash_sha256_multi_part() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/hash/sha256_multi_part").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_mac_hmac_sha256_multi_part() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/hmac_sha256_multi_part").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_symmetric_aes128_gcm_multi_part() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/symmetric/aes128_gcm_multi_part").await
     }
 
     // ── Negative tests: derive key edge cases ───────────────────────────
@@ -3637,6 +3931,24 @@ ObjectType = "SymmetricKey"
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/derive_key/derive_key_negative_iterations")
             .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_derive_key_preactive_base() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/derive_key/derive_key_preactive_base").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_derive_key_no_usage_mask() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/derive_key/derive_key_no_usage_mask").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_derive_key_unsupported_method() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/derive_key/derive_key_unsupported_method").await
     }
 
     // ── Negative tests: lifecycle edge cases ────────────────────────────
@@ -3770,21 +4082,15 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_neg_spec_create_invalid_field() -> Result<(), KmsClientError> {
+    async fn test_neg_spec_create_feature_not_supported() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/create/invalid_field").await
+        run_test_vector("test_data/vectors/negative/create/feature_not_supported").await
     }
 
     #[tokio::test]
     async fn test_neg_spec_create_invalid_message() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/create/invalid_message").await
-    }
-
-    #[tokio::test]
-    async fn test_neg_spec_create_read_only_attribute() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/create/read_only_attribute").await
     }
 
     #[tokio::test]
@@ -3800,9 +4106,9 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_neg_spec_create_key_pair_invalid_message() -> Result<(), KmsClientError> {
+    async fn test_neg_spec_create_key_pair_invalid_field() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/create_key_pair/invalid_message").await
+        run_test_vector("test_data/vectors/negative/create_key_pair/invalid_field").await
     }
 
     #[tokio::test]
@@ -3921,6 +4227,18 @@ ObjectType = "SymmetricKey"
     async fn test_neg_spec_import_invalid_message() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/import/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_import_object_already_exists() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/import/object_already_exists").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_import_invalid_field() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/import/invalid_field").await
     }
 
     #[tokio::test]
@@ -4566,7 +4884,6 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
-    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
     async fn test_vec_create_split_key_xor() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/create_split_key_xor").await
@@ -4576,7 +4893,6 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
-    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
     async fn test_vec_create_split_key_threshold_too_low() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/create_split_key_threshold_too_low").await
@@ -4584,11 +4900,45 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
-    #[ignore = "test vector data not yet generated — run with RECORD_VECTORS=1"]
     async fn test_vec_create_split_key_parts_less_than_threshold() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/create_split_key_parts_less_than_threshold")
             .await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_create_split_key_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_item_not_found").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_create_split_key_no_unique_identifier() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_no_unique_identifier").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_create_split_key_object_type_mismatch() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_split_key_object_type_mismatch").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_join_split_key_not_a_split_key() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/join_split_key_not_a_split_key").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_join_split_key_too_few_shares() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/join_split_key_too_few_shares").await
     }
 
     // ── HSM + KEK vectors ─────────────────────────────────────────────────
@@ -5224,6 +5574,309 @@ ObjectType = "SymmetricKey"
             .await
     }
 
+    // ── Negative tests: robustness (malformed input, resource bounds) ──
+
+    #[tokio::test]
+    async fn test_neg_robust_json_truncated() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_truncated").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_nesting_over_serde_limit() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_nesting_over_serde_limit").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_ttlv_nesting_55() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_ttlv_nesting_55").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_invalid_utf8() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_invalid_utf8").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_wrong_content_type() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_wrong_content_type").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_body_over_payload_limit() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_body_over_payload_limit").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_bytestring_not_hex() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_bytestring_not_hex").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_integer_overflow() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_integer_overflow").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_datetime_out_of_range() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_datetime_out_of_range").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_json_bigint_1mib() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/json_bigint_1mib").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_truncated() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_truncated").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_length_overflow() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_length_overflow").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_depth_65() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_depth_65").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_item_count_over_limit() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_item_count_over_limit").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_bigint_length_7() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_bigint_length_7").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_unknown_item_type() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_unknown_item_type").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_boolean_value_2() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_boolean_value_2").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_integer_length_5() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_integer_length_5").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_bin_textstring_invalid_utf8() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/bin_textstring_invalid_utf8").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_batch_count_mismatch() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_batch_count_mismatch").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_batch_items_over_limit() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_batch_items_over_limit").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_undo_items_over_limit() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_undo_items_over_limit").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_max_response_size_negative() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_max_response_size_negative")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_response_too_large() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_response_too_large").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_hashed_password_credential() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_hashed_password_credential")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_msg_critical_extension() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/msg_critical_extension").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_rng_retrieve_bounds() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/rng_retrieve_bounds").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_derive_key_pbkdf2_iterations_over_max() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/negative/robustness/derive_key_pbkdf2_iterations_over_max",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_create_aes_length_over_max() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/create_aes_length_over_max").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_create_rsa_modulus_over_max() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/create_rsa_modulus_over_max").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_register_rsa_modulus_oversized() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/register_rsa_modulus_oversized")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_validate_chain_over_max() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/validate_chain_over_max").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_multipart_sign_over_budget() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/multipart_sign_over_budget").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_multipart_correlation_value_bad_length() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/negative/robustness/multipart_correlation_value_bad_length",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_robust_import_garbage_pkcs8_4mib() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/robustness/import_garbage_pkcs8_4mib").await
+    }
+
+    // ── Negative tests: security (cross-tenant, export, tickets, roles) ──
+
+    #[tokio::test]
+    async fn test_neg_sec_sensitive_plaintext_get() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/sensitive_plaintext_get").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_not_extractable_get_export_wrap() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/not_extractable_get_export_wrap").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_import_replace_existing_foreign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/import_replace_existing_foreign").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_locate_cross_tenant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/locate_cross_tenant").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_foreign_key_operations_hidden() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/foreign_key_operations_hidden").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_tag_handle_cross_tenant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/tag_handle_cross_tenant").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_ticket_bound_to_user() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/ticket_bound_to_user").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_ticket_forged() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/ticket_forged").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_ticket_request_count_exhausted() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/ticket_request_count_exhausted").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_constraints_enforced() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/constraints_enforced").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_operator_set_constraints_denied() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/operator_set_constraints_denied").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_multipart_correlation_value_theft() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/multipart_correlation_value_theft")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_sec_wrap_with_unusable_kek() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/security/wrap_with_unusable_kek").await
+    }
+
     // ── Auto-discovered KMIP version-matrix vectors ─────────────────────────
 
     /// Walks `test_data/vectors/fips/kmip_versions/` and runs every vector
@@ -5353,7 +6006,7 @@ ObjectType = "SymmetricKey"
     /// Start (or reuse) an OPA-enabled KMS server for "allowed" vectors.
     ///
     /// Reads the `CryptoOfficer` JWT from `KMS_TEST_OPA_OFFICER_JWT`, which must be
-    /// set by the `mise test:opa_rbac` bash script before invoking this test.
+    /// set by the `mise test:interop:opa-rbac` bash script before invoking this test.
     /// The script starts the auth server, provisions test users via
     /// `provision_opa_users.sh`, and exports all required JWT env vars.
     ///
@@ -5393,7 +6046,7 @@ ObjectType = "SymmetricKey"
         let Ok(officer_jwt) = std::env::var("KMS_TEST_OPA_OFFICER_JWT") else {
             eprintln!(
                 "SKIP: KMS_TEST_OPA_OFFICER_JWT not set — \
-                 run `mise test:opa_rbac` to provision users and export JWT env vars"
+                 run `mise test:interop:opa-rbac` to provision users and export JWT env vars"
             );
             return Ok(None);
         };
@@ -5416,7 +6069,7 @@ ObjectType = "SymmetricKey"
                             // Disable Google CSE: auth/plain.toml enables it, but server
                             // startup tries to create the CSE RSA key as the default user
                             // who has no OPA roles → denied in enforcing/exclusive mode.
-                            cfg.google_cse_config.google_cse_enable = false;
+                            cfg.google_cse_config.enable = false;
                         },
                         crate::TestClientOptions {
                             http: cosmian_kms_client::reexport::cosmian_http_client::HttpClientConfig {
@@ -5467,7 +6120,7 @@ ObjectType = "SymmetricKey"
                             // Disable Google CSE: auth/cert.toml enables it, but the OPA
                             // server startup would try to create the CSE RSA key as the
                             // default user who has no OPA roles → denied in enforcing mode.
-                            cfg.google_cse_config.google_cse_enable = false;
+                            cfg.google_cse_config.enable = false;
                             // The test vector owner uses mTLS cert with CN "owner.client@acme.com".
                             // Cert-auth users carry no JWT roles, so OPA would deny their Create.
                             // Adding the owner as a privileged_user lets the KMS bypass OPA for
@@ -5476,7 +6129,7 @@ ObjectType = "SymmetricKey"
                             cfg.privileged_users = Some(vec!["owner.client@acme.com".to_owned()]);
                             // Disable the socket server to avoid conflicting on the
                             // fixed socket port across concurrent test processes.
-                            cfg.socket_server.socket_server_start = false;
+                            cfg.socket_server.start = false;
                             cfg.db.sqlite_path =
                                 PathBuf::from(format!("/tmp/kms_test_opa_{opa_mode}_denied"));
                             cfg.workspace.root_data_path =
@@ -5499,14 +6152,14 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_allowed() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5514,13 +6167,13 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_denied_server(&ONCE_VECTOR_OPA_DENIED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5528,14 +6181,14 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_allowed() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_ENFORCING_ALLOWED, "enforcing").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5543,7 +6196,7 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         // Reuse the shared denied server (same deny reason: non-owner, no roles).
@@ -5552,7 +6205,7 @@ ObjectType = "SymmetricKey"
         let Some(ctx) = get_or_init_opa_denied_server(&ONCE_VECTOR_OPA_DENIED, "enforcing").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5566,16 +6219,16 @@ ObjectType = "SymmetricKey"
     /// `allow = false` because `Get ∉ user_ops`.
     ///
     /// Requires `KMS_OPA_URL` + `KMS_AUTH_SERVER_URL`; JWT env vars are provisioned by
-    /// `mise test:opa_rbac` / `provision_opa_users.sh`.
+    /// `mise test:interop:opa-rbac` / `provision_opa_users.sh`.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_user_role_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5591,16 +6244,16 @@ ObjectType = "SymmetricKey"
     /// to `Get` a key owned by `kms-opa-test` fails this check → `allow = false`.
     ///
     /// Requires `KMS_OPA_URL` + `KMS_AUTH_SERVER_URL`; JWT env vars are provisioned by
-    /// `mise test:opa_rbac` / `provision_opa_users.sh`.
+    /// `mise test:interop:opa-rbac` / `provision_opa_users.sh`.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_wrong_domain() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5617,14 +6270,14 @@ ObjectType = "SymmetricKey"
     /// Ref: kms.rego `auditor_ops` set (NIST SP 800-53 AU-9 separation-of-duties;
     ///      PCI-DSS v4.0 Req 10 — auditor must not be able to erase evidence).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auditor_destroy_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5644,7 +6297,7 @@ ObjectType = "SymmetricKey"
     ///
     /// Ref: kms.rego `auditor_ops` set; NIST SP 800-57 Part 2 §4.3.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auditor_get_attributes_allowed()
     -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5652,7 +6305,7 @@ ObjectType = "SymmetricKey"
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5673,14 +6326,14 @@ ObjectType = "SymmetricKey"
     /// Ref: kms.rego `DomainAdmin` rule (ANSI/INCITS 359-2004 §4.2 Constrained RBAC;
     ///      NIST SP 800-53 Rev 5 AC-6 least privilege).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_domain_admin_wrong_domain() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5700,16 +6353,16 @@ ObjectType = "SymmetricKey"
     /// kms-opa-other`.
     ///
     /// Requires `KMS_OPA_URL`, `KMS_AUTH_SERVER_URL`, and `KMS_TEST_OPA_OTHER_DOMAIN_JWT`
-    /// (set by `mise test:opa_rbac` / `provision_opa_users.sh`).
+    /// (set by `mise test:interop:opa-rbac` / `provision_opa_users.sh`).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_other_domain_allowed() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5749,14 +6402,14 @@ ObjectType = "SymmetricKey"
     /// Ref: kms.rego `auditor_ops` + `same_domain` (ANSI/INCITS 359 §4.2;
     ///      NIST SP 800-53 Rev 5 AC-3, AC-4).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auditor_wrong_domain() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5777,14 +6430,14 @@ ObjectType = "SymmetricKey"
     /// Ref: kms.rego `user_ops` + `same_domain` (ANSI/INCITS 359 §4.2;
     ///      FIPS 140-3 §7.4; NIST SP 800-53 Rev 5 AC-3, AC-4).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_user_wrong_domain() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5805,14 +6458,14 @@ ObjectType = "SymmetricKey"
     /// Ref: kms.rego `same_domain` (ANSI/INCITS 359 §4.2;
     ///      NIST SP 800-53 Rev 5 AC-3, AC-4, SC-28).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_wrong_domain() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_ENFORCING_ALLOWED, "enforcing").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5835,14 +6488,14 @@ ObjectType = "SymmetricKey"
     ///      hierarchy; NIST SP 800-53 Rev 5 AC-6(1); NIST SP 800-57 Part 2 §4.3
     ///      Key Management Authority role).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_super_admin_cross_domain() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) =
             get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac` to provision auth server and OPA"
+                "required env vars not set — run `mise test:interop:opa-rbac` to provision auth server and OPA"
                     .to_owned(),
             ));
         };
@@ -5891,7 +6544,7 @@ ObjectType = "SymmetricKey"
         let Ok(owner_jwt) = std::env::var(jwt_env) else {
             eprintln!(
                 "SKIP: {jwt_env} not set — \
-                 run `mise test:opa_rbac` to provision users and export JWT env vars"
+                 run `mise test:interop:opa-rbac` to provision users and export JWT env vars"
             );
             return Ok(None);
         };
@@ -5925,7 +6578,7 @@ ObjectType = "SymmetricKey"
                             cfg.idp_auth.jwt_auth_provider = None;
                             // Disable Google CSE: startup would create a CSE RSA key as the
                             // default user who has no OPA roles → denied in exclusive/enforcing.
-                            cfg.google_cse_config.google_cse_enable = false;
+                            cfg.google_cse_config.enable = false;
                             // Unique SQLite paths per auth_verifier + mode + jwt combination
                             // so concurrent test suites don't share the same database file.
                             let tag = format!("opa_av_{opa_mode}_{jwt_env}");
@@ -5959,7 +6612,7 @@ ObjectType = "SymmetricKey"
     /// `roles` or `domain` from the JWT, causing OPA to see `input.roles = []`
     /// and deny all non-owner operations.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auth_verifier_officer_allowed()
     -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5971,7 +6624,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_allowed", ctx).await
@@ -5981,7 +6634,7 @@ ObjectType = "SymmetricKey"
     /// key-lifecycle flow via the `AuthVerifier` middleware with enforcing mode
     /// (both OPA and native KMS access control must allow).
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_auth_verifier_officer_allowed()
     -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5993,7 +6646,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context("test_data/vectors/opa/mode_enforcing_allowed", ctx).await
@@ -6010,7 +6663,7 @@ ObjectType = "SymmetricKey"
     /// received `401: User does not have create access-right` because `roles` was
     /// always `[]` in `handle_auth_verifier`.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auth_verifier_super_admin_allowed()
     -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -6024,7 +6677,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_allowed", ctx).await
@@ -6036,7 +6689,7 @@ ObjectType = "SymmetricKey"
     /// export by non-owners. This verifies that the `auth_verifier` path correctly
     /// forwards the `User` role so OPA can deny the operation.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auth_verifier_user_role_denied()
     -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -6048,7 +6701,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_user_role_denied", ctx)
@@ -6060,7 +6713,7 @@ ObjectType = "SymmetricKey"
     /// `Destroy` is not in `auditor_ops`. This verifies that the `Auditor` role
     /// is correctly forwarded through the `auth_verifier` path to OPA.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_auth_verifier_auditor_destroy_denied()
     -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -6072,7 +6725,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(
@@ -6094,7 +6747,7 @@ ObjectType = "SymmetricKey"
     /// After the fix: OPA approval is authoritative for non-HSM objects in enforcing
     /// mode; `user_has_permission` returns `Ok(true)` immediately after OPA allows.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_co_get_attributes_allowed() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_auth_verifier_server(
@@ -6105,7 +6758,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(
@@ -6149,8 +6802,8 @@ ObjectType = "SymmetricKey"
                                 cfg.roles.crypto_officer_users =
                                     Some(vec!["owner.client@acme.com".to_owned()]);
                             }
-                            cfg.google_cse_config.google_cse_enable = false;
-                            cfg.socket_server.socket_server_start = false;
+                            cfg.google_cse_config.enable = false;
+                            cfg.socket_server.start = false;
                             cfg.db.sqlite_path =
                                 PathBuf::from(format!("/tmp/kms_test_opa_{db_tag}"));
                             cfg.workspace.root_data_path =
@@ -6172,7 +6825,7 @@ ObjectType = "SymmetricKey"
     /// no allow rule → deny. Proves that a misconfigured or role-free token cannot
     /// bypass OPA in enforcing mode.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_empty_roles_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_auth_verifier_server(
@@ -6183,7 +6836,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(
@@ -6198,7 +6851,7 @@ ObjectType = "SymmetricKey"
     /// A bearer token with `roles: ["Hacker"]` is sent. No allow rule in kms.rego
     /// matches this role name → deny.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_unknown_role_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_auth_verifier_server(
@@ -6209,7 +6862,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(
@@ -6224,7 +6877,7 @@ ObjectType = "SymmetricKey"
     /// `Create` is not in `auditor_ops` (auditors are read-only). Even in enforcing
     /// mode, OPA denies the operation and the denial is final.
     #[tokio::test]
-    #[ignore = "requires OPA + auth server: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA + auth server: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_auditor_create_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_auth_verifier_server(
@@ -6235,7 +6888,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "required env vars not set — run `mise test:opa_rbac`".to_owned(),
+                "required env vars not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(
@@ -6253,7 +6906,7 @@ ObjectType = "SymmetricKey"
     /// has no JWT → OPA receives `input.roles = []` → deny. OPA is the sole authority
     /// in exclusive mode; the KMS privilege bypass does not apply.
     #[tokio::test]
-    #[ignore = "requires OPA: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_exclusive_native_co_cert_denied() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_native_co_server(
@@ -6265,7 +6918,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "KMS_OPA_URL not set — run `mise test:opa_rbac`".to_owned(),
+                "KMS_OPA_URL not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(
@@ -6284,7 +6937,7 @@ ObjectType = "SymmetricKey"
     /// Counterpart to `test_vec_opa_mode_exclusive_native_co_cert_denied`: shows that
     /// the same cert user IS allowed in enforcing mode when explicitly privileged.
     #[tokio::test]
-    #[ignore = "requires OPA: run via `mise test:opa_rbac`"]
+    #[ignore = "requires OPA: run via `mise test:interop:opa-rbac`"]
     async fn test_vec_opa_mode_enforcing_native_co_cert_allowed() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         let Some(ctx) = get_or_init_opa_native_co_server(
@@ -6296,7 +6949,7 @@ ObjectType = "SymmetricKey"
         .await?
         else {
             return Err(KmsClientError::Default(
-                "KMS_OPA_URL not set — run `mise test:opa_rbac`".to_owned(),
+                "KMS_OPA_URL not set — run `mise test:interop:opa-rbac`".to_owned(),
             ));
         };
         run_test_vector_with_context(

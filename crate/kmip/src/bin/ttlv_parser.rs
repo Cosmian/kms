@@ -1,4 +1,3 @@
-#![allow(clippy::print_stdout, clippy::unwrap_used)]
 use std::io::{Write, stdin, stdout};
 
 use cosmian_kmip::{
@@ -10,15 +9,21 @@ use cosmian_kmip::{
 /// It reads hex strings from the user, decodes them, and parses them into TTLV objects.
 /// It also attempts to convert the TTLV objects into KMIP request or response messages.
 /// The parser continues until the user types "quit" or "exit".
-fn main() {
-    println!("TTLV Parser - Enter hex strings (or 'quit' to exit)");
+///
+/// # Errors
+/// Returns an error when writing to stdout fails.
+fn main() -> std::io::Result<()> {
+    let mut out = stdout().lock();
+    writeln!(out, "TTLV Parser - Enter hex strings (or 'quit' to exit)")?;
     loop {
-        print!("> ");
-        stdout().flush().unwrap();
+        write!(out, "> ")?;
+        if out.flush().is_err() {
+            break;
+        }
 
         let mut input = String::new();
         if stdin().read_line(&mut input).is_err() {
-            println!("Error reading input");
+            writeln!(out, "Error reading input")?;
             continue;
         }
 
@@ -34,7 +39,7 @@ fn main() {
         match hex::decode(input) {
             Ok(bytes) => {
                 let Ok((major, minor)) = TTLV::find_version(&bytes) else {
-                    println!("ERROR: Failed to find KMIP version");
+                    writeln!(out, "ERROR: Failed to find KMIP version")?;
                     continue;
                 };
                 let kmip_flavor = if major == 1 {
@@ -42,38 +47,41 @@ fn main() {
                 } else if major == 2 {
                     KmipFlavor::Kmip2
                 } else {
-                    println!("ERROR: Unsupported KMIP version: {major}.{minor}");
+                    writeln!(out, "ERROR: Unsupported KMIP version: {major}.{minor}")?;
                     continue;
                 };
                 match TTLV::from_bytes(&bytes, kmip_flavor) {
                     Ok(ttlv) => {
-                        println!("\nTTLV ==> \n\n{ttlv:#?}\n");
+                        writeln!(out, "\nTTLV ==> \n\n{ttlv:#?}\n")?;
                         if input.starts_with("420078") {
-                            match from_ttlv::<RequestMessage>(ttlv) {
+                            match from_ttlv::<RequestMessage>(&ttlv) {
                                 Err(r) => {
-                                    println!("ERROR converting TTLV to RequestMessage: {r}");
+                                    writeln!(out, "ERROR converting TTLV to RequestMessage: {r}")?;
                                 }
-                                Ok(request) => println!("Request ==>\n\n{request}\n\nSUCCESS"),
+                                Ok(request) => {
+                                    writeln!(out, "Request ==>\n\n{request}\n\nSUCCESS")?;
+                                }
                             }
                         } else if input.starts_with("42007b") || input.starts_with("42007B") {
-                            match from_ttlv::<ResponseMessage>(ttlv) {
+                            match from_ttlv::<ResponseMessage>(&ttlv) {
                                 Err(r) => {
-                                    println!("ERROR converting TTLV to ResponseMessage: {r}");
+                                    writeln!(out, "ERROR converting TTLV to ResponseMessage: {r}")?;
                                 }
                                 Ok(response) => {
-                                    println!("Response ==>\n\n{response}\n\nSUCCESS");
+                                    writeln!(out, "Response ==>\n\n{response}\n\nSUCCESS")?;
                                 }
                             }
                         } else {
-                            println!("ERROR: unknown message type");
+                            writeln!(out, "ERROR: unknown message type")?;
                         }
                     }
-                    Err(e) => println!("ERROR parsing TTLV: {e}"),
+                    Err(e) => writeln!(out, "ERROR parsing TTLV: {e}")?,
                 }
             }
             Err(e) => {
-                println!("ERROR parsing hex string: {e}");
+                writeln!(out, "ERROR parsing hex string: {e}")?;
             }
         }
     }
+    Ok(())
 }

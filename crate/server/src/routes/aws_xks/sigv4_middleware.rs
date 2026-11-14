@@ -27,6 +27,7 @@ use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},
 };
+use openssl::{error::ErrorStack, hash::MessageDigest, pkey::PKey, sign::Signer};
 use scratchstack_aws_signature::{
     GetSigningKeyRequest, GetSigningKeyResponse, KSigningKey, NO_ADDITIONAL_SIGNED_HEADERS,
     SignatureOptions, sigv4_validate_request,
@@ -36,7 +37,10 @@ use url::form_urlencoded;
 
 use crate::{
     core::KMS,
-    routes::aws_xks::error::{XksErrorName, XksErrorReply},
+    routes::{
+        aws_xks::error::{XksErrorName, XksErrorReply},
+        enrollment::secrets_equal,
+    },
 };
 
 const XKS_SIGV4_ALLOWED_MISMATCH_MINUTES: i64 = 5;
@@ -256,7 +260,7 @@ where
 
 fn authentication_failed_error(message: impl Into<String>) -> Error {
     XksErrorReply {
-        errorName: XksErrorName::AuthenticationFailedException,
+        errorName: XksErrorName::AuthenticationFailed,
         errorMessage: Some(message.into()),
     }
     .into()
@@ -311,12 +315,11 @@ fn extract_sigv4_request_timestamp<B>(request: &http::Request<B>) -> Result<Date
         })?);
     }
 
-    if let Some(query) = request.uri().query() {
-        if let Some((_, value)) =
+    if let Some(query) = request.uri().query()
+        && let Some((_, value)) =
             form_urlencoded::parse(query.as_bytes()).find(|(name, _)| name == "X-Amz-Date")
-        {
-            return parse_sigv4_header_timestamp(value.as_ref());
-        }
+    {
+        return parse_sigv4_header_timestamp(value.as_ref());
     }
 
     Err(authentication_failed_error(
@@ -356,10 +359,7 @@ impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
         let access_key_id = self.access_key_id.clone();
         let access_key = self.access_key.clone();
         Box::pin(async move {
-            if !bool::from(subtle::ConstantTimeEq::ct_eq(
-                access_key_id.as_bytes(),
-                req.access_key().as_bytes(),
-            )) {
+            if !secrets_equal(&access_key_id, req.access_key()) {
                 return Err(Box::<dyn std::error::Error + Send + Sync>::from(
                     std::io::Error::new(
                         std::io::ErrorKind::PermissionDenied,
@@ -383,21 +383,23 @@ impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
 // `KSecretKey::from_str` only accepts exactly M-4 chars (default M=44 → 40 chars); `KSigningKey`
 // has no public constructor from raw bytes, so transmute is the only sound approach without
 // modifying the upstream scratchstack library.
-#[allow(unsafe_code)]
+#[expect(
+    unsafe_code,
+    reason = "transmute into scratchstack KSigningKey, which has no public constructor from raw bytes"
+)]
 fn derive_signing_key(
     secret: &str,
     date: chrono::NaiveDate,
     region: &str,
     service: &str,
-) -> Result<KSigningKey, hmac::digest::InvalidLength> {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    type HmacSha256 = Hmac<Sha256>;
-
-    let hmac_raw = |key: &[u8], msg: &[u8]| -> Result<[u8; 32], hmac::digest::InvalidLength> {
-        let mut mac = HmacSha256::new_from_slice(key)?;
-        mac.update(msg);
-        Ok(mac.finalize().into_bytes().into())
+) -> Result<KSigningKey, ErrorStack> {
+    let hmac_raw = |key: &[u8], msg: &[u8]| -> Result<[u8; 32], ErrorStack> {
+        let pkey = PKey::hmac(key)?;
+        let mut signer = Signer::new(MessageDigest::sha256(), &pkey)?;
+        signer.update(msg)?;
+        let mut out = [0_u8; 32];
+        signer.sign(&mut out)?;
+        Ok(out)
     };
 
     let k_secret = format!("AWS4{secret}");
@@ -471,6 +473,22 @@ mod tests {
     use actix_web::body::MessageBody;
 
     use super::*;
+
+    /// AWS published `SigV4` example (docs: "Examples of how to derive a signing key").
+    #[test]
+    fn derive_signing_key_matches_aws_example() {
+        let key = derive_signing_key(
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            chrono::NaiveDate::from_ymd_opt(2012, 2, 15).expect("valid date"),
+            "us-east-1",
+            "iam",
+        )
+        .expect("derive signing key");
+        assert_eq!(
+            hex::encode(key.as_ref()),
+            "f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d"
+        );
+    }
 
     #[test]
     fn extract_sigv4_request_timestamp_prefers_header_value() {

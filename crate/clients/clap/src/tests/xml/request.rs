@@ -6,6 +6,13 @@ use cosmian_kmip::kmip_1_4::kmip_operations::Operation as Op14;
 type EncryptArtifacts = (Vec<u8>, Vec<u8>, Vec<u8>);
 type AadArtifactsMap = HashMap<Vec<u8>, EncryptArtifacts>;
 
+/// Whether a Ticket Value is the vector's `$TICKET_VALUE` placeholder for the ticket issued by
+/// its Login (random, server-generated). The XML parser decodes the non-hex placeholder of a
+/// Byte String to empty bytes.
+pub(crate) fn is_ticket_value_placeholder(value: &[u8]) -> bool {
+    value.is_empty() || value == b"$TICKET_VALUE"
+}
+
 use cosmian_kmip::{
     kmip_0::{
         self,
@@ -37,6 +44,10 @@ pub(crate) struct PrepareRequest {
     pub last_mac_from_mac: Option<Vec<u8>>,
     /// Correlation value from the most recent PKCS11 response (for subsequent requests)
     pub last_pkcs11_correlation_value: Option<Vec<u8>>,
+    /// Correlation value from the most recent multi-part crypto response (Encrypt, Hash, ...)
+    pub last_crypto_correlation_value: Option<Vec<u8>>,
+    /// Ticket Value from the most recent Login response, replacing `$TICKET_VALUE`
+    pub last_ticket_value: Option<Vec<u8>>,
     /// Flag indicating if the response should fail with a missing IV error
     pub expected_response_is_missing_iv_error: bool,
     /// Tracks the most recently used unique identifier for implicit injection
@@ -56,9 +67,11 @@ impl PrepareRequest {
             last_signature_from_sign: None,
             last_mac_from_mac: None,
             last_pkcs11_correlation_value: None,
+            last_crypto_correlation_value: None,
+            last_ticket_value: None,
             expected_response_is_missing_iv_error: false,
             last_uid: None,
-            test_name: test_name.to_string(),
+            test_name: test_name.to_owned(),
         }
     }
 }
@@ -117,11 +130,11 @@ impl PrepareRequest {
                     if !reason_is_invalid_message {
                         continue;
                     }
-                    if let Some(msg) = &inner.result_message {
-                        if msg.to_ascii_lowercase().contains("missing-iv") {
-                            self.expected_response_is_missing_iv_error = true;
-                            return true;
-                        }
+                    if let Some(msg) = &inner.result_message
+                        && msg.to_ascii_lowercase().contains("missing-iv")
+                    {
+                        self.expected_response_is_missing_iv_error = true;
+                        return true;
                     }
                 }
                 // KMIP 1.4 expected response detection
@@ -139,11 +152,11 @@ impl PrepareRequest {
                     if !reason_is_invalid_message {
                         continue;
                     }
-                    if let Some(msg) = &inner.result_message {
-                        if msg.to_ascii_lowercase().contains("missing-iv") {
-                            self.expected_response_is_missing_iv_error = true;
-                            return true;
-                        }
+                    if let Some(msg) = &inner.result_message
+                        && msg.to_ascii_lowercase().contains("missing-iv")
+                    {
+                        self.expected_response_is_missing_iv_error = true;
+                        return true;
                     }
                 }
             }
@@ -160,6 +173,9 @@ impl PrepareRequest {
         // Inject PKCS11 correlation value if needed
         self.inject_pkcs11_correlation_value();
 
+        // Replace `$TICKET_VALUE` in Ticket credentials by the last Login ticket
+        self.substitute_ticket_value();
+
         // Inject implicit UIDs for intra-batch operations that need them
         self.inject_implicit_uids();
 
@@ -173,6 +189,42 @@ impl PrepareRequest {
         let injected_mac = self.inject_mac_for_verification();
 
         (injected_sig, injected_mac)
+    }
+
+    /// Replace the `$TICKET_VALUE` placeholder of the request header's Ticket credentials and
+    /// of Logout payloads by the ticket of the preceding Login response. Without one the
+    /// placeholder is sent as is, and the server rejects it.
+    fn substitute_ticket_value(&mut self) {
+        let Some(ticket_value) = &self.last_ticket_value else {
+            return;
+        };
+        let credentials = self
+            .request
+            .request_header
+            .authentication
+            .iter_mut()
+            .flat_map(|authentication| &mut authentication.credential);
+        let payload_tickets = self
+            .request
+            .batch_item
+            .iter_mut()
+            .filter_map(|bi| match bi {
+                RequestMessageBatchItemVersioned::V21(inner) => match &mut inner.request_payload {
+                    Operation::Logout(logout) => Some(&mut logout.ticket),
+                    _ => None,
+                },
+                RequestMessageBatchItemVersioned::V14(_) => None,
+            });
+        let header_tickets =
+            credentials.filter_map(|credential| match &mut credential.credential_value {
+                kmip_0::kmip_types::CredentialValue::Ticket { ticket } => Some(ticket),
+                _ => None,
+            });
+        for ticket in header_tickets.chain(payload_tickets) {
+            if is_ticket_value_placeholder(&ticket.ticket_value) {
+                ticket.ticket_value.clone_from(ticket_value);
+            }
+        }
     }
 
     /// Update cached artifacts from response for use in subsequent requests
@@ -190,17 +242,17 @@ impl PrepareRequest {
         for bi in &self.request.batch_item {
             match bi {
                 RequestMessageBatchItemVersioned::V21(inner) => {
-                    if let Operation::Encrypt(enc) = &inner.request_payload {
-                        if let Some(aad) = &enc.authenticated_encryption_additional_data {
-                            *pending_aad = Some(aad.clone());
-                        }
+                    if let Operation::Encrypt(enc) = &inner.request_payload
+                        && let Some(aad) = &enc.authenticated_encryption_additional_data
+                    {
+                        *pending_aad = Some(aad.clone());
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
-                    if let Op14::Encrypt(enc) = &inner.request_payload {
-                        if let Some(aad) = &enc.authenticated_encryption_additional_data {
-                            *pending_aad = Some(aad.clone());
-                        }
+                    if let Op14::Encrypt(enc) = &inner.request_payload
+                        && let Some(aad) = &enc.authenticated_encryption_additional_data
+                    {
+                        *pending_aad = Some(aad.clone());
                     }
                 }
             }
@@ -393,11 +445,9 @@ impl PrepareRequest {
                 RequestMessageBatchItemVersioned::V21(inner) => {
                     if let Operation::MACVerify(mv) = &mut inner.request_payload {
                         let needs_mac = mv.mac_data.is_empty();
-                        if needs_mac {
-                            if let Some(mac) = last_mac {
-                                mv.mac_data = mac.clone();
-                                injected = true;
-                            }
+                        if needs_mac && let Some(mac) = last_mac {
+                            mv.mac_data = mac.clone();
+                            injected = true;
                         }
                     }
                 }
@@ -406,11 +456,9 @@ impl PrepareRequest {
                         let placeholder = b"$MAC_DATA";
                         let needs_mac =
                             mv.mac_data.is_empty() || mv.mac_data.as_slice() == placeholder;
-                        if needs_mac {
-                            if let Some(mac) = last_mac {
-                                mv.mac_data = mac.clone();
-                                injected = true;
-                            }
+                        if needs_mac && let Some(mac) = last_mac {
+                            mv.mac_data = mac.clone();
+                            injected = true;
                         }
                     }
                 }
@@ -423,29 +471,55 @@ impl PrepareRequest {
     /// Recognizes the literal placeholder "$`CORRELATION_VALUE`" (as bytes) and empty/missing values,
     /// replacing them with the latest correlation captured from a prior `PKCS11Response`.
     fn inject_pkcs11_correlation_value(&mut self) {
-        let Some(last_corr) = self.last_pkcs11_correlation_value.as_ref() else {
-            return;
-        };
         let placeholder = b"$CORRELATION_VALUE";
+        // The XML decoder turns the non-hex "$CORRELATION_VALUE" into an empty ByteString.
+        let is_placeholder = |v: &Option<Vec<u8>>| {
+            v.as_deref()
+                .is_some_and(|v| v.is_empty() || v == placeholder.as_slice())
+        };
+        let last_pkcs11 = self.last_pkcs11_correlation_value.as_ref();
+        let last_crypto = self.last_crypto_correlation_value.as_ref();
         for bi in &mut self.request.batch_item {
-            match bi {
-                RequestMessageBatchItemVersioned::V21(inner) => {
-                    if let Operation::PKCS11(pk) = &mut inner.request_payload {
+            // Multi-part crypto operations: only the explicit placeholder is replaced, an absent
+            // Correlation Value is meaningful (single-part or initial part).
+            let crypto_cv = match bi {
+                RequestMessageBatchItemVersioned::V21(inner) => match &mut inner.request_payload {
+                    Operation::PKCS11(pk) => {
                         let needs = match &pk.correlation_value {
                             None => true,
                             Some(v) if v.is_empty() => true,
                             Some(v) if v.as_slice() == placeholder => true,
                             _ => false,
                         };
-                        if needs {
-                            pk.correlation_value = Some(last_corr.clone());
+                        if let (true, Some(last)) = (needs, last_pkcs11) {
+                            pk.correlation_value = Some(last.clone());
                         }
+                        None
                     }
-                }
-                // KMIP 1.4 does not define PKCS11 operations; intentional no-op to mirror V21 structure
-                RequestMessageBatchItemVersioned::V14(_) => {
-                    // Nothing to inject for 1.4 here
-                }
+                    Operation::Encrypt(r) => Some(&mut r.correlation_value),
+                    Operation::Decrypt(r) => Some(&mut r.correlation_value),
+                    Operation::Sign(r) => Some(&mut r.correlation_value),
+                    Operation::SignatureVerify(r) => Some(&mut r.correlation_value),
+                    Operation::MAC(r) => Some(&mut r.correlation_value),
+                    Operation::MACVerify(r) => Some(&mut r.correlation_value),
+                    Operation::Hash(r) => Some(&mut r.correlation_value),
+                    _ => None,
+                },
+                RequestMessageBatchItemVersioned::V14(inner) => match &mut inner.request_payload {
+                    Op14::Encrypt(r) => Some(&mut r.correlation_value),
+                    Op14::Decrypt(r) => Some(&mut r.correlation_value),
+                    Op14::Sign(r) => Some(&mut r.correlation_value),
+                    Op14::SignatureVerify(r) => Some(&mut r.correlation_value),
+                    Op14::MAC(r) => Some(&mut r.correlation_value),
+                    Op14::MACVerify(r) => Some(&mut r.correlation_value),
+                    Op14::Hash(r) => Some(&mut r.correlation_value),
+                    _ => None,
+                },
+            };
+            if let (Some(cv), Some(last)) = (crypto_cv, last_crypto)
+                && is_placeholder(cv)
+            {
+                *cv = Some(last.clone());
             }
         }
     }
@@ -455,34 +529,50 @@ impl PrepareRequest {
     fn inject_implicit_uids(&mut self) {
         let request = &mut self.request;
         let last_uid = &mut self.last_uid;
+        // After a Locate or Re-key the server's ID Placeholder names an object the harness
+        // cannot know before the response: later omitted UIDs of the batch are left to the server.
+        let mut server_placeholder = false;
         for bi in &mut request.batch_item {
+            if server_placeholder {
+                continue;
+            }
+            server_placeholder = match bi {
+                RequestMessageBatchItemVersioned::V21(inner) => matches!(
+                    inner.request_payload,
+                    Operation::Locate(_) | Operation::ReKey(_) | Operation::ReKeyKeyPair(_)
+                ),
+                RequestMessageBatchItemVersioned::V14(inner) => matches!(
+                    inner.request_payload,
+                    Op14::Locate(_) | Op14::ReKey(_) | Op14::ReKeyKeyPair(_)
+                ),
+            };
             match bi {
                 RequestMessageBatchItemVersioned::V21(inner) => match &mut inner.request_payload {
                     Operation::Get(g) => {
-                        if g.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if g.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &g.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::GetAttributes(g) => {
-                        if g.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if g.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &g.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::GetAttributeList(g) => {
-                        if g.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if g.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            g.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &g.unique_identifier {
                             *last_uid = Some(s.clone());
@@ -490,52 +580,51 @@ impl PrepareRequest {
                     }
                     Operation::AddAttribute(a) => {
                         if matches!(a.unique_identifier, UniqueIdentifier::TextString(ref s) if s.is_empty())
+                            && let Some(uid) = last_uid.clone()
                         {
-                            if let Some(uid) = last_uid.clone() {
-                                a.unique_identifier = UniqueIdentifier::TextString(uid);
-                            }
+                            a.unique_identifier = UniqueIdentifier::TextString(uid);
                         }
-                        if let UniqueIdentifier::TextString(s) = &a.unique_identifier {
-                            if !s.is_empty() {
-                                *last_uid = Some(s.clone());
-                            }
+                        if let UniqueIdentifier::TextString(s) = &a.unique_identifier
+                            && !s.is_empty()
+                        {
+                            *last_uid = Some(s.clone());
                         }
                     }
                     Operation::ModifyAttribute(m) => {
-                        if m.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                m.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if m.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            m.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &m.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::Export(e) => {
-                        if e.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                e.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if e.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            e.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &e.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::Encrypt(enc) => {
-                        if enc.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                enc.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if enc.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            enc.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &enc.unique_identifier {
                             *last_uid = Some(s.clone());
                         }
                     }
                     Operation::Decrypt(dec) => {
-                        if dec.unique_identifier.is_none() {
-                            if let Some(uid) = last_uid.clone() {
-                                dec.unique_identifier = Some(UniqueIdentifier::TextString(uid));
-                            }
+                        if dec.unique_identifier.is_none()
+                            && let Some(uid) = last_uid.clone()
+                        {
+                            dec.unique_identifier = Some(UniqueIdentifier::TextString(uid));
                         }
                         if let Some(UniqueIdentifier::TextString(s)) = &dec.unique_identifier {
                             *last_uid = Some(s.clone());
@@ -551,10 +640,10 @@ impl PrepareRequest {
                             // Update last seen
                             *last_uid = Some(s.clone());
                             // Mirror fallback: ensure last_uid points to private key if we accidentally captured a public key variant
-                            if let Some(first) = last_uid.clone() {
-                                if s == &format!("{first}_pk") {
-                                    *s = first;
-                                }
+                            if let Some(first) = last_uid.clone()
+                                && s == &format!("{first}_pk")
+                            {
+                                *s = first;
                             }
                         }
                     }
@@ -564,95 +653,95 @@ impl PrepareRequest {
                     use Op14;
                     match &mut inner.request_payload {
                         Op14::Get(g) => {
-                            if g.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    g.unique_identifier = Some(uid);
-                                }
+                            if g.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                g.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &g.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::GetAttributes(g) => {
-                            if g.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    g.unique_identifier = Some(uid);
-                                }
+                            if g.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                g.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &g.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::GetAttributeList(g) => {
-                            if g.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    g.unique_identifier = Some(uid);
-                                }
+                            if g.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                g.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &g.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::AddAttribute(a) => {
-                            if a.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    a.unique_identifier = uid;
-                                }
+                            if a.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                a.unique_identifier = Some(uid);
                             }
-                            if !a.unique_identifier.is_empty() {
-                                *last_uid = Some(a.unique_identifier.clone());
+                            if let Some(uid) = &a.unique_identifier {
+                                *last_uid = Some(uid.clone());
                             }
                         }
                         Op14::ModifyAttribute(m) => {
-                            if m.unique_identifier.is_none() {
-                                if let Some(uid) = last_uid.clone() {
-                                    m.unique_identifier = Some(uid);
-                                }
+                            if m.unique_identifier.is_none()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                m.unique_identifier = Some(uid);
                             }
                             if let Some(s) = &m.unique_identifier {
                                 *last_uid = Some(s.clone());
                             }
                         }
                         Op14::Export(e) => {
-                            if e.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    e.unique_identifier = uid;
-                                }
+                            if e.unique_identifier.is_empty()
+                                && let Some(uid) = last_uid.clone()
+                            {
+                                e.unique_identifier = uid;
                             }
                             if !e.unique_identifier.is_empty() {
                                 *last_uid = Some(e.unique_identifier.clone());
                             }
                         }
                         Op14::Encrypt(enc) => {
-                            if enc.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    enc.unique_identifier = uid;
-                                }
+                            if enc.unique_identifier.is_none() {
+                                enc.unique_identifier = last_uid.clone();
                             }
-                            if !enc.unique_identifier.is_empty() {
-                                *last_uid = Some(enc.unique_identifier.clone());
+                            if let Some(uid) = &enc.unique_identifier {
+                                *last_uid = Some(uid.clone());
                             }
                         }
                         Op14::Decrypt(dec) => {
-                            if dec.unique_identifier.is_empty() {
-                                if let Some(uid) = last_uid.clone() {
-                                    dec.unique_identifier = uid;
-                                }
+                            if dec.unique_identifier.is_none() {
+                                dec.unique_identifier = last_uid.clone();
                             }
-                            if !dec.unique_identifier.is_empty() {
-                                *last_uid = Some(dec.unique_identifier.clone());
+                            if let Some(uid) = &dec.unique_identifier {
+                                *last_uid = Some(uid.clone());
                             }
                         }
-                        Op14::Destroy(d) if !d.unique_identifier.is_empty() => {
-                            *last_uid = Some(d.unique_identifier.clone());
+                        Op14::Destroy(d) => {
+                            if let Some(uid) =
+                                d.unique_identifier.as_ref().filter(|u| !u.is_empty())
+                            {
+                                *last_uid = Some(uid.clone());
+                            }
                         }
                         Op14::Revoke(r) => {
                             if let Some(s) = &mut r.unique_identifier {
                                 *last_uid = Some(s.clone());
-                                if let Some(first) = last_uid.clone() {
-                                    if s == &format!("{first}_pk") {
-                                        *s = first;
-                                    }
+                                if let Some(first) = last_uid.clone()
+                                    && s == &format!("{first}_pk")
+                                {
+                                    *s = first;
                                 }
                             }
                         }
@@ -803,6 +892,30 @@ fn substitute_op_placeholders(
                 substitute_uid(test_name, uid, uid_map);
             }
         }
+        Operation::CreateSplitKey(c) => {
+            if let Some(uid) = &mut c.unique_identifier {
+                substitute_uid(test_name, uid, uid_map);
+            }
+        }
+        Operation::JoinSplitKey(j) => {
+            for uid in &mut j.unique_identifier {
+                substitute_uid(test_name, uid, uid_map);
+            }
+        }
+        Operation::DeriveKey(d) => {
+            for uid in &mut d.object_unique_identifier {
+                substitute_uid(test_name, uid, uid_map);
+            }
+        }
+        Operation::ReKey(r) => {
+            if let Some(uid) = &mut r.unique_identifier {
+                substitute_uid(test_name, uid, uid_map);
+            }
+        }
+        Operation::Locate(l) => substitute_attribute_links(test_name, &mut l.attributes, uid_map),
+        Operation::Register(r) => {
+            substitute_attribute_links(test_name, &mut r.attributes, uid_map);
+        }
         _ => {}
     }
 }
@@ -820,12 +933,11 @@ fn fallback_substitute_with_last_uid(
         return;
     };
     let maybe_fix_uid = |uid: &mut UniqueIdentifier| {
-        if let UniqueIdentifier::TextString(s) = uid {
-            if let Some(idx) = parse_uid_placeholder_index(test_name, s) {
-                if !uid_map.contains_key(&idx) {
-                    *s = last.to_string();
-                }
-            }
+        if let UniqueIdentifier::TextString(s) = uid
+            && let Some(idx) = parse_uid_placeholder_index(test_name, s)
+            && !uid_map.contains_key(&idx)
+        {
+            *s = last.to_owned();
         }
     };
 
@@ -925,10 +1037,10 @@ fn fallback_substitute_with_last_uid_v14(
         return;
     };
     let maybe_fix_uid = |uid: &mut String| {
-        if let Some(idx) = parse_uid_placeholder_index(test_name, uid) {
-            if !uid_map.contains_key(&idx) {
-                *uid = last.to_string();
-            }
+        if let Some(idx) = parse_uid_placeholder_index(test_name, uid)
+            && !uid_map.contains_key(&idx)
+        {
+            *uid = last.to_owned();
         }
     };
 
@@ -949,7 +1061,9 @@ fn fallback_substitute_with_last_uid_v14(
             }
         }
         Op14::Destroy(d) => {
-            maybe_fix_uid(&mut d.unique_identifier);
+            if let Some(uid) = &mut d.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         Op14::Revoke(r) => {
             if let Some(uid) = &mut r.unique_identifier {
@@ -957,10 +1071,14 @@ fn fallback_substitute_with_last_uid_v14(
             }
         }
         Op14::AddAttribute(a) => {
-            maybe_fix_uid(&mut a.unique_identifier);
+            if let Some(uid) = &mut a.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         Op14::DeleteAttribute(d) => {
-            maybe_fix_uid(&mut d.unique_identifier);
+            if let Some(uid) = &mut d.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         Op14::ModifyAttribute(m) => {
             if let Some(uid) = &mut m.unique_identifier {
@@ -971,10 +1089,14 @@ fn fallback_substitute_with_last_uid_v14(
             maybe_fix_uid(&mut e.unique_identifier);
         }
         Op14::Encrypt(enc) => {
-            maybe_fix_uid(&mut enc.unique_identifier);
+            if let Some(uid) = &mut enc.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         Op14::Decrypt(dec) => {
-            maybe_fix_uid(&mut dec.unique_identifier);
+            if let Some(uid) = &mut dec.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         Op14::Sign(s) => {
             if let Some(uid) = &mut s.unique_identifier {
@@ -987,10 +1109,14 @@ fn fallback_substitute_with_last_uid_v14(
             }
         }
         Op14::MAC(m) => {
-            maybe_fix_uid(&mut m.unique_identifier);
+            if let Some(uid) = &mut m.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         Op14::MACVerify(mv) => {
-            maybe_fix_uid(&mut mv.unique_identifier);
+            if let Some(uid) = &mut mv.unique_identifier {
+                maybe_fix_uid(uid);
+            }
         }
         _ => {}
     }
@@ -1002,7 +1128,11 @@ fn substitute_op_placeholders_v14(
     uid_map: &HashMap<usize, String>,
 ) {
     match op {
-        Op14::Activate(a) => substitute_uid_text(test_name, &mut a.unique_identifier, uid_map),
+        Op14::Activate(a) => {
+            if let Some(uid) = &mut a.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
         Op14::Get(g) => {
             if let Some(uid) = &mut g.unique_identifier {
                 substitute_uid_text(test_name, uid, uid_map);
@@ -1027,21 +1157,29 @@ fn substitute_op_placeholders_v14(
                 substitute_uid_text(test_name, uid, uid_map);
             }
         }
-        Op14::Destroy(d) => substitute_uid_text(test_name, &mut d.unique_identifier, uid_map),
+        Op14::Destroy(d) => {
+            if let Some(uid) = &mut d.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
         Op14::Revoke(r) => {
             if let Some(uid) = &mut r.unique_identifier {
                 substitute_uid_text(test_name, uid, uid_map);
             }
         }
         Op14::AddAttribute(a) => {
-            substitute_uid_text(test_name, &mut a.unique_identifier, uid_map);
+            if let Some(uid) = &mut a.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
             if let cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Link(link) = &mut a.attribute
             {
                 substitute_uid_text(test_name, &mut link.linked_object_identifier, uid_map);
             }
         }
         Op14::DeleteAttribute(d) => {
-            substitute_uid_text(test_name, &mut d.unique_identifier, uid_map);
+            if let Some(uid) = &mut d.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
         }
         Op14::ModifyAttribute(m) => {
             if let Some(uid) = &mut m.unique_identifier {
@@ -1065,10 +1203,14 @@ fn substitute_op_placeholders_v14(
             }
         }
         Op14::Encrypt(enc) => {
-            substitute_uid_text(test_name, &mut enc.unique_identifier, uid_map);
+            if let Some(uid) = &mut enc.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
         }
         Op14::Decrypt(dec) => {
-            substitute_uid_text(test_name, &mut dec.unique_identifier, uid_map);
+            if let Some(uid) = &mut dec.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
         }
         Op14::Sign(s) => {
             if let Some(uid) = &mut s.unique_identifier {
@@ -1081,13 +1223,53 @@ fn substitute_op_placeholders_v14(
             }
         }
         Op14::MAC(m) => {
-            substitute_uid_text(test_name, &mut m.unique_identifier, uid_map);
+            if let Some(uid) = &mut m.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
         }
         Op14::MACVerify(mv) => {
-            substitute_uid_text(test_name, &mut mv.unique_identifier, uid_map);
+            if let Some(uid) = &mut mv.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
         }
         Op14::Check(c) => {
-            substitute_uid_text(test_name, &mut c.unique_identifier, uid_map);
+            if let Some(uid) = &mut c.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
+        Op14::CreateSplitKey(c) => {
+            if let Some(uid) = &mut c.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
+        Op14::JoinSplitKey(j) => {
+            for uid in &mut j.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
+        Op14::DeriveKey(d) => {
+            for uid in &mut d.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
+        Op14::ReKey(r) => {
+            if let Some(uid) = &mut r.unique_identifier {
+                substitute_uid_text(test_name, uid, uid_map);
+            }
+        }
+        Op14::Locate(l) => {
+            let template = l
+                .template_attribute
+                .as_mut()
+                .and_then(|t| t.attribute.as_mut());
+            for attr in l.attribute.iter_mut().chain(template).flatten() {
+                substitute_attribute_link_v14(test_name, attr, uid_map);
+            }
+        }
+        Op14::Register(r) => {
+            for attr in r.template_attribute.attribute.iter_mut().flatten() {
+                substitute_attribute_link_v14(test_name, attr, uid_map);
+            }
         }
         _ => {}
     }
@@ -1102,12 +1284,45 @@ fn substitute_linked_uid_in_request(
     uid_map: &HashMap<usize, String>,
 ) {
     use cosmian_kmip::kmip_2_1::kmip_types::LinkedObjectIdentifier as L;
-    if let L::TextString(s) = uid {
-        if let Some(index) = parse_uid_placeholder_index(test_name, s) {
-            if let Some(real) = uid_map.get(&index) {
-                *s = real.clone();
-            }
+    if let L::TextString(s) = uid
+        && let Some(index) = parse_uid_placeholder_index(test_name, s)
+        && let Some(real) = uid_map.get(&index)
+    {
+        *s = real.clone();
+    }
+}
+
+// Substitute placeholder LinkedObjectIdentifiers in the Link attributes of a KMIP 2.1
+// Attributes structure (Register attributes, Locate filter).
+fn substitute_attribute_links(
+    test_name: &str,
+    attributes: &mut cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
+    uid_map: &HashMap<usize, String>,
+) {
+    for link in attributes.link.iter_mut().flatten() {
+        substitute_linked_uid_in_request(test_name, &mut link.linked_object_identifier, uid_map);
+    }
+    // A Locate filter on the Unique Identifier attribute names the object by placeholder: left
+    // as is it would match nothing (or a foreign object that has that literal identifier).
+    if let Some(uid) = &mut attributes.unique_identifier {
+        substitute_uid(test_name, uid, uid_map);
+    }
+}
+
+// KMIP 1.x counterpart of `substitute_attribute_links` for one attribute.
+fn substitute_attribute_link_v14(
+    test_name: &str,
+    attribute: &mut cosmian_kmip::kmip_1_4::kmip_attributes::Attribute,
+    uid_map: &HashMap<usize, String>,
+) {
+    use cosmian_kmip::kmip_1_4::kmip_attributes::Attribute;
+    match attribute {
+        Attribute::Link(link) => {
+            substitute_uid_text(test_name, &mut link.linked_object_identifier, uid_map);
         }
+        // a Locate filter on the Unique Identifier attribute (see `substitute_attribute_links`)
+        Attribute::UniqueIdentifier(uid) => substitute_uid_text(test_name, uid, uid_map),
+        _ => {}
     }
 }
 
@@ -1121,12 +1336,11 @@ fn substitute_uid_text(test_name: &str, uid: &mut String, uid_map: &HashMap<usiz
 }
 
 fn substitute_uid(test_name: &str, uid: &mut UniqueIdentifier, uid_map: &HashMap<usize, String>) {
-    if let UniqueIdentifier::TextString(s) = uid {
-        if let Some(index) = parse_uid_placeholder_index(test_name, s) {
-            if let Some(real) = uid_map.get(&index) {
-                *s = real.clone();
-            }
-        }
+    if let UniqueIdentifier::TextString(s) = uid
+        && let Some(index) = parse_uid_placeholder_index(test_name, s)
+        && let Some(real) = uid_map.get(&index)
+    {
+        *s = real.clone();
     }
 }
 
@@ -1182,11 +1396,11 @@ mod injection_tests {
                 server_correlation_value: None,
                 time_stamp: None,
             },
-            batch_item: vec![RequestMessageBatchItemVersioned::V21(
+            batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
                 kmip_2_1::kmip_messages::RequestMessageBatchItem::new(Operation::Decrypt(
                     Box::new(dec),
                 )),
-            )],
+            ))],
         }
     }
 

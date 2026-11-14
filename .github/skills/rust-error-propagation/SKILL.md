@@ -5,6 +5,8 @@ description: 'Analyze Result propagation chains: find missed ? opportunities, .m
 
 # Rust Error Propagation Audit
 
+Baseline: [`rust-best-practices`](../rust-best-practices/SKILL.md) (§5 errors and panics) and [`rust.instructions.md`](../../instructions/rust.instructions.md). Keep each crate's existing error type and `*_error!` / `*_bail!` macros.
+
 Audit Rust `Result` propagation chains for correctness, clarity, and
 context-preservation. Focus on **conversions that silently discard
 information**, **redundant error mapping**, and **missed `?` opportunities**.

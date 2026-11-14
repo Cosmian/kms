@@ -15,13 +15,6 @@ user-id = 56903
 user-login = "robjtede"
 user-name = "Rob Ede"
 
-[[publisher.actix-files]]
-version = "0.6.10"
-when = "2026-02-06"
-user-id = 51017
-user-login = "JohnTitor"
-user-name = "Yuki Okushi"
-
 [[publisher.actix-identity]]
 version = "0.6.0"
 when = "2023-09-16"
@@ -63,6 +56,34 @@ when = "2022-10-21"
 user-id = 56903
 user-login = "robjtede"
 user-name = "Rob Ede"
+
+[[publisher.aead]]
+version = "0.5.2"
+when = "2023-04-02"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.aes]]
+version = "0.8.4"
+when = "2024-02-13"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.aes-gcm]]
+version = "0.10.3"
+when = "2023-09-21"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.aes-kw]]
+version = "0.2.1"
+when = "2022-04-20"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.aho-corasick]]
 version = "1.1.4"
@@ -113,6 +134,13 @@ user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
 
+[[publisher.argon2]]
+version = "0.5.3"
+when = "2024-01-20"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.assert_cmd]]
 version = "2.2.2"
 when = "2026-05-11"
@@ -148,6 +176,32 @@ user-id = 6741
 user-login = "Darksonn"
 user-name = "Alice Ryhl"
 
+[[publisher.base16ct]]
+version = "0.2.0"
+when = "2023-02-26"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.base16ct]]
+version = "1.0.0"
+when = "2026-01-03"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.base64ct]]
+version = "1.8.3"
+when = "2026-01-12"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.block-buffer]]
+version = "0.12.1"
+when = "2026-06-11"
+trusted-publisher = "github:RustCrypto/utils"
+
 [[publisher.bstr]]
 version = "1.13.0"
 when = "2026-07-14"
@@ -182,12 +236,47 @@ when = "2025-10-15"
 user-id = 55123
 user-login = "rust-lang-owner"
 
+[[publisher.chacha20]]
+version = "0.9.1"
+when = "2023-04-01"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.chacha20poly1305]]
+version = "0.10.1"
+when = "2022-08-10"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.chrono]]
+version = "0.4.45"
+when = "2026-06-04"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
 [[publisher.clap]]
 version = "4.6.7"
 when = "2026-09-14"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
+
+[[publisher.clap-config-fallback]]
+version = "0.3.0"
+when = "2026-11-04"
+user-id = 93313
+user-login = "alekece"
+user-name = "Alexis Le Provost"
+
+[[publisher.clap-config-fallback-derive]]
+version = "0.3.0"
+when = "2026-11-04"
+user-id = 93313
+user-login = "alekece"
+user-name = "Alexis Le Provost"
 
 [[publisher.clap_builder]]
 version = "4.6.7"
@@ -216,6 +305,11 @@ when = "2026-03-26"
 user-id = 55123
 user-login = "rust-lang-owner"
 
+[[publisher.cmov]]
+version = "0.5.4"
+when = "2026-05-28"
+trusted-publisher = "github:RustCrypto/utils"
+
 [[publisher.colorchoice]]
 version = "1.0.5"
 when = "2026-03-13"
@@ -223,12 +317,26 @@ user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
 
+[[publisher.console]]
+version = "0.15.11"
+when = "2025-03-01"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
 [[publisher.console_error_panic_hook]]
 version = "0.1.7"
 when = "2021-10-11"
 user-id = 696
 user-login = "fitzgen"
 user-name = "Nick Fitzgerald"
+
+[[publisher.const-oid]]
+version = "0.10.2"
+when = "2026-01-07"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.cosmian_config_utils]]
 version = "0.7.2"
@@ -278,10 +386,48 @@ when = "2026-02-13"
 user-id = 138394
 user-login = "Manuthor"
 
+[[publisher.cpubits]]
+version = "0.1.1"
+when = "2026-04-28"
+trusted-publisher = "github:RustCrypto/utils"
+
+[[publisher.cpufeatures]]
+version = "0.2.17"
+when = "2025-01-25"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.cpufeatures]]
+version = "0.3.0"
+when = "2026-02-05"
+trusted-publisher = "github:RustCrypto/utils"
+
 [[publisher.crypto-bigint]]
-version = "0.7.6"
-when = "2026-10-23"
+version = "0.5.5"
+when = "2023-11-18"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.crypto-bigint]]
+version = "0.7.10"
+when = "2026-10-26"
 trusted-publisher = "github:RustCrypto/crypto-bigint"
+
+[[publisher.crypto_box]]
+version = "0.9.1"
+when = "2023-08-17"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.crypto_secretbox]]
+version = "0.1.1"
+when = "2023-05-16"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.csv]]
 version = "1.4.0"
@@ -298,8 +444,8 @@ user-login = "BurntSushi"
 user-name = "Andrew Gallant"
 
 [[publisher.ctutils]]
-version = "0.4.5"
-when = "2026-10-23"
+version = "0.4.8"
+when = "2026-11-02"
 trusted-publisher = "github:RustCrypto/utils"
 
 [[publisher.derive_more]]
@@ -323,12 +469,26 @@ user-id = 3797
 user-login = "JelteF"
 user-name = "Jelte Fennema-Nio"
 
+[[publisher.digest]]
+version = "0.10.7"
+when = "2023-05-19"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.displaydoc]]
 version = "0.2.7"
 when = "2026-07-28"
 user-id = 1139
 user-login = "Manishearth"
 user-name = "Manish Goregaokar"
+
+[[publisher.dsa]]
+version = "0.6.3"
+when = "2024-01-28"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.dyn-clone]]
 version = "1.0.20"
@@ -337,12 +497,40 @@ user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
 
+[[publisher.eax]]
+version = "0.5.0"
+when = "2022-07-30"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.ecdsa]]
+version = "0.16.9"
+when = "2023-11-16"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.ed25519]]
+version = "2.2.3"
+when = "2023-10-15"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.either]]
 version = "1.17.0"
 when = "2026-07-24"
 user-id = 539
 user-login = "cuviper"
 user-name = "Josh Stone"
+
+[[publisher.elliptic-curve]]
+version = "0.13.8"
+when = "2023-11-19"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.encoding_rs]]
 version = "0.8.35"
@@ -379,6 +567,13 @@ user-id = 980
 user-login = "Byron"
 user-name = "Sebastian Thiel"
 
+[[publisher.ghash]]
+version = "0.5.1"
+when = "2024-03-03"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.group]]
 version = "0.12.0"
 when = "2022-05-04"
@@ -414,6 +609,13 @@ user-id = 2915
 user-login = "Amanieu"
 user-name = "Amanieu d'Antras"
 
+[[publisher.hostname]]
+version = "0.4.2"
+when = "2025-11-28"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
 [[publisher.http]]
 version = "0.2.12"
 when = "2024-03-04"
@@ -448,6 +650,13 @@ when = "2025-03-03"
 user-id = 359
 user-login = "seanmonstar"
 user-name = "Sean McArthur"
+
+[[publisher.hybrid-array]]
+version = "0.2.3"
+when = "2024-12-07"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.hyper]]
 version = "1.12.0"
@@ -581,6 +790,20 @@ when = "2026-07-06"
 user-id = 55123
 user-login = "rust-lang-owner"
 
+[[publisher.k256]]
+version = "0.13.4"
+when = "2024-09-20"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.kem]]
+version = "0.3.0-pre.0"
+when = "2024-04-17"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.lazy_static]]
 version = "1.5.1"
 when = "2026-10-01"
@@ -668,6 +891,13 @@ user-id = 6025
 user-login = "Thomasdezeeuw"
 user-name = "Thomas de Zeeuw"
 
+[[publisher.ml-kem]]
+version = "0.2.3"
+when = "2026-02-17"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.num-bigint]]
 version = "0.4.8"
 when = "2026-07-05"
@@ -689,6 +919,13 @@ user-id = 539
 user-login = "cuviper"
 user-name = "Josh Stone"
 
+[[publisher.ocb3]]
+version = "0.1.0"
+when = "2024-03-27"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.once_cell_polyfill]]
 version = "1.70.2"
 when = "2025-10-21"
@@ -696,12 +933,40 @@ user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
 
+[[publisher.openssl-probe]]
+version = "0.2.1"
+when = "2026-01-20"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
 [[publisher.ordered-float]]
 version = "2.10.1"
 when = "2023-10-10"
 user-id = 2017
 user-login = "mbrubeck"
 user-name = "Matt Brubeck"
+
+[[publisher.p256]]
+version = "0.13.2"
+when = "2023-04-15"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.p384]]
+version = "0.13.1"
+when = "2025-02-07"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.p521]]
+version = "0.13.3"
+when = "2023-11-11"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.parking_lot]]
 version = "0.12.5"
@@ -717,6 +982,13 @@ user-id = 2915
 user-login = "Amanieu"
 user-name = "Amanieu d'Antras"
 
+[[publisher.password-hash]]
+version = "0.5.0"
+when = "2023-03-04"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.phf]]
 version = "0.13.1"
 when = "2025-08-23"
@@ -731,6 +1003,34 @@ user-id = 51017
 user-login = "JohnTitor"
 user-name = "Yuki Okushi"
 
+[[publisher.pkcs1]]
+version = "0.7.5"
+when = "2023-04-24"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.pkcs8]]
+version = "0.10.2"
+when = "2023-04-05"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.poly1305]]
+version = "0.8.0"
+when = "2022-07-31"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.polyval]]
+version = "0.6.2"
+when = "2024-03-03"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.potential_utf]]
 version = "0.1.5"
 when = "2026-04-01"
@@ -738,12 +1038,47 @@ user-id = 1139
 user-login = "Manishearth"
 user-name = "Manish Goregaokar"
 
+[[publisher.primeorder]]
+version = "0.13.6"
+when = "2023-11-16"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.proc-macro2]]
 version = "1.0.107"
 when = "2026-07-19"
 user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
+
+[[publisher.quinn]]
+version = "0.11.11"
+when = "2026-06-22"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
+[[publisher.quinn-proto]]
+version = "0.11.16"
+when = "2026-07-04"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
+[[publisher.quinn-udp]]
+version = "0.5.15"
+when = "2026-07-04"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
+[[publisher.rcgen]]
+version = "0.14.10"
+when = "2026-08-28"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
 
 [[publisher.ref-cast]]
 version = "1.0.27"
@@ -801,6 +1136,13 @@ user-id = 359
 user-login = "seanmonstar"
 user-name = "Sean McArthur"
 
+[[publisher.rfc6979]]
+version = "0.4.0"
+when = "2023-02-28"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.ring]]
 version = "0.17.11"
 when = "2025-02-22"
@@ -821,6 +1163,20 @@ when = "2026-02-24"
 user-id = 209038
 user-login = "cpu"
 user-name = "Daniel McCarney"
+
+[[publisher.rustls-native-certs]]
+version = "0.8.4"
+when = "2026-06-01"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
+[[publisher.rustls-pki-types]]
+version = "1.15.1"
+when = "2026-07-23"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
 
 [[publisher.rustls-webpki]]
 version = "0.103.16"
@@ -856,6 +1212,13 @@ when = "2023-07-17"
 user-id = 2915
 user-login = "Amanieu"
 user-name = "Amanieu d'Antras"
+
+[[publisher.sec1]]
+version = "0.7.3"
+when = "2023-07-16"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.serde]]
 version = "1.0.229"
@@ -912,6 +1275,27 @@ when = "2025-06-06"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
+
+[[publisher.serde_spanned]]
+version = "1.1.2"
+when = "2026-10-08"
+user-id = 6743
+user-login = "epage"
+user-name = "Ed Page"
+
+[[publisher.serdect]]
+version = "0.2.0"
+when = "2023-02-26"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
+[[publisher.serdect]]
+version = "0.3.0"
+when = "2025-01-06"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
 
 [[publisher.slab]]
 version = "0.4.12"
@@ -1004,6 +1388,13 @@ user-id = 6741
 user-login = "Darksonn"
 user-name = "Alice Ryhl"
 
+[[publisher.tokio-rustls]]
+version = "0.26.4"
+when = "2025-09-26"
+user-id = 4556
+user-login = "djc"
+user-name = "Dirkjan Ochtman"
+
 [[publisher.tokio-stream]]
 version = "0.1.19"
 when = "2026-07-22"
@@ -1033,8 +1424,8 @@ user-login = "epage"
 user-name = "Ed Page"
 
 [[publisher.toml]]
-version = "1.1.6+spec-1.1.0"
-when = "2026-09-10"
+version = "1.2.0+spec-1.1.0"
+when = "2026-11-04"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
@@ -1042,6 +1433,13 @@ user-name = "Ed Page"
 [[publisher.toml_datetime]]
 version = "0.6.11"
 when = "2025-06-06"
+user-id = 6743
+user-login = "epage"
+user-name = "Ed Page"
+
+[[publisher.toml_datetime]]
+version = "1.1.2+spec-1.1.0"
+when = "2026-10-08"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
@@ -1061,8 +1459,8 @@ user-login = "epage"
 user-name = "Ed Page"
 
 [[publisher.toml_parser]]
-version = "1.1.3+spec-1.1.0"
-when = "2026-07-27"
+version = "1.1.5+spec-1.1.0"
+when = "2026-10-09"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
@@ -1075,8 +1473,8 @@ user-login = "epage"
 user-name = "Ed Page"
 
 [[publisher.toml_writer]]
-version = "1.1.2+spec-1.1.0"
-when = "2026-07-14"
+version = "1.2.0+spec-1.1.0"
+when = "2026-11-04"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
@@ -1094,6 +1492,13 @@ when = "2026-05-18"
 user-id = 359
 user-login = "seanmonstar"
 user-name = "Sean McArthur"
+
+[[publisher.tower-layer]]
+version = "0.1.0"
+when = "2019-04-27"
+user-id = 10
+user-login = "carllerche"
+user-name = "Carl Lerche"
 
 [[publisher.try-lock]]
 version = "0.2.5"
@@ -1380,6 +1785,13 @@ user-id = 1139
 user-login = "Manishearth"
 user-name = "Manish Goregaokar"
 
+[[publisher.x509-cert]]
+version = "0.2.5"
+when = "2023-12-24"
+user-id = 267
+user-login = "tarcieri"
+user-name = "Tony Arcieri"
+
 [[publisher.yoke]]
 version = "0.8.3"
 when = "2026-06-03"
@@ -1400,6 +1812,11 @@ when = "2026-04-01"
 user-id = 1139
 user-login = "Manishearth"
 user-name = "Manish Goregaokar"
+
+[[publisher.zeroize_derive]]
+version = "1.5.0"
+when = "2026-06-12"
+trusted-publisher = "github:RustCrypto/utils"
 
 [[publisher.zerotrie]]
 version = "0.2.4"
@@ -1612,6 +2029,26 @@ who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
 version = "0.1.1"
 
+[[audits.bytecode-alliance.audits.futures]]
+who = "Joel Dice <joel.dice@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.31"
+
+[[audits.bytecode-alliance.audits.futures]]
+who = "Pat Hickey <p.hickey@f5.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.34"
+
+[[audits.bytecode-alliance.audits.futures-channel]]
+who = "Joel Dice <joel.dice@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-channel]]
+who = "Pat Hickey <p.hickey@f5.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.34"
+
 [[audits.bytecode-alliance.audits.futures-core]]
 who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
@@ -1622,6 +2059,51 @@ notes = "Unsafe used to implement a concurrency primitive AtomicWaker. Well-comm
 who = "Pat Hickey <pat@moreproductive.org>"
 criteria = "safe-to-deploy"
 delta = "0.3.28 -> 0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-executor]]
+who = "Joel Dice <joel.dice@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-executor]]
+who = "Pat Hickey <p.hickey@f5.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.34"
+
+[[audits.bytecode-alliance.audits.futures-io]]
+who = "Joel Dice <joel.dice@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-io]]
+who = "Pat Hickey <p.hickey@f5.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.34"
+
+[[audits.bytecode-alliance.audits.futures-macro]]
+who = "Joel Dice <joel.dice@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-macro]]
+who = "Pat Hickey <p.hickey@f5.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.34"
+
+[[audits.bytecode-alliance.audits.futures-sink]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.27"
+
+[[audits.bytecode-alliance.audits.futures-sink]]
+who = "Pat Hickey <pat@moreproductive.org>"
+criteria = "safe-to-deploy"
+delta = "0.3.28 -> 0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-sink]]
+who = "Pat Hickey <p.hickey@f5.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.34"
 
 [[audits.bytecode-alliance.audits.getrandom]]
 who = "Alex Crichton <alex@alexcrichton.com>"
@@ -2309,11 +2791,6 @@ who = "Brandon Pitman <bran@bran.land>"
 criteria = "safe-to-deploy"
 delta = "0.7.1 -> 0.7.2"
 
-[[audits.isrg.audits.cpufeatures]]
-who = "David Cook <dcook@divviup.org>"
-criteria = "safe-to-deploy"
-delta = "0.2.17 -> 0.3.0"
-
 [[audits.isrg.audits.dbl]]
 who = "David Cook <dcook@divviup.org>"
 criteria = "safe-to-deploy"
@@ -2413,11 +2890,6 @@ delta = "0.4.0 -> 0.4.1"
 who = "David Cook <dcook@divviup.org>"
 criteria = "safe-to-deploy"
 version = "0.12.1"
-
-[[audits.isrg.audits.inout]]
-who = "David Cook <dcook@divviup.org>"
-criteria = "safe-to-deploy"
-delta = "0.1.4 -> 0.2.2"
 
 [[audits.isrg.audits.keccak]]
 who = "David Cook <dcook@divviup.org>"
@@ -2560,12 +3032,12 @@ notes = "All code written or reviewed by Manish"
 aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
 
 [[audits.mozilla.wildcard-audits.utf8_iter]]
-who = "Makoto Kato <m_kato@ga2.so-net.ne.jp>"
+who = "Henri Sivonen <hsivonen@hsivonen.fi>"
 criteria = "safe-to-deploy"
 user-id = 4484 # Henri Sivonen (hsivonen)
 start = "2022-04-19"
-end = "2024-06-16"
-notes = "Maintained by Henri Sivonen who works at Mozilla."
+end = "2027-10-30"
+notes = "I wrote this crate."
 aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.adler2]]
@@ -2812,6 +3284,12 @@ who = "Alex Franchuk <afranchuk@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.3.31 -> 0.3.34"
 aggregated-from = "https://raw.githubusercontent.com/mozilla/cargo-vet/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.futures-sink]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "0.3.27 -> 0.3.28"
+aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.getrandom]]
 who = "Alex Franchuk <afranchuk@mozilla.com>"
@@ -3070,20 +3548,6 @@ version = "0.7.0"
 notes = "Basic implementation of a serde value type. No use of unsafe code."
 aggregated-from = "https://raw.githubusercontent.com/mozilla/cargo-vet/main/supply-chain/audits.toml"
 
-[[audits.mozilla.audits.serde_spanned]]
-who = "Ben Dean-Kawamura <bdk@mozilla.com>"
-criteria = "safe-to-deploy"
-version = "1.0.3"
-notes = "Relatively simple Serde trait implementations.  No IO or unsafe code."
-aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
-
-[[audits.mozilla.audits.serde_spanned]]
-who = "Ben Dean-Kawamura <bdk@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "1.0.3 -> 1.1.1"
-notes = "No code changes, just dependency updates."
-aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
-
 [[audits.mozilla.audits.sha2]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -3241,19 +3705,11 @@ version = "0.7.5+spec-1.1.0"
 notes = "Pure data type crate with some datetime parsing. No unsafe."
 aggregated-from = "https://raw.githubusercontent.com/mozilla/glean/main/supply-chain/audits.toml"
 
-[[audits.mozilla.audits.toml_datetime]]
-who = "Ben Dean-Kawamura <bdk@mozilla.com>"
+[[audits.mozilla.audits.tower-layer]]
+who = "Alex Franchuk <afranchuk@mozilla.com>"
 criteria = "safe-to-deploy"
-delta = "0.7.3 -> 1.1.1+spec-1.1.0"
-notes = "Minimal changes, no new unsafe code."
-aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
-
-[[audits.mozilla.audits.toml_datetime]]
-who = "Jan-Erik Rediger <jrediger@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "0.7.5+spec-1.1.0 -> 0.7.3"
-notes = "Version downgrade to cover the full vetted version range"
-aggregated-from = "https://raw.githubusercontent.com/mozilla/glean/main/supply-chain/audits.toml"
+delta = "0.1.0 -> 0.3.3"
+aggregated-from = "https://raw.githubusercontent.com/mozilla/cargo-vet/main/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.tracing-core]]
 who = "Alex Franchuk <afranchuk@mozilla.com>"

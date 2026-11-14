@@ -55,9 +55,32 @@ pub enum KmipOperation {
 }
 
 impl From<KmipOperation> for u8 {
-    #[allow(clippy::as_conversions)] // the discriminants are defined as u8
     fn from(op: KmipOperation) -> Self {
-        op as Self
+        match op {
+            KmipOperation::Create => 0,
+            KmipOperation::Certify => 1,
+            KmipOperation::Decrypt => 2,
+            KmipOperation::DeriveKey => 3,
+            KmipOperation::Destroy => 4,
+            KmipOperation::Encrypt => 5,
+            KmipOperation::Export => 6,
+            KmipOperation::Get => 7,
+            KmipOperation::GetAttributes => 8,
+            KmipOperation::Hash => 9,
+            KmipOperation::Import => 10,
+            KmipOperation::Locate => 11,
+            KmipOperation::MAC => 12,
+            KmipOperation::Revoke => 13,
+            KmipOperation::Rekey => 14,
+            KmipOperation::Sign => 15,
+            KmipOperation::SignatureVerify => 16,
+            KmipOperation::Validate => 17,
+            KmipOperation::SetAttribute => 18,
+            KmipOperation::ModifyAttribute => 19,
+            KmipOperation::AddAttribute => 20,
+            KmipOperation::DeleteAttribute => 21,
+            KmipOperation::Activate => 22,
+        }
     }
 }
 

@@ -435,7 +435,7 @@ assert fns.C_Finalize(None) == 0
     _BENCH_HSM_ENV_VARS+=(
       "PROTECCIO_PKCS11_LIB=${PROTECCIO_PKCS11_LIB:-/lib/libnethsm.so}"
     )
-  elif [ "${hsm_model}" = "crypt2pay" ]; then
+  elif [ "${hsm_model}" = "crypt2pay" ] || [ "${hsm_model}" = "crypt2pay-simulator" ]; then
     HSM_SLOT_ID="${custom_slot:-${CRYPT2PAY_SLOT_ID:-1}}"
     export HSM_SLOT_ID
     _BENCH_HSM_PASSWORD="${custom_password:-${CRYPT2PAY_PASSWORD:-}}"
@@ -618,8 +618,11 @@ bench_prepare_hsm() {
       BENCH_HSM_SLOT="${BENCH_HSM_SLOT:-0}"
       BENCH_HSM_PASSWORD="12345678"
       ;;
+    crypt2pay-simulator)
+      BENCH_VPN_PID_FILES+=("${CRYPT2PAY_SIM_PID_FILE:-/tmp/crypt2pay-sim.pid}")
+      bash "${scripts_dir}/prepare_crypt2pay_simulator.sh"
+      ;;
     aws_cloudhsm)
-      BENCH_VPN_PID_FILES+=("${CLOUDHSM_OPENVPN_PID_FILE:-/tmp/cloudhsm-openvpn.pid}")
       # Exports AWS_CLOUDHSM_PKCS11_LIB, HSM_USER_PASSWORD and (optionally) HSM_SLOT_ID.
       # shellcheck source=/dev/null
       source "${scripts_dir}/prepare_aws_cloudhsm.sh"

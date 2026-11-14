@@ -17,7 +17,7 @@ use crate::error::CryptoError;
 ///
 /// # Errors
 /// Fails when the request cannot be copied, extended or re-signed.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL X509_REQ attribute FFI")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn csr_with_challenge_password(
     req: &X509ReqRef,
     key: &PKeyRef<Private>,
@@ -52,7 +52,7 @@ pub fn csr_with_challenge_password(
 /// Return the PKCS#9 `challengePassword` attribute of a certification request, if present
 /// and string-typed (RFC 2985 §5.4.1).
 #[must_use]
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL X509_REQ attribute FFI")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn csr_challenge_password(req: &X509ReqRef) -> Option<String> {
     // SAFETY: `req` is a live X509_REQ; the attribute pointer returned by `X509_REQ_get_attr`
     // is owned by the request and only used while `req` is borrowed.
@@ -73,7 +73,7 @@ pub fn csr_challenge_password(req: &X509ReqRef) -> Option<String> {
 /// `true` when a certification request carries a PKCS#9 `challengePassword` attribute,
 /// whatever its type (unlike [`csr_challenge_password`], which only returns readable values).
 #[must_use]
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL X509_REQ attribute FFI")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn csr_has_challenge_password(req: &X509ReqRef) -> bool {
     // SAFETY: `req` is a live X509_REQ that the lookup only reads.
     unsafe {
@@ -86,7 +86,6 @@ pub fn csr_has_challenge_password(req: &X509ReqRef) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // tests: a panic is the failure signal
 mod tests {
     use openssl::{pkey::PKey, rsa::Rsa, x509::X509NameBuilder};
 

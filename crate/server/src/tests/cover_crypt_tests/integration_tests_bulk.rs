@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_in_result)]
-
 use cosmian_kms_client_utils::cover_crypt_utils::build_create_covercrypt_master_keypair_request;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
@@ -37,7 +35,7 @@ async fn integration_tests_bulk() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(build_create_covercrypt_master_keypair_request(
                     VENDOR_ID_COSMIAN,
                     access_structure,
@@ -45,8 +43,8 @@ async fn integration_tests_bulk() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(
+            ))),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(
                 Operation::CreateKeyPair(Box::new(build_create_covercrypt_master_keypair_request(
                     VENDOR_ID_COSMIAN,
                     access_structure,
@@ -54,7 +52,7 @@ async fn integration_tests_bulk() -> KResult<()> {
                     false,
                     None,
                 )?)),
-            )),
+            ))),
         ],
     };
 

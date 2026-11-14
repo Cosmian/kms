@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::print_stdout, clippy::expect_used)]
-
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -54,24 +52,6 @@ pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
     test_kms_with_config(https_clap_config()).await
 }
 
-/// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`
-/// environment variable that is set *before* the test helpers clear it, then assigns it
-/// to the server's `proxy_params` so that server-side outbound requests (e.g. CRL fetches)
-/// are routed through the configured corporate proxy.
-pub(crate) fn https_clap_config_with_external_proxy() -> ClapConfig {
-    // Capture proxy URL before disable_proxies_for_tests() removes it from the environment.
-    let proxy_url = std::env::var("HTTPS_PROXY")
-        .ok()
-        .or_else(|| std::env::var("https_proxy").ok())
-        .or_else(|| std::env::var("HTTP_PROXY").ok())
-        .or_else(|| std::env::var("http_proxy").ok());
-    let mut config = https_clap_config_opts(None);
-    if let Some(url) = proxy_url {
-        config.proxy.proxy_url = Some(url);
-    }
-    config
-}
-
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
     // Ensure local test traffic bypasses any corporate proxy
     ensure_no_proxy_for_localhost();
@@ -97,7 +77,7 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
 
     ClapConfig {
         socket_server: SocketServerConfig {
-            socket_server_start: true,
+            start: true,
             ..Default::default()
         },
         tls: tls_config,
@@ -110,14 +90,14 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
         },
         kms_public_url,
         google_cse_config: GoogleCseConfig {
-            google_cse_enable: true,
-            google_cse_disable_tokens_validation: true,
-            google_cse_incoming_url_whitelist: None,
-            google_cse_migration_key: None,
+            enable: true,
+            disable_tokens_validation: true,
+            incoming_url_whitelist: None,
+            migration_key: None,
         },
         http: HttpConfig::default(),
         jwks_endpoint: crate::config::JwksEndpointConfig {
-            jwks_endpoint_enabled: true,
+            enabled: true,
             ..Default::default()
         },
         ..Default::default()
@@ -125,6 +105,10 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
 }
 
 /// Ensure localhost bypasses any corporate proxy for tests.
+#[expect(
+    unsafe_code,
+    reason = "std::env::set_var is unsafe in edition 2024; test setup"
+)]
 fn ensure_no_proxy_for_localhost() {
     let has_http_proxy = std::env::var_os("HTTP_PROXY").is_some()
         || std::env::var_os("http_proxy").is_some()
@@ -155,6 +139,7 @@ fn ensure_no_proxy_for_localhost() {
 
     let updated = parts.join(",");
     // Set both uppercase and lowercase to cover different libraries' expectations
+    // SAFETY: test setup runs before the server threads read these variables.
     unsafe {
         std::env::set_var("NO_PROXY", &updated);
         std::env::set_var("no_proxy", &updated);
@@ -162,6 +147,10 @@ fn ensure_no_proxy_for_localhost() {
 }
 
 /// Clear proxy env vars for the test process so localhost traffic is never proxied.
+#[expect(
+    unsafe_code,
+    reason = "std::env::remove_var is unsafe in edition 2024; test setup"
+)]
 fn disable_proxies_for_tests() {
     let has_proxy = std::env::var_os("HTTP_PROXY").is_some()
         || std::env::var_os("http_proxy").is_some()
@@ -170,6 +159,7 @@ fn disable_proxies_for_tests() {
     if !has_proxy {
         return;
     }
+    // SAFETY: test setup runs before the server threads read these variables.
     unsafe {
         std::env::remove_var("HTTP_PROXY");
         std::env::remove_var("http_proxy");
@@ -239,7 +229,7 @@ pub(crate) async fn test_app(
     );
 
     // Handle Google RSA Keypair for CSE Kacls migration
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
@@ -304,6 +294,7 @@ pub(crate) async fn test_app(
 ///
 /// This is useful for end-to-end KMIP policy tests that need to tune allowlists
 /// and enforcement settings and then validate behavior through the HTTP stack.
+#[cfg(feature = "non-fips")]
 pub(crate) async fn test_app_with_clap_config(
     clap_config: ClapConfig,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
@@ -343,7 +334,7 @@ pub(crate) async fn test_kms_with_google_cse(clap_config: ClapConfig) -> Arc<KMS
             .expect("cannot instantiate KMS server"),
     );
 
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
@@ -458,7 +449,7 @@ pub(crate) async fn test_app_with_audit(
             .expect("cannot instantiate KMS server"),
     );
 
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .expect("start KMS server: failed managing Google CSE RSA Keypair");
@@ -583,7 +574,7 @@ where
     // Tests historically deserialize `LocateResponse` directly into `Vec<UniqueIdentifier>`.
     // Prefer decoding the proper response type and extracting the list.
     if std::any::TypeId::of::<R>() == std::any::TypeId::of::<Vec<UniqueIdentifier>>() {
-        let locate: LocateResponse = from_ttlv(ttlv)?;
+        let locate: LocateResponse = from_ttlv(&ttlv)?;
         // Safety: guarded by TypeId check.
         let v: Vec<UniqueIdentifier> = locate.unique_identifier.unwrap_or_default();
         // Convert Vec<UniqueIdentifier> -> R without requiring R: From<_>
@@ -591,7 +582,7 @@ where
         return Ok(*boxed.downcast::<R>().expect("TypeId matched"));
     }
 
-    Ok(from_ttlv(ttlv)?)
+    Ok(from_ttlv(&ttlv)?)
 }
 
 /// Post a full `RequestMessage` as JSON to `/kmip` and return the parsed `ResponseMessage`.
@@ -619,7 +610,7 @@ where
     }
     let body = read_body(res).await;
     let ttlv: TTLV = serde_json::from_slice(&body)?;
-    Ok(from_ttlv(ttlv)?)
+    Ok(from_ttlv(&ttlv)?)
 }
 
 /// Post a full `RequestMessage` as binary TTLV (`application/octet-stream`) to `/kmip`
@@ -651,7 +642,7 @@ where
     }
     let body = read_body(res).await;
     let ttlv = TTLV::from_bytes(&body, flavor)?;
-    Ok(from_ttlv(ttlv)?)
+    Ok(from_ttlv(&ttlv)?)
 }
 
 pub(crate) async fn post_json_with_uri<B, O, R, S>(app: &S, operation: O, uri: &str) -> KResult<R>

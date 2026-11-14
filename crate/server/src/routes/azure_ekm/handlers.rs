@@ -174,9 +174,11 @@ async fn get_and_validate_kek_algorithm(
         .await
         .map_err(|e| match e {
             KmsError::ItemNotFound(_) => AzureEkmErrorReply::key_not_found(key_name),
-            KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, _) => {
-                AzureEkmErrorReply::key_disabled(key_name)
-            }
+            // Get refuses a Deactivated key with Permission Denied (export_get.rs).
+            KmsError::Kmip21Error(
+                ErrorReason::Wrong_Key_Lifecycle_State | ErrorReason::Permission_Denied,
+                _,
+            ) => AzureEkmErrorReply::key_disabled(key_name),
             _ => e.into(),
         })?
         .object;
@@ -240,6 +242,11 @@ pub(crate) async fn wrap_key_handler(
     user: &UserId,
     request: WrapKeyRequest,
 ) -> Result<WrapKeyResponse, AzureEkmErrorReply> {
+    // The Azure correlation id traces the request; it is not a KMIP stream Correlation Value.
+    cosmian_logger::debug!(
+        "Azure EKM wrap, correlation id {}",
+        request.request_context.correlation_id
+    );
     // Decode the input key from base64url
     let dek_bytes = Zeroizing::new(URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
         AzureEkmErrorReply::invalid_request(format!(
@@ -287,15 +294,7 @@ pub(crate) async fn wrap_key_handler(
     let wrapped_key_bytes = match kek_algorithm {
         CryptographicAlgorithm::AES => {
             // AES Key Wrap using KMIP Encrypt operation
-            wrap_with_aes(
-                kms,
-                key_name,
-                user,
-                dek_bytes,
-                &request.alg,
-                request.request_context.correlation_id,
-            )
-            .await?
+            wrap_with_aes(kms, key_name, user, dek_bytes, &request.alg).await?
         }
         CryptographicAlgorithm::RSA => {
             // RSA-OAEP wrap using KMIP Encrypt operation
@@ -303,15 +302,7 @@ pub(crate) async fn wrap_key_handler(
                 WrapAlgorithm::RsaOaep => HashingAlgorithm::SHA1,
                 _ => HashingAlgorithm::SHA256,
             };
-            wrap_with_rsa(
-                kms,
-                key_name,
-                user,
-                dek_bytes,
-                hashing_algorithm,
-                request.request_context.correlation_id,
-            )
-            .await?
+            wrap_with_rsa(kms, key_name, user, dek_bytes, hashing_algorithm).await?
         }
         _ => {
             return Err(AzureEkmErrorReply::internal_error(format!(
@@ -339,13 +330,11 @@ async fn kmip_encrypt_dek(
     user: &UserId,
     dek_bytes: Zeroizing<Vec<u8>>,
     crypto_params: CryptographicParameters,
-    correlation_id: String,
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     let encrypt_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
         cryptographic_parameters: Some(crypto_params),
         data: Some(dek_bytes),
-        correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
     let response = kms.encrypt(encrypt_request, user).await?;
@@ -360,7 +349,6 @@ async fn wrap_with_aes(
     user: &UserId,
     dek_bytes: Zeroizing<Vec<u8>>,
     alg: &WrapAlgorithm,
-    correlation_id: String,
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
@@ -380,7 +368,6 @@ async fn wrap_with_aes(
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
         },
-        correlation_id,
     )
     .await
 }
@@ -394,7 +381,6 @@ async fn wrap_with_rsa(
     user: &UserId,
     dek_bytes: Zeroizing<Vec<u8>>,
     hashing_algorithm: HashingAlgorithm,
-    correlation_id: String,
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     kmip_encrypt_dek(
         kms,
@@ -407,7 +393,6 @@ async fn wrap_with_rsa(
             hashing_algorithm: Some(hashing_algorithm),
             ..Default::default()
         },
-        correlation_id,
     )
     .await
 }
@@ -418,6 +403,10 @@ pub(crate) async fn unwrap_key_handler(
     user: &UserId,
     request: UnwrapKeyRequest,
 ) -> Result<UnwrapKeyResponse, AzureEkmErrorReply> {
+    cosmian_logger::debug!(
+        "Azure EKM unwrap, correlation id {}",
+        request.request_context.correlation_id
+    );
     let wrapped_dek_bytes = URL_SAFE_NO_PAD.decode(&request.value).map_err(|e| {
         AzureEkmErrorReply::invalid_request(format!(
             "Invalid base64url encoding in 'value' field: {e}"
@@ -442,30 +431,14 @@ pub(crate) async fn unwrap_key_handler(
 
     let unwrapped_dek_bytes = match kek_algorithm {
         CryptographicAlgorithm::AES => {
-            unwrap_with_aes(
-                kms,
-                key_name,
-                user,
-                wrapped_dek_bytes,
-                &request.alg,
-                request.request_context.correlation_id,
-            )
-            .await?
+            unwrap_with_aes(kms, key_name, user, wrapped_dek_bytes, &request.alg).await?
         }
         CryptographicAlgorithm::RSA => {
             let hashing_algorithm = match request.alg {
                 WrapAlgorithm::RsaOaep => HashingAlgorithm::SHA1,
                 _ => HashingAlgorithm::SHA256,
             };
-            unwrap_with_rsa(
-                kms,
-                key_name,
-                user,
-                wrapped_dek_bytes,
-                hashing_algorithm,
-                request.request_context.correlation_id,
-            )
-            .await?
+            unwrap_with_rsa(kms, key_name, user, wrapped_dek_bytes, hashing_algorithm).await?
         }
         _ => {
             return Err(AzureEkmErrorReply::internal_error(format!(
@@ -489,13 +462,11 @@ async fn kmip_decrypt_dek(
     user: &UserId,
     data: Vec<u8>,
     crypto_params: CryptographicParameters,
-    correlation_id: String,
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     let decrypt_request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
         cryptographic_parameters: Some(crypto_params),
         data: Some(data),
-        correlation_value: Some(correlation_id.into_bytes()),
         ..Default::default()
     };
     let response = kms.decrypt(decrypt_request, user).await?;
@@ -510,7 +481,6 @@ async fn unwrap_with_aes(
     user: &UserId,
     wrapped_dek_bytes: Vec<u8>,
     alg: &WrapAlgorithm,
-    correlation_id: String,
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
@@ -530,7 +500,6 @@ async fn unwrap_with_aes(
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
         },
-        correlation_id,
     )
     .await
 }
@@ -544,7 +513,6 @@ async fn unwrap_with_rsa(
     user: &UserId,
     wrapped_dek_bytes: Vec<u8>,
     hashing_algorithm: HashingAlgorithm,
-    correlation_id: String,
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     kmip_decrypt_dek(
         kms,
@@ -557,7 +525,6 @@ async fn unwrap_with_rsa(
             hashing_algorithm: Some(hashing_algorithm),
             ..Default::default()
         },
-        correlation_id,
     )
     .await
 }

@@ -1,9 +1,11 @@
 ---
 name: kms-caveman
-description: 'Performs concise, read-only mechanical Rust triage for panic/exit patterns, new lint suppressions, and structural candidates. Use before deeper Rust audits or for a quick scoped scan; it does not replace semantic, security, crypto, or protocol review.'
+description: 'Performs concise, read-only mechanical Rust triage for panic/exit patterns, unchecked arithmetic/indexing, new lint suppressions, and structural candidates. Use before deeper Rust audits, as the dedicated panic audit, or for a quick scoped scan; it does not replace semantic, security, crypto, or protocol review.'
 ---
 
 # KMS Caveman
+
+Baseline: [`../rust-best-practices/SKILL.md`](../rust-best-practices/SKILL.md) and [`../../instructions/rust.instructions.md`](../../instructions/rust.instructions.md) (§ Panics and brutal exits).
 
 One scoped, read-only scan. Keep output terse; preserve exact technical evidence.
 
@@ -17,12 +19,13 @@ One scoped, read-only scan. Keep output terse; preserve exact technical evidence
 ## Rules
 
 1. Scan for `panic!`, `todo!`, `unimplemented!`, `unreachable!`, `.unwrap()`, `.expect(`, `process::exit`, and `process::abort`.
-2. Treat searches as candidates. Confirm executable code, source context, `#[cfg(test)]`, bounds checks, and documented exceptions.
-3. Check changed Rust lines for new `#[allow(...)]` / `#[expect(...)]`; verify repository policy and justification.
-4. Flag structural candidates: functions >60 lines, nesting ≥5, multiple bool parameters, or repeated blocks ≥5 lines. Verify boundaries; do not report style as correctness defects.
-5. Report dead/unused code only with workspace-wide evidence accounting for callers, macros, and generated uses.
+2. Scan for unchecked arithmetic on untrusted lengths/offsets (`\b(len|index|offset|size|count)\s*[+*]\s`) and dynamic slice indexing (`\[\s*[a-z_][a-zA-Z0-9_]*\s*\]`).
+3. Treat searches as candidates. Confirm executable code, source context, types, bounds checks, `debug_assertions`, `#[cfg(test)]`, and documented exceptions before classifying.
+4. Check changed Rust lines for new `#[allow(...)]` / `#[expect(...)]`; verify against [`rust.instructions.md` § Clippy and lint suppression](../../instructions/rust.instructions.md) (zero clippy suppressions outside tests; tests use `expect` with `reason`).
+5. Flag structural candidates: functions >60 lines, nesting ≥5, multiple bool parameters, or repeated blocks ≥5 lines. Verify boundaries; do not report style as correctness defects.
+6. Report dead/unused code only with workspace-wide evidence accounting for callers, macros, and generated uses.
 
-Do not edit code, perform semantic refactors, or invoke sub-skills. Escalate reasoning-dependent findings to the applicable review skill.
+Read-only: no patch generation, no widening an empty scope to the whole repo, no reranking and discarding findings, no sub-skill invocation, no semantic refactors. Escalate reasoning-dependent findings to the applicable review skill. A dedicated panic or brutal-exit audit is `/kms-caveman [path]`.
 
 ## Report
 
@@ -33,7 +36,7 @@ Pattern: `[SEVERITY] path:line — finding. Evidence: <code>. Risk: <impact>. Fi
 - **PASS** means no confirmed CRITICAL/HIGH finding in the verified scope; not a full quality or security verdict.
 - Use `NOT APPLICABLE` when no Rust files are in scope and `INCOMPLETE` when scope/context is missing. Neither means PASS.
 - Do not claim detection rates, model choice, latency, or token savings without measured evidence.
-- If an orchestrator writes reports, use `./review-YYYY-MM-DD/kms-caveman.md`; otherwise return the concise ranked list.
+- If an orchestrator writes reports, use `./review-YYYY-MM-DD/kms-caveman.md` (single report); otherwise return the concise ranked list. Reuse this evidence for the same scope and revision; a scope or revision change invalidates it.
 
 ## Credit-saving style
 

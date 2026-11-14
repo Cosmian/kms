@@ -4,6 +4,9 @@ $PSNativeCommandUseErrorActionPreference = $true # might be true by default
 
 function TestProject
 {
+    param([switch]$Quick)
+    $excludes = @()
+    if ($Quick) { $excludes = @('--exclude', 'test_kms_server', '--exclude', 'ckms') }
     $env:RUST_LOG = "cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
     # Windows default thread stack is 1 MB; large async test functions overflow it in
     # debug builds. 8 MB matches the Linux/macOS default (RUST_MIN_STACK is bytes).
@@ -33,7 +36,7 @@ function TestProject
     }
 
     # Run lib tests for all workspace crates.
-    cargo test --lib --workspace --features "non-fips" -- --nocapture
+    cargo test --lib --workspace --features "non-fips" @excludes -- --nocapture
     if ($LASTEXITCODE -ne 0)
     {
         Write-Error "Workspace lib tests failed with exit code $LASTEXITCODE"

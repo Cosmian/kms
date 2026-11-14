@@ -10,7 +10,7 @@ Rules for **new or modified** code. Legacy violations exist: when you touch one,
 
 ## 1. Compare secrets in constant time
 
-- MAC, signature tag, token, API key, password, challenge, nonce and any other secret/attacker-supplied byte string is compared with `subtle::ConstantTimeEq` (`a.ct_eq(b).into()`) or `openssl::memcmp::eq`. Never `==`, `!=`, `starts_with`, `contains` or `Vec`/`String` equality.
+- MAC, signature tag, token, API key, password, challenge, nonce and any other secret/attacker-supplied byte string is compared with `openssl::memcmp::eq` after checking the lengths are equal (it panics otherwise), or `secrets_equal` for strings. Never `==`, `!=`, `starts_with`, `contains` or `Vec`/`String` equality.
 - Compare secrets of unknown length by hashing both sides first, as `secrets_equal` in `crate/server/src/routes/enrollment.rs` does.
 - Reference fix: `MACVerify` in `crate/server/src/core/operations/mac.rs`.
 

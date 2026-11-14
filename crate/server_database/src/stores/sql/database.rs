@@ -8,13 +8,16 @@ use crate::{DbError, error::DbResult};
 /// the right SQL per backend.
 pub(crate) trait SqlDatabase {
     /// Get the loader that reads the SQL queries for this backend
-    fn get_loader(&self) -> &Loader;
+    ///
+    /// # Errors
+    /// If the embedded SQL file can't be parsed
+    fn get_loader(&self) -> DbResult<&'static Loader>;
 
     /// Get the SQL query by name using the loader
     /// # Errors
     /// If the query can't be found
     fn get_query<'a>(&'a self, name: &'a str) -> DbResult<&'a str> {
-        get_query(self.get_loader(), name)
+        get_query(self.get_loader()?, name)
     }
 }
 

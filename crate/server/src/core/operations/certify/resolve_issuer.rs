@@ -211,13 +211,12 @@ async fn issuer_for_self_signed_certificate<'a>(
     user: &UserId,
 ) -> KResult<Issuer<'a>> {
     match subject {
-        Subject::X509Req(_, _) => {
-            // the case where the private key is specified in the attributes is already covered
-            kms_bail!(
-                "Invalid request: a self-signed certificate cannot be created from a CSR without \
-                 specifying the private key id"
-            )
-        }
+        Subject::X509Req(_, _) => kms_bail!(KmsError::NotSupported(
+            "Certify: issuing a certificate from a CSR requires an issuer; set a Link of type \
+             PrivateKeyLink to the issuer private key (and CertificateLink to the issuer \
+             certificate) in the request Attributes"
+                .to_owned()
+        )),
         Subject::Certificate(unique_identifier, certificate, certificate_attributes) => {
             // the user is renewing a self-signed certificate. See if we can find
             // a linked private key

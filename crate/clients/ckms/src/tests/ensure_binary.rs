@@ -10,7 +10,6 @@ static INIT: Once = Once::new();
 
 /// Ensures the ckms binary is built before any test runs
 /// Call this function at the start of every test that needs the ckms binary
-#[allow(clippy::print_stdout)]
 pub(crate) fn ensure_ckms_binary() {
     INIT.call_once(|| {
         build_ckms_binary();
@@ -76,7 +75,6 @@ fn is_fresh(binary_path: &Path, marker_path: &Path) -> bool {
     marker_newer_than_test_exe && fs::read_to_string(marker_path).is_ok_and(|s| s == stamp)
 }
 
-#[allow(clippy::print_stdout)]
 fn build_ckms_binary() {
     // Get the path where the binary should be
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -97,16 +95,14 @@ fn build_ckms_binary() {
         "fips"
     };
 
-    let binary_path = workspace_root
-        .join("target")
+    // Honour CARGO_TARGET_DIR (set per variant inside nix-shell, see shell.nix).
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map_or_else(|| workspace_root.join("target"), std::path::PathBuf::from);
+    let binary_path = target_dir
         .join(profile)
         .join(format!("ckms{}", std::env::consts::EXE_SUFFIX));
-    let lock_path = workspace_root
-        .join("target")
-        .join(format!(".ckms-build-{profile}-{variant}.lock"));
-    let marker_path = workspace_root
-        .join("target")
-        .join(format!(".ckms-build-{profile}-{variant}.ready"));
+    let lock_path = target_dir.join(format!(".ckms-build-{profile}-{variant}.lock"));
+    let marker_path = target_dir.join(format!(".ckms-build-{profile}-{variant}.ready"));
 
     // Reuse the binary only if it is exactly the one our last build of this
     // variant produced; a plain `cargo build` (FIPS) overwrites the same path.
@@ -127,15 +123,13 @@ fn build_ckms_binary() {
 
     // If an orphaned lock file exists from a crashed or killed process, check
     // its age and clear it if it exceeds the timeout.
-    if let Ok(metadata) = fs::metadata(&lock_path) {
-        if let Ok(age) = metadata
+    if let Ok(metadata) = fs::metadata(&lock_path)
+        && let Ok(age) = metadata
             .modified()
             .and_then(|m| m.elapsed().map_err(std::io::Error::other))
-        {
-            if age > wait_timeout {
-                drop(fs::remove_file(&lock_path));
-            }
-        }
+        && age > wait_timeout
+    {
+        drop(fs::remove_file(&lock_path));
     }
 
     match OpenOptions::new()
@@ -160,8 +154,6 @@ fn build_ckms_binary() {
         }
     }
 }
-
-#[allow(clippy::print_stdout)]
 fn run_cargo_build(workspace_root: &Path, binary_path: &Path) {
     use std::process::Command;
 

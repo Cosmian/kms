@@ -4,6 +4,7 @@
 //! This module re-exports the traits, enums, and lifecycle utility.
 
 pub(crate) mod crypto_op;
+pub(crate) mod multi_part;
 
 // ─── Re-exports (stable external API) ───────────────────────────────────────
 

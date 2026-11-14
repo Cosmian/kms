@@ -1,3 +1,5 @@
+use std::io::Write as _;
+
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClientConfig,
@@ -136,7 +138,6 @@ impl LoginAction {
     /// # Errors
     /// - If the required configuration section is missing or invalid
     /// - If the authentication request fails
-    #[expect(clippy::print_stdout)]
     pub async fn process(&self, config: KmsClientConfig) -> KmsCliResult<LoginCredential> {
         match &self.subcommand {
             LoginSubcommand::Oauth => {
@@ -148,10 +149,13 @@ impl LoginAction {
                 })?;
 
                 let state = LoginState::try_from(login_config.clone())?;
-                println!("Browse to: {}", state.auth_url);
+                writeln!(std::io::stdout().lock(), "Browse to: {}", state.auth_url)?;
                 let access_token = state.finalize().await?;
 
-                println!("\nSuccess! The access token was saved to the KMS client configuration.");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "\nSuccess! The access token was saved to the KMS client configuration."
+                )?;
 
                 Ok(LoginCredential::AccessToken(access_token))
             }
@@ -220,7 +224,10 @@ impl LoginAction {
                     }
                 };
 
-                println!("\nSuccess! The access token was saved to the KMS client configuration.");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "\nSuccess! The access token was saved to the KMS client configuration."
+                )?;
 
                 Ok(LoginCredential::AccessToken(access_token))
             }
@@ -243,7 +250,10 @@ impl LoginAction {
                 let vault_token =
                     approle_login(&config.http_config, role_id, secret_id.as_deref()).await?;
 
-                println!("\nSuccess! The AppRole token was saved to the KMS client configuration.");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "\nSuccess! The AppRole token was saved to the KMS client configuration."
+                )?;
 
                 Ok(LoginCredential::VaultToken(vault_token))
             }
@@ -278,7 +288,10 @@ impl LoginAction {
                         ))
                     })?;
 
-                println!("\nSuccess! The JWT-SVID was saved to the KMS client configuration.");
+                writeln!(
+                    std::io::stdout().lock(),
+                    "\nSuccess! The JWT-SVID was saved to the KMS client configuration."
+                )?;
 
                 Ok(LoginCredential::AccessToken(jwt))
             }
@@ -303,7 +316,6 @@ fn workload_api_endpoint(socket_path: &str) -> KmsCliResult<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // test assertions on known-good inputs
 mod tests {
     use super::workload_api_endpoint;
 

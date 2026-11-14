@@ -15,7 +15,7 @@ use crate::{
         kmip_operations::Locate,
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, Name, NameType,
-            RecommendedCurve,
+            ObjectGroupMember, RecommendedCurve, StorageStatusMask,
         },
     },
     ttlv::{from_ttlv, to_ttlv},
@@ -52,7 +52,7 @@ fn test_template_attributes() {
 
     // Deserialize the TTLV back to TemplateAttribute
     let deserialized_template_attribute: TemplateAttribute =
-        from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+        from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!(
         "Deserialized TemplateAttribute: {:#?}",
@@ -86,7 +86,7 @@ fn test_object_raw() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {:#?}", deserialized_object);
     assert_eq!(
@@ -128,7 +128,7 @@ fn test_object_structured_sym() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {:#?}", deserialized_object);
     assert_eq!(
@@ -254,7 +254,7 @@ fn test_kmip_1_0_authentication_fortigate() {
         ]),
     };
 
-    let req: RequestMessage = from_ttlv(ttlv).expect(
+    let req: RequestMessage = from_ttlv(&ttlv).expect(
         "Failed to parse KMIP 1.0 RequestMessage with Authentication — FortiGate regression",
     );
 
@@ -328,7 +328,7 @@ fn test_object_structured_rsa() {
     info!("TTLV: {:#?}", ttlv);
 
     // Deserialize the TTLV back to Object
-    let deserialized_object: Object = from_ttlv(ttlv).expect("Failed to deserialize TTLV");
+    let deserialized_object: Object = from_ttlv(&ttlv).expect("Failed to deserialize TTLV");
 
     info!("Deserialized Object: {:#?}", deserialized_object);
     assert_eq!(
@@ -374,8 +374,11 @@ fn test_locate_template_attribute_fortigate() {
     // wrapped in a TemplateAttribute instead of placed directly in the payload.
     let locate_1_4 = Locate {
         maximum_items: Some(1),
-        storage_status_mask: None,
-        object_group_member: None,
+        offset_items: Some(1),
+        storage_status_mask: Some(
+            StorageStatusMask::OnlineStorage | StorageStatusMask::ArchivalStorage,
+        ),
+        object_group_member: Some(ObjectGroupMember::GroupMemberFresh),
         attribute: None, // no direct attributes — name filter arrives via TemplateAttribute
         template_attribute: Some(TemplateAttribute {
             attribute: Some(vec![Attribute::Name(Name {
@@ -388,7 +391,12 @@ fn test_locate_template_attribute_fortigate() {
     // Verify the struct round-trips through TTLV correctly.
     let ttlv = to_ttlv(&locate_1_4).expect("Failed to serialize Locate to TTLV");
     info!("Locate TTLV: {:#?}", ttlv);
-    let deserialized: Locate = from_ttlv(ttlv).expect("Failed to deserialize Locate from TTLV");
+    let deserialized: Locate = from_ttlv(&ttlv).expect("Failed to deserialize Locate from TTLV");
+    // KMIP 1.4 Storage Status Mask is an Integer bit mask: a combined value must survive.
+    assert_eq!(
+        deserialized.storage_status_mask,
+        locate_1_4.storage_status_mask
+    );
 
     let ta = deserialized
         .template_attribute
@@ -409,6 +417,15 @@ fn test_locate_template_attribute_fortigate() {
         .attributes
         .name
         .expect("KMIP 2.1 Locate.attributes.name should contain the Name filter");
+    assert_eq!(locate_2_1.offset_items, Some(1));
+    assert!(matches!(
+        locate_2_1.storage_status_mask.as_ref(),
+        Some(mask) if mask.contains(crate::kmip_2_1::kmip_types::StorageStatusMask::OnlineStorage)
+    ));
+    assert_eq!(
+        locate_2_1.object_group_member,
+        Some(crate::kmip_2_1::kmip_types::ObjectGroupMember::Group_Member_Fresh)
+    );
     assert!(
         names.iter().any(|n| n.name_value == key_name),
         "KMIP 2.1 Attributes.name should contain '{key_name}'; got: {names:?}"
@@ -436,7 +453,7 @@ fn test_create_split_key_1_4_serialization_and_conversion() {
     // Serialise to TTLV and back.
     let ttlv = to_ttlv(&req).expect("CreateSplitKey: TTLV serialization failed");
     let roundtrip: CreateSplitKey =
-        from_ttlv(ttlv).expect("CreateSplitKey: TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("CreateSplitKey: TTLV deserialization failed");
     assert_eq!(roundtrip.split_key_parts, 3);
     assert_eq!(roundtrip.split_key_threshold, 2);
     assert_eq!(
@@ -499,6 +516,7 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
     };
 
     let request = DeriveKey::new_single_base(
+        ObjectType::SecretData,
         "base-key",
         DerivationMethod::PBKDF2,
         Some(DerivationParameters {
@@ -520,7 +538,7 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
 
     let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
     let ttlv_roundtrip: DeriveKey =
-        from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
     assert!(ttlv_roundtrip == request);
 
     let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
@@ -530,6 +548,10 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
 
     let request_2_1: crate::kmip_2_1::kmip_operations::DeriveKey = request.into();
     assert_eq!(request_2_1.object_unique_identifier.len(), 1);
+    assert_eq!(
+        request_2_1.object_type,
+        crate::kmip_2_1::kmip_objects::ObjectType::SecretData
+    );
 }
 
 #[test]
@@ -543,6 +565,7 @@ fn test_derive_key_1_4_repeated_identifiers_round_trip_and_conversion_order() {
     };
 
     let request = DeriveKey::new_asymmetric(
+        ObjectType::SecretData,
         "private-key",
         "peer-public-key",
         None,
@@ -556,7 +579,7 @@ fn test_derive_key_1_4_repeated_identifiers_round_trip_and_conversion_order() {
 
     let ttlv = to_ttlv(&request).expect("DeriveKey 1.4 TTLV serialization failed");
     let ttlv_roundtrip: DeriveKey =
-        from_ttlv(ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("DeriveKey 1.4 TTLV deserialization failed");
     assert_eq!(ttlv_roundtrip.unique_identifier, request.unique_identifier);
 
     let json = serde_json::to_string_pretty(&request).expect("DeriveKey 1.4 JSON serialization");
@@ -590,7 +613,7 @@ fn test_join_split_key_1_4_serialization_and_conversion() {
     // Serialise to TTLV and back.
     let ttlv = to_ttlv(&req).expect("JoinSplitKey: TTLV serialization failed");
     let roundtrip: JoinSplitKey =
-        from_ttlv(ttlv).expect("JoinSplitKey: TTLV deserialization failed");
+        from_ttlv(&ttlv).expect("JoinSplitKey: TTLV deserialization failed");
     assert_eq!(roundtrip.unique_identifier.len(), 2);
     assert_eq!(roundtrip.unique_identifier[0], "share-1");
     assert_eq!(roundtrip.unique_identifier[1], "share-2");

@@ -253,7 +253,7 @@ fi
 cat >"${FIXTURE_DIR}/README.md" <<EOF
 # Apple SCEP capture: macOS ${MACOS_VERSION} ($(sw_vers -buildVersion))
 
-Captured on $(date -u +%Y-%m-%d) by \`mise run test:scep-apple\` from the native macOS SCEP client
+Captured on $(date -u +%Y-%m-%d) by \`mise run test:pki:scep-apple\` from the native macOS SCEP client
 (\`com.apple.security.scep\` payload, see \`enroll.mobileconfig\`).
 
 - \`ca.crt\`, \`ca.key\`: throwaway test CA the requests are encrypted to. Test-only, never trust it.

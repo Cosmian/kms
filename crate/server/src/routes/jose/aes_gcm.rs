@@ -124,7 +124,6 @@ pub(crate) fn aes_gcm_decrypt(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

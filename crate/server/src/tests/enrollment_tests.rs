@@ -5,8 +5,6 @@
 //! client side (signed `pkiMessage`, `pkcsPKIEnvelope`) is built with the same CMS helpers
 //! the server uses.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::{collections::HashSet, sync::Arc};
 
 use actix_web::{
@@ -34,6 +32,7 @@ use cosmian_kms_server_database::reexport::{
                 VendorAttributeValue,
             },
         },
+        time_normalize,
     },
     cosmian_kms_crypto::openssl::{
         csr_attrs::csr_with_challenge_password,
@@ -93,19 +92,19 @@ fn config(est_enabled: bool, scep_enabled: bool, allow_renewal: bool) -> crate::
     c.tls.clients_ca_cert_file =
         Some("../../test_data/certificates/client_server/ca/ca.crt".into());
     c.est = EstConfig {
-        est_enabled,
-        est_ca_uid: Some(CA_UID.to_owned()),
-        est_require_client_cert: false,
-        est_bootstrap_username: Some("testuser".to_owned()),
-        est_bootstrap_password: Some("testpass".to_owned()),
-        est_template: Some("iot_device".to_owned()),
+        enabled: est_enabled,
+        ca_uid: Some(CA_UID.to_owned()),
+        require_client_cert: false,
+        bootstrap_username: Some("testuser".to_owned()),
+        bootstrap_password: Some("testpass".to_owned()),
+        template: Some("iot_device".to_owned()),
     };
     c.scep = ScepConfig {
-        scep_enabled,
-        scep_ca_uid: Some(CA_UID.to_owned()),
-        scep_challenge_password: Some(CHALLENGE.to_owned()),
-        scep_allow_renewal_without_challenge: allow_renewal,
-        scep_template: Some("iot_device".to_owned()),
+        enabled: scep_enabled,
+        ca_uid: Some(CA_UID.to_owned()),
+        challenge_password: Some(CHALLENGE.to_owned()),
+        allow_renewal_without_challenge: allow_renewal,
+        template: Some("iot_device".to_owned()),
     };
     c.templates.insert(
         "iot_device".to_owned(),
@@ -171,6 +170,8 @@ async fn make_kms_inner(
         unique_identifier: Some(UniqueIdentifier::TextString(CA_UID.to_owned())),
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
         cryptographic_length: Some(3072),
+        // only Active keys may sign certificates (KMIP 2.1 §4.57)
+        activation_date: Some(time_normalize()?),
         certificate_attributes: Some(CertificateAttributes::parse_subject_line(
             "C=FR, O=KMS Test, CN=Enrollment Test CA",
         )?),
@@ -1105,7 +1106,7 @@ fn check_apple_envelope(envelope: &[u8], ca_key: &PKey<Private>, ca: &X509) {
     );
 }
 
-/// Captures of the native macOS SCEP client (`mise run test:scep-apple`) must stay parseable by
+/// Captures of the native macOS SCEP client (`mise run test:pki:scep-apple`) must stay parseable by
 /// the server (see [`check_apple_envelope`] for the envelope).
 #[tokio::test]
 async fn apple_scep_fixtures_parse() {
@@ -1128,7 +1129,7 @@ async fn apple_scep_fixtures_parse() {
             "{}",
             dir.display()
         );
-        assert!(!parsed.attrs.transaction_id.is_empty());
+        assert_ne!(parsed.attrs.transaction_id.len(), 0);
         check_apple_envelope(&parsed.content, &ca_key, &ca);
         // Renewal capture (if any) is observational: it only has to be a valid pkiMessage.
         if dir.join("renewal.der").exists() {
@@ -1331,7 +1332,7 @@ async fn scep_renewal_can_be_disabled() -> KResult<()> {
 #[tokio::test]
 async fn est_simpleenroll_requires_client_certificate_when_configured() -> KResult<()> {
     let (kms, _) = make_kms_with(true, false, true, |c| {
-        c.est.est_require_client_cert = true;
+        c.est.require_client_cert = true;
     })
     .await?;
     let app = app!(kms);
@@ -1385,23 +1386,23 @@ async fn startup_rejects_unsafe_enrollment_configuration() {
     type Tweak = fn(&mut crate::config::ClapConfig);
     init_openssl_providers_for_tests();
     let cases: [(&str, Tweak); 8] = [
-        ("est without CA", |c| c.est.est_ca_uid = None),
-        ("scep without CA", |c| c.scep.scep_ca_uid = None),
+        ("est without CA", |c| c.est.ca_uid = None),
+        ("scep without CA", |c| c.scep.ca_uid = None),
         ("scep blank challenge", |c| {
-            c.scep.scep_challenge_password = Some("  ".to_owned());
+            c.scep.challenge_password = Some("  ".to_owned());
         }),
         ("est basic without credentials", |c| {
-            c.est.est_bootstrap_password = None;
+            c.est.bootstrap_password = None;
         }),
         ("est basic bootstrap without TLS", |c| {
             c.tls = TlsConfig::default();
         }),
         ("est mutual TLS without a client CA", |c| {
-            c.est.est_require_client_cert = true;
+            c.est.require_client_cert = true;
             c.tls.clients_ca_cert_file = None;
         }),
         ("unknown template", |c| {
-            c.scep.scep_template = Some("missing".to_owned());
+            c.scep.template = Some("missing".to_owned());
         }),
         ("weak template", |c| {
             c.templates.get_mut("iot_device").unwrap().min_rsa_key_bits = 1024;
@@ -1654,7 +1655,7 @@ async fn scep_resigned_envelope_is_refused() -> KResult<()> {
     let replay = parse_signed_pkimessage(&body).unwrap();
     assert_eq!(replay.attrs.pki_status, Some(PKI_STATUS_FAILURE));
     assert_eq!(replay.attrs.fail_info, Some(FAIL_INFO_BAD_REQUEST));
-    assert!(replay.content.is_empty());
+    assert_eq!(replay.content.len(), 0);
     Ok(())
 }
 

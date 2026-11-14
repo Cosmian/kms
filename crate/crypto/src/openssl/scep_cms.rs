@@ -7,14 +7,15 @@
 //! Every `unsafe` block carries a `// SAFETY:` comment.
 
 use std::{
-    ffi::{CString, c_int, c_void},
+    ffi::{c_int, c_void},
     marker::PhantomData,
     ptr,
 };
 
 use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
-    cms::CmsContentInfo,
+    asn1::Asn1Object,
+    cms::{CMSOptions, CmsContentInfo},
     nid::Nid,
     pkey::{Id, PKeyRef, Private, Public},
     pkey_ctx::PkeyCtxRef,
@@ -27,8 +28,8 @@ use x509_parser::asn1_rs::{Any, Class, FromDer};
 
 use super::{
     cms_ffi::{
-        CMS_BINARY, CMS_DETACHED, CMS_NO_SIGNER_CERT_VERIFY, CMS_NOSMIMECAP, CMS_PARTIAL,
-        CMS_SignerInfo, attribute_string_bytes,
+        CMS_BINARY, CMS_NO_SIGNER_CERT_VERIFY, CMS_NOSMIMECAP, CMS_SignerInfo,
+        attribute_string_bytes,
     },
     oid::nid_of,
 };
@@ -123,30 +124,20 @@ pub struct ParsedPkiMessage {
 ///
 /// # Errors
 /// Fails when OpenSSL cannot build the structure.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn certs_only_der(certs: &[X509]) -> CryptoResult<Vec<u8>> {
     let mut stack = Stack::<X509>::new()?;
     for c in certs {
         stack.push(c.clone())?;
     }
-    // `CMS_PARTIAL | CMS_DETACHED` without `CMS_final`: a SignedData carrying only the
+    // `PARTIAL | DETACHED` without `CMS_final`: a SignedData carrying only the
     // certificates (no signer, no encapsulated content), which `CMS_final` would refuse.
-    // SAFETY: `signcert`, `pkey` and `data` are null, which `CMS_sign` accepts; `stack` is a
-    // live certificate stack that `CMS_sign` only reads (it takes its own references).
-    let raw = unsafe {
-        openssl_sys::CMS_sign(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            stack.as_ptr(),
-            ptr::null_mut(),
-            CMS_PARTIAL | CMS_DETACHED | CMS_BINARY,
-        )
-    };
-    if raw.is_null() {
-        return Err(openssl::error::ErrorStack::get().into());
-    }
-    // SAFETY: `raw` is a freshly allocated, owned `CMS_ContentInfo`; `CmsContentInfo` frees it.
-    let cms = unsafe { CmsContentInfo::from_ptr(raw) };
+    let cms = CmsContentInfo::sign::<Private>(
+        None,
+        None,
+        Some(&stack),
+        None,
+        CMSOptions::PARTIAL | CMSOptions::DETACHED | CMSOptions::BINARY,
+    )?;
     Ok(cms.to_der()?)
 }
 
@@ -156,31 +147,21 @@ pub fn certs_only_der(certs: &[X509]) -> CryptoResult<Vec<u8>> {
 ///
 /// # Errors
 /// Fails when OpenSSL cannot build the structure.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn envelope_for_recipient(recipient: &X509Ref, plaintext: &[u8]) -> CryptoResult<Vec<u8>> {
-    // SAFETY: null certificates and data are accepted with `CMS_PARTIAL`; the cipher is a
-    // static method table. The result is a new owned structure or null.
-    let raw = unsafe {
-        openssl_sys::CMS_encrypt(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            Cipher::aes_128_cbc().as_ptr(),
-            CMS_PARTIAL | CMS_BINARY,
-        )
-    };
-    if raw.is_null() {
-        return Err(openssl::error::ErrorStack::get().into());
-    }
-    // SAFETY: `raw` is a freshly allocated, owned `CMS_ContentInfo`; `CmsContentInfo` frees it.
-    seal_envelope(
-        &unsafe { CmsContentInfo::from_ptr(raw) },
-        recipient,
-        plaintext,
-    )
+    // With `CMS_PARTIAL` OpenSSL returns before `CMS_final`, so the empty certificate stack and
+    // empty data are never used.
+    let certs = Stack::<X509>::new()?;
+    let cms = CmsContentInfo::encrypt(
+        &certs,
+        &[],
+        Cipher::aes_128_cbc(),
+        CMSOptions::PARTIAL | CMSOptions::BINARY,
+    )?;
+    seal_envelope(&cms, recipient, plaintext)
 }
 
 /// Add `recipient` to the partial `EnvelopedData` `cms` and encrypt `plaintext` into it.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 fn seal_envelope(
     cms: &CmsContentInfo,
     recipient: &X509Ref,
@@ -315,35 +296,11 @@ fn ensure_allowed(kind: &str, alg: &Any<'_>, allowed: &[Nid]) -> CryptoResult<()
     Ok(())
 }
 
-/// Owned `ASN1_OBJECT` created from a dotted OID.
-struct Asn1Obj(*mut openssl_sys::ASN1_OBJECT);
-
-impl Asn1Obj {
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
-    fn new(oid: &str) -> CryptoResult<Self> {
-        let c = CString::new(oid).map_err(|e| crypto_error!("invalid OID {oid}: {e}"))?;
-        // SAFETY: `c` is a valid NUL-terminated string; `no_name = 1` restricts to dotted form.
-        let p = unsafe { openssl_sys::OBJ_txt2obj(c.as_ptr(), 1) };
-        if p.is_null() {
-            crypto_bail!("OBJ_txt2obj failed for OID {oid}");
-        }
-        Ok(Self(p))
-    }
-}
-
-impl Drop for Asn1Obj {
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
-    fn drop(&mut self) {
-        // SAFETY: pointer was returned by `OBJ_txt2obj` and is freed exactly once.
-        unsafe { openssl_sys::ASN1_OBJECT_free(self.0) }
-    }
-}
-
 /// Owned memory BIO; `'a` is the lifetime of the buffer a read-only BIO reads from.
 struct MemBio<'a>(*mut openssl_sys::BIO, PhantomData<&'a [u8]>);
 
 impl MemBio<'static> {
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn new() -> CryptoResult<Self> {
         // SAFETY: `BIO_s_mem` returns a static method table; `BIO_new` takes it by pointer.
         let p = unsafe { openssl_sys::BIO_new(openssl_sys::BIO_s_mem()) };
@@ -356,7 +313,7 @@ impl MemBio<'static> {
 
 impl<'a> MemBio<'a> {
     /// A read-only BIO over `data`.
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn over(data: &'a [u8]) -> CryptoResult<Self> {
         let len = c_int::try_from(data.len())?;
         // SAFETY: the BIO only reads `len` bytes from `data`, which outlives it (enforced by `'a`).
@@ -367,7 +324,7 @@ impl<'a> MemBio<'a> {
         Ok(Self(p, PhantomData))
     }
 
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn read_all(&self) -> Vec<u8> {
         let mut out = Vec::new();
         let mut buf = [0_u8; 4096];
@@ -388,7 +345,7 @@ impl<'a> MemBio<'a> {
 }
 
 impl Drop for MemBio<'_> {
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn drop(&mut self) {
         // SAFETY: pointer came from `BIO_new`/`BIO_new_mem_buf` and is freed exactly once.
         unsafe { openssl_sys::BIO_free_all(self.0) };
@@ -396,21 +353,21 @@ impl Drop for MemBio<'_> {
 }
 
 /// Add a string-typed signed attribute.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 fn add_attr(
     si: *mut CMS_SignerInfo,
     oid: &str,
     asn1_type: c_int,
     value: &[u8],
 ) -> CryptoResult<()> {
-    let obj = Asn1Obj::new(oid)?;
+    let obj = Asn1Object::from_str(oid).map_err(|e| crypto_error!("invalid OID {oid}: {e}"))?;
     let len = c_int::try_from(value.len())?;
     // SAFETY: `si` is a live SignerInfo owned by the CMS under construction; `obj` is a valid
     // object; `value` is readable for `len` bytes (OpenSSL copies it).
     let ok = unsafe {
         super::cms_ffi::CMS_signed_add1_attr_by_OBJ(
             si,
-            obj.0,
+            obj.as_ptr(),
             asn1_type,
             value.as_ptr().cast::<c_void>(),
             len,
@@ -430,7 +387,7 @@ fn add_attr(
 ///
 /// # Errors
 /// Fails when OpenSSL cannot build or sign the structure.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn build_signed_pkimessage(
     signer_cert: &X509Ref,
     signer_key: &PKeyRef<Private>,
@@ -438,26 +395,11 @@ pub fn build_signed_pkimessage(
     attrs: &ScepAttrs,
 ) -> CryptoResult<Vec<u8>> {
     let detached = inner_der.is_empty();
-    let mut flags = CMS_PARTIAL | CMS_BINARY;
+    let mut flags = CMSOptions::PARTIAL | CMSOptions::BINARY;
     if detached {
-        flags |= CMS_DETACHED;
+        flags |= CMSOptions::DETACHED;
     }
-    // SAFETY: all pointer arguments are null (certs-only partial structure, no data) which
-    // `CMS_sign` accepts; the result is a new owned structure or null.
-    let raw = unsafe {
-        openssl_sys::CMS_sign(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            flags,
-        )
-    };
-    if raw.is_null() {
-        return Err(openssl::error::ErrorStack::get().into());
-    }
-    // SAFETY: `raw` is a freshly allocated, owned `CMS_ContentInfo`; `CmsContentInfo` frees it.
-    let cms = unsafe { CmsContentInfo::from_ptr(raw) };
+    let cms = CmsContentInfo::sign::<Private>(None, None, None, None, flags)?;
 
     // SAFETY: `cms`, `signer_cert`, `signer_key` are live; `EVP_sha256` returns a static MD.
     let si = unsafe {
@@ -522,11 +464,11 @@ pub fn build_signed_pkimessage(
 }
 
 /// Read one string-typed signed attribute from a `SignerInfo`.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 fn get_attr(si: *mut CMS_SignerInfo, oid: &str) -> CryptoResult<Option<Vec<u8>>> {
-    let obj = Asn1Obj::new(oid)?;
+    let obj = Asn1Object::from_str(oid).map_err(|e| crypto_error!("invalid OID {oid}: {e}"))?;
     // SAFETY: `si` is a live SignerInfo and `obj` a valid object.
-    let idx = unsafe { super::cms_ffi::CMS_signed_get_attr_by_OBJ(si, obj.0, -1) };
+    let idx = unsafe { super::cms_ffi::CMS_signed_get_attr_by_OBJ(si, obj.as_ptr(), -1) };
     if idx < 0 {
         return Ok(None);
     }
@@ -558,7 +500,7 @@ fn parse_nonce(name: &str, v: &[u8]) -> CryptoResult<[u8; NONCE_LEN]> {
 /// # Errors
 /// Fails on malformed messages, a signer count different from one, a refused digest algorithm,
 /// a missing mandatory attribute, or an invalid signature.
-#[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+#[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
 pub fn parse_signed_pkimessage(der: &[u8]) -> CryptoResult<ParsedPkiMessage> {
     let cms = CmsContentInfo::from_der(der)?;
 
@@ -683,7 +625,6 @@ pub fn parse_signed_pkimessage(der: &[u8]) -> CryptoResult<ParsedPkiMessage> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use std::ffi::{c_char, c_uint};
 
@@ -697,6 +638,7 @@ mod tests {
         rsa::Rsa,
         x509::{X509NameBuilder, X509Req},
     };
+    use openssl_sys::CMS_PARTIAL;
 
     use super::*;
 
@@ -777,7 +719,7 @@ mod tests {
         let msg = build_signed_pkimessage(&ca_cert, &ca_key, &[], &attrs).unwrap();
         let parsed = parse_signed_pkimessage(&msg).unwrap();
         assert_eq!(parsed.attrs, attrs);
-        assert!(parsed.content.is_empty());
+        assert_eq!(parsed.content.len(), 0);
     }
 
     #[test]
@@ -799,7 +741,7 @@ mod tests {
     }
 
     // Test-only `_ex` variants (absent from openssl-sys) to build fixtures in a chosen context.
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI declarations matching `cms.h`
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI declarations matching `cms.h`
     unsafe extern "C" {
         fn CMS_sign_ex(
             signcert: *mut openssl_sys::X509,
@@ -843,7 +785,7 @@ mod tests {
 
     /// A `pkiMessage` signed by every entry of `signers` with digest `md`, built in `ctx`
     /// (null: the default library context).
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn signed_by(
         ctx: *mut openssl_sys::OSSL_LIB_CTX,
         signers: &[(&X509, &PKey<Private>)],
@@ -912,7 +854,7 @@ mod tests {
 
     /// An `EnvelopedData` of `b"csr"` addressed to `recipient` with `cipher` and the production
     /// key transport, built in `ctx` (null: the default library context).
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn envelope_with(
         ctx: *mut openssl_sys::OSSL_LIB_CTX,
         recipient: &X509,
@@ -936,7 +878,7 @@ mod tests {
 
     /// An AES-128-CBC `EnvelopedData` of `b"csr"` with PKCS#1 v1.5 (`rsaEncryption`) key
     /// transport, OpenSSL's default, built in `ctx`.
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn pkcs1_envelope(ctx: &FixtureCtx, recipient: &X509) -> Vec<u8> {
         let mut certs = Stack::<X509>::new().unwrap();
         certs.push(recipient.clone()).unwrap();
@@ -1010,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn multiple_signers_are_rejected() {
         let (c1, k1) = self_signed("one");
         let (c2, k2) = self_signed("two");
@@ -1023,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(unsafe_code)] // SAFETY: OpenSSL FFI; justified at each unsafe block
+    #[expect(unsafe_code, reason = "OpenSSL CMS FFI for SCEP PKCS#7 handling")] // SAFETY: OpenSSL FFI; justified at each unsafe block
     fn signer_digest_allow_list() {
         let ctx = FixtureCtx::new(&["default"]);
         let (cert, key) = self_signed("client");

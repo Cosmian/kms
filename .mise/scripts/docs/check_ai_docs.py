@@ -10,12 +10,14 @@ Checks:
   C1  instruction tables in AGENTS.md / copilot-instructions.md match the
       `applyTo` frontmatter of every instruction file          (FIXABLE)
   C2  instruction + skill frontmatter is complete and consistent
-  C3  every skill is listed in .github/skills/README.md
-  C4  every `/slash-command` reference names an existing skill
+  C3  every skill has exactly one row in .github/skills/README.md and every
+      indexed command names an existing skill
+  C4  every `/slash-command` reference (prose, orchestrator-contract phase
+      entries, bash/sh/shell fences) names an existing skill
   C5  relative Markdown links (and #anchors) resolve
   C6  `.github/...` paths quoted in backticks exist
   C7  the automatic skill routing table in copilot-instructions.md is
-      well-formed and every trigger regex compiles
+      well-formed, every trigger regex compiles and every target skill exists
 
 Usage:
   python3 .mise/scripts/docs/check_ai_docs.py            # check only
@@ -29,6 +31,7 @@ Exit 0 only when nothing is printed (a FIXED line fails so the files get re-stag
 import argparse
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Iterator
 
@@ -55,10 +58,17 @@ GH_PATH_RE = re.compile(r'^\.github/[A-Za-z0-9_./-]+$')
 LINK_RE = re.compile(r'\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 SPAN_RE = re.compile(r'`([^`]+)`')
 HEADING_RE = re.compile(r'^#{1,6}\s')
-# `/skill-name` is the documented placeholder in AGENTS.md section 9 and skills/README.md.
-SLASH_ALLOWLIST = {'skill-name'}
+# `/skill-name` is the documented placeholder in AGENTS.md section 9 and skills/README.md;
+# `/health`, `/version`, `/server-info` are KMS REST paths tabulated in kms-adversarial-test/reference/endpoints.md.
+SLASH_ALLOWLIST = {'skill-name', 'health', 'version', 'server-info'}
 ROUTE_ROW_RE = re.compile(r'^\|\s*`/([a-z0-9-]+)`\s*\|\s*`(.+)`\s*\|\s*$')
 ROUTING_HEADING = '## Automatic skill routing'
+# Index rows: second cell starts with the skill command (`/name`, `/name [args]`).
+INDEX_CMD_RE = re.compile(r'^`/([a-z][a-z0-9-]*)[` \[]')
+# Numbered phase entries of the shared orchestrator contract: `N. **Name** — `/command``.
+PHASE_ENTRY_RE = re.compile(r'^\s*\d+\.\s+\*\*[^*]+\*\*\s+—\s+')
+# A leading `/command` (optionally behind a `#` comment marker) on a shell fence line.
+FENCE_CMD_RE = re.compile(r'^\s*(?:#\s*)?/([a-z][a-z0-9-]*)(?:\s.*)?$')
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -146,6 +156,19 @@ def iter_lines(text: str) -> Iterator[tuple[int, str]]:
             yield no, line
 
 
+def iter_shell_fence_lines(text: str) -> Iterator[tuple[int, str]]:
+    """Yield (1-based lineno, line) inside ```bash / ```sh / ```shell fences only."""
+    in_fence = shell = False
+    for no, line in enumerate(text.splitlines(), 1):
+        stripped = line.lstrip()
+        if stripped.startswith('```'):
+            info = stripped[3:].split()
+            shell = not in_fence and bool(info) and info[0] in ('bash', 'sh', 'shell')
+            in_fence = not in_fence
+        elif shell:
+            yield no, line
+
+
 def strip_inline_code(line: str) -> str:
     """Remove backtick spans."""
     return SPAN_RE.sub('', line)
@@ -189,14 +212,17 @@ class Repo:
             root / 'AGENTS.md',
             root / '.github' / 'copilot-instructions.md',
         ]
-        self.slash_files = [
-            root / 'AGENTS.md',
-            root / '.github' / 'copilot-instructions.md',
-            root / 'CONTRIBUTING.md',
-            self.skills_dir / 'README.md',
-            *sorted(self.instr_dir.glob('*.instructions.md')),
-            *sorted(self.skills_dir.glob('*/SKILL.md')),
-        ]
+        self.slash_files = list(
+            dict.fromkeys(
+                [
+                    root / 'AGENTS.md',
+                    root / '.github' / 'copilot-instructions.md',
+                    root / 'CONTRIBUTING.md',
+                    *sorted(self.instr_dir.glob('*.instructions.md')),
+                    *sorted(self.skills_dir.rglob('*.md')),
+                ]
+            )
+        )
         self.link_files = [
             root / 'AGENTS.md',
             root / 'CONTRIBUTING.md',
@@ -337,32 +363,51 @@ def check_frontmatter(repo: Repo) -> list[str]:
 
 
 def check_skill_index(repo: Repo) -> list[str]:
-    """C3: every skill has a row in skills/README.md whose second cell is its command."""
+    """C3: every skill has exactly one README row whose second cell is its command."""
     readme = repo.skills_dir / 'README.md'
-    cmd_cells = [
-        split_cells(line)[1]
-        for line in readme.read_text(encoding='utf-8').splitlines()
-        if line.lstrip().startswith('|') and len(split_cells(line)) > 1
-    ]
-    return [
-        f'ERROR {repo.rel(readme)}:1: skill `{s}` is not listed in the index'
+    rel = repo.rel(readme)
+    out: list[str] = []
+    seen: set[str] = set()
+    for no, line in enumerate(readme.read_text(encoding='utf-8').splitlines(), 1):
+        cells = split_cells(line) if line.lstrip().startswith('|') else []
+        m = INDEX_CMD_RE.match(cells[1]) if len(cells) > 1 else None
+        if not m:
+            continue
+        cmd = m.group(1)
+        if cmd in seen:
+            out.append(f'ERROR {rel}:{no}: duplicate index row for /{cmd}')
+        elif cmd not in repo.skills:
+            out.append(f'ERROR {rel}:{no}: index lists unknown skill /{cmd}')
+        seen.add(cmd)
+    out += [
+        f'ERROR {rel}:1: skill `{s}` is not listed in the index'
         for s in repo.skills
-        if not any(re.match('`/' + re.escape(s) + r'[` \[]', c) for c in cmd_cells)
+        if s not in seen
     ]
+    return out
 
 
 def check_slash_refs(repo: Repo) -> list[str]:
-    """C4: `/command` spans must name a skill."""
+    """C4: `/command` references in prose, phase entries and shell fences must name a skill."""
     out: list[str] = []
     known = set(repo.skills) | SLASH_ALLOWLIST
+    contract = repo.skills_dir / 'shared' / 'orchestrator-contract.md'
     for p in repo.slash_files:
-        for no, line in iter_lines(p.read_text(encoding='utf-8')):
-            if not COMMAND_CONTEXT_RE.search(line):
+        text = p.read_text(encoding='utf-8')
+        for no, line in iter_lines(text):
+            if not (
+                COMMAND_CONTEXT_RE.search(line)
+                or (p == contract and PHASE_ENTRY_RE.match(line))
+            ):
                 continue
             for span in SPAN_RE.findall(line):
                 m = SLASH_RE.match(span)
                 if m and m.group(1) not in known:
                     out.append(f'ERROR {repo.rel(p)}:{no}: unknown skill /{m.group(1)}')
+        for no, line in iter_shell_fence_lines(text):
+            m = FENCE_CMD_RE.match(line)
+            if m and m.group(1) not in known:
+                out.append(f'ERROR {repo.rel(p)}:{no}: unknown skill /{m.group(1)}')
     return out
 
 
@@ -423,6 +468,8 @@ def check_routing(repo: Repo) -> list[str]:
         if not m:
             out.append(f'ERROR {rel}:{no}: malformed routing row')
             continue
+        if m.group(1) not in repo.skills:
+            out.append(f'ERROR {rel}:{no}: routing targets unknown skill /{m.group(1)}')
         rows += 1
         try:
             re.compile(m.group(2).replace('\\|', '|'), re.IGNORECASE)
@@ -456,6 +503,79 @@ def self_test() -> None:
         == 'a|b'
     )
     assert not ROUTE_ROW_RE.match('| `ci-fix` | x |')
+
+    # Fixture-based cases: real checkers against a minimal temporary repo.
+    def diags(lines: list[str]) -> set[tuple[str, str, int]]:
+        found = set()
+        for line in lines:
+            m = re.match(r'(ERROR) (\S+):(\d+): ', line)
+            assert m, f'unparsable diagnostic: {line}'
+            found.add((m.group(1), m.group(2), int(m.group(3))))
+        return found
+
+    readme = '.github/skills/README.md'
+    contract = '.github/skills/shared/orchestrator-contract.md'
+    agents = 'AGENTS.md'
+    copilot = '.github/copilot-instructions.md'
+    index = '| Skill | Command |\n|---|---|\n| R | `/rust-refactor` |\n'
+    route = '## Automatic skill routing\n\n| Skill | Trigger |\n|---|---|\n| `/{}` | `\\bx\\b` |\n'
+    controls = (
+        '`/version` works on UID 1000\n```bash\n/etc/kms\n```\n```rust\n/api/v1\n```\n'
+        '1. **Path** — `/opt`\n'
+    )
+    skill = "---\nname: {0}\ndescription: 'x'\n---\n# {0}\n"
+
+    def run(over: dict[str, str] | None = None) -> set[tuple[str, str, int]]:
+        files = {
+            'Cargo.toml': '',
+            '.github/skills/rust-refactor/SKILL.md': skill.format('rust-refactor'),
+            readme: '# S\n\n' + index,
+            contract: '# C\n',
+            copilot: route.format('rust-refactor'),
+            agents: controls,
+            'CONTRIBUTING.md': '# C\n',
+            '.github/instructions/x.md': '# I\n',
+            **(over or {}),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'crate').mkdir()
+            for rel, text in files.items():
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(text, encoding='utf-8')
+            repo = Repo(root)
+            return diags(
+                check_frontmatter(repo)
+                + check_skill_index(repo)
+                + check_slash_refs(repo)
+                + check_links(repo)
+                + check_gh_paths(repo)
+                + check_routing(repo)
+            )
+
+    assert run() == set()
+    # C3: missing row, stale row, duplicate row
+    assert run({'.github/skills/beta/SKILL.md': skill.format('beta')}) == {
+        ('ERROR', readme, 1)
+    }
+    assert run({readme: '# S\n\n' + index + '| G | `/gone` |\n'}) == {
+        ('ERROR', readme, 6)
+    }
+    assert run({readme: '# S\n\n' + index + '| R | `/rust-refactor` |\n'}) == {
+        ('ERROR', readme, 6)
+    }
+    # C4: prose in a shared file, numbered phase entry, shell fence
+    assert run({contract: '# C\nRun `/retired-audit`\n'}) == {('ERROR', contract, 2)}
+    assert run({contract: '# C\n1. **Refactor** — `/retired-audit`\n'}) == {
+        ('ERROR', contract, 2)
+    }
+    assert run({contract: '# C\n1. **Refactor** — `/rust-refactor`\n'}) == set()
+    assert run({agents: '# A\n```bash\n# /retired-audit\n```\n'}) == {
+        ('ERROR', agents, 3)
+    }
+    # C7: valid regex, unknown target skill
+    assert run({copilot: route.format('retired-audit')}) == {('ERROR', copilot, 5)}
     print('self-test OK')
 
 

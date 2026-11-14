@@ -17,8 +17,8 @@ use crate::{
 /// The operations are executed in the order they are provided.
 /// The response list contains the results in the same order as the operations.
 /// If the operation was successful, the result is the response payload.
-/// If the operation failed, the result is an error message.
-/// The response list is guaranteed to have the same length as the operations list.
+/// If an operation fails, this function returns its error; the server may stop the batch.
+/// A successful response list has the same length as the operations list.
 pub(crate) async fn batch_operations(
     kms_rest_client: &KmsClient,
     operations: Vec<Operation>,
@@ -29,13 +29,14 @@ pub(crate) async fn batch_operations(
                 protocol_version_major: 2,
                 protocol_version_minor: 1,
             },
-            maximum_response_size: Some(9999),
             batch_count: i32::try_from(operations.len())?,
             ..Default::default()
         },
         batch_item: operations
             .into_iter()
-            .map(|op| RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem::new(op)))
+            .map(|op| {
+                RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem::new(op)))
+            })
             .collect(),
     };
     let response = kms_rest_client.message(request).await?;

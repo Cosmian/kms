@@ -209,7 +209,6 @@ pub(crate) async fn get_privileged_access(
 // ── Crypto Officer status & disable ───────────────────────────────────────────
 
 /// Response body for `GET /access/crypto_officer/status`
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Serialize)]
 pub(crate) struct CryptoOfficerStatusResponse {
     /// Whether a Crypto Officer role configuration exists on the server.

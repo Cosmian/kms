@@ -153,7 +153,7 @@ impl SocketClient {
         debug!("TTLV RESP:\n{:#?}", ttlv_response);
 
         // Deserialize response
-        let response = from_ttlv(ttlv_response)?;
+        let response = from_ttlv(&ttlv_response)?;
         debug!("RESP:\n{}", response);
 
         Ok(response)

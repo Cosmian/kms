@@ -22,7 +22,7 @@ trap 'rm -f "${TOML_TMP}"' EXIT
 cargo build -p cosmian_kms_server --features non-fips
 
 # ── 1. Regenerate documentation/docs/configuration/server_cli.md ────────────────────
-"${REPO_ROOT}/target/debug/cosmian_kms" --help | tail -n +2 | sed 's/[[:space:]]*$//' | {
+"${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/cosmian_kms" --help | tail -n +2 | sed 's/[[:space:]]*$//' | {
   printf '# Server CLI\n\n```text\n'
   cat
   printf '```\n'
@@ -30,7 +30,7 @@ cargo build -p cosmian_kms_server --features non-fips
 echo "Regenerated documentation/docs/configuration/server_cli.md from --help"
 
 # ── 2. Regenerate server_configuration_file.md, pkg/kms.toml, kms_template.toml
-"${REPO_ROOT}/target/debug/cosmian_kms" --print-default-config >"${TOML_TMP}"
+"${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/cosmian_kms" --print-default-config >"${TOML_TMP}"
 
 python3 - "${TARGET}" "${TOML_TMP}" "${PKG_TOML}" "${KMS_TEMPLATE}" <<'PYEOF'
 import sys, re

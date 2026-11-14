@@ -14,6 +14,11 @@ inputs:
       Example: "http-connections = 8"
     required: false
     default: ''
+  dev-shell-cache:
+    description: >
+      Import the Nix dev-shell closure cached by test_all.yml's nix-dev-shell-cache job.
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -42,3 +47,19 @@ runs:
           nix-prefetch-url --unpack --name source "file://$dest"
           rm -f "$dest"
         done
+
+    - name: Restore Nix dev-shell closure
+      id: devshell
+      if: inputs.dev-shell-cache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /tmp/nix-dev-shell
+        # Key = the files shell.nix imports. A stale key costs only speed, never correctness:
+        # Nix ignores imported paths whose derivation hash changed.
+        key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
+          'nix/utimaco.nix', '.mise/lib/common.sh') }}
+
+    - name: Import Nix dev-shell closure
+      if: inputs.dev-shell-cache == 'true' && steps.devshell.outputs.cache-hit == 'true'
+      shell: bash
+      run: nix-store --import < /tmp/nix-dev-shell/closure.nar > /dev/null

@@ -19,10 +19,8 @@ impl KmipTag for kmip_1_4::kmip_types::Tag {
             .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
     }
 
-    #[expect(clippy::as_conversions)]
-    // This conversion is idiomatic for items marked with #[repr(u32)]
     fn to_u32(&self) -> u32 {
-        *self as u32
+        u32::from(*self)
     }
 }
 
@@ -32,10 +30,8 @@ impl KmipTag for kmip_2_1::kmip_types::Tag {
             .ok_or_else(|| TtlvError::from(format!("Unknown tag value: {tag_value}")))
     }
 
-    #[expect(clippy::as_conversions)]
-    // This conversion is idiomatic for items marked with #[repr(u32)]
     fn to_u32(&self) -> u32 {
-        *self as u32
+        u32::from(*self)
     }
 }
 #[cfg(test)]

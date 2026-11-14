@@ -6,12 +6,16 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         KmipOperation,
         kmip_attributes::{Attribute, Attributes},
         kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
-        kmip_types::{AttributeReference, Tag, UniqueIdentifier},
+        kmip_types::{AttributeReference, LinkedObjectIdentifier, Tag, UniqueIdentifier},
     },
+    time_normalize,
 };
 use cosmian_logger::trace;
 
-use super::policy::{check_read_only, read_only_error};
+use super::policy::{
+    check_grant, check_read_only, check_vendor_attribute, is_server_vendor_attribute,
+    read_only_error,
+};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
@@ -24,10 +28,31 @@ pub(crate) async fn delete_attribute(
     request: DeleteAttribute,
     user: &UserId,
 ) -> KResult<DeleteAttributeResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    trace!("DeleteAttribute request");
 
     // there must be an identifier
     let object_handle = from_request(request.unique_identifier.as_ref(), "Delete Attribute")?;
+
+    // Read-only guards — server-managed attributes cannot be deleted by the user.
+    if let Some(attribute) = &request.current_attribute {
+        check_read_only(attribute.tag(), KmipOperation::DeleteAttribute)?;
+        check_vendor_attribute(attribute, KmipOperation::DeleteAttribute)?;
+    }
+    for reference in request.attribute_references.iter().flatten() {
+        match reference {
+            AttributeReference::Standard(tag) => {
+                check_read_only(Some(*tag), KmipOperation::DeleteAttribute)?;
+            }
+            AttributeReference::Vendor(vendor_ref) => {
+                if is_server_vendor_attribute(
+                    &vendor_ref.vendor_identification,
+                    &vendor_ref.attribute_name,
+                ) {
+                    return Err(read_only_error(KmipOperation::DeleteAttribute));
+                }
+            }
+        }
+    }
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -36,8 +61,23 @@ pub(crate) async fn delete_attribute(
         user,
     ))
     .await?;
+    let deleted_tags =
+        request
+            .current_attribute
+            .as_ref()
+            .map(Attribute::tag)
+            .into_iter()
+            .chain(request.attribute_references.iter().flatten().map(
+                |reference| match reference {
+                    AttributeReference::Standard(tag) => Some(*tag),
+                    AttributeReference::Vendor(_) => None,
+                },
+            ));
+    for tag in deleted_tags {
+        check_grant(kms, &owm, user, KmipOperation::DeleteAttribute, tag).await?;
+    }
     let (id, mut object, mut attributes) = Arc::unwrap_or_clone(owm).into_parts();
-    trace!("Retrieved object for: {object}");
+    trace!("Retrieved object for DeleteAttribute");
 
     // Snapshot the attribute set so the response can echo the attribute that was
     // actually removed: KMIP 1.4 §4.16 Table 205 requires the deleted `Attribute`
@@ -45,9 +85,8 @@ pub(crate) async fn delete_attribute(
     let attributes_before = attributes.clone();
     let mut removed_attribute: Option<Attribute> = None;
 
-    if let Some(attribute) = request.current_attribute {
-        // Read-only guard — these attributes are server-managed.
-        check_read_only(attribute.tag(), KmipOperation::DeleteAttribute)?;
+    let current = request.current_attribute.clone();
+    if let Some(attribute) = current {
         with_common_simple_attributes! {
             match_delete_attribute! { attribute, attributes, }
             simple {
@@ -59,12 +98,29 @@ pub(crate) async fn delete_attribute(
                 State => state,
             }
             custom {
-                Attribute::AlwaysSensitive(_) | Attribute::CryptographicLength(_) => {
+                Attribute::AlwaysSensitive(_)
+                | Attribute::CryptographicLength(_)
+                | Attribute::Digest(_) => {
                     // Defensive: already refused by `check_read_only`.
                     return Err(read_only_error(KmipOperation::DeleteAttribute));
                 }
                 Attribute::Link(requested_link) => {
-                    attributes.remove_link(requested_link.link_type);
+                    if let Some(links) = attributes.link.as_mut() {
+                        // An empty identifier (sent by the Web UI) selects every link of that type.
+                        let any_target = matches!(
+                            &requested_link.linked_object_identifier,
+                            LinkedObjectIdentifier::TextString(s) if s.is_empty()
+                        );
+                        links.retain(|l| {
+                            !(l.link_type == requested_link.link_type
+                                && (any_target
+                                    || l.linked_object_identifier
+                                        == requested_link.linked_object_identifier))
+                        });
+                        if links.is_empty() {
+                            attributes.link = None;
+                        }
+                    }
                 }
                 Attribute::Name(name) => {
                     if let Some(names) = &mut attributes.name {
@@ -80,12 +136,26 @@ pub(crate) async fn delete_attribute(
             }
         }
     }
+    if request.current_attribute.is_some() && attributes == attributes_before {
+        // KMIP 2.1 §6.1.13: a Current Attribute matching no instance is an error.
+        let reason = if Vec::<Attribute>::from(attributes_before.clone())
+            .iter()
+            .any(|a| a.tag() == request.current_attribute.as_ref().and_then(Attribute::tag))
+        {
+            ErrorReason::Attribute_Instance_Not_Found
+        } else {
+            ErrorReason::Attribute_Not_Found
+        };
+        return Err(KmsError::Kmip21Error(
+            reason,
+            "DeleteAttribute: no matching attribute to delete".to_owned(),
+        ));
+    }
+    let before_references = attributes.clone();
     if let Some(attribute_references) = request.attribute_references {
         for attribute_reference in attribute_references {
             match attribute_reference {
                 AttributeReference::Standard(tag) => {
-                    // Read-only guard — server-managed tags cannot be deleted by the user.
-                    check_read_only(Some(tag), KmipOperation::DeleteAttribute)?;
                     match_delete_attribute_by_tag! {
                         tag, attributes,
                         simple {
@@ -121,7 +191,7 @@ pub(crate) async fn delete_attribute(
                             ProtectStopDate => protect_stop_date,
                             ProtectionLevel => protection_level,
                             ProtectionPeriod => protection_period,
-                            ProtectionStorageMasks => protection_storage_masks,
+                            ProtectionStorageMask => protection_storage_masks,
                             QuantumSafe => quantum_safe,
                             RandomNumberGenerator => random_number_generator,
                             RevocationReason => revocation_reason,
@@ -136,14 +206,25 @@ pub(crate) async fn delete_attribute(
                             X509CertificateSubject => x_509_certificate_subject,
                         }
                         custom {
-                            Tag::LinkType => {
+                            Tag::LinkType | Tag::Link => {
                                 attributes.link = None;
                             }
                             Tag::Name => {
                                 attributes.name = None;
                             }
                             Tag::VendorExtension => {
-                                attributes.vendor_attributes = None;
+                                // Server-owned custom attributes survive a wipe of the others
+                                if let Some(vendor_attributes) = attributes.vendor_attributes.as_mut() {
+                                    vendor_attributes.retain(|va| {
+                                        is_server_vendor_attribute(
+                                            &va.vendor_identification,
+                                            &va.attribute_name,
+                                        )
+                                    });
+                                    if vendor_attributes.is_empty() {
+                                        attributes.vendor_attributes = None;
+                                    }
+                                }
                             }
                             unsupported => {
                                 return Err(KmsError::Kmip21Error(
@@ -177,6 +258,16 @@ pub(crate) async fn delete_attribute(
         }
     }
 
+    if attributes == before_references && attributes == attributes_before {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Attribute_Not_Found,
+            "DeleteAttribute: the attribute is not set on the object".to_owned(),
+        ));
+    }
+    let echoed_attribute =
+        removed_attribute.or_else(|| deleted_attribute(&attributes_before, &attributes));
+    attributes.last_change_date = Some(time_normalize()?);
+
     let tags = kms.database.retrieve_tags(&id).await?;
 
     if let Ok(object_attributes) = object.attributes_mut() {
@@ -189,8 +280,7 @@ pub(crate) async fn delete_attribute(
 
     Ok(DeleteAttributeResponse {
         unique_identifier: UniqueIdentifier::TextString(id),
-        echoed_attribute: removed_attribute
-            .or_else(|| deleted_attribute(&attributes_before, &attributes)),
+        echoed_attribute,
     })
 }
 

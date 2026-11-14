@@ -14,7 +14,7 @@ On every rotation the server:
 1. Generates a new cryptographic object (or new certificate) under a **fresh UID**.
 2. Sets a `ReplacementObjectLink` on the old object pointing to the new UID.
 3. Sets a `ReplacedObjectLink` on the new object pointing back to the old UID.
-4. Transitions the old key to **Deactivated** (KMIP §4.57, transition 6 — see [below](#old-key-deactivated-after-rotation)).
+4. Transitions the old key to **Deactivated** if it was **Active** (Deactivation Date = now; KMIP §4.57, transition 6 — see [below](#old-key-deactivated-after-rotation)). A Deactivated or Compromised old key keeps its state and its Deactivation Date.
 5. Increments `x-rotate-generation` and records `x-rotate-date` on the new object.
 
 > **Auto-rotation** (scheduler-driven, policy-based) is covered separately in
@@ -36,9 +36,18 @@ Only objects in the following states can be the **source** of a rotation:
 | **Destroyed**       | ❌                | Object no longer exists.                                            |
 | **Destroyed_Compromised** | ❌         | Object no longer exists.                                            |
 
-> This restriction applies to the **source** key only.  The *output* of a
-> rotation can enter `Pre-Active` if the request includes an `Offset > 0`
-> (the new key's Activation Date is set to `Initial Date + Offset`).
+Refusals for a source in another state are returned as `Permission_Denied`. The
+state is checked after the permission check.
+
+> This restriction applies to the **source** key only.  `Offset` is an Interval
+> in seconds. With an `Offset`, the new key's Activation Date is `now + Offset`
+> and its Process Start, Protect Stop and Deactivation Dates are shifted by the
+> same amount (when the old key has an Activation Date); the new key can then
+> enter `Pre-Active`. Without an `Offset`, all four dates are copied from the old
+> key. The Usage Limits Count is reset. The Revocation Reason, Destroy Date and
+> Compromise Dates are not copied. The request `Attributes` are applied to the
+> new key, except the attributes the server manages (identity, links, names,
+> lifecycle dates, state, rotation metadata).
 
 ---
 
@@ -90,8 +99,8 @@ during `Re-Key`, which then fires transition 6 automatically.
 - The old key remains available for **Decrypt** and **Verify** (processing
   operations accept `Active`, `Deactivated`, and `Compromised` states per
   KMIP §3.31), so in-flight ciphertexts continue to decrypt.
-- You can call `Revoke` on an already-Deactivated key; the call succeeds as
-  a no-op (the state is already revoked).
+- `Revoke` on a Deactivated key succeeds only with a compromise reason (the key
+  becomes Compromised); any other reason returns `Wrong_Key_Lifecycle_State`.
 - You can call `Destroy` on a Deactivated key directly — no prior `Revoke`
   is required.
 
@@ -300,7 +309,9 @@ sequenceDiagram
 ### 4. Asymmetric key pair
 
 `Re-Key Key Pair` targets the **private key** UID.  The server resolves the
-associated public key via the `PublicKeyLink` attribute.
+associated public key via the `PublicKeyLink` attribute. The caller also needs
+the `Rekey` permission on that public key; otherwise the request fails with
+`Object_Not_Found`.
 
 **What happens:**
 
@@ -309,7 +320,7 @@ associated public key via the `PublicKeyLink` attribute.
    the new public key.
 3. Standard `ReplacementObjectLink` / `ReplacedObjectLink` links are set on
    both pairs.
-4. Old private key and old public key → **Deactivated**.
+4. An Active old private key and an Active old public key → **Deactivated**; keys in another state keep their state.
 
 ```mermaid
 sequenceDiagram
@@ -395,7 +406,7 @@ sequenceDiagram
 | `Link[PublicKeyLink]`         | Copied from old     | Unchanged               |
 | `Link[PrivateKeyLink]`        | Copied from old     | Unchanged               |
 | `Name`                        | Inherited from old  | Removed (per KMIP spec) |
-| `State`                       | Active              | Active (not Deactivated — certificates are exempt from §4.57) |
+| `State`                       | Active if its Activation Date ≤ now, else Pre-Active | Deactivated (Deactivation Date = now) if it was Active, unchanged otherwise |
 | `x-rotate-generation`         | old + 1             | Unchanged               |
 | `x-rotate-date`               | Now                 | Unchanged               |
 
@@ -472,7 +483,7 @@ following attributes are set on the old and new key:
 | Attribute                     | Old key                                                      | New key                                                        |
 | ----------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
 | `Unique Identifier`           | unchanged                                                    | fresh UUID (or `name@N` for keyset keys)                       |
-| `State`                       | **Deactivated** (§4.57)                                      | Active                                                         |
+| `State`                       | **Deactivated** (§4.57) if it was Active, unchanged otherwise | Active (Pre-Active with an `Offset` in the future)              |
 | `Link[ReplacementObjectLink]` | → new key UID                                                | —                                                              |
 | `Link[ReplacedObjectLink]`    | —                                                            | → old key UID                                                  |
 | `Link[WrappingKeyLink]`       | unchanged                                                    | copied from old key                                            |
@@ -513,15 +524,16 @@ ckms sym keys destroy --key-id <OLD_KEY_UID>
 ```
 
 If you need to place the old key into `Compromised` state (e.g. for audit
-records), call `Revoke` first with a compromise reason:
+records), call `Revoke` with a compromise reason. A Deactivated key accepts no
+other reason (`Wrong_Key_Lifecycle_State`):
 
 ```bash
 # Symmetric key
-ckms sym keys revoke -k <OLD_KEY_UID> "Superseded"
+ckms sym keys revoke -k <OLD_KEY_UID> --reason-code key-compromise "key was compromised"
 
 # Asymmetric key pair (revokes both private and linked public key)
-ckms ec keys revoke -k <OLD_KEY_UID> "Superseded"
+ckms ec keys revoke -k <OLD_KEY_UID> --reason-code key-compromise "key was compromised"
 
 # Certificate
-ckms certificates revoke -c <OLD_CERT_UID> "Superseded"
+ckms certificates revoke -c <OLD_CERT_UID> --reason-code key-compromise "key was compromised"
 ```

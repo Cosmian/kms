@@ -137,47 +137,45 @@ pub async fn handle_google_cse_rsa_keypair(
             &UserId::from(server_params.default_username.as_str()),
         )
         .await
+        && resp.attributes.object_type == Some(ObjectType::PrivateKey)
     {
-        if resp.attributes.object_type == Some(ObjectType::PrivateKey) {
-            info!("RSA Keypair for Google CSE already exists (pre-check).");
-            return Ok(());
-        }
+        info!("RSA Keypair for Google CSE already exists (pre-check).");
+        return Ok(());
     }
 
-    let response =
-        if let Some(migration_key_pem) = &server_params.google_cse.google_cse_migration_key {
-            info!("Found Google CSE migration key, importing it.");
-            import_cse_migration_key(
-                kms_server,
-                server_params,
-                &uid_sk,
-                &uid_pk,
-                migration_key_pem,
+    let response = if let Some(migration_key_pem) = &server_params.google_cse.migration_key {
+        info!("Found Google CSE migration key, importing it.");
+        import_cse_migration_key(
+            kms_server,
+            server_params,
+            &uid_sk,
+            &uid_pk,
+            migration_key_pem,
+        )
+        .await
+    } else {
+        info!("No migration key found, creating new RSA keypair.");
+        let create_request = create_rsa_key_pair_request::<Vec<String>>(
+            server_params.vendor_identification.as_str(),
+            Some(UniqueIdentifier::TextString(uid_sk.clone())),
+            Vec::new(),
+            4096,
+            false,
+            None,
+        )?;
+        kms_server
+            .create_key_pair(
+                create_request,
+                &UserId::from(server_params.default_username.as_str()),
             )
             .await
-        } else {
-            info!("No migration key found, creating new RSA keypair.");
-            let create_request = create_rsa_key_pair_request::<Vec<String>>(
-                server_params.vendor_identification.as_str(),
-                Some(UniqueIdentifier::TextString(uid_sk.clone())),
-                Vec::new(),
-                4096,
-                false,
-                None,
-            )?;
-            kms_server
-                .create_key_pair(
-                    create_request,
-                    &UserId::from(server_params.default_username.as_str()),
+            .map(|cr| {
+                (
+                    cr.private_key_unique_identifier,
+                    cr.public_key_unique_identifier,
                 )
-                .await
-                .map(|cr| {
-                    (
-                        cr.private_key_unique_identifier,
-                        cr.public_key_unique_identifier,
-                    )
-                })
-        };
+            })
+    };
 
     if let Err(e) = response {
         // If the error is due to a UNIQUE constraint, treat it as success (idempotent behavior).
@@ -408,7 +406,7 @@ async fn import_cse_migration_key(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(key_bytes.into()),
-                attributes: Some(Attributes::default()),
+                attributes: Some(Box::new(Attributes::default())),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -432,7 +430,7 @@ async fn import_cse_migration_key(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(openssl_pk_bytes.into()),
-                attributes: Some(Attributes::default()),
+                attributes: Some(Box::new(Attributes::default())),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -554,7 +552,7 @@ pub async fn start_kms_server(
     };
 
     // Handle Google RSA Keypair for CSE Kacls migration
-    if server_params.google_cse.google_cse_enable {
+    if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
             .await
             .context("start KMS server: failed managing Google CSE RSA Keypair")?;
@@ -627,7 +625,7 @@ fn start_socket_server(
     let socket_server_handle = socket_server.start_threaded(
         kms_server,
         move |username, request, kms_server| {
-            trace!("request: {username} {}", hex::encode(request));
+            trace!("request: {username} ({} bytes)", request.len());
             // Handle the TTLV bytes received from the socket server
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {
@@ -740,16 +738,14 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
         .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
 
     // Extract first FIPS_MIN_SALT_SIZE bytes as salt
-    // SHA-256 produces 32 bytes and FIPS_MIN_SALT_SIZE is 16, so this is always safe
-    let mut salt = [0_u8; FIPS_MIN_SALT_SIZE];
-    // This indexing is safe because SHA-256 always produces 32 bytes >= FIPS_MIN_SALT_SIZE (16)
-    #[allow(clippy::indexing_slicing)]
-    {
-        salt.copy_from_slice(&hash[..FIPS_MIN_SALT_SIZE]);
-    }
+    let (salt, _) = hash
+        .split_first_chunk::<FIPS_MIN_SALT_SIZE>()
+        .ok_or_else(|| {
+            KmsError::ServerError("SHA-256 digest is shorter than the FIPS salt size".to_owned())
+        })?;
 
     // Derive a 64-byte key from the public URL
-    let derived_key = derive_key_from_password::<64>(&salt, public_url.as_bytes())
+    let derived_key = derive_key_from_password::<64>(salt, public_url.as_bytes())
         .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
 
     // Convert the derived key to an actix-web Key
@@ -774,7 +770,7 @@ async fn build_oidc_runtime_config(
 ) -> OidcRuntimeConfig {
     use crate::config::OidcDiscoveredEndpoints;
 
-    let Some(ref issuer) = oidc_config.ui_oidc_issuer_url else {
+    let Some(ref issuer) = oidc_config.issuer_url else {
         return OidcRuntimeConfig {
             config: oidc_config,
             discovered: None,
@@ -913,7 +909,7 @@ pub async fn prepare_kms_server(
              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments."
         );
     }
-    if kms_server.params.vault_auth_verifier_accept_invalid_certs {
+    if kms_server.params.vault.auth_verifier_accept_invalid_certs {
         cosmian_logger::warn!(
             "SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate \
              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test."
@@ -923,7 +919,7 @@ pub async fn prepare_kms_server(
     // Warn when Vault API is enabled but rate limiting is disabled.
     // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
     // the auth-verifier. The global rate limiter (if configured) mitigates this.
-    if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
+    if kms_server.params.vault.api_enabled && kms_server.params.rate_limit_per_second.is_none() {
         cosmian_logger::warn!(
             "SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The \
              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set \
@@ -946,8 +942,8 @@ pub async fn prepare_kms_server(
     }
 
     // Validate session salt entropy when UI is enabled.
-    if kms_server.params.ui_enable {
-        if let Some(ref salt) = kms_server.params.ui_session_salt {
+    if kms_server.params.ui.enable {
+        if let Some(ref salt) = kms_server.params.ui.session_salt {
             if salt.len() < 32 {
                 return Err(KmsError::ServerError(format!(
                     "ui_session_salt is too short ({} bytes). Minimum 32 bytes required for \
@@ -981,11 +977,8 @@ pub async fn prepare_kms_server(
     };
 
     // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse_authentication = kms_server.params.google_cse.google_cse_enable
-        && !kms_server
-            .params
-            .google_cse
-            .google_cse_disable_tokens_validation
+    let enable_google_cse_authentication = kms_server.params.google_cse.enable
+        && !kms_server.params.google_cse.disable_tokens_validation
         && kms_server.params.kms_public_url.is_some();
 
     // Prepare the JWT configurations if the server uses JWT for authentication.
@@ -1006,7 +999,7 @@ pub async fn prepare_kms_server(
             let google_cse_whitelist = kms_server
                 .params
                 .google_cse
-                .google_cse_incoming_url_whitelist
+                .incoming_url_whitelist
                 .as_deref()
                 .filter(|_| enable_google_cse_authentication);
 
@@ -1208,10 +1201,10 @@ pub async fn prepare_kms_server(
     }
 
     // Should we enable the Azure EKM API ?
-    let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
+    let enable_azure_ekm = kms_server.params.azure_ekm.enable;
     if enable_azure_ekm {
         // Validate path prefix if provided
-        if let Some(prefix) = &kms_server.params.azure_ekm.azure_ekm_path_prefix {
+        if let Some(prefix) = &kms_server.params.azure_ekm.path_prefix {
             // Check length (max 64 characters)
             if prefix.len() > 64 {
                 return Err(KmsError::ServerError(format!(
@@ -1237,7 +1230,7 @@ pub async fn prepare_kms_server(
             }
         }
 
-        if !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && !use_cert_auth {
+        if !kms_server.params.azure_ekm.disable_client_auth && !use_cert_auth {
             return Err(KmsError::ServerError(
                 "Azure EKM requires mTLS authentication but the KMS server is not configured with client certificate authentication.".to_owned()
             ));
@@ -1279,7 +1272,7 @@ pub async fn prepare_kms_server(
     // - Otherwise: generate a random ephemeral key (secure but lost on restart).
     //   Operators who need persistent sessions or load-balanced deployments MUST set
     //   `ui_session_salt` (or KMS_UI_SESSION_SALT).
-    let secret_key: Key = if let Some(salt) = kms_server.params.ui_session_salt.as_deref() {
+    let secret_key: Key = if let Some(salt) = kms_server.params.ui.session_salt.as_deref() {
         derive_session_key_from_url(&kms_public_url, salt)?
     } else {
         // No secret configured: generate a cryptographically random ephemeral key.
@@ -1307,9 +1300,9 @@ pub async fn prepare_kms_server(
     let vault_http_client: Arc<reqwest::Client> =
         {
             let mut builder = reqwest::Client::builder();
-            if kms_server.params.vault_auth_verifier_accept_invalid_certs {
+            if kms_server.params.vault.auth_verifier_accept_invalid_certs {
                 builder = builder.danger_accept_invalid_certs(true);
-            } else if let Some(ca_cert_path) = &kms_server.params.vault_auth_verifier_ca_cert {
+            } else if let Some(ca_cert_path) = &kms_server.params.vault.auth_verifier_ca_cert {
                 let cert_pem = std::fs::read(ca_cert_path).map_err(|e| {
                     KmsError::ServerError(format!(
                         "cannot read vault_auth_verifier_ca_cert '{}': {e}",
@@ -1337,19 +1330,14 @@ pub async fn prepare_kms_server(
     // When `vault_api_enabled = false` or `vault_auth_verifier_url` is absent, a dummy
     // context is created but never invoked: `Condition::new(false, …)` is a no-op.
     let use_vault_token_auth =
-        kms_server.params.vault_api_enabled && kms_server.params.vault_auth_verifier_url.is_some();
-    let spire_cache = SpireTokenCache::new(kms_server.params.vault_token_cache_ttl_secs);
-    // When vault_api_enabled = false, this URL is never used; the literal is always valid.
-    let spire_auth_verifier_url: Url = kms_server
-        .params
-        .vault_auth_verifier_url
-        .clone()
-        .unwrap_or_else(|| {
-            // SAFETY: this fallback URL is only constructed when use_vault_token_auth = false,
-            // where Condition::new(false, …) never invokes the middleware.
-            #[allow(clippy::unwrap_used)]
-            Url::parse("http://localhost").unwrap()
-        });
+        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
+    let spire_cache = SpireTokenCache::new(kms_server.params.vault.token_cache_ttl_secs);
+    let spire_auth_verifier_url: Url = match &kms_server.params.vault.auth_verifier_url {
+        Some(url) => url.clone(),
+        // Only constructed when use_vault_token_auth = false, where Condition::new(false, …)
+        // never invokes the middleware.
+        None => Url::parse("http://localhost")?,
+    };
     let spire_default_username: Arc<str> = kms_server.params.default_username.as_str().into();
 
     // Extract http_workers before the closure moves kms_server
@@ -1358,10 +1346,10 @@ pub async fn prepare_kms_server(
     // Pre-compute OIDC runtime config (async, with discovery fetch) before the
     // synchronous HttpServer closure. Only built when the UI is enabled.
     let ui_oidc_runtime_config = {
-        let ui_enable = kms_server.params.ui_enable;
-        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        let ui_enable = kms_server.params.ui.enable;
+        let ui_index_folder = kms_server.params.ui.index_html_folder.clone();
         if ui_enable && ui_index_folder.join("index.html").exists() {
-            let oidc_config = kms_server.params.ui_oidc_auth.clone();
+            let oidc_config = kms_server.params.ui.oidc_auth.clone();
             let proxy_params = kms_server.params.proxy_params.clone();
             Some(Arc::new(
                 build_oidc_runtime_config(oidc_config, proxy_params.as_ref()).await,
@@ -1433,7 +1421,7 @@ pub async fn prepare_kms_server(
             );
 
         if kms_server_for_http.params.kms_public_url.is_some()
-            && kms_server_for_http.params.google_cse.google_cse_enable
+            && kms_server_for_http.params.google_cse.enable
         {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
@@ -1495,7 +1483,7 @@ pub async fn prepare_kms_server(
         if enable_aws_xks {
             // The scope for the AWS XKS (External Key Store) endpoints served from /aws
             let aws_xks_scope = web::scope("/aws")
-                .app_data(web::JsonConfig::default().error_handler(aws_xks::xks_json_error_handler))
+                .app_data(web::JsonConfig::default().error_handler(|err, req| aws_xks::xks_json_error_handler(&err, req)))
                 .wrap(Cors::permissive())
                 .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
                 .service(aws_xks::get_health_status)
@@ -1508,7 +1496,7 @@ pub async fn prepare_kms_server(
         }
 
         if enable_azure_ekm {
-            if kms_server.params.azure_ekm.azure_ekm_disable_client_auth {
+            if kms_server.params.azure_ekm.disable_client_auth {
                 warn!(
                     "Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments."
                 );
@@ -1517,7 +1505,7 @@ pub async fn prepare_kms_server(
             let base_path = kms_server
                 .params
                 .azure_ekm
-                .azure_ekm_path_prefix
+                .path_prefix
                 .as_ref()
                 .map_or_else(
                     // for unknown reasons, an "azure-ekm" base path will get compiled to "azure_ekm" in the binary, but underscores go against the path specs.
@@ -1530,11 +1518,11 @@ pub async fn prepare_kms_server(
             let azure_ekm_scope = web::scope(&base_path)
                 .app_data(azure_ekm::ekm_json_config())
                 .wrap(Condition::new(
-                    !kms_server.params.azure_ekm.azure_ekm_disable_client_auth,
+                    !kms_server.params.azure_ekm.disable_client_auth,
                     ensure_auth_middleware(kms_server_for_http.clone(), use_cert_auth),
                 ))
                 .wrap(Condition::new(
-                    !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
+                    !kms_server.params.azure_ekm.disable_client_auth && use_cert_auth,
                     from_fn(tls_auth_fn),
                 ))
                 .wrap(
@@ -1599,9 +1587,9 @@ pub async fn prepare_kms_server(
         // Enabled only when `vault_api_enabled = true` in server config.
         // Authentication: `X-Vault-Token` header validated by `spire_token_middleware`
         // which calls `GET <vault_auth_verifier_url>/v1/auth/token/lookup-self`.
-        if kms_server_for_http.params.vault_api_enabled {
+        if kms_server_for_http.params.vault.api_enabled {
             if use_vault_token_auth {
-                let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
+                let transit_mount = kms_server_for_http.params.vault.transit_mount.clone();
                 let transit_scope_path = format!("/v1/{transit_mount}");
                 let transit_scope = web::scope(&transit_scope_path)
                     // SPIRE's `vault` KeyManager plugin (SPIRE >= 1.15.0) does
@@ -1625,7 +1613,7 @@ pub async fn prepare_kms_server(
                     .service(sign_with_transit_key_put);
                 app = app.service(transit_scope);
 
-                let pki_mount = kms_server_for_http.params.vault_pki_mount.clone();
+                let pki_mount = kms_server_for_http.params.vault.pki_mount.clone();
                 let pki_scope_path = format!("/v1/{pki_mount}");
                 let pki_scope = web::scope(&pki_scope_path)
                     .wrap(spire_token_middleware(
@@ -1670,15 +1658,15 @@ pub async fn prepare_kms_server(
             }
         }
 
-        let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
-        if kms_server_for_http.params.ui_enable && ui_index_folder.join("index.html").exists() {
+        let ui_index_folder = kms_server_for_http.params.ui.index_html_folder.clone();
+        if kms_server_for_http.params.ui.enable && ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
             // OIDC runtime config was pre-computed before HttpServer::new (async discovery).
             let oidc_runtime_config: OidcRuntimeConfig = ui_oidc_runtime_config
                 .as_ref()
                 .map_or_else(
                     || OidcRuntimeConfig {
-                        config: kms_server_for_http.params.ui_oidc_auth.clone(),
+                        config: kms_server_for_http.params.ui.oidc_auth.clone(),
                         discovered: None,
                     },
                     |arc| arc.as_ref().clone(),
@@ -1835,12 +1823,12 @@ pub async fn prepare_kms_server(
         // JWKS endpoint: public, unauthenticated, CORS-open (partially).
         // The scope prefix `/.well-known` is explicit so this scope does not conflict
         // with the empty-prefix default_scope and its restrictive CORS configuration.
-        if kms_server_for_http.params.jwks_endpoint.jwks_endpoint_enabled {
+        if kms_server_for_http.params.jwks_endpoint.enabled {
             warn!(
                 "JWKS endpoint enabled — all active public keys with the \"jwks\" tag will be publicly exposed (unauthenticated) at \
                  `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served. \
                  Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file.",
-                kms_server_for_http.params.jwks_endpoint.jwks_endpoint_max_keys
+                kms_server_for_http.params.jwks_endpoint.max_keys
             );
             app = app.service(
                 web::scope("/.well-known")
@@ -1858,7 +1846,7 @@ pub async fn prepare_kms_server(
         // REST Native Crypto API — /v1/crypto/*
         let crypto_scope = wrap_native_auth(
             web::scope("/v1/crypto").app_data(
-                web::JsonConfig::default().error_handler(jose::crypto_json_error_handler),
+                web::JsonConfig::default().error_handler(|err, req| jose::crypto_json_error_handler(&err, req)),
             ),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
@@ -2132,8 +2120,6 @@ where
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used)]
-#[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
     use crate::tests::test_utils::https_clap_config;
@@ -2323,18 +2309,18 @@ mod tests {
             .users
             .push(AWS_XKS_SERVICE_USER.to_owned());
 
-        assert!(validate_aws_xks_reserved_identity_config(&params).is_ok());
+        validate_aws_xks_reserved_identity_config(&params).unwrap();
     }
 
     #[tokio::test]
     async fn aws_xks_migration_allows_empty_default_username() {
         let mut clap_config = https_clap_config();
         clap_config.default_username.clear();
-        clap_config.aws_xks_config.aws_xks_enable = true;
-        clap_config.aws_xks_config.aws_xks_region = Some("eu-west-3".to_owned());
-        clap_config.aws_xks_config.aws_xks_service = Some("kms".to_owned());
-        clap_config.aws_xks_config.aws_xks_sigv4_access_key_id = Some("access-key".to_owned());
-        clap_config.aws_xks_config.aws_xks_sigv4_secret_access_key = Some("secret-key".to_owned());
+        clap_config.aws_xks_config.enable = true;
+        clap_config.aws_xks_config.region = Some("eu-west-3".to_owned());
+        clap_config.aws_xks_config.service = Some("kms".to_owned());
+        clap_config.aws_xks_config.sigv4_access_key_id = Some("access-key".to_owned());
+        clap_config.aws_xks_config.sigv4_secret_access_key = Some("secret-key".to_owned());
 
         let params = ServerParams::try_from(clap_config)
             .expect("server params with empty default_username must be accepted");
@@ -2347,5 +2333,55 @@ mod tests {
         migrate_aws_xks_key_access(&kms)
             .await
             .expect("AWS XKS migration must not panic or fail for empty default_username");
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization tests pinning BASE behavior of `derive_session_key_from_url`.
+
+    use super::derive_session_key_from_url;
+
+    const INPUTS: [(&str, &str); 3] = [
+        ("https://kms.example.com", "salt-seed"),
+        ("http://localhost:9998", "another seed"),
+        ("", "x"),
+    ];
+
+    /// FIPS builds derive the key with PBKDF2.
+    #[cfg(not(feature = "non-fips"))]
+    const GOLDEN: [&str; 3] = [
+        "80788cf852702e730812c9c7099b3ddf2ce2a89f5b778925d16a878ad18adc5489019e2d0d55a811d4d8baac17fd5ed28428b152ec1e5e06decb97c455ee43d7",
+        "d0199379e84f9b075d467db05c105bc2ae29aa5deff7125a5ead632f09da1c263213d5797255fee02ba4e2415f75331efb84f3ae1dcca85046b43f57ab6f361a",
+        "904a45d88bc08a7dfd8a60ee1736f441cb2d48d757f05619e1c1668ffa7f66d3108b01bfea801f278f31f7e8a888c5d546a234f4104f1f0b70612d58d9e199c9",
+    ];
+
+    /// Non-FIPS builds derive the key with Argon2.
+    #[cfg(feature = "non-fips")]
+    const GOLDEN: [&str; 3] = [
+        "63f57eb44bcf400861970fe398a083119d9fc2578f4e3f578316d44eea7c5725a393fe6139f1772f58bad78b6fa7fc460cbc29ecf45e9c117b9fb9665bd7a668",
+        "e8a6adab7054d4aaa82a130dc53c82dedc44714c7a196e96234a024c55e3c4b37208ef6fb1080c16493c0b38ee699833f8f2c5e642da3b4a793b72e2f7a82359",
+        "6b54c77f007beb08287fa5e80d48fc9d41d3fa76b8037d45e6bcf7f50c507262b1d0c00cace05c376876571f9ce84120933eaec16c024f717bef6d6aa7b69b1b",
+    ];
+
+    #[test]
+    fn characterization_derive_session_key_from_url_golden() {
+        let derived: Vec<String> = INPUTS
+            .iter()
+            .map(|(url, salt)| {
+                hex::encode(derive_session_key_from_url(url, salt).unwrap().master())
+            })
+            .collect();
+        assert_eq!(derived, GOLDEN.to_vec());
+    }
+
+    #[test]
+    fn characterization_derive_session_key_from_url_is_deterministic() {
+        let a = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
+        let b = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
+        let c = derive_session_key_from_url("https://kms.example.com", "salt-see").unwrap();
+        assert_eq!(a.master(), b.master());
+        assert_ne!(a.master(), c.master());
+        assert_eq!(a.master().len(), 64);
     }
 }

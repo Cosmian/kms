@@ -264,3 +264,6 @@ pub(crate) async fn cli_archive_exists() -> HttpResponse {
         HttpResponse::NotFound().finish()
     }
 }
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

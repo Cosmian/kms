@@ -2,7 +2,7 @@
 # .mise/lib/kryoptic.sh — Out-of-tree build helper for the published `kryoptic`
 # PKCS#11 v3.0 software token (https://github.com/latchset/kryoptic), used
 # as the PKCS#11 v3.0 test token by crate/hsm/kryoptic
-# (`mise run test:hsm-kryoptic`).
+# (`mise run test:hsm:kryoptic`).
 #
 # `kryoptic` is deliberately NOT a [dev-dependencies] entry in
 # crate/hsm/base_hsm/Cargo.toml: its `kryoptic-lib` dependency requires
@@ -52,7 +52,7 @@ _kryoptic_cdylib_filename() {
 }
 
 # Builds this workspace's own OpenSSL (see crate/crypto/build.rs, pinned to
-# 3.6.2) if not already built, and points `kryoptic`'s OpenSSL discovery at it
+# 3.6.5) if not already built, and points `kryoptic`'s OpenSSL discovery at it
 # via `PKG_CONFIG_PATH`, instead of letting it silently pick up whatever
 # OpenSSL happens to be installed system-wide.
 #
@@ -62,7 +62,7 @@ _kryoptic_cdylib_filename() {
 # hard-requires OpenSSL >= 3.2.0. Ubuntu 22.04/24.04 CI runners (and some
 # local dev machines) ship an older system OpenSSL (e.g. 3.0.x), which fails
 # this check with "OpenSSL 3.2.0 or later is required" even though this exact
-# workspace already builds a conformant OpenSSL 3.6.2 for its own crates.
+# workspace already builds a conformant OpenSSL 3.6.5 for its own crates.
 # Uniformizing on that same build removes the dependency on the ambient
 # system OpenSSL version entirely, making this suite reproducible across
 # local machines and CI.
@@ -82,22 +82,30 @@ _kryoptic_ensure_repo_openssl() {
 
   local repo_root target_dir
   repo_root="$(get_repo_root "${MISE_CONFIG_ROOT:-.}")"
+  # build.rs puts the prefix in the host target dir; inside nix-shell CARGO_TARGET_DIR is that
+  # dir plus a per-variant suffix (shell.nix) and build.rs skips its own OpenSSL build.
   target_dir="${CARGO_TARGET_DIR:-${repo_root}/target}"
+  target_dir="${target_dir%/nix-fips}"
+  target_dir="${target_dir%/nix-non-fips}"
 
-  print_status "Building this workspace's non-FIPS OpenSSL 3.6.2 (cargo build -p cosmian_kms_crypto \
+  print_status "Building this workspace's non-FIPS OpenSSL 3.6.5 (cargo build -p cosmian_kms_crypto \
 --features non-fips), if not already built"
   (cd "$repo_root" && cargo build -p cosmian_kms_crypto --features non-fips)
 
   # Mirrors crate/crypto/build.rs's prefix naming: `openssl-<version>-<os>-<arch>`
-  # for FIPS, `openssl-non-fips-<version>-<os>-<arch>` for non-FIPS. Globbed
-  # rather than reconstructed from `uname`, so this does not need to track the
-  # pinned OpenSSL version or the os/arch string conventions independently.
-  local prefix candidates
-  candidates=("${target_dir}"/openssl-non-fips-*)
+  # for FIPS, `openssl-non-fips-<version>-<os>-<arch>` for non-FIPS. The version is globbed so
+  # this does not track the pinned OpenSSL version; os/arch are this host's (CARGO_CFG_TARGET_*),
+  # because the target dir can also hold prefixes of other platforms (Docker builds on macOS).
+  local prefix candidates os arch
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  [ "$os" = darwin ] && os=macos
+  arch="$(uname -m)"
+  [ "$arch" = arm64 ] && arch=aarch64
+  candidates=("${target_dir}"/openssl-non-fips-*-"${os}"-"${arch}")
   prefix="${candidates[0]:-}"
   if [ -z "$prefix" ] || [ ! -d "$prefix" ]; then
     print_error "Could not locate this workspace's non-FIPS OpenSSL prefix under ${target_dir} \
-(expected a directory matching ${target_dir}/openssl-non-fips-*)"
+(expected a directory matching ${target_dir}/openssl-non-fips-*-${os}-${arch})"
   fi
   if [ ! -f "${prefix}/lib/pkgconfig/openssl.pc" ]; then
     print_error "No openssl.pc found under ${prefix}/lib/pkgconfig; this workspace's OpenSSL \

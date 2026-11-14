@@ -177,7 +177,7 @@ are described in the GNUPG INTEGRATION section of the
 
 ## Automated tests
 
-`mise run test:gnupg` runs the OpenPGP interoperability suite and then this integration end to
+`mise run test:pkcs11:gnupg` runs the OpenPGP interoperability suite and then this integration end to
 end: a KMS server whose keys are wrapped by a SoftHSM2 key-encryption key, an RSA key pair and
 self-signed certificate tagged `gnupg-card`, `LEARN` and `PKSIGN` driven through the real
 `gnupg-pkcs11-scd`, and an `openssl` verification of the resulting signature.

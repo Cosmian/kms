@@ -60,7 +60,7 @@ pub(super) async fn test_jose_hsm_decryption() -> KResult<()> {
     // lists keys owned by it.
     let mut clap_config = hsm_clap_config(OWNER, None)?;
     clap_config.db.sqlite_path = get_tmp_sqlite_path();
-    clap_config.google_cse_config.google_cse_enable = false;
+    clap_config.google_cse_config.enable = false;
     let slot = clap_config.hsm.hsm_slot[0];
     let kms = Box::pin(test_utils::test_kms_with_google_cse(clap_config)).await;
     let app = test_utils::test_app_with_kms(kms.clone(), None).await;
@@ -180,7 +180,12 @@ pub(super) async fn test_jose_hsm_decryption() -> KResult<()> {
         false,
         None,
     )?;
-    let responses = send_message(kms.clone(), OWNER, vec![Operation::Create(aes_request)]).await?;
+    let responses = send_message(
+        kms.clone(),
+        OWNER,
+        vec![Operation::Create(Box::new(aes_request))],
+    )
+    .await?;
     let Some(Operation::CreateResponse(created)) = responses.first() else {
         return Err(KmsError::Default("invalid Create response".to_owned()));
     };

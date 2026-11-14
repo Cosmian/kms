@@ -59,7 +59,7 @@ const SYSTEM_CA_BUNDLES: &[&str] = &[
 ///
 /// This replaces the former `reqwest`-based TLS builder. OpenSSL is used
 /// exclusively, providing native PQC algorithm support (ML-DSA, ML-KEM,
-/// SLH-DSA) through OpenSSL 3.6.2.
+/// SLH-DSA) through OpenSSL 3.6.5.
 pub(crate) fn build_ssl_connector(
     http_conf: &HttpClientConfig,
 ) -> HttpClientResult<SslConnectorBuilder> {
@@ -68,16 +68,14 @@ pub(crate) fn build_ssl_connector(
     // The statically linked OpenSSL has an empty default trust store (its `ssl/certs` dir is
     // empty), so fall back to the host CA bundle unless SSL_CERT_FILE/SSL_CERT_DIR is set
     // (OpenSSL's default verify paths already honor those).
-    if std::env::var_os("SSL_CERT_FILE").is_none() && std::env::var_os("SSL_CERT_DIR").is_none() {
-        if let Some(bundle) = SYSTEM_CA_BUNDLES
+    if std::env::var_os("SSL_CERT_FILE").is_none()
+        && std::env::var_os("SSL_CERT_DIR").is_none()
+        && let Some(bundle) = SYSTEM_CA_BUNDLES
             .iter()
             .find(|p| std::path::Path::new(p).is_file())
-        {
-            if let Err(e) = builder.load_verify_locations(Some(std::path::Path::new(bundle)), None)
-            {
-                warn!("Failed to load system CA bundle {bundle}: {e}");
-            }
-        }
+        && let Err(e) = builder.load_verify_locations(Some(std::path::Path::new(bundle)), None)
+    {
+        warn!("Failed to load system CA bundle {bundle}: {e}");
     }
 
     // Certificate verification

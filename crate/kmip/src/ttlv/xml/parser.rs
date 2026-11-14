@@ -16,7 +16,10 @@
 //! The merge keeps the deterministic placeholder behavior from the legacy
 //! parser and the cleaner split / transform layering from the refactored one.
 
-use std::{fmt::Write as _, sync::LazyLock};
+use std::{
+    fmt::Write as _,
+    sync::{LazyLock, OnceLock},
+};
 
 use quick_xml::{Reader, XmlVersion, events::Event};
 use regex::Regex;
@@ -27,15 +30,30 @@ use crate::{
     ttlv::{TTLV, from_ttlv, xml::TTLVXMLDeserializer},
 };
 
-/// Static regex: matches `$NOW-<digits>` placeholders.
-#[allow(clippy::expect_used)]
-static RE_NOW_DELTA: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\$NOW-\d+").expect("static regex RE_NOW_DELTA"));
+/// Compile `pattern` once into `cell`, reporting an invalid pattern as an error.
+fn cached_regex(
+    cell: &'static OnceLock<Regex>,
+    pattern: &str,
+) -> Result<&'static Regex, KmipError> {
+    if let Some(re) = cell.get() {
+        return Ok(re);
+    }
+    let re = Regex::new(pattern)
+        .map_err(|e| KmipError::Deserialization(format!("invalid regex: {e}")))?;
+    Ok(cell.get_or_init(|| re))
+}
 
-/// Static regex: matches `$UNIQUE_IDENTIFIER_<digits>` placeholders.
-#[allow(clippy::expect_used)]
-static RE_UID: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)").expect("static regex RE_UID"));
+/// Regex matching `$NOW-<digits>` placeholders.
+fn re_now_delta() -> Result<&'static Regex, KmipError> {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    cached_regex(&CELL, r"\$NOW-\d+")
+}
+
+/// Regex matching `$UNIQUE_IDENTIFIER_<digits>` placeholders.
+fn re_uid() -> Result<&'static Regex, KmipError> {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    cached_regex(&CELL, r"\$UNIQUE_IDENTIFIER_(\d+)")
+}
 
 /// Pre-compiled regexes for injecting `type="Structure"` into well-known structural tags.
 static STRUCTURAL_TAG_REGEXES: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
@@ -77,16 +95,14 @@ fn reconstruct_tag(
 // Helper to backfill LocateResponse.located_items when omitted in XML
 fn backfill_locate_response(resp: &mut ResponseMessage) {
     for bi in &mut resp.batch_item {
-        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi {
-            if let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
+        if let crate::kmip_0::kmip_messages::ResponseMessageBatchItemVersioned::V21(inner) = bi
+            && let Some(crate::kmip_2_1::kmip_operations::Operation::LocateResponse(lr)) =
                 &mut inner.response_payload
-            {
-                if lr.located_items.is_none() {
-                    let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
-                    let cnt = i32::try_from(len).unwrap_or(i32::MAX);
-                    lr.located_items = Some(cnt);
-                }
-            }
+            && lr.located_items.is_none()
+        {
+            let len = lr.unique_identifier.as_ref().map_or(0_usize, Vec::len);
+            let cnt = i32::try_from(len).unwrap_or(i32::MAX);
+            lr.located_items = Some(cnt);
         }
     }
 }
@@ -139,40 +155,25 @@ impl KmipXmlDoc {
     }
 }
 
-fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> String {
-    // Normalize timestamps: replace $NOW-<delta> first, then plain $NOW
-    let mut out = RE_NOW_DELTA.replace_all(raw, "0").into_owned();
+fn substitute_placeholders(raw: &str) -> Result<String, KmipError> {
+    // Normalize timestamps: replace $NOW-<delta> first, then plain $NOW.
+    let mut out = re_now_delta()?.replace_all(raw, "0").into_owned();
     out = out.replace("$NOW", "0");
-    // Deterministic unique identifiers
-    out = RE_UID
+    // Deterministic unique identifiers.
+    Ok(re_uid()?
         .replace_all(&out, |caps: &regex::Captures| {
-            let idx: usize = caps
-                .get(1)
-                .and_then(|m| m.as_str().parse::<usize>().ok())
-                .unwrap_or(0);
-            if uid_state.len() <= idx {
-                uid_state.resize(idx + 1, String::new());
-            }
-            uid_state.get_mut(idx).map_or_else(
-                || format!("uid-{idx}"),
-                |slot| {
-                    if slot.is_empty() {
-                        *slot = format!("uid-{idx}");
-                    }
-                    slot.clone()
-                },
-            )
+            let idx = caps.get(1).map_or("0", |m| m.as_str());
+            format!("uid-{idx}")
         })
-        .into_owned();
-    out
+        .into_owned())
 }
 
 fn xml_fragment_to_ttlv(fragment: &str) -> Result<TTLV, KmipError> {
     TTLVXMLDeserializer::from_xml(fragment)
 }
 
-fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> String {
-    let mut substituted = substitute_placeholders(fragment, uid_state);
+fn normalize_fragment(fragment: &str) -> Result<String, KmipError> {
+    let mut substituted = substitute_placeholders(fragment)?;
 
     // Inject structure type hints if absent
     for (tag, re) in STRUCTURAL_TAG_REGEXES.iter() {
@@ -190,15 +191,13 @@ fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> String {
             .into_owned();
     }
 
-    substituted
+    Ok(substituted)
 }
 
-fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
-    let mut uid_state = Vec::new();
-    let mut requests = Vec::new();
-    let mut responses = Vec::new();
+pub(crate) fn parse_message_ttlvs(xml: &str) -> Result<Vec<TTLV>, KmipError> {
+    let mut ttlvs = Vec::new();
 
-    // Stream over XML bytes to extract top-level RequestMessage / ResponseMessage snippets
+    // Stream over XML bytes to extract top-level RequestMessage / ResponseMessage snippets.
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
@@ -223,27 +222,10 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
             Ok(Event::Empty(e)) => {
                 let name = e.name().as_ref().to_owned();
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
-                    // Self-closing root (unlikely in KMIP); treat as full fragment
                     current.clear();
                     reconstruct_tag(&name, e.attributes(), true, &mut current);
-                    // Process immediately
-                    let normalized = normalize_fragment(&current, &mut uid_state);
-                    let ttlv = xml_fragment_to_ttlv(&normalized)?;
-                    match &*ttlv.tag {
-                        "RequestMessage" => requests
-                            .push(from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?),
-                        "ResponseMessage" => {
-                            let mut resp: ResponseMessage =
-                                from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?;
-                            backfill_locate_response(&mut resp);
-                            responses.push(resp);
-                        }
-                        other => {
-                            return Err(KmipError::Default(format!(
-                                "Unexpected top-level tag: {other}"
-                            )));
-                        }
-                    }
+                    let normalized = normalize_fragment(&current)?;
+                    ttlvs.push(xml_fragment_to_ttlv(&normalized)?);
                     current.clear();
                 } else if capturing {
                     reconstruct_tag(&name, e.attributes(), true, &mut current);
@@ -263,25 +245,8 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     let _ = write!(&mut current, "</{name}>");
                     depth -= 1;
                     if depth == 0 {
-                        // Completed one fragment
-                        let normalized = normalize_fragment(&current, &mut uid_state);
-                        let ttlv = xml_fragment_to_ttlv(&normalized)?;
-                        match &*ttlv.tag {
-                            "RequestMessage" => requests.push(
-                                from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?,
-                            ),
-                            "ResponseMessage" => {
-                                let mut resp: ResponseMessage = from_ttlv(ttlv)
-                                    .map_err(|e| KmipError::Default(e.to_string()))?;
-                                backfill_locate_response(&mut resp);
-                                responses.push(resp);
-                            }
-                            other => {
-                                return Err(KmipError::Default(format!(
-                                    "Unexpected top-level tag: {other}"
-                                )));
-                            }
-                        }
+                        let normalized = normalize_fragment(&current)?;
+                        ttlvs.push(xml_fragment_to_ttlv(&normalized)?);
                         capturing = false;
                         current.clear();
                     }
@@ -294,11 +259,36 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
         buf.clear();
     }
 
-    // If we reached EOF still capturing, that's a malformed XML or truncated file.
     if capturing {
         return Err(KmipError::Default(
             "unterminated KMIP message fragment".into(),
         ));
+    }
+
+    Ok(ttlvs)
+}
+
+fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
+    let mut requests = Vec::new();
+    let mut responses = Vec::new();
+
+    for ttlv in parse_message_ttlvs(xml)? {
+        match &*ttlv.tag {
+            "RequestMessage" => {
+                requests.push(from_ttlv(&ttlv).map_err(|e| KmipError::Default(e.to_string()))?);
+            }
+            "ResponseMessage" => {
+                let mut response: ResponseMessage =
+                    from_ttlv(&ttlv).map_err(|e| KmipError::Default(e.to_string()))?;
+                backfill_locate_response(&mut response);
+                responses.push(response);
+            }
+            other => {
+                return Err(KmipError::Default(format!(
+                    "Unexpected top-level tag: {other}"
+                )));
+            }
+        }
     }
 
     Ok(KmipXmlDoc {
@@ -308,7 +298,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic)]
 mod tests {
     use super::*;
 
@@ -339,5 +328,14 @@ mod tests {
         };
         assert_eq!(doc.requests.len(), 1, "expected exactly one request parsed");
         assert!(doc.responses.is_empty(), "expected no responses parsed");
+    }
+
+    #[test]
+    fn unique_identifier_placeholder_does_not_allocate_by_index() {
+        let input = format!("$UNIQUE_IDENTIFIER_{}", usize::MAX);
+        assert_eq!(
+            substitute_placeholders(&input).unwrap(),
+            format!("uid-{}", usize::MAX)
+        );
     }
 }

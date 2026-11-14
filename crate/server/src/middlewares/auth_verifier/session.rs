@@ -136,7 +136,6 @@ impl AuthVerifierValidator {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use std::{
         sync::{

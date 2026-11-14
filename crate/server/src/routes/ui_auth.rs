@@ -61,7 +61,7 @@ pub(crate) async fn login(
             .body("OIDC is not configured or discovery failed at startup");
     };
 
-    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
@@ -175,12 +175,12 @@ pub(crate) async fn callback(
         None => return HttpResponse::BadRequest().body("Missing authorization code"),
     };
 
-    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
-    let issuer = match &oidc_runtime.config.ui_oidc_issuer_url {
+    let issuer = match &oidc_runtime.config.issuer_url {
         Some(url) => url.clone(),
         None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
@@ -203,7 +203,7 @@ pub(crate) async fn callback(
         ("client_id".to_owned(), client_id.clone()),
         ("code_verifier".to_owned(), pkce_verifier),
     ];
-    if let Some(secret) = oidc_runtime.config.ui_oidc_client_secret.clone() {
+    if let Some(secret) = oidc_runtime.config.client_secret.clone() {
         form.push(("client_secret".to_owned(), secret));
     }
 
@@ -584,12 +584,11 @@ pub(crate) async fn login_as(
                 return HttpResponse::InternalServerError()
                     .json(serde_json::json!({ "error": "Failed to store session data" }));
             }
-            if let Some(ref domain) = claims.domain {
-                if session.insert("domain", domain).is_err() {
-                    return HttpResponse::InternalServerError().json(
-                        serde_json::json!({ "error": "Failed to store domain in session" }),
-                    );
-                }
+            if let Some(ref domain) = claims.domain
+                && session.insert("domain", domain).is_err()
+            {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": "Failed to store domain in session" }));
             }
 
             HttpResponse::Ok().json(AuthVerifierLoginResponse {
@@ -642,11 +641,11 @@ pub(crate) async fn login_svid(
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Failed to store roles in session" }));
     }
-    if let Some(ref domain) = authenticated.domain {
-        if session.insert("domain", domain).is_err() {
-            return HttpResponse::InternalServerError()
-                .json(serde_json::json!({ "error": "Failed to store domain in session" }));
-        }
+    if let Some(ref domain) = authenticated.domain
+        && session.insert("domain", domain).is_err()
+    {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Failed to store domain in session" }));
     }
 
     HttpResponse::Ok().json(serde_json::json!({ "next_step": "Authenticated" }))
@@ -752,7 +751,7 @@ pub(crate) async fn logout(
     // Auth Verifier server, or OIDC simply isn't set up), there is no external
     // IdP session to terminate: just drop the local session (done above) and send the
     // browser back to the login page.
-    let Some(url) = &oidc_runtime.config.ui_oidc_logout_url else {
+    let Some(url) = &oidc_runtime.config.logout_url else {
         return response.append_header(("Location", "/ui/login")).finish();
     };
     let mut logout_url = match Url::parse(url) {
@@ -762,7 +761,7 @@ pub(crate) async fn logout(
         }
     };
 
-    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
@@ -929,7 +928,6 @@ mod tests {
     const KMS_URL: &str = "https://kms.example.com";
 
     // Test setup must fail loudly if the ephemeral loopback listener cannot be created.
-    #[allow(clippy::expect_used)]
     async fn saml_runtime(saml_realm: Option<&str>) -> AuthVerifierRuntimeConfig {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await

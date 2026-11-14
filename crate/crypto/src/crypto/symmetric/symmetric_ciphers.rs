@@ -13,7 +13,7 @@ use openssl::symm::{
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
-use super::aes_gcm_siv_not_openssl;
+use super::aes_gcm_siv;
 use crate::{
     crypto::{
         KmsRng,
@@ -217,7 +217,7 @@ impl SymCipher {
             Self::Chacha20 => Ok(Cipher::chacha20()),
             #[cfg(feature = "non-fips")]
             Self::Aes128GcmSiv | Self::Aes256GcmSiv => {
-                // TODO: openssl supports AES GCM SIV but the rust openssl crate does not expose it
+                // GCM-SIV uses an EVP cipher fetched by name in aes_gcm_siv.rs; there is no legacy symm::Cipher for it
                 crypto_bail!(CryptoError::NotSupported(
                     "AES GCM SIV is not supported in this version of openssl".to_owned()
                 ))
@@ -251,6 +251,37 @@ impl SymCipher {
             #[cfg(feature = "non-fips")]
             Self::Aes256GcmSiv => AES_256_GCM_SIV_MAC_LENGTH,
         }
+    }
+
+    /// Smallest accepted authentication tag length in bytes when a tag is truncated.
+    ///
+    /// GCM: 12 bytes (96 bits), the shortest general-purpose tag of NIST SP 800-38D (the 32 and
+    /// 64-bit tags are reserved for special applications). ChaCha20-Poly1305: 12 bytes as well,
+    /// because the KMIP mandatory profile vector `CS-BC-M-CHACHA20POLY1305-1-21` decrypts with a
+    /// 12-byte tag. Every other cipher only accepts its full tag.
+    #[must_use]
+    pub const fn min_tag_size(&self) -> usize {
+        match self {
+            Self::Aes128Gcm | Self::Aes192Gcm | Self::Aes256Gcm => 12,
+            #[cfg(feature = "non-fips")]
+            Self::Chacha20Poly1305 => 12,
+            _ => self.tag_size(),
+        }
+    }
+
+    /// Check that `tag_len` bytes is an acceptable tag length for decryption with this cipher.
+    ///
+    /// # Errors
+    /// `CryptoError::InvalidTag` when the length is outside `min_tag_size()..=tag_size()`.
+    pub fn check_tag_length(&self, tag_len: usize) -> Result<(), CryptoError> {
+        if (self.min_tag_size()..=self.tag_size()).contains(&tag_len) {
+            return Ok(());
+        }
+        Err(CryptoError::InvalidTag(format!(
+            "invalid tag length for {self:?}: expected {} to {} bytes, got {tag_len}",
+            self.min_tag_size(),
+            self.tag_size()
+        )))
     }
 
     /// Get the nonce size in bytes.
@@ -551,7 +582,7 @@ pub fn encrypt(
         }
         #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-            aes_gcm_siv_not_openssl::encrypt(key, nonce, aad, plaintext)
+            aes_gcm_siv::encrypt(key, nonce, aad, plaintext)
         }
         SymCipher::Rfc5649_16 | SymCipher::Rfc5649_24 | SymCipher::Rfc5649_32 => {
             Ok((rfc5649_wrap(plaintext, key)?, vec![]))
@@ -703,7 +734,7 @@ pub fn decrypt(
         }
         #[cfg(feature = "non-fips")]
         SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-            aes_gcm_siv_not_openssl::decrypt(key, nonce, aad, ciphertext, tag)?
+            aes_gcm_siv::decrypt(key, nonce, aad, ciphertext, tag)?
         }
         SymCipher::Rfc3394_16 | SymCipher::Rfc3394_24 | SymCipher::Rfc3394_32 => {
             info!(
@@ -735,7 +766,8 @@ pub fn decrypt(
             Zeroizing::from(out)
         }
         _ => {
-            // Decryption.
+            // AEAD (GCM, ChaCha20-Poly1305): OpenSSL accepts any tag length from 1 byte.
+            sym_cipher.check_tag_length(tag.len())?;
             Zeroizing::from(openssl_decrypt_aead(
                 sym_cipher.to_openssl_cipher()?,
                 key,
@@ -753,12 +785,16 @@ pub enum UnderlyingCipher {
     AesGcmSiv,
 }
 
-/// A stream cipher for encryption or decryption. /
+/// A stream cipher for encryption or decryption.
 pub struct StreamCipher {
     underlying_cipher: UnderlyingCipher,
     mode: Mode,
     block_size: usize,
     tag_size: usize,
+    sym_cipher: SymCipher,
+    /// XTS treats every `EVP` update as a whole data unit, so input is parked until the end;
+    /// every other cipher is handed straight to OpenSSL, which buffers partial blocks itself.
+    park_last_block: bool,
     buffer: Vec<u8>,
 }
 
@@ -838,7 +874,7 @@ impl StreamCipher {
         match sym_cipher {
             #[cfg(feature = "non-fips")]
             SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
-                // TODO: the pure Rust crate does not support streaming. When openssl id exposed, this should be fixed
+                // RFC 8452 SIV is two-pass: OpenSSL accepts the whole message in a single update
                 Err(CryptoError::NotSupported(
                     "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
                 ))
@@ -860,15 +896,33 @@ impl StreamCipher {
                     mode,
                     block_size,
                     tag_size: sym_cipher.tag_size(),
+                    sym_cipher,
+                    park_last_block: matches!(
+                        sym_cipher,
+                        SymCipher::Aes128Xts | SymCipher::Aes256Xts
+                    ),
                     buffer: vec![],
                 })
             }
         }
     }
 
+    /// Enable or disable PKCS#5 padding (only meaningful for ECB and CBC).
+    pub fn set_padding(&mut self, padding: bool) {
+        if let UnderlyingCipher::Openssl(c) = &mut self.underlying_cipher {
+            c.pad(padding);
+        }
+    }
+
     pub fn update(&mut self, bytes: &[u8]) -> CryptoResult<Vec<u8>> {
-        match self.underlying_cipher {
-            UnderlyingCipher::Openssl(ref mut c) => {
+        match &mut self.underlying_cipher {
+            UnderlyingCipher::Openssl(c) => {
+                if !self.park_last_block {
+                    let mut output = vec![0; bytes.len() + self.block_size];
+                    let len = c.update(bytes, &mut output)?;
+                    output.truncate(len);
+                    return Ok(output);
+                }
                 // prepend the remaining bytes from the buffer
                 let available_bytes = [self.buffer.clone(), bytes.to_vec()].concat();
                 // we only encrypt or decrypt in block sizes because XTS requires it (not GCM)
@@ -967,13 +1021,7 @@ impl StreamCipher {
                 };
                 // Set the tag if it exists and we are decrypting.
                 if self.tag_size > 0 {
-                    if tag.len() != self.tag_size {
-                        crypto_bail!(CryptoError::Default(format!(
-                            "tag length mismatch. Expected: {}, got: {}",
-                            self.tag_size,
-                            tag.len()
-                        )));
-                    }
+                    self.sym_cipher.check_tag_length(tag.len())?;
                     c.set_tag(tag)?;
                 }
                 // finalize

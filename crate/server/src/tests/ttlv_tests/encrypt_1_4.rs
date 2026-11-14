@@ -55,13 +55,13 @@ pub(super) fn encrypt(
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Encrypt,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::Encrypt(Box::new(Encrypt {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     cryptographic_parameters: Some(CryptographicParameters {
                         block_cipher_mode: Some(BlockCipherMode::GCM),
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -76,7 +76,7 @@ pub(super) fn encrypt(
                 })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client

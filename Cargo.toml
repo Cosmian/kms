@@ -14,8 +14,10 @@ members = [
   "crate/clients/clap",
   "crate/clients/ckms",
   "crate/clients/k8s/plugin",
+  "crate/clients/k8s/plugin_proto",
   "crate/clients/k8s/operator",
   "crate/clients/k8s/csi_provider",
+  "crate/clients/k8s/csi_provider_proto",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
   "crate/clients/cng",
@@ -56,62 +58,65 @@ unsafe_code = "deny"
 
 # ── Safety & security (new in 1.92–1.97) ─────────────────────────────
 # All unsafe operations inside unsafe fns must be in explicit unsafe { } blocks.
-unsafe-op-in-unsafe-fn = "deny"
+unsafe_op_in_unsafe_fn = "deny"
 # Unsafe attributes (e.g. unsafe(no_mangle)) must be inside unsafe { }.
-unsafe-attr-outside-unsafe = "deny"
+unsafe_attr_outside_unsafe = "deny"
 # All extern declarations must be marked `unsafe extern`.
-missing-unsafe-on-extern = "deny"
+missing_unsafe_on_extern = "deny"
 # Non-binding `let _ = expr` on types with Drop (lock guards, etc.) — forces `let _guard =`.
-let-underscore-drop = "deny"
+let_underscore_drop = "deny"
 
 # ── Edition 2024 migration hardening ─────────────────────────────────
 # Items that became unsafe in edition 2024 must not be used as safe.
-deprecated-safe-2024 = "deny"
+deprecated_safe_2024 = "deny"
 # `if let` temporary lifetime rescoping in edition 2024.
-if-let-rescope = "deny"
+if_let_rescope = "deny"
 # `impl Trait` captures more lifetimes in edition 2024; flag potential changes now.
-impl-trait-overcaptures = "deny"
+impl_trait_overcaptures = "deny"
 # Emit a warning when `expr` fragment specifier semantics change in 2024.
-edition-2024-expr-fragment-specifier = "deny"
+edition_2024_expr_fragment_specifier = "deny"
 # Keywords reserved in edition 2024 must not be used as identifiers.
-keyword-idents-2024 = "deny"
+keyword_idents_2024 = "deny"
 # Tail-expression drop order changes in edition 2024.
-tail-expr-drop-order = "deny"
+tail_expr_drop_order = "deny"
 # Prelude trait method collisions in edition 2024.
-rust-2024-prelude-collisions = "deny"
+rust_2024_prelude_collisions = "deny"
 
 # ── API correctness ───────────────────────────────────────────────────
 refining_impl_trait = "deny"
 
+# ── Correctness & hygiene ─────────────────────────────────────────────
+non_ascii_idents = "deny"
+ambiguous_negative_literals = "deny"
+redundant_lifetimes = "deny"
+unit_bindings = "deny"
+meta_variable_misuse = "deny"
+deprecated_in_future = "deny"
+
 [workspace.lints.clippy]
-# Main clippy categories
-pedantic = { level = "deny", priority = 90 }
-# KmsRng policy (clippy.toml): pinned above every group so no group-level allow can switch them off.
-disallowed_methods = { level = "deny", priority = 100 }
-disallowed_types = { level = "deny", priority = 100 }
-all = { level = "deny", priority = 80 }
-suspicious = { level = "deny", priority = 70 }
-complexity = { level = "deny", priority = 60 }
-perf = { level = "deny", priority = 50 }
-style = { level = "deny", priority = 40 }
-cargo = { level = "deny", priority = 30 }
-nursery = { level = "deny", priority = 20 }
+# Groups at priority -1: every individual lint below (default priority 0) overrides them.
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 
-# Common allows (to be selectively enabled by crates as needed)
-similar_names = { level = "allow", priority = 91 }
-too_many_lines = { level = "allow", priority = 91 }
-ref_option = { level = "allow", priority = 91 }
-missing_errors_doc = { level = "allow", priority = 91 }
-multiple_crate_versions = { level = "allow", priority = 31 }
-redundant_pub_crate = { level = "allow", priority = 21 }
-future_not_send = { level = "allow", priority = 21 }
-cognitive_complexity = { level = "allow", priority = 21 }
-significant_drop_tightening = { level = "allow", priority = 21 }
-iter_with_drain = { level = "allow", priority = 21 }
-too_long_first_doc_paragraph = { level = "allow", priority = 21 }
+# KmsRng policy (clippy.toml): never allow these; see rust.instructions.md § Randomness.
+disallowed_methods = "deny"
+disallowed_types = "deny"
 
-# Restriction lints (from server and other crates)
-module_name_repetitions = "allow"
+# Group lints the workspace opts out of
+similar_names = "allow"
+too_many_lines = "allow"
+ref_option = "allow"
+missing_errors_doc = "allow"
+multiple_crate_versions = "allow"
+redundant_pub_crate = "allow"
+future_not_send = "allow"
+significant_drop_tightening = "allow"
+iter_with_drain = "allow"
+too_long_first_doc_paragraph = "allow"
+
+# Restriction lints
 unwrap_used = "deny"
 get_unwrap = "deny"
 expect_used = "deny"
@@ -124,19 +129,37 @@ panic_in_result_fn = "deny"
 renamed_function_params = "deny"
 verbose_file_reads = "deny"
 str_to_string = "deny"
-implicit_clone = "deny"
 unreachable = "deny"
 as_conversions = "deny"
 print_stdout = "deny"
 empty_structs_with_brackets = "deny"
 unseparated_literal_suffix = "deny"
 map_err_ignore = "deny"
-redundant_clone = "deny"
+dbg_macro = "deny"
+todo = "deny"
+exit = "deny"
+try_err = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
+# Restriction lints with zero current violations, or fixed in this change
+unimplemented = "deny"
+suspicious_xor_used_as_pow = "deny"
+empty_drop = "deny"
+empty_enum_variants_with_brackets = "deny"
+float_cmp_const = "deny"
+mixed_read_write_in_expression = "deny"
+infinite_loop = "deny"
+rc_mutex = "deny"
+fn_to_numeric_cast_any = "deny"
+filetype_is_file = "deny"
+unnecessary_self_imports = "deny"
+precedence_bits = "deny"
 
 [workspace.package]
 version = "5.29.0"
 edition = "2024"
-rust-version = "1.87.0"
+rust-version = "1.93.0"
 authors = [
   "Bruno Grieder <bruno.grieder@cosmian.com>",
   "Emmanuel Coste <emmanuel.coste@cosmian.com>",
@@ -176,6 +199,7 @@ debug = 2               # Full DWARF: line-level attribution + reliable unwindin
 codegen-units = 1       # Keep single CGU for realistic inlining
 
 [profile.dev]
+debug = false # strip = "debuginfo" discards it anyway; generating it only slows compile/link
 strip = "debuginfo"
 incremental = false
 panic = "abort" # prevent UB from unwinding panics across extern "C" boundary
@@ -218,7 +242,7 @@ utimaco_pkcs11_loader = { path = "crate/hsm/utimaco", version = "5.29.0" }
 
 # Cosmian crates
 cosmian_config_utils = "0.7"
-cosmian_cover_crypt = "16.0.1"
+cosmian_cover_crypt = "16.0"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = ["ser"] }
 cosmian_findex = "8.0.2"
 cosmian_logger = "0.8"
@@ -226,17 +250,13 @@ cosmian_sse_memories = "8.0.2"
 
 # External crates
 actix-cors = "0.6"
-actix-files = "0.6"
+actix-files = "0.7"
 actix-http = "3.12"
 actix-identity = "0.6"
-actix-rt = "2.10"
 actix-server = { version = "2.5", default-features = false }
 actix-session = { version = "0.8" }
 actix-tls = "3.4"
 actix-web = { version = "4.12", default-features = false }
-aes-gcm-siv = "0.11.1"
-aes-kw = "0.3.1"
-argon2 = "0.5"
 assert_cmd = "2.0"
 async-recursion = "1.1"
 async-trait = "0.1"
@@ -248,10 +268,8 @@ bytes = "1"
 cc = "1.4"
 chrono = "0.4"
 clap = { version = "4.5", default-features = false }
-# `yaml` is deliberately not enabled: figment's YAML backend pulls in serde_yaml -> unsafe-libyaml (RUSTSEC-2024-0449)
-clap-config-fallback = { version = "0.1", default-features = false, features = ["derive", "toml", "json"] }
+clap-config-fallback = { version = "0.3", default-features = false, features = ["derive", "toml", "json"] }
 console_error_panic_hook = "0.1"
-const-oid = "0.9.6"
 criterion = { version = "0.6", default-features = false, features = [
   "html_reports",
   "async_tokio",
@@ -263,14 +281,11 @@ deadpool-postgres = "0.14"
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = ["editor", "fuzzy-select", "history", "password", "completion"] }
 dotenvy = "0.15"
-etcetera = "0.11.0"
 foreign-types = "0.3"
-fs4 = "0.13"
 futures = "0.3"
 getrandom = "0.2"
 governor = "0.10"
 hex = { version = "0.4", default-features = false }
-hmac = { version = "0.12", features = ["std"] }
 http = "1.4"
 http-body-util = "0.1"
 humantime = "2"
@@ -278,13 +293,11 @@ hyper = "1"
 hyper-openssl = "0.10"
 hyper-util = "0.1"
 ipnet = "2"
-itertools = "0.10"
 js-sys = "0.3"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 k256 = "0.14"
 k8s-openapi = "0.28"
 kube = "4.2"
-lazy_static = "1.5"
 leb128 = "0.2"
 libc = "0.2"
 libloading = "0.8"
@@ -294,9 +307,7 @@ mockall = "0.13"
 moka = { version = "0.12", default-features = false, features = ["future"] }
 mysql_async = { version = "0.37", default-features = false }
 native-tls = { version = "0.2", default-features = false }
-num-bigint = { version = "0.5", default-features = false }
 num-bigint-dig = { version = "0.9", default-features = false }
-num-format = "0.4"
 num-traits = "0.2"
 oauth2 = { version = "5.0", default-features = false }
 openssl = { version = "0.10", default-features = false }
@@ -304,10 +315,8 @@ openssl-sys = "0.9"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = { version = "0.32", features = ["metrics"] }
-p256 = { version = "0.13", default-features = false }
 pem = "3.0"
 pgp = { version = "0.21", default-features = false }
-pkcs1 = "0.7"
 pkcs11-sys = "0.2"
 postgres-openssl = "0.5"
 predicates = "3.1"
@@ -317,7 +326,6 @@ quick-xml = "0.42"
 quote = "1.0"
 rand = "0.10"
 rand_chacha = "0.10"
-rand_core = "0.10"
 rand_distr = "0.6"
 rawsql = "0.1"
 rcgen = { version = "0.14", default-features = false }
@@ -337,16 +345,13 @@ serde_urlencoded = "0.7"
 serde-saphyr = "1.3"
 serial_test = "3.2.0"
 sha2 = { version = "0.10", default-features = false }
-sha3 = { version = "0.10", default-features = false }
 spiffe = "0.16"
 strum = { version = "0.27", default-features = false }
 strum_macros = { version = "0.27", default-features = false }
-subtle = "2.6"
 syn = "2.0"
 tempfile = "3.19"
 thiserror = "2.0"
 time = "0.3"
-tiny-keccak = "2.0"
 tokio = { version = "1.44", default-features = false }
 tokio-postgres = { version = "0.7.18", default-features = false }
 tokio-rusqlite = "0.7"

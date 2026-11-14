@@ -46,7 +46,7 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
@@ -64,8 +64,8 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
                     }),
                 }),
                 message_extension: None,
-            }),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            })),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
@@ -83,8 +83,8 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
                     }),
                 }),
                 message_extension: None,
-            }),
-            RequestMessageBatchItemVersioned::V21(RequestMessageBatchItem {
+            })),
+            RequestMessageBatchItemVersioned::V21(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
@@ -102,7 +102,7 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
                     }),
                 }),
                 message_extension: None,
-            }),
+            })),
         ],
     };
 

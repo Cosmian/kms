@@ -49,7 +49,7 @@ pub(super) fn get_symmetric_key_1_0(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -57,12 +57,13 @@ pub(super) fn get_symmetric_key_1_0(client: &SocketClient, key_id: &str) {
                 request_payload: Operation::Get(Get {
                     unique_identifier: Some(key_id.to_owned()),
                     key_format_type: None,
+                    key_wrap_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -94,7 +95,7 @@ pub(super) fn get_symmetric_key_1_0(client: &SocketClient, key_id: &str) {
     // Safety: ensure the TTLV roundtrip decoding still works.
     let decoded_ttlv = TTLV::from_bytes(&response_bytes, kmip_flavor)
         .expect("Failed to decode serialized response TTLV");
-    let decoded: ResponseMessage = from_ttlv(decoded_ttlv).expect("Failed to decode response");
+    let decoded: ResponseMessage = from_ttlv(&decoded_ttlv).expect("Failed to decode response");
 
     // Stronger KMIP 1.0 assertion: ensure the returned KeyValue attributes do not contain
     // unsupported fields (Fresh/InitialDate). Other attributes may be present.

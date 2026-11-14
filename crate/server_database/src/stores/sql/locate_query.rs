@@ -7,7 +7,7 @@ use cosmian_kmip::{
         kmip_types::{LinkedObjectIdentifier::TextString, NameType, UniqueIdentifier},
     },
 };
-use cosmian_kms_interfaces::FindOptions;
+use cosmian_kms_interfaces::{DestroyedFilter, FindOptions};
 
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
@@ -107,6 +107,17 @@ pub(super) trait PlaceholderTrait {
     #[must_use]
     fn extract_object_type() -> String {
         Self::extract_attribute_path(&["ObjectType"])
+    }
+
+    /// SQL expression sorting objects by creation time. The Initial Date attribute is stored
+    /// as a UTC `YYYY-MM-DD HH:MM:SS.fraction +00:00:00` string, which sorts chronologically
+    /// as text. Objects without an Initial Date sort last.
+    #[must_use]
+    fn creation_order_key() -> String {
+        format!(
+            "COALESCE({}, '')",
+            Self::extract_attribute_path(&["InitialDate"])
+        )
     }
 }
 
@@ -221,6 +232,14 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
     fn extract_object_type() -> String {
         "(objects.attributes)::jsonb ->> 'ObjectType'".to_owned()
+    }
+
+    /// `ORDER BY` key: byte-wise comparison, independent of the database collation.
+    fn creation_order_key() -> String {
+        format!(
+            "COALESCE({}, '') COLLATE \"C\"",
+            Self::extract_attribute_path(&["InitialDate"])
+        )
     }
 }
 
@@ -473,9 +492,10 @@ fn select_from_objects<P: PlaceholderTrait>(
     } else {
         ""
     };
+    let creation_key = P::creation_order_key();
     let mut query = format!(
-        "SELECT {distinct}objects.id as id, objects.state as state, objects.attributes as attrs \
-         FROM objects"
+        "SELECT {distinct}objects.id as id, objects.state as state, objects.attributes as attrs, \
+         {creation_key} as creation_key FROM objects"
     );
     if let Some(attributes) = attributes {
         // `get_tags` returns a `HashSet`: sort the tags so that the same search
@@ -498,8 +518,7 @@ fn select_from_objects<P: PlaceholderTrait>(
 }
 
 /// Append the state filter: an exact match when `state` is set, otherwise the
-/// exclusion of destroyed objects when `options.exclude_destroyed` is set.
-/// Returns the updated `where_added` flag.
+/// destroyed-object filter from `options`. Returns the updated `where_added` flag.
 fn apply_state_condition<P: PlaceholderTrait>(
     qb: &mut LocateQueryBuilder<P>,
     query: &mut String,
@@ -516,22 +535,32 @@ fn apply_state_condition<P: PlaceholderTrait>(
             qb.bind_text(state_s)
         );
         true
-    } else if options.exclude_destroyed {
-        let destroyed: &'static str = State::Destroyed.into();
-        let destroyed_compromised: &'static str = State::Destroyed_Compromised.into();
-        let _ = write!(
-            query,
-            " {keyword} objects.state NOT IN ({}, {})",
-            qb.bind_text(destroyed),
-            qb.bind_text(destroyed_compromised)
-        );
-        true
     } else {
-        where_added
+        let (operator, should_filter) = match options.destroyed {
+            DestroyedFilter::Include => ("", false),
+            DestroyedFilter::Exclude => ("NOT IN", true),
+            DestroyedFilter::Only => ("IN", true),
+        };
+        if should_filter {
+            let destroyed: &'static str = State::Destroyed.into();
+            let destroyed_compromised: &'static str = State::Destroyed_Compromised.into();
+            let _ = write!(
+                query,
+                " {keyword} objects.state {operator} ({}, {})",
+                qb.bind_text(destroyed),
+                qb.bind_text(destroyed_compromised)
+            );
+            true
+        } else {
+            where_added
+        }
     }
 }
 
-/// Append `LIMIT` when `options.limit` is set. Must be the last clause.
+/// Append a deterministic `ORDER BY` and `LIMIT` when `options.limit` is set. Must be the
+/// last clause: without an order, pages taken as `offset + max` rows could skip or repeat
+/// objects between requests. Objects are returned newest first (KMIP 2.1 §6.1.28: Locate
+/// results are in descending order of creation), the UID breaking ties.
 fn apply_limit<P: PlaceholderTrait>(
     qb: &mut LocateQueryBuilder<P>,
     query: &mut String,
@@ -539,7 +568,7 @@ fn apply_limit<P: PlaceholderTrait>(
 ) {
     if let Some(limit) = options.limit {
         let limit = qb.bind_i64(i64::try_from(limit).unwrap_or(i64::MAX));
-        let _ = write!(query, " LIMIT {limit}");
+        let _ = write!(query, " ORDER BY creation_key DESC, id LIMIT {limit}");
     }
 }
 
@@ -713,7 +742,7 @@ pub(super) fn filter_due_for_rotation(
 #[cfg(test)]
 mod tests {
     use cosmian_kmip::kmip_2_1::{extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes};
-    use cosmian_kms_interfaces::FindOptions;
+    use cosmian_kms_interfaces::{DestroyedFilter, FindOptions};
 
     use super::{
         LocateParam, MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder,
@@ -739,7 +768,8 @@ mod tests {
             VENDOR_ID_COSMIAN,
             &FindOptions {
                 limit: Some(1000),
-                exclude_destroyed: true,
+                destroyed: DestroyedFilter::Exclude,
+                ..FindOptions::default()
             },
         );
         let sql = &query.sql;
@@ -748,6 +778,11 @@ mod tests {
         assert!(sql.contains("EXISTS (SELECT 1 FROM read_access"), "{sql}");
         assert!(sql.contains("objects.state NOT IN"), "{sql}");
         assert!(sql.contains("LIMIT $"), "{sql}");
+        assert!(
+            sql.contains("ORDER BY creation_key DESC, id LIMIT"),
+            "{sql}"
+        );
+        assert!(sql.contains("COLLATE \"C\" as creation_key"), "{sql}");
         assert!(!sql.contains('?'), "PG uses numbered placeholders: {sql}");
         assert_eq!(sql.matches('$').count(), query.params.len(), "{sql}");
     }
@@ -801,11 +836,16 @@ mod tests {
             VENDOR_ID_COSMIAN,
             &FindOptions {
                 limit: Some(10),
-                exclude_destroyed: true,
+                destroyed: DestroyedFilter::Exclude,
+                ..FindOptions::default()
             },
         );
         let sql = &query.sql;
-        assert!(!sql.contains('$'), "MySQL uses `?`: {sql}");
+        // `$` still appears in JSON paths such as `'$.InitialDate'`; only `$n` is a placeholder.
+        assert!(
+            !(1..=query.params.len()).any(|i| sql.contains(&format!("${i}"))),
+            "MySQL uses `?`: {sql}"
+        );
         assert!(sql.contains("INNER JOIN tags t0"), "{sql}");
         assert!(sql.contains("LIMIT ?"), "{sql}");
         assert_eq!(sql.matches('?').count(), query.params.len(), "{sql}");
@@ -821,7 +861,8 @@ mod tests {
             VENDOR_ID_COSMIAN,
             &FindOptions {
                 limit: Some(10),
-                exclude_destroyed: true,
+                destroyed: DestroyedFilter::Exclude,
+                ..FindOptions::default()
             },
         );
         let sql = &query.sql;

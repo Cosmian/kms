@@ -171,7 +171,7 @@ fn query(client: &SocketClient) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Query,
                 ephemeral: None,
@@ -188,7 +188,7 @@ fn query(client: &SocketClient) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -215,13 +215,14 @@ fn locate_by_name(client: &SocketClient, name_value: &str) -> Vec<String> {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Locate,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Locate(Locate {
                     maximum_items: None,
+                    offset_items: None,
                     storage_status_mask: None,
                     object_group_member: None,
                     attribute: Some(vec![Attribute::Name(Name {
@@ -232,7 +233,7 @@ fn locate_by_name(client: &SocketClient, name_value: &str) -> Vec<String> {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -286,7 +287,7 @@ fn register_volume_key(client: &SocketClient) -> String {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Register,
                 ephemeral: None,
@@ -307,7 +308,7 @@ fn register_volume_key(client: &SocketClient) -> String {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -346,17 +347,17 @@ fn activate_volume_key(client: &SocketClient, uid: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Activate,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Activate(Activate {
-                    unique_identifier: uid.to_owned(),
+                    unique_identifier: Some(uid.to_owned()),
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -391,7 +392,7 @@ fn get_attribute_list(client: &SocketClient, uid: &str) {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
+            Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributeList,
                 ephemeral: None,
                 unique_batch_item_id: None,
@@ -401,7 +402,7 @@ fn get_attribute_list(client: &SocketClient, uid: &str) {
                     },
                 ),
                 message_extension: None,
-            },
+            }),
         )],
     };
 
@@ -430,7 +431,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
+            Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::GetAttributes,
                 ephemeral: None,
                 unique_batch_item_id: None,
@@ -444,7 +445,7 @@ fn get_attributes(client: &SocketClient, uid: &str) {
                     },
                 ),
                 message_extension: None,
-            },
+            }),
         )],
     };
 
@@ -473,7 +474,7 @@ fn get_key(client: &SocketClient, uid: &str) {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V14(
-            RequestMessageBatchItem {
+            Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
                 unique_batch_item_id: None,
@@ -481,12 +482,13 @@ fn get_key(client: &SocketClient, uid: &str) {
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::Get {
                         unique_identifier: Some(uid.to_owned()),
                         key_format_type: None,
+                        key_wrap_type: None,
                         key_compression_type: None,
                         key_wrapping_specification: None,
                     },
                 ),
                 message_extension: None,
-            },
+            }),
         )],
     };
 
@@ -527,7 +529,7 @@ fn modify_name_to_uuid(client: &SocketClient, uid: &str, new_name: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::ModifyAttribute,
                 ephemeral: None,
@@ -541,7 +543,7 @@ fn modify_name_to_uuid(client: &SocketClient, uid: &str, new_name: &str) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -647,9 +649,9 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem::new(
-                Operation21::Create(create_request),
-            ),
+            Box::new(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem::new(
+                Operation21::Create(Box::new(create_request)),
+            )),
         )],
     };
     let create_resp = kms.message(request, &UserId::from(owner.as_str())).await?;
@@ -673,7 +675,7 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::ModifyAttribute,
                 ephemeral: None,
@@ -687,7 +689,7 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
     let modify_resp = kms
         .message(modify_request, &UserId::from(owner.as_str()))
@@ -715,7 +717,7 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
             ..Default::default()
         },
         batch_item: vec![RequestMessageBatchItemVersioned::V21(
-            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem::new(
+            Box::new(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_messages::RequestMessageBatchItem::new(
                 Operation21::Destroy(
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Destroy {
                         unique_identifier: Some(UniqueIdentifier::TextString(kek_uid.clone())),
@@ -724,7 +726,7 @@ async fn test_issue_933_modify_attribute_kmip12_payload() -> KResult<()> {
                         expected_object_type: None,
                     },
                 ),
-            ),
+            )),
         )],
     };
     drop(

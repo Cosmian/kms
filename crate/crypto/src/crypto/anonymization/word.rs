@@ -64,7 +64,7 @@ pub struct WordMasker {
     /// A set of words to be masked in the text.
     word_list: HashSet<String>,
     /// Pre-compiled pattern used to extract word tokens from text.
-    word_pattern: Regex,
+    pattern: Regex,
 }
 const MASK: &str = "XXXX";
 
@@ -75,14 +75,11 @@ impl WordMasker {
     ///
     /// * `words_to_block`: A slice of string references containing the words to
     ///   be masked in the text.
-    #[must_use]
-    // The hardcoded literal `r"\b\w+\b"` is always a valid regex; expect() cannot panic here.
-    #[allow(clippy::expect_used, clippy::missing_panics_doc)]
-    pub fn new(words_to_block: &[&str]) -> Self {
-        Self {
+    pub fn new(words_to_block: &[&str]) -> Result<Self, AnoError> {
+        Ok(Self {
             word_list: words_to_block.iter().map(|s| s.to_lowercase()).collect(),
-            word_pattern: Regex::new(r"\b\w+\b").expect("hardcoded regex is valid"),
-        }
+            pattern: Regex::new(r"\b\w+\b")?,
+        })
     }
 
     /// Masks the specified words in the given text.
@@ -96,15 +93,13 @@ impl WordMasker {
     /// Text without the sensitive words.
     #[must_use]
     pub fn apply(&self, data: &str) -> String {
-        let result = self
-            .word_pattern
-            .replace_all(data, |caps: &regex::Captures| {
-                if self.word_list.contains(&caps[0].to_lowercase()) {
-                    MASK.to_owned()
-                } else {
-                    caps[0].to_owned()
-                }
-            });
+        let result = self.pattern.replace_all(data, |caps: &regex::Captures| {
+            if self.word_list.contains(&caps[0].to_lowercase()) {
+                MASK.to_owned()
+            } else {
+                caps[0].to_owned()
+            }
+        });
         result.into_owned()
     }
 }

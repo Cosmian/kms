@@ -4,8 +4,8 @@ pub mod wizard;
 
 pub use command_line::*;
 pub use params::{
-    AuditBackendParams, HsmInstanceParams, KmipPolicyParams, OpenTelemetryConfig, ProxyParams,
-    ServerParams, TlsParams,
+    AuditBackendParams, EstParams, HsmInstanceParams, KmipPolicyParams, OcspParams,
+    OpenTelemetryConfig, ProxyParams, ScepParams, ServerParams, TlsParams, UiParams, VaultParams,
 };
 
 #[derive(Debug, Clone)]

@@ -23,7 +23,7 @@ impl WordTokenizeAction {
             words: &self.words,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("word-tokenize", &req).await?;
-        resp.print();
+        resp.print()?;
         Ok(())
     }
 }

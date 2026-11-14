@@ -128,11 +128,12 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 | Library | What it provides |
 |---|---|
-| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm_v10`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
+| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
 | `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
 | `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
 | `.mise/lib/nix_helpers.sh` | Nix shell invocation, hash lookup |
+| `.mise/lib/common.sh` (`skip_test`, `run_test_leaves`) | Test leaves: `skip_test "<reason>"` exits 77 (SKIP); a group `_default` runs its adjacent leaves with `run_test_leaves`: see § Test leaves |
 | `.mise/lib/package_build.sh` | Deb/RPM build helpers |
 | `.mise/lib/package_smoke.sh` | Smoke-test helpers for packages |
 | `.mise/lib/spire_test.sh` | SPIRE suite helpers: `spire_listener_pids`, `spire_port_listening`, `spire_wait_port_closed`, `spire_stop_port`, `spire_reset_state`, `spire_ensure_certs`, `spire_build_auth_verifier` |
@@ -145,9 +146,18 @@ Never assume `common.sh` is already loaded; always guard the source.
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
 free-port allocation, or SHA-256 computation — all three already exist.
 
+## Test leaves — `skip_test`, `run_test_leaves`
+
+Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`, `pkcs11`, `interop`, `pki`, `obs`, `ui`, `cloud`, `k8s`, `pkg`; `spire/_default` is the single `spire` leaf). It checks its own prerequisites and calls `skip_test "<reason>"` (exit 77) when it cannot run here.
+
+- Prologue, in order: `source common.sh`, `source nix_helpers.sh` (only with `ensure_nix_shell` or `WITH_*`), `kms_init_env "${usage_variant:-<default>}" "${usage_link:-static}"`, `setup_test_logging`, `REPO_ROOT=` (only if used), gates (variant, OS, profile, env, local probes inside `if [ "${CI:-}" != true ]`, apt), `export WITH_*` + `ensure_nix_shell`, `docker compose up -d` (skip on failure). Snippets are listed in `.mise/tasks/test/README.md` § 1.
+- An upstream leaf (repository secrets) calls `print_error` before `skip_test` when `CI=true` and a secret is unset, so a green upstream CI leg proves it ran.
+- Never hand-roll a test aggregator: a group's `_default` is `run_test_leaves "$(dirname "$0")" <leaf>...`; add the new leaf to that list.
+- To run a leaf in CI, add its id to a leg of `.github/workflows/test_all.yml` (the leaf must declare `-v --variant`).
+
 ## Aggregator tasks — collect failures, report at the end
 
-For tasks that orchestrate multiple sub-steps, collect failures rather than aborting immediately:
+For non-test tasks that orchestrate multiple sub-steps, collect failures rather than aborting immediately (test groups use `run_test_leaves`, see above):
 
 ```bash
 FAILED=()
@@ -164,8 +174,8 @@ run_step() {
   fi
 }
 
-run_step "sqlite"  bash "${TASK_DIR}/sqlite"  --variant "${VARIANT}" --link "${LINK}"
-run_step "psql"    bash "${TASK_DIR}/psql"    --variant "${VARIANT}" --link "${LINK}"
+run_step "sqlite"  bash "${TASK_DIR}/db/sqlite"  --variant "${VARIANT}" --link "${LINK}"
+run_step "psql"    bash "${TASK_DIR}/db/psql"    --variant "${VARIANT}" --link "${LINK}"
 
 if [ ${#FAILED[@]} -gt 0 ]; then
   echo '' >&2
@@ -181,7 +191,7 @@ For conditional steps (FIPS-only, port-dependent):
 
 ```bash
 if [ "${VARIANT}" = "non-fips" ]; then
-  run_step "redis" bash "${TASK_DIR}/redis" --variant "${VARIANT}" --link "${LINK}"
+  run_step "redis" bash "${TASK_DIR}/db/redis" --variant "${VARIANT}" --link "${LINK}"
 fi
 ```
 
@@ -263,7 +273,7 @@ A task that simply forwards to another task should use `exec` to replace the she
 #USAGE   choices "static" "dynamic"
 #USAGE }
 set -euo pipefail
-exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/mariadb" "$@"
+exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/db/mariadb" "$@"
 ```
 
 Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
@@ -282,7 +292,7 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 
 | Scope                        | Convention                         | Example                                   |
 | ---------------------------- | ---------------------------------- | ----------------------------------------- |
-| Task files                   | `kebab-case`, no extension         | `.mise/tasks/test/psql`                   |
+| Task files                   | `kebab-case`, no extension         | `.mise/tasks/test/db/psql`                   |
 | Library files                | `snake_case.sh`                    | `.mise/lib/kms_server.sh`                 |
 | Library functions            | `snake_case`, prefixed by lib name | `kms_write_config`, `kms_build_server`    |
 | Private (internal) functions | leading underscore                 | `_wait_for_port`, `_warn_system_kms_conf` |
@@ -303,4 +313,5 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 2. Add the standard header (`#!/usr/bin/env bash`, `#MISE description`, `#USAGE …`, `set -euo pipefail`).
 3. Source only the libraries you need; prefer the smallest set.
 4. End with `print_success "…"` on the happy path.
-5. If the task orchestrates sub-tasks, use the `run_step` aggregator pattern.
+5. For a test, create it under `.mise/tasks/test/<group>/`, start with the leaf prologue and list it in the group `_default` (see § Test leaves).
+6. If a non-test task orchestrates sub-tasks, use the `run_step` aggregator pattern.

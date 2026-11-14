@@ -37,8 +37,9 @@
 
 mod core;
 pub use core::{
-    AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,
-    MainDbParams, ObjectCache, RotateNameCache, UnwrappedCache, redact_connection_string,
+    AdditionalObjectStoresParams, CacheParams, CachedObject, Database, DbMetricsRecorder,
+    MainDbKind, MainDbParams, ObjectCache, RotateNameCache, UnwrappedCache,
+    redact_connection_string,
 };
 pub mod ceremony_keys;
 pub use ceremony_keys::{CEREMONY_SECRET_LENGTH, CeremonyKeys, CeremonyPayload};
@@ -93,21 +94,19 @@ pub(crate) fn migrate_block_cipher_mode_if_needed(mut object: Object) -> Object 
 
     // Check if key_wrapping_data exists and has encryption_key_information
     if let Some(key_wrapping_data) = &mut key_block.key_wrapping_data {
-        if let Some(encryption_key_info) = &mut key_wrapping_data.encryption_key_information {
-            if let Some(crypto_params) = &mut encryption_key_info.cryptographic_parameters {
-                if crypto_params.block_cipher_mode == Some(BlockCipherMode::LegacyNISTKeyWrap) {
-                    crypto_params.block_cipher_mode = Some(BlockCipherMode::AESKeyWrapPadding);
-                }
-            }
+        if let Some(encryption_key_info) = &mut key_wrapping_data.encryption_key_information
+            && let Some(crypto_params) = &mut encryption_key_info.cryptographic_parameters
+            && crypto_params.block_cipher_mode == Some(BlockCipherMode::LegacyNISTKeyWrap)
+        {
+            crypto_params.block_cipher_mode = Some(BlockCipherMode::AESKeyWrapPadding);
         }
 
         // Also check MAC/signature key information (if present)
-        if let Some(mac_sign_key_info) = &mut key_wrapping_data.mac_signature_key_information {
-            if let Some(crypto_params) = &mut mac_sign_key_info.cryptographic_parameters {
-                if crypto_params.block_cipher_mode == Some(BlockCipherMode::LegacyNISTKeyWrap) {
-                    crypto_params.block_cipher_mode = Some(BlockCipherMode::AESKeyWrapPadding);
-                }
-            }
+        if let Some(mac_sign_key_info) = &mut key_wrapping_data.mac_signature_key_information
+            && let Some(crypto_params) = &mut mac_sign_key_info.cryptographic_parameters
+            && crypto_params.block_cipher_mode == Some(BlockCipherMode::LegacyNISTKeyWrap)
+        {
+            crypto_params.block_cipher_mode = Some(BlockCipherMode::AESKeyWrapPadding);
         }
     }
 

@@ -38,17 +38,6 @@ fn structure_header(tag: [u8; 3], content_len: u32) -> Vec<u8> {
     h
 }
 
-/// Build a complete well-formed Structure containing one Integer child.
-///
-/// The structure uses tag `0x42_007B` (`RequestMessage`), enclosing one `BatchCount` Integer.
-#[allow(dead_code)]
-fn valid_structure_with_integer() -> Vec<u8> {
-    let child = integer_item(); // 16 bytes
-    let mut buf = structure_header([0x42, 0x00, 0x7B], child.len() as u32);
-    buf.extend_from_slice(&child);
-    buf
-}
-
 /// Build `depth` nested Structures (tag `0x42_007B`), each wrapping the next.
 /// The innermost Structure contains a single `BatchCount` Integer leaf.
 ///
@@ -61,12 +50,15 @@ fn nested_structures(depth: usize) -> Vec<u8> {
 
     // Start from the inside: one empty structure containing the Integer leaf.
     let inner_content = leaf;
-    let mut inner: Vec<u8> = structure_header([0x42, 0x00, 0x7B], inner_content.len() as u32);
+    let mut inner: Vec<u8> = structure_header(
+        [0x42, 0x00, 0x7B],
+        u32::try_from(inner_content.len()).unwrap(),
+    );
     inner.extend_from_slice(&inner_content);
 
     // Wrap `depth - 1` more times (total: `depth` Structure headers are present)
     for _ in 1..depth {
-        let content_len = inner.len() as u32;
+        let content_len = u32::try_from(inner.len()).unwrap();
         let mut outer = structure_header([0x42, 0x00, 0x7B], content_len);
         outer.extend_from_slice(&inner);
         inner = outer;
@@ -239,7 +231,7 @@ fn w11_structure_length_zero_with_extra_bytes() {
 #[test]
 fn w12_depth_exactly_at_limit() {
     use crate::ttlv::MAX_TTLV_DEPTH;
-    let depth = MAX_TTLV_DEPTH as usize;
+    let depth = usize::try_from(MAX_TTLV_DEPTH).unwrap();
     let data = nested_structures(depth);
     let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
     assert!(
@@ -254,7 +246,7 @@ fn w12_depth_exactly_at_limit() {
 #[test]
 fn w13_depth_one_over_limit() {
     use crate::ttlv::MAX_TTLV_DEPTH;
-    let depth = (MAX_TTLV_DEPTH + 1) as usize;
+    let depth = usize::try_from(MAX_TTLV_DEPTH + 1).unwrap();
     let data = nested_structures(depth);
     let result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
     assert!(
@@ -282,24 +274,62 @@ fn w14_extreme_depth_no_stack_overflow() {
 }
 
 // ---------------------------------------------------------------------------
-// W15: Integer with wrong length declared (not 4) — parser reads 4 bytes anyway,
-//       but the extra bytes will be left in the stream; the caller does not check
-//       alignment for single-item reads, so this is an informational test.
-//       We verify the parser does not panic (returns a value or error).
+// W15: Integer with wrong length declared (not 4) is rejected: KMIP 2.1 Table 427
+//       fixes the length of Integer, Enumeration and Interval to 4 and of Long
+//       Integer, Boolean, Date Time and Date Time Extended to 8.
 // ---------------------------------------------------------------------------
 #[test]
 fn w15_integer_declared_length_zero() {
-    // Integer is always 4+4=8 bytes, independent of the declared length field.
-    // Length=0 is technically invalid per KMIP spec but we test parser robustness.
     let data = [
         0x42, 0x00, 0x0D, // tag: BatchCount
         0x02, // type: Integer
         0x00, 0x00, 0x00, 0x00, // length: 0 (wrong per spec, Integer must be 4)
-        0x00, 0x00, 0x00, 0x01, // value bytes (will be read as padding by Integer branch)
-        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, // value
+        0x00, 0x00, 0x00, 0x00, // padding
     ];
-    // Either succeeds or fails cleanly — must never panic
-    let _result = TTLV::from_bytes(&data, KmipFlavor::Kmip1);
+    TTLV::from_bytes(&data, KmipFlavor::Kmip1).unwrap_err();
+}
+
+// ---------------------------------------------------------------------------
+// W15b: a Boolean must encode exactly 0 or 1 (KMIP 2.1 Table 427)
+// ---------------------------------------------------------------------------
+#[test]
+fn w15b_boolean_value_must_be_zero_or_one() {
+    let mut data = vec![
+        0x42, 0x00, 0x26, // tag: CriticalityIndicator
+        0x06, // type: Boolean
+        0x00, 0x00, 0x00, 0x08, // length: 8
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    ];
+    TTLV::from_bytes(&data, KmipFlavor::Kmip2).unwrap();
+    data[8] = 0x01;
+    TTLV::from_bytes(&data, KmipFlavor::Kmip2).unwrap_err();
+}
+
+// ---------------------------------------------------------------------------
+// W15c: Structure lengths are multiples of 8; unknown tags report `UNKNOWN_TAG`
+//        while extension tags (0x54xxxx) decode under their hex name
+// ---------------------------------------------------------------------------
+#[test]
+fn w15c_structure_alignment_and_tags() {
+    let misaligned = [0x42, 0x00, 0x7B, 0x01, 0x00, 0x00, 0x00, 0x04, 0, 0, 0, 0];
+    TTLV::from_bytes(&misaligned, KmipFlavor::Kmip2).unwrap_err();
+
+    let unknown = [0x42, 0xFF, 0xFE, 0x01, 0x00, 0x00, 0x00, 0x00];
+    let error =
+        TTLV::from_bytes(&unknown, KmipFlavor::Kmip2).expect_err("tag 0x42FFFE is not defined");
+    assert!(
+        error.to_string().contains(crate::ttlv::UNKNOWN_TAG),
+        "{error}"
+    );
+
+    let extension = [0x54, 0x00, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00];
+    let ttlv = TTLV::from_bytes(&extension, KmipFlavor::Kmip2).expect("extension tag decodes");
+    assert_eq!(ttlv.tag, "0x540010");
+    assert_eq!(
+        ttlv.to_bytes(KmipFlavor::Kmip2).expect("re-encodes"),
+        extension
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +562,7 @@ fn w28_biginteger_oversized_length_rejected() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("exceeds maximum") || msg.contains("MAX"),
+        msg.contains(&format!("not exceed {MAX_TTLV_FIELD_BYTES}")),
         "error message must mention the length guard, got: {msg}"
     );
 }

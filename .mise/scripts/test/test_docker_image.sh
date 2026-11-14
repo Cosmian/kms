@@ -15,9 +15,9 @@ source "${SCRIPT_DIR}/../../lib/test_slots.sh"
 COMPOSE_FILE=".mise/scripts/docker-compose.yml"
 export COMPOSE_FILE
 
-# KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:docker).
+# KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker).
 # Accepted values: fips, non_fips
-: "${KMS_TLS_CONFIG_FLAVOR:?KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:docker)}"
+: "${KMS_TLS_CONFIG_FLAVOR:?KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker)}"
 echo "Using KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}"
 
 # Config paths
@@ -218,8 +218,8 @@ echo "=== TLS + non-root user test passed ==="
 
 # === FIPS / non-FIPS variant assertion ===
 # The /version endpoint embeds the OpenSSL build string, e.g.:
-#   "5.26.0 (OpenSSL 3.6.2 7 Apr 2026-FIPS)"       ← fips image
-#   "5.26.0 (OpenSSL 3.6.2 7 Apr 2026-non-FIPS)"   ← non-fips image
+#   "5.26.0 (OpenSSL 3.6.5 29 Sep 2026-FIPS)"       ← fips image
+#   "5.26.0 (OpenSSL 3.6.5 29 Sep 2026-non-FIPS)"   ← non-fips image
 # This catches accidentally shipping the wrong variant binary.
 echo "=== FIPS/non-FIPS variant check (KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}) ==="
 VERSION_STRING=$(curl -sf "http://127.0.0.1:${HOST_HTTP_PORT}/version")
@@ -277,5 +277,5 @@ bash .mise/scripts/oracle/set_hsm.sh
 
 docker compose -f "$COMPOSE_FILE" --profile oracle down --remove-orphans || true
 echo "Oracle TDE HSM test completed successfully"
-# Oracle TDE remote upgrade and smoke test is a separate step: mise run test:docker-oracle
+# Oracle TDE remote upgrade and smoke test is a separate step: mise run test:pkg:docker-oracle
 # It runs only on non-fips amd64, gated by the CI workflow condition.

@@ -19,12 +19,12 @@ use crate::{
 /// Supports `X25519MLKEM768` and `X448MLKEM1024` via OpenSSL 3.6+.
 ///
 /// Note: `SecP256r1MLKEM768` and `SecP384r1MLKEM1024` are NOT supported
-/// because OpenSSL 3.6.2 cannot serialize/deserialize their private keys.
+/// because OpenSSL 3.6.5 cannot serialize/deserialize their private keys.
 ///
 /// Hybrid KEM keys don't support DER serialization in OpenSSL 3.6,
 /// so raw key bytes are stored with `KeyFormatType::Raw`.
 ///
-/// `rng` is unused for hybrid KEMs: OpenSSL 3.6.2 generates composite keys atomically
+/// `rng` is unused for hybrid KEMs: OpenSSL 3.6.5 generates composite keys atomically
 /// without exposing a seed parameter (see `mlx_kmgmt.c`). Key generation draws from
 /// OpenSSL's internal default DRBG.
 pub fn create_hybrid_kem_key_pair(
@@ -54,7 +54,7 @@ pub fn create_hybrid_kem_key_pair(
 ///
 /// `algorithm` identifies the hybrid KEM variant.
 /// `public_key_raw` should be raw public key bytes (from `EVP_PKEY_get_raw_public_key`).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn hybrid_kem_encapsulate(
     algorithm: CryptographicAlgorithm,
     public_key_raw: &[u8],
@@ -69,7 +69,7 @@ pub fn hybrid_kem_encapsulate(
 ///
 /// `algorithm` identifies the hybrid KEM variant.
 /// `private_key_raw` should be raw private key bytes (from `EVP_PKEY_get_raw_private_key`).
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn hybrid_kem_decapsulate(
     algorithm: CryptographicAlgorithm,
     private_key_raw: &[u8],
@@ -89,7 +89,7 @@ pub fn hybrid_kem_decapsulate(
 }
 
 /// Inner encapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn encapsulate_raw(
     pkey: *mut openssl_sys::EVP_PKEY,
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
@@ -158,7 +158,7 @@ unsafe fn encapsulate_raw(
 }
 
 /// Inner decapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code)]
+#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 unsafe fn decapsulate_raw(
     pkey: *mut openssl_sys::EVP_PKEY,
     ciphertext: &[u8],
@@ -219,7 +219,6 @@ unsafe fn decapsulate_raw(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 
@@ -232,7 +231,7 @@ mod tests {
         let (ss1, ct) = hybrid_kem_encapsulate(algorithm, &pub_raw).expect("encapsulate");
         let ss2 = hybrid_kem_decapsulate(algorithm, &priv_raw, &ct).expect("decapsulate");
         assert_eq!(ss1, ss2);
-        assert!(!ss1.is_empty());
+        assert_ne!(ss1.len(), 0);
     }
 
     #[test]

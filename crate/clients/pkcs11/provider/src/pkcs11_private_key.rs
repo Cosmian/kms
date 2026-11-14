@@ -4,7 +4,7 @@ use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{KeyAlgorithm, PrivateKey, SearchOptions, SignatureAlgorithm, backend},
 };
-use pkcs1::{RsaPrivateKey, der::Decode};
+use openssl::pkey::PKey;
 use zeroize::Zeroizing;
 
 use crate::kms_object::{KmsObject, LazyKeyMaterial, key_algorithm_from_attributes};
@@ -91,31 +91,13 @@ impl PrivateKey for Pkcs11PrivateKey {
 
     fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
         let der_bytes = self.pkcs8_der_bytes()?;
-        let rsa_key = RsaPrivateKey::from_der(der_bytes.as_ref()).map_err(|e| {
-            error!("Failed to parse RSA private key: {:?}", e);
-            ModuleError::Cryptography("Failed to parse RSA private key".to_owned())
-        })?;
-        Ok(rsa_key.public_exponent.as_bytes().to_vec())
+        // Auto-detects PKCS#8 and PKCS#1, like the module's `rsa_from_private_key`.
+        let rsa_key = PKey::private_key_from_der(der_bytes.as_ref())
+            .and_then(|pkey| pkey.rsa())
+            .map_err(|e| {
+                error!("Failed to parse RSA private key: {:?}", e);
+                ModuleError::Cryptography("Failed to parse RSA private key".to_owned())
+            })?;
+        Ok(rsa_key.e().to_vec())
     }
-
-    // fn ec_p256_private_key(&self) -> MResult<p256::SecretKey> {
-    //     match self.algorithm {
-    //         KeyAlgorithm::EccP256 => {
-    //             let ec_p256 = p256::SecretKey::from_pkcs8_der(self.pkcs8_der_bytes()?.as_ref())
-    //                 .map_err(|e| {
-    //                     ModuleError::Cryptography(format!(
-    //                         "Failed to parse EC P256 private key: {:?}",
-    //                         e
-    //                     ))
-    //                 })?;
-    //             Ok(ec_p256)
-    //         }
-    //         _ => {
-    //             error!("Public key is not an EC P256 key");
-    //             Err(ModuleError::Cryptography(
-    //                 "Public key is not an EC P256 key".to_string(),
-    //             ))
-    //         }
-    //     }
-    // }
 }

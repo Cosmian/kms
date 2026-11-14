@@ -286,29 +286,27 @@ pub async fn validate_cse_authentication_token(
     // Don't use the email claim within the authentication token for this comparison.
     // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
     // Post-validation audience membership check under Google Drive resources only
-    if let Some(resource_name) = &is_priv_unwrap {
-        if resource_name.to_lowercase().contains("/drive/") {
-            if let Some(cfg) = working_jwt_config {
-                if let Some(allowed_audiences) = &cfg.jwt_audience {
-                    let token_audiences = authentication_token.aud.clone().unwrap_or_default();
-                    let matches_any = token_audiences
-                        .iter()
-                        .any(|aud| allowed_audiences.iter().any(|a| a == aud));
-                    let expected = format!("{allowed_audiences:?}");
-                    let got = if token_audiences.is_empty() {
-                        "<empty>".to_owned()
-                    } else {
-                        format!("{token_audiences:?}")
-                    };
-                    kms_ensure!(
-                        matches_any,
-                        KmsError::Unauthorized(format!(
-                            "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
-                        ))
-                    );
-                }
-            }
-        }
+    if let Some(resource_name) = &is_priv_unwrap
+        && resource_name.to_lowercase().contains("/drive/")
+        && let Some(cfg) = working_jwt_config
+        && let Some(allowed_audiences) = &cfg.jwt_audience
+    {
+        let token_audiences = authentication_token.aud.clone().unwrap_or_default();
+        let matches_any = token_audiences
+            .iter()
+            .any(|aud| allowed_audiences.iter().any(|a| a == aud));
+        let expected = format!("{allowed_audiences:?}");
+        let got = if token_audiences.is_empty() {
+            "<empty>".to_owned()
+        } else {
+            format!("{token_audiences:?}")
+        };
+        kms_ensure!(
+            matches_any,
+            KmsError::Unauthorized(format!(
+                "Authentication token audience not allowed. expected one of: {expected}, got: {got}"
+            ))
+        );
     }
 
     let authentication_email = if let Some(_resource_name) = is_priv_unwrap {
@@ -332,12 +330,11 @@ pub async fn validate_cse_authentication_token(
 
 /// Validate the authorization token and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[expect(clippy::ref_option)]
 pub(super) async fn validate_cse_authorization_token(
     authorization_token: &str,
     google_cse_kacls_url: &str,
     cse_config: &Option<GoogleCseConfig>,
-    #[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))] roles: Option<&[Role]>,
+    roles: Option<&[Role]>,
 ) -> KResult<UserClaim> {
     debug!("entering");
 
@@ -385,8 +382,7 @@ pub(super) async fn validate_cse_authorization_token(
 
     trace!("authorization token validated successfully");
 
-    #[cfg(all(not(test), not(feature = "insecure")))]
-    check_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
+    enforce_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
 
     if authorization_token.email.is_none() {
         return Err(KmsError::Unauthorized(
@@ -404,7 +400,6 @@ pub(super) struct TokenExtractedContent {
 
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-#[expect(clippy::ref_option)]
 pub(super) async fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
@@ -505,10 +500,27 @@ fn check_authentication_kacls_url(
     Ok(())
 }
 
+/// Whether authorization claims are enforced: production builds only (tests and `insecure` skip it).
+#[cfg(all(not(test), not(feature = "insecure")))]
+const ENFORCE_AUTHORIZATION_CLAIMS: bool = true;
+/// Whether authorization claims are enforced: production builds only (tests and `insecure` skip it).
+#[cfg(any(test, feature = "insecure"))]
+const ENFORCE_AUTHORIZATION_CLAIMS: bool = false;
+
+/// Run [`check_authorization_claims`] when [`ENFORCE_AUTHORIZATION_CLAIMS`] is set.
+fn enforce_authorization_claims(
+    token: &UserClaim,
+    google_cse_kacls_url: &str,
+    roles: Option<&[Role]>,
+) -> KResult<()> {
+    if ENFORCE_AUTHORIZATION_CLAIMS {
+        check_authorization_claims(token, google_cse_kacls_url, roles)
+    } else {
+        Ok(())
+    }
+}
+
 /// Check the role, resource name and KACLS URL claims of an authorization token.
-///
-/// Compiled out of `insecure` builds, but kept in test builds so it can be unit-tested.
-#[cfg(any(test, not(feature = "insecure")))]
 fn check_authorization_claims(
     token: &UserClaim,
     google_cse_kacls_url: &str,
@@ -545,7 +557,6 @@ fn check_authorization_claims(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
@@ -1054,6 +1065,10 @@ mod tests {
 
     #[ignore = "Requires Google CSE credentials; not available in CI"]
     #[tokio::test]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var is unsafe in edition 2024; test sets process env before any thread reads it"
+    )]
     async fn test_wrap_auth() {
         log_init(option_env!("RUST_LOG"));
 
@@ -1123,6 +1138,7 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
+        // SAFETY: the test mutates the environment before spawning any code that reads it.
         unsafe {
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
             std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI);
@@ -1305,7 +1321,7 @@ mod tests {
     async fn authentication_refresh_retry_still_fails() {
         let rsa = Rsa::generate(2048).unwrap();
         let jwks = build_jwks_manager_with_key("retry-kid", &rsa);
-        assert!(jwks.uris.is_empty());
+        assert_eq!(jwks.uris.len(), 0);
         jwks.refresh().await.unwrap();
         let cse_config = super::GoogleCseConfig {
             authentication: vec![JwtConfig {

@@ -223,14 +223,12 @@ macro_rules! aes_key_template {
 
 /// Macro to simplify HSM function calls with automatic return value checking
 /// An optional `; return_code` suffix lets the caller handle one non-`CKR_OK` code.
-#[macro_export]
 macro_rules! hsm_call {
     ($hsm_lib:expr, $msg:expr, $fn_name:ident $(, $args:expr)* $(; $allowed_rv:expr)?) => {
         {
             let hsm_lib_ref = &$hsm_lib;
             let function_name = stringify!($fn_name);
-            #[expect(unsafe_code)]
-            #[expect(clippy::macro_metavars_in_unsafe)]
+            #[expect(unsafe_code, reason = "PKCS#11 C function-pointer call through the loaded HSM library")]
             let rv = match hsm_lib_ref.$fn_name {
                 ::core::option::Option::Some(func) => unsafe { func($($args),*) },
                 ::core::option::Option::None => return Err($crate::HError::Default(format!("{} not available on library", function_name))),
@@ -248,3 +246,7 @@ macro_rules! hsm_call {
         }
     };
 }
+pub(crate) use hsm_call;
+
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

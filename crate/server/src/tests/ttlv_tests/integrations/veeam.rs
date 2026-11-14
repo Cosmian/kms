@@ -79,7 +79,7 @@ fn create_rsa_key_pair(client: &SocketClient) -> (String, String) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::CreateKeyPair,
                 ephemeral: None,
@@ -104,7 +104,7 @@ fn create_rsa_key_pair(client: &SocketClient) -> (String, String) {
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -148,7 +148,7 @@ fn get_key(client: &SocketClient, key_id: &str) -> ResponseMessage {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Get,
                 ephemeral: None,
@@ -158,10 +158,11 @@ fn get_key(client: &SocketClient, key_id: &str) -> ResponseMessage {
                     key_format_type: None,
                     key_compression_type: None,
                     key_wrapping_specification: None,
+                    key_wrap_type: None,
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     client
@@ -180,17 +181,17 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Destroy,
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Destroy(Destroy {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                 }),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -256,7 +257,7 @@ fn assert_no_key_value_attributes(response: &ResponseMessage, label: &str) {
     let decoded_ttlv = TTLV::from_bytes(&response_bytes, KmipFlavor::Kmip1)
         .unwrap_or_else(|e| panic!("{label}: from_bytes round-trip failed: {e}"));
     drop(
-        from_ttlv::<ResponseMessage>(decoded_ttlv)
+        from_ttlv::<ResponseMessage>(&decoded_ttlv)
             .unwrap_or_else(|e| panic!("{label}: from_ttlv failed: {e}")),
     );
 

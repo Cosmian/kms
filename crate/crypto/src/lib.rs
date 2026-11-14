@@ -1,4 +1,3 @@
-#![allow(let_underscore_drop)]
 pub use error::{CryptoError, result::CryptoResultHelper};
 
 pub mod crypto;
@@ -11,28 +10,43 @@ pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     }
 }
 
+// Argon2id and AES-GCM-SIV are fetched from OpenSSL's default provider. Tests that explicitly
+// load (and later drop) a provider disable the implicit default fallback and unload the
+// provider under concurrently running tests, so pin it for the whole test process.
+#[cfg(all(test, feature = "non-fips"))]
+fn pin_default_provider() {
+    static DEFAULT_PROVIDER: std::sync::LazyLock<Option<::openssl::provider::Provider>> =
+        std::sync::LazyLock::new(|| {
+            ::openssl::provider::Provider::try_load(None, "default", true).ok()
+        });
+    std::sync::LazyLock::force(&DEFAULT_PROVIDER);
+}
+
+#[cfg(all(test, not(feature = "non-fips")))]
+const fn pin_default_provider() {}
+
 // Initialize OpenSSL environment from values provided by build.rs (tests only).
 // Keep ctor usage limited to dev/test builds as requested.
 #[cfg(test)]
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
 #[ctor::ctor]
 fn initialize_openssl_env_from_build() {
     let conf_is_set = std::env::var_os("OPENSSL_CONF").is_some();
     let modules_is_set = std::env::var_os("OPENSSL_MODULES").is_some();
     let _ = conf_is_set; // reserved for future use; avoid overriding OPENSSL_CONF here
 
-    if !modules_is_set {
-        if let Some(mods) = option_env!("OPENSSL_MODULES") {
-            if !mods.is_empty() {
-                unsafe {
-                    std::env::set_var("OPENSSL_MODULES", mods);
-                }
-            }
+    if !modules_is_set
+        && let Some(mods) = option_env!("OPENSSL_MODULES")
+        && !mods.is_empty()
+    {
+        unsafe {
+            std::env::set_var("OPENSSL_MODULES", mods);
         }
     }
 
+    pin_default_provider();
+
     // Diagnostics to help understand which OpenSSL is loaded under Nix.
-    #[allow(unused)]
     {
         let ver_num = ::openssl::version::number();
         let ver_str = ::openssl::version::version();
@@ -73,7 +87,7 @@ mod tests {
 
     /// Ensure OpenSSL environment variables are set for tests (both FIPS and non-FIPS).
     /// Called automatically before any test runs.
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
     fn ensure_openssl_env() {
         let conf_is_set = env::var_os("OPENSSL_CONF").is_some();
         let modules_is_set = env::var_os("OPENSSL_MODULES").is_some();
@@ -99,7 +113,7 @@ mod tests {
                 }
             }
 
-            // Fallback to cargo-built non-fips prefix under target/openssl-non-fips-3.6.2-<os>-<arch>
+            // Fallback to cargo-built non-fips prefix under target/openssl-non-fips-3.6.5-<os>-<arch>
             let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let workspace_root = crate_dir
                 .parent()
@@ -110,7 +124,7 @@ mod tests {
             let arch = std::env::consts::ARCH;
             let main_prefix = workspace_root
                 .join("target")
-                .join(format!("openssl-non-fips-3.6.2-{os}-{arch}"));
+                .join(format!("openssl-non-fips-3.6.5-{os}-{arch}"));
             let conf_path = main_prefix.join("ssl").join("openssl.cnf");
             let modules_dir = main_prefix.join("lib").join("ossl-modules");
             if conf_path.exists() && modules_dir.exists() {
@@ -156,12 +170,12 @@ mod tests {
                         }
                     }
                 } else {
-                    // Fall back to cargo-built FIPS main prefix under target/openssl-3.6.2-<os>-<arch>
+                    // Fall back to cargo-built FIPS main prefix under target/openssl-3.6.5-<os>-<arch>
                     let os = std::env::consts::OS;
                     let arch = std::env::consts::ARCH;
                     let main_prefix = workspace_root
                         .join("target")
-                        .join(format!("openssl-3.6.2-{os}-{arch}"));
+                        .join(format!("openssl-3.6.5-{os}-{arch}"));
                     let openssl_conf = main_prefix.join("ssl").join("openssl.cnf");
                     let modules_dir = main_prefix.join("lib").join("ossl-modules");
                     if !conf_is_set {
@@ -177,7 +191,7 @@ mod tests {
                 let arch = std::env::consts::ARCH;
                 let main_prefix = workspace_root
                     .join("target")
-                    .join(format!("openssl-3.6.2-{os}-{arch}"));
+                    .join(format!("openssl-3.6.5-{os}-{arch}"));
                 let openssl_conf = main_prefix.join("ssl").join("openssl.cnf");
                 let modules_dir = main_prefix.join("lib").join("ossl-modules");
                 if !conf_is_set {
@@ -205,3 +219,5 @@ mod tests {
         ::openssl::init();
     }
 }
+#[cfg(test)]
+mod lint_cleanup_characterization_tests;

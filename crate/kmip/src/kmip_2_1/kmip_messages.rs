@@ -36,6 +36,11 @@ use crate::{
     },
 };
 
+/// Text of the decoding error of a request batch item whose operation this library does not
+/// model; servers answer such an item with `Operation Not Supported` instead of rejecting
+/// the whole message.
+pub const UNSUPPORTED_OPERATION: &str = "unsupported operation";
+
 impl ResponseMessage {
     pub fn extract_items_data(&self) -> KmipResult<Vec<Vec<u8>>> {
         self.batch_item
@@ -295,6 +300,17 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::GetAttributeList => {
                                     Operation::GetAttributeList(map.next_value()?)
                                 }
+                                OperationEnumeration::GetConstraints => {
+                                    Operation::GetConstraints(map.next_value()?)
+                                }
+                                OperationEnumeration::Ping => Operation::Ping(map.next_value()?),
+                                OperationEnumeration::Login => Operation::Login(map.next_value()?),
+                                OperationEnumeration::Logout => {
+                                    Operation::Logout(map.next_value()?)
+                                }
+                                OperationEnumeration::SetConstraints => {
+                                    Operation::SetConstraints(map.next_value()?)
+                                }
                                 OperationEnumeration::Import => {
                                     Operation::Import(map.next_value()?)
                                 }
@@ -365,7 +381,8 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(
-                                        "Request Message Batch Item: unsupported operation: {x:?}"
+                                        "Request Message Batch Item: {UNSUPPORTED_OPERATION}: \
+                                         {x:?}"
                                     )));
                                 }
                             });
@@ -727,6 +744,21 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 }
                                 OperationEnumeration::GetAttributeList => {
                                     Operation::GetAttributeListResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::GetConstraints => {
+                                    Operation::GetConstraintsResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Ping => {
+                                    Operation::PingResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Login => {
+                                    Operation::LoginResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Logout => {
+                                    Operation::LogoutResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::SetConstraints => {
+                                    Operation::SetConstraintsResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Import => {
                                     Operation::ImportResponse(map.next_value()?)

@@ -18,8 +18,9 @@ pub use test_server::{
     start_default_test_kms_server_with_non_revocable_key_ids,
     start_default_test_kms_server_with_three_softhsm2,
     start_default_test_kms_server_with_utimaco_and_kek,
-    start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
-    start_test_server, start_test_server_from_toml, start_test_server_with_patch, test_config_path,
+    start_default_test_kms_server_with_utimaco_hsm, start_isolated_test_kms_server,
+    start_test_kms_server_with_config, start_test_server, start_test_server_from_toml,
+    start_test_server_with_patch, test_config_path,
 };
 pub use vector_runner::{run_test_vector, run_test_vector_with_context};
 

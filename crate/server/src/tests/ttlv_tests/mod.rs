@@ -1,6 +1,7 @@
 mod add_attribute_1_4;
 mod add_attribute_2_1;
 mod attribute_version_gating;
+mod batch_semantics_2_1;
 mod certify_1_4;
 mod config;
 mod create_1_4;
@@ -13,6 +14,7 @@ mod decrypt_2_1;
 mod discover_versions;
 mod encrypt_1_4;
 mod encrypt_2_1;
+mod export_destroyed_2_1;
 mod get_1_0;
 mod get_1_4;
 mod get_2_1;
@@ -26,13 +28,16 @@ mod import_2_1;
 mod integrations;
 mod locate_1_4;
 mod locate_2_1;
+mod message_1_4;
 mod normative_tests;
+mod ping_2_1;
 #[cfg(not(target_os = "windows"))]
 mod pykmip;
 mod query;
 mod register_1_4;
 mod register_2_1;
 mod register_operation_policy_name_1_0;
+mod rng_2_1;
 mod socket_client;
 
 const TEST_HOST: &str = "127.0.0.1";
@@ -92,7 +97,7 @@ fn start_test_server() -> &'static TestServerCtx {
 
     SERVER_HANDLES.get_or_init(|| {
         let mut https_config = https_clap_config();
-        https_config.socket_server.socket_server_hostname = TEST_HOST.to_owned();
+        https_config.socket_server.hostname = TEST_HOST.to_owned();
         https_config.http.hostname = TEST_HOST.to_owned();
 
         // Pre-bind the HTTP listener on an OS-assigned free port and hand it
@@ -118,7 +123,7 @@ fn start_test_server() -> &'static TestServerCtx {
             .local_addr()
             .expect("Failed to read the allocated socket port")
             .port();
-        https_config.socket_server.socket_server_port = socket_port;
+        https_config.socket_server.port = socket_port;
 
         let server_params = ServerParams::try_from(https_config).unwrap();
 
@@ -163,11 +168,12 @@ fn start_test_server() -> &'static TestServerCtx {
 /// port. It is never exercised by the default test run, so the fixed port
 /// does not create the cross-process contention that [`start_test_server`]
 /// used to have.
+#[cfg(not(target_os = "windows"))] // only used by the `pykmip` test module, not built on Windows
 fn start_test_server_with_fixed_port(socket_port: u16) -> &'static TestServerCtx {
     static SERVER_HANDLES: OnceLock<TestServerCtx> = OnceLock::new();
     let mut https_config = https_clap_config();
-    https_config.socket_server.socket_server_port = socket_port;
-    https_config.socket_server.socket_server_hostname = TEST_HOST.to_owned();
+    https_config.socket_server.port = socket_port;
+    https_config.socket_server.hostname = TEST_HOST.to_owned();
     https_config.http.port = socket_port - 1;
     https_config.http.hostname = TEST_HOST.to_owned();
 

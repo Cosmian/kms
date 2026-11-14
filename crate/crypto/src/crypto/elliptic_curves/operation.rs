@@ -157,7 +157,7 @@ pub fn to_ec_public_key(
                     recommended_curve: curve,
                     q_string: bytes.to_vec(),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length,
@@ -179,7 +179,7 @@ pub fn to_ec_public_key(
                         ),
                     }]),
                     ..Attributes::default()
-                }),
+                })),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -225,7 +225,7 @@ pub fn to_ec_private_key(
                     recommended_curve: curve,
                     d: Box::new(SafeBigInt::from_bytes_be(bytes)),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length,
@@ -248,7 +248,7 @@ pub fn to_ec_private_key(
                     }]),
                     sensitive: sensitive.then_some(true),
                     ..Attributes::default()
-                }),
+                })),
             }),
             cryptographic_length,
             key_wrapping_data: None,
@@ -764,7 +764,6 @@ fn create_ec_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[expect(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
 
@@ -991,7 +990,6 @@ mod tests {
         decoded.unwrap_or_else(|_| Vec::new())
     }
 
-    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x25519_conversions() {
@@ -1141,7 +1139,6 @@ mod tests {
         keypair_generation(RecommendedCurve::P521);
     }
 
-    #[expect(clippy::expect_used, clippy::panic)]
     #[test]
     #[cfg(feature = "non-fips")]
     fn test_x448_conversions() {

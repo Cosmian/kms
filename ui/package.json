@@ -3,7 +3,7 @@
     "private": true,
     "version": "5.29.0",
     "type": "module",
-    "packageManager": "pnpm@10.17.1",
+    "packageManager": "pnpm@10.34.9+sha512.f49b5a8ea0fdedb44bb3c0c1d6575092a53c2950d95b7ad15df11f17974877a2de3a01c07e934e9b28ce716e51c09a94962c7306d09be2e1e4b18a8c8762fd32",
     "scripts": {
         "dev": "VITE_DEV_MODE=true vite",
         "preview": "vite preview",
@@ -20,42 +20,41 @@
         "test:e2e": "playwright test",
         "test:e2e:auth": "playwright test --config playwright.auth.config.ts",
         "test:e2e:saml": "playwright test --config playwright.saml.config.ts",
-        "test:wasm": "cd .. && mise run test:wasm --variant non-fips"
+        "test:wasm": "cd .. && mise run test:ui:wasm --variant non-fips"
     },
     "dependencies": {
-        "@ant-design/icons": "^6.1.0",
-        "@tailwindcss/vite": "^4.2.0",
+        "@ant-design/icons": "^6.3.4",
+        "@tailwindcss/vite": "^4.3.3",
         "antd": "^5.29.3",
-        "dayjs": "^1.11.21",
-        "i18next": "^26.3.6",
-        "i18next-browser-languagedetector": "^8.2.1",
-        "moment": "^2.31.0",
-        "react": "^19.2.4",
-        "react-dom": "^19.2.4",
-        "react-i18next": "^17.0.11",
-        "react-router-dom": "^7.18.0",
-        "tailwindcss": "^4.2.0"
+        "dayjs": "^1.11.23",
+        "i18next": "^26.5.12",
+        "i18next-browser-languagedetector": "^8.2.4",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1",
+        "react-i18next": "^17.1.9",
+        "react-router-dom": "^7.18.5",
+        "tailwindcss": "^4.3.3"
     },
     "devDependencies": {
-        "@eslint/js": "^9.39.2",
-        "@playwright/test": "^1.51.0",
+        "@eslint/js": "^9.39.5",
+        "@playwright/test": "^1.64.1",
         "@testing-library/jest-dom": "^6.9.1",
-        "@testing-library/react": "^16.3.2",
-        "@types/node": "^25.3.0",
-        "@types/react": "^19.2.14",
-        "@types/react-dom": "^19.2.3",
+        "@testing-library/react": "^16.3.3",
+        "@types/node": "^25.9.9",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
         "@vitejs/plugin-react-swc": "^3.11.0",
         "eslint": "^9.39.3",
         "eslint-plugin-react-hooks": "^5.2.0",
-        "eslint-plugin-react-refresh": "^0.4.26",
+        "eslint-plugin-react-refresh": "^0.5.7",
         "globals": "^16.5.0",
         "jsdom": "^26.1.0",
-        "knip": "^6.2.0",
-        "prettier": "^3.8.1",
-        "typescript": "~5.8.3",
-        "typescript-eslint": "^8.56.0",
+        "knip": "^6.44.1",
+        "prettier": "^3.9.10",
+        "typescript": "~5.9.3",
+        "typescript-eslint": "^8.72.1",
         "vite": "^7.3.7",
-        "vitest": "^5.0.0"
+        "vitest": "^5.0.5"
     },
     "pnpm": {
         "supportedArchitectures": {
@@ -73,30 +72,25 @@
         },
         "overrides": {
             "esbuild": "^0.28.1",
-            "ws": ">=8.20.1",
-            "brace-expansion": ">=5.0.12",
+            "ws": "^8.20.1",
+            "brace-expansion": "^5.0.12",
             "nanoid": "3.3.18",
             "@babel/runtime": "^7.26.10",
-            "minimatch": ">=10.2.1",
-            "picomatch": ">=4.0.4",
-            "rollup": ">=4.59.0",
+            "minimatch": "^11.0.1",
+            "picomatch": "^4.0.4",
+            "rollup": "^4.59.0",
             "ajv": "^6.14.0",
-            "flatted": ">=3.4.2",
-            "js-yaml": ">=5.4.1",
-            "postcss": ">=8.5.18",
-            "smol-toml": ">=1.9.0",
-            "source-map-js": ">=1.2.2"
+            "flatted": "^3.4.2",
+            "js-yaml": "^5.4.1",
+            "postcss": "^8.5.18",
+            "smol-toml": "^1.9.0",
+            "source-map-js": "^1.2.2",
+            "zod": "^4.6.6"
         },
-        "onlyBuiltDependencies": [
-            "@playwright/test",
+        "onlyBuiltDependencies": [],
+        "ignoredBuiltDependencies": [
             "@swc/core",
-            "bcrypt",
-            "canvas",
-            "esbuild",
-            "nodegit",
-            "playwright",
-            "sharp",
-            "sodium-native"
+            "esbuild"
         ]
     }
 }

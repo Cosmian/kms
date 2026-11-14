@@ -1,7 +1,3 @@
-// Field names intentionally share a `vault_` prefix for disambiguation in
-// flat CLI / env-var namespaces.
-#![allow(clippy::struct_field_names)]
-
 use clap::Args;
 use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
@@ -18,22 +14,41 @@ pub struct VaultConfig {
     ///
     /// Defaults to `false`. Set to `true` to enable the Vault-compatible API.
     /// Requires `vault_auth_verifier_url` to be set.
-    #[clap(long, env = "KMS_VAULT_API_ENABLED", default_value = "false")]
-    pub vault_api_enabled: bool,
+    #[clap(
+        long = "vault-api-enabled",
+        id = "vault_api_enabled",
+        value_name = "VAULT_API_ENABLED",
+        env = "KMS_VAULT_API_ENABLED",
+        default_value = "false"
+    )]
+    #[serde(rename = "vault_api_enabled")]
+    pub api_enabled: bool,
 
     /// Base URL of the auth-verifier server used to validate `X-Vault-Token` headers.
     ///
     /// Required when `vault_api_enabled = true`.
     /// Example: `https://auth.example.com`
-    #[clap(long, env = "KMS_VAULT_AUTH_VERIFIER_URL")]
-    pub vault_auth_verifier_url: Option<String>,
+    #[clap(
+        long = "vault-auth-verifier-url",
+        id = "vault_auth_verifier_url",
+        value_name = "VAULT_AUTH_VERIFIER_URL",
+        env = "KMS_VAULT_AUTH_VERIFIER_URL"
+    )]
+    #[serde(rename = "vault_auth_verifier_url")]
+    pub auth_verifier_url: Option<String>,
 
     /// Path to a PEM-encoded CA certificate used to verify the auth-verifier's TLS certificate.
     ///
     /// Optional. When set, the KMS will trust this CA when connecting to `vault_auth_verifier_url`.
     /// Useful when auth-verifier uses a self-signed or private CA certificate.
-    #[clap(long, env = "KMS_VAULT_AUTH_VERIFIER_CA_CERT")]
-    pub vault_auth_verifier_ca_cert: Option<String>,
+    #[clap(
+        long = "vault-auth-verifier-ca-cert",
+        id = "vault_auth_verifier_ca_cert",
+        value_name = "VAULT_AUTH_VERIFIER_CA_CERT",
+        env = "KMS_VAULT_AUTH_VERIFIER_CA_CERT"
+    )]
+    #[serde(rename = "vault_auth_verifier_ca_cert")]
+    pub auth_verifier_ca_cert: Option<String>,
 
     /// Skip TLS certificate verification when calling the auth-verifier.
     ///
@@ -41,46 +56,58 @@ pub struct VaultConfig {
     /// In production, use `vault_auth_verifier_ca_cert` to provide the correct CA certificate.
     /// Defaults to `false`.
     #[clap(
-        long,
+        long = "vault-auth-verifier-accept-invalid-certs",
+        id = "vault_auth_verifier_accept_invalid_certs",
+        value_name = "VAULT_AUTH_VERIFIER_ACCEPT_INVALID_CERTS",
         env = "KMS_VAULT_AUTH_VERIFIER_ACCEPT_INVALID_CERTS",
         default_value = "false"
     )]
-    pub vault_auth_verifier_accept_invalid_certs: bool,
+    #[serde(rename = "vault_auth_verifier_accept_invalid_certs")]
+    pub auth_verifier_accept_invalid_certs: bool,
 
     /// Vault transit mount name used by the `/v1/<mount>/keys/…` routes.
     ///
     /// Transit keys are served at `/v1/<vault_transit_mount>/keys/<name>`.
     /// Defaults to `"transit"`.
     #[clap(
-        long,
+        long = "vault-transit-mount",
+        id = "vault_transit_mount",
+        value_name = "VAULT_TRANSIT_MOUNT",
         env = "KMS_VAULT_TRANSIT_MOUNT",
         default_value = "transit",
         verbatim_doc_comment
     )]
-    pub vault_transit_mount: String,
+    #[serde(rename = "vault_transit_mount")]
+    pub transit_mount: String,
 
     /// Vault PKI mount name used by the `/v1/<mount>/root/sign-intermediate` route.
     ///
     /// Defaults to `"pki"`.
     #[clap(
-        long,
+        long = "vault-pki-mount",
+        id = "vault_pki_mount",
+        value_name = "VAULT_PKI_MOUNT",
         env = "KMS_VAULT_PKI_MOUNT",
         default_value = "pki",
         verbatim_doc_comment
     )]
-    pub vault_pki_mount: String,
+    #[serde(rename = "vault_pki_mount")]
+    pub pki_mount: String,
 
     /// KMIP label of the KMS key used as the intermediate CA signing key for the PKI engine.
     ///
     /// The key must already exist in the KMS (create with `ckms ec keys create --tag <label>`).
     /// Defaults to `"vault_pki_ca"`.
     #[clap(
-        long,
+        long = "vault-pki-ca-key-label",
+        id = "vault_pki_ca_key_label",
+        value_name = "VAULT_PKI_CA_KEY_LABEL",
         env = "KMS_VAULT_PKI_CA_KEY_LABEL",
         default_value = "vault_pki_ca",
         verbatim_doc_comment
     )]
-    pub vault_pki_ca_key_label: String,
+    #[serde(rename = "vault_pki_ca_key_label")]
+    pub pki_ca_key_label: String,
 
     /// Lifetime of vault token validation cache entries in seconds.
     ///
@@ -88,10 +115,13 @@ pub struct VaultConfig {
     /// for this duration to reduce round-trips on every transit/PKI request.
     /// Set to `0` to disable caching. Defaults to `30`.
     #[clap(
-        long,
+        long = "vault-token-cache-ttl-secs",
+        id = "vault_token_cache_ttl_secs",
+        value_name = "VAULT_TOKEN_CACHE_TTL_SECS",
         env = "KMS_VAULT_TOKEN_CACHE_TTL_SECS",
         default_value = "30",
         verbatim_doc_comment
     )]
-    pub vault_token_cache_ttl_secs: u64,
+    #[serde(rename = "vault_token_cache_ttl_secs")]
+    pub token_cache_ttl_secs: u64,
 }

@@ -205,6 +205,10 @@ impl AuthVerifierConfig {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
     use super::AuthVerifierConfig;
 
@@ -313,7 +317,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::panic_in_result_fn)]
     fn test_realm_deserializes_single_string() -> Result<(), Box<dyn std::error::Error>> {
         let toml = r#"
             auth_verifier_url = "https://auth.example.com"
@@ -326,7 +329,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::panic_in_result_fn)]
     fn test_realm_deserializes_list() -> Result<(), Box<dyn std::error::Error>> {
         let toml = r#"
             auth_verifier_url = "https://auth.example.com"
@@ -362,7 +364,6 @@ mod tests {
     /// `test_data/configs/server/auth/auth_verifier.toml` which is in a submodule
     /// not checked out during unit-test CI runs.
     #[test]
-    #[allow(clippy::panic_in_result_fn)]
     fn test_auth_verifier_toml_config_parses() -> Result<(), Box<dyn std::error::Error>> {
         let toml_content = r#"
 [auth_verifier]

@@ -24,7 +24,7 @@ fn init(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let log_home = match log_home {
         None => {
-            let log_home = etcetera::home_dir().map_err(|e| format!("No home directory {e:?}"))?;
+            let log_home = std::env::home_dir().ok_or("No home directory HomeDirError")?;
             log_home.join(".cosmian")
         }
         Some(log_home) => PathBuf::from(log_home),
@@ -33,7 +33,6 @@ fn init(
 }
 
 #[cfg(target_os = "linux")]
-#[allow(clippy::print_stdout)]
 /// For Linux, log to `$COSMIAN_PKCS11_LOGGING_FOLDER` if set,
 /// otherwise fall back to `~/.cosmian/` (user-writable, no root required).
 fn init(
@@ -41,6 +40,7 @@ fn init(
     level: Option<Level>,
     log_home: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write as _;
     let level = level.unwrap_or(Level::INFO);
     let log_folder = match std::env::var("COSMIAN_PKCS11_LOGGING_FOLDER") {
         Ok(folder) => PathBuf::from(folder),
@@ -48,16 +48,17 @@ fn init(
             if let Some(path) = log_home {
                 PathBuf::from(path)
             } else {
-                let home = etcetera::home_dir().map_err(|e| format!("No home directory {e:?}"))?;
+                let home = std::env::home_dir().ok_or("No home directory HomeDirError")?;
                 home.join(".cosmian")
             }
         }
     };
 
-    println!(
+    writeln!(
+        std::io::stdout().lock(),
         "cosmian-pkcs11 module logging at {level} level to file {}/{log_name}.log",
         log_folder.display()
-    );
+    )?;
     log_to_file(log_name, level, &log_folder)
 }
 

@@ -33,7 +33,6 @@ pub fn get_default_rolling_log_dir() -> PathBuf {
     )
 }
 
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
 #[serde(default, deny_unknown_fields)]
 pub struct LoggingConfig {

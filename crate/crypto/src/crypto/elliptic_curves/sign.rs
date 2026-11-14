@@ -187,12 +187,15 @@ fn ecdsa_sign_rfc6979_openssl(
 ///
 /// `openssl::pkey_ctx::NonceType` is gated on `ossl320`, which is off whenever `openssl-sys`
 /// is built against older headers (e.g. system 3.0.x) while the final binary links the
-/// 3.6.2 libcrypto from `build.rs`. The raw `OSSL_PARAM` call only needs `ossl300`.
+/// 3.6.5 libcrypto from `build.rs`. The raw `OSSL_PARAM` call only needs `ossl300`.
 /// Returns `false` when the linked libcrypto does not honour the parameter (OpenSSL < 3.2
 /// silently ignores unknown parameters), so the caller never mistakes a random-nonce
 /// signature for an RFC 6979 one and falls back to the default OpenSSL signer instead.
 #[cfg(feature = "non-fips")]
-#[allow(unsafe_code)] // reason: raw OSSL_PARAM FFI; openssl's safe `set_nonce_type` is gated on ossl320, off when openssl-sys is built against 3.0.x headers
+#[expect(
+    unsafe_code,
+    reason = "raw OSSL_PARAM FFI; openssl safe set_nonce_type is gated on ossl320"
+)]
 fn set_deterministic_nonce(ctx: &mut PkeyCtxRef<Private>) -> bool {
     let key = c"nonce-type";
     let mut requested: c_uint = 1; // 1 = RFC 6979 deterministic k
@@ -238,7 +241,6 @@ pub fn eddsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm as KmipHash,
         kmip_2_1::kmip_types::CryptographicParameters,
@@ -328,20 +330,24 @@ mod tests {
     #[test]
     fn ecdsa_sign_supported_recommended_curves() {
         // List of supported curves for signature in server sign path
-        #[allow(unused_mut)]
-        let mut curves = vec![
+        let non_fips_curves: &[openssl::nid::Nid] = if cfg!(feature = "non-fips") {
+            &[
+                openssl::nid::Nid::X9_62_PRIME192V1, // P192
+                openssl::nid::Nid::SECP256K1,        // SECP256K1
+                openssl::nid::Nid::SECP224K1,        // SECP224K1
+            ]
+        } else {
+            &[]
+        };
+        let curves = [
             openssl::nid::Nid::SECP224R1,        // P224
             openssl::nid::Nid::X9_62_PRIME256V1, // P256
             openssl::nid::Nid::SECP384R1,        // P384
             openssl::nid::Nid::SECP521R1,        // P521
-        ];
-        #[cfg(feature = "non-fips")]
-        {
-            // Additional non-FIPS curves
-            curves.push(openssl::nid::Nid::X9_62_PRIME192V1); // P192
-            curves.push(openssl::nid::Nid::SECP256K1); // SECP256K1
-            curves.push(openssl::nid::Nid::SECP224K1); // SECP224K1
-        }
+        ]
+        .iter()
+        .chain(non_fips_curves)
+        .copied();
 
         for nid in curves {
             let group = openssl::ec::EcGroup::from_curve_name(nid)
@@ -482,7 +488,7 @@ mod tests {
         let ec_key = openssl::ec::EcKey::private_key_from_pem(pem.as_bytes()).unwrap();
         let pkey = PKey::from_ec_key(ec_key).unwrap();
 
-        // The linked libcrypto (3.6.2) must honour `nonce-type`; otherwise `ecdsa_sign`
+        // The linked libcrypto (3.6.5) must honour `nonce-type`; otherwise `ecdsa_sign`
         // would silently take the slow pure-Rust fallback.
         let mut ctx = PkeyCtx::new(&pkey).unwrap();
         ctx.sign_init().unwrap();

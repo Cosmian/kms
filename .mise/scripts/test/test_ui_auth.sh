@@ -51,12 +51,6 @@ run_pnpm() {
   env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
 }
 
-ensure_pnpm() {
-  if ! command -v pnpm &>/dev/null; then
-    npm install -g pnpm@10.17.1
-  fi
-}
-
 _get_free_port() {
   node -e "const net=require('node:net'); const server=net.createServer(); server.listen(0,'127.0.0.1',()=>{console.log(server.address().port); server.close();});"
 }
@@ -147,7 +141,7 @@ sed -e "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
   "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
 
 # ── 3. Authentication Verifier — start with pre-built binary ─────────────────
-# The binary is pre-built with the host toolchain by the `test:ui-auth` mise
+# The binary is pre-built with the host toolchain by the `test:ui:auth` mise
 # task BEFORE entering the nix shell (the nix rustc may be too old for this
 # crate).  Run with the repo as cwd so relative paths in the config work.
 AUTH_BIN="${AUTH_VERIFIER_REPO}/target/debug/auth_verifier"

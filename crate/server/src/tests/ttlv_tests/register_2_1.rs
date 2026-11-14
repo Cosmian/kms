@@ -48,7 +48,7 @@ fn test_register_2_1() {
             batch_count: 1,
             ..Default::default()
         },
-        batch_item: vec![RequestMessageBatchItemVersioned::V21(
+        batch_item: vec![RequestMessageBatchItemVersioned::V21(Box::new(
             RequestMessageBatchItem {
                 operation: OperationEnumeration::Register,
                 ephemeral: None,
@@ -68,7 +68,7 @@ fn test_register_2_1() {
                 })),
                 message_extension: None,
             },
-        )],
+        ))],
     };
 
     let response = client
@@ -99,5 +99,5 @@ fn test_register_2_1() {
         panic!("Expected RegisterResponse");
     };
 
-    assert!(!register_response.unique_identifier.to_string().is_empty());
+    assert_ne!(register_response.unique_identifier.to_string().len(), 0);
 }

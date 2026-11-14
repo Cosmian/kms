@@ -266,6 +266,7 @@ impl KmsActions {
                             let resp = kms_rest_client
                                 .query(Query {
                                     query_function: Some(vec![func]),
+                                    ..Default::default()
                                 })
                                 .await?;
 

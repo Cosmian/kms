@@ -96,7 +96,7 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
     if truncated {
         warn!(
             "JWKS response truncated: more than {} eligible public keys found",
-            kms.params.jwks_endpoint.jwks_endpoint_max_keys
+            kms.params.jwks_endpoint.max_keys
         );
         response.insert_header(("X-JWKS-Truncated", "true"));
     }
@@ -105,7 +105,7 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
 
 /// Build the JWK Set and a boolean indicating whether the result was truncated.
 async fn build_jwk_set(kms: &KMS) -> KResult<(RawJwkSet, bool)> {
-    let max_keys = kms.params.jwks_endpoint.jwks_endpoint_max_keys;
+    let max_keys = kms.params.jwks_endpoint.max_keys;
     let (objects, truncated) = Box::pin(discover_eligible_public_keys(kms, max_keys)).await?;
 
     let mut keys = Vec::with_capacity(objects.len());
@@ -444,7 +444,10 @@ fn x25519_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<serde_json::V
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
 
     use cosmian_kms_access::access::Access;

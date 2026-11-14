@@ -1,6 +1,6 @@
 /* Test-only PKCS#11 v3.0 adapter that adds the message-based signature functions
  * (`C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal` and the verify family) on top of
- * any classic PKCS#11 library (SoftHSM2 in `mise run test:hsm-softhsm2`).
+ * any classic PKCS#11 library (SoftHSM2 in `mise run test:hsm:softhsm2`).
  *
  * No reachable token implements the v3.0 message signature API, so this adapter provides one
  * backed by real crypto: `C_SignMessage` runs the target's `C_SignInit` + `C_Sign` with the

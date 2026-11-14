@@ -45,14 +45,17 @@ jobs:
         run: |
           Get-ChildItem $env:VCPKG_INSTALLATION_ROOT
 
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: 10.17.1
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
+
+      # Corepack runs the pnpm pinned with its sha512 in ui/package.json.
+      - name: Enable Corepack pnpm
+        run: corepack enable pnpm
 
       - name: Build UI
         shell: pwsh
@@ -71,9 +74,6 @@ jobs:
           Copy-Item -Recurse "ui\dist\*" "crate\server\ui_non_fips\"
           Write-Host "UI copied to crate\server\ui_non_fips"
           Get-ChildItem -Recurse "crate\server\ui_non_fips"
-
-      - name: Build static OpenSSL
-        uses: ./.github/actions/build-static-openssl
 
       - name: List vcpkg install
         shell: pwsh
@@ -246,26 +246,17 @@ jobs:
           find . -maxdepth 3 -type f -print
 
       - name: Push installers to package.cosmian.com
-        shell: bash
-        run: |
-          set -ex
-          if [[ "${GITHUB_REF}" =~ refs/tags/(.+) ]]; then
-            BRANCH="${BASH_REMATCH[1]}"
-          else
-            HEAD_REF="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-            BRANCH="last_build/${HEAD_REF}"
-          fi
-          DEST_DIR="/mnt/package/kms/${BRANCH}/windows/x86_64/non-fips/static-openssl"
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "$DEST_DIR"
-          # Upload both server and CLI installers
-          while IFS= read -r -d '' exe; do
-            echo "Uploading ${exe} to ${DEST_DIR}"
-            scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:${DEST_DIR}"
-          done < <(find . -maxdepth 3 -type f \( -name 'cosmian-kms-server*.exe' -o -name 'cosmian-kms-cli*.exe' \) -print0)
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: windows/x86_64/non-fips/static-openssl
+          files: |
+            **/cosmian-kms-server*.exe
+            **/cosmian-kms-cli*.exe
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
             cosmian-kms-server*.exe

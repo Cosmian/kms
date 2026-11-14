@@ -37,7 +37,6 @@ pub(crate) fn get_opa_user_context() -> OpaUserContext {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -62,7 +61,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_opa_user_context_outside_scope_returns_default() {
         let ctx = get_opa_user_context();
-        assert!(ctx.roles.is_empty());
+        assert_eq!(ctx.roles, Vec::<String>::new());
         assert!(ctx.domain.is_none());
     }
 

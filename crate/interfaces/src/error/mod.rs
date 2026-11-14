@@ -32,4 +32,8 @@ pub enum InterfaceError {
 
     #[error("Database Error: {0}")]
     Db(String),
+
+    /// An object creation request reused an existing unique identifier.
+    #[error("Object already exists: {0}")]
+    ObjectAlreadyExists(String),
 }

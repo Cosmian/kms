@@ -845,7 +845,7 @@ and locates the SoftHSM2 library). The mise task exports the resulting cdylib pa
 `kryoptic`'s own `standard` feature (EdDSA, HKDF, etc.) requires OpenSSL >= 3.2.0, which is
 newer than the system OpenSSL on some CI runners/dev machines (e.g. Ubuntu 22.04/24.04 ship
 3.0.x). Rather than depend on whatever OpenSSL happens to be installed, `kryoptic_build_cdylib`
-first builds this workspace's own OpenSSL 3.6.2 (`crate/crypto/build.rs`, if not already built)
+first builds this workspace's own OpenSSL 3.6.5 (`crate/crypto/build.rs`, if not already built)
 and points `kryoptic`'s pkg-config-based OpenSSL discovery at it via `PKG_CONFIG_PATH` — so the
 token always builds against the exact same, known-good OpenSSL version this workspace already
 uses, on every machine.
@@ -853,7 +853,7 @@ uses, on every machine.
 Run it locally with:
 
 ```shell
-mise run test:hsm-kryoptic --variant fips
+mise run test:hsm:kryoptic --variant fips
 ```
 
 `crate/hsm/kryoptic/src/tests.rs::test_hsm_kryoptic_all` provisions a fresh Kryoptic token
@@ -861,8 +861,8 @@ mise run test:hsm-kryoptic --variant fips
 (`crate/hsm/base_hsm/src/tests_shared.rs`) against it, including the v3.0 checks: a populated
 `C_GetInterfaceList` result, an EdDSA sign/verify round trip, an HKDF key derivation, and a
 message-based AES-GCM round trip. The task then runs the KMS server HSM tests against the same
-token. It runs in CI as the `kryoptic` entry of the `hsm` job's matrix in
-`.github/workflows/test_all.yml`, for both the fips and non-fips variants.
+token. It runs in CI with the `hsm` group (`test-hsm` job in
+`.github/workflows/test_all.yml`).
 
 Craton HSM (`craton-co/craton-hsm-core`) was also evaluated as a candidate v3.0 conformance
 oracle: it is a pure-Rust PKCS#11 v3.0 library with post-quantum algorithm support, but as of

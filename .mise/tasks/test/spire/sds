@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+#MISE description="PKI-10: Service mesh SDS delivery test (Envoy + SPIRE + Cosmian KMS)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+
+# Tests PKI-10 from the Aembit Capability Validation Test Plan:
+#   "Deliver certificates to a mesh sidecar via the standard SDS interface.
+#    Expected: Delivered and rotated via SDS without custom glue code."
+#
+# Architecture:
+#   KMS (Cosmian) signs SPIRE intermediate CA
+#     └─ SPIRE Server issues X.509-SVIDs
+#           └─ SPIRE Agent exposes SDS endpoint (same unix socket as Workload API)
+#                 └─ Envoy upstream  (mTLS server, cert from SDS — no static files)
+#                 └─ Envoy downstream (mTLS client, cert from SDS — no static files)
+#                       mTLS connection proves cert was delivered via SDS
+#
+# Prerequisites: Docker must be available (for Envoy + socat containers).
+# Envoy image: envoyproxy/envoy:v1.32-latest
+#
+# Usage:
+#   mise run test:spire:sds                 # default: non-fips, static
+
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "spire-sds tests require non-fips variant (Vault API is non-FIPS only)"
+fi
+
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+AUTH_PID=""
+AUTH_LOG="/tmp/auth-verifier-spire-sds.log"
+AUTH_DB_FILE="/tmp/auth-verifier-spire-sds.db"
+SPIRE_SECRETS_ENV="/tmp/spire-sds-secrets.env"
+KMS_LOG_FILE="/tmp/kms-spire-sds.log"
+SPIRE_SERVER_CONTAINER="spire-server-a"
+TRUST_DOMAIN="cosmian-test-a.local"
+
+# ── Cleanup on exit ────────────────────────────────────────────────────────────
+cleanup() {
+  [[ -n "${AUTH_PID}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
+  [[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
+  docker compose --profile spire down --volumes 2>/dev/null || true
+  rm -f "${AUTH_DB_FILE}" "${SPIRE_SECRETS_ENV}"
+}
+trap cleanup EXIT
+
+# ── Prerequisite check ─────────────────────────────────────────────────────────
+print_header "Prerequisite: Docker + Envoy image"
+require_cmd docker
+if ! docker image inspect envoyproxy/envoy:v1.32-latest >/dev/null 2>&1; then
+  print_status "Pulling envoyproxy/envoy:v1.32-latest..."
+  docker pull envoyproxy/envoy:v1.32-latest
+fi
+print_success "Docker and Envoy image available."
+
+# ── Step 1: Build binaries ─────────────────────────────────────────────────────
+print_header "Step 1: Build binaries"
+require_cmd cargo
+
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
+print_status "Building ckms CLI..."
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+print_success "Binaries built."
+
+# ── Step 2: TLS certs ─────────────────────────────────────────────────────────
+print_header "Step 2: TLS certificates"
+spire_ensure_certs "${TEST_DATA}"
+
+# ── Step 3: Stop stale listeners ──────────────────────────────────────────────
+spire_stop_port 8443 "auth-verifier"
+spire_stop_port 9998 "KMS"
+
+# ── Step 4: Start auth-verifier ────────────────────────────────────────────────
+print_header "Step 4: auth-verifier"
+rm -f "${AUTH_DB_FILE}"
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+wait_for_port 127.0.0.1 8443 60 || print_error "auth-verifier failed to start. Check ${AUTH_LOG}"
+print_success "auth-verifier ready (PID=${AUTH_PID})."
+
+# ── Step 5: Start KMS ──────────────────────────────────────────────────────────
+print_header "Step 5: KMS server"
+KMS_CONFIG_FILE="${TEST_DATA}/config/kms.toml"
+"$(get_kms_bin)" --config "${KMS_CONFIG_FILE}" >"${KMS_LOG_FILE}" 2>&1 &
+KMS_PID=$!
+wait_for_port 127.0.0.1 9998 120 || print_error "KMS failed to start. Check ${KMS_LOG_FILE}"
+print_success "KMS ready (PID=${KMS_PID})."
+
+# ── Step 6: PKI CA key + AppRoles ─────────────────────────────────────────────
+print_header "Step 6: PKI CA key + AppRoles"
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+
+_VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
+cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign,digitalSignature
+EXTEOF
+
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" --accept-invalid-certs \
+  certificates certify --generate-key-pair --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=SDS Test Root CA,O=Test,C=FR" \
+  --tag vault_pki_ca --days 3650 \
+  --certificate-extensions "${_VAULT_EXT_FILE}" 2>&1 | grep -v "^$"
+rm -f "${_VAULT_EXT_FILE}"
+print_success "PKI CA key created."
+
+print_status "Provisioning AppRoles..."
+AUTH_VERIFIER_URL="https://localhost:8443" \
+  VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  SECRETS_ENV_FILE="${SPIRE_SECRETS_ENV}" \
+  bash "${TEST_DATA}/setup/provision.sh"
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+print_success "AppRoles provisioned."
+
+# sign-intermediate requires an explicit `certify` grant on the CA private key.
+CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
+  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+
+# ── Step 7: Start SPIRE Server + Agent (tenant a) ──────────────────────────────
+print_header "Step 7: SPIRE Server + Agent (tenant a)"
+print_status "Injecting AppRole credentials..."
+PATCHED_SERVER_CONF=$(mktemp /tmp/spire-server-sds.conf.XXXXXX)
+sed "s/join_token = .*//" "${TEST_DATA}/config/spire-server-a.conf" >"${PATCHED_SERVER_CONF}"
+export SPIRE_SERVER_CONFIG_FILE_A="${PATCHED_SERVER_CONF}"
+export VAULT_APPROLE_ID_A="${SPIRE_ROLE_ID_A}"
+export VAULT_APPROLE_SECRET_ID_A="${SPIRE_SECRET_ID_A}"
+
+docker compose --profile spire up -d spire-server-a
+print_status "Waiting for SPIRE server..."
+for _i in $(seq 1 60); do
+  if docker exec "${SPIRE_SERVER_CONTAINER}" curl -sf http://localhost:8080/ready >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+print_success "SPIRE server-a ready."
+
+print_status "Generating join token and starting SPIRE agent..."
+JOIN_TOKEN=$(docker exec "${SPIRE_SERVER_CONTAINER}" \
+  /opt/spire/bin/spire-server token generate \
+  -spiffeID "spiffe://${TRUST_DOMAIN}/spire-agent" \
+  -socketPath /tmp/spire-server/private/api.sock |
+  awk '{print $2}')
+PATCHED_AGENT_CONF=$(mktemp /tmp/spire-agent-sds.conf.XXXXXX)
+sed "s/join_token = .*/join_token = \"${JOIN_TOKEN}\"/" \
+  "${TEST_DATA}/config/spire-agent-a.conf" >"${PATCHED_AGENT_CONF}"
+export SPIRE_AGENT_CONFIG_FILE_A="${PATCHED_AGENT_CONF}"
+docker compose --profile spire up -d spire-agent-a
+print_status "Waiting for SPIRE agent..."
+for _i in $(seq 1 60); do
+  if docker exec "spire-agent-a" curl -sf http://localhost:8082/ready >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+print_success "SPIRE agent-a ready."
+
+# ── Step 8: Run SDS validation tests ──────────────────────────────────────────
+print_header "Step 8: SDS delivery validation (PKI-10)"
+
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  SPIRE_SERVER_CONTAINER="${SPIRE_SERVER_CONTAINER}" \
+  TRUST_DOMAIN="${TRUST_DOMAIN}" \
+  bash "${TEST_DATA}/setup/test_sds.sh"
+
+print_header "PKI-10 SDS delivery test complete"
+print_success "Certificates delivered and rotated via SDS without custom glue code."
+print_info "Test IDs covered: PKI-10 (Service mesh SDS delivery)"
+print_info "See test_data/spire/README_test_coverage.md for full coverage mapping."

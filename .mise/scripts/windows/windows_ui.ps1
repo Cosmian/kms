@@ -125,32 +125,20 @@ function Build-UI {
             exit 1
         }
 
-        # Detect package manager (pnpm is required when pnpm-lock.yaml is present)
-        $packageManager = "npm"
-        if (Test-Path "pnpm-lock.yaml") {
-            if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-                $packageManager = "pnpm"
-                Write-Host "Using pnpm as package manager"
-            }
-            else {
-                Write-Error "pnpm-lock.yaml found but pnpm is not installed. Install pnpm with: npm install -g pnpm or via pnpm/action-setup in CI."
-                exit 1
-            }
-        }
-
-        # Check if package manager is available
-        if (-not (Get-Command $packageManager -ErrorAction SilentlyContinue)) {
-            Write-Error "$packageManager is not installed. Please install Node.js and $packageManager first."
-            Write-Host "Download Node.js from: https://nodejs.org/"
-            if ($packageManager -eq "pnpm") {
-                Write-Host "Install pnpm with: npm install -g pnpm"
-            }
+        # pnpm only: npm would ignore pnpm-lock.yaml and the ui/.npmrc supply-chain policy.
+        if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+            Write-Error "pnpm not found on PATH. Run 'corepack enable pnpm' (Node.js 22)."
             exit 1
         }
+        $packageManager = "pnpm"
 
         # Install dependencies
         Write-Host "Installing dependencies with $packageManager..."
-        & $packageManager install
+        & $packageManager install --frozen-lockfile
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "$packageManager install failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+        }
 
         # Build the UI (WASM already built above; only run the Vite/tsc step)
         Write-Host "Running $packageManager build:vite..."

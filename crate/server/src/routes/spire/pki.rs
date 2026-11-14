@@ -135,23 +135,17 @@ pub(crate) struct SignIntermediateResponse {
 /// - `"3600"` — bare number treated as seconds
 ///
 /// Returns `None` when the input is empty or unparsable.
-// option_if_let_else: multi-arm if-let chain covers 3 suffix variants; the
-// suggested map_or form would be less readable here.
-#[allow(clippy::option_if_let_else)]
 fn parse_ttl_days(ttl: &str) -> Option<i32> {
     let ttl = ttl.trim();
     if ttl.is_empty() {
         return None;
     }
-    let (n_str, unit) = if let Some(rest) = ttl.strip_suffix('h') {
-        (rest, 'h')
-    } else if let Some(rest) = ttl.strip_suffix('s') {
-        (rest, 's')
-    } else if let Some(rest) = ttl.strip_suffix('d') {
-        (rest, 'd')
-    } else {
-        (ttl, 's') // bare integer → treat as seconds
-    };
+    let suffix = ttl
+        .chars()
+        .next_back()
+        .filter(|c| matches!(c, 'h' | 's' | 'd'));
+    let n_str = suffix.and_then(|c| ttl.strip_suffix(c)).unwrap_or(ttl);
+    let unit = suffix.unwrap_or('s'); // bare integer → treat as seconds
     let n: u64 = n_str.trim().parse().ok()?;
     let days: u64 = match unit {
         'h' => n.div_ceil(24),
@@ -223,7 +217,6 @@ async fn find_ca_private_key_uid(
 /// Rejects requests with an empty `uri_sans` list (SPIFFE ID is required).
 // large_futures: chains ~5 sequential DB/KMS awaits on an infrequent CA-signing
 // path; boxing would add per-request allocation overhead for negligible benefit.
-#[allow(clippy::large_futures)]
 #[route("/root/sign-intermediate", method = "POST", method = "PUT")]
 pub(crate) async fn sign_intermediate(
     req: HttpRequest,
@@ -243,7 +236,7 @@ pub(crate) async fn sign_intermediate(
         ));
     }
 
-    let ca_label = &kms.params.vault_pki_ca_key_label;
+    let ca_label = &kms.params.vault.pki_ca_key_label;
     if ca_label.is_empty() {
         return Err(SpireApiError::InternalError(
             "vault_pki_ca_key_label is not configured on this KMS server".to_owned(),
@@ -274,7 +267,12 @@ pub(crate) async fn sign_intermediate(
     // Build the Certify request
     let csr_pem_bytes = body.csr.as_bytes().to_vec();
 
-    let mut certify_attrs = Attributes::default();
+    // Activation Date now: the issued intermediate is Active immediately (KMIP 2.1 §4.57
+    // transition 1); without it the certificate would start Pre-Active.
+    let mut certify_attrs = Attributes {
+        activation_date: Some(time::OffsetDateTime::now_utc()),
+        ..Attributes::default()
+    };
     certify_attrs.set_link(
         LinkType::PrivateKeyLink,
         LinkedObjectIdentifier::TextString(ca_private_key_uid.clone()),
@@ -291,13 +289,13 @@ pub(crate) async fn sign_intermediate(
     );
 
     // G4: forward TTL as requested_validity_days if provided
-    if let Some(ttl_str) = &body.ttl {
-        if let Some(days) = parse_ttl_days(ttl_str) {
-            certify_attrs.set_requested_validity_days(kms.vendor_id(), days);
-            debug!(
-                "vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')"
-            );
-        }
+    if let Some(ttl_str) = &body.ttl
+        && let Some(days) = parse_ttl_days(ttl_str)
+    {
+        certify_attrs.set_requested_validity_days(kms.vendor_id(), days);
+        debug!(
+            "vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')"
+        );
     }
 
     let certify_req = Certify {
@@ -332,7 +330,7 @@ pub(crate) async fn sign_intermediate(
     let certificate_pem = cert_to_pem(&signed_cert_x509)?;
 
     // Retrieve the issuing CA certificate (linked to the CA private key's public key)
-    let issuing_ca_pem = get_issuing_ca_pem(&kms, &ca_private_key_uid).await?;
+    let issuing_ca_pem = Box::pin(get_issuing_ca_pem(&kms, &ca_private_key_uid)).await?;
 
     // Detect multi-tier CA: if the issuing CA cert is not self-signed, it chains up
     // to a higher root. The beta only supports single-tier CAs; returning a truncated
@@ -462,7 +460,6 @@ async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireA
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use serde::Deserialize;
 
@@ -568,5 +565,282 @@ mod tests {
     fn string_or_vec_defaults_to_empty() {
         let h: Holder = serde_json::from_str("{}").unwrap();
         assert_eq!(h.values.len(), 0);
+    }
+}
+
+#[cfg(test)]
+mod characterization_tests {
+    //! Characterization of the SPIRE PKI helpers and `sign_intermediate` at BASE.
+
+    use std::{collections::HashSet, sync::Arc};
+
+    use actix_web::{App, test as actix_test, web::Data};
+    use cosmian_kms_interfaces::UserId;
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
+        kmip_attributes::Attributes,
+        kmip_operations::{Certify, GetAttributes},
+        kmip_types::{
+            CertificateAttributes, CryptographicAlgorithm, LinkType, VendorAttribute,
+            VendorAttributeValue,
+        },
+        requests::create_rsa_key_pair_request,
+    };
+    use openssl::{
+        ec::{EcGroup, EcKey},
+        nid::Nid,
+        pkey::PKey,
+        stack::Stack,
+        x509::{X509, X509NameBuilder, X509ReqBuilder, extension::SubjectAlternativeName},
+    };
+    use serde_json::{Value, json};
+
+    use super::{parse_ttl_days, sign_intermediate};
+    use crate::{core::KMS, result::KResult, tests::test_utils::https_clap_config};
+
+    #[test]
+    fn characterization_parse_ttl_days_table() {
+        let cases: [(&str, Option<i32>); 24] = [
+            ("", None),
+            ("   ", None),
+            ("h", None),
+            ("s", None),
+            ("d", None),
+            ("0", Some(0)),
+            ("0h", Some(0)),
+            ("1s", Some(1)),
+            ("86401s", Some(2)),
+            ("24h", Some(1)),
+            ("23h", Some(1)),
+            ("48h", Some(2)),
+            ("7d", Some(7)),
+            (" 7d ", Some(7)),
+            ("7 d", Some(7)),
+            ("-1h", None),
+            ("1.5h", None),
+            ("1hh", None),
+            ("1D", None),
+            ("1m", None),
+            ("2h3s", None),
+            ("99999999999999d", None),
+            ("172800", Some(2)),
+            ("hd", None),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(parse_ttl_days(input), expected, "input {input:?}");
+        }
+    }
+
+    const LABEL: &str = "vault_pki_ca";
+    const CA_EXT: &[u8] = b"[v3_ca]\nsubjectKeyIdentifier=hash\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,crlSign,digitalSignature\n";
+
+    fn csr_pem() -> String {
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+        let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", "intermediate").unwrap();
+        let mut builder = X509ReqBuilder::new().unwrap();
+        builder.set_subject_name(&name.build()).unwrap();
+        builder.set_pubkey(&key).unwrap();
+        let mut extensions = Stack::new().unwrap();
+        let ctx = builder.x509v3_context(None);
+        extensions
+            .push(
+                SubjectAlternativeName::new()
+                    .uri("spiffe://example.org/x")
+                    .build(&ctx)
+                    .unwrap(),
+            )
+            .unwrap();
+        builder.add_extensions(&extensions).unwrap();
+        builder
+            .sign(&key, openssl::hash::MessageDigest::sha256())
+            .unwrap();
+        String::from_utf8(builder.build().to_pem().unwrap()).unwrap()
+    }
+
+    /// KMS with a tagged RSA CA key pair owned by the default user, and a self-signed CA certificate
+    /// linked to the public key.
+    async fn kms_without_key() -> KResult<Arc<KMS>> {
+        let mut config = https_clap_config();
+        config.vault.pki_ca_key_label = LABEL.to_owned();
+        crate::tests::test_utils::test_kms_with_config(config).await
+    }
+
+    async fn kms_with_ca(with_certificate: bool) -> KResult<Arc<KMS>> {
+        let kms = Box::pin(kms_without_key()).await?;
+        let owner = UserId::from(kms.params.default_username.as_str());
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            cryptographic_length: Some(2048),
+            certificate_attributes: Some(CertificateAttributes::parse_subject_line(
+                "C=FR, O=KMS Test, CN=Root CA",
+            )?),
+            vendor_attributes: Some(vec![VendorAttribute {
+                vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+                attribute_name: VENDOR_ATTR_X509_EXTENSION.to_owned(),
+                attribute_value: VendorAttributeValue::ByteString(CA_EXT.to_vec()),
+            }]),
+            // keys are created PreActive without an activation date, and only Active keys may sign
+            activation_date: Some(time::OffsetDateTime::now_utc()),
+            ..Attributes::default()
+        };
+        if !with_certificate {
+            // a tagged CA private key without any certificate
+            let pair = kms
+                .create_key_pair(
+                    create_rsa_key_pair_request(
+                        VENDOR_ID_COSMIAN,
+                        None,
+                        [LABEL],
+                        2048,
+                        false,
+                        None,
+                    )?,
+                    &owner,
+                )
+                .await?;
+            assert_ne!(pair.private_key_unique_identifier.to_string().len(), 0);
+            return Ok(kms);
+        }
+        let cert_id = kms
+            .certify(
+                Certify {
+                    attributes: Some(attributes),
+                    ..Certify::default()
+                },
+                &owner,
+            )
+            .await?
+            .unique_identifier
+            .to_string();
+        let sk_id = kms
+            .get_attributes(GetAttributes::from(cert_id), &owner)
+            .await?
+            .attributes
+            .get_link(LinkType::PrivateKeyLink)
+            .unwrap()
+            .to_string();
+        let owm = kms.database.retrieve_object(&sk_id).await?.unwrap();
+        kms.database
+            .update_object(
+                &sk_id,
+                owm.object(),
+                owm.attributes(),
+                Some(&HashSet::from([LABEL.to_owned()])),
+            )
+            .await?;
+        Ok(kms)
+    }
+
+    async fn call(kms: &Arc<KMS>, body: &Value) -> (u16, Value) {
+        let app = actix_test::init_service(
+            App::new()
+                .app_data(Data::new(kms.clone()))
+                .service(sign_intermediate),
+        )
+        .await;
+        let req = actix_test::TestRequest::put()
+            .uri("/root/sign-intermediate")
+            .set_payload(body.to_string())
+            .to_request();
+        let resp = actix_test::call_service(&app, req).await;
+        let status = resp.status().as_u16();
+        let bytes = actix_test::read_body(resp).await;
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn characterization_sign_intermediate_signs_csr_with_ca() {
+        let kms = Box::pin(kms_with_ca(true)).await.unwrap();
+        let (status, body) = call(
+            &kms,
+            &json!({"csr": csr_pem(), "uri_sans": ["spiffe://example.org/x"], "ttl": "48h"}),
+        )
+        .await;
+        assert_eq!(status, 200);
+        let data = body.get("data").unwrap();
+        let certificate = X509::from_pem(
+            data.get("certificate")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
+        let issuing_ca = data.get("issuing_ca").unwrap().as_str().unwrap();
+        let ca = X509::from_pem(issuing_ca.as_bytes()).unwrap();
+        let chain = data.get("ca_chain").unwrap().as_array().unwrap();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain.first().unwrap().as_str().unwrap(), issuing_ca);
+        assert!(certificate.verify(&ca.public_key().unwrap()).unwrap());
+        assert_eq!(
+            certificate.issuer_name().to_der().unwrap(),
+            ca.subject_name().to_der().unwrap()
+        );
+        let cn = certificate
+            .subject_name()
+            .entries_by_nid(Nid::COMMONNAME)
+            .next()
+            .unwrap()
+            .data()
+            .to_string()
+            .unwrap();
+        assert_eq!(cn, "intermediate");
+        let lifetime = certificate
+            .not_before()
+            .diff(certificate.not_after())
+            .unwrap();
+        assert_eq!(lifetime.days, 2);
+        // CA:TRUE with pathlen 0 set by the server
+        let der = certificate.to_der().unwrap();
+        let (_, parsed) = x509_parser::parse_x509_certificate(&der).unwrap();
+        let bc = parsed.basic_constraints().unwrap().unwrap();
+        assert!(bc.value.ca);
+        assert_eq!(bc.value.path_len_constraint, Some(0));
+    }
+
+    #[tokio::test]
+    async fn characterization_sign_intermediate_rejects_empty_uri_sans() {
+        let kms = Box::pin(kms_with_ca(true)).await.unwrap();
+        let (status, body) = call(&kms, &json!({"csr": csr_pem()})).await;
+        assert_eq!(status, 400);
+        assert_eq!(
+            body.to_string(),
+            r#"{"errors":["uri_sans must not be empty — a SPIFFE ID URI SAN is required"]}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn characterization_sign_intermediate_rejects_invalid_body() {
+        let kms = Box::pin(kms_with_ca(true)).await.unwrap();
+        let (status, body) = call(&kms, &json!({"uri_sans": ["a"]})).await;
+        assert_eq!(status, 400);
+        assert_eq!(
+            body.to_string(),
+            r#"{"errors":["invalid sign-intermediate body: missing field `csr` at line 1 column 18"]}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn characterization_sign_intermediate_without_ca_key() {
+        let kms = Box::pin(kms_without_key()).await.unwrap();
+        let (status, body) = call(&kms, &json!({"csr": csr_pem(), "uri_sans": "a"})).await;
+        assert_eq!(status, 500);
+        assert_eq!(
+            body.to_string(),
+            r#"{"errors":["PKI CA private key with tag 'vault_pki_ca' not found in KMS. Create a key pair and tag it with 'vault_pki_ca' first."]}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn characterization_sign_intermediate_without_ca_certificate() {
+        let kms = Box::pin(kms_with_ca(false)).await.unwrap();
+        let (status, body) = call(&kms, &json!({"csr": csr_pem(), "uri_sans": "a"})).await;
+        assert_eq!(status, 500);
+        assert_eq!(
+            body.to_string(),
+            r#"{"errors":["Invalid Request: No CertificateLink found in the public key"]}"#
+        );
     }
 }

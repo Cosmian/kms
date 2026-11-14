@@ -11,8 +11,8 @@ use cosmian_kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier,
+            CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
         },
     },
 };
@@ -101,17 +101,13 @@ pub fn to_rsa_public_key(
                         &private_key.e().to_vec(),
                     )),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(cryptographic_length_in_bits),
                     cryptographic_usage_mask: public_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
-                    cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        ..CryptographicParameters::default()
-                    }),
                     cryptographic_domain_parameters: None,
                     link: Some(vec![Link {
                         link_type: LinkType::PrivateKeyLink,
@@ -120,7 +116,7 @@ pub fn to_rsa_public_key(
                         ),
                     }]),
                     ..Attributes::default()
-                }),
+                })),
             }),
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
@@ -177,17 +173,13 @@ pub fn to_rsa_private_key(
                         Box::new(SafeBigInt::from_bytes_be(&Zeroizing::from(iqmp.to_vec())))
                     }),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                     cryptographic_length: Some(cryptographic_length_in_bits),
                     cryptographic_usage_mask: private_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
-                    cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                        ..CryptographicParameters::default()
-                    }),
                     cryptographic_domain_parameters: None,
                     link: Some(vec![Link {
                         link_type: LinkType::PublicKeyLink,
@@ -197,7 +189,7 @@ pub fn to_rsa_private_key(
                     }]),
                     sensitive: sensitive.then_some(true),
                     ..Attributes::default()
-                }),
+                })),
             }),
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
@@ -281,7 +273,7 @@ pub fn create_rsa_key_pair(
             "Key value not found in RSA private key".to_owned(),
         ));
     };
-    *attributes = Some(private_key_attributes);
+    *attributes = Some(Box::new(private_key_attributes));
 
     // Generate the KMIP RSA Public Key
     let mut public_key_attributes = public_key_attributes.unwrap_or_default();
@@ -311,7 +303,7 @@ pub fn create_rsa_key_pair(
             "Key value not found in RSA public key".to_owned(),
         ));
     };
-    *attributes = Some(public_key_attributes);
+    *attributes = Some(Box::new(public_key_attributes));
 
     debug!("RSA key pair generated: private key id: {private_key_uid}");
 
@@ -319,7 +311,6 @@ pub fn create_rsa_key_pair(
 }
 
 #[cfg(all(test, not(feature = "non-fips"), not(target_os = "windows")))]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use cosmian_kmip::{
         kmip_0::kmip_types::CryptographicUsageMask,

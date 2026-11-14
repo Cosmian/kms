@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{self},
+    io::Write as _,
     path::PathBuf,
 };
 
@@ -117,7 +118,6 @@ impl Default for ClapConfig {
 #[derive(Parser, Serialize, Deserialize)]
 #[clap(version, about, long_about = None)]
 #[serde(default)]
-#[allow(clippy::struct_excessive_bools)] // CLI config structs legitimately have many boolean flags
 pub struct ClapConfig {
     /// Explicit configuration file path provided via -c / --config.
     /// When set, this file takes precedence over the `COSMIAN_KMS_CONF` environment variable
@@ -503,14 +503,14 @@ impl ClapConfig {
             } else if in_missing_section {
                 if !line.starts_with('#') && !line.trim().is_empty() {
                     // Key = value: prepend clap help if available.
-                    if let Some(key) = line.split('=').next().map(str::trim) {
-                        if let Some(help) = help_map.get(key) {
-                            for help_line in help.lines() {
-                                if help_line.is_empty() {
-                                    let _ = writeln!(output, "#");
-                                } else {
-                                    let _ = writeln!(output, "# {help_line}");
-                                }
+                    if let Some(key) = line.split('=').next().map(str::trim)
+                        && let Some(help) = help_map.get(key)
+                    {
+                        for help_line in help.lines() {
+                            if help_line.is_empty() {
+                                let _ = writeln!(output, "#");
+                            } else {
+                                let _ = writeln!(output, "# {help_line}");
                             }
                         }
                     }
@@ -535,7 +535,6 @@ impl ClapConfig {
     }
 
     /// Load configuration using a custom iterator of arguments (testable entry point).
-    #[allow(clippy::print_stdout)] // Logging is not being initialized yet, just use standard prints
     pub fn load_from_args<I, T>(args: I) -> KResult<Self>
     where
         I: IntoIterator<Item = T>,
@@ -618,11 +617,12 @@ impl ClapConfig {
 
         if let Some(path) = explicit {
             if path.is_file() {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "Configuration file {} found (via -c/--config). Command line arguments and \
                      env variables are ignored.",
                     path.display()
-                );
+                )?;
                 return load_file(&path);
             }
             if path.exists() {
@@ -639,24 +639,27 @@ impl ClapConfig {
 
         if let Some(env_path) = env_path {
             if env_path.is_file() {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "Configuration file {} found (via COSMIAN_KMS_CONF). Command line arguments \
                      and env variables are ignored.",
                     env_path.display()
-                );
+                )?;
                 return load_file(&env_path);
             }
             if env_path.exists() {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "WARNING: COSMIAN_KMS_CONF path {} exists but is not a regular file (e.g. a \
                      directory). Ignoring and falling back.",
                     env_path.display()
-                );
+                )?;
             } else {
-                println!(
+                writeln!(
+                    std::io::stdout().lock(),
                     "WARNING: Configuration file {} (COSMIAN_KMS_CONF) not found. Falling back.",
                     env_path.display()
-                );
+                )?;
             }
         }
 
@@ -680,10 +683,11 @@ impl ClapConfig {
                     default_path.display(),
                 )));
             }
-            println!(
+            writeln!(
+                std::io::stdout().lock(),
                 "Configuration file {} found (default path).",
                 default_path.display()
-            );
+            )?;
             let mut config = load_file(&default_path)?;
             // Preserve the --info flag from the command line (it is not in the TOML file)
             if info_only {
@@ -701,7 +705,6 @@ impl ClapConfig {
 }
 
 // `secret_backends` is intentionally excluded to avoid leaking credentials in logs.
-#[allow(clippy::missing_fields_in_debug)]
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
@@ -716,7 +719,7 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("proxy", &self.proxy);
         let x = x.field("socket server", &self.socket_server);
         let x = x.field("TLS", &self.tls);
-        let x = if self.socket_server.socket_server_start {
+        let x = if self.socket_server.start {
             x.field("socket server", &self.socket_server)
         } else {
             x
@@ -725,8 +728,8 @@ impl fmt::Debug for ClapConfig {
             "ui_index_html_folder",
             &self.ui_config.get_ui_index_html_folder(),
         );
-        let x = if self.ui_config.ui_oidc_auth.ui_oidc_client_id.is_some() {
-            x.field("ui_oidc_auth", &self.ui_config.ui_oidc_auth)
+        let x = if self.ui_config.oidc_auth.client_id.is_some() {
+            x.field("ui_oidc_auth", &self.ui_config.oidc_auth)
         } else {
             x
         };
@@ -738,57 +741,39 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("vendor identification", &self.vendor_identification);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
-        let x = if self.google_cse_config.google_cse_enable {
-            x.field(
-                "google_cse_enable",
-                &self.google_cse_config.google_cse_enable,
-            )
-            .field(
-                "google_cse_disable_tokens_validation",
-                &self.google_cse_config.google_cse_disable_tokens_validation,
-            )
-            .field(
-                "google_cse_incoming_url_whitelist",
-                &self.google_cse_config.google_cse_incoming_url_whitelist,
-            )
-            .field(
-                "google_cse_migration_key",
-                &self.google_cse_config.google_cse_migration_key,
-            )
-        } else {
-            x.field(
-                "google_cse_enable",
-                &self.google_cse_config.google_cse_enable,
-            )
-        };
-        let x = if self.azure_ekm_config.azure_ekm_enable {
-            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
+        let x = if self.google_cse_config.enable {
+            x.field("google_cse_enable", &self.google_cse_config.enable)
                 .field(
-                    "azure_ekm_path_prefix",
-                    &self.azure_ekm_config.azure_ekm_path_prefix,
+                    "google_cse_disable_tokens_validation",
+                    &self.google_cse_config.disable_tokens_validation,
                 )
                 .field(
+                    "google_cse_incoming_url_whitelist",
+                    &self.google_cse_config.incoming_url_whitelist,
+                )
+                .field(
+                    "google_cse_migration_key",
+                    &self.google_cse_config.migration_key,
+                )
+        } else {
+            x.field("google_cse_enable", &self.google_cse_config.enable)
+        };
+        let x = if self.azure_ekm_config.enable {
+            x.field("azure_ekm_enable", &self.azure_ekm_config.enable)
+                .field("azure_ekm_path_prefix", &self.azure_ekm_config.path_prefix)
+                .field(
                     "azure_ekm_disable_client_auth",
-                    &self.azure_ekm_config.azure_ekm_disable_client_auth,
+                    &self.azure_ekm_config.disable_client_auth,
                 )
                 .field(
                     "azure_ekm_proxy_vendor",
-                    &self.azure_ekm_config.azure_ekm_proxy_vendor,
+                    &self.azure_ekm_config.proxy_vendor,
                 )
-                .field(
-                    "azure_ekm_proxy_name",
-                    &self.azure_ekm_config.azure_ekm_proxy_name,
-                )
-                .field(
-                    "azure_ekm_ekm_vendor",
-                    &self.azure_ekm_config.azure_ekm_ekm_vendor,
-                )
-                .field(
-                    "azure_ekm_ekm_product",
-                    &self.azure_ekm_config.azure_ekm_ekm_product,
-                )
+                .field("azure_ekm_proxy_name", &self.azure_ekm_config.proxy_name)
+                .field("azure_ekm_ekm_vendor", &self.azure_ekm_config.ekm_vendor)
+                .field("azure_ekm_ekm_product", &self.azure_ekm_config.ekm_product)
         } else {
-            x.field("azure_ekm_enable", &self.azure_ekm_config.azure_ekm_enable)
+            x.field("azure_ekm_enable", &self.azure_ekm_config.enable)
         };
         let x = x.field(
             "Microsoft Double Key Encryption URL",
@@ -823,24 +808,24 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("privileged_users (deprecated)", &self.privileged_users);
         let x = x.field("roles", &self.roles);
 
-        let x = if self.aws_xks_config.aws_xks_enable {
-            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
-                .field("aws_xks_region", &self.aws_xks_config.aws_xks_region)
-                .field("aws_xks_service", &self.aws_xks_config.aws_xks_service)
+        let x = if self.aws_xks_config.enable {
+            x.field("aws_xks_enable", &self.aws_xks_config.enable)
+                .field("aws_xks_region", &self.aws_xks_config.region)
+                .field("aws_xks_service", &self.aws_xks_config.service)
                 .field(
                     "aws_xks_sigv4_access_key_id",
-                    &self.aws_xks_config.aws_xks_sigv4_access_key_id,
+                    &self.aws_xks_config.sigv4_access_key_id,
                 )
                 .field(
                     "aws_xks_sigv4_secret_access_key",
                     &self
                         .aws_xks_config
-                        .aws_xks_sigv4_secret_access_key
+                        .sigv4_secret_access_key
                         .as_ref()
                         .map(|_| "********"),
                 )
         } else {
-            x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
+            x.field("aws_xks_enable", &self.aws_xks_config.enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
         let x = x.field(
@@ -860,12 +845,11 @@ impl fmt::Debug for ClapConfig {
         };
         let x = x.field("audit", &self.audit);
 
-        x.finish()
+        x.finish_non_exhaustive()
     }
 }
 
 #[cfg(test)]
-#[allow(unsafe_code, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     //! Configuration precedence tests
     //!
@@ -931,6 +915,10 @@ mod tests {
         p
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe in edition 2024; callers serialise on ENV_MUTEX"
+    )]
     fn with_clean_env<F, R>(f: F) -> R
     where
         F: FnOnce() -> R,
@@ -948,6 +936,7 @@ mod tests {
         let original_default_override = std::env::var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR).ok();
 
         // Clear env
+        // SAFETY: `ENV_MUTEX` is held, so no other test thread reads or writes the environment.
         unsafe {
             std::env::remove_var("COSMIAN_KMS_CONF");
         }
@@ -959,6 +948,7 @@ mod tests {
         // so there is no shared file for concurrent test processes to race
         // on, and no dependency on write access to the real system path.
         let default_override_path = write_temp_path_only();
+        // SAFETY: `ENV_MUTEX` is still held, see above.
         unsafe {
             std::env::set_var(
                 super::TEST_DEFAULT_CONF_PATH_ENV_VAR,
@@ -970,10 +960,12 @@ mod tests {
         let result = f();
 
         // Restore original env state
+        // SAFETY: `ENV_MUTEX` is still held, see above.
         match original_env {
             Some(val) => unsafe { std::env::set_var("COSMIAN_KMS_CONF", val) },
             None => unsafe { std::env::remove_var("COSMIAN_KMS_CONF") },
         }
+        // SAFETY: `ENV_MUTEX` is still held, see above.
         match original_default_override {
             Some(val) => unsafe {
                 std::env::set_var(super::TEST_DEFAULT_CONF_PATH_ENV_VAR, val);
@@ -986,7 +978,12 @@ mod tests {
         // Mutex is automatically released when _guard goes out of scope
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe in edition 2024; callers serialise on ENV_MUTEX"
+    )]
     fn set_var(key: &str, value: &Path) {
+        // SAFETY: callers hold `ENV_MUTEX`, so no other thread reads or writes the environment.
         unsafe {
             std::env::set_var(key, value.display().to_string());
         }
@@ -1173,6 +1170,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe in edition 2024; callers serialise on ENV_MUTEX"
+    )]
     fn complete_precedence_chain() {
         with_clean_env(|| {
             // Test the complete precedence: -c > COSMIAN_KMS_CONF > default > args
@@ -1198,6 +1199,7 @@ mod tests {
             cleanup_temp(&env_file);
 
             // 3. Clear env var and test args win when no config files
+            // SAFETY: called inside `with_clean_env`, which holds `ENV_MUTEX`; no other test thread touches the environment.
             unsafe {
                 std::env::remove_var("COSMIAN_KMS_CONF");
             }
@@ -1210,7 +1212,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn test_server_configuration_file() {
         let conf = ClapConfig::default();
         let conf_str = toml::to_string_pretty(&conf).unwrap();
@@ -1218,7 +1219,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::unwrap_used)]
     fn test_server_idp() {
         let mut conf = ClapConfig::default();
         conf.idp_auth.jwt_auth_provider = Some(vec![
@@ -1295,8 +1295,8 @@ mod tests {
     #[test]
     fn debug_masks_aws_xks_secret_access_key() {
         let mut conf = ClapConfig::default();
-        conf.aws_xks_config.aws_xks_enable = true;
-        conf.aws_xks_config.aws_xks_sigv4_secret_access_key = Some("xks-secret-value".to_owned());
+        conf.aws_xks_config.enable = true;
+        conf.aws_xks_config.sigv4_secret_access_key = Some("xks-secret-value".to_owned());
         let debug = format!("{conf:#?}");
         assert!(!debug.contains("xks-secret-value"), "{debug}");
         assert!(debug.contains("aws_xks_sigv4_secret_access_key"), "{debug}");

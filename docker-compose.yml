@@ -250,7 +250,7 @@ services:
 
   # ── rsyslog (SIEM TCP syslog integration test) ────────────────────────────
   #
-  # Used by: mise run test:siem-cef-tcp-syslog, mise run test:siem
+  # Used by: mise run test:obs:cef-tcp-syslog, mise run test:obs
   # No special startup needed — the test script manages the container lifecycle
   # with the .mise/scripts/test/rsyslog.conf config.
   #
@@ -265,7 +265,7 @@ services:
   # WARNING: FOR LOCAL TEST AND CI AUTOMATION ONLY. DO NOT USE IN PRODUCTION.
   # Authentication and TLS are disabled (xpack.security.enabled=false) to simplify ephemeral test runs.
   #
-  # Used by: mise run test:siem-filebeat, mise run test:siem
+  # Used by: mise run test:obs:filebeat, mise run test:obs
   # Start with: docker compose up -d elasticsearch
   #
   elasticsearch:
@@ -295,7 +295,7 @@ services:
   #   - Cosmian KMS running with KMIP port 15696
   #   - EDB_MASTER_KEY_UID exported (UID of an Active AES-256 key in the KMS)
   #
-  # Used automatically by:  mise run test:edb-tde --variant non-fips
+  # Used automatically by:  mise run test:interop:edb-tde --variant non-fips
   # (when EDB_SUBSCRIPTION_TOKEN is set; the test script handles login and lifecycle)
   edb-tde:
     profiles:
@@ -352,6 +352,8 @@ services:
   db2-tde:
     image: ${DB2_DOCKER_IMAGE:-icr.io/db2_community/db2}
     container_name: ${DB2_CONTAINER_NAME:-db2-kmip-test}
+    # The Community image has no arm64 manifest: amd64 (emulated on arm64 hosts).
+    platform: linux/amd64
     privileged: true
     profiles:
       - db2

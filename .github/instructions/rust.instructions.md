@@ -10,7 +10,7 @@ applyTo: '**/*.rs'
 
 - Never use `.unwrap()` in production code — use `?` propagation with context.
 - Use `thiserror`-based error types; each crate defines its own `Error` enum.
-- In tests, return `KResult<()>` / `Result` and use `?`. Where a panic is unavoidable use `.expect("<why this cannot fail>")`; never a bare `.unwrap()`.
+- In tests, prefer returning `KResult<()>` / `Result` and using `?`. `.unwrap()` and `.expect("…")` are both allowed in test code (`clippy.toml` sets `allow-unwrap-in-tests` and `allow-expect-in-tests`); prefer `.expect("<why this cannot fail>")` when the reason is not obvious from the line.
 
 ## Panics and brutal exits — FORBIDDEN in production code
 
@@ -48,7 +48,7 @@ grep -rn "\.unwrap()\|\.expect(\|panic!\|todo!\|unimplemented!\|process::exit\|p
   --include="*.rs" crate/ | grep -v "#\[cfg(test)\]" | grep -v "^.*//.*"
 ```
 
-> To automatically audit panic hotspots across the codebase, run `/rust-panic-audit`.
+> To audit panic hotspots, run `/kms-caveman [path]`. For general Rust idioms see [`../skills/rust-best-practices/SKILL.md`](../skills/rust-best-practices/SKILL.md).
 
 ## Feature-flag discipline
 
@@ -133,7 +133,7 @@ Study this file before implementing tests for any new cryptographic feature.
 //! | Functional | <list tests here> |
 //! | Security | <list security tests here> |
 
-#![allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
+#![expect(clippy::unwrap_used, clippy::expect_used, reason = "tests: a panic is the failure signal")]
 
 // ... imports ...
 
@@ -196,56 +196,39 @@ Every other crate uses the `test_kms_server` helpers:
 
 ## Documentation
 
-- All public items (`pub fn`, `pub struct`, `pub enum`, `pub trait`) require `///` doc comments.
+- All public items (`pub fn`, `pub struct`, `pub enum`, `pub trait`) require `///` doc comments; every module carries `//!`.
+- Public items document the applicable `# Errors` (any `Result`), `# Panics` (any reachable panic) and `# Safety` (every `unsafe fn`) sections.
 
 ## Clippy and lint suppression — zero new `#[allow]` / `#[expect]` policy
 
-- Zero Clippy warnings required (`cargo clippy-all`).
-- **`#[allow(clippy::...)]` is FORBIDDEN on newly written or AI-generated code.** Fix the lint instead.
-- **`#[allow(warnings)]` and `#[allow(unused_imports)]` / `#[allow(dead_code)]` and similar** are forbidden on new code. Unused items must be removed, not silenced.
-- **`#[expect(clippy::...)]` / `#[expect(dead_code)]`** (Rust 1.81+) is subject to the same rule as `#[allow]` — forbidden on new code.
-- **Do not silence any lint to make code compile faster.** Every lint exists for a reason.
-- **Test code carve-out (the only one):** a test module or test file may carry one `#[allow(clippy::unwrap_used, clippy::expect_used, clippy::unwrap_in_result, clippy::panic_in_result_fn)]` (inner `#![allow(..)]` for a whole test file) ending with the comment `// tests: a panic is the failure signal`. No other lint may be suppressed in tests.
-
-### Fully forbidden lint suppressions (no exception, ever)
-
-```rust
-#[allow(warnings)]         // forbidden — unconditionally
-#[allow(unused_imports)]   // remove the import instead
-#[allow(dead_code)]        // remove the dead code instead
-#[expect(unused_variables)] // rename to _ or remove instead
-```
-
-Any of the above added to **new code** is a blocker that must be fixed before review.
+- Zero warnings (`cargo clippy-all`). Fix the lint; never silence one to make code compile faster.
+- **Zero clippy suppressions in non-test, handwritten source.** `#[allow(clippy::…)]` and `#[expect(clippy::…)]` are both forbidden there. Refactor, rename, regroup parameters, box a large variant, or remove the dead code instead. Lint levels are set in the root `Cargo.toml` (`[workspace.lints]`) and `clippy.toml` only.
+- **Test code** (inside `#[cfg(test)]`, `#[test]`/`#[tokio::test]` fns, files under `tests/` or `benches/`, files named `*tests*.rs`, and the `crate/test_kms_server` crate) may use only `#[expect(<lint>, reason = "…")]`, and only for a lint that actually fires: an unfulfilled expectation is itself a warning. `clippy.toml` already sets `allow-unwrap-in-tests`, `allow-expect-in-tests`, `allow-panic-in-tests`, `allow-print-in-tests`, `allow-indexing-slicing-in-tests` and `allow-dbg-in-tests`, so those lints need no attribute. Never use `#[allow(…)]` in tests.
+- **Non-clippy rustc exceptions** that are genuinely required (`unsafe_code` for FFI, ABI names such as `non_camel_case_types` / `non_snake_case`, a still-required `deprecated` call) use `#[expect(<lint>, reason = "<specific why>")]`, never `#[allow]`. Every `unsafe` block also keeps its `// SAFETY:` comment.
+- **Dead code, unused imports and unused variables are removed**, not silenced. No `#[allow(warnings)]`, no source-level `#![deny(warnings)]` / `#![allow(warnings)]`.
+- **Generated code** (prost/tonic bindings) lives in dedicated `*_proto` crates whose lint relaxations are configured in their own `Cargo.toml`, not by attributes.
+- **Struct bool count:** `clippy.toml` sets `max-struct-bools = 5` so DTOs that mirror CLI/TOML/JSON flags do not need a suppression; an internal struct with more bools is regrouped into named sub-structs.
+- **Documented exception list (exactly one):** the `#[allow(non_camel_case_types, reason = …)]` emitted inside `quote!` by `kmip_enum` in `crate/kmip-derive/src/lib.rs`; an `expect` there would be unfulfilled on enums without underscored variants.
 
 ### Decision tree for any lint warning
 
-1. **Fix it** — this is always the correct first option.
+1. **Fix it** — always the correct first option.
 2. **Refactor** — if the lint points to genuine complexity, simplify the code.
-3. **Narrow exception** — only for a lint that is a confirmed false positive on **pre-existing code** (not code you wrote in this diff). Requires an inline comment with an issue reference:
-
-   ```rust
-   #[allow(clippy::too_many_arguments)] // legacy API surface — tracked in #1234
-   pub fn existing_function(...) { ... }
-   ```
-
-4. **Report** — if none of the above apply, report the exact warning to the reviewer before suppressing.
+3. **Report** — if neither works, report the exact warning and the blocked recipe to the reviewer before touching the lint level. Do not suppress it.
 
 ### Scanning for illegitimate suppressions in the diff
 
-Agents must run the following scan before every commit and after every AI code-generation step:
+Run before every commit and after every AI code-generation step:
 
 ```bash
-# All newly added outer #[allow(...)] / #[expect(...)] and inner #![allow(...)] attributes on any lint — not just clippy
+# Newly added outer #[allow(...)] / #[expect(...)] and inner #![allow(...)] attributes on any lint
 git diff origin/develop...HEAD -- '*.rs' \
   | grep '^+' \
   | grep -v '^+++' \
-  | grep -E '#!?\[(allow|expect)\(' \
-  | grep -v '//.*tracked\|//.*issue\|//.*#[0-9]\|//.*false.positive\|//.*SAFETY' \
-  | grep -v 'tests: a panic is the failure signal'
+  | grep -E '#!?\[(allow|expect)\('
 ```
 
-Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justification. Report every match to the reviewer.
+Every match must be test code using `expect` with a `reason`, a non-clippy rustc exception per the rules above, or the documented exception. Anything else is a blocker: fix the lint and report the match to the reviewer.
 
 ## OIDs — reuse rust-openssl, never hardcode
 
@@ -265,18 +248,19 @@ Any match is a **blocker**: fix the lint or add a `// tracked in #<N>` justifica
 
 ## Style
 
-- Prefer `impl Trait` in argument position over generic type parameters when the trait bound is used once.
-- Keep functions under 60 lines; extract helpers when logic branches.
+- General Rust idioms (ownership, API design, naming, iterators, async, unsafe) live in [`../skills/rust-best-practices/SKILL.md`](../skills/rust-best-practices/SKILL.md); this file keeps only the KMS-specific rules.
 - Use `Self` to refer to the implementing type inside `impl` blocks.
+- Functions over 60 lines or nesting of five or more levels are readability-review candidates, not failures; do not extract helpers automatically.
 
 ---
 
 ## AI audit routing — one mechanical pass, scoped reasoning
 
-- Before deeper Rust audits, run `/kms-caveman` once on the scoped Rust changes. Reuse its findings; it is read-only mechanical triage, not a substitute for semantic or security review.
-- Run `/rust-panic-audit` for a dedicated panic-only request. `/rust-review-all` uses the KMS Caveman phase and must not duplicate the standalone panic audit.
+Report schema, statuses and evidence rules: [`orchestrator-contract.md` §4](../skills/shared/orchestrator-contract.md).
+
+- Before deeper Rust audits, run `/kms-caveman [path]` once on the scoped Rust changes. Reuse its findings; it is read-only mechanical triage, not a substitute for semantic or security review. It is also the dedicated panic-only audit.
 - Run `/rust-error-propagation` when changed code affects fallible operations or error handling; run `/rust-async-refactor` when changed code or affected callers touch async/blocking paths.
-- Run `/rust-refactor` and `/rust-simplify` for full audits or when the scoped change affects duplication or complexity. A negative text search does not prove these concerns are absent.
+- Run `/rust-refactor` for full audits or when the scoped change affects duplication or complexity. A negative text search does not prove these concerns are absent. Use `/rust-best-practices` for a semantic idiom/API review.
 - Run `/cryptography-review` for `crate/crypto/` changes and for algorithm selection, key lifecycle/policy, provider initialization, or FIPS-gate changes wherever they occur.
 - Run `/security-review` for security-sensitive flows, auth, externally reachable data paths, FFI, or user-controlled rendering.
   Skip only a confirmed static presentation-only UI change with no dynamic data, auth/session, API, or sensitive-data behavior.

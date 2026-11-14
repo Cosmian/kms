@@ -1,13 +1,15 @@
 ---
 name: rust-review-all
-description: 'Hardcore Rust code review gate per .github/skills/shared/orchestrator-contract.md: runs 10 review phases as sub-agents (contract §6). Each phase writes to ./review-YYYY-MM-DD/. Use before significant Rust PRs or large code generation.'
+description: 'Hardcore Rust code review gate per .github/skills/shared/orchestrator-contract.md: runs 9 review phases. Each phase writes to ./review-YYYY-MM-DD/. Use before significant Rust PRs or large code generation.'
 ---
 
 # Rust Review All — Full Rust Quality Gate
 
-Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order as sub-agents (contract §6: cheap routing for mechanical phases, reasoning routing for judgment phases where the harness supports it). Collects all findings into `./review-YYYY-MM-DD/`. Produces a unified `./review-YYYY-MM-DD/SUMMARY.md` with a go/no-go verdict.
+Runs KMS Caveman (Phase 1) through Clippy/format/suppression classification (Phase 9) in order. Collects all findings into `./review-YYYY-MM-DD/`. Produces a unified `./review-YYYY-MM-DD/SUMMARY.md` with a go/no-go verdict.
 
-**Orchestration**: See `.github/skills/shared/orchestrator-contract.md` for canonical phase order, skip gates, overlap deduplication, and report schema.
+**Orchestration**: See `.github/skills/shared/orchestrator-contract.md` for canonical phase order, skip gates, finding ownership (§3), and the report schema and status rules (§4: `PASS | FAIL | SKIPPED | INCOMPLETE`, evidence, verification performed). Delegate only genuinely independent phases via the harness's supported mechanism; otherwise run them inline (contract §6).
+
+**Baseline**: [`rust-best-practices`](../rust-best-practices/SKILL.md) and [`rust.instructions.md`](../../instructions/rust.instructions.md).
 
 **Usage**: `/rust-review-all` (full diff) or `/rust-review-all crate/server/src/core/`
 
@@ -18,7 +20,7 @@ Runs KMS Caveman (Phase 1) through Clippy (Phase 10) in order as sub-agents (con
 
 ## Orchestrator Contract Reference
 
-This skill implements the 10-phase **Full Audit Order** defined in `.github/skills/shared/orchestrator-contract.md`. Each phase below is a sub-agent delegate (contract §6).
+This skill implements the 9-phase **Full Audit Order** defined in `.github/skills/shared/orchestrator-contract.md`. Report format and status semantics are in contract §4. A required phase that could not run is `INCOMPLETE`, never `PASS`.
 
 ---
 
@@ -38,9 +40,9 @@ echo "" >> "${SUMMARY}"
 
 **Invoke**: `/kms-caveman [path]`
 
-- Scans the scoped Rust changes once for confirmed panic hazards, new lint suppressions, observed compiler diagnostics, and structural candidates.
+- Scans the scoped Rust changes once for confirmed panic hazards, unchecked arithmetic/indexing, new lint suppressions, observed compiler diagnostics, and structural candidates.
 - Report: `./review-YYYY-MM-DD/kms-caveman.md`
-- **BLOCKER** for confirmed CRITICAL or HIGH findings. Reuse these findings in later phases; do not invoke `/rust-panic-audit` again in this orchestrator. The standalone skill remains available for a dedicated panic audit.
+- **BLOCKER** for confirmed CRITICAL or HIGH findings. Reuse these findings in later phases; do not scan again in this orchestrator. `/kms-caveman [path]` is also the standalone panic audit.
 
 ---
 
@@ -54,12 +56,12 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 3 — Code Simplification
+## Phase 3 — Duplication & Structural Review
 
-**Invoke**: `/rust-simplify [path]`
+**Invoke**: `/rust-refactor [path]`
 
-- Detects nested control flow (depth > 3), functions over 60 lines, dead code, boolean param traps, redundant iterator chains.
-- Report: `./review-YYYY-MM-DD/rust-simplify.md`
+- One review covering duplicated bodies and repeated access-control sequences, and structural complexity: nesting, long functions, dead code, bool traps, redundant iterator chains.
+- Report: `./review-YYYY-MM-DD/rust-refactor.md`
 - **WARNING** level (non-blocking but must be addressed before merge if count > 5).
 
 ---
@@ -74,27 +76,17 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 5 — Duplication & Refactor
+## Phase 5 — Best Practices (semantic idiom and API review)
 
-**Invoke**: `/rust-refactor [path]`
+**Invoke**: `/rust-best-practices`, using [`references/kms-patterns.md`](../rust-best-practices/references/kms-patterns.md) as a non-normative reference, then evaluate the scoped code.
 
-- Identifies near-identical function bodies, repeated access-control sequences, struct fields that belong in shared traits.
-- Report: `./review-YYYY-MM-DD/rust-refactor.md`
+- Reads the changed code against the baseline: ownership and borrowing, API and type design, error and panic policy, async, unsafe, docs, tests. KMS instruction files win on any conflict.
+- Report: `./review-YYYY-MM-DD/rust-best-practices.md`
 - **WARNING** level.
 
 ---
 
-## Phase 6 — Design Patterns
-
-**Invoke**: `/rust-patterns` as a reference, then evaluate the scoped code against it.
-
-- Checks: newtype wrappers, builder config, command pattern for KMIP ops, trait-based HSM/DB abstraction.
-- Findings appended to `./review-YYYY-MM-DD/rust-patterns.md`
-- **WARNING** level.
-
----
-
-## Phase 7 — Security Review (Rust scope)
+## Phase 6 — Security Review (Rust scope)
 
 **Invoke**: `/security-review [path]`
 
@@ -104,7 +96,7 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 8 — Cryptographic Review (conditional)
+## Phase 7 — Cryptographic Review (conditional)
 
 **Invoke**: `/cryptography-review [path]` when crypto primitives, algorithm selection, key lifecycle or policy, provider initialization, or FIPS feature gates are affected.
 
@@ -114,7 +106,7 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 9 — Standards Compliance (conditional)
+## Phase 8 — Standards Compliance (conditional)
 
 **Invoke**: `/standards-review [path]` when a governing protocol or standards requirement may be affected.
 
@@ -124,9 +116,9 @@ echo "" >> "${SUMMARY}"
 
 ---
 
-## Phase 10 — Clippy, Format & Forbidden Suppressions (mechanical)
+## Phase 9 — Clippy, Format & Suppression Classification (mechanical)
 
-### 10a — Run Clippy and fmt
+### 9a — Run Clippy and fmt
 
 ```bash
 cargo clippy-all 2>&1 | tee ./review-$(date +%F)/clippy.txt
@@ -135,53 +127,52 @@ cargo fmt --all -- --check 2>&1 | tee ./review-$(date +%F)/fmt.txt
 
 - **BLOCKER** if Clippy emits any warnings.
 - **BLOCKER** if `cargo fmt --check` exits non-zero.
+- If a command cannot run (toolchain, platform, build failure for environmental reasons), the phase is **INCOMPLETE**, not PASS.
 
-### 10b — Classify KMS Caveman lint-suppression findings
+### 9b — Classify KMS Caveman lint-suppression findings
 
-Reuse the changed-diff `#[allow(...)]` and `#[expect(...)]` findings from Phase 1; do not repeat the scan. Classify each observed finding using the severity rules below and append evidence to `./review-YYYY-MM-DD/clippy.txt`.
-
-Severity classification:
+Reuse the changed-diff `#[allow(...)]` and `#[expect(...)]` findings from Phase 1; do not repeat the scan. Classify each observed finding against [`rust.instructions.md` § Clippy and lint suppression](../../instructions/rust.instructions.md) and append evidence to `./review-YYYY-MM-DD/clippy.txt`.
 
 | Pattern | Verdict |
 |---------|---------|
-| `#[allow(warnings)]` | **BLOCKER** — unconditionally forbidden |
-| `#[allow(unused_imports)]`, `#[allow(dead_code)]`, `#[expect(dead_code)]` | **BLOCKER** — remove the dead/unused item |
-| `#[allow(unused_*)]`, `#[expect(unused_*)]` | **BLOCKER** — rename to `_` or remove |
-| `#[allow(deprecated)]`, `#[expect(deprecated)]` | **BLOCKER** — migrate off the deprecated API |
-| `#[allow(clippy::*)]`, `#[expect(clippy::*)]` without justification | **BLOCKER** — fix the lint |
-| `#[allow(clippy::*)]` with `// tracked in #N` on pre-existing code | Logged, non-blocking |
+| `#[allow(warnings)]`, source `#![deny(warnings)]` / `#![allow(warnings)]` | **BLOCKER** — unconditionally forbidden |
+| `#[allow(dead_code)]` / `#[expect(dead_code)]`, `unused_*` | **BLOCKER** — remove the dead/unused item |
+| `#[allow(deprecated)]` / `#[expect(deprecated)]` in production | **BLOCKER** — migrate off the deprecated API |
+| `#[allow(clippy::*)]` or `#[expect(clippy::*)]` in non-test source | **BLOCKER** — fix the lint (generated `*_proto` crates are configured in their `Cargo.toml`) |
+| `#[allow(...)]` in test code | **BLOCKER** — tests use `#[expect(<lint>, reason = "…")]` |
+| `#[expect(clippy::*)]` in test code without `reason` or for a lint that does not fire | **BLOCKER** — add the reason or delete it |
+| Non-clippy rustc `#[allow]` (`unsafe_code`, `non_camel_case_types`, …) | **BLOCKER** — use `#[expect(lint, reason = "…")]`; sole documented exception: `kmip_enum` expansion in `crate/kmip-derive` |
 
-Any BLOCKER that cannot be fixed immediately must be reported to the reviewer with a `// tracked in #<N>` reference before merge.
+A BLOCKER that cannot be fixed immediately is reported to the reviewer with the exact warning and the blocked recipe; it is never suppressed.
 
 ---
 
 ## Final — Unified Summary
 
-Append to `./review-YYYY-MM-DD/SUMMARY.md`:
+Append to `./review-YYYY-MM-DD/SUMMARY.md` (header fields, per-phase evidence and the **Verification performed** section follow contract §4):
 
 ```markdown
 ## Results
 
 | Phase | Skill | Status | Blockers | Warnings |
 |-------|-------|--------|----------|----------|
-| 1 | kms-caveman | ✅/❌/— | N | N |
-| 2 | rust-error-propagation | ✅/❌ | N | N |
-| 3 | rust-simplify | ✅/⚠️ | 0 | N |
-| 4 | rust-async-refactor | ✅/⚠️/— | N | N |
-| 5 | rust-refactor | ✅/⚠️ | 0 | N |
-| 6 | rust-patterns | ✅/⚠️ | 0 | N |
-| 7 | security-review | ✅/❌ | N | N |
-| 8 | cryptography-review | ✅/❌/— | N | N |
-| 9 | standards-review | ✅/❌/— | N | N |
-| 10 | clippy + fmt | ✅/❌ | N | 0 |
+| 1 | kms-caveman | PASS/FAIL/INCOMPLETE | N | N |
+| 2 | rust-error-propagation | PASS/FAIL/INCOMPLETE | N | N |
+| 3 | rust-refactor | PASS/FAIL/INCOMPLETE | 0 | N |
+| 4 | rust-async-refactor | PASS/FAIL/SKIPPED/INCOMPLETE | N | N |
+| 5 | rust-best-practices | PASS/FAIL/INCOMPLETE | 0 | N |
+| 6 | security-review | PASS/FAIL/INCOMPLETE | N | N |
+| 7 | cryptography-review | PASS/FAIL/SKIPPED/INCOMPLETE | N | N |
+| 8 | standards-review | PASS/FAIL/SKIPPED/INCOMPLETE | N | N |
+| 9 | clippy + fmt + suppressions | PASS/FAIL/INCOMPLETE | N | 0 |
 
 ## Verdict
 
-**GO** — All blockers resolved. PR may proceed.
+**GO** — All blockers resolved and no required phase is INCOMPLETE. PR may proceed.
 
 or
 
-**NO-GO** — N blocker(s) must be fixed before merge:
+**NO-GO** — N blocker(s) or incomplete required phase(s) must be resolved before merge:
 - [ ] <blocker description with file:line>
 ```
 
@@ -195,10 +186,9 @@ Print the verdict to chat with the count of total blockers and a link to `./revi
 |------|-------------|
 | `./review-YYYY-MM-DD/kms-caveman.md` | `/kms-caveman` |
 | `./review-YYYY-MM-DD/rust-error-propagation.md` | `/rust-error-propagation` |
-| `./review-YYYY-MM-DD/rust-simplify.md` | `/rust-simplify` |
-| `./review-YYYY-MM-DD/rust-async-refactor.md` | `/rust-async-refactor` |
 | `./review-YYYY-MM-DD/rust-refactor.md` | `/rust-refactor` |
-| `./review-YYYY-MM-DD/rust-patterns.md` | `/rust-patterns` |
+| `./review-YYYY-MM-DD/rust-async-refactor.md` | `/rust-async-refactor` |
+| `./review-YYYY-MM-DD/rust-best-practices.md` | `/rust-best-practices` |
 | `./review-YYYY-MM-DD/security-review.md` | `/security-review` |
 | `./review-YYYY-MM-DD/cryptography-review.md` | `/cryptography-review` (if in scope) |
 | `./review-YYYY-MM-DD/standards-review.md` | `/standards-review` (if in scope) |

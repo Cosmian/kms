@@ -57,7 +57,7 @@ pub(crate) async fn activate(
     request: Activate,
     user: &UserId,
 ) -> KResult<ActivateResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    trace!("Activate request");
 
     // there must be an identifier
     let object_handle = from_request(Some(&request.unique_identifier), "Activate")?;
@@ -71,7 +71,7 @@ pub(crate) async fn activate(
         ))
         .await?,
     );
-    trace!("Retrieved object for: {}", owm.object());
+    trace!("Retrieved object for activation");
 
     // KMIP 2.1 Compliance: Validate object type supports activation
     // According to KMIP spec, only cryptographic objects with lifecycle states can be activated

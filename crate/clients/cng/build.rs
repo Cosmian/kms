@@ -1,5 +1,11 @@
 // Embeds a Windows VERSIONINFO resource in cosmian_cng.dll (Explorer Properties > Details tab).
-#[cfg_attr(not(windows), allow(clippy::unnecessary_wraps))]
+#[cfg_attr(
+    not(windows),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "build script `main` is only fallible when it compiles the Windows resource"
+    )
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     {

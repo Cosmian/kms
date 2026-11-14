@@ -39,19 +39,14 @@ pub(crate) fn serialize<S: Serializer>(
 }
 
 /// `serialize_with` helper for an `Option<OffsetDateTime>` field.
-#[expect(
-    clippy::ref_option,
-    reason = "signature imposed by serde's serialize_with"
-)]
-pub(crate) fn serialize_option<S: Serializer>(
-    value: &Option<OffsetDateTime>,
+pub(crate) fn serialize_option<'a, S: Serializer>(
+    value: impl Into<Option<&'a OffsetDateTime>>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
-    value.as_ref().map(DateTimeRef).serialize(serializer)
+    value.into().map(DateTimeRef).serialize(serializer)
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
 mod tests {
     use time::{OffsetDateTime, UtcOffset};
 
@@ -73,7 +68,7 @@ mod tests {
         .unwrap()
         .value
         .clone();
-        (value, from_ttlv(ttlv).unwrap())
+        (value, from_ttlv(&ttlv).unwrap())
     }
 
     #[test]

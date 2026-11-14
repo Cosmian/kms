@@ -17,6 +17,8 @@ pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
 #[cfg(feature = "non-fips")]
+pub(crate) mod float_conv;
+#[cfg(feature = "non-fips")]
 pub mod fpe;
 pub mod kdf;
 #[cfg(feature = "non-fips")]

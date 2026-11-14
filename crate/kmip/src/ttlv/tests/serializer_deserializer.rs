@@ -48,7 +48,7 @@ fn test_ser_int() {
 
     // Deserializer
     info!("*** Running Deserializer: {:?}", re_ttlv);
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -99,7 +99,7 @@ fn test_ser_big_int() {
         assert_eq!(ttlv, re_ttlv);
 
         // Deserializer
-        let rec: Test = from_ttlv(re_ttlv).unwrap();
+        let rec: Test = from_ttlv(&re_ttlv).unwrap();
         assert_eq!(test, rec);
     }
 }
@@ -144,7 +144,7 @@ fn test_ser_big_uint() {
         assert_eq!(ttlv, re_ttlv);
 
         // Deserializer
-        let rec: Test = from_ttlv(re_ttlv).unwrap();
+        let rec: Test = from_ttlv(&re_ttlv).unwrap();
         assert_eq!(test.the_big_uint, rec.the_big_uint);
     }
 }
@@ -172,7 +172,7 @@ fn test_direct_array() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Vec<Element> = from_ttlv(re_ttlv).unwrap();
+    let rec: Vec<Element> = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(array, rec);
 }
 
@@ -208,7 +208,7 @@ fn test_ser_array() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -256,7 +256,7 @@ fn test_enum_unit_variant() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test.an_enum, rec.an_enum);
 
     // Try with direct deserialization
@@ -270,7 +270,7 @@ fn test_enum_unit_variant() {
             }),
         }]),
     };
-    let rec: Test = from_ttlv(ttlv).unwrap();
+    let rec: Test = from_ttlv(&ttlv).unwrap();
     assert_eq!(test.an_enum, rec.an_enum);
 }
 
@@ -310,7 +310,7 @@ fn test_enumeration_untagged() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test.an_enum, rec.an_enum);
 
     // The same test with a string
@@ -335,7 +335,7 @@ fn test_enumeration_untagged() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test.an_enum, rec.an_enum);
 }
 
@@ -384,7 +384,7 @@ fn test_enumeration_untagged_variant_struct() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 
     // The same test with a string
@@ -409,7 +409,7 @@ fn test_enumeration_untagged_variant_struct() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 
     // This should fail because on untagged enum, the deserializer finds the first variant that
@@ -431,7 +431,7 @@ fn test_enumeration_untagged_variant_struct() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     // rec should have deserialized as OneInt instead of TwoInt
     assert_ne!(test, rec);
 }
@@ -480,7 +480,7 @@ fn test_nested_structures() {
     let re_ttlv = serde_json::from_value::<TTLV>(value).unwrap();
     assert_eq!(ttlv, re_ttlv);
     // Deserializer
-    let rec: Root = from_ttlv(re_ttlv).unwrap();
+    let rec: Root = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(root, rec);
 }
 
@@ -558,7 +558,7 @@ fn test_byte_string() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -575,7 +575,9 @@ fn test_large_byte_string_data_tag() {
     log_init(option_env!("RUST_LOG"));
 
     // 1 MB of data (simulates a file upload)
-    let payload: Vec<u8> = (0..1_000_000_u32).map(|i| (i % 256) as u8).collect();
+    let payload: Vec<u8> = (0..1_000_000_u32)
+        .map(|i| u8::try_from(i % 256).unwrap())
+        .collect();
     let test = EncryptLike {
         data: payload.clone(),
     };
@@ -601,7 +603,7 @@ fn test_large_byte_string_data_tag() {
     // Full round-trip: serialize → JSON → deserialize → struct
     let json = serde_json::to_value(&ttlv).unwrap();
     let re_ttlv = serde_json::from_value::<TTLV>(json).unwrap();
-    let rec: EncryptLike = from_ttlv(re_ttlv).unwrap();
+    let rec: EncryptLike = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -638,7 +640,7 @@ fn test_long_integer() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -679,7 +681,7 @@ fn test_date_time() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -724,7 +726,7 @@ fn test_date_time_optional() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -766,7 +768,7 @@ fn test_date_time_extended() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }
 
@@ -801,6 +803,6 @@ fn test_interval() {
     assert_eq!(ttlv, re_ttlv);
 
     // Deserializer
-    let rec: Test = from_ttlv(re_ttlv).unwrap();
+    let rec: Test = from_ttlv(&re_ttlv).unwrap();
     assert_eq!(test, rec);
 }

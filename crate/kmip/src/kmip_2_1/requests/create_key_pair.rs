@@ -4,6 +4,10 @@ use crate::{
     KmipError,
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
+        extra::fips::{
+            FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+            FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+        },
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
         kmip_operations::CreateKeyPair,
@@ -12,15 +16,7 @@ use crate::{
             UniqueIdentifier,
         },
     },
-    time_normalize,
-};
-#[cfg(not(feature = "non-fips"))]
-use crate::{
-    kmip_2_1::extra::fips::{
-        FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
-        FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
-    },
-    kmip_2_1_bail,
+    kmip_2_1_bail, time_normalize,
 };
 
 /// Build a `CreateKeyPairRequest` for a RSA key pair.
@@ -98,17 +94,26 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     })
 }
 
+/// Whether EC key usage masks are unrestricted (non-FIPS builds).
+#[cfg(feature = "non-fips")]
+const UNRESTRICTED_EC_MASKS: bool = true;
+/// Whether EC key usage masks are unrestricted (non-FIPS builds).
+#[cfg(not(feature = "non-fips"))]
+const UNRESTRICTED_EC_MASKS: bool = false;
+
 /// Builds the correct usage mask depending on the curve. In FIPS mode, curves are
-/// restricted to certain usage.
+/// restricted to certain usage; in non-FIPS mode, curves are not restricted to any usage.
 ///
 /// For more information see documents
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
-#[cfg(not(feature = "non-fips"))]
 fn build_mask_from_curve(
     curve: RecommendedCurve,
     is_private_mask: bool,
 ) -> Result<CryptographicUsageMask, KmipError> {
+    if UNRESTRICTED_EC_MASKS {
+        return Ok(CryptographicUsageMask::Unrestricted);
+    }
     let mask = match (is_private_mask, curve) {
         (
             true,
@@ -141,21 +146,6 @@ fn build_mask_from_curve(
     };
 
     Ok(mask)
-}
-
-/// Builds correct usage mask depending on the curve. In non-FIPS mode, curves
-/// are not restricted to any usage.
-///
-/// For more information see documents
-/// - NIST.SP.800-186 - Section 3.1.2 table 2.
-/// - NIST.FIPS.186-5
-#[cfg(feature = "non-fips")]
-#[expect(clippy::unnecessary_wraps)]
-const fn build_mask_from_curve(
-    _curve: RecommendedCurve,
-    _is_private_mask: bool,
-) -> Result<CryptographicUsageMask, KmipError> {
-    Ok(CryptographicUsageMask::Unrestricted)
 }
 
 /// Builds correct algorithm depending on the curve. In FIPS mode, curves are

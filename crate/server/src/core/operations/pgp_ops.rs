@@ -4,7 +4,7 @@ mod imp {
 
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
-            kmip_0::kmip_types::CryptographicUsageMask,
+            kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason},
             kmip_2_1::{
                 extra::{VENDOR_ATTR_PGP_USER_ID, tagging::SYSTEM_TAG_PGP_KEY},
                 kmip_attributes::Attributes,
@@ -113,7 +113,7 @@ mod imp {
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::ByteString(armored_secret),
-                    attributes: Some(attributes),
+                    attributes: Some(Box::new(attributes)),
                 }),
                 cryptographic_algorithm: alg,
                 cryptographic_length: len,
@@ -133,10 +133,10 @@ mod imp {
 
         if key_block.key_wrapping_data.is_some() {
             if key_format_type.is_some() {
-                kms_bail!(
-                    "export: unable to export a wrapped OpenPGP key with a requested Key Format \
-                     Type. It must be the default"
-                );
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Key_Format_Type_Not_Supported,
+                    "export: a wrapped OpenPGP key requires the default Key Format Type".to_owned(),
+                ));
             }
             return Ok(());
         }
@@ -186,12 +186,16 @@ mod imp {
             Some(KeyFormatType::OpenPgpSecretKey)
                 if stored_format == KeyFormatType::OpenPgpPublicKey =>
             {
-                return Err(KmsError::NotSupported(
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Key_Format_Type_Not_Supported,
                     "export: an OpenPGP public key cannot be exported as a secret key".to_owned(),
                 ));
             }
             Some(other) => {
-                kms_bail!("export: unsupported Key Format Type for an OpenPGP key: {other:?}");
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Key_Format_Type_Not_Supported,
+                    format!("export: unsupported Key Format Type for an OpenPGP key: {other:?}"),
+                ));
             }
         }
 
@@ -244,7 +248,7 @@ mod imp {
 
         key_block.key_value = Some(KeyValue::Structure {
             key_material: KeyMaterial::ByteString(armored),
-            attributes: Some(attributes.clone()),
+            attributes: Some(Box::new(attributes.clone())),
         });
 
         if let Object::PGPKey(pgp) = object {

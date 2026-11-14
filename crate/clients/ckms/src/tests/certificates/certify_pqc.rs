@@ -73,7 +73,7 @@ fn fetch_pqc_certificate(
     assert_eq!(cn, expected_cn);
 
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("pqc_cert.attributes.json")).unwrap();
-    let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();
+    let cert_attributes: Attributes = from_ttlv(&ttlv).unwrap();
     (cert, cert_attributes, cert_x509_der)
 }
 
@@ -104,7 +104,7 @@ fn certify_pqc_self_signed(
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
     assert_eq!(certificate_link.to_string(), certificate_id);
     let public_key_id = attributes.get_link(LinkType::PublicKeyLink).unwrap();
-    assert!(!public_key_id.to_string().is_empty());
+    assert_ne!(public_key_id.to_string(), "");
 
     // Validate certificate
     let output = validate_certificate(cli_conf_path, "certificates", vec![certificate_id], None)?;
@@ -165,7 +165,7 @@ fn certify_ml_kem_ca_issued(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Prove the KMS server correctly serves HTTPS with an ML-DSA-44 TLS certificate
-/// and that `ckms` (using OpenSSL 3.6.2) can natively perform KMIP operations
+/// and that `ckms` (using OpenSSL 3.6.5) can natively perform KMIP operations
 /// over the PQC TLS connection — no special client needed.
 #[tokio::test]
 async fn test_server_with_pqc_tls_cert() -> CosmianResult<()> {
@@ -394,7 +394,7 @@ fn assert_certify_format_unsupported(
         .to_possible_value()
         .expect("valid Algorithm")
         .get_name()
-        .to_string();
+        .to_owned();
 
     let err = run_ckms_expect_error(
         cli_conf_path,

@@ -30,7 +30,6 @@ pub(crate) struct OpaInput {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 

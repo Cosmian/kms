@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
@@ -27,11 +27,11 @@ use crate::{
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
     stores::{
-        MYSQL_QUERIES,
         migrate::{
             CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
             certificate_serial_tag,
         },
+        mysql_queries,
         sql::{
             crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
@@ -68,12 +68,12 @@ fn mysql_deadlock_backoff_ms(attempt: u32) -> u64 {
 #[macro_export]
 macro_rules! get_mysql_query {
     ($name:literal) => {
-        MYSQL_QUERIES
+        mysql_queries()?
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
     ($name:expr) => {
-        MYSQL_QUERIES
+        mysql_queries()?
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
@@ -244,6 +244,7 @@ impl MySqlPool {
 
         let pool = Pool::new(opts_builder);
 
+        let queries = mysql_queries()?;
         // Bootstrap: create tables if they don't exist
         let mut conn = pool.get_conn().await.map_err(DbError::from)?;
         for name in [
@@ -254,7 +255,7 @@ impl MySqlPool {
             "create-table-crypto_officer_activations",
             "create-table-crls",
         ] {
-            let sql = MYSQL_QUERIES
+            let sql = queries
                 .get(name)
                 .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
             conn.query_drop(sql).await.map_err(DbError::from)?;
@@ -264,13 +265,13 @@ impl MySqlPool {
         // `CREATE TABLE IF NOT EXISTS` above leaves an existing `objects` table untouched,
         // and every object insert/select references `domain`, so this must run first.
         // MySQL 8.0 does not support `ADD COLUMN IF NOT EXISTS`, hence the SHOW COLUMNS check.
-        let has_domain_sql = MYSQL_QUERIES.get("has-column-domain").ok_or_else(|| {
+        let has_domain_sql = queries.get("has-column-domain").ok_or_else(|| {
             DbError::DatabaseError("Missing SQL query: has-column-domain".to_owned())
         })?;
         let domain_rows: Vec<mysql_async::Row> =
             conn.query(has_domain_sql).await.map_err(DbError::from)?;
         if domain_rows.is_empty() {
-            let add_domain = MYSQL_QUERIES.get("add-column-domain").ok_or_else(|| {
+            let add_domain = queries.get("add-column-domain").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: add-column-domain".to_owned())
             })?;
             conn.query_drop(add_domain).await.map_err(DbError::from)?;
@@ -284,7 +285,7 @@ impl MySqlPool {
                 "clean-table-tags",
                 "clean-table-crls",
             ] {
-                if let Some(sql) = MYSQL_QUERIES.get(name) {
+                if let Some(sql) = queries.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
                 }
             }
@@ -293,40 +294,28 @@ impl MySqlPool {
         // Add wrapping_key_id column if not present.
         // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
         // so we check with SHOW COLUMNS first.
-        let has_col_sql = MYSQL_QUERIES
-            .get("has-column-wrapping-key-id")
-            .ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
-            })?;
+        let has_col_sql = queries.get("has-column-wrapping-key-id").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
+        })?;
         let rows: Vec<mysql_async::Row> = conn.query(has_col_sql).await.map_err(DbError::from)?;
         if rows.is_empty() {
-            let add_col = MYSQL_QUERIES
-                .get("add-column-wrapping-key-id")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: add-column-wrapping-key-id".to_owned(),
-                    )
-                })?;
+            let add_col = queries.get("add-column-wrapping-key-id").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-wrapping-key-id".to_owned())
+            })?;
             conn.query_drop(add_col).await.map_err(DbError::from)?;
         }
 
         // Add activated_by column to crypto_officer_activations if not present.
         // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
-        let has_co_col_sql = MYSQL_QUERIES
-            .get("has-column-co-activated-by")
-            .ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
-            })?;
+        let has_co_col_sql = queries.get("has-column-co-activated-by").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
+        })?;
         let co_col_rows: Vec<mysql_async::Row> =
             conn.query(has_co_col_sql).await.map_err(DbError::from)?;
         if co_col_rows.is_empty() {
-            let add_co_col = MYSQL_QUERIES
-                .get("add-column-co-activated-by")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: add-column-co-activated-by".to_owned(),
-                    )
-                })?;
+            let add_co_col = queries.get("add-column-co-activated-by").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-co-activated-by".to_owned())
+            })?;
             conn.query_drop(add_co_col).await.map_err(DbError::from)?;
         }
         // Note: MySQL does not support partial (filtered) unique indexes.
@@ -336,7 +325,7 @@ impl MySqlPool {
 
         // Ensure the read-path indexes exist. MySQL 8.0 has no
         // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
-        let has_index_sql = MYSQL_QUERIES
+        let has_index_sql = queries
             .get("has-index")
             .ok_or_else(|| DbError::DatabaseError("Missing SQL query: has-index".to_owned()))?;
         for (table, index_name, create_name) in [
@@ -359,7 +348,7 @@ impl MySqlPool {
                 .await
                 .map_err(DbError::from)?;
             if existing.is_empty() {
-                let create_sql = MYSQL_QUERIES.get(create_name).ok_or_else(|| {
+                let create_sql = queries.get(create_name).ok_or_else(|| {
                     DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
                 })?;
                 conn.query_drop(create_sql).await.map_err(DbError::from)?;
@@ -371,7 +360,7 @@ impl MySqlPool {
         // MySQL has no transactional DDL, but the column is already ensured above;
         // if the process dies mid-backfill the marker stays unset and the scan
         // re-runs cleanly on the next boot.
-        let select_param = MYSQL_QUERIES.get("select-parameter").ok_or_else(|| {
+        let select_param = queries.get("select-parameter").ok_or_else(|| {
             DbError::DatabaseError("Missing SQL query: select-parameter".to_owned())
         })?;
         let backfill_marker: Option<String> = conn
@@ -379,14 +368,14 @@ impl MySqlPool {
             .await
             .map_err(DbError::from)?;
         if backfill_marker.as_deref() != Some("true") {
-            let select_sql = MYSQL_QUERIES
+            let select_sql = queries
                 .get("select-objects-null-wrapping-key")
                 .ok_or_else(|| {
                     DbError::DatabaseError(
                         "Missing SQL query: select-objects-null-wrapping-key".to_owned(),
                     )
                 })?;
-            let update_sql = MYSQL_QUERIES.get("update-wrapping-key-id").ok_or_else(|| {
+            let update_sql = queries.get("update-wrapping-key-id").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: update-wrapping-key-id".to_owned())
             })?;
             let null_rows: Vec<(String, String)> =
@@ -406,7 +395,7 @@ impl MySqlPool {
                     ),
                 }
             }
-            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
+            let upsert_param = queries.get("upsert-parameter").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
             })?;
             conn.exec_drop(upsert_param, (WRAPPING_KEY_BACKFILL_PARAM, "true"))
@@ -421,14 +410,14 @@ impl MySqlPool {
             .await
             .map_err(DbError::from)?;
         if serial_marker.as_deref() != Some("true") {
-            let select_sql = MYSQL_QUERIES
+            let select_sql = queries
                 .get("select-certificates-missing-serial-tag")
                 .ok_or_else(|| {
                     DbError::DatabaseError(
                         "Missing SQL query: select-certificates-missing-serial-tag".to_owned(),
                     )
                 })?;
-            let insert_sql = MYSQL_QUERIES.get("insert-tags-if-absent").ok_or_else(|| {
+            let insert_sql = queries.get("insert-tags-if-absent").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: insert-tags-if-absent".to_owned())
             })?;
             let missing_rows: Vec<(String, String)> =
@@ -448,7 +437,7 @@ impl MySqlPool {
                     ),
                 }
             }
-            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
+            let upsert_param = queries.get("upsert-parameter").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
             })?;
             conn.exec_drop(
@@ -496,8 +485,8 @@ impl MySqlPool {
 // to keep the default build backend-agnostic.
 
 impl SqlDatabase for MySqlPool {
-    fn get_loader(&self) -> &Loader {
-        &MYSQL_QUERIES
+    fn get_loader(&self) -> DbResult<&'static Loader> {
+        mysql_queries()
     }
 }
 
@@ -1690,6 +1679,13 @@ pub(super) async fn atomic_(
                 if let Err(e) =
                     create_(Some(uid.clone()), owner, object, attributes, tags, "", tx).await
                 {
+                    // Keep the typed reason so callers still see `ObjectAlreadyExists`.
+                    if matches!(
+                        e,
+                        DbError::Kmip21Error(ErrorReason::Object_Already_Exists, _)
+                    ) {
+                        return Err(e);
+                    }
                     db_bail!("creation of object {uid} failed: {e}");
                 }
                 uids.push(uid.clone());

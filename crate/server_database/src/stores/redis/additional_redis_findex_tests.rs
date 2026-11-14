@@ -1,5 +1,3 @@
-#![allow(clippy::indexing_slicing)] // Test file uses safe indexing patterns
-
 use std::{collections::HashSet, sync::Arc};
 
 use cosmian_kmip::{

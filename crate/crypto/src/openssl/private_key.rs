@@ -119,36 +119,27 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                                 .1,
                         )?,
                     )?;
-                    if let Some(p) = p {
-                        if let Some(q) = q {
-                            rsa_private_key_builder = rsa_private_key_builder
-                                .set_factors(
-                                    BigNum::from_slice(&p.clone().to_bytes_be().1)?,
-                                    BigNum::from_slice(&q.clone().to_bytes_be().1)?,
-                                )
-                                .context("Failed to set 'p' and 'q' on the RSA Private key")?;
-                        }
+                    if let Some(p) = p
+                        && let Some(q) = q
+                    {
+                        rsa_private_key_builder = rsa_private_key_builder
+                            .set_factors(
+                                BigNum::from_slice(&p.clone().to_bytes_be().1)?,
+                                BigNum::from_slice(&q.clone().to_bytes_be().1)?,
+                            )
+                            .context("Failed to set 'p' and 'q' on the RSA Private key")?;
                     }
-                    if let Some(prime_exponent_p) = prime_exponent_p {
-                        if let Some(prime_exponent_q) = prime_exponent_q {
-                            if let Some(crt_coefficient) = crt_coefficient {
-                                rsa_private_key_builder = rsa_private_key_builder
-                                    .set_crt_params(
-                                        BigNum::from_slice(
-                                            &prime_exponent_p.clone().to_bytes_be().1,
-                                        )?,
-                                        BigNum::from_slice(
-                                            &prime_exponent_q.clone().to_bytes_be().1,
-                                        )?,
-                                        BigNum::from_slice(
-                                            &crt_coefficient.clone().to_bytes_be().1,
-                                        )?,
-                                    )
-                                    .context(
-                                        "Failed to set CRT parameters on the RSA Private key",
-                                    )?;
-                            }
-                        }
+                    if let Some(prime_exponent_p) = prime_exponent_p
+                        && let Some(prime_exponent_q) = prime_exponent_q
+                        && let Some(crt_coefficient) = crt_coefficient
+                    {
+                        rsa_private_key_builder = rsa_private_key_builder
+                            .set_crt_params(
+                                BigNum::from_slice(&prime_exponent_p.clone().to_bytes_be().1)?,
+                                BigNum::from_slice(&prime_exponent_q.clone().to_bytes_be().1)?,
+                                BigNum::from_slice(&crt_coefficient.clone().to_bytes_be().1)?,
+                            )
+                            .context("Failed to set CRT parameters on the RSA Private key")?;
                     }
                     let rsa_private_key = rsa_private_key_builder.build();
                     // Sanity check: verify RSA private key integrity
@@ -325,7 +316,7 @@ pub fn openssl_private_key_to_kmip(
                         c_r_t_coefficient: crt_coefficient
                             .map(|crt_coeff| Box::new(SafeBigInt::from(crt_coeff))),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
@@ -336,7 +327,7 @@ pub fn openssl_private_key_to_kmip(
                             ..CryptographicParameters::default()
                         }),
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
@@ -410,7 +401,7 @@ pub fn openssl_private_key_to_kmip(
                         recommended_curve,
                         d: Box::new(SafeBigInt::from(d)),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         activation_date: None,
                         certificate_attributes: None,
                         certificate_type: None,
@@ -431,7 +422,7 @@ pub fn openssl_private_key_to_kmip(
                         }),
                         cryptographic_usage_mask,
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(cryptographic_algorithm),
                 cryptographic_length,
@@ -454,7 +445,7 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         private_key.private_key_to_pkcs8()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS8),
@@ -465,7 +456,7 @@ pub fn openssl_private_key_to_kmip(
                             ..CryptographicParameters::default()
                         }),
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm,
                 cryptographic_length,
@@ -484,14 +475,14 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         ec_key.private_key_to_der()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::ECPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                 cryptographic_length,
@@ -509,14 +500,14 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_private_key.private_key_to_der()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length,
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PrivateKey),
                         cryptographic_usage_mask,
                         ..Attributes::default()
-                    }),
+                    })),
                 }),
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length,
@@ -532,7 +523,6 @@ pub fn openssl_private_key_to_kmip(
     Ok(Object::PrivateKey(PrivateKey { key_block }))
 }
 
-#[expect(clippy::unwrap_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "non-fips")]

@@ -1,13 +1,11 @@
 //! Proxy configuration step of the KMS configuration wizard.
 
-#![allow(unreachable_pub)]
-
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use super::PromptResultExt;
 use crate::{config::ProxyConfig, result::KResult};
 
-pub fn configure_proxy() -> KResult<ProxyConfig> {
+pub(crate) fn configure_proxy() -> KResult<ProxyConfig> {
     let theme = ColorfulTheme::default();
 
     let enable: bool = Confirm::with_theme(&theme)
@@ -65,18 +63,18 @@ pub fn configure_proxy() -> KResult<ProxyConfig> {
     };
 
     Ok(ProxyConfig {
-        proxy_url: Some(proxy_url),
-        proxy_basic_auth_username: if proxy_basic_auth_username.trim().is_empty() {
+        url: Some(proxy_url),
+        basic_auth_username: if proxy_basic_auth_username.trim().is_empty() {
             None
         } else {
             Some(proxy_basic_auth_username)
         },
-        proxy_basic_auth_password,
-        proxy_custom_auth_header: if proxy_custom_auth_header.trim().is_empty() {
+        basic_auth_password: proxy_basic_auth_password,
+        custom_auth_header: if proxy_custom_auth_header.trim().is_empty() {
             None
         } else {
             Some(proxy_custom_auth_header)
         },
-        proxy_exclusion_list,
+        exclusion_list: proxy_exclusion_list,
     })
 }

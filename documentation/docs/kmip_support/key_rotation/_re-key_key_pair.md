@@ -24,15 +24,25 @@ based on the dates of the existing key pair as follows
 
 ## Implementation
 
-The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Eviden KMS Server. By
-updating, through this operation, the Policy held by a master secret key in it Vendor Attributes, the Eviden KMS Server
-will automatically
+The `Re-Key Key Pair` Operation rotates RSA, EC and PQC key pairs: the new private key gets a new Unique Identifier and
+the new public key gets `<private key uid>_pk`. It also rotates Covercrypt master keys in place.
+
+- The existing private key must be Active, Deactivated or Compromised; any other state returns `Permission_Denied`.
+- The caller also needs the `Rekey` permission on the public key named by the private key's Public Key Link;
+  otherwise the request fails with `Object_Not_Found`.
+- Request attributes that change the cryptographic algorithm, length or curve return `Invalid_Field`.
+- `Offset` is an Interval in seconds: the new keys' Activation Date is `now + Offset`, and their Process Start, Protect
+  Stop and Deactivation Dates are shifted by the same amount. Without it these dates are copied.
+- The request Common, Private and Public Key `Attributes` are applied to the new keys, except the attributes the server
+  manages (identity, links, names, lifecycle dates, state, rotation metadata).
+- Active existing keys become Deactivated (Deactivation Date = now); keys in another state keep their state.
+
+For Covercrypt, by updating, through this operation, the Policy held by a master secret key in its Vendor Attributes,
+the Eviden KMS Server will automatically
 
 - update the Policy held by the Master Public Key
 - and re-key all non revoked User Decryption Keys holding the rotated policy attributes in a way that they will now be
   able to decrypt cipher texts encrypted with attributes before and after the rotation.
-
-The operation has currently no other usages on the Eviden server.
 
 ## Example - Rotate the `Security Level::Confidential` attribute
 

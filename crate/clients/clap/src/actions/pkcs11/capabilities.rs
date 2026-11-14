@@ -854,7 +854,10 @@ struct ProvisionedKeys {
 /// per-mechanism failures are never returned as an `Err`: they are recorded and
 /// printed as a ❌ row in the report, so this command always exits successfully
 /// once a session was established.
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 pub(crate) async fn run_capabilities(
     so_path: &Path,
     conf: Option<&Path>,
@@ -1181,7 +1184,10 @@ fn find_key_pair(
 
 /// `C_FindObjectsInit`/`C_FindObjects`/`C_FindObjectsFinal` for a single object
 /// matching `class` and `CKA_ID == id`.
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn find_object_by_id(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1239,7 +1245,10 @@ const AES_GCM_IV_SIZE: usize = 12;
 
 /// `CKM_AES_KEY_GEN` (via `C_GenerateKey`) + `CKM_AES_CBC` / `CKM_AES_CBC_PAD` /
 /// `CKM_AES_GCM` round-trip encrypt/decrypt.
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn run_aes_checks(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1321,7 +1330,10 @@ fn run_aes_checks(
     }
 }
 
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn generate_aes_key(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1390,7 +1402,10 @@ fn generate_aes_key(
     Ok(key_handle)
 }
 
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn aes_round_trip(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1746,7 +1761,10 @@ fn run_eddsa_checks(
 }
 
 /// Generic `C_SignInit`/`C_Sign` + `C_VerifyInit`/`C_Verify` round trip.
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn sign_verify(
     func_list: &CK_FUNCTION_LIST,
     slot_id: CK_SLOT_ID,
@@ -1779,7 +1797,10 @@ fn sign_verify(
     result
 }
 
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn sign_verify_on_session(
     func_list: &CK_FUNCTION_LIST,
     session: CK_SESSION_HANDLE,
@@ -1869,7 +1890,10 @@ fn sign_verify_on_session(
 
 /// v3.0 message-based `EdDSA` sign, then one-shot verify, on a dedicated session.
 #[cfg(feature = "non-fips")]
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn eddsa_message_sign_verify(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -1897,7 +1921,10 @@ fn eddsa_message_sign_verify(
 }
 
 #[cfg(feature = "non-fips")]
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn eddsa_message_sign_verify_on_session(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -2019,7 +2046,10 @@ fn eddsa_message_sign_verify_on_session(
 /// in practice, but is reported as a genuine ❌ Fail rather than silently
 /// ignored if it ever does (e.g. after a future provider change adds a new
 /// mechanism this tool doesn't know how to exercise yet).
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn probe_mechanism_info(
     func_list: &CK_FUNCTION_LIST,
     slot_id: CK_SLOT_ID,
@@ -2150,7 +2180,10 @@ struct FunctionProbeCtx<'a> {
 /// without ever being invoked; `REUSED_FUNCTIONS` are reported `Pass`/`Fail`
 /// based on whether any deep mechanism check that used them succeeded; every
 /// other function gets a single, real, minimal-precondition shallow call.
-#[expect(unsafe_code)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI into the dlopen'ed PKCS#11 provider (#1166)
 fn run_function_coverage(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -2222,11 +2255,11 @@ fn run_function_coverage(
         rsa,
     };
     shallow_probe_functions(&ctx, func_list_3_0, token, &mut rows);
-    if object != 0 {
-        if let Some(c_destroy) = func_list.C_DestroyObject {
-            // SAFETY: `object` was just created above by `generate_aes_key`.
-            let _ = unsafe { c_destroy(session, object) };
-        }
+    if object != 0
+        && let Some(c_destroy) = func_list.C_DestroyObject
+    {
+        // SAFETY: `object` was just created above by `generate_aes_key`.
+        let _ = unsafe { c_destroy(session, object) };
     }
 
     rows
@@ -2262,7 +2295,10 @@ macro_rules! probe_call {
 /// pointer/length pairs below are valid for the duration of the call" is
 /// required. Functions with a spec-mandated non-`CKR_OK` "working" response
 /// (`C_GetFunctionStatus`, `C_CancelFunction`) use an overridden `expected_ok`.
-#[expect(unsafe_code)] // FFI probes into the dlopen'ed PKCS#11 provider (#1166)
+#[expect(
+    unsafe_code,
+    reason = "PKCS#11 C_* calls through the loaded module function table"
+)] // FFI probes into the dlopen'ed PKCS#11 provider (#1166)
 fn shallow_probe_functions(
     ctx: &FunctionProbeCtx,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -2350,11 +2386,11 @@ fn shallow_probe_functions(
                 &raw mut handle,
             );
             push_probe(rows, "C_CreateObject", rv, CKR_OK);
-            if rv == CKR_OK {
-                if let Some(c_destroy) = f.C_DestroyObject {
-                    // SAFETY: `handle` was just created above.
-                    let _ = unsafe { c_destroy(session, handle) };
-                }
+            if rv == CKR_OK
+                && let Some(c_destroy) = f.C_DestroyObject
+            {
+                // SAFETY: `handle` was just created above.
+                let _ = unsafe { c_destroy(session, handle) };
             }
             Ok(())
         })();

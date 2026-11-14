@@ -6,6 +6,8 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 print_header "Checking AI instruction files"
 REPO_ROOT="$(get_repo_root)"
 
+python3 "${REPO_ROOT}/.mise/scripts/docs/check_ai_docs.py" --self-test
+
 if python3 "${REPO_ROOT}/.mise/scripts/docs/check_ai_docs.py"; then
   print_success "AI instruction files are consistent"
 else

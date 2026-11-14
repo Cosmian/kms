@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="List the mise tasks that no CI workflow runs, directly or through another task"
+#USAGE flag "--strict" help="Exit 1 when at least one task is not reachable from CI"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+PYTHON="$(pick_python312)"
+ARGS=()
+[ "${usage_strict:-false}" = "true" ] && ARGS+=(--strict)
+
+print_header "mise tasks not called in CI"
+"${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_coverage.py" tasks ${ARGS[@]+"${ARGS[@]}"}
+print_success "Inventory complete"

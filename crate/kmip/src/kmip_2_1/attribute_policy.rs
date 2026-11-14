@@ -43,7 +43,7 @@ impl Tag {
                 | Self::ObjectType
                 | Self::OpaqueDataType
                 | Self::OriginalCreationDate
-                | Self::ProtectionStorageMasks
+                | Self::ProtectionStorageMask
                 | Self::RandomNumberGenerator
                 | Self::RotateDate
                 | Self::RotateGeneration
@@ -62,9 +62,31 @@ impl Tag {
                 | Self::State,
                 _,
             )
-            | (Self::RotateAutomatic, AddAttribute | DeleteAttribute)
-            | (Self::Sensitive | Self::Extractable, DeleteAttribute) => ServerManaged,
-            (Self::Sensitive | Self::Extractable, _) => RequiresGrant,
+            // Modifiable by client, but "Deletable by client: No".
+            | (
+                Self::CryptographicUsageMask
+                | Self::ActivationDate
+                | Self::DeactivationDate
+                | Self::Sensitive
+                | Self::Extractable,
+                DeleteAttribute,
+            )
+            | (Self::RotateAutomatic, AddAttribute | DeleteAttribute) => ServerManaged,
+            // Attributes that weaken or redirect key usage need ownership or an explicit grant
+            // of the edit operation: a generic `Get` grant is not enough.
+            (
+                Self::Sensitive
+                | Self::Extractable
+                | Self::UsageLimits
+                | Self::CryptographicUsageMask
+                | Self::ActivationDate
+                | Self::DeactivationDate
+                | Self::Link
+                | Self::LinkType
+                | Self::RotateInterval
+                | Self::RevocationReason,
+                _,
+            ) => RequiresGrant,
             _ => Allowed,
         }
     }
@@ -97,7 +119,7 @@ mod tests {
                 kmip_objects::ObjectType,
                 kmip_types::{
                     CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
-                    NistKeyType, UniqueIdentifier,
+                    NistKeyType, ProtectionStorageMasks, UniqueIdentifier,
                 },
             },
         };
@@ -145,11 +167,18 @@ mod tests {
                 Attribute::KeyFormatType(KeyFormatType::Raw),
                 Tag::KeyFormatType,
             ),
-            (Attribute::NistKeyType(NistKeyType::AESP1), Tag::NISTKeyType),
+            (
+                Attribute::NistKeyType(NistKeyType::PrivateSignatureKey),
+                Tag::NISTKeyType,
+            ),
             (Attribute::DestroyDate(now), Tag::DestroyDate),
             (
                 Attribute::X509CertificateSubject("CN=x".to_owned()),
                 Tag::X509CertificateSubject,
+            ),
+            (
+                Attribute::ProtectionStorageMask(ProtectionStorageMasks::Software),
+                Tag::ProtectionStorageMask,
             ),
         ] {
             assert_eq!(attribute.tag(), Some(tag), "{attribute}");
@@ -187,27 +216,37 @@ mod tests {
                 Tag::Fresh,
                 Tag::LastChangeDate,
                 Tag::OriginalCreationDate,
+                Tag::ProtectionStorageMask,
                 Tag::State,
             ],
             [ServerManaged; 4],
+        ),
+        (
+            &[
+                Tag::CryptographicUsageMask,
+                Tag::ActivationDate,
+                Tag::DeactivationDate,
+                Tag::Sensitive,
+                Tag::Extractable,
+            ],
+            [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
         ),
         (
             &[Tag::RotateAutomatic],
             [ServerManaged, Allowed, Allowed, ServerManaged],
         ),
         (
-            &[Tag::Sensitive, Tag::Extractable],
-            [RequiresGrant, RequiresGrant, RequiresGrant, ServerManaged],
-        ),
-        (
             &[
-                Tag::Comment,
-                Tag::Name,
+                Tag::UsageLimits,
                 Tag::Link,
                 Tag::LinkType,
-                Tag::CryptographicParameters,
-                Tag::CryptographicUsageMask,
+                Tag::RotateInterval,
+                Tag::RevocationReason,
             ],
+            [RequiresGrant; 4],
+        ),
+        (
+            &[Tag::Comment, Tag::Name, Tag::CryptographicParameters],
             [Allowed; 4],
         ),
     ];

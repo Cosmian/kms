@@ -60,7 +60,7 @@ async fn status_fields() {
     assert_eq!(status.server_type, "KACLS");
     assert_eq!(status.vendor_id, "Cosmian");
     assert_eq!(status.name, "Cosmian KMS");
-    assert!(!status.version.is_empty());
+    assert_ne!(status.version.len(), 0);
     assert_eq!(status.kacls_url, LOCAL_KACLS_URL);
     assert_eq!(status.operations_supported, OPERATIONS_SUPPORTED);
 }
@@ -229,7 +229,7 @@ async fn kms_with_config(
     google_cse_migration_key: Option<String>,
 ) -> (Arc<ServerParams>, Arc<KMS>) {
     let mut clap_config = https_clap_config_opts(Some(LOCAL_KMS_PUBLIC_URL.to_owned()));
-    clap_config.google_cse_config.google_cse_migration_key = google_cse_migration_key;
+    clap_config.google_cse_config.migration_key = google_cse_migration_key;
     let server_params = Arc::new(ServerParams::try_from(clap_config).unwrap());
     let kms = Arc::new(KMS::instantiate(server_params.clone()).await.unwrap());
     (server_params, kms)

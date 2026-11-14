@@ -5,10 +5,12 @@ description: 'Classify Rust function parameters and the structs behind them to c
 
 # Rust Signature Design
 
+Baseline: [`rust-best-practices`](../rust-best-practices/SKILL.md) (§4 types and API design) and [`rust.instructions.md`](../../instructions/rust.instructions.md).
+
 Goal: make invalid or incomplete call states hard to represent — not merely shorten signatures.
-Companion to the "Refactor" step of the lint-suppression tree in
-[`rust.instructions.md`](../../instructions/rust.instructions.md): apply it instead of adding
-`#[allow(clippy::too_many_arguments)]` (forbidden on new code).
+Companion to the "Refactor" step of the lint decision tree in
+[`rust.instructions.md`](../../instructions/rust.instructions.md): apply it instead of suppressing
+`clippy::too_many_arguments`.
 
 ## Step 1 — Classify every parameter
 
@@ -24,7 +26,7 @@ Companion to the "Refactor" step of the lint-suppression tree in
 
 ```bash
 # Functions already fighting the lint — primary candidates
-rg -n '#\[(allow|expect)\(clippy::too_many_arguments' --type rust <path>
+rg -n '#\[(allow|expect)\(clippy::too_many_arguments' --type rust <path>   # should be empty outside generated code
 
 # Same parameter pair/triple repeated verbatim across signatures
 rg -n '^\s*kms: &KMS,$' -A1 --type rust <path> | rg -B1 'user: &UserId'
@@ -38,7 +40,7 @@ rg -n '\b(\w+)\.\w+,\s*&?\1\.\w+' --type rust <path>
 | Repeated parameter cluster | Same 2+ param names/types travel together across signatures | Group into an existing or new struct (Step 3) |
 | Field extraction then forwarding | `callee(&req.a, &req.b, &req.c)` right after destructuring `req` | Pass `&req` or a narrow borrowed view |
 | Argument omission | A multi-layer call chain drops a value an inner callee needs, forcing a re-derived or wrong default downstream | Thread the owning struct through every layer instead of re-adding a discrete parameter at each layer |
-| Argument swapping | ≥2 adjacent same-typed params (`&str, &str, &str`) | Newtype each (`rust-patterns` Pattern 1) or a struct |
+| Argument swapping | ≥2 adjacent same-typed params (`&str, &str, &str`) | Newtype each ([newtype identifiers](../rust-best-practices/references/kms-patterns.md)) or a struct |
 | Inconsistent reconstruction | Same `Struct { a: x.a.clone(), b: x.b, .. }` literal appears at ≥2 call sites | Move behind a constructor / `From` impl on the owning type |
 | Signature drift | Sibling functions (`encrypt`/`decrypt`, `wrap`/`unwrap`) carry non-identical param sets for the same concept | Confirm intentional; otherwise align via a shared context struct |
 | Semantically-required `Option<T>` | A field is `Option` only because some callers can't supply it, though the operation is unsound without it | Fallible constructor, or a distinct validated-state struct — not a permanent `Option` |
@@ -56,10 +58,8 @@ Try in order; stop at the first that fits:
 2. **Add a field to an existing struct** — only when the new field shares the struct's lifetime, invariants, and construction path.
 3. **Narrow borrowed view** — `struct FooView<'a> { id: &'a KeyId, algorithm: Algorithm }`, built via a `.view()`/`.context()` method, when the full struct is too broad or ownership shouldn't transfer.
 4. **Operation input struct** — group values that exist for one call only, e.g. `struct RevokeInput { cascade: bool, ids_to_skip: HashSet<String> }`, separate from durable entity state.
-5. **Extend an existing collaborator** — the service layer is `KMS` (`crate/server/src/core/...`) plus the `ObjectsDb` / `PermissionsDb` / `Hsm` traits (`rust-patterns` Pattern 4). Add a method there; never wrap `KMS` in a second service type.
+5. **Extend an existing collaborator** — the service layer is `KMS` (`crate/server/src/core/...`) plus the `ObjectsStore` / `PermissionsStore` / `HSM` traits ([backend traits](../rust-best-practices/references/kms-patterns.md)). Add a method there; never wrap `KMS` in a second service type.
 6. **Keep explicit parameters** — values are independent, used by one small function, or bundling would hide a dependency.
-   Precedent (`crate/server_database/src/core/mod.rs:117`): `Database::instantiate` keeps 9 explicit params behind a
-   legacy `#[allow(clippy::too_many_arguments)]`. Do not copy it: on new code introduce a parameter struct (this skill's remedy) instead of adding the `#[allow]`.
 
 ## Before / after (illustrative)
 
@@ -83,4 +83,4 @@ fn inner(req: &Request) -> KResult<()> { /* req.tenant_id always present */ }
 - Add a field to a `crate/kmip` wire struct for internal bookkeeping — KMIP structs are spec-bound.
 - Turn a required value into `Option<T>` to avoid updating a constructor.
 - Mass-refactor the `kms`/`user` pair across `core/operations/*.rs` into a new wrapper struct — that spread is already deliberate (Step 3.5); only touch it where a concrete defect (Step 2) drives the change.
-- Add `#[allow(clippy::too_many_arguments)]` / `#[expect]` on new code — forbidden per `rust.instructions.md`.
+- Add `#[allow(clippy::too_many_arguments)]` / `#[expect]` on new code — never; see `rust.instructions.md` § Clippy and lint suppression.

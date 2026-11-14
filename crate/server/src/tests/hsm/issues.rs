@@ -78,7 +78,7 @@ pub(super) async fn test_non_admin_kek_wrapping() -> KResult<()> {
     let response = send_message(
         kms.clone(),
         &non_admin,
-        vec![Operation::Create(create_request)],
+        vec![Operation::Create(Box::new(create_request))],
     )
     .await?;
     let Operation::CreateResponse(create_response) = &response[0] else {
@@ -137,7 +137,12 @@ pub(super) async fn test_server_side_unwrap() -> KResult<()> {
         false,
         Some(&kek_uid),
     )?;
-    send_message(kms.clone(), &admin, vec![Operation::Create(create_request)]).await?;
+    send_message(
+        kms.clone(),
+        &admin,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
 
     // Export the wrapped DEK — it must be wrapped.
     let wrapped_dek = export_object(&kms, &admin, &dek_uid).await?;
@@ -295,8 +300,12 @@ pub(super) async fn test_hsm_modify_attribute_sensitive_key() -> KResult<()> {
         true, // sensitive = true → non-extractable
         None,
     )?;
-    let response =
-        send_message(kms.clone(), &admin, vec![Operation::Create(create_request)]).await?;
+    let response = send_message(
+        kms.clone(),
+        &admin,
+        vec![Operation::Create(Box::new(create_request))],
+    )
+    .await?;
     let Operation::CreateResponse(_) = &response[0] else {
         return Err(KmsError::ServerError(
             "unexpected create response".to_owned(),
@@ -310,6 +319,7 @@ pub(super) async fn test_hsm_modify_attribute_sensitive_key() -> KResult<()> {
         kms.clone(),
         &admin,
         vec![Operation::ModifyAttribute(ModifyAttribute {
+            current_attribute: None,
             unique_identifier: Some(UniqueIdentifier::TextString(kek_uid.clone())),
             new_attribute: Attribute::Name(Name {
                 name_value: new_name.to_owned(),

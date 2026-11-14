@@ -308,9 +308,9 @@ impl EncryptAction {
 
         // instantiate the stream cipher
         let mut stream_cipher = cipher.stream_cipher(Mode::Encrypt, &dek, &nonce, &aad)?;
-        // process the data read from the file by 4096 chunks and write the encrypted data
+        // process the data read from the file by `FILE_CHUNK_SIZE` chunks and write the encrypted data
         let mut file = File::open(input_file_name)?;
-        let mut chunk = vec![0; 2 ^ 16]; //64K
+        let mut chunk = vec![0; super::FILE_CHUNK_SIZE];
         loop {
             let bytes_read = file.read(&mut chunk)?;
             if bytes_read == 0 {

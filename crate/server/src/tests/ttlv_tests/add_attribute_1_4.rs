@@ -45,45 +45,45 @@ pub(super) fn add_attributes(client: &SocketClient, key_id: &str) {
             ..Default::default()
         },
         batch_item: vec![
-            RequestMessageBatchItemVersioned::V14(RequestMessageBatchItem {
+            RequestMessageBatchItemVersioned::V14(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"12345".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::CustomAttribute(CustomAttribute {
                         name: "x-Product_Version".to_owned(),
                         value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned()),
                     }),
                 }),
                 message_extension: None,
-            }),
-            RequestMessageBatchItemVersioned::V14(RequestMessageBatchItem {
+            })),
+            RequestMessageBatchItemVersioned::V14(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::CustomAttribute(CustomAttribute {
                         name: "x-Vendor".to_owned(),
                         value: CustomAttributeValue::TextString("VMware, Inc.".to_owned()),
                     }),
                 }),
                 message_extension: None,
-            }),
-            RequestMessageBatchItemVersioned::V14(RequestMessageBatchItem {
+            })),
+            RequestMessageBatchItemVersioned::V14(Box::new(RequestMessageBatchItem {
                 operation: OperationEnumeration::AddAttribute,
                 ephemeral: None,
                 unique_batch_item_id: Some(b"123456".to_vec()),
                 request_payload: Operation::AddAttribute(AddAttribute {
-                    unique_identifier: key_id.to_owned(),
+                    unique_identifier: Some(key_id.to_owned()),
                     attribute: Attribute::CustomAttribute(CustomAttribute {
                         name: "x-Product".to_owned(),
                         value: CustomAttributeValue::TextString("VMware vSphere".to_owned()),
                     }),
                 }),
                 message_extension: None,
-            }),
+            })),
         ],
     };
 

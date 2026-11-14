@@ -3,7 +3,7 @@
 # test_pkcs11_conformance.sh — Full, independent PKCS#11 v2.40/v3.0/v3.1
 # conformance suite for `cosmian_pkcs11`.
 #
-# Independent from `.mise/tasks/test/hsm-pkcs11-tool` (SoftHSM2 HSM-KEK signing
+# Independent from `.mise/tasks/test/pkcs11/tool` (SoftHSM2 HSM-KEK signing
 # regression test): this suite runs against a *plain* KMS server (sqlite, no
 # HSM), and exercises the module's real PKCS#11 surface end to end, using
 # `pkcs11-tool` (OpenSC) — an independently-implemented, non-Cosmian client —
@@ -205,13 +205,13 @@ fi
 # crate/clients/pkcs11/provider/src/kms_object.rs) — so the CKA_ID is simply
 # the hex encoding of AES_LABEL; no need to parse it back out of `-O` output.
 AES_ID_HEX="$(hex_id "${AES_LABEL}")"
-# pkcs11-tool's `-O` listing prints IDs colon-separated (e.g. `61:6e:6f`), so
-# reformat the contiguous hex for the match.
-AES_ID_COLON="$(printf '%s' "${AES_ID_HEX}" | sed -E 's/(..)/\1:/g; s/:$//')"
+# pkcs11-tool's `-O` listing prints IDs colon-separated (e.g. `61:6e:6f`) in some OpenSC
+# versions and contiguous in others: compare with the separators stripped.
 if run_pkcs11 "${WORK_DIR}/aes-find.log" --login --login-type so -O &&
-  grep -qi "${AES_ID_COLON}" "${WORK_DIR}/aes-find.log"; then
+  tr -d ': ' <"${WORK_DIR}/aes-find.log" | grep -qi "${AES_ID_HEX}"; then
   check_pass "Resolving CKA_ID of the pkcs11-tool-generated AES key via -O"
 else
+  cat "${WORK_DIR}/aes-find.log" >&2 || true
   check_fail "Resolving CKA_ID of the pkcs11-tool-generated AES key via -O" "see ${WORK_DIR}/aes-find.log"
 fi
 

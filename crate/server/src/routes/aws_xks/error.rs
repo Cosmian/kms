@@ -19,20 +19,20 @@ use tracing::info;
 use crate::error::KmsError;
 
 /// Error Name for AWS XKS Error replies
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[allow(non_camel_case_types)]
-#[allow(clippy::enum_variant_names)] // variant names mirror the AWS XKS error protocol's `*Exception` naming exactly
+#[derive(Serialize, Deserialize, Clone)]
 pub enum XksErrorName {
     /// The request was rejected because one
     /// or more input parameters is invalid.
     /// 400: ALL except `GetHealthStatus`
-    ValidationException,
+    #[serde(rename = "ValidationException")]
+    Validation,
 
     /// The request was rejected because the
     /// specified external key or key store is
     /// disabled, deactivated or blocked.
     /// 400: ALL
-    InvalidStateException,
+    #[serde(rename = "InvalidStateException")]
+    InvalidState,
 
     /// The request was rejected because the
     /// specified ciphertext, initialization vector,
@@ -40,34 +40,40 @@ pub enum XksErrorName {
     /// authentication tag is corrupted, missing,
     /// or otherwise invalid.
     /// 400: Decrypt
-    InvalidCiphertextException,
+    #[serde(rename = "InvalidCiphertextException")]
+    InvalidCiphertext,
 
     /// The request was rejected because the
     /// specified key does not support the
     /// requested operation.
     /// 400: Decrypt, Encrypt
-    InvalidKeyUsageException,
+    #[serde(rename = "InvalidKeyUsageException")]
+    InvalidKeyUsage,
 
     /// The request was rejected due to
     /// invalid AWS `SigV4` signature.
     /// 401: ALL
-    AuthenticationFailedException,
+    #[serde(rename = "AuthenticationFailedException")]
+    AuthenticationFailed,
 
     /// The request was rejected because the
     /// operation is not authorized based on
     /// request metadata.
     /// 403: ALL except `GetHealthStatus`
-    AccessDeniedException,
+    #[serde(rename = "AccessDeniedException")]
+    AccessDenied,
 
     /// The request was rejected because the
     /// specified external key is not found.
     /// 404: ALL except `GetHealthStatus`
-    KeyNotFoundException,
+    #[serde(rename = "KeyNotFoundException")]
+    KeyNotFound,
 
     /// The request was rejected because the
     /// specified URI path is not valid.
     /// 404: ALL
-    InvalidUriPathException,
+    #[serde(rename = "InvalidUriPathException")]
+    InvalidUriPath,
 
     /// The request was rejected because the
     /// request rate is too high. The
@@ -75,7 +81,8 @@ pub enum XksErrorName {
     /// it is unable to keep up or the caller
     /// exceeded its request quota.
     /// 429: ALL
-    ThrottlingException,
+    #[serde(rename = "ThrottlingException")]
+    Throttling,
 
     /// The request was rejected because the
     /// specified cryptographic operation is not
@@ -85,20 +92,43 @@ pub enum XksErrorName {
     /// implementation beyond the minimize size
     /// required by this API specification.
     /// 501: ALL
-    UnsupportedOperationException,
+    #[serde(rename = "UnsupportedOperationException")]
+    UnsupportedOperation,
 
     /// The XKS proxy timed out while trying to
     /// access a dependency layer to fulfill the
     /// request.
     /// 503: ALL
-    DependencyTimeoutException,
+    #[serde(rename = "DependencyTimeoutException")]
+    DependencyTimeout,
 
     /// This is a generic server error. For example,
     /// this exception is thrown due to failure of
     /// the backing key manager, or failure of a
     /// dependency layer.
     /// 500: ALL
-    InternalException,
+    #[serde(rename = "InternalException")]
+    Internal,
+}
+
+// Debug (and therefore `XksErrorReply`'s Display) keeps printing the AWS protocol names.
+impl std::fmt::Debug for XksErrorName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Validation => "ValidationException",
+            Self::InvalidState => "InvalidStateException",
+            Self::InvalidCiphertext => "InvalidCiphertextException",
+            Self::InvalidKeyUsage => "InvalidKeyUsageException",
+            Self::AuthenticationFailed => "AuthenticationFailedException",
+            Self::AccessDenied => "AccessDeniedException",
+            Self::KeyNotFound => "KeyNotFoundException",
+            Self::InvalidUriPath => "InvalidUriPathException",
+            Self::Throttling => "ThrottlingException",
+            Self::UnsupportedOperation => "UnsupportedOperationException",
+            Self::DependencyTimeout => "DependencyTimeoutException",
+            Self::Internal => "InternalException",
+        })
+    }
 }
 
 /// Error reply for AWS XKS
@@ -113,7 +143,7 @@ pub enum XksErrorName {
 /// }
 /// ```
 #[derive(Serialize, Debug, Clone)]
-#[allow(non_snake_case)]
+#[expect(non_snake_case, reason = "AWS XKS proxy API JSON field names")]
 pub struct XksErrorReply {
     pub errorName: XksErrorName,
     pub errorMessage: Option<String>,
@@ -129,20 +159,20 @@ impl From<XksErrorReply> for HttpResponse {
     fn from(e: XksErrorReply) -> Self {
         debug!("Xks Error: {:?}", e);
         match e.errorName {
-            XksErrorName::ValidationException
-            | XksErrorName::InvalidStateException
-            | XksErrorName::InvalidCiphertextException
-            | XksErrorName::InvalidKeyUsageException
-            | XksErrorName::AuthenticationFailedException => Self::Unauthorized().json(e),
-            XksErrorName::AccessDeniedException => Self::Forbidden().json(e),
+            XksErrorName::Validation
+            | XksErrorName::InvalidState
+            | XksErrorName::InvalidCiphertext
+            | XksErrorName::InvalidKeyUsage
+            | XksErrorName::AuthenticationFailed => Self::Unauthorized().json(e),
+            XksErrorName::AccessDenied => Self::Forbidden().json(e),
             // We map to I am a teapot to avoid falling into the generic 404 error handler
             // and use another handler to convert it to 404
-            XksErrorName::KeyNotFoundException => Self::ImATeapot().json(e),
-            XksErrorName::InvalidUriPathException => Self::NotFound().json(e),
-            XksErrorName::ThrottlingException => Self::TooManyRequests().json(e),
-            XksErrorName::UnsupportedOperationException => Self::NotImplemented().json(e),
-            XksErrorName::DependencyTimeoutException => Self::ServiceUnavailable().json(e),
-            XksErrorName::InternalException => Self::InternalServerError().json(e),
+            XksErrorName::KeyNotFound => Self::ImATeapot().json(e),
+            XksErrorName::InvalidUriPath => Self::NotFound().json(e),
+            XksErrorName::Throttling => Self::TooManyRequests().json(e),
+            XksErrorName::UnsupportedOperation => Self::NotImplemented().json(e),
+            XksErrorName::DependencyTimeout => Self::ServiceUnavailable().json(e),
+            XksErrorName::Internal => Self::InternalServerError().json(e),
         }
     }
 }
@@ -159,35 +189,40 @@ impl ResponseError for XksErrorReply {
 pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorReply {
     let (error_name, msg) = match e {
         KmsError::Unauthorized(msg)
-        | KmsError::Kmip21Error(ErrorReason::Permission_Denied, msg) => {
-            (XksErrorName::InvalidKeyUsageException, msg)
-        }
+        | KmsError::Kmip21Error(
+            ErrorReason::Permission_Denied
+            | ErrorReason::Invalid_Object_Type
+            | ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            msg,
+        ) => (XksErrorName::InvalidKeyUsage, msg),
         KmsError::ItemNotFound(msg) | KmsError::Kmip21Error(ErrorReason::Item_Not_Found, msg) => {
-            (XksErrorName::KeyNotFoundException, msg)
+            (XksErrorName::KeyNotFound, msg)
         }
         // Key state errors: key is deactivated, lifecycle boundary violated, or usage denied.
         // Must be mapped to InvalidStateException (not left as HTTP 422 text/html) so that
         // AWS KMS can distinguish key-state failures from internal errors.
         KmsError::Kmip21Error(ErrorReason::Wrong_Key_Lifecycle_State, msg) => {
-            (XksErrorName::InvalidStateException, msg)
+            (XksErrorName::InvalidState, msg)
         }
         // Usage-limit and permission errors are merged into the InvalidKeyUsageException arm above
         // Unsupported algorithm / operation
         KmsError::NotSupported(msg)
         | KmsError::UnsupportedAlgorithm(msg)
-        | KmsError::Kmip21Error(ErrorReason::Operation_Not_Supported, msg) => {
-            (XksErrorName::UnsupportedOperationException, msg)
-        }
+        | KmsError::Kmip21Error(
+            ErrorReason::Operation_Not_Supported
+            | ErrorReason::Unsupported_Cryptographic_Parameters,
+            msg,
+        ) => (XksErrorName::UnsupportedOperation, msg),
         // Validation / bad request errors (cryptographic errors, invalid requests, and all
         // remaining KMIP 2.1 error reasons not explicitly handled above)
         KmsError::CryptographicError(msg)
         | KmsError::InvalidRequest(msg)
-        | KmsError::Kmip21Error(_, msg) => (XksErrorName::ValidationException, msg),
+        | KmsError::Kmip21Error(_, msg) => (XksErrorName::Validation, msg),
         // Everything else is an internal server error — return proper XKS JSON so AWS KMS
         // can distinguish it from InvalidStateException instead of receiving text/html.
         e => {
             info!("XKS {operation} internal error: {:?}", e);
-            (XksErrorName::InternalException, e.to_string())
+            (XksErrorName::Internal, e.to_string())
         }
     };
     XksErrorReply {
@@ -197,14 +232,13 @@ pub(crate) fn kms_error_to_xks_reply(e: KmsError, operation: &str) -> XksErrorRe
 }
 
 // Custom error handler for JSON deserialization errors
-#[allow(clippy::needless_pass_by_value)]
-pub(crate) fn xks_json_error_handler(err: JsonPayloadError, _req: &HttpRequest) -> Error {
-    let error_message = match &err {
+pub(crate) fn xks_json_error_handler(err: &JsonPayloadError, _req: &HttpRequest) -> Error {
+    let error_message = match err {
         JsonPayloadError::Deserialize(e) => format!("JSON deserialize error: {e}"),
         _ => "Unknown error".to_owned(),
     };
     XksErrorReply {
-        errorName: XksErrorName::ValidationException,
+        errorName: XksErrorName::Validation,
         errorMessage: Some(error_message),
     }
     .into()
@@ -215,7 +249,7 @@ pub(crate) async fn xks_path_not_found_handler(
 ) -> Result<HttpResponse, XksErrorReply> {
     debug!("XKS Proxy - Path not found: {}", req.path());
     Err(XksErrorReply {
-        errorName: XksErrorName::InvalidUriPathException,
+        errorName: XksErrorName::InvalidUriPath,
         errorMessage: Some(format!("Resource not found: {}", req.path())),
     })
 }

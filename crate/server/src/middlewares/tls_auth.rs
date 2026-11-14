@@ -218,7 +218,6 @@ pub(crate) fn user_from_client_certificate(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)] // tests: a panic is the failure signal
 mod tests {
     use std::{
         net::{TcpListener, TcpStream},
@@ -273,7 +272,7 @@ mod tests {
     #[test]
     fn tls12_tls_unique_is_the_client_finished_message() {
         let (server_side, client_finished) = handshake(SslVersion::TLS1_2);
-        assert!(!client_finished.is_empty());
+        assert_ne!(client_finished.len(), 0);
         assert_eq!(server_side, Some(client_finished));
     }
 

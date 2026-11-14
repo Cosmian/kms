@@ -158,7 +158,6 @@ pub fn print_crd() -> Result<(), OperatorError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
 mod tests {
     use super::parse_uid_entry;
 

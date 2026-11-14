@@ -39,7 +39,7 @@ repos:
             # MD041 (first heading must be #) and MD025 (only one # per file) are intentionally enabled
           ]
         exclude: >-
-          documentation/docs/kms_clients/cli/main_commands.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md
+          documentation/docs/kms_clients/cli/main_commands.md|\.github/skills/|crate/|^CHANGELOG/|^\.cargo/|documentation/docs/SUMMARY\.md|documentation/docs/kms_clients/cli/main_commands\.md|SECURITY.md
 
   # ── YAML ──────────────────────────────────────────────────────────────
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
@@ -54,7 +54,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: ui/src/i18n/locales/fr/|ui/src/i18n/locales/zh-CN/|documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|documentation/docs/benchmarks/|.mise/scripts/bench/bench_run_flamegraph.sh|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs
+        exclude: ui/src/i18n/locales/fr/|ui/src/i18n/locales/zh-CN/|documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|documentation/docs/benchmarks/|.mise/scripts/bench/bench_run_flamegraph.sh|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs|crate/clients/cng/src/key.rs
 
   # ── Whitespace / line-endings ─────────────────────────────────────────
   - repo: https://github.com/Lucas-C/pre-commit-hooks
@@ -187,7 +187,7 @@ repos:
         entry: cargo deny check
         language: system
         pass_filenames: false
-        types: [rust]
+        files: (^|/)(Cargo\.toml|Cargo\.lock|deny\.toml)$
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
@@ -258,6 +258,29 @@ repos:
         language: system
         pass_filenames: false
         files: ^\.mise/scripts/kmip-go/(go\.(mod|sum)|.*\.go)$
+        stages: [pre-push]
+
+      - id: npm-policy
+        name: Web UI npm policy (no install scripts, 7-day cooldown, hash-pinned pnpm)
+        entry: python3 .mise/scripts/pre-commit/check_npm_policy.py
+        language: system
+        pass_filenames: false
+        files: ^(ui/(package\.json|\.npmrc)|\.mise/scripts/pre-commit/check_npm_policy\.py)$
+
+      - id: pnpm-frozen-lockfile
+        name: pnpm install must use --frozen-lockfile
+        description: Without it pnpm may re-resolve versions and bypass lockfile review.
+        language: pygrep
+        entry: '^(?!\s*#)(?!.*\becho\b).*\b(pnpm|run_pnpm)\s+(install|i)\b(?!.*--frozen-lockfile)'
+        files: ^(\.github/(workflows|actions)/.*\.ya?ml|\.mise/(tasks|lib|scripts)/.*)$
+        exclude: \.(md|py)$
+
+      - id: npm-audit
+        name: npm audit, OSV-Scanner and registry signatures (ui)
+        entry: mise run audit:npm --base origin/develop
+        language: system
+        pass_filenames: false
+        files: ^ui/(package\.json|pnpm-lock\.yaml|osv-scanner\.toml|\.npmrc)$
         stages: [pre-push]
 
   # ═══════════════════════════════════════════════════════════════════════
@@ -578,7 +601,7 @@ repos:
       # ── Redis (manual) ────────────────────────────────────────────────
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips, manual)
-        entry: mise run test:redis -- --variant non-fips
+        entry: mise run test:db:redis -- --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -613,7 +636,7 @@ repos:
 
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
-        entry: mise run test:wasm
+        entry: mise run test:ui:wasm
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]

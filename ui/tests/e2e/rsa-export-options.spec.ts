@@ -185,7 +185,8 @@ test.describe("RSA export — wrapping with RSA algorithms", () => {
         test.skip(process.env.PLAYWRIGHT_FIPS_MODE === "true", "RSA PKCS v1.5 encryption is not available in FIPS mode");
         await gotoAndWait(page, "/ui/sym/keys/export");
         await page.fill('input[placeholder="Enter key ID"]', symKeyId);
-        await selectOptionById(page, "#keyFormat", "JSON TTLV (default)");
+        // Raw (32 bytes): the JSON TTLV encoding no longer fits the RSA-2048 PKCS#1 v1.5 limit.
+        await selectOptionById(page, "#keyFormat", "Raw");
         await page.fill('input[placeholder="Enter wrap key ID"]', rsaPubKeyId);
         await selectOptionById(page, "#wrappingAlgorithm", "RSA PKCS v1.5");
         const { text } = await submitAndWaitForDownload(page);
@@ -195,7 +196,8 @@ test.describe("RSA export — wrapping with RSA algorithms", () => {
     test("wrap sym key with RSA OAEP", async ({ page }) => {
         await gotoAndWait(page, "/ui/sym/keys/export");
         await page.fill('input[placeholder="Enter key ID"]', symKeyId);
-        await selectOptionById(page, "#keyFormat", "JSON TTLV (default)");
+        // Raw (32 bytes): the JSON TTLV encoding exceeds the RSA-OAEP plaintext limit.
+        await selectOptionById(page, "#keyFormat", "Raw");
         await page.fill('input[placeholder="Enter wrap key ID"]', rsaPubKeyId);
         await selectOptionById(page, "#wrappingAlgorithm", "RSA OAEP");
         const { text } = await submitAndWaitForDownload(page);

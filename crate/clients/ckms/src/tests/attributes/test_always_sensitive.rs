@@ -1,7 +1,5 @@
 //! End-to-end CLI tests for the server-managed `AlwaysSensitive` attribute
 //! (KMIP 2.1 §4.3).
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
-
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_types::Tag;
 use tempfile::NamedTempFile;
 use test_kms_server::start_default_test_kms_server;

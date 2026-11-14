@@ -108,7 +108,10 @@ impl Session {
             ulParameterLen: 0,
         };
 
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: capability-checked above; every function called below was
         // resolved from the same loaded library and matches its documented
         // PKCS#11 v3.0 signature.
@@ -250,7 +253,10 @@ impl Session {
             ulParameterLen: 0,
         };
 
-        #[expect(unsafe_code)]
+        #[expect(
+            unsafe_code,
+            reason = "PKCS#11 C function-pointer call through the loaded HSM library"
+        )]
         // SAFETY: capability-checked above; every function called below was
         // resolved from the same loaded library and matches its documented
         // PKCS#11 v3.0 signature.

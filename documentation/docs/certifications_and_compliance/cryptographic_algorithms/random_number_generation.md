@@ -193,7 +193,7 @@ flowchart TD
 
 ## Why hybrid KEM cannot benefit from KmsRng PQC ESV properties
 
-OpenSSL 3.6.2 implements hybrid KEMs (`X25519MLKEM768` and `X448MLKEM1024`) via composite key management in
+OpenSSL 3.6.5 implements hybrid KEMs (`X25519MLKEM768` and `X448MLKEM1024`) via composite key management in
 `providers/implementations/keymgmt/mlx_kmgmt.c`.
 
 A hybrid KEM key consists of two sub-keys:
@@ -470,17 +470,17 @@ the FIPS validation status or the version number alone.
 Independent of PQC, Eviden's default "FIPS mode" build (the `non-fips` Cargo feature absent) must load a FIPS
 provider built from a version holding a CMVP certificate. The only two CMVP-validated OpenSSL FIPS Provider
 certificates found are Certificate #4985 (version 3.1.2, Active, FIPS 140-3) and Certificate #4282 (versions
-3.0.8/3.0.9, **Historical**, FIPS 140-2). Neither covers OpenSSL 3.6.2, and OpenSSL's own `README-FIPS.md`
+3.0.8/3.0.9, **Historical**, FIPS 140-2). Neither covers OpenSSL 3.6.5, and OpenSSL's own `README-FIPS.md`
 states that a FIPS provider must ONLY be generated from a version holding a valid FIPS certificate.
 
 `crate/crypto/build.rs` therefore builds two separate OpenSSL trees in FIPS mode:
 
-- the main library, **OpenSSL 3.6.2**, configured **without** `enable-fips`, which is what Eviden links against;
+- the main library, **OpenSSL 3.6.5**, configured **without** `enable-fips`, which is what Eviden links against;
 - the FIPS provider, built from the validated **OpenSSL 3.1.2** source (`OPENSSL_FIPS_*` constants, SHA-256
   pinned), whose `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` are copied into the main prefix and loaded
   at runtime.
 
-This matches the Nix build (`nix/common.nix`: "Always link against OpenSSL 3.6.2; the FIPS provider (3.1.2) is
+This matches the Nix build (`nix/common.nix`: "Always link against OpenSSL 3.6.5; the FIPS provider (3.1.2) is
 loaded at runtime"). Building from the validated source is necessary but not sufficient for a validated
 claim: the module must also be built and operated as the Security Policy describes (operating environment,
 unmodified source, integrity check), which this page does not assert.

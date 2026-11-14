@@ -44,7 +44,7 @@ usage() {
       ase                    Run SAP ASE KMIP TDE integration test (builds the ASE image on the fly)
       cef                    Run CEF audit export test (live server + jc)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
-                             backend: softhsm2 | utimaco | proteccio | all (default)
+                             backend: softhsm2 | utimaco | proteccio | crypt2pay | crypt2pay-simulator | all (default)
       ui                     Run UI E2E tests with Playwright (non-FIPS only)
     package [type]
                        Build package(s) via Nix
@@ -54,10 +54,10 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
-                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_2 + server + ckms fips/non-fips × static/dynamic)
+                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_5 + server + ckms fips/non-fips × static/dynamic)
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
-                         --target <openssl_3_1_2|openssl_3_6_2|server|ckms>  Choose SBOM target (default: all)
+                         --target <openssl_3_1_2|openssl_3_6_5|server|ckms>  Choose SBOM target (default: all)
                          --variant <fips|non-fips>    Variant filter (only with --target server|ckms)
                          --link <static|dynamic>      Link filter (only with --target server|ckms)
                          --retrieve                   Download SBOMs from package.cosmian.com instead of generating
@@ -70,7 +70,7 @@ usage() {
   Global options:
     -v, --variant <fips|non-fips>   Cryptographic variant (default: fips)
     -l, --link <static|dynamic>     OpenSSL linkage type (default: static)
-                    static: statically link OpenSSL 3.6.2
+                    static: statically link OpenSSL 3.6.5
                     dynamic: dynamically link system OpenSSL
 
   For testing, also supports environment variables:
@@ -96,19 +96,20 @@ usage() {
     $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
     $0 --variant non-fips test openssh    # OpenSSH PKCS#11 integration tests
     $0 test luks                          # LUKS disk-encryption PKCS#11 tests
-    $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
+    $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio + Crypt2Pay + Crypt2Pay Simulator
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
     $0 test hsm proteccio       # Proteccio only
+    $0 test hsm crypt2pay-simulator # Crypt2Pay Simulator only
     $0 --variant non-fips test ui           # UI E2E tests (Playwright)
     $0 package                              # Build all packages for this OS
     $0 package deb                          # FIPS variant
     $0 --variant non-fips package deb       # non-FIPS variant
     $0 --variant non-fips package rpm       # non-FIPS variant
     $0 --variant non-fips package dmg       # non-FIPS variant
-    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.2 + all server + all ckms combinations)
+    $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.5 + all server + all ckms combinations)
     $0 sbom --target openssl_3_1_2            # SBOM for the OpenSSL 3.1.2 (FIPS) derivation
-    $0 sbom --target openssl_3_6_2            # SBOM for the OpenSSL 3.6.2 (non-FIPS) derivation
+    $0 sbom --target openssl_3_6_5            # SBOM for the OpenSSL 3.6.5 (non-FIPS) derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target ckms                   # SBOM for all ckms CLI combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
@@ -577,7 +578,7 @@ test_command() {
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_ui.sh"
       ;;
     hsm)
-      # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
+      # Optional backend argument: softhsm2 | utimaco | proteccio | crypt2pay | crypt2pay-simulator | all (default)
       HSM_BACKEND="${1:-all}"
       case "$HSM_BACKEND" in
         all)
@@ -599,9 +600,13 @@ test_command() {
           SCRIPT="$REPO_ROOT/.mise/scripts/test/test_hsm_crypt2pay.sh"
           shift
           ;;
+        crypt2pay-simulator)
+          SCRIPT="$REPO_ROOT/.mise/scripts/test/test_hsm_crypt2pay_simulator.sh"
+          shift
+          ;;
         *)
           echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
-          echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, all" >&2
+          echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, crypt2pay, crypt2pay-simulator, all" >&2
           usage
           ;;
       esac
@@ -843,7 +848,7 @@ sbom_command() {
   # Do not silently ignore extra args for `sbom`.
   if [ ${#unknown_args[@]} -ne 0 ]; then
     echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
-    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_2|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>] [--retrieve] [--branch <branch>]" >&2
+    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_5|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>] [--retrieve] [--branch <branch>]" >&2
     exit 1
   fi
 
@@ -884,10 +889,10 @@ sbom_command() {
     }
     echo ""
 
-    # Generate SBOM for OpenSSL 3.6.2
-    echo ">>> Generating SBOM for OpenSSL 3.6.2..."
-    bash "$SCRIPT" --target openssl_3_6_2 || {
-      echo "ERROR: OpenSSL 3.6.2 SBOM generation failed" >&2
+    # Generate SBOM for OpenSSL 3.6.5
+    echo ">>> Generating SBOM for OpenSSL 3.6.5..."
+    bash "$SCRIPT" --target openssl_3_6_5 || {
+      echo "ERROR: OpenSSL 3.6.5 SBOM generation failed" >&2
       exit 1
     }
     echo ""

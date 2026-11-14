@@ -1,6 +1,3 @@
-#![allow(unused)]
-use std::option;
-
 use cosmian_logger::{info, log_init};
 use zeroize::Zeroizing;
 
@@ -21,7 +18,7 @@ use crate::{
         kmip_objects::{Object, SymmetricKey},
         kmip_operations::{
             AddAttribute, Create, CreateResponse, Get, GetAttributes, GetAttributesResponse,
-            GetResponse, Operation, Query, QueryResponse,
+            GetResponse, Operation, Query,
         },
         kmip_types::{CryptographicAlgorithm, CustomAttribute, KeyFormatType, ObjectType},
     },
@@ -53,7 +50,7 @@ fn discover_versions_1() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -71,7 +68,7 @@ fn discover_versions_1() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
@@ -137,7 +134,7 @@ fn discover_versions_2() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -155,7 +152,7 @@ fn discover_versions_2() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
@@ -220,7 +217,7 @@ fn query() {
     assert_eq!(minor, 1);
 
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -241,7 +238,7 @@ fn query() {
     assert_eq!(major, 1);
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     let ResponseMessageBatchItemVersioned::V14(response_message) = &response_message.batch_item[0]
     else {
         panic!("Expected V14 response message");
@@ -291,7 +288,7 @@ fn create() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -322,7 +319,7 @@ fn create() {
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
 
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     info!("response_message: {}", response_message);
 
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
@@ -372,7 +369,7 @@ fn get_attributes() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -393,7 +390,7 @@ fn get_attributes() {
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     info!("response_message: {}", response_message);
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");
@@ -431,7 +428,7 @@ fn add_attribute() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     assert_eq!(request_message.batch_item.len(), 3);
 
     let RequestMessageBatchItemVersioned::V14(batch_item) = &request_message.batch_item[0] else {
@@ -441,7 +438,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute: Attribute::CustomAttribute(CustomAttribute {
                 name: "x-Product_Version".to_owned(),
                 value: CustomAttributeValue::TextString("7.0.3 build-19480866".to_owned())
@@ -456,7 +453,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute: Attribute::CustomAttribute(CustomAttribute {
                 name: "x-Vendor".to_owned(),
                 value: CustomAttributeValue::TextString("VMware, Inc.".to_owned())
@@ -471,7 +468,7 @@ fn add_attribute() {
     assert_eq!(
         batch_item.request_payload,
         Operation::AddAttribute(AddAttribute {
-            unique_identifier: "1".to_owned(),
+            unique_identifier: Some("1".to_owned()),
             attribute: Attribute::CustomAttribute(CustomAttribute {
                 name: "x-Product".to_owned(),
                 value: CustomAttributeValue::TextString("VMware vSphere".to_owned())
@@ -505,7 +502,7 @@ fn get() {
     let ttlv = TTLV::from_bytes(&request, KmipFlavor::Kmip1).unwrap();
     info!("request ttlv: {:#?}", ttlv);
 
-    let request_message: RequestMessage = from_ttlv(ttlv).unwrap();
+    let request_message: RequestMessage = from_ttlv(&ttlv).unwrap();
     let RequestMessageBatchItemVersioned::V14(request_message) = &request_message.batch_item[0]
     else {
         panic!("Expected V14 request message");
@@ -516,6 +513,7 @@ fn get() {
         Operation::Get(Get {
             unique_identifier: Some("2".to_owned()),
             key_format_type: None,
+            key_wrap_type: None,
             key_compression_type: None,
             key_wrapping_specification: None
         })
@@ -528,7 +526,7 @@ fn get() {
     assert_eq!(minor, 1);
     let ttlv = TTLV::from_bytes(&response, KmipFlavor::Kmip1).unwrap();
     info!("response ttlv: {:#?}", ttlv);
-    let response_message: ResponseMessage = from_ttlv(ttlv).unwrap();
+    let response_message: ResponseMessage = from_ttlv(&ttlv).unwrap();
     info!("response_message: {}", response_message);
     let ResponseMessageBatchItemVersioned::V14(batch_item) = &response_message.batch_item[0] else {
         panic!("Expected V14 response message");

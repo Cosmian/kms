@@ -6,9 +6,12 @@
 mod hsm;
 mod sql;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::{ReKey, ReKeyResponse},
-    kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_operations::{ReKey, ReKeyResponse},
+        kmip_types::UniqueIdentifier,
+    },
 };
 use cosmian_logger::trace;
 
@@ -19,6 +22,7 @@ use crate::{
         KMS,
         uid_utils::{ObjectHandle, from_request, resolve_uid_or_keyset},
     },
+    error::KmsError,
     middlewares::UserId,
     result::KResult,
 };
@@ -30,7 +34,7 @@ use crate::{
 ///   slot, assigns a generation-suffix UID (`original::N+1`), and updates `CKA_LABEL` /
 ///   `CKA_START_DATE` / `CKA_END_DATE` on both the old and new keys.
 pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &UserId) -> KResult<ReKeyResponse> {
-    trace!("ReKey: {}", serde_json::to_string(&request)?);
+    trace!("ReKey request");
     let uid = from_request(request.unique_identifier.as_ref(), "ReKey")?
         .as_str()
         .to_owned();
@@ -51,6 +55,19 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &UserId) -> KResult<
     // The general RekeyOperation pipeline is designed for SQL-backed keys and
     // is not applicable to non-extractable HSM key material.
     if ObjectHandle::from(&uid).is_hsm() {
+        // The HSM rotation path regenerates the key in place on the HSM: it cannot apply
+        // an Offset, desired Attributes or Protection Storage Masks.
+        if request.offset.is_some()
+            || request.attributes.is_some()
+            || request.protection_storage_masks.is_some()
+        {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Feature_Not_Supported,
+                "ReKey: Offset, Attributes and Protection Storage Masks are not supported for \
+                 HSM-resident keys"
+                    .to_owned(),
+            ));
+        }
         return Box::pin(kms.rekey_hsm_symmetric(&uid, owner)).await;
     }
 
@@ -61,6 +78,7 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &UserId) -> KResult<
     Box::pin(execute_rekey(
         &SqlSymmetricRekeyer {
             offset: request.offset,
+            attributes: request.attributes.clone(),
         },
         kms,
         &request,

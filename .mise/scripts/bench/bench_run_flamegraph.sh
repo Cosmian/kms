@@ -140,15 +140,15 @@ fi
 export RUSTFLAGS="${RUSTFLAGS:-} -C force-frame-pointers=yes"
 
 # ── Ensure OpenSSL is built with debug symbols for perf ────────────────────────
-# build.rs (crate/crypto/build.rs) builds OpenSSL 3.6.2 automatically.
+# build.rs (crate/crypto/build.rs) builds OpenSSL 3.6.5 automatically.
 # For flamegraphs we need DWARF debug symbols (-g) so perf can resolve
 # OpenSSL frames instead of showing [unknown].  Export CFLAGS so that
 # build.rs's `./Configure` inherits it, and delete the cached non-debug build
 # (plus build.rs's own output) to force a rebuild.
 if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
   ARCH="$(uname -m)"
-  OPENSSL_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-3.6.2-linux-${ARCH}"
-  OPENSSL_NON_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-non-fips-3.6.2-linux-${ARCH}"
+  OPENSSL_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-3.6.5-linux-${ARCH}"
+  OPENSSL_NON_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-non-fips-3.6.5-linux-${ARCH}"
 
   if [ "${VARIANT}" = "fips" ]; then
     OPENSSL_BUILD_PREFIX="${OPENSSL_FIPS_PREFIX}"
