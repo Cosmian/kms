@@ -143,6 +143,12 @@ exclude = [
 
   # Fortinet documentation — returns 503 to automated crawlers
   'docs\.fortinet\.com',
+  # Thales Luna HSM documentation — returns 403 Forbidden to automated crawlers
+  'thalesdocs\.com',
+  # OpenText (ex Micro Focus) CEF specification PDF and Snowflake home page —
+  # both load in a browser but return 403 Forbidden to automated crawlers
+  'microfocus\.com',
+  'snowflake\.com',
   # EnterpriseDB — returns 503 Service Unavailable to automated crawlers
   'enterprisedb\.com',
   # Eviden product page — returns 503 Service Unavailable to automated crawlers

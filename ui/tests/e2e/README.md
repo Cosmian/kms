@@ -776,6 +776,29 @@ Key facts verified by these tests:
 - The Swagger UI JS/CSS are served locally from the KMS server (no external CDN dependency).
 - The CSP enforces `default-src 'none'` with `'self'` allowed and `frame-ancestors 'none'` for clickjacking protection.
 
+## Authentication Login Page
+
+### login-page-auth-method-matrix
+
+11 tests verifying that `LoginPage` renders the correct UI for every combination of authentication methods that `GET /ui/auth_method` can return. Tests 1-9 and 11 mock the API responses via `page.route()` and need only the Vite preview server. Test 10 sends the real `GET /ui/auth_method` request, which the preview server proxies to the KMS (`VITE_KMS_URL`, `http://localhost:9998` by default), so it needs a running KMS.
+
+| Test | `auth_methods`                                | Expected primary                       | Expected secondary               |
+| ---- | --------------------------------------------- | -------------------------------------- | -------------------------------- |
+| 1    | `["AUTH_VERIFIER"]`                           | username/password form                 | none                             |
+| 2    | `["JWT"]`                                     | OIDC redirect button                   | none                             |
+| 3    | `["CERT"]`                                    | certificate button                     | none                             |
+| 4    | `["JWT", "AUTH_VERIFIER"]`                    | OIDC button                            | AUTH_VERIFIER button             |
+| 5    | `["JWT", "CERT"]`                             | OIDC button                            | CERT button                      |
+| 6    | `["AUTH_VERIFIER", "CERT"]`                   | form                                   | CERT button                      |
+| 7    | `["JWT", "AUTH_VERIFIER", "CERT"]`            | OIDC button                            | secondary dropdown               |
+| 8    | `[]`                                          | (no login form; redirect to `/locate`) | "authentication disabled" banner |
+| 9    | `["AUTH_VERIFIER", "CERT"]` (secondary click) | probe fires immediately                | navigates to `/locate`           |
+| 10   | live `GET /ui/auth_method`                    | `auth_method` equals `auth_methods[0]` | JSON shape validated             |
+| 11   | `["AUTH_VERIFIER", "CERT"]` + 2 realms (OPA RBAC config) | form + realm selector       | CERT button                      |
+
+Key behaviour verified: clicking a "one-click" method (CERT or JWT) in a secondary
+control fires the action immediately without first revealing the button as primary.
+
 ## Authentication suites (separate Playwright configs)
 
 These suites need a UI built without `VITE_DEV_MODE` and a dedicated server stack, so they

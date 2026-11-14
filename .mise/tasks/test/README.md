@@ -1121,13 +1121,14 @@ sequenceDiagram
 
 ## 10. Client & Protocol Integrations
 
-**Tasks:** `test:interop:jose`, `test:interop:kmip-go`, `test:pkcs11:luks`, `test:pkcs11:openssh`, `test:interop:pykmip`, `test:pkcs11:veracrypt`
+**Tasks:** `test:interop:jose`, `test:interop:kmip-go`, `test:interop:opa-rbac`, `test:pkcs11:luks`, `test:pkcs11:openssh`, `test:interop:pykmip`, `test:pkcs11:veracrypt`
 
 | Task | Client / Protocol | FIPS? | Notes |
 |------|-------------------|-------|-------|
 | `jose` | JOSE REST API + jwcrypto | no | Nix shell, KMS server |
 | `kmip-go` | ovh/kmip-go (KMIP 1.0–1.4) | no | Go toolchain, binary TTLV |
 | `luks` | LUKS disk encryption PKCS#11 | no | WITH_LUKS=1, HSM |
+| `opa-rbac` | OPA RBAC policies (Rego) enforced by the KMS | no | Docker (OPA container), KMS built with `insecure` |
 | `openssh` | OpenSSH PKCS#11 | no | WITH_OPENSSH=1, HSM |
 | `pykmip` | PyKMIP + Synology DSM | no | WITH_PYTHON=1 |
 | `veracrypt` | VeraCrypt PKCS#11 | no | `veracrypt` binary on PATH |

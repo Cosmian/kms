@@ -23,11 +23,19 @@ use serde::{Deserialize, Serialize};
 pub struct UserId(String);
 
 impl UserId {
-    /// Try to wrap a string as a `UserId`, rejecting empty strings.
+    /// Wrap any `Into<String>` value as a `UserId`.
     ///
-    /// Use this whenever the string originates from user input or any
-    /// untrusted source. For string literals in tests, `UserId::from("…")`
-    /// is sufficient — the `From` impl checks for emptiness in debug builds.
+    /// # Panics
+    /// Panics in debug mode if the string is empty. Use [`try_new`](Self::try_new)
+    /// for validated construction.
+    #[must_use]
+    pub fn new(s: impl Into<String>) -> Self {
+        let s = s.into();
+        debug_assert!(!s.is_empty(), "UserId must not be empty");
+        Self(s)
+    }
+
+    /// Try to wrap a string as a `UserId`, rejecting empty strings.
     ///
     /// # Errors
     /// Returns an error if the string is empty.

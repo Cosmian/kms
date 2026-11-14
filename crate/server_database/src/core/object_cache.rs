@@ -200,6 +200,7 @@ mod tests {
             "test-owner".to_owned(),
             State::Active,
             Attributes::default(),
+            String::new(),
         )
     }
 
@@ -315,6 +316,7 @@ mod characterization_tests {
             "test-owner".to_owned(),
             State::Active,
             Attributes::default(),
+            String::new(),
         )
     }
 

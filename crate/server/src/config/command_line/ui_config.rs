@@ -172,7 +172,8 @@ pub struct OidcRuntimeConfig {
 ///
 /// `auth_verifier` is the *same* validator built for the bearer-token `AuthVerifier`
 /// middleware (see `prepare_kms_server`) — no second JWKS fetch, one session cache.
-#[derive(Clone, Debug)]
+/// Its embedded JWKS manager is shared with the UI login and SAML session checks.
+#[derive(Clone, Debug, Default)]
 pub struct AuthVerifierRuntimeConfig {
     /// The static Auth Verifier configuration (server URL, realm, TLS options).
     pub config: crate::config::AuthVerifierConfig,

@@ -1,0 +1,108 @@
+---
+# Cosmian KMS RBAC demo: Keycloak (identity provider) + OPA (policy) + KMS.
+# Setup, users and the role matrix are described in README.md.
+#
+# The three services share one URL space: the `keycloak.localhost` network alias lets the
+# KMS container reach Keycloak at the same https://keycloak.localhost:8443 address the host
+# uses, so the `iss` claim of every token matches the issuer configured in the KMS.
+name: kms-rbac-rego
+
+services:
+  keycloak:
+    # Third-party images are pinned by digest (dependencies.instructions.md, rule 4.19).
+    image: quay.io/keycloak/keycloak:26.8.1@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+    command: [start, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?copy .env.example to .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?copy .env.example to .env}
+      # Substituted for ${DEMO_USER_PASSWORD} in keycloak/kms-realm.json at import time.
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?copy .env.example to .env}
+      KC_HOSTNAME: https://keycloak.localhost:8443
+      KC_HTTP_ENABLED: 'false'
+      KC_HTTPS_PORT: '8443'
+      KC_HTTPS_CERTIFICATE_FILE: /opt/keycloak/conf/server.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /opt/keycloak/conf/server.key
+      # Plain-HTTP management interface (port 9000, container-internal) for the healthcheck.
+      KC_HEALTH_ENABLED: 'true'
+      KC_HTTP_MANAGEMENT_SCHEME: http
+    # Published on loopback only: the demo credentials and the unauthenticated OPA API must not
+    # be reachable from other machines.
+    ports:
+      - 127.0.0.1:8443:8443
+    volumes:
+      - ./keycloak/kms-realm.json:/opt/keycloak/data/import/kms-realm.json:ro
+      - ../../test_data/certificates/client_server/server/keycloak.localhost.crt:/opt/keycloak/conf/server.crt:ro
+      - ../../test_data/certificates/client_server/server/keycloak.localhost.key:/opt/keycloak/conf/server.key:ro
+    healthcheck:
+      # The Keycloak image ships neither curl nor wget: speak HTTP over bash's /dev/tcp. Only the
+      # status line counts: while the realm is still importing, the 503 body also holds the
+      # `"status": "UP"` of its passing sub-checks, and a KMS started then gets no signing keys
+      # and answers 401 to every token until its next JWKS refresh.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          read -r status_line <&3 &&
+          case "$$status_line" in *' 200 '*) true;; *) false;; esac
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 15s
+    networks:
+      default:
+        aliases:
+          - keycloak.localhost
+
+  opa:
+    image: openpolicyagent/opa:1.22.0-static-debug@sha256:b5dde1457f91dd775a72b7865e6b3d0deb537ddf474726dc356ecb01f970ac4d
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      # Reload the policy when test_data/opa/kms.rego changes: edit it and re-run verify.sh.
+      - --watch
+      # One JSON line per KMS authorization query: `docker compose logs opa`.
+      - --set=decision_logs.console=true
+      - /policies
+    ports:
+      - 127.0.0.1:8181:8181
+    volumes:
+      # A directory (not the single file) so --watch survives editors that replace the inode.
+      - ../../test_data/opa:/policies:ro
+
+  kms:
+    # Locally built FIPS image: `mise run build:docker --variant fips --load` (see README.md).
+    image: ${KMS_IMAGE:?build the image and set KMS_IMAGE in .env}
+    # Explicit -c: the image entrypoint never auto-loads /etc/cosmian/kms.toml, because its
+    # COSMIAN_KMS_CONF lookup in nix/docker.nix is written `$${...}`, which bash expands to the PID.
+    command: [-c, /etc/cosmian/kms.toml]
+    # The fixture uses repository-root-relative certificate paths: recreate that layout.
+    working_dir: /repo
+    environment:
+      # Trust the test CA that signed the Keycloak certificate (HTTPS JWKS download).
+      SSL_CERT_FILE: /repo/test_data/certificates/client_server/ca/ca.crt
+    ports:
+      - 127.0.0.1:9998:9998
+    volumes:
+      - ../../test_data/configs/server/rbac/keycloak_opa.toml:/etc/cosmian/kms.toml:ro
+      - ../../test_data/certificates/client_server/server/keycloak.localhost.crt:/repo/test_data/certificates/client_server/server/keycloak.localhost.crt:ro
+      - ../../test_data/certificates/client_server/server/keycloak.localhost.key:/repo/test_data/certificates/client_server/server/keycloak.localhost.key:ro
+      - ../../test_data/certificates/client_server/ca/ca.crt:/repo/test_data/certificates/client_server/ca/ca.crt:ro
+      - kms-data:/var/lib/cosmian-kms
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      opa:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf --cacert /repo/test_data/certificates/client_server/ca/ca.crt https://localhost:9998/health
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  kms-data:

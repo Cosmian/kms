@@ -1343,6 +1343,60 @@ async fn test_get_attributes_on_split_key_share() -> KResult<()> {
     Ok(())
 }
 
+/// A split-key share is created `Sensitive`, so a plain `Get` of it is refused for every
+/// external caller — the owner who is also an active CO, and a grantee holding the `Get`
+/// permission — while `JoinSplitKey`, which reads the shares server-side, keeps working.
+///
+/// Regression test: the `sensitive = true` attribute was dropped from the shares, which let
+/// anyone holding the `Get` permission on a share read the raw share bytes (CWE-312).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_split_key_shares_are_sensitive_and_refused_by_get() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason;
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+
+    // Config-only mode: alice is immediately an active CO.
+    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
+    let key_uid = create_key(&kms, alice).await?;
+    let share_uids = Box::pin(split_key(&kms, alice, &key_uid, 2)).await?;
+    kms.database
+        .grant_operations(
+            &share_uids[0],
+            &UserId::from(bob),
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    for (user, caller) in [(alice, "owner and active CO"), (bob, "grantee")] {
+        let get_req = Get {
+            unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+            key_format_type: None,
+            key_wrap_type: None,
+            key_compression_type: None,
+            key_wrapping_specification: None,
+        };
+        let err = Box::pin(crate::core::operations::get(
+            &kms,
+            get_req,
+            &UserId::from(user),
+        ))
+        .await
+        .expect_err("a plain Get of a share must be refused");
+        assert!(
+            matches!(err, KmsError::Kmip21Error(ErrorReason::Sensitive, _)),
+            "Get of a share by the {caller} must be refused as Sensitive, got: {err}"
+        );
+    }
+
+    // The server-side reconstruction does not go through the Get operation.
+    let joined = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+    assert!(!joined.is_empty(), "shares must still be joinable");
+
+    Ok(())
+}
+
 /// T18 – Cross-key share mixing must be rejected before reconstruction.
 ///
 /// Given two independent split keys A and B, each split into 2 shares owned by
@@ -2113,6 +2167,89 @@ async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<
     assert!(
         err.contains("not found") || err.contains("ItemNotFound") || err.contains(WRAP_KEY_ID),
         "error must reference the missing wrapping key, got: {err}"
+    );
+
+    Ok(())
+}
+
+// ─── Regression — OPA enforcing mode does not deadlock CO ceremony ────────────
+
+/// A pre-activation Crypto Officer candidate may use an explicit peer-share grant even when
+/// OPA is enforcing, while a different candidate without a grant remains denied.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_ceremony_not_blocked_by_opa_enforcing_mode() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use crate::core::retrieve_object_utils::user_has_permission;
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    drop(listener);
+
+    let mut conf = base_ceremony_conf(
+        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
+        true,
+        None,
+    );
+    conf.opa.opa_url = Some(format!("http://127.0.0.1:{port}"));
+    conf.opa.opa_mode = "enforcing".to_owned();
+    let kms = test_kms_with_config(conf).await?;
+
+    let alice_key_uid = create_key(&kms, alice).await?;
+    let bob_key_uid = create_key(&kms, bob).await?;
+    kms.database
+        .grant_operations(
+            &bob_key_uid,
+            &UserId::from(alice),
+            HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    let alice_owm = kms
+        .database
+        .retrieve_object_arc(&alice_key_uid)
+        .await?
+        .ok_or_else(|| KmsError::ItemNotFound("alice's key is missing".to_owned()))?;
+    let bob_owm = kms
+        .database
+        .retrieve_object_arc(&bob_key_uid)
+        .await?
+        .ok_or_else(|| KmsError::ItemNotFound("bob's key is missing".to_owned()))?;
+
+    assert!(
+        user_has_permission(
+            &UserId::from(alice),
+            Some(&alice_owm),
+            &KmipOperation::Get,
+            &kms,
+        )
+        .await?,
+        "a CO candidate must be able to access their own key in OPA enforcing mode"
+    );
+    assert!(
+        user_has_permission(
+            &UserId::from(alice),
+            Some(&bob_owm),
+            &KmipOperation::Get,
+            &kms,
+        )
+        .await?,
+        "a CO candidate must be able to use an explicit peer-share grant"
+    );
+    assert!(
+        !user_has_permission(
+            &UserId::from(bob),
+            Some(&alice_owm),
+            &KmipOperation::Get,
+            &kms,
+        )
+        .await?,
+        "a CO candidate without an explicit peer grant must remain denied"
     );
 
     Ok(())

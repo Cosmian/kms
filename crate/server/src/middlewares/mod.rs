@@ -19,7 +19,7 @@ mod auth_verifier;
 pub(crate) use auth_verifier::test_helpers as auth_verifier_test_helpers;
 pub(crate) use auth_verifier::{
     AUTH_VERIFIER_SESSION_COOKIE, AuthVerifier, AuthVerifierValidator,
-    authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt_subject,
+    authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt,
 };
 
 mod ensure_auth;
@@ -115,6 +115,11 @@ pub(crate) struct AuthenticatedUser {
     pub username: UserId,
     /// Which authentication method was used
     pub auth_method: AuthMethod,
+    /// RBAC roles from JWT (empty if not present)
+    pub roles: Vec<String>,
+    /// Domain from JWT `as_rid` claim (realm ID from auth server).
+    /// Legacy tokens may carry the same value as `as_domain`.
+    pub domain: Option<String>,
 }
 
 /// Internal service identities that must stay unreachable through any externally-derived

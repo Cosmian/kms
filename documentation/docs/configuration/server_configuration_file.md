@@ -522,13 +522,14 @@ vault_token_cache_ttl_secs = 0
 #
 # When `true`, users listed in `crypto_officer_users` are candidates only —
 # the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-# `x-cosmian-crypto-officer-ceremony` completes.
+# `x-cosmian-crypto-officer-ceremony` completes
+# (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
 crypto_officer_require_ceremony = false
 
-# Users with the Crypto Officer role.
+# Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
 #
 # May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-# and access raw key material.
+# and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
 # When active, gains ownership bypass on all Managed Objects.
 # When set, only listed users (plus those explicitly granted the `Create` right) can
 # create and import objects.
@@ -544,15 +545,13 @@ crypto_officer_require_ceremony = false
 # Generate with: `openssl rand -hex 32`
 # ceremony_secret = ""
 
-# UID of a KMS symmetric key to use as the ceremony record sealing key.
+# UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
 #
-# When set, key material is fetched from the KMS object store after database
-# initialization and used in place of `ceremony_secret`. This enables:
-#   - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
-#   - HSM-backed sealing when the referenced key is HSM-resident.
-#   - Audit trail: each retrieval of the ceremony key is logged.
-#
-# If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+# When set, the key material is read once at startup from the KMS object store (a direct
+# database read that bypasses KMIP authorization) and used in place of `ceremony_secret`.
+# The key must exist and be an AES-256 symmetric key (32 bytes of key material): the
+# server refuses to start otherwise. It protects the ceremony records at rest, so keep
+# access to this object restricted to the administrators of the server.
 #
 # **Bootstrap constraint**: the ceremony sealing key must be created before
 # enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -565,6 +564,12 @@ crypto_officer_require_ceremony = false
 # # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
 # # 4. Enable require_ceremony = true and restart
 # ```
+#
+# If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+#
+# **Status**: implemented. The key is loaded once at startup (the log line
+# `ceremony sealing key loaded from object store` confirms it): restart the server after
+# changing the referenced key or the setting.
 # ceremony_key_id = ""
 
 # UID of a KMS symmetric key to use for AES-KW (RFC 5649) wrapping of split-key shares.
@@ -775,6 +780,10 @@ failure_mode = "continue"
 
 [audit.file]
 
+[opa]
+# OPA evaluation mode: `"disabled"` (default; OPA is not consulted), `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial, error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it after OPA allows. `"exclusive"` and `"enforcing"` require `--opa-url`
+opa_mode = "disabled"
+
 [audit.postgres]
 # PostgreSQL audit database (URI-style DSN). Setting it selects the PostgreSQL audit backend
 # instead of [audit.file]; must be a different database than [db] database_url.
@@ -819,12 +828,10 @@ This means the origins in the allow-list must contain the **exact URL** the user
 types in the browser's address bar — scheme, hostname, and port all included.
 Configuring `0.0.0.0` (the bind address) or the server's IP address does **not**
 match a hostname-based origin such as `http://kms.example.com:9998`, and vice
-versa.
-
-The binary automatically provides loopback addresses
-(`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on the configured port) so that
-browser access from the same machine works out-of-the-box. Any other hostname,
-IP address, or port must be added explicitly.
+versa.  Note that port 80 (HTTP) and port 443 (HTTPS) are the browser default
+ports and are **omitted** from the `Origin` header, so the value must not
+include them either (e.g. use `https://kms.example.com`, not
+`https://kms.example.com:443`).
 
 CLI clients (`ckms`, scripts, curl) do not send an `Origin` header and are
 not affected by this setting.

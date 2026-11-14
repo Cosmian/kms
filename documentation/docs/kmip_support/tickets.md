@@ -99,7 +99,7 @@ flowchart TD
 | Your KMIP 2.1 client, library or conformance suite performs Login and presents the ticket | Yes | The server supports the standard flow, so it works unchanged |
 | Your own job or tool must fail closed after a lease or a number of messages, and it sends the ticket on every message | Yes | The server refuses the messages that exceed the lease or the Request Count. This is a self-imposed limit |
 | You want to stop a compromised or untrusted client | No | It can omit the ticket. Revoke its certificate, JWT or API token instead |
-| You want a client to hold fewer rights than its user | No | A ticket grants and removes no right, and Delegated Login is not supported. Use [ownership and access rights](../configuration/authorization.md) |
+| You want a client to hold fewer rights than its user | No | A ticket grants and removes no right, and Delegated Login is not supported. Use [ownership and access rights](../configuration/authorization/index.md) |
 | The server runs without authentication | No | Every client is the same default user, so a ticket does not separate anyone |
 | You need tickets across restarts or several server instances | No | They live in the memory of one process. After a restart the client gets `Invalid Ticket` and logs in again |
 

@@ -127,6 +127,7 @@ pub trait ObjectsStore {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> InterfaceResult<String>;
 
     /// Retrieve an object from the database.

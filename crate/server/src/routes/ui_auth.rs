@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use actix_session::Session;
+use actix_session::{Session, SessionInsertError};
 use actix_web::{
     HttpRequest, HttpResponse,
     cookie::{Cookie, SameSite},
@@ -36,6 +36,43 @@ fn random_b64url(rng: &KmsRng, len_bytes: usize) -> Result<String, ()> {
 fn pkce_challenge_from_verifier(verifier: &str) -> String {
     let digest = openssl::sha::sha256(verifier.as_bytes());
     URL_SAFE_NO_PAD.encode(digest)
+}
+
+/// Start a fresh authenticated browser session for `user_id`.
+///
+/// The previous session state is discarded and the session key renewed, so neither a
+/// session planted before authentication (session fixation) nor the `roles` / `domain` of an
+/// earlier login that used the same cookie can be inherited by the new identity. Those two
+/// values feed the OPA input via `SessionAuth`, so a stale `domain` or `CryptoOfficer` role
+/// would silently grant the new user someone else's authorizations.
+///
+/// `roles` is always written (empty when the identity has none); `domain` is written only
+/// when present, `clear` having already removed any previous one.
+fn establish_session(
+    session: &Session,
+    user_id: &UserId,
+    roles: &[String],
+    domain: Option<&str>,
+) -> Result<(), SessionInsertError> {
+    session.clear();
+    session.renew();
+    session.insert("user_id", user_id)?;
+    session.insert("roles", roles)?;
+    if let Some(domain) = domain {
+        session.insert("domain", domain)?;
+    }
+    Ok(())
+}
+
+#[cfg(all(not(test), not(feature = "insecure")))]
+fn configure_oidc_token_validation(validation: &mut Validation, issuer: &str) {
+    validation.set_issuer(&[issuer]);
+    validation.validate_exp = true;
+}
+
+#[cfg(any(test, feature = "insecure"))]
+const fn configure_oidc_token_validation(validation: &mut Validation, _issuer: &str) {
+    validation.validate_exp = false;
 }
 
 #[get("/login_flow")]
@@ -301,18 +338,7 @@ pub(crate) async fn callback(
     let mut validation = Validation::new(header.alg);
     validation.algorithms = vec![header.alg];
     validation.set_audience(&[&client_id]);
-
-    #[cfg(all(not(test), not(feature = "insecure")))]
-    {
-        validation.set_issuer(&[&issuer]);
-        validation.validate_exp = true;
-    }
-
-    #[cfg(any(test, feature = "insecure"))]
-    {
-        drop(issuer); // not used in insecure/test builds
-        validation.validate_exp = false;
-    }
+    configure_oidc_token_validation(&mut validation, &issuer);
 
     let claims = match decode::<Value>(id_token_str, &decoding_key, &validation) {
         Ok(v) => v.claims,
@@ -348,7 +374,9 @@ pub(crate) async fn callback(
             .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
     }
 
-    if session.insert("user_id", &user_id).is_err() {
+    // The OIDC flow carries no RBAC context into the session: start from a clean one so the
+    // `roles`/`domain` of a previous login on this cookie are not inherited.
+    if establish_session(&session, &user_id, &[], None).is_err() {
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
     }
@@ -365,6 +393,10 @@ pub(crate) struct AuthVerifierLoginRequest {
     password: String,
     #[serde(default)]
     totp_code: Option<String>,
+    /// Realm to authenticate against. Required when multiple realms are configured;
+    /// when omitted the first configured realm is used.
+    #[serde(default)]
+    realm: Option<String>,
 }
 
 /// Request body for `POST /ui/login_svid`.
@@ -403,9 +435,9 @@ struct AuthVerifierLoginResponse {
 /// mirroring `auth_verifier_login()` in `kms/crate/clients/client/src/http_client/login.rs` —
 /// then validates the JWT the AS returns via `Set-Cookie: _ea_=<jwt>` using the same
 /// JWKS-backed trust logic as the bearer-token `AuthVerifier` middleware
-/// (`verify_auth_verifier_jwt_subject`). Only the resulting `sub` (username) is stored in the
-/// session; the JWT itself never reaches the browser, keeping the same BFF guarantee
-/// as the OIDC flow (`callback`, above).
+/// (`verify_auth_verifier_jwt`). The resulting `sub` (username), `roles`, and `domain`
+/// are stored in the server-side session so subsequent browser requests carry the full
+/// OPA context via `SessionAuth`; the JWT itself never reaches the browser.
 #[post("/login_as")]
 pub(crate) async fn login_as(
     session: Session,
@@ -424,13 +456,29 @@ pub(crate) async fn login_as(
         );
     };
     // Guaranteed non-empty by `ui_login_enabled()`.
-    let (Some(server_url), Some(realm)) = (
-        config.auth_verifier_url.as_deref(),
-        config.auth_verifier_realm.as_deref(),
-    ) else {
+    let Some(server_url) = config.auth_verifier_url.as_deref() else {
         return HttpResponse::InternalServerError().json(
             serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
+    };
+
+    // Resolve the realm: use the one from the request body (if provided and allowed),
+    // otherwise fall back to the first configured realm.
+    let configured_realms = config.realms();
+    let realm = match body.realm.as_deref() {
+        Some(r) if configured_realms.contains(&r.to_owned()) => r,
+        Some(r) => {
+            return HttpResponse::BadRequest().json(
+                serde_json::json!({ "error": format!("Realm '{r}' is not configured on this server") }),
+            );
+        }
+        None => match config.primary_realm() {
+            Some(r) => r,
+            None => {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": "No realm configured for the Web UI" }));
+            }
+        },
     };
 
     let Ok(mut url) = Url::parse(server_url.trim_end_matches('/')) else {
@@ -528,16 +576,24 @@ pub(crate) async fn login_as(
                 );
             };
 
-            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(auth_verifier, &token).await
-            {
-                Ok(sub) => sub,
-                Err(e) => {
-                    return HttpResponse::Unauthorized().json(
-                        serde_json::json!({ "error": format!("Failed to validate the Auth Verifier server token: {e}") }),
-                    );
-                }
-            };
-            let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
+            let claims =
+                match crate::middlewares::verify_auth_verifier_jwt(&auth_verifier.jwks, &token)
+                    .await
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        return HttpResponse::Unauthorized().json(
+                            serde_json::json!({ "error": format!("Failed to validate the Auth Verifier server token: {e}") }),
+                        );
+                    }
+                };
+            if let Err(e) = auth_verifier.ensure_live_session(&token).await {
+                return HttpResponse::Unauthorized().json(
+                    serde_json::json!({ "error": format!("Failed to validate the Auth Verifier session: {e}") }),
+                );
+            }
+
+            let Ok(user_id) = UserId::try_new(claims.sub.as_str()) else {
                 return HttpResponse::Unauthorized().json(
                     serde_json::json!({ "error": "Empty subject claim in Auth Verifier token" }),
                 );
@@ -548,9 +604,13 @@ pub(crate) async fn login_as(
                 );
             }
 
-            if session.insert("user_id", &user_id).is_err() {
+            // Store username, roles, and domain in the server-side session so that
+            // subsequent browser requests (via SessionAuth) carry the full OPA context.
+            if establish_session(&session, &user_id, &claims.roles, claims.domain.as_deref())
+                .is_err()
+            {
                 return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
+                    .json(serde_json::json!({ "error": "Failed to store session data" }));
             }
 
             HttpResponse::Ok().json(AuthVerifierLoginResponse {
@@ -589,12 +649,20 @@ pub(crate) async fn login_svid(
         }
     };
 
-    // Issue a fresh session ID on login so a session ID planted before authentication
-    // (session fixation) never becomes an authenticated session.
-    session.renew();
-    if session.insert("user_id", &authenticated.username).is_err() {
+    // Fresh session ID and state: a session ID planted before authentication (session
+    // fixation) never becomes an authenticated session, and the `roles`/`domain` of an earlier
+    // login are not inherited. The SVID's own `roles`/`domain` claims are kept in the session
+    // so that `SessionAuth` rebuilds the same OPA context as bearer-token authentication.
+    if establish_session(
+        &session,
+        &authenticated.username,
+        &authenticated.roles,
+        authenticated.domain.as_deref(),
+    )
+    .is_err()
+    {
         return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
+            .json(serde_json::json!({ "error": "Failed to store session data" }));
     }
 
     HttpResponse::Ok().json(serde_json::json!({ "next_step": "Authenticated" }))
@@ -632,6 +700,7 @@ async fn auth_verifier_session_user(
         .await
         .inspect_err(|e| debug!("Auth Verifier session cookie rejected: {e}"))
         .ok()
+        .map(|user| user.username)
 }
 
 /// Start SAML single sign-on through the Auth Verifier server.
@@ -813,7 +882,10 @@ fn expired_auth_verifier_session_cookie() -> Cookie<'static> {
 }
 
 #[get("/auth_method")]
-pub(crate) async fn get_auth_method(auth_methods: web::Data<Vec<String>>) -> HttpResponse {
+pub(crate) async fn get_auth_method(
+    auth_methods: web::Data<Vec<String>>,
+    auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
+) -> HttpResponse {
     let methods = auth_methods.get_ref();
     // The singular `auth_method` is kept for backward compatibility: it is the
     // highest-priority configured method (`auth_methods[0]`), or `"None"` when no
@@ -824,9 +896,15 @@ pub(crate) async fn get_auth_method(auth_methods: web::Data<Vec<String>>) -> Htt
         .cloned()
         .unwrap_or_else(|| "None".to_owned());
 
+    // When multiple realms are configured the UI shows a realm selector before
+    // the username/password form. Always include the list so the UI can avoid a
+    // second round-trip.
+    let realms: &[String] = auth_verifier_runtime.config.realms();
+
     HttpResponse::Ok().json(serde_json::json!({
         "auth_method": primary,
         "auth_methods": methods,
+        "auth_verifier_realms": realms,
     }))
 }
 
@@ -844,29 +922,90 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 
 #[cfg(test)]
 mod tests {
+    use actix_session::Session;
     use actix_web::{
-        App,
+        App, FromRequest,
         cookie::Cookie,
         http::{StatusCode, header},
         test, web,
     };
 
-    use super::{get_auth_method, login_saml, logout, saml_login_url, whoami};
+    use super::{establish_session, get_auth_method, login_saml, logout, saml_login_url, whoami};
     use crate::{
         config::{AuthVerifierConfig, AuthVerifierRuntimeConfig, OidcConfig, OidcRuntimeConfig},
         middlewares::{
-            AUTH_VERIFIER_SESSION_COOKIE,
+            AUTH_VERIFIER_SESSION_COOKIE, UserId,
             auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier},
         },
     };
 
+    fn no_auth_verifier() -> web::Data<AuthVerifierRuntimeConfig> {
+        web::Data::new(AuthVerifierRuntimeConfig::default())
+    }
+
     const KMS_URL: &str = "https://kms.example.com";
 
+    /// A second login on the same cookie must not inherit the `roles` / `domain` of the first:
+    /// they feed the OPA input, so a stale `CryptoOfficer` role or domain would hand the new
+    /// identity someone else's authorizations.
+    #[actix_web::test]
+    async fn establish_session_drops_the_roles_and_domain_of_a_previous_login() {
+        let req = test::TestRequest::default().to_http_request();
+        let session = Session::extract(&req).await.expect("session extractor");
+
+        establish_session(
+            &session,
+            &UserId::from("officer@acme.com"),
+            &["CryptoOfficer".to_owned()],
+            Some("acme.com"),
+        )
+        .expect("first login");
+        assert_eq!(
+            session.get::<Vec<String>>("roles").expect("roles"),
+            Some(vec!["CryptoOfficer".to_owned()])
+        );
+        assert_eq!(
+            session.get::<String>("domain").expect("domain").as_deref(),
+            Some("acme.com")
+        );
+
+        establish_session(&session, &UserId::from("bob@other.org"), &[], None)
+            .expect("second login");
+        assert_eq!(
+            session
+                .get::<String>("user_id")
+                .expect("user_id")
+                .as_deref(),
+            Some("bob@other.org")
+        );
+        assert_eq!(
+            session.get::<Vec<String>>("roles").expect("roles"),
+            Some(Vec::new()),
+            "roles of the previous login must not survive"
+        );
+        assert_eq!(
+            session.get::<String>("domain").expect("domain"),
+            None,
+            "domain of the previous login must not survive"
+        );
+        assert_eq!(
+            session.status(),
+            actix_session::SessionStatus::Renewed,
+            "the session key must be renewed on login"
+        );
+    }
+
+    // Test setup must fail loudly if the ephemeral loopback listener cannot be created.
     async fn saml_runtime(saml_realm: Option<&str>) -> AuthVerifierRuntimeConfig {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind an unused local port");
+        let port = listener.local_addr().expect("local address").port();
+        drop(listener);
         AuthVerifierRuntimeConfig {
             config: AuthVerifierConfig {
                 // Unroutable: logout revocation must stay best effort.
-                auth_verifier_url: Some("https://127.0.0.1:9".to_owned()),
+                auth_verifier_url: Some(format!("http://127.0.0.1:{port}")),
                 auth_verifier_saml_realm: saml_realm.map(str::to_owned),
                 ..AuthVerifierConfig::default()
             },
@@ -1034,6 +1173,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(auth_methods))
+                .app_data(no_auth_verifier())
                 .service(get_auth_method),
         )
         .await;
@@ -1053,6 +1193,11 @@ mod tests {
                 .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
             Some(vec!["AUTH_VERIFIER"])
         );
+        // No realms when auth_verifier not fully configured.
+        assert_eq!(
+            body.get("auth_verifier_realms").and_then(|v| v.as_array()),
+            Some(&vec![])
+        );
     }
 
     #[actix_web::test]
@@ -1061,6 +1206,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(auth_methods))
+                .app_data(no_auth_verifier())
                 .service(get_auth_method),
         )
         .await;
@@ -1092,6 +1238,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(auth_methods))
+                .app_data(no_auth_verifier())
                 .service(get_auth_method),
         )
         .await;
@@ -1111,5 +1258,39 @@ mod tests {
                 .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
             Some(vec!["JWT", "AUTH_VERIFIER", "CERT"])
         );
+    }
+
+    #[actix_web::test]
+    async fn test_auth_method_returns_realms_for_multi_realm_config() {
+        use crate::config::AuthVerifierConfig;
+
+        let auth_methods: Vec<String> = vec!["AUTH_VERIFIER".to_owned()];
+        let av_config = AuthVerifierRuntimeConfig {
+            config: AuthVerifierConfig {
+                auth_verifier_url: Some("https://auth.example.com".to_owned()),
+                auth_verifier_realm: Some(vec!["acme.com".to_owned(), "partner.com".to_owned()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(auth_methods))
+                .app_data(web::Data::new(av_config))
+                .service(get_auth_method),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/auth_method").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        let realms: Vec<&str> = body
+            .get("auth_verifier_realms")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(realms, vec!["acme.com", "partner.com"]);
     }
 }

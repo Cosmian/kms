@@ -564,6 +564,7 @@ mod tests {
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
+                "",
             )
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
@@ -633,6 +634,7 @@ mod tests {
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
+                "",
             )
             .await
             .is_ok()
@@ -690,6 +692,7 @@ mod tests {
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
+                "",
             )
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
@@ -1030,6 +1033,7 @@ mod tests {
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
+                "",
             )
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
@@ -1113,6 +1117,7 @@ mod tests {
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
+                "",
             )
             .await
             .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;

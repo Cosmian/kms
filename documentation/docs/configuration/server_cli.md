@@ -573,10 +573,10 @@ Options:
           [env: KMS_ANSI_COLORS=]
 
       --crypto-officer-users <CRYPTO_OFFICER_USERS>
-          Users with the Crypto Officer role.
+          Users with the Crypto Officer role (ISO/IEC 19790 "Crypto Officer" / PKCS#11 `CKU_SO`).
 
           May manage key lifecycle (create, import, certify, rekey, activate, revoke, destroy)
-          and access raw key material.
+          and access raw key material (get, export — "key output" per ISO/IEC 19790 §7.4.3).
           When active, gains ownership bypass on all Managed Objects.
           When set, only listed users (plus those explicitly granted the `Create` right) can
           create and import objects.
@@ -586,7 +586,8 @@ Options:
 
           When `true`, users listed in `crypto_officer_users` are candidates only —
           the role is inactive until a KMIP `JoinSplitKey` with all shares tagged
-          `x-cosmian-crypto-officer-ceremony` completes.
+          `x-cosmian-crypto-officer-ceremony` completes
+          (NIST SP 800-57 Part 2 Rev 1 §4.6 split knowledge, XOR n-of-n).
 
       --ceremony-secret <CEREMONY_SECRET>
           Hex-encoded 32-byte secret for ceremony record encryption.
@@ -601,15 +602,13 @@ Options:
           [env: KMS_CEREMONY_SECRET=]
 
       --ceremony-key-id <CEREMONY_KEY_ID>
-          UID of a KMS symmetric key to use as the ceremony record sealing key.
+          UID of a KMS symmetric key to use as the ceremony record sealing key (ADP-26).
 
-          When set, key material is fetched from the KMS object store after database
-          initialization and used in place of `ceremony_secret`. This enables:
-            - Key rotation via standard KMIP `ReKey` / `Rotate` operations.
-            - HSM-backed sealing when the referenced key is HSM-resident.
-            - Audit trail: each retrieval of the ceremony key is logged.
-
-          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+          When set, the key material is read once at startup from the KMS object store (a direct
+          database read that bypasses KMIP authorization) and used in place of `ceremony_secret`.
+          The key must exist and be an AES-256 symmetric key (32 bytes of key material): the
+          server refuses to start otherwise. It protects the ceremony records at rest, so keep
+          access to this object restricted to the administrators of the server.
 
           **Bootstrap constraint**: the ceremony sealing key must be created before
           enabling `crypto_officer_require_ceremony = true`. Create it while the server
@@ -622,6 +621,12 @@ Options:
           # 3. Set ceremony_key_id = "ceremony-seal-2026" in kms.toml
           # 4. Enable require_ceremony = true and restart
           ```
+
+          If both `ceremony_secret` and `ceremony_key_id` are set, `ceremony_key_id` takes precedence.
+
+          **Status**: implemented. The key is loaded once at startup (the log line
+          `ceremony sealing key loaded from object store` confirms it): restart the server after
+          changing the referenced key or the setting.
 
           [env: KMS_CEREMONY_KEY_ID=]
 
@@ -669,6 +674,17 @@ Options:
 
       --aws-xks-sigv4-secret-access-key <AWS_XKS_SIGV4_SECRET_ACCESS_KEY>
           [env: KMS_AWS_XKS_SIGV4_SECRET_ACCESS_KEY=]
+
+      --opa-url <OPA_URL>
+          OPA sidecar base URL (`http://` or `https://`). Requires `--opa-mode exclusive` or `--opa-mode enforcing`: a URL combined with the default `disabled` mode is refused at startup. The KMS has no OPA-specific authentication (no bearer token, no client certificate) and trusts the answers it gets, so keep OPA on the loopback interface or a trusted private network, or reach it through a TLS-terminating proxy that authenticates callers. Example: `http://localhost:8181`
+
+          [env: KMS_OPA_URL=]
+
+      --opa-mode <OPA_MODE>
+          OPA evaluation mode: `"disabled"` (default; OPA is not consulted), `"exclusive"` (OPA only) or `"enforcing"` (OPA is authoritative: an OPA allow is sufficient, with no ownership or DB grant check, and an OPA denial, error or timeout is final). In `"enforcing"` mode the KMS permission logic still applies to native Crypto Officers (and the candidates listed in `crypto_officer.users`) on non-HSM objects, who skip OPA, and to HSM-backed objects, which must also pass it after OPA allows. `"exclusive"` and `"enforcing"` require `--opa-url`
+
+          [env: KMS_OPA_MODE=]
+          [default: disabled]
 
       --kmip-policy-id <POLICY_ID>
           KMIP algorithm policy selector.

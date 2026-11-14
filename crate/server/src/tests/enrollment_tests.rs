@@ -1844,6 +1844,7 @@ async fn serial_fallback_is_not_blocked_by_a_planted_copy() -> KResult<()> {
             genuine.object(),
             &attributes,
             &tags,
+            "",
         )
         .await?;
     kms.database
@@ -1853,6 +1854,7 @@ async fn serial_fallback_is_not_blocked_by_a_planted_copy() -> KResult<()> {
             genuine.object(),
             &attributes,
             &tags,
+            genuine.domain(),
         )
         .await?;
     let resp =
@@ -2007,6 +2009,7 @@ async fn serial_tag_on_a_copy_owned_by_another_user_does_not_revive_a_revoked_ce
             genuine.object(),
             &attributes,
             &tags,
+            "",
         )
         .await?;
     // The genuine certificate keeps only its CA link (as before the serial index), so the tag

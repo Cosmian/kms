@@ -446,6 +446,11 @@ impl PgPool {
             .batch_execute(tmp_loader.get_query("add-column-version")?)
             .await
             .map_err(DbError::from)?;
+        // Add the RBAC `domain` column to databases created before it existed (idempotent).
+        client
+            .batch_execute(tmp_loader.get_query("add-column-domain")?)
+            .await
+            .map_err(DbError::from)?;
         // Add activated_by column to crypto_officer_activations (idempotent).
         // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
         client
@@ -668,6 +673,7 @@ impl ObjectsStore for PgPool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> InterfaceResult<String> {
         async fn transact(
             tx: &deadpool_postgres::Transaction<'_>,
@@ -676,6 +682,7 @@ impl ObjectsStore for PgPool {
             object: &Object,
             attributes: &Attributes,
             tags: &HashSet<String>,
+            domain: &str,
         ) -> DbResult<String> {
             let object_json = serde_json::to_string(object).map_err(DbError::from)?;
             let attrs_param = Json(attributes);
@@ -694,6 +701,7 @@ impl ObjectsStore for PgPool {
                     &state,
                     &owner,
                     &wrapping_key_id,
+                    &domain,
                 ],
             )
             .await
@@ -714,7 +722,7 @@ impl ObjectsStore for PgPool {
 
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         pg_retry_tx!(self.pool, |tx| {
-            transact(&tx, &uid, owner, object, attributes, tags).await
+            transact(&tx, &uid, owner, object, attributes, tags, domain).await
         })
     }
 
@@ -739,11 +747,12 @@ impl ObjectsStore for PgPool {
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 let owner: String = row.get(3);
                 let state_str: String = row.get(4);
+                let domain: String = row.try_get(5).unwrap_or_default();
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                let version: i64 = row.get(5);
+                let version: i64 = row.get(6);
                 Ok(Some(
-                    ObjectWithMetadata::new(id, object, owner, state, attributes)
+                    ObjectWithMetadata::new(id, object, owner, state, attributes, domain)
                         .with_version(u64::try_from(version).unwrap_or_default()),
                 ))
             } else {
@@ -901,6 +910,7 @@ impl ObjectsStore for PgPool {
                             .await
                             .map_err(DbError::from)?;
                         let owner_s: &str = owner;
+                        let domain = "";
                         tx.execute(
                             &stmt,
                             &[
@@ -910,6 +920,7 @@ impl ObjectsStore for PgPool {
                                 &state,
                                 &owner_s,
                                 &wrapping_key_id,
+                                &domain,
                             ],
                         )
                         .await

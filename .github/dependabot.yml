@@ -109,3 +109,19 @@ updates:
       docker-security:
         applies-to: security-updates
         patterns: ['*']
+
+  - package-ecosystem: docker-compose
+    directory: /deploy/rbac_rego
+    schedule:
+      interval: weekly
+    ignore:
+      # Keycloak (realm import format) and OPA (CLI flags, Rego) majors need a manual check of the RBAC demo stack.
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+    groups:
+      docker-compose-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      docker-compose-security:
+        applies-to: security-updates
+        patterns: ['*']

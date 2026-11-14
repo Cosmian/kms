@@ -977,6 +977,7 @@ impl ObjectsStore for RedisWithFindex {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        _domain: &str,
     ) -> InterfaceResult<String> {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let operation = AtomicOperation::Create((
@@ -1003,6 +1004,7 @@ impl ObjectsStore for RedisWithFindex {
                     o.owner,
                     o.state,
                     o.attributes.unwrap_or_default(),
+                    String::new(),
                 )
                 .with_version(o.version)
             })
@@ -1829,6 +1831,7 @@ pub(crate) mod tests {
                 &object,
                 object.attributes()?,
                 &HashSet::new(),
+                "",
             )
             .await?;
         let stale_algorithm = CryptographicAlgorithm::ChaCha20;
@@ -1885,6 +1888,7 @@ pub(crate) mod tests {
                 &object,
                 object.attributes()?,
                 &HashSet::from([real_tag.clone()]),
+                "",
             )
             .await?;
         store
@@ -1941,6 +1945,7 @@ pub(crate) mod tests {
                 &object,
                 object.attributes()?,
                 &HashSet::from([old_tag.clone()]),
+                "",
             )
             .await?;
         // A's late post-commit step: index diff old -> other, then reconcile.

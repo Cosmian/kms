@@ -26,6 +26,7 @@ jobs:
           - {leaf: kmip-go, variant: fips}
           - {leaf: kmip-go, variant: non-fips}
           - {leaf: kmipkit, variant: non-fips}
+          - {leaf: opa-rbac, variant: non-fips}
           - {leaf: pykmip, variant: non-fips}
     uses: ./.github/workflows/test-group.yml
     with:

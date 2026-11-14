@@ -138,6 +138,8 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
     Ok(AuthenticatedUser {
         username: certificate.user.clone().map_err(KmsError::InvalidRequest)?,
         auth_method: AuthMethod::Mtls,
+        roles: Vec::new(),
+        domain: None,
     })
 }
 

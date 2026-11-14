@@ -57,6 +57,8 @@ where
             // No authentication configured — inject the default username.
             req.extensions_mut().insert(AuthenticatedUser {
                 username: UserId::from(kms_server.params.default_username.as_str()),
+                roles: Vec::new(),
+                domain: None,
                 auth_method: AuthMethod::DefaultUser,
             });
             next.call(req)

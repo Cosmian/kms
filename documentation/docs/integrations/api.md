@@ -23,7 +23,7 @@ The KMS server exposes endpoints grouped by function:
 | **OpenAPI / Swagger** | `GET /openapi.yaml`, `GET /swagger` | OpenAPI 3.1 & Swagger UI | Interactive documentation and API schema download (publicly served) |
 | **Cloud Integrations** | `/aws`, `/google_cse`, `/ms_dke`, `/azureekm` | Vendor-specific REST protocols | External Key Store integrations (AWS XKS, Google CSE, MS DKE, Azure EKM) |
 
-See [KMIP Support](../kmip_support/json_ttlv_api.md) for KMIP protocol details and [Ownership and access rights](../configuration/authorization.md) for access control endpoints.
+See [KMIP Support](../kmip_support/json_ttlv_api.md) for KMIP protocol details and [Ownership and access rights](../configuration/authorization/index.md) for access control endpoints.
 
 ---
 
@@ -33,7 +33,7 @@ This API is documented in the [KMIP section](../kmip_support/json_ttlv_api.md) o
 
 ### Calling the authorization API
 
-This API is documented in the [authorization section](../configuration/authorization.md) of this manual.
+This API is documented in the [authorization section](../configuration/authorization/index.md) of this manual.
 
 ---
 
@@ -146,7 +146,7 @@ Once authenticated, the server evaluates access control rules per cryptographic 
 - **Role Management (`[roles] crypto_officer_users`)**: Restricts critical administrative privileges and key lifecycle management to designated Crypto Officer identities.
 - **Crypto Officer Ceremony**: Optional quorum-based dual control requiring multi-party authorization for high-security key operations.
 
-See [Ownership and access rights](../configuration/authorization.md) and [Role Management and Key Ceremony](../configuration/authorization/key_ceremony.md).
+See [Ownership and access rights](../configuration/authorization/index.md) and [Role Management and Key Ceremony](../configuration/authorization/key_ceremony.md).
 
 ### 5. HTTP Protocol & Boundary Hardening
 

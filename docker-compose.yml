@@ -168,6 +168,77 @@ services:
   # Minimal OTEL stack for integration tests:
   # KMS -> otel-collector -> scrape collector Prometheus endpoint
 
+  opa:
+    # Pinned by digest (the `edge-*` tags are mutable). OPA's REST API has no authentication
+    # and accepts policy updates, so it is published on the loopback interface only.
+    image: openpolicyagent/opa:1.22.0-static-debug@sha256:b5dde1457f91dd775a72b7865e6b3d0deb537ddf474726dc356ecb01f970ac4d
+    ports:
+      - 127.0.0.1:8181:8181
+    volumes:
+      # Policy file (package kms)
+      # Roles are carried in the JWT `roles` claim (RFC 9068) and the domain in `as_rid`
+      # (`as_domain` is accepted as an alias).
+      - ./test_data/opa/kms.rego:/policies/kms.rego:ro
+    command:
+      - run
+      - --server
+      - --log-level=info
+      - --addr=0.0.0.0:8181
+      - /policies/kms.rego
+
+  # Authentication Verifier — JWT issuer for KMS OPA RBAC testing.
+  #
+  # Prerequisites (run once from the authentication/ directory):
+  #   cargo build -p auth_verifier
+  #
+  # The binary is mounted from the local build output.
+  # The kms_opa_rbac.toml config declares the five roles that match kms.rego.
+  #
+  # Endpoints:
+  #   GET  https://localhost:8443/.well-known/jwks.json — JWKS (the KMS validates tokens against it)
+  #   GET  https://localhost:8443/public/roles          — lists the five KMS RBAC roles
+  #   POST https://localhost:8443/login?realm=kms       — obtain a JWT for a realm user
+  #   POST https://localhost:8443/admins/realms         — create a realm  (admin session)
+  #   POST https://localhost:8443/realms/kms/userpass   — create a user  (admin session)
+  #
+  # The tokens carry no `iss`, `aud` or `email` claim: point the KMS at this service with the
+  # `[auth_verifier]` table of kms.toml, not with `--jwt-auth-provider`, which requires `iss`.
+  auth-verifier:
+    profiles:
+      - auth-verifier
+    # Pinned by the multi-arch index digest (see dependencies.instructions.md §6).
+    image: debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+    ports:
+      - 127.0.0.1:8443:8443
+    volumes:
+      # Pre-built binary (build with: cd authentication && cargo build -p auth_verifier)
+      - ./authentication/target/debug/auth_verifier:/usr/local/bin/auth_verifier:ro
+      # KMS OPA RBAC configuration with roles matching test_data/opa/kms.rego
+      - ./test_data/configs/auth_verifier/kms_opa_rbac.toml:/config/kms_opa_rbac.toml:ro
+      # TLS certificates (shared with the authentication submodule test suite)
+      - ./authentication/server/src/tests/certificates/ec:/certs:ro
+      # Persistent SQLite database (survives container restarts)
+      - auth_verifier_data:/data
+    environment:
+      - RUST_LOG=auth_verifier=info
+    # Override cert paths to absolute paths as seen inside the container
+    command: >
+      /bin/sh -c "
+        sed
+          -e 's|server/src/tests/certificates/ec/|/certs/|g'
+          -e 's|connection_url = \"sqlite:///tmp/kms_opa_rbac_auth.db\"|connection_url = \"sqlite:///data/kms_opa_rbac_auth.db\"|'
+          /config/kms_opa_rbac.toml > /tmp/auth_verifier_runtime.toml &&
+        /usr/local/bin/auth_verifier /tmp/auth_verifier_runtime.toml
+      "
+    healthcheck:
+      # debian:bookworm-slim ships no curl, and the test certificate is not valid for
+      # `localhost`: probe the TLS port with a plain TCP connect instead of `curl -k`.
+      test: [CMD, bash, -c, exec 3<>/dev/tcp/127.0.0.1/8443]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.144.0
     profiles: [otel-test]
@@ -645,6 +716,7 @@ services:
         fi
 
 volumes:
+  auth_verifier_data:
   spire-data-a:
   spire-data-b:
   spire-agent-socket-a:

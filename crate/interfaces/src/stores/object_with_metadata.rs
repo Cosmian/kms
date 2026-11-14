@@ -25,6 +25,9 @@ pub struct ObjectWithMetadata {
     owner: UserId,
     state: State,
     attributes: Attributes,
+    /// The domain this object belongs to (for OPA domain-scoped RBAC).
+    /// Stamped at creation from the creator's `user_domain`; empty string for legacy objects.
+    domain: String,
     // optimistic-lock counter as read from the store; `None` if the store does not track it
     version: Option<u64>,
 }
@@ -37,6 +40,7 @@ impl ObjectWithMetadata {
         owner: impl Into<UserId>,
         state: State,
         attributes: Attributes,
+        domain: String,
     ) -> Self {
         Self {
             id,
@@ -44,6 +48,7 @@ impl ObjectWithMetadata {
             owner: owner.into(),
             state,
             attributes,
+            domain,
             version: None,
         }
     }
@@ -107,6 +112,11 @@ impl ObjectWithMetadata {
 
     pub const fn attributes_mut(&mut self) -> &mut Attributes {
         &mut self.attributes
+    }
+
+    #[must_use]
+    pub fn domain(&self) -> &str {
+        &self.domain
     }
 
     /// Consume `self`, moving out the id, object and attributes without cloning.
@@ -283,8 +293,8 @@ impl Display for ObjectWithMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ObjectWithMetadata {{ id: {}, object: {}, owner: {}, state: {}, attributes: {} }}",
-            self.id, self.object, self.owner, self.state, self.attributes
+            "ObjectWithMetadata {{ id: {}, object: {}, owner: {}, state: {}, attributes: {}, domain: {} }}",
+            self.id, self.object, self.owner, self.state, self.attributes, self.domain
         )
     }
 }
@@ -334,6 +344,7 @@ mod tests {
             "owner".to_owned(),
             State::Active,
             ext_attrs,
+            String::new(),
         )
     }
 
@@ -438,6 +449,7 @@ mod tests {
             "owner".to_owned(),
             State::Active,
             Attributes::default(), // no external attrs
+            String::new(),
         );
         assert!(!owm.is_within_process_window());
         Ok(())
@@ -463,6 +475,7 @@ mod tests {
                     protect_stop_date: Some(now - Duration::hours(1)),
                     ..Default::default()
                 },
+                String::new(),
             );
             assert!(
                 owm.is_within_process_window(),

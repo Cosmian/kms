@@ -32,8 +32,10 @@ pub(crate) struct CrlQueryParams {
 ///
 /// Generating a CRL uses the **CA private key** to produce a cryptographic signature.
 /// Authentication ensures the caller has object-level read access to the CA key.
-/// No special role (Crypto Officer or otherwise) is required — any authenticated
-/// user with access to the CA certificate may request its CRL.
+/// When no Crypto Officer is configured, any authenticated user with access to the CA
+/// certificate may request its CRL. When `crypto_officer.users` is non-empty the caller must
+/// also be an active Crypto Officer, because the CRL collects the revoked certificates of every
+/// owner (see `generate_crl`).
 ///
 /// CRL _content_ is public information (RFC 5280 §3) — it lists revoked serial numbers
 /// and contains no private key material.  Authentication here protects the CA private

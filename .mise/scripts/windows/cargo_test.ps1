@@ -8,6 +8,9 @@ function TestProject
     $excludes = @()
     if ($Quick) { $excludes = @('--exclude', 'test_kms_server', '--exclude', 'ckms') }
     $env:RUST_LOG = "cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
+    # Windows default thread stack is 1 MB; large async test functions overflow it in
+    # debug builds. 8 MB matches the Linux/macOS default (RUST_MIN_STACK is bytes).
+    $env:RUST_MIN_STACK = "8388608"
     # Add target
     rustup target add x86_64-pc-windows-msvc
 
