@@ -98,3 +98,11 @@ PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PR
 -- Refresh planner statistics; analysis_limit bounds ANALYZE to a sample.
 -- name: optimize-planner
 PRAGMA analysis_limit=1000; PRAGMA optimize=0x10002;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         TEXT    NOT NULL PRIMARY KEY,
+    version         TEXT    NOT NULL,
+    last_heartbeat  INTEGER NOT NULL,
+    is_leader       INTEGER NOT NULL DEFAULT 0
+);

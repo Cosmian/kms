@@ -23,6 +23,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
@@ -100,6 +101,7 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
 #[derive(Clone)]
 pub(crate) struct MySqlPool {
     pool: Pool,
+    lock_pool: Pool,
 }
 
 impl MySqlPool {
@@ -234,12 +236,17 @@ impl MySqlPool {
             .and_then(|v| usize::try_from(v).ok())
             .unwrap_or(default_conns);
 
-        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts);
+        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts.clone());
         let pool_constraints = mysql_async::PoolConstraints::new(0, max_conns)
             .ok_or_else(|| DbError::DatabaseError("Invalid pool constraints".to_owned()))?;
         opts_builder = opts_builder
             .pool_opts(mysql_async::PoolOpts::default().with_constraints(pool_constraints));
 
+        let lock_pool_constraints = mysql_async::PoolConstraints::new(0, CRON_LOCK_CONNECTIONS)
+            .ok_or_else(|| DbError::DatabaseError("Invalid lock pool constraints".to_owned()))?;
+        let lock_opts = mysql_async::OptsBuilder::from_opts(opts)
+            .pool_opts(mysql_async::PoolOpts::default().with_constraints(lock_pool_constraints));
+        let lock_pool = Pool::new(lock_opts);
         let pool = Pool::new(opts_builder);
 
         let queries = mysql_queries()?;
@@ -252,6 +259,7 @@ impl MySqlPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-cluster-nodes",
         ] {
             let sql = queries
                 .get(name)
@@ -443,7 +451,7 @@ impl MySqlPool {
             .map_err(DbError::from)?;
         }
 
-        let this = Self { pool };
+        let this = Self { pool, lock_pool };
 
         // On clear or first boot, update metadata (non-fips only)
         if clear_database {
@@ -462,6 +470,96 @@ impl MySqlPool {
             .map_err(DbError::from)
     }
 
+    pub(crate) async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
+        let acquired: Option<i64> = conn
+            .exec_first(
+                "SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256), 0)",
+                (lock_name,),
+            )
+            .await
+            .map_err(DbError::from)?;
+        match acquired {
+            Some(1) => Ok(Some(Box::new(MySqlCronLock {
+                conn,
+                lock_name: lock_name.to_owned(),
+            }))),
+            Some(0) => Ok(None),
+            _ => Err(DbError::DatabaseError(
+                "MySQL GET_LOCK returned an unexpected result".to_owned(),
+            )),
+        }
+    }
+
+    pub(crate) async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let mut tx = conn
+            .start_transaction(mysql_async::TxOpts::default())
+            .await
+            .map_err(DbError::from)?;
+        if is_leader {
+            tx.query_drop("UPDATE cluster_nodes SET is_leader = FALSE")
+                .await
+                .map_err(DbError::from)?;
+        }
+        tx.exec_drop(
+            "INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader) \
+             VALUES (?, ?, ?, ?) \
+             ON DUPLICATE KEY UPDATE \
+                 version = VALUES(version), \
+                 last_heartbeat = VALUES(last_heartbeat), \
+                 is_leader = VALUES(is_leader)",
+            (node_id, version, last_heartbeat, is_leader),
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)?;
+        // Outside the transaction: this full scan would otherwise wait on another node's row
+        // while holding ours, and two concurrent heartbeats would deadlock.
+        conn.exec_drop(
+            "DELETE FROM cluster_nodes WHERE last_heartbeat < ?",
+            (stale_before,),
+        )
+        .await
+        .map_err(DbError::from)
+    }
+
+    pub(crate) async fn list_cluster_nodes(
+        &self,
+        minimum_heartbeat: i64,
+    ) -> DbResult<Vec<ClusterNode>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let rows: Vec<(String, String, i64, i8)> = conn
+            .exec(
+                "SELECT node_id, version, last_heartbeat, is_leader \
+                 FROM cluster_nodes WHERE last_heartbeat >= ? ORDER BY node_id",
+                (minimum_heartbeat,),
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(node_id, version, last_heartbeat, is_leader)| ClusterNode {
+                    node_id,
+                    version,
+                    last_heartbeat,
+                    is_leader: is_leader != 0,
+                },
+            )
+            .collect())
+    }
+
     // Helper to obtain a pooled connection and configure session settings consistently
     // - Isolation level: READ COMMITTED (reduces deadlocks vs REPEATABLE READ)
     // - Lock wait timeout: 10s (avoid long stalls under contention)
@@ -474,6 +572,32 @@ impl MySqlPool {
             .await
             .map_err(DbError::from)?;
         Ok(conn)
+    }
+}
+
+struct MySqlCronLock {
+    conn: mysql_async::Conn,
+    lock_name: String,
+}
+
+#[async_trait]
+impl ClusterLockGuard for MySqlCronLock {
+    async fn release(mut self: Box<Self>) -> DbResult<()> {
+        let released: Option<i64> = self
+            .conn
+            .exec_first(
+                "SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256))",
+                (&self.lock_name,),
+            )
+            .await
+            .map_err(DbError::from)?;
+        if released == Some(1) {
+            Ok(())
+        } else {
+            Err(DbError::DatabaseError(
+                "MySQL cron named lock was not held during release".to_owned(),
+            ))
+        }
     }
 }
 

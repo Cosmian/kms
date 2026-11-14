@@ -284,3 +284,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active
 
 -- name: select-pg-backend-ssl
 SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid();
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64)  NOT NULL PRIMARY KEY,
+    version         VARCHAR(64)  NOT NULL,
+    last_heartbeat  BIGINT       NOT NULL,
+    is_leader       BOOLEAN      NOT NULL DEFAULT FALSE
+);

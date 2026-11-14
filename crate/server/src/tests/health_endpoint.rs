@@ -18,6 +18,21 @@ async fn test_health_endpoint_ok() {
     assert!(response.get("dependencies").is_some());
     assert!(response["dependencies"].get("database").is_some());
     assert_eq!(response["dependencies"]["database"]["status"], "UP");
+    assert!(response["dependencies"]["database"]["latency_ms"].is_u64());
+    assert!(response["dependencies"].get("hsm").is_none());
+}
+
+#[tokio::test]
+async fn test_cluster_status_endpoint_returns_node_list_and_leader() {
+    log_init(option_env!("RUST_LOG"));
+
+    let app = test_utils::test_app(None).await;
+    let response: serde_json::Value = test_utils::get_json_with_uri(&app, "/cluster/status")
+        .await
+        .expect("cluster status endpoint should return 200 OK");
+
+    assert!(response["nodes"].is_array());
+    assert!(response["leader"].is_null());
 }
 
 #[tokio::test]
@@ -50,4 +65,5 @@ async fn test_root_redirects_to_ui() {
     assert!(response.get("dependencies").is_some());
     assert!(response["dependencies"].get("database").is_some());
     assert_eq!(response["dependencies"]["database"]["status"], "UP");
+    assert!(response["dependencies"]["database"]["latency_ms"].is_u64());
 }

@@ -206,6 +206,17 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(self.get_available_slot_list()?)
     }
 
+    async fn check_slot(&self, slot_id: usize) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        tokio::task::spawn_blocking(move || {
+            slot.get_supported_mechanisms()
+                .map(|_| ())
+                .map_err(InterfaceError::from)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
+    }
+
     async fn get_supported_algorithms(
         &self,
         slot_id: usize,

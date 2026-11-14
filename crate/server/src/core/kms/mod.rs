@@ -98,6 +98,9 @@ macro_rules! instantiate_hsm_with_env {
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 /// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
 pub struct KMS {
+    /// Process-specific identifier used by the cluster heartbeat.
+    pub(crate) node_id: String,
+
     /// The server parameters are built from the configuration file or command line arguments.
     pub(crate) params: Arc<ServerParams>,
 
@@ -123,6 +126,9 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// All configured HSM instances, in the same order as `params.hsm_instances`.
+    pub(crate) hsm_instances: Vec<Arc<dyn HSM + Send + Sync>>,
 
     /// Monotonically increasing CRL sequence counter (RFC 5280 §5.2.3).
     ///
@@ -336,11 +342,13 @@ impl KMS {
         let rng = Arc::new(KmsRng::new());
 
         Ok(Self {
+            node_id: uuid::Uuid::new_v4().to_string(),
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
-            hsm: hsm_instances.into_iter().next(),
+            hsm: hsm_instances.first().cloned(),
+            hsm_instances,
             metrics,
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,

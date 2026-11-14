@@ -1783,7 +1783,9 @@ paths:
       tags: [Public]
       summary: Health check
       description: >
-        Returns the global UP/DOWN status and per-dependency (database) status.
+        Returns global UP/DEGRADED/DOWN status and per-dependency status and latency.
+        A failed database reports DOWN; a failed HSM reports DEGRADED. The HSM check reflects the
+        PKCS#11 library's answer, and some libraries (e.g. Crypt2pay) do not report an unreachable device.
         Used by load balancers and service dependency checks.
       operationId: getHealth
       responses:
@@ -1796,7 +1798,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [UP, DOWN]
+                    enum: [UP, DEGRADED, DOWN]
                   latency_ms:
                     type: integer
                   dependencies:
@@ -1810,15 +1812,33 @@ paths:
                           status:
                             type: string
                             enum: [UP, DOWN]
+                          latency_ms:
+                            type: integer
                           message:
                             type: string
+                      hsm:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            status:
+                              type: string
+                              enum: [UP, DOWN]
+                            latency_ms:
+                              type: integer
+                            message:
+                              type: string
               example:
                 status: UP
                 latency_ms: 3
                 dependencies:
-                  database: {name: sqlite, status: UP}
+                  database: {name: sqlite, status: UP, latency_ms: 1}
+                  hsm:
+                    - {name: hsm::utimaco, status: UP, latency_ms: 2}
         '503':
-          description: One or more dependencies are DOWN
+          description: Database is DOWN
 
   /version:
     get:
@@ -2308,6 +2328,42 @@ paths:
                 type: array
                 items:
                   type: object
+
+  /cluster/status:
+    get:
+      tags: [Server]
+      summary: Cluster status
+      description: Returns live nodes, their last heartbeat and version, and the elected leader.
+      operationId: getClusterStatus
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Cluster status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nodes, leader]
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      required: [node_id, version, last_heartbeat, leader]
+                      properties:
+                        node_id:
+                          type: string
+                        version:
+                          type: string
+                        last_heartbeat:
+                          type: integer
+                          format: int64
+                        leader:
+                          type: boolean
+                  leader:
+                    type: [string, 'null']
 
   # ── Certificates ─────────────────────────────────────────────────────────────
 
