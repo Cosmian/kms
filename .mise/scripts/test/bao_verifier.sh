@@ -14,7 +14,7 @@
 [ -n "${_BAO_VERIFIER_SH_LOADED:-}" ] && return 0
 _BAO_VERIFIER_SH_LOADED=1
 
-BAO_IMAGE="${BAO_IMAGE:-ghcr.io/openbao/openbao:2.7.1}"
+# BAO_IMAGE is resolved in bao_verifier_start: this file is sourced before the callers' Docker checks.
 BAO_VERIFIER_NAME=""
 BAO_VERIFIER_PROXY_PID=""
 BAO_VERIFIER_URL=""
@@ -41,11 +41,12 @@ _bao_verifier_proxy_settled() {
 }
 
 bao_verifier_start() {
-  local host_port port_file="$2/bao-proxy.port" proxy_log="$2/bao-proxy.log"
+  local host_port port_file="$2/bao-proxy.port" proxy_log="$2/bao-proxy.log" image="${BAO_IMAGE:-}"
+  [[ -n "${image}" ]] || image="$(compose_image openbao)"
   BAO_VERIFIER_NAME="$1"
   docker run -d --name "${BAO_VERIFIER_NAME}" -p 127.0.0.1::8200 \
     -e BAO_DEV_ROOT_TOKEN_ID=verifier-root -e BAO_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
-    "${BAO_IMAGE}" >/dev/null
+    "${image}" >/dev/null
   _bao_verifier_wait 30 _bao_verifier_cli status >/dev/null 2>&1 ||
     print_error "the OpenBao token verifier did not start: $(docker logs "${BAO_VERIFIER_NAME}" 2>&1 | tail -n 20)"
   host_port="$(docker port "${BAO_VERIFIER_NAME}" 8200/tcp)"

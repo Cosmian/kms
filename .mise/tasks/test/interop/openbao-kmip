@@ -25,7 +25,7 @@ require_cmd curl
 require_cmd openssl
 require_cmd python3
 
-BAO_IMAGE="${BAO_IMAGE:-ghcr.io/openbao/openbao:2.7.1}"
+BAO_IMAGE="${BAO_IMAGE:-$(compose_image openbao)}"
 BAO_NAME="kms-openbao-seal-$$"
 BAO_VOLUME="kms-openbao-seal-data-$$"
 BAO_CLIENT_CN="openbao-seal"

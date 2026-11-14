@@ -15,6 +15,14 @@ source "${SCRIPT_DIR}/../../lib/test_slots.sh"
 COMPOSE_FILE=".mise/scripts/docker-compose.yml"
 export COMPOSE_FILE
 
+# Third-party images of that compose file come from the root docker-compose.yml.
+# shellcheck source=.mise/lib/common.sh
+source "${SCRIPT_DIR}/../../lib/common.sh"
+LB_POSTGRES_IMAGE="$(compose_image postgres)"
+LB_NGINX_IMAGE="$(compose_image nginx)"
+ORACLE_IMAGE="$(compose_image oracle)"
+export LB_POSTGRES_IMAGE LB_NGINX_IMAGE ORACLE_IMAGE
+
 # KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker).
 # Accepted values: fips, non_fips
 : "${KMS_TLS_CONFIG_FLAVOR:?KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker)}"
