@@ -11,7 +11,7 @@
 //! this module is `IV (12 bytes) || tag (16 bytes)`: the caller generates the IV, the verifier
 //! reads it back with [`gmac_iv`].
 
-use openssl::{md_ctx::MdCtx, pkey::PKey, symm::Cipher};
+use openssl::{md_ctx::MdCtx, nid::Nid, pkey::PKey, symm::Cipher};
 
 use crate::error::{CryptoError, result::CryptoResult};
 
@@ -63,13 +63,13 @@ impl AesMac {
     /// # Errors
     /// Returns an error if the key length is not an AES key length or OpenSSL fails.
     pub fn new_gmac(key: &[u8], iv: [u8; GMAC_IV_LENGTH]) -> CryptoResult<Self> {
-        let cipher_name = match key.len() {
-            16 => c"AES-128-GCM",
-            24 => c"AES-192-GCM",
-            32 => c"AES-256-GCM",
+        let cipher = match key.len() {
+            16 => Nid::AES_128_GCM,
+            24 => Nid::AES_192_GCM,
+            32 => Nid::AES_256_GCM,
             len => return Err(invalid_key_length(len)),
         };
-        let ctx = evp_gmac::GmacCtx::new(key, cipher_name, &iv)?;
+        let ctx = evp_gmac::GmacCtx::new(key, cipher, &iv)?;
         Ok(Self::Gmac { ctx, iv })
     }
 
@@ -112,7 +112,7 @@ mod evp_gmac {
         ptr::NonNull,
     };
 
-    use openssl::error::ErrorStack;
+    use openssl::{error::ErrorStack, nid::Nid};
 
     use super::{GMAC_IV_LENGTH, GMAC_TAG_LENGTH};
     use crate::error::{CryptoError, result::CryptoResult};
@@ -129,12 +129,8 @@ mod evp_gmac {
     unsafe impl Send for GmacCtx {}
 
     impl GmacCtx {
-        /// Start a `GMAC` with the AES-GCM cipher `cipher_name` (e.g. `AES-256-GCM`).
-        pub fn new(
-            key: &[u8],
-            cipher_name: &CStr,
-            iv: &[u8; GMAC_IV_LENGTH],
-        ) -> CryptoResult<Self> {
+        /// Start a `GMAC` with the AES-GCM cipher `cipher` (e.g. `Nid::AES_256_GCM`).
+        pub fn new(key: &[u8], cipher: Nid, iv: &[u8; GMAC_IV_LENGTH]) -> CryptoResult<Self> {
             let mut iv = *iv;
             // SAFETY: the algorithm name is a NUL-terminated static; null libctx/properties select
             // the defaults. The context keeps its own reference to the `EVP_MAC`, so `mac` is
@@ -154,12 +150,17 @@ mod evp_gmac {
             };
             // From here on `Drop` frees the context, whatever happens.
             let ctx = Self(ctx);
-            // SAFETY: `cipher_name` and `iv` outlive the call and are only read by OpenSSL, which
-            // reads the `cipher` parameter as a C string (hence the `CStr`, NUL-terminated; the
-            // parameter size excludes the NUL); the array is terminated by
-            // `OSSL_PARAM_construct_end`; `ctx` is a live `EVP_MAC_CTX`; `key` is readable for
-            // `key.len()` bytes.
+            // SAFETY: `OBJ_nid2ln` returns a pointer to a static NUL-terminated name, or null for
+            // an unknown NID (checked). `iv` outlives the call and is only read by OpenSSL, which
+            // reads the `cipher` parameter as a C string (the parameter size excludes the NUL);
+            // the array is terminated by `OSSL_PARAM_construct_end`; `ctx` is a live
+            // `EVP_MAC_CTX`; `key` is readable for `key.len()` bytes.
             let rc = unsafe {
+                let name = openssl_sys::OBJ_nid2ln(cipher.as_raw());
+                if name.is_null() {
+                    return Err(ErrorStack::get().into());
+                }
+                let cipher_name = CStr::from_ptr(name);
                 let mut cipher_param = openssl_sys::OSSL_PARAM_construct_octet_string(
                     c"cipher".as_ptr(),
                     cipher_name.as_ptr().cast_mut().cast::<c_void>(),
