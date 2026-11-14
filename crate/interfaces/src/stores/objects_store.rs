@@ -13,6 +13,9 @@ use time::OffsetDateTime;
 
 use crate::{InterfaceResult, ObjectWithMetadata, UserId};
 
+/// Maximum number of AES-GCM invocations with a random IV under one key (NIST SP 800-38D §8.3).
+pub const GCM_MAX_INVOCATIONS: u64 = 1 << 32;
+
 /// An atomic operation on the objects database
 pub enum AtomicOperation {
     /// Create (uid, owner, object, attributes, tags) - the state will be active
@@ -339,6 +342,28 @@ pub trait ObjectsStore {
     /// Called by the slow-path cron loop (every 5 minutes) to prevent counter
     /// drift from accumulating due to partial failures.
     async fn reconcile_counts(&self) -> InterfaceResult<()> {
+        Ok(())
+    }
+
+    /// Reserve `count` invocations of AES-GCM (or GMAC) with a random IV under the key `uid`
+    /// against the cap [`GCM_MAX_INVOCATIONS`] (NIST SP 800-38D §8.3).
+    ///
+    /// Returns the new total, or `None` when the reservation would exceed the cap, in which case
+    /// nothing is reserved. A `count` of 0 returns the current total.
+    ///
+    /// The count is kept apart from the object, so reserving never changes its version. The
+    /// default grants every reservation: a store that keeps no count leaves the cap to the module
+    /// holding the key (an HSM, under its Security Policy) or is not used in a FIPS build.
+    async fn reserve_gcm_invocations(
+        &self,
+        _uid: &str,
+        count: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        Ok(Some(count))
+    }
+
+    /// Forget the AES-GCM invocation count of the key `uid` (the key is destroyed).
+    async fn delete_gcm_invocations(&self, _uid: &str) -> InterfaceResult<()> {
         Ok(())
     }
 

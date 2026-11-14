@@ -10,8 +10,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
@@ -252,6 +252,7 @@ impl MySqlPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-gcm_invocations",
         ] {
             let sql = queries
                 .get(name)
@@ -266,6 +267,7 @@ impl MySqlPool {
                 "clean-table-read_access",
                 "clean-table-tags",
                 "clean-table-crls",
+                "clean-table-gcm_invocations",
             ] {
                 if let Some(sql) = queries.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
@@ -970,6 +972,47 @@ impl ObjectsStore for MySqlPool {
         Ok(count.unwrap_or(0))
     }
 
+    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
+        if count > GCM_MAX_INVOCATIONS {
+            return Ok(None);
+        }
+        for attempt in 0..MYSQL_DEADLOCK_MAX_RETRIES {
+            let mut conn = self.get_configured_conn().await?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(DbError::from)?;
+            let outcome = match reserve_gcm_invocations_(uid, count, &mut tx).await {
+                Ok(total) => tx.commit().await.map(|()| total).map_err(DbError::from),
+                Err(e) => {
+                    tx.rollback().await.map_err(DbError::from)?;
+                    Err(e)
+                }
+            };
+            match outcome {
+                Ok(total) => return Ok(total),
+                Err(DbError::SqlError(msg) | DbError::DatabaseError(msg))
+                    if is_mysql_deadlock(&msg) && attempt + 1 < MYSQL_DEADLOCK_MAX_RETRIES =>
+                {
+                    tokio::time::sleep(Duration::from_millis(mysql_deadlock_backoff_ms(attempt)))
+                        .await;
+                }
+                Err(e) => return Err(InterfaceError::from(e)),
+            }
+        }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(get_mysql_query!("delete-gcm-invocations"), (uid,))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
         // Filters on the ObjectType attribute instead of parsing the full
@@ -1344,6 +1387,35 @@ pub(super) async fn update_state_(
     .map_err(DbError::from)?;
     trace!("Updated in DB: {uid}");
     Ok(())
+}
+
+/// Add `count` to the AES-GCM invocation count of `uid` under a row lock; `None` (nothing
+/// added) when the new count would exceed the cap.
+async fn reserve_gcm_invocations_(
+    uid: &str,
+    count: u64,
+    tx: &mut Transaction<'_>,
+) -> DbResult<Option<u64>> {
+    // the row must exist to be locked
+    tx.exec_drop(get_mysql_query!("init-gcm-invocations"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+    let current: i64 = tx
+        .exec_first(
+            get_mysql_query!("select-gcm-invocations-for-update"),
+            (uid,),
+        )
+        .await
+        .map_err(DbError::from)?
+        .unwrap_or_default();
+    let total = current.cast_unsigned() + count;
+    if total > GCM_MAX_INVOCATIONS {
+        return Ok(None);
+    }
+    tx.exec_drop(get_mysql_query!("update-gcm-invocations"), (count, uid))
+        .await
+        .map_err(DbError::from)?;
+    Ok(Some(total))
 }
 
 pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()> {

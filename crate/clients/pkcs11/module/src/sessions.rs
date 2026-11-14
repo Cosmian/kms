@@ -40,8 +40,9 @@ use crate::{
     objects_store::{OBJECTS_STORE, ObjectsStore},
     profiling::{self, SignPhase},
     traits::{
-        DecryptContext, EncryptContext, KeyAlgorithm, MessageEncryptionOutput, PendingSignature,
-        SearchOptions, SignContext, SignOperation, VerifyContext, backend, use_pin_as_access_token,
+        DecryptContext, EncryptContext, KeyAlgorithm, MacContext, MacUsage,
+        MessageEncryptionOutput, PendingSignature, SearchOptions, SignContext, SignOperation,
+        VerifyContext, backend, use_pin_as_access_token,
     },
 };
 
@@ -137,6 +138,10 @@ pub(crate) struct Session {
     pub find_objects_ctx: Vec<CK_OBJECT_HANDLE>,
     pub sign_ctx: Option<SignContext>,
     pub verify_ctx: Option<VerifyContext>,
+    /// Active AES-CMAC / AES-GMAC `C_SignInit` operation on a secret key.
+    pub mac_sign_ctx: Option<MacContext>,
+    /// Active AES-CMAC / AES-GMAC `C_VerifyInit` operation on a secret key.
+    pub mac_verify_ctx: Option<MacContext>,
     pub decrypt_ctx: Option<DecryptContext>,
     pub encrypt_ctx: Option<EncryptContext>,
     /// Whether the active encrypt context came from `C_MessageEncryptInit`.
@@ -677,6 +682,10 @@ impl Session {
         p_signature: CK_BYTE_PTR,
         p_signature_len: CK_ULONG_PTR,
     ) -> ModuleResult<()> {
+        if self.mac_sign_ctx.is_some() {
+            // SAFETY: forwards this function's own contract on the output pointers.
+            return unsafe { self.mac_sign(data, p_signature, p_signature_len) };
+        }
         let Some(sign_ctx) = self.sign_ctx.as_mut() else {
             return Err(ModuleError::OperationNotInitialized(0));
         };
@@ -758,6 +767,55 @@ impl Session {
         Ok(())
     }
 
+    /// `C_Sign` / `C_SignFinal` for an AES-CMAC / AES-GMAC operation: one backend MAC call over
+    /// the given data or the payload buffered by `C_SignUpdate`.
+    ///
+    /// # Safety
+    ///
+    /// `p_signature_len` must be a valid pointer; `p_signature`, when non-null, must point to
+    /// a writable buffer of `*p_signature_len` bytes.
+    #[expect(unsafe_code, reason = "writes through the C caller's output buffers")]
+    unsafe fn mac_sign(
+        &mut self,
+        data: Option<&[u8]>,
+        p_signature: CK_BYTE_PTR,
+        p_signature_len: CK_ULONG_PTR,
+    ) -> ModuleResult<()> {
+        let Some(mac_ctx) = self.mac_sign_ctx.as_ref() else {
+            return Err(ModuleError::OperationNotInitialized(0));
+        };
+        // The output length is fixed per algorithm, so length queries and too-small buffers are
+        // answered without a KMS call.
+        let mac_len = mac_ctx.algorithm.mac_len();
+        if p_signature.is_null() {
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
+            unsafe { *p_signature_len = mac_len.try_into()? };
+            return Ok(());
+        }
+        // SAFETY: callers pass a non-null, readable `p_signature_len` (`not_null!`).
+        if unsafe { usize::try_from(*p_signature_len)? } < mac_len {
+            // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`).
+            unsafe { *p_signature_len = mac_len.try_into()? };
+            return Err(ModuleError::BufferTooSmall);
+        }
+        // No payload means an empty message (`C_SignInit` immediately followed by `C_SignFinal`).
+        let data = data.or(mac_ctx.payload.as_deref()).unwrap_or_default();
+        let mac = backend()?.mac(&mac_ctx.remote_object_id, mac_ctx.algorithm, data);
+        // Any failure other than CKR_BUFFER_TOO_SMALL terminates the operation (see `sign`).
+        self.mac_sign_ctx = None;
+        let mac = mac?;
+        if mac.len() != mac_len {
+            return Err(ModuleError::Cryptography(format!(
+                "the KMS returned a {}-byte MAC, expected {mac_len} bytes",
+                mac.len()
+            )));
+        }
+        // SAFETY: callers pass a non-null, writable `p_signature_len` (`not_null!`) and a
+        // `p_signature` buffer of at least `*p_signature_len >= mac_len` writable bytes.
+        unsafe { copy_to_output_buffer(&mac, p_signature, p_signature_len) }?;
+        Ok(())
+    }
+
     /// Signs one complete PKCS#11 v3 message while keeping the message-sign
     /// operation initialized for subsequent independent messages.
     ///
@@ -828,6 +886,25 @@ impl Session {
     /// mask as a generic error — PKCS#11 clients rely on `CKR_SIGNATURE_INVALID` specifically
     /// to distinguish "verification failed" from "operation error".
     pub(crate) fn verify(&mut self, data: Option<&[u8]>, signature: &[u8]) -> ModuleResult<()> {
+        if let Some(mac_ctx) = self.mac_verify_ctx.take() {
+            // No payload means an empty message (`C_VerifyInit` immediately followed by
+            // `C_VerifyFinal`), which is a valid MAC input.
+            let data = data.or(mac_ctx.payload.as_deref()).unwrap_or_default();
+            // A MAC of the wrong size can never be valid: report it as a length error, per spec.
+            if signature.len() != mac_ctx.algorithm.mac_len() {
+                return Err(ModuleError::SignatureLenRange(format!(
+                    "expected {} bytes, got {}",
+                    mac_ctx.algorithm.mac_len(),
+                    signature.len()
+                )));
+            }
+            return backend()?.mac_verify(
+                &mac_ctx.remote_object_id,
+                mac_ctx.algorithm,
+                data,
+                signature,
+            );
+        }
         let Some(verify_ctx) = self.verify_ctx.take() else {
             return Err(ModuleError::OperationNotInitialized(0));
         };
@@ -950,11 +1027,17 @@ impl Session {
         let sensitive = attributes.get_sensitive().unwrap_or(false);
         let label = attributes.get_label()?;
 
-        let object = backend()?.generate_key(
+        let mac_usage = MacUsage {
+            generate: attributes.get_sign().unwrap_or(false),
+            verify: attributes.get_verify().unwrap_or(false),
+        };
+
+        let object = backend()?.generate_key_with_mac_usage(
             KeyAlgorithm::try_from(mechanism)?,
             key_length.try_into()?,
             sensitive,
             Some(&label),
+            mac_usage,
         )?;
         let handle = objects_store.upsert(Arc::new(Object::SymmetricKey(object)));
 

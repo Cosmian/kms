@@ -774,6 +774,7 @@ Crate path: `crate/server`
 | `warn` | `Failed to persist automatic transition of object {} to {target}: {e}` | `src/core/retrieve_object_utils.rs` | `target`, `e` | - |
 | `info` | `[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check` | `src/core/operations/auto_rotate.rs` | `uid`, `msg` | - |
 | `trace` | `Auto-transitioning object {} from {effective_state} to {target}` | `src/core/retrieve_object_utils.rs` | `effective_state`, `target` | - |
+| `trace` | `Mac: AES {mode:?}` | `src/core/operations/mac.rs` | `mode` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1256,7 +1257,6 @@ Crate path: `crate/clients/pkcs11/provider`
 | `trace` | `find_private_key: {:?}`                                                                                                                                                                                                                                                   | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `find_public_key: {:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `find_symmetric_key: {:?}`                                                                                                                                                                                                                                                 | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
-| `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}`                                                                                                                                                                                                                      | `src/backend.rs`            | `algorithm` — …<br>`key_length` — …<br>`label` — …                                                    | —                                                                                               |
 | `trace` | `get_kms_certificate_objects_async: found {} Certificate objects`                                                                                                                                                                                                          | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}`                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_secret_data_objects_async: found {} SecretData objects`                                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
@@ -1285,6 +1285,9 @@ Crate path: `crate/clients/pkcs11/provider`
 | `debug` | `kms_encrypt_async: ciphertext_len: {}` | `src/kms_object.rs` | - | - |
 | `warn` | `batch export denied ({batch_error}); retrying object by object` | `src/kms_object.rs` | `batch_error` | - |
 | `warn` | `skipping object {id}: {error}` | `src/kms_object.rs` | `id`, `error` | - |
+| `debug` | `mac: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `debug` | `mac_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}, {mac_usage:?}` | `src/backend.rs` | `algorithm`, `key_length`, `label`, `mac_usage` | - |
 
 ### `cosmian_pkcs11_module`
 
@@ -1367,6 +1370,9 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?}` | `src/pkcs11.rs` | - | - |
 | `debug` | `C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?}` | `src/pkcs11.rs` | - | - |
 | `debug` | `destroy_object: revoke skipped: {e}` | `src/sessions.rs` | `e` | - |
+| `error` | `CKM_AES_CMAC takes no parameter but ulParameterLen is {}` | `src/core/mechanism.rs` | - | - |
+| `error` | `CKM_AES_GMAC pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | - | - |
+| `error` | `CKM_AES_GMAC: unsupported ulTagBits {tag_bits} (only {AES_GCM_TAG_BITS} is supported)` | `src/core/mechanism.rs` | `tag_bits`, `AES_GCM_TAG_BITS` | - |
 
 ---
 

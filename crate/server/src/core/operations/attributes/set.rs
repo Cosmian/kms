@@ -60,7 +60,7 @@ fn hsm_base_uid(uid: &str) -> Option<String> {
 
 pub(crate) async fn set_attribute(
     kms: &KMS,
-    request: SetAttribute,
+    mut request: SetAttribute,
     user: &UserId,
 ) -> KResult<SetAttributeResponse> {
     debug!("SetAttribute request");
@@ -72,6 +72,10 @@ pub(crate) async fn set_attribute(
     check_read_only(request.new_attribute.tag(), KmipOperation::SetAttribute)?;
     check_rotate_name(&request.new_attribute, "SetAttribute")?;
     check_vendor_attribute(&request.new_attribute, KmipOperation::SetAttribute)?;
+    // KMIP 2.1 §4.59: clients set Total and Unit only; the server owns the Count.
+    if let Attribute::UsageLimits(limits) = &mut request.new_attribute {
+        limits.reset_count();
+    }
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,

@@ -39,8 +39,6 @@ impl HsmProvider for SofthsmCapabilityProvider {
                 key_wrap_pad_is_rfc5649: true,
                 gcm: AesGcmCapabilities {
                     supports_caller_iv: true,
-                    // Development token, not a FIPS-validated module.
-                    allows_caller_iv_in_fips: true,
                     supports_message: false,
                 },
             },
@@ -67,16 +65,13 @@ impl HsmProvider for SofthsmCapabilityProvider {
 /// The softhsm2 is fully supported by the `BaseHsm` implementation
 pub type Softhsm2 = cosmian_kms_base_hsm::BaseHsm<SofthsmCapabilityProvider>;
 
-/// Capability profile for `hsm_model = "other"`: `SoftHSM2`'s PKCS#11 quirks, but treated as a
-/// FIPS-validated module (no caller-chosen AES-GCM IV in FIPS builds, like the other production
-/// HSMs; a non-FIPS build still sends one) and trying the PKCS#11 v3 message API when the
-/// library exports it.
+/// Capability profile for `hsm_model = "other"`: `SoftHSM2`'s PKCS#11 quirks, trying the
+/// PKCS#11 v3 message API when the library exports it.
 pub struct OtherCapabilityProvider;
 
 impl HsmProvider for OtherCapabilityProvider {
     fn capabilities() -> HsmCapabilities {
         let mut capabilities = SofthsmCapabilityProvider::capabilities();
-        capabilities.aes.gcm.allows_caller_iv_in_fips = false;
         capabilities.aes.gcm.supports_message = true;
         capabilities
     }
@@ -84,26 +79,3 @@ impl HsmProvider for OtherCapabilityProvider {
 
 /// Generic PKCS#11 HSM (`hsm_model = "other"`).
 pub type OtherHsm = cosmian_kms_base_hsm::BaseHsm<OtherCapabilityProvider>;
-
-#[cfg(test)]
-mod capability_tests {
-    use cosmian_kms_base_hsm::hsm_capabilities::HsmProvider;
-
-    use super::{OtherCapabilityProvider, SofthsmCapabilityProvider};
-
-    #[test]
-    fn only_the_development_token_may_send_a_caller_gcm_iv_in_fips() {
-        assert!(
-            !OtherCapabilityProvider::capabilities()
-                .aes
-                .gcm
-                .allows_caller_iv_in_fips
-        );
-        assert!(
-            SofthsmCapabilityProvider::capabilities()
-                .aes
-                .gcm
-                .allows_caller_iv_in_fips
-        );
-    }
-}

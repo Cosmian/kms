@@ -257,6 +257,7 @@ pub(super) async fn process_symmetric_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
     // make sure we have a CryptographicAlgorithm set; default to AES
     if attributes.cryptographic_algorithm.is_none() {
@@ -442,6 +443,7 @@ pub(super) async fn process_public_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
 
     // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
     // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
@@ -648,6 +650,7 @@ pub(super) async fn process_private_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
 
     // Replace updated attributes in the object structure if the object is not wrapped.
@@ -1101,6 +1104,7 @@ pub(super) async fn process_secret_data(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
 
     // force the usage mask to unrestricted if not in FIPS mode
@@ -1183,6 +1187,7 @@ pub(super) async fn process_pgp_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
 
     if let Ok(key_block) = object.key_block_mut()

@@ -45,3 +45,29 @@ pub(crate) fn get_hsm_model() -> Option<String> {
         |model| Some(model.to_owned()),
     )
 }
+
+/// A FIPS build only lets a token seal AES-GCM when the token generates the IV itself
+/// (FIPS 140-3 IG C.H); `SoftHSM2` cannot, so the server refuses instead of sending its own IV.
+/// Kryoptic generates it through the PKCS#11 v3 message API, so it encrypts as usual, like the
+/// other HSMs.
+#[cfg(not(feature = "non-fips"))]
+pub(crate) fn hsm_cannot_generate_gcm_iv() -> bool {
+    get_hsm_model().as_deref() == Some("softhsm2")
+}
+
+/// See the FIPS variant: a non-FIPS build encrypts with a KMS-chosen IV on every token.
+#[cfg(feature = "non-fips")]
+pub(crate) const fn hsm_cannot_generate_gcm_iv() -> bool {
+    false
+}
+
+/// Checks the refusal of an AES-GCM encryption inside a token that cannot generate the IV.
+pub(crate) fn assert_gcm_encrypt_refused(result: KResult<Vec<u8>>) {
+    let error = result.expect_err("AES-GCM without a token-generated IV must be refused in FIPS");
+    assert!(
+        error
+            .to_string()
+            .contains("needs an IV generated inside the HSM"),
+        "{error}"
+    );
+}

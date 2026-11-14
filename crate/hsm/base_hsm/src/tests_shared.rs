@@ -19,6 +19,7 @@ use std::{
 use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
+    MacAlgorithm,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
 use libloading::Library;
@@ -39,10 +40,10 @@ use pkcs11_sys::{
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
     CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384,
-    CKM_ECDSA_SHA512, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS,
-    CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
+    CKK_EC, CKM_AES_CBC, CKM_AES_CMAC, CKM_AES_GMAC, CKM_EC_KEY_PAIR_GEN, CKM_ECDSA,
+    CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
+    CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384_RSA_PKCS,
+    CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKR_OK,
 };
 use uuid::Uuid;
 
@@ -570,6 +571,28 @@ pub fn rsa_key_wrap(slot: &Arc<SlotManager>, digest: RsaOaepDigest) -> HResult<(
     Ok(())
 }
 
+/// RSAES-PKCS1-v1_5 is not approved: a FIPS build must refuse it before reaching the HSM.
+#[cfg(not(feature = "non-fips"))]
+pub fn rsa_pkcs_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let session = slot.open_session(true)?;
+    let error = session
+        .encrypt(
+            0,
+            HsmEncryptionAlgorithm::RsaPkcsV15,
+            b"Hello, World!",
+            None,
+        )
+        .expect_err("RSA PKCS#1 v1.5 encryption must be refused in FIPS mode");
+    assert!(
+        error.to_string().contains("unavailable in FIPS mode"),
+        "{error}"
+    );
+    info!("RSA PKCS#1 v1.5 encryption is refused in FIPS mode");
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
 pub fn rsa_pkcs_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
@@ -669,6 +692,190 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     )?;
     assert_eq!(plaintext.as_slice(), data);
     info!("Successfully encrypted/decrypted with AES GCM");
+    Ok(())
+}
+
+/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`): a non-FIPS build encrypts
+/// with a KMS-chosen IV, a FIPS build must refuse rather than send one.
+#[cfg(feature = "non-fips")]
+pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> HResult<()> {
+    aes_gcm_encrypt(slot)
+}
+
+/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`): a non-FIPS build encrypts
+/// with a KMS-chosen IV, a FIPS build must refuse rather than send one.
+#[cfg(not(feature = "non-fips"))]
+pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> HResult<()> {
+    let Err(error) = aes_gcm_encrypt(slot) else {
+        return Err(HError::Default(
+            "The token accepted AES-GCM without generating an IV in FIPS mode".to_owned(),
+        ));
+    };
+    if !error.to_string().contains("did not generate an AES-GCM IV") {
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Fail with `message` unless `condition`; unlike `assert!`, lets the caller destroy its key.
+fn ensure(condition: bool, message: impl FnOnce() -> String) -> HResult<()> {
+    if condition {
+        Ok(())
+    } else {
+        Err(HError::Default(message()))
+    }
+}
+
+/// Run `f` on a session AES key of known value, destroyed afterwards even when `f` fails.
+fn with_session_aes_key<T>(
+    session: &Session,
+    key: &[u8],
+    f: impl FnOnce(CK_OBJECT_HANDLE) -> HResult<T>,
+) -> HResult<T> {
+    let handle = session.create_session_aes_key(key)?;
+    let result = f(handle);
+    let destroyed = session.destroy_object(handle);
+    let result = result?;
+    destroyed?;
+    Ok(result)
+}
+
+fn mac_vector(
+    vectors: &[cosmian_kms_crypto::kat_vectors::MacVector],
+    id: &str,
+) -> HResult<cosmian_kms_crypto::kat_vectors::MacVector> {
+    vectors
+        .iter()
+        .find(|v| v.id == id)
+        .cloned()
+        .ok_or_else(|| HError::Default(format!("KAT vector {id} not found")))
+}
+
+/// Known answers of `CKM_AES_CMAC` (SP 800-38B) and `CKM_AES_GMAC` (IEEE 802.1AE) on the token,
+/// for the mechanisms it lists; the keys are session objects of known value.
+pub fn aes_mac_known_answers(slot: &Arc<SlotManager>) -> HResult<()> {
+    log_init(None);
+    let to_error = |e: cosmian_kms_crypto::CryptoError| HError::Default(e.to_string());
+    let mechanisms = slot.get_supported_mechanisms()?;
+    let session = slot.open_session(true)?;
+
+    if mechanisms.contains(&CKM_AES_CMAC) {
+        let vectors = cosmian_kms_crypto::kat_vectors::aes_cmac_vectors().map_err(to_error)?;
+        for id in [
+            "sp800-38b-aes128-ex2",
+            "sp800-38b-aes192-ex2",
+            "sp800-38b-aes256-ex2",
+        ] {
+            let v = mac_vector(&vectors, id)?;
+            with_session_aes_key(&session, &v.key, |h| {
+                let mac = session.mac(h, MacAlgorithm::AesCmac, &v.msg)?;
+                ensure(mac == v.tag, || format!("{id}: AES-CMAC {mac:02x?}"))?;
+                ensure(
+                    session.verify_mac(h, MacAlgorithm::AesCmac, &v.msg, &v.tag)?,
+                    || format!("{id}: AES-CMAC verify"),
+                )?;
+                let mut bad = v.tag.clone();
+                *bad.last_mut().unwrap() ^= 1;
+                ensure(
+                    !session.verify_mac(h, MacAlgorithm::AesCmac, &v.msg, &bad)?,
+                    || format!("{id}: AES-CMAC verify accepted a bad tag"),
+                )
+            })?;
+            info!("{id}: AES-CMAC known answer matches");
+        }
+    } else {
+        info!("token lacks CKM_AES_CMAC: AES-CMAC known answers skipped");
+    }
+
+    if mechanisms.contains(&CKM_AES_GMAC) {
+        let vectors = cosmian_kms_crypto::kat_vectors::aes_gmac_vectors().map_err(to_error)?;
+        for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+            let v = mac_vector(&vectors, id)?;
+            let mac = [v.iv.as_slice(), v.tag.as_slice()].concat();
+            with_session_aes_key(&session, &v.key, |h| {
+                ensure(
+                    session.verify_mac(h, MacAlgorithm::AesGmac, &v.msg, &mac)?,
+                    || format!("{id}: AES-GMAC verify"),
+                )?;
+                let mut bad = mac.clone();
+                *bad.last_mut().unwrap() ^= 1;
+                ensure(
+                    !session.verify_mac(h, MacAlgorithm::AesGmac, &v.msg, &bad)?,
+                    || format!("{id}: AES-GMAC verify accepted a bad tag"),
+                )?;
+                // The IV is random: no fixed answer, but the MAC must verify.
+                let fresh = session.mac(h, MacAlgorithm::AesGmac, &v.msg)?;
+                ensure(fresh.len() == 28, || format!("{id}: AES-GMAC length"))?;
+                ensure(
+                    session.verify_mac(h, MacAlgorithm::AesGmac, &v.msg, &fresh)?,
+                    || format!("{id}: AES-GMAC generated MAC does not verify"),
+                )
+            })?;
+            info!("{id}: AES-GMAC known answer verified");
+        }
+    } else {
+        info!("token lacks CKM_AES_GMAC: AES-GMAC known answers skipped");
+    }
+    Ok(())
+}
+
+/// AES-GCM on the token against the OpenSSL/NIST vectors (no AAD, the HSM path has none): the
+/// token decrypts the known ciphertext, and the IV it returns on encryption is the one it used.
+pub fn aes_gcm_known_answers(slot: &Arc<SlotManager>) -> HResult<()> {
+    use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{SymCipher, decrypt};
+
+    log_init(None);
+    let vectors = cosmian_kms_crypto::kat_vectors::aes_gcm_vectors()
+        .map_err(|e| HError::Default(e.to_string()))?;
+    let session = slot.open_session(true)?;
+    for (key_len, cipher) in [
+        (16, SymCipher::Aes128Gcm),
+        (24, SymCipher::Aes192Gcm),
+        (32, SymCipher::Aes256Gcm),
+    ] {
+        let v = vectors
+            .iter()
+            .find(|v| {
+                v.id.starts_with("openssl-gcm-")
+                    && v.valid
+                    && v.aad.is_empty()
+                    && !v.pt.is_empty()
+                    && v.key.len() == key_len
+            })
+            .ok_or_else(|| HError::Default(format!("no AES-GCM vector for {key_len}-byte key")))?;
+        with_session_aes_key(&session, &v.key, |h| {
+            let input = [v.iv.as_slice(), v.ct.as_slice(), v.tag.as_slice()].concat();
+            let plaintext = session.decrypt(h, HsmEncryptionAlgorithm::AesGcm, &input)?;
+            ensure(plaintext.as_slice() == v.pt, || {
+                format!("{}: AES-GCM decrypt", v.id)
+            })?;
+            info!("{}: AES-GCM decrypt known answer matches", v.id);
+            match session.encrypt(h, HsmEncryptionAlgorithm::AesGcm, &v.pt, None) {
+                Ok(enc) => {
+                    let back = decrypt(
+                        cipher,
+                        &v.key,
+                        &enc.iv.unwrap_or_default(),
+                        &[],
+                        &enc.ciphertext,
+                        &enc.tag.unwrap_or_default(),
+                        None,
+                    )
+                    .map_err(|e| HError::Default(format!("{}: {e}", v.id)))?;
+                    ensure(back.as_slice() == v.pt, || {
+                        format!("{}: the returned IV is not the one the token used", v.id)
+                    })?;
+                    info!("{}: token-generated AES-GCM IV is the one used", v.id);
+                    Ok(())
+                }
+                Err(e) if e.to_string().contains("did not generate an AES-GCM IV") => {
+                    info!("token does not generate AES-GCM IVs: generated-IV check skipped");
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        })?;
+    }
     Ok(())
 }
 

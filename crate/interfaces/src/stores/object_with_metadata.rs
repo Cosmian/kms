@@ -4,9 +4,7 @@ use cosmian_kmip::{
     KmipError,
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
     kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, UsageLimitsUnit},
+        kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
     },
     time_normalize,
 };
@@ -236,16 +234,10 @@ impl ObjectWithMetadata {
     /// Returns `true` when no `UsageLimits` are set or the budget is sufficient.
     #[must_use]
     pub fn has_usage_budget(&self, data_len: usize) -> bool {
-        let Some(ul) = self.attributes.usage_limits.as_ref() else {
-            return true;
-        };
-        match ul.usage_limits_unit {
-            UsageLimitsUnit::Byte => {
-                let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
-                ul.usage_limits_total >= needed
-            }
-            UsageLimitsUnit::Object => ul.usage_limits_total > 0,
-        }
+        self.attributes
+            .usage_limits
+            .as_ref()
+            .is_none_or(|limits| limits.allows(data_len))
     }
 
     // ─── Enforcement (error-returning) ───────────────────────────────────────

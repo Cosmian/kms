@@ -213,6 +213,7 @@ async fn test_aes_cbc_server_side() -> CosmianResult<()> {
     )
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_aes_xts_server_side() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -353,6 +354,7 @@ async fn test_aes_gcm_aes_gcm_client_side() -> CosmianResult<()> {
     )
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_aes_gcm_aes_xts_client_side() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
@@ -439,7 +441,8 @@ async fn test_client_side_encryption_with_buffer() -> CosmianResult<()> {
     for size in [0, 1, 16, 64, 256, 1024, 4096, 16384] {
         let plaintext: Vec<u8> = vec![0; size];
         for dea in DataEncryptionAlgorithm::iter() {
-            if dea == DataEncryptionAlgorithm::AesXts {
+            // XTS has no client-side flow (and is not in the FIPS build)
+            if dea.to_string() == "aes-xts" {
                 continue;
             }
             let ciphertext = EncryptAction::default().client_side_encrypt_with_buffer(

@@ -26,8 +26,8 @@ use pkcs11_sys::{
     CKR_GENERAL_ERROR, CKR_KEY_HANDLE_INVALID, CKR_MECHANISM_INVALID, CKR_NEED_TO_CREATE_THREADS,
     CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
     CKR_PIN_INCORRECT, CKR_RANDOM_NO_RNG, CKR_SESSION_HANDLE_INVALID,
-    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID, CKR_SLOT_ID_INVALID,
-    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
+    CKR_SLOT_ID_INVALID, CKR_TOKEN_WRITE_PROTECTED, CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID,
 };
 use thiserror::Error;
 
@@ -126,6 +126,10 @@ pub enum ModuleError {
     Cryptography(String),
     #[error("the signature is invalid")]
     SignatureInvalid,
+    /// The signature/MAC passed to a verify call has a length the mechanism can never produce
+    /// (`CKR_SIGNATURE_LEN_RANGE`).
+    #[error("the signature length is out of range: {0}")]
+    SignatureLenRange(String),
 }
 
 impl From<der::oid::Error> for ModuleError {
@@ -163,6 +167,7 @@ impl From<ModuleError> for CK_RV {
             ModuleError::ActionProhibited(_) => CKR_ACTION_PROHIBITED,
             ModuleError::UserTypeInvalid => CKR_USER_TYPE_INVALID,
             ModuleError::SignatureInvalid => CKR_SIGNATURE_INVALID,
+            ModuleError::SignatureLenRange(_) => CKR_SIGNATURE_LEN_RANGE,
 
             ModuleError::Backend(_)
             | ModuleError::AlgorithmNotSupported(_)

@@ -18,8 +18,8 @@ use ckms::{
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
-                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
-                    RNGRetrieve, Revoke, Sign, SignatureVerify,
+                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, MAC,
+                    MACVerify, Query, RNGRetrieve, Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -40,8 +40,8 @@ use cosmian_logger::{debug, error, trace, warn};
 use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{
-        DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
-        MessageEncryptionOutput, SignatureAlgorithm,
+        AES_GMAC_TAG_SIZE, DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm,
+        KeyAlgorithm, MacAlgorithm, MacUsage, MessageEncryptionOutput, SignatureAlgorithm,
     },
 };
 use zeroize::Zeroizing;
@@ -501,6 +501,7 @@ pub(crate) fn kms_import_symmetric_key(
     key_length: usize,
     sensitive: bool,
     label: Option<&str>,
+    mac_usage: MacUsage,
 ) -> Pkcs11Result<KmsObject> {
     RUNTIME.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
@@ -509,6 +510,7 @@ pub(crate) fn kms_import_symmetric_key(
         key_length,
         sensitive,
         label,
+        mac_usage,
     ))
 }
 
@@ -555,6 +557,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
     key_length: usize,
     sensitive: bool,
     label: Option<&str>,
+    mac_usage: MacUsage,
 ) -> Pkcs11Result<KmsObject> {
     let cryptographic_algorithm = if algorithm == KeyAlgorithm::Aes256 {
         CryptographicAlgorithm::AES
@@ -576,17 +579,25 @@ pub(crate) async fn kms_import_symmetric_key_async(
 
     let cryptographic_length = Some(i32::try_from(key_length * 8)?);
 
+    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
+    // `CKA_SIGN` / `CKA_VERIFY` of the `C_GenerateKey` template grant the MAC usage bits. An HSM
+    // key is created with the server's default mask (no MAC bits), so it must not advertise them.
+    let mut usage_mask = CryptographicUsageMask::Encrypt
+        | CryptographicUsageMask::Decrypt
+        | CryptographicUsageMask::WrapKey
+        | CryptographicUsageMask::UnwrapKey
+        | CryptographicUsageMask::KeyAgreement;
+    if mac_usage.generate && !is_hsm_key {
+        usage_mask |= CryptographicUsageMask::MACGenerate;
+    }
+    if mac_usage.verify && !is_hsm_key {
+        usage_mask |= CryptographicUsageMask::MACVerify;
+    }
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(cryptographic_algorithm),
         cryptographic_length,
         cryptographic_parameters: None,
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
+        cryptographic_usage_mask: Some(usage_mask),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: label.map(|l| UniqueIdentifier::TextString(l.to_owned())),
@@ -607,7 +618,6 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_wrapping_data: None,
         },
     });
-    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
     let remote_id = if is_hsm_key {
         let request = symmetric_key_create_request(
             vendor_id,
@@ -1460,6 +1470,85 @@ pub(crate) async fn kms_verify_async(
     }
 }
 
+/// KMIP `CryptographicParameters` selecting AES-CMAC (`block_cipher_mode = CMAC`) or AES-GMAC
+/// (`GCM`) on the KMIP `MAC` / `MACVerify` operations.
+fn aes_mac_parameters(block_cipher_mode: BlockCipherMode) -> CryptographicParameters {
+    CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(block_cipher_mode),
+        ..Default::default()
+    }
+}
+
+/// Computes the AES-CMAC or the AES-GMAC tag (PKCS#11 v3.0 §2.13.4) of `data` with the KMIP
+/// `MAC` operation. GMAC passes the caller's IV (the `IVCounterNonce` extension of `MAC`), so
+/// it runs as the OpenSSL provider's `GMAC`; the server answers `IV || tag` and the signature
+/// is the tag.
+pub(crate) fn kms_mac(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: MacAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    let (mode, iv) = match algorithm {
+        MacAlgorithm::AesCmac => (BlockCipherMode::CMAC, None),
+        MacAlgorithm::AesGmac { iv } => (BlockCipherMode::GCM, Some(iv.to_vec())),
+    };
+    let request = MAC {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters: Some(aes_mac_parameters(mode)),
+        data: Some(data.to_vec()),
+        i_v_counter_nonce: iv,
+        ..Default::default()
+    };
+    let response = RUNTIME.block_on(kms_rest_client.mac(request))?;
+    let mac_data = response.mac_data.ok_or_else(|| {
+        Pkcs11Error::ServerError("MAC response does not contain MAC data".to_owned())
+    })?;
+    match algorithm {
+        MacAlgorithm::AesCmac => Ok(mac_data),
+        MacAlgorithm::AesGmac { iv } => match mac_data.strip_prefix(iv.as_slice()) {
+            Some(tag) if tag.len() == AES_GMAC_TAG_SIZE => Ok(tag.to_vec()),
+            _ => Err(Pkcs11Error::ServerError(format!(
+                "AES-GMAC: the KMS returned {} bytes, expected the IV and a {AES_GMAC_TAG_SIZE}-byte tag",
+                mac_data.len()
+            ))),
+        },
+    }
+}
+
+/// Verifies `mac` (the exact output of [`kms_mac`]) over `data` with KMIP `MACVerify`; anything
+/// but a valid MAC is [`Pkcs11Error::SignatureInvalid`]. For AES-GMAC the `MACData` is the
+/// caller's IV followed by the tag.
+pub(crate) fn kms_mac_verify(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: MacAlgorithm,
+    data: &[u8],
+    mac: &[u8],
+) -> Pkcs11Result<()> {
+    let (mode, mac_data) = match algorithm {
+        MacAlgorithm::AesCmac => (BlockCipherMode::CMAC, mac.to_vec()),
+        MacAlgorithm::AesGmac { iv } => (BlockCipherMode::GCM, [iv.as_slice(), mac].concat()),
+    };
+    let request = MACVerify {
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
+        cryptographic_parameters: Some(aes_mac_parameters(mode)),
+        data: data.to_vec(),
+        mac_data,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    let response = RUNTIME.block_on(kms_rest_client.mac_verify(request))?;
+    match response.validity_indicator {
+        Some(ValidityIndicator::Valid) => Ok(()),
+        Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
+            Err(Pkcs11Error::SignatureInvalid)
+        }
+    }
+}
+
 pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
@@ -1479,6 +1568,7 @@ pub(crate) async fn get_kms_object_attributes_async(
                 AttributeReference::Standard(Tag::CryptographicLength),
                 AttributeReference::Standard(Tag::ObjectType),
                 AttributeReference::Standard(Tag::CryptographicDomainParameters),
+                AttributeReference::Standard(Tag::CryptographicUsageMask),
             ]),
         })
         .await?;

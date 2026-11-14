@@ -516,10 +516,20 @@ bench_start_server_hsm() {
 
   mkdir -p "$sqlite_path"
 
+  # The FIPS server never sends an AES-GCM IV to an HSM, so SoftHSM2 and Kryoptic (which do not
+  # generate it) wrap with AES key wrap with padding (NIST SP 800-38F) instead of the default.
+  local kek_wrapping=""
+  if [ "${BENCH_VARIANT:-non-fips}" = "fips" ]; then
+    case "${hsm_model}" in
+      softhsm2 | kryoptic) kek_wrapping='key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"' ;;
+    esac
+  fi
+
   # Write kms.toml with HSM + key_encryption_key.
   # The server will not start wrapping until the KEK is created (see below).
   cat >"${kms_conf}" <<EOF
 key_encryption_key = "${HSM_KEK_UID}"
+${kek_wrapping}
 
 hsm_model    = "${hsm_model}"
 hsm_admin    = ["admin"]

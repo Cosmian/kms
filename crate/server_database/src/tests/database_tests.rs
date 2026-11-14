@@ -18,8 +18,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::reexport::rand_core::RngCore,
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, DestroyedFilter, FindOptions, InterfaceError, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, DestroyedFilter, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
@@ -1243,5 +1243,51 @@ pub(super) async fn update_if_version_test<DB: ObjectsStore>(db: &DB) -> DbResul
         "conditional update resurrected a deleted object"
     );
     db.delete(&companion_uid).await?;
+    Ok(())
+}
+
+/// The AES-GCM invocation count adds up across concurrent reservations, refuses to pass the cap of
+/// SP 800-38D §8.3 without changing, and is forgotten on request.
+pub(super) async fn gcm_invocations_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    log_init(None);
+
+    let uid = Uuid::new_v4().to_string();
+    assert_eq!(db.reserve_gcm_invocations(&uid, 1).await?, Some(1));
+    assert_eq!(db.reserve_gcm_invocations(&uid, 4).await?, Some(5));
+    let (a, b, c, d) = tokio::join!(
+        db.reserve_gcm_invocations(&uid, 1),
+        db.reserve_gcm_invocations(&uid, 1),
+        db.reserve_gcm_invocations(&uid, 1),
+        db.reserve_gcm_invocations(&uid, 1),
+    );
+    let mut totals = [a?, b?, c?, d?].map(Option::unwrap_or_default);
+    totals.sort_unstable();
+    assert_eq!(totals, [6, 7, 8, 9], "a concurrent reservation was lost");
+
+    let capped = Uuid::new_v4().to_string();
+    assert_eq!(
+        db.reserve_gcm_invocations(&capped, GCM_MAX_INVOCATIONS + 1)
+            .await?,
+        None
+    );
+    assert_eq!(
+        db.reserve_gcm_invocations(&capped, GCM_MAX_INVOCATIONS - 1)
+            .await?,
+        Some(GCM_MAX_INVOCATIONS - 1)
+    );
+    assert_eq!(db.reserve_gcm_invocations(&capped, 2).await?, None);
+    assert_eq!(
+        db.reserve_gcm_invocations(&capped, 1).await?,
+        Some(GCM_MAX_INVOCATIONS)
+    );
+    assert_eq!(db.reserve_gcm_invocations(&capped, 1).await?, None);
+    // a refusal leaves the count untouched
+    assert_eq!(
+        db.reserve_gcm_invocations(&capped, 0).await?,
+        Some(GCM_MAX_INVOCATIONS)
+    );
+
+    db.delete_gcm_invocations(&capped).await?;
+    assert_eq!(db.reserve_gcm_invocations(&capped, 0).await?, Some(0));
     Ok(())
 }

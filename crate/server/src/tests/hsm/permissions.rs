@@ -4,12 +4,13 @@ use cosmian_kms_access::access::Access;
 use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::VENDOR_ID_COSMIAN,
     kmip_operations::{Decrypt, Destroy, Encrypt, Operation, Sign},
-    kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+    kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     requests::symmetric_key_create_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::ErrorReason, kmip_2_1::KmipOperation,
+    kmip_0::kmip_types::{BlockCipherMode, ErrorReason, PaddingMethod},
+    kmip_2_1::KmipOperation,
 };
 use cosmian_logger::info;
 use uuid::Uuid;
@@ -37,6 +38,7 @@ use crate::{
         hsm::{
             EMPTY_TAGS, create_kek, create_key_pair, create_sym_key, delete_all_keys, delete_key,
             export_object, hsm_clap_config, locate_keys, revoke_key, send_message,
+            test_helpers::hsm_cannot_generate_gcm_iv,
         },
         test_utils::get_tmp_sqlite_path,
     },
@@ -98,7 +100,7 @@ async fn revoke_ops(
 async fn encrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KResult<Vec<u8>> {
     let request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        cryptographic_parameters: None,
+        cryptographic_parameters: hsm_cipher_params(),
         data: Some(data.to_vec().into()),
         i_v_counter_nonce: None,
         correlation_value: None,
@@ -120,11 +122,22 @@ async fn encrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KRe
     Ok(full)
 }
 
+/// AES-CBC on a token that generates no AES-GCM IV: a FIPS build refuses AES-GCM there, and the
+/// permission scenarios must still run on a cipher the HSM accepts.
+fn hsm_cipher_params() -> Option<CryptographicParameters> {
+    hsm_cannot_generate_gcm_iv().then(|| CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(BlockCipherMode::CBC),
+        padding_method: Some(PaddingMethod::PKCS5),
+        ..Default::default()
+    })
+}
+
 /// Helper: decrypt data using a key
 async fn decrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, ciphertext: &[u8]) -> KResult<()> {
     let request = Decrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        cryptographic_parameters: None,
+        cryptographic_parameters: hsm_cipher_params(),
         data: Some(ciphertext.to_vec()),
         i_v_counter_nonce: None,
         correlation_value: None,

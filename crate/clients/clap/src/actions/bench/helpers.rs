@@ -224,9 +224,9 @@ pub(super) fn rsa_oaep_sha1_params() -> CryptographicParameters {
 
 /// RSA PKCS#1 v1.5 encrypt (`CryptoAlgorithm::RsaPkcsV15` on the HSM oracle).
 /// Not gated by `non-fips` like the software `rsa_pkcs15_params()` below: the
-/// HSM oracle exposes `CKM_RSA_PKCS` encrypt unconditionally (see
-/// `test_data/vectors/hsm/resident_rsa2048_encrypt_pkcs1v15`), independent of
-/// the software crypto module's own FIPS restriction on this legacy padding.
+/// HSM oracle exposes `CKM_RSA_PKCS` encrypt in a non-FIPS build (see
+/// `test_data/vectors/hsm/resident_rsa2048_encrypt_pkcs1v15`). A FIPS server
+/// refuses it, so the HSM benchmarks skip it when built without `non-fips`.
 pub(super) fn hsm_rsa_pkcs1v15_encrypt_params() -> CryptographicParameters {
     CryptographicParameters {
         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

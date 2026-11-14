@@ -21,6 +21,7 @@ use crate::{
         hsm::{
             EMPTY_TAGS, delete_key, export_object, hsm_clap_config, send_message,
             symmetric_dek::symmetric_encrypt,
+            test_helpers::{assert_gcm_encrypt_refused, hsm_cannot_generate_gcm_iv},
         },
         test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
@@ -79,18 +80,23 @@ pub(super) async fn test_hsm_export_key_bytes() -> KResult<()> {
     );
 
     let data = b"export the HSM key bytes";
-    let ciphertext = symmetric_encrypt(&extractable_uid, &owner, &kms, data).await?;
-    let (nonce, rest) = ciphertext.split_at(12);
-    let (encrypted, tag) = rest.split_at(rest.len() - 16);
-    let plaintext = decrypt_aead(
-        Cipher::aes_256_gcm(),
-        &key_bytes,
-        Some(nonce),
-        &[],
-        encrypted,
-        tag,
-    )?;
-    assert_eq!(plaintext, data);
+    let encrypted = symmetric_encrypt(&extractable_uid, &owner, &kms, data).await;
+    if hsm_cannot_generate_gcm_iv() {
+        assert_gcm_encrypt_refused(encrypted);
+    } else {
+        let ciphertext = encrypted?;
+        let (nonce, rest) = ciphertext.split_at(12);
+        let (encrypted, tag) = rest.split_at(rest.len() - 16);
+        let plaintext = decrypt_aead(
+            Cipher::aes_256_gcm(),
+            &key_bytes,
+            Some(nonce),
+            &[],
+            encrypted,
+            tag,
+        )?;
+        assert_eq!(plaintext, data);
+    }
 
     // --- sensitive key: the export is refused
     let sensitive_uid = as_hsm_uid!(slot, Uuid::new_v4());

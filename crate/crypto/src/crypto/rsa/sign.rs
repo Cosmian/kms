@@ -17,6 +17,18 @@ use crate::{
     openssl::hashing_algorithm_to_openssl_ref,
 };
 
+/// Whether an RSA signature may use SHA-1: never in a FIPS build (the provider forbids it).
+#[cfg(not(feature = "non-fips"))]
+const fn sha1_signatures_allowed() -> bool {
+    false
+}
+
+/// Whether an RSA signature may use SHA-1 (non-FIPS build: yes).
+#[cfg(feature = "non-fips")]
+const fn sha1_signatures_allowed() -> bool {
+    true
+}
+
 /// Attempt to sign a digest using an RSA private key and the provided algorithm name.
 ///
 /// Supported algorithms:
@@ -148,8 +160,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
     }
 
     // OpenSSL FIPS provider forbids SHA-1 for RSA signing.
-    #[cfg(not(feature = "non-fips"))]
-    if effective_hash == KmipHash::SHA1 {
+    if !sha1_signatures_allowed() && effective_hash == KmipHash::SHA1 {
         return Err(CryptoError::Default(
             "RSA signing with SHA-1 is not supported in FIPS mode".to_owned(),
         ));
@@ -173,8 +184,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             .and_then(|cp| cp.mask_generator_hashing_algorithm)
             .unwrap_or(effective_hash);
 
-        #[cfg(not(feature = "non-fips"))]
-        let mgf1_hash = if mgf1_hash == KmipHash::SHA1 {
+        let mgf1_hash = if !sha1_signatures_allowed() && mgf1_hash == KmipHash::SHA1 {
             effective_hash
         } else {
             mgf1_hash
@@ -268,8 +278,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             if let Some(h) = cp.mask_generator_hashing_algorithm {
                 let mgf1_hash = h;
 
-                #[cfg(not(feature = "non-fips"))]
-                let mgf1_hash = if mgf1_hash == KmipHash::SHA1 {
+                let mgf1_hash = if !sha1_signatures_allowed() && mgf1_hash == KmipHash::SHA1 {
                     effective_hash
                 } else {
                     mgf1_hash

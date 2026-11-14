@@ -101,12 +101,9 @@ pub struct AesGcmCapabilities {
     /// Whether `C_EncryptInit` for AES-GCM accepts a caller-provided IV.
     /// AWS `CloudHSM` rejects any non-zero IV for GCM with error 0x71 ("Iv invalid").
     /// When false, encryption proceeds without caller IV (HSM generates internally).
+    /// Only a non-FIPS build ever sends a caller IV: FIPS 140-3 IG C.H requires GCM encryption
+    /// IVs to be generated inside the module.
     pub supports_caller_iv: bool,
-
-    /// Whether a caller-chosen AES-GCM IV may still be sent in FIPS builds.
-    /// Only for development tokens that are not FIPS-validated modules (`SoftHSM2`, Kryoptic).
-    /// FIPS 140-3 IG C.H requires GCM encryption IVs to be generated inside the module.
-    pub allows_caller_iv_in_fips: bool,
 
     /// Whether the HSM supports PKCS#11 v3.0 message-based AES-GCM encryption.
     pub supports_message: bool,
@@ -116,7 +113,6 @@ impl Default for AesGcmCapabilities {
     fn default() -> Self {
         Self {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             supports_message: true,
         }
     }

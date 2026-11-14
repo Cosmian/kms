@@ -9,9 +9,9 @@ use foreign_types::{ForeignType, ForeignTypeRef};
 use openssl::{
     asn1::Asn1OctetString,
     bn::BigNum,
+    hash::{MessageDigest, hash},
     nid::Nid,
     pkey::{PKeyRef, Private},
-    sha::Sha1,
     x509::{X509Crl, X509Extension, X509Ref, extension::CrlNumber},
 };
 use time::OffsetDateTime;
@@ -385,9 +385,9 @@ unsafe fn add_invalidity_date_extension(
 /// Instead we compute the key identifier directly:
 /// - If the issuer cert carries a `subjectKeyIdentifier` extension, its value is
 ///   reused verbatim (no hash required).
-/// - Otherwise we hash the issuer's `SubjectPublicKeyInfo` DER with SHA-1 using the
-///   low-level `openssl::sha::Sha1` API (bypasses the provider mechanism, works in
-///   FIPS mode).
+/// - Otherwise we hash the issuer's `SubjectPublicKeyInfo` DER with SHA-1 through the EVP
+///   interface, so the digest is computed by the provider in use (the FIPS provider in a FIPS
+///   build; SHA-1 is acceptable for a non-collision-resistance identifier, SP 800-131A r2 §9).
 ///
 /// The encoded extension value is:
 /// ```text
@@ -404,18 +404,16 @@ fn add_aki_extension(
     let key_id: Vec<u8> = if let Some(ski) = issuer_cert.subject_key_id() {
         ski.as_slice().to_vec()
     } else {
-        // Hash the full SubjectPublicKeyInfo DER.  The low-level Sha1 API does
-        // not go through the OpenSSL provider infrastructure, so it works in
-        // both FIPS and non-FIPS builds.
+        // Hash the full SubjectPublicKeyInfo DER (RFC 5280 §4.2.1.2 method 1).
         let pk = issuer_cert
             .public_key()
             .map_err(|e| CryptoError::Default(format!("AKI: get public key: {e}")))?;
         let spki_der = pk
             .public_key_to_der()
             .map_err(|e| CryptoError::Default(format!("AKI: SPKI to DER: {e}")))?;
-        let mut h = Sha1::default();
-        h.update(&spki_der);
-        h.finish().to_vec()
+        hash(MessageDigest::sha1(), &spki_der)
+            .map_err(|e| CryptoError::Default(format!("AKI: SHA-1 of the SPKI: {e}")))?
+            .to_vec()
     };
 
     // ── Step 2: encode the AKI DER ───────────────────────────────────────────

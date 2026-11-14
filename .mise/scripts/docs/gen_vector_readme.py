@@ -278,6 +278,12 @@ def kat_reference(basename):
         return 'RFC 6979 §A.2.5'
     if 'covercrypt' in basename:
         return 'Self-generated USK'
+    if 'aes128_cmac' in basename:
+        return 'NIST SP 800-38B D.1'
+    if 'aes256_cmac' in basename:
+        return 'NIST SP 800-38B D.3'
+    if 'aes128_gmac' in basename:
+        return 'NIST CAVP GCM (PTlen=0)'
     if 'hmac_sha1' in basename:
         return 'RFC 2202 §3'
     if 'hmac_sha3_' in basename:
@@ -522,7 +528,10 @@ for v in kat_vectors:
 
 kat_headers = {
     'hash': ('**Hash**', 'NIST FIPS 180-4 / FIPS 202'),
-    'mac': ('**MAC**', 'RFC 4231 / RFC 2202 / NIST HMAC-SHA3'),
+    'mac': (
+        '**MAC**',
+        'RFC 4231 / RFC 2202 / NIST HMAC-SHA3 / NIST SP 800-38B / NIST CAVP GCM',
+    ),
     'symmetric': (
         '**Symmetric**',
         'NIST SP 800-38A / SP 800-38D / RFC 8439 / RFC 7539 / RFC 3394 / RFC 5649',

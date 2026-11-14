@@ -18,12 +18,15 @@ pub(crate) fn resolve_aad(
     aad: Option<Vec<u8>>,
 ) -> Vec<u8> {
     match data_encryption_algorithm {
-        DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
+        DataEncryptionAlgorithm::AesCbc => vec![],
         DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
         #[cfg(feature = "non-fips")]
         DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
             aad.unwrap_or_default()
         }
+        // XTS has no AAD (SP 800-38E)
+        #[cfg(feature = "non-fips")]
+        DataEncryptionAlgorithm::AesXts => vec![],
     }
 }
 
@@ -56,6 +59,7 @@ pub(crate) fn generate_dek(
     let cipher = match data_encryption_algorithm {
         DataEncryptionAlgorithm::AesGcm => SymCipher::Aes256Gcm,
         DataEncryptionAlgorithm::AesCbc => SymCipher::Aes256Cbc,
+        #[cfg(feature = "non-fips")]
         DataEncryptionAlgorithm::AesXts => SymCipher::Aes256Xts,
         #[cfg(feature = "non-fips")]
         DataEncryptionAlgorithm::Chacha20Poly1305 => SymCipher::Chacha20Poly1305,

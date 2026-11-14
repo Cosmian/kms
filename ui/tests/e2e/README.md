@@ -394,11 +394,12 @@ graph LR
     D -->|Wrong MAC| F[invalid]
 ```
 
-Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
+Covers HMAC-SHA256 and HMAC-SHA1 (issue #786) and AES-CMAC (issue #1367). Tests include:
 
 - Navigation smoke tests for the compute and verify pages
 - HMAC-SHA256 compute returning `MAC (hex): <hex>`
 - HMAC-SHA1 compute
+- AES-CMAC compute (MAC type selector `AES-CMAC`) returning a 16-byte hex MAC
 - Error when key ID is missing
 - Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
 - Wrong MAC → `invalid`

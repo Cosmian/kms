@@ -73,7 +73,11 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, C
         KeyFormatType::PKCS8 | KeyFormatType::X509 => {
             let key_bytes = key_block.pkcs_der_bytes()?;
             // This key may be an RSA or EC key
-            PKey::public_key_from_der(&key_bytes)?
+            let pk = PKey::public_key_from_der(&key_bytes)?;
+            // Same as the private key parse: a successful decode can leave failed provider
+            // attempts on the thread's error queue, which breaks the next `SSL_read` on it.
+            drop(openssl::error::ErrorStack::get());
+            pk
         }
         KeyFormatType::TransparentRSAPublicKey => {
             let Some(KeyValue::Structure { key_material, .. }) = key_block.key_value.as_ref()

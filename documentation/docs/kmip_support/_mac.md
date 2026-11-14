@@ -25,6 +25,8 @@ The Eviden KMS server supports the following MAC algorithms:
 - HMAC-SHA-384
 - HMAC-SHA-512
 - HMAC-SHA3-224, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512 (keys of algorithm `HMACSHA3224` to `HMACSHA3512` can be created)
+- AES-CMAC (NIST SP 800-38B) with AES-128, AES-192 and AES-256 keys
+- AES-GMAC (NIST SP 800-38D) with AES-128, AES-192 and AES-256 keys
 
 For the complete list of supported MAC algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
@@ -45,6 +47,36 @@ A single-part MAC without `Data` returns `Invalid_Field`. HSM keys cannot be use
 MAC Verify accepts Active, Deactivated and Compromised keys. It supports multi-part requests: the `MACData` to check
 may be sent on the Init or the Final part, and a missing `MACData` at the end returns `Invalid_Field`. The
 `ValidityIndicator` is returned only on single-part or final responses. The comparison runs in constant time.
+
+### AES-CMAC and AES-GMAC
+
+The request `Cryptographic Parameters` select the algorithm: `Block Cipher Mode` = `CMAC` for AES-CMAC and
+`Block Cipher Mode` = `GCM` for AES-GMAC, with `Cryptographic Algorithm` = `AES` (any other algorithm returns
+`Bad_Cryptographic_Parameters`). No `Hashing Algorithm` is needed. The key must be an AES key with the
+`MAC Generate` / `MAC Verify` usage bits; an HMAC or any non-AES key returns `Bad_Cryptographic_Parameters`. A
+default AES key does not carry these bits: create it with a KMIP `Create` request whose `Cryptographic Usage Mask`
+includes them, or import it with `ckms sym keys import -f aes <file> --key-usage mac-generate --key-usage mac-verify`.
+Both algorithms support multi-part requests. The `CMAC` block cipher mode is part of the default KMIP algorithm
+policy; GMAC relies on the already allowed `GCM`.
+
+- **AES-CMAC**: `MACData` is the 16-byte tag.
+- **AES-GMAC**: a GMAC IV must never repeat under one key, so by default the server generates a random 96-bit IV
+  and `MACData` is the 28 bytes `IV (12 bytes) || tag (16 bytes)`. A FIPS build always generates it inside the
+  OpenSSL FIPS provider (NIST SP 800-38D §9.1, FIPS 140-3 IG C.H) and refuses an IV in the request with
+  `Invalid_Field`. A non-FIPS build lets a client that must choose the IV (PKCS#11
+  `CKM_AES_GMAC`) send it in the `IVCounterNonce` field of the `MAC` request, a vendor extension (KMIP 2.1 `MAC` has
+  no IV field): it must be 12 bytes and is accepted for GMAC only, otherwise `Invalid_Field`; on an HSM key it returns
+  `Feature_Not_Supported`. `MACData` is still `IV || tag`, and the caller must ensure the IV is unique. MAC Verify reads the IV
+  from the first 12 bytes; `MACData` of another length returns `Invalid_Field`, and for a multi-part verification
+  `MACData` must be sent on the Init part because it carries the IV. The server counts the GMACs of each key and
+  fails `MAC` with `Permission_Denied` after 2^32 of them (NIST SP 800-38D §8.3).
+- **HMAC**: a FIPS build refuses to generate an HMAC with a key under 14 bytes (112 bits, NIST SP 800-131A r2);
+  verifying with such a legacy key stays possible.
+
+```bash
+ckms mac compute --mac-key-id <AES_KEY_ID> --mode cmac --data 6bc1bee22e409f96e93d7e117393172a
+ckms mac compute --mac-key-id <AES_KEY_ID> --mode gmac --data 6bc1bee22e409f96e93d7e117393172a
+```
 
 ## Example - Simple MAC
 

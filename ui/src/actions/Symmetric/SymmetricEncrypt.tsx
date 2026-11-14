@@ -1,6 +1,8 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import { useOutletContext } from "react-router-dom";
+import type { LayoutOutletContext } from "../../components/layout/NonFipsRoute";
 import KeyIdInput from "../../components/common/KeyIdInput";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
@@ -24,6 +26,10 @@ const SymmetricEncryptForm: React.FC = () => {
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const selectedEncryptionAlgorithm = Form.useWatch("dataEncryptionAlgorithm", form);
     const { t } = useTranslation("actions");
+    // A FIPS server generates the AES-GCM IV itself (SP 800-38D §8.2): never offer to choose it.
+    // Fail closed: FIPS is assumed until the layout reports otherwise.
+    const isFips = useOutletContext<LayoutOutletContext | undefined>()?.isFips ?? true;
+    const callerChoosesNonce = !(isFips && selectedEncryptionAlgorithm === "AesGcm");
 
     const onFinish = async (values: SymmetricEncryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -35,7 +41,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 id,
                 undefined,
                 values.inputFile,
-                values.nonce,
+                callerChoosesNonce ? values.nonce : undefined,
                 values.authenticationData,
                 values.dataEncryptionAlgorithm,
             );
@@ -138,9 +144,11 @@ const SymmetricEncryptForm: React.FC = () => {
 
                         {selectedEncryptionAlgorithm !== "AesXts" && selectedEncryptionAlgorithm !== "AesCbc" && (
                             <>
-                                <Form.Item name="nonce" label={t("symmetricEncrypt.nonceIv")} help={t("symmetricEncrypt.nonceHelp")}>
-                                    <Input placeholder={t("symmetricEncrypt.enterNonce")} />
-                                </Form.Item>
+                                {callerChoosesNonce && (
+                                    <Form.Item name="nonce" label={t("symmetricEncrypt.nonceIv")} help={t("symmetricEncrypt.nonceHelp")}>
+                                        <Input placeholder={t("symmetricEncrypt.enterNonce")} />
+                                    </Form.Item>
+                                )}
 
                                 <Form.Item
                                     name="authenticationData"

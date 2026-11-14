@@ -3,14 +3,20 @@ use std::fmt::Display;
 use clap::{Parser, Subcommand, ValueEnum};
 use cosmian_kms_client::{
     KmsClient,
-    cosmian_kmip::{kmip_0::kmip_types::HashingAlgorithm, kmip_2_1::kmip_types::UniqueIdentifier},
+    cosmian_kmip::{
+        kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm},
+        kmip_2_1::kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+    },
     kmip_2_1::{
         kmip_operations::{MAC, MACVerify},
         kmip_types::CryptographicParameters,
     },
 };
 
-use crate::{actions::console, error::result::KmsCliResult};
+use crate::{
+    actions::console,
+    error::{KmsCliError, result::KmsCliResult},
+};
 
 #[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CHashingAlgorithm {
@@ -57,6 +63,46 @@ impl From<CHashingAlgorithm> for HashingAlgorithm {
     }
 }
 
+/// MAC algorithm family used by `ckms mac`.
+#[derive(ValueEnum, Debug, Clone, PartialEq, Eq)]
+pub enum CMacMode {
+    Hmac,
+    Cmac,
+    Gmac,
+}
+
+/// Build the KMIP cryptographic parameters selecting HMAC, AES-CMAC or AES-GMAC.
+fn mac_parameters(
+    mode: &CMacMode,
+    hash: Option<&CHashingAlgorithm>,
+) -> KmsCliResult<CryptographicParameters> {
+    let block_cipher_mode = match (mode, hash) {
+        (CMacMode::Hmac, Some(h)) => {
+            return Ok(CryptographicParameters {
+                hashing_algorithm: Some(h.clone().into()),
+                ..Default::default()
+            });
+        }
+        (CMacMode::Hmac, None) => {
+            return Err(KmsCliError::Default(
+                "--algorithm is required for HMAC".to_owned(),
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(KmsCliError::Default(
+                "--algorithm must not be set with --mode cmac or gmac".to_owned(),
+            ));
+        }
+        (CMacMode::Cmac, None) => BlockCipherMode::CMAC,
+        (CMacMode::Gmac, None) => BlockCipherMode::GCM,
+    };
+    Ok(CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(block_cipher_mode),
+        ..Default::default()
+    })
+}
+
 /// MAC utilities: compute or verify a MAC value.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
@@ -81,7 +127,15 @@ pub struct MacAction {
     #[clap(long, short = 'k')]
     pub mac_key_id: String,
 
-    /// Hashing algorithm (case insensitive)
+    /// MAC mode: `hmac` (default, needs `--algorithm`), `cmac` (AES-CMAC) or `gmac` (AES-GMAC).
+    /// The key must be an AES key with the MAC Generate / MAC Verify usage bits (keys from `sym keys create`
+    /// do not have them; e.g. `ckms sym keys import -f aes key.bin --key-usage mac-generate --key-usage mac-verify`).
+    /// A `cmac` MAC is the 16-byte tag; a `gmac` MAC is the IV (12 bytes) followed by
+    /// the tag (16 bytes), hex encoded (56 characters).
+    #[clap(long, short = 'M', value_enum, default_value_t = CMacMode::Hmac)]
+    pub mode: CMacMode,
+
+    /// Hashing algorithm (case insensitive); required for `hmac`, forbidden for `cmac`/`gmac`.
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
     /// e.g. `ckms mac --algorithm WRONG`
@@ -89,9 +143,10 @@ pub struct MacAction {
         long = "algorithm",
         short = 'a',
         value_name = "ALGORITHM",
+        required_if_eq("mode", "hmac"),
         verbatim_doc_comment
     )]
-    pub hashing_algorithm: CHashingAlgorithm,
+    pub hashing_algorithm: Option<CHashingAlgorithm>,
 
     /// The data to be hashed in hexadecimal format.
     /// The data to be hashed in hexadecimal format.
@@ -128,10 +183,7 @@ impl MacAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let unique_identifier = Some(UniqueIdentifier::TextString(self.mac_key_id.clone()));
 
-        let cryptographic_parameters = CryptographicParameters {
-            hashing_algorithm: Some(self.hashing_algorithm.clone().into()),
-            ..Default::default()
-        };
+        let cryptographic_parameters = mac_parameters(&self.mode, self.hashing_algorithm.as_ref())?;
 
         let data = match self.data.clone() {
             Some(data) => Some(hex::decode(data)?),
@@ -151,6 +203,7 @@ impl MacAction {
                 unique_identifier: unique_identifier.clone(),
                 cryptographic_parameters: Some(cryptographic_parameters),
                 data,
+                i_v_counter_nonce: None,
                 correlation_value,
                 init_indicator,
                 final_indicator,
@@ -172,14 +225,22 @@ pub struct MacVerifyAction {
     #[clap(long, short = 'k')]
     pub mac_key_id: String,
 
-    /// Hashing algorithm (case insensitive)
+    /// MAC mode: `hmac` (default, needs `--algorithm`), `cmac` (AES-CMAC) or `gmac` (AES-GMAC).
+    /// For `gmac` the MAC to verify is the IV (12 bytes) followed by the tag (16 bytes), in hex.
+    /// The key must be an AES key with the MAC Generate / MAC Verify usage bits (e.g. imported with
+    /// `ckms sym keys import -f aes key.bin --key-usage mac-generate --key-usage mac-verify`).
+    #[clap(long, short = 'M', value_enum, default_value_t = CMacMode::Hmac)]
+    pub mode: CMacMode,
+
+    /// Hashing algorithm (case insensitive); required for `hmac`, forbidden for `cmac`/`gmac`.
     #[clap(
         long = "algorithm",
         short = 'a',
         value_name = "ALGORITHM",
+        required_if_eq("mode", "hmac"),
         verbatim_doc_comment
     )]
-    pub hashing_algorithm: CHashingAlgorithm,
+    pub hashing_algorithm: Option<CHashingAlgorithm>,
 
     /// The data to verify in hexadecimal format.
     #[clap(
@@ -202,10 +263,7 @@ impl MacVerifyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         let unique_identifier = UniqueIdentifier::TextString(self.mac_key_id.clone());
 
-        let cryptographic_parameters = CryptographicParameters {
-            hashing_algorithm: Some(self.hashing_algorithm.clone().into()),
-            ..Default::default()
-        };
+        let cryptographic_parameters = mac_parameters(&self.mode, self.hashing_algorithm.as_ref())?;
 
         let data = hex::decode(&self.data)?;
         let mac_data = hex::decode(&self.mac_hex)?;

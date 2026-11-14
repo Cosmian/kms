@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         kmip_objects::{PrivateKey, PublicKey},
-        kmip_types::{RecommendedCurve, UsageLimitsUnit},
+        kmip_types::RecommendedCurve,
     },
     cosmian_kms_crypto::{
         CryptoError,
@@ -27,6 +27,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::{DerivationMethod, KeyFormatType, LinkType, UniqueIdentifier},
         },
     },
+    cosmian_kms_crypto::crypto::{FIPS_MIN_SALT_SIZE, is_fips_build},
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::debug;
@@ -40,6 +41,8 @@ use openssl::{
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
+use crate::core::operations::rekey::versioned_update_op;
 use crate::{
     core::{
         KMS,
@@ -529,6 +532,7 @@ async fn derive_key_asymmetric(
     attributes = derived_attributes;
     attributes.apply_extractable(false);
     attributes.initialize_always_sensitive();
+    attributes.reset_usage_limits_count();
     if let Ok(object_attributes) = derived_object.attributes_mut() {
         *object_attributes = attributes.clone();
     }
@@ -554,6 +558,8 @@ async fn derive_key_asymmetric(
             )
         })?;
 
+    private_link_owm.enforce_usage_limits(32)?;
+    peer_link_owm.enforce_usage_limits(32)?;
     decrement_usage_limits_in_attributes(private_link_owm.attributes_mut(), 32);
     if let Ok(obj_attrs) = private_link_owm.object_mut().attributes_mut() {
         decrement_usage_limits_in_attributes(obj_attrs, 32);
@@ -594,26 +600,32 @@ async fn derive_key_asymmetric(
             attributes,
             HashSet::new(),
         )),
-        AtomicOperation::UpdateObject((
-            private_link_owm.id().to_owned(),
+        versioned_update_op(
+            &private_link_owm,
             private_link_owm.object().clone(),
             private_link_owm.attributes().clone(),
-            None,
-        )),
-        AtomicOperation::UpdateObject((
-            peer_link_owm.id().to_owned(),
+        ),
+        versioned_update_op(
+            &peer_link_owm,
             peer_link_owm.object().clone(),
             peer_link_owm.attributes().clone(),
-            None,
-        )),
+        ),
     ];
 
     kms.constraints.check_new_objects(&operations)?;
-    kms.database.atomic(user, &operations).await.map_err(|e| {
-        KmsError::InvalidRequest(format!(
-            "DeriveKey: failed to persist asymmetric derived object and links: {e}"
-        ))
-    })?;
+    kms.database
+        .atomic(user, &operations)
+        .await
+        .map_err(KmsError::from)
+        .map_err(|e| {
+            if matches!(e, KmsError::Conflict(_)) {
+                e
+            } else {
+                KmsError::InvalidRequest(format!(
+                    "DeriveKey: failed to persist asymmetric derived object and links: {e}"
+                ))
+            }
+        })?;
     debug!("DeriveKey asymmetric operation completed successfully");
 
     Ok(DeriveKeyResponse {
@@ -623,16 +635,8 @@ async fn derive_key_asymmetric(
 
 #[cfg(feature = "non-fips")]
 fn decrement_usage_limits_in_attributes(attributes: &mut Attributes, data_len: usize) {
-    if let Some(ul) = attributes.usage_limits.as_mut() {
-        match ul.usage_limits_unit {
-            UsageLimitsUnit::Byte => {
-                let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
-                ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
-            }
-            UsageLimitsUnit::Object => {
-                ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
-            }
-        }
+    if let Some(limits) = attributes.usage_limits.as_mut() {
+        limits.consume(data_len);
     }
 }
 
@@ -965,6 +969,30 @@ fn get_message_digest(algorithm: HashingAlgorithm) -> KResult<MessageDigest> {
     }
 }
 
+/// NIST SP 800-132 §5: the derived key is at least 112 bits; §5.1: the salt is at least 128 bits;
+/// §5.2: an iteration count of at least 1,000 is recommended. `PKCS5_PBKDF2_HMAC` disables the
+/// FIPS provider's own lower bounds, so a FIPS build checks them here.
+fn ensure_fips_pbkdf2_parameters(salt: &[u8], iterations: u32, length: usize) -> KResult<()> {
+    const MIN_ITERATIONS: u32 = 1_000;
+    const MIN_LENGTH: usize = 14;
+    if !is_fips_build() {
+        return Ok(());
+    }
+    if salt.len() < FIPS_MIN_SALT_SIZE || iterations < MIN_ITERATIONS || length < MIN_LENGTH {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Bad_Cryptographic_Parameters,
+            format!(
+                "DeriveKey: PBKDF2 in FIPS mode needs a salt of at least {FIPS_MIN_SALT_SIZE} \
+                 bytes, at least {MIN_ITERATIONS} iterations and a derived key of at least \
+                 {MIN_LENGTH} bytes (NIST SP 800-132); got {} salt bytes, {iterations} \
+                 iterations, {length} key bytes",
+                salt.len()
+            )
+        ));
+    }
+    Ok(())
+}
+
 /// PBKDF2 key derivation using OpenSSL's `pbkdf2_hmac`
 ///
 /// Returns the derived key wrapped in [`Zeroizing`] so the bytes are scrubbed
@@ -976,6 +1004,7 @@ fn derive_pbkdf2(
     length: usize,
     hashing_algorithm: HashingAlgorithm,
 ) -> KResult<Zeroizing<Vec<u8>>> {
+    ensure_fips_pbkdf2_parameters(salt, iterations, length)?;
     let digest = get_message_digest(hashing_algorithm)?;
     let mut output = Zeroizing::new(vec![0_u8; length]);
 

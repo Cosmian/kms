@@ -627,6 +627,27 @@ fn get_hsm_password() -> String {
     env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned())
 }
 
+/// Set the HSM key encryption key of a test server.
+fn set_hsm_kek(config: &mut ClapConfig, kek_id: String) {
+    config.key_encryption_key_wrapping_algorithm =
+        fips_kek_wrapping_algorithm(&config.hsm.hsm_model);
+    config.key_encryption_key = Some(kek_id);
+}
+
+/// A FIPS build refuses AES-GCM key wrapping on an HSM that does not generate the IV (FIPS 140-3
+/// IG C.H); the development tokens `SoftHSM2` and Kryoptic do not, so the KEK wraps with
+/// RFC 5649 key wrap with padding (NIST SP 800-38F) there.
+#[cfg(not(feature = "non-fips"))]
+fn fips_kek_wrapping_algorithm(hsm_model: &str) -> Option<String> {
+    matches!(hsm_model, "softhsm2" | "kryoptic").then(|| "aes-key-wrap-padding".to_owned())
+}
+
+/// A non-FIPS build wraps with the default algorithm, AES-GCM.
+#[cfg(feature = "non-fips")]
+const fn fips_kek_wrapping_algorithm(_hsm_model: &str) -> Option<String> {
+    None
+}
+
 /// Bootstrap a KEK inside the HSM.
 ///
 /// Mirrors [`create_kek_in_db`] but uses generic HSM configuration and reads
@@ -728,7 +749,7 @@ pub async fn start_default_test_kms_server_with_hsm_and_kek() -> &'static TestsC
         config.db.clear_database = false;
         config.workspace.root_data_path = workspace_dir.join("workspace");
         config.workspace.tmp_path = workspace_dir.join("tmp");
-        config.key_encryption_key = Some(kek_id);
+        set_hsm_kek(&mut config, kek_id);
         // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
         // `clear_database = false` above ensures the KEK persists for non-SQLite.
         apply_test_db_override(&mut config);
@@ -769,7 +790,7 @@ pub(crate) async fn start_default_test_kms_server_plain_with_hsm_and_kek() -> &'
         config.db.clear_database = false;
         config.workspace.root_data_path = workspace_dir.join("workspace");
         config.workspace.tmp_path = workspace_dir.join("tmp");
-        config.key_encryption_key = Some(kek_id);
+        set_hsm_kek(&mut config, kek_id);
         // Keys are KEK-wrapped at rest; without this, Export returns them still wrapped, which
         // the suites written for the plain server do not expect.
         config.default_unwrap_type = Some(vec!["All".to_owned()]);
@@ -818,7 +839,7 @@ pub async fn start_default_test_kms_server_with_hsm_and_kek_for_vectors()
     config.db.clear_database = false;
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
-    config.key_encryption_key = Some(kek_id);
+    set_hsm_kek(&mut config, kek_id);
     config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
     apply_test_db_override(&mut config);
     start_server_from_config(config, &config_path, listeners).await
@@ -974,7 +995,7 @@ pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
     config.db.sqlite_path = workspace_dir.join("sqlite-data");
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
-    config.key_encryption_key = Some(kek_id);
+    set_hsm_kek(&mut config, kek_id);
     config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
     // Disable Google CSE: starting with an empty workspace means no Google CSE
     // RSA keypair exists yet, and this test does not need that feature.

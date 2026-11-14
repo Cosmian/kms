@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema is small and consists of six tables. The optional
+The KMS object-store schema is small and consists of seven tables. The optional
 [PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and
 `kms_audit_control`, in its own, separate database.
 
@@ -19,6 +19,7 @@ The KMS object-store schema is small and consists of six tables. The optional
 | `tags` | Tags attached to objects, used by `Locate` |
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
+| `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -28,6 +29,7 @@ erDiagram
     OBJECTS ||--o{ TAGS : "tagged (tags.id = objects.id)"
     OBJECTS ||--o{ OBJECTS : "wraps (objects.wrapping_key_id = objects.id)"
     OBJECTS ||--o| CRLS : "signs (crls.issuer_id = objects.id)"
+    OBJECTS ||--o| GCM_INVOCATIONS : "counted (gcm_invocations.object_id = objects.id)"
     PARAMETERS {
         string name PK
         string value
@@ -56,6 +58,10 @@ erDiagram
         int    crl_number
         string generated_at
         string next_update
+    }
+    GCM_INVOCATIONS {
+        string object_id PK
+        bigint count
     }
     CRYPTO_OFFICER_ACTIVATIONS {
         timestamp activated_at
@@ -175,11 +181,35 @@ One row per CA certificate. The row is replaced atomically on every CRL regenera
 The Redis-with-Findex backend stores each CRL as a JSON value under the key
 `crl:<issuer_id>`.
 
+## `gcm_invocations`
+
+NIST SP 800-38D §8.3 allows at most 2^32 AES-GCM invocations with a random IV under one key.
+The server reserves each invocation in this table **before** encrypting, so a crash wastes an
+invocation and never lets one be used twice. It counts one per single-part `Encrypt`, one per
+multi-part `Encrypt` stream, one per item of a bulk `Encrypt`, one per AES-GCM `MAC` (GMAC) and
+one per software AES-GCM key wrap. Decryption is not counted.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `object_id` | `VARCHAR(128)` | Primary key. The UID of the AES key in the `objects` table. |
+| `count` | `BIGINT` | Invocations made so far, at most 4294967296 (2^32). |
+
+The row is independent of the object: counting does not change the object version, so it never
+conflicts with a `ReKey` or any other write to the key, and it is not visible through KMIP
+attributes. Once the cap is reached, `Encrypt`, `MAC` and wrapping with that key fail with
+`Permission_Denied`: rekey. Destroying or deleting the key deletes the row; a new key starts at 0.
+
+The count is per UID, not per key material: exporting a key and importing it again under another
+UID restarts the count. Keeping a key fresh is the operator's responsibility (SP 800-38D §8.1).
+Keys held in an HSM are not counted here: the HSM module enforces the cap under its Security
+Policy. The Redis-with-Findex backend (non-FIPS builds only) keeps no count.
+
 ## Links between tables
 
 - `objects.id` is referenced by `read_access.id` and `tags.id`: one object can have many access rows and many tags.
 - `objects.wrapping_key_id` points to `objects.id`: a wrapping key is itself an object, and many objects can be wrapped by the same key.
 - `crls.issuer_id` logically references `objects.id` (the CA certificate): one CA has at most one current CRL row.
+- `gcm_invocations.object_id` logically references `objects.id` (an AES key): one key has at most one counter row.
 - `objects.owner` and `read_access.userid` hold user identifiers.
   Users are authenticated identities and are **not** stored in a dedicated table.
 - `parameters` and `crypto_officer_activations` are standalone and do not reference `objects`.

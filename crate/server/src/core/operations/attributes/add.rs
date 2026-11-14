@@ -30,7 +30,7 @@ use crate::{
 
 pub(crate) async fn add_attribute(
     kms: &KMS,
-    request: AddAttribute,
+    mut request: AddAttribute,
     user: &UserId,
 ) -> KResult<AddAttributeResponse> {
     trace!("AddAttribute request");
@@ -42,6 +42,10 @@ pub(crate) async fn add_attribute(
     check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
     check_rotate_name(&request.new_attribute, "AddAttribute")?;
     check_vendor_attribute(&request.new_attribute, KmipOperation::AddAttribute)?;
+    // KMIP 2.1 §4.59: clients set Total and Unit only; the server owns the Count.
+    if let Attribute::UsageLimits(limits) = &mut request.new_attribute {
+        limits.reset_count();
+    }
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,

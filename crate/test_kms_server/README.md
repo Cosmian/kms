@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**716 vectors** across 16 categories (including KAT):
+**733 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -262,6 +262,7 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | Creates an EC P-256 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
 | HSM / KEK Create | `hsm/kek_ed25519_create_sign` | Creates an Ed25519 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
 | HSM / KEK | `hsm/kek_encrypt_decrypt` | Imports an AES-256 key into a KMS server backed by a SoftHSM2 KEK. | 3 |
+| HSM / KEK | `hsm/kek_import_ed25519` | Imports an Ed25519 private key into a KMS server backed by a SoftHSM2 KEK. | 1 |
 | HSM / KEK ReKey | `hsm/kek_rekey_kek` | Creates a dedicated HSM KEK ('hsm::<slot>::vec_kek_rekey') and a DB AES DEK that is explicitly wrapped at rest by that KEK. Re-keys the KEK itself — the HSM rotation generates new key material and a new UID, then automatically re-wraps all dependent DB keys (rewrap_dependants). Verifies via GetAttributes that the DEK's WrappingKeyLink now points to the new KEK UID, and confirms encrypt still works after the rotation. Fully cleans up (DEK + both KEK generations) for idempotent reruns. | 12 |
 | HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Creates an AES-256 key in a KMS server backed by a SoftHSM2 KEK. The key is auto-wrapped by the HSM-resident KEK at rest. Re-keys the wrapped key (unwrap from KEK, generate new material, re-wrap). Verifies the new key works for encryption. | 9 |
 | HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | Attempts to create an RSA-1024 keypair on a server with KEK enabled. | 1 |
@@ -393,7 +394,9 @@ replays the steps sequentially.
 | Negative / Protocol | `negative/create_split_key_threshold_too_low` | A CreateSplitKey request with split_key_threshold = 1 must be rejected by the server. | 3 |
 | Negative / CryptoParams | `negative/crypto_params/decrypt_wrong_mode` | Tests that decryption fails when using CBC mode to decrypt data that was encrypted with GCM | 3 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_chacha20_with_gcm_mode` | Documents that ChaCha20Poly1305 key with BlockCipherMode GCM succeeds — server routes to AES-256-GCM since GCM mode overrides the key's algorithm | 2 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_gcm_caller_iv_fips` | A FIPS build generates every AES-GCM IV inside the FIPS module (SP 800-38D 9.1, FIPS 140-3 IG C.H) and refuses an IV supplied by the caller | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_gcm_invalid_tag_length` | Tests that AES-GCM encryption fails with an invalid authentication tag length | 2 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_gcm_tag_length_12_fips` | A FIPS build seals AES-GCM with the full 16-byte tag only (SP 800-38D 5.2.1.2) | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_mode_algo_mismatch` | Documents that encryption succeeds when CryptographicParameters algorithm differs from key algorithm — server uses the key's actual algorithm, ignoring algorithm field in CryptographicParameters | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_mode` | Tests that AES encryption fails with an unsupported BlockCipherMode | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_padding` | Documents that AES-GCM encryption ignores unsupported PaddingMethod (GCM handles padding internally) | 2 |
@@ -602,8 +605,11 @@ MAC, or derived-key values.
 | Derive Key | `kat/derive_key/hkdf_sha384` | RFC 5869 §A.1 | Import, DeriveKey, Get | `KeyMaterial` |
 | Derive Key | `kat/derive_key/hkdf_sha512` | RFC 5869 §A.1 | Import, DeriveKey, Get | `KeyMaterial` |
 | Derive Key | `kat/derive_key/pbkdf2_sha256` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/pbkdf2_sha256_salt16` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
 | Derive Key | `kat/derive_key/pbkdf2_sha384` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/pbkdf2_sha384_salt16` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
 | Derive Key | `kat/derive_key/pbkdf2_sha512` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/pbkdf2_sha512_salt16` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
 | **Hash** | | NIST FIPS 180-4 / FIPS 202 | | |
 | Hash | `kat/hash/sha256` | FIPS 180-4 | Hash | `Data` |
 | Hash | `kat/hash/sha256_init_and_final_single_part` | FIPS 180-4 | Hash | `Data` |
@@ -613,7 +619,14 @@ MAC, or derived-key values.
 | Hash | `kat/hash/sha3_384` | FIPS 202 | Hash | `Data` |
 | Hash | `kat/hash/sha3_512` | FIPS 202 | Hash | `Data` |
 | Hash | `kat/hash/sha512` | FIPS 180-4 | Hash | `Data` |
-| **MAC** | | RFC 4231 / RFC 2202 / NIST HMAC-SHA3 | | |
+| **MAC** | | RFC 4231 / RFC 2202 / NIST HMAC-SHA3 / NIST SP 800-38B / NIST CAVP GCM | | |
+| Mac | `kat/mac/aes128_cmac` | NIST SP 800-38B D.1 | Import, Mac, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes128_cmac_multi_part` | NIST SP 800-38B D.1 | Import, Mac, Mac, Mac, MACVerify, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes128_gmac_caller_iv` | NIST CAVP GCM (PTlen=0) | Import, Mac, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes128_gmac_verify` | NIST CAVP GCM (PTlen=0) | Import, MACVerify, MACVerify | `ValidityIndicator` |
+| Mac | `kat/mac/aes192_cmac` |  | Import, Mac, MACVerify, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes256_cmac` | NIST SP 800-38B D.3 | Import, Mac, MACVerify | `MACData`, `ValidityIndicator` |
+| Mac | `kat/mac/aes256_gmac_verify` |  | Import, MACVerify, MACVerify | `ValidityIndicator` |
 | Mac | `kat/mac/hmac_sha1` | RFC 2202 §3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha256` | RFC 4231 §4.2 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha256_multi_part` | RFC 4231 §4.2 | Import, Mac, Mac, Mac, MACVerify, MACVerify | `MACData`, `ValidityIndicator` |
@@ -647,15 +660,19 @@ MAC, or derived-key values.
 | Symmetric | `kat/symmetric/aes128_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes128_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes128_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric | `kat/symmetric/aes128_gcm_decrypt` | SP 800-38D TC7 | Import, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes128_gcm_multi_part` | SP 800-38D TC7 | Import, Encrypt, Encrypt, Decrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric | `kat/symmetric/aes128_gcm_multi_part_decrypt` | SP 800-38D TC7 | Import, Decrypt, Decrypt | `Data` |
 | Symmetric (non-FIPS) | `kat/symmetric/aes128_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
 | Symmetric (non-FIPS) | `kat/symmetric/aes128_xts` | IEEE 1619-2007 | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes192_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes192_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes192_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric | `kat/symmetric/aes192_gcm_decrypt` | SP 800-38D TC7 | Import, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes256_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes256_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes256_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric | `kat/symmetric/aes256_gcm_decrypt` | SP 800-38D TC7 | Import, Decrypt | `Data` |
 | Symmetric (non-FIPS) | `kat/symmetric/aes256_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
 | Symmetric (non-FIPS) | `kat/symmetric/aes256_xts` | IEEE 1619-2007 | Import, Encrypt, Decrypt | `Data` |
 | Symmetric (non-FIPS) | `kat/symmetric/chacha20_poly1305` | RFC 8439 §2.8 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |

@@ -207,9 +207,11 @@ fn sym_key_attribute(
         AttributeType::Private => Some(Attribute::Private(false)),
         // Oracle TDE requires CKA_SENSITIVE=TRUE for master keys
         AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
+        AttributeType::Sign => Some(Attribute::Sign(sym_key.can_generate_mac())),
         AttributeType::Token => Some(Attribute::Token(true)),
         // Oracle TDE requires CKA_UNWRAP=TRUE to verify master key usability
         AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
+        AttributeType::Verify => Some(Attribute::Verify(sym_key.can_verify_mac())),
         AttributeType::Value => Some(Attribute::Value(sym_key.raw_bytes()?.to_vec())),
         // Oracle TDE requires CKA_WRAP=TRUE to verify master key usability
         AttributeType::Wrap => Some(Attribute::Wrap(true)),

@@ -79,7 +79,7 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
             }),
             initialization_vector: None,
             derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt".to_vec()),
+            salt: Some(b"test salt 16 byte".to_vec()),
             iteration_count: Some(100_000), // Lower than default for faster testing
         },
         Attributes {
@@ -175,7 +175,7 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
                 }),
                 initialization_vector: None,
                 derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-                salt: Some(b"test salt".to_vec()),
+                salt: Some(b"test salt 16 byte".to_vec()),
                 iteration_count: Some(10_000), // Lower for faster testing
             },
             Attributes {
@@ -304,7 +304,7 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
             }),
             initialization_vector: None,
             derivation_data: Some(Zeroizing::new(b"secret data derivation".to_vec())),
-            salt: Some(b"secret salt".to_vec()),
+            salt: Some(b"secret salt 16 byte".to_vec()),
             iteration_count: Some(50_000),
         },
         Attributes {
@@ -366,7 +366,7 @@ async fn test_derive_key_error_cases() -> KResult<()> {
             }),
             initialization_vector: None,
             derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt".to_vec()),
+            salt: Some(b"test salt 16 byte".to_vec()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -408,7 +408,7 @@ async fn test_derive_key_preactive_base_and_unsupported_method() -> KResult<()> 
             base_key_id.clone(),
             method,
             DerivationParameters {
-                salt: Some(b"test salt".to_vec()),
+                salt: Some(b"test salt 16 byte".to_vec()),
                 iteration_count: Some(1000),
                 ..DerivationParameters::default()
             },
@@ -589,6 +589,58 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
     Ok(())
 }
 
+/// A FIPS build refuses PBKDF2 parameters below NIST SP 800-132: a salt under 128 bits or fewer
+/// than 1,000 iterations (the derived key is always at least 112 bits for AES).
+#[cfg(not(feature = "non-fips"))]
+#[tokio::test]
+async fn test_derive_key_pbkdf2_fips_minimums() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("test_user");
+    let base_key_id = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+    let derive = |salt: &[u8], iterations: i32| {
+        DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            base_key_id.clone(),
+            DerivationMethod::PBKDF2,
+            DerivationParameters {
+                cryptographic_parameters: Some(CryptographicParameters {
+                    hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                    ..CryptographicParameters::default()
+                }),
+                initialization_vector: None,
+                derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
+                salt: Some(salt.to_vec()),
+                iteration_count: Some(iterations),
+            },
+            Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(128),
+                cryptographic_usage_mask: Some(
+                    CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+                ),
+                key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+                object_type: Some(ObjectType::SymmetricKey),
+                ..Attributes::default()
+            },
+        )
+    };
+
+    kms.derive_key(derive(&[7; 16], 1000), &owner).await?;
+    for weak in [derive(&[7; 15], 1000), derive(&[7; 16], 999)] {
+        assert!(matches!(
+            kms.derive_key(weak, &owner).await,
+            Err(KmsError::Kmip21Error(
+                ErrorReason::Bad_Cryptographic_Parameters,
+                _
+            ))
+        ));
+    }
+    Ok(())
+}
+
 /// Test non-existent base key
 #[tokio::test]
 async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
@@ -607,7 +659,7 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
             }),
             initialization_vector: None,
             derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt".to_vec()),
+            salt: Some(b"test salt 16 byte".to_vec()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -660,7 +712,7 @@ async fn test_derive_key_without_permission_is_object_not_found() -> KResult<()>
             }),
             initialization_vector: None,
             derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt".to_vec()),
+            salt: Some(b"test salt 16 byte".to_vec()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -704,7 +756,7 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
             }),
             initialization_vector: None,
             derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt".to_vec()),
+            salt: Some(b"test salt 16 byte".to_vec()),
             iteration_count: Some(100_000),
         },
         Attributes {
