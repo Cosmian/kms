@@ -3975,6 +3975,26 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/kat/mac/aes256_cmac").await
     }
 
+    #[tokio::test]
+    async fn test_kat_mac_aes192_cmac() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes192_cmac").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_mac_aes256_gmac_verify() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes256_gmac_verify").await
+    }
+
+    // A caller-chosen GMAC IV is refused in a FIPS build (SP 800-38D 9.1, IG C.H).
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_kat_mac_aes128_gmac_caller_iv() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/mac/aes128_gmac_caller_iv").await
+    }
+
     // 64-bit IV (OASIS CS-BC-M-GCM-3-21) and caller-chosen IV: non-FIPS only, like the single-part GCM KATs.
     #[cfg(feature = "non-fips")]
     #[tokio::test]

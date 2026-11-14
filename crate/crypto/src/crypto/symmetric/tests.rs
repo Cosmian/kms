@@ -993,3 +993,56 @@ mod properties {
         }
     }
 }
+
+fn gcm_cipher(key: &[u8]) -> SymCipher {
+    match key.len() {
+        16 => SymCipher::Aes128Gcm,
+        24 => SymCipher::Aes192Gcm,
+        32 => SymCipher::Aes256Gcm,
+        len => panic!("no AES-GCM cipher for a {len}-byte key"),
+    }
+}
+
+/// `decrypt` against the official vectors, then the provider-generated IV against that
+/// validated `decrypt` for every key size.
+#[test]
+fn test_aes_gcm_official_vectors_decrypt() {
+    #[cfg(not(feature = "non-fips"))]
+    Provider::load(None, "fips").unwrap();
+
+    for v in crate::kat_vectors::aes_gcm_vectors().unwrap() {
+        let cipher = gcm_cipher(&v.key);
+        let decrypted = decrypt(cipher, &v.key, &v.iv, &v.aad, &v.ct, &v.tag, None);
+        if v.valid {
+            assert_eq!(decrypted.unwrap().to_vec(), v.pt, "{} ({})", v.id, v.source);
+            let (iv, ct, tag) =
+                aes_gcm_encrypt_generated_iv(cipher, &v.key, &v.aad, &v.pt).unwrap();
+            assert_eq!(iv.len(), 12, "{}", v.id);
+            assert_eq!(ct.len(), v.pt.len(), "{}", v.id);
+            let back = decrypt(cipher, &v.key, &iv, &v.aad, &ct, &tag, None).unwrap();
+            assert_eq!(back.to_vec(), v.pt, "{} generated IV", v.id);
+        } else {
+            decrypted.unwrap_err();
+        }
+    }
+}
+
+/// `encrypt` with a caller IV against the official vectors (a FIPS build refuses a caller IV).
+#[cfg(feature = "non-fips")]
+#[test]
+fn test_aes_gcm_official_vectors_encrypt() {
+    for v in crate::kat_vectors::aes_gcm_vectors()
+        .unwrap()
+        .iter()
+        .filter(|v| v.valid)
+    {
+        let (ct, tag) = encrypt(gcm_cipher(&v.key), &v.key, &v.iv, &v.aad, &v.pt, None).unwrap();
+        assert_eq!(
+            (ct, tag),
+            (v.ct.clone(), v.tag.clone()),
+            "{} ({})",
+            v.id,
+            v.source
+        );
+    }
+}

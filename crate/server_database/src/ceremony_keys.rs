@@ -174,6 +174,19 @@ mod tests {
         s
     }
 
+    /// FIPS 202 SHAKE-256 vectors (OpenSSL 3.1.2), one-shot and split input.
+    #[test]
+    fn shake256_matches_official_vectors() {
+        for v in cosmian_kms_crypto::kat_vectors::shake256_vectors().expect("vectors") {
+            let mut out = vec![0_u8; v.out.len()];
+            shake256(&[&v.msg], &mut out).expect("shake256");
+            assert_eq!(out, v.out, "{} ({})", v.id, v.source);
+            let half = v.msg.len() / 2;
+            shake256(&[&v.msg[..half], &v.msg[half..]], &mut out).expect("shake256 split");
+            assert_eq!(out, v.out, "{} split input", v.id);
+        }
+    }
+
     #[test]
     fn seal_unseal_roundtrip() {
         let keys = CeremonyKeys::derive(&test_secret()).expect("derive failed");

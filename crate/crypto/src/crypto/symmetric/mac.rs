@@ -330,18 +330,37 @@ mod tests {
         Ok(())
     }
 
-    /// NIST CAVP GCM known answer (`PTlen` = 0, `AADlen` = 128, `Taglen` = 128): GMAC is the tag.
+    /// Every official AES-CMAC vector (SP 800-38B, CAVP with truncated tags, Wycheproof, OpenSSL).
     #[test]
-    fn test_aes_gmac_known_answer() -> CryptoResult<()> {
-        let key = unhex("77be63708971c4e240d1cb79e8d77feb");
-        let iv = gmac_iv(&unhex(
-            "e0e00f19fed7ba0136a797f3209fcc8d3675ed938e9c7166709dd946",
-        ))?;
-        let mac = aes_gmac(&key, iv, &unhex("7a43ec1d9c0a5a78a0b16533a6213cab"))?;
-        assert_eq!(
-            mac,
-            unhex("e0e00f19fed7ba0136a797f3209fcc8d3675ed938e9c7166709dd946")
-        );
+    fn test_aes_cmac_official_vectors() -> CryptoResult<()> {
+        for v in crate::kat_vectors::aes_cmac_vectors()? {
+            let mac = aes_cmac(&v.key, &v.msg)?;
+            assert_eq!(mac[..v.tag.len()], v.tag[..], "{} ({})", v.id, v.source);
+            let (head, tail) = v.msg.split_at(v.msg.len() / 2);
+            let mut multi = AesMac::new_cmac(&v.key)?;
+            multi.update(head)?;
+            multi.update(tail)?;
+            assert_eq!(multi.finalize()?, mac, "{} multi-part", v.id);
+        }
+        Ok(())
+    }
+
+    /// Every official AES-GMAC vector (OpenSSL NIST/IEEE 802.1AE, empty-plaintext GCM).
+    #[test]
+    fn test_aes_gmac_official_vectors() -> CryptoResult<()> {
+        for v in crate::kat_vectors::aes_gmac_vectors()? {
+            let iv: [u8; GMAC_IV_LENGTH] = v.iv[..].try_into().map_err(|e| {
+                CryptoError::Default(format!("{}: IV is not {GMAC_IV_LENGTH} bytes: {e}", v.id))
+            })?;
+            let expected = [&v.iv[..], &v.tag[..]].concat();
+            let mac = aes_gmac(&v.key, iv, &v.msg)?;
+            assert_eq!(mac == expected, v.valid, "{} ({})", v.id, v.source);
+            let (head, tail) = v.msg.split_at(v.msg.len() / 2);
+            let mut multi = AesMac::new_gmac(&v.key, iv)?;
+            multi.update(head)?;
+            multi.update(tail)?;
+            assert_eq!(multi.finalize()?, mac, "{} multi-part", v.id);
+        }
         Ok(())
     }
 

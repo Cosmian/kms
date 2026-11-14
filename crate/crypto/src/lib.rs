@@ -2,6 +2,7 @@ pub use error::{CryptoError, result::CryptoResultHelper};
 
 pub mod crypto;
 mod error;
+pub mod kat_vectors;
 pub mod openssl;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
