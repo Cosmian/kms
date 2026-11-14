@@ -83,12 +83,13 @@ touch "${RSYSLOG_LOG}"
 
 echo "==> Starting rsyslog container on TCP port ${SYSLOG_TCP_PORT}..."
 RSYSLOG_CONTAINER="kms-siem-test-rsyslog-$$"
+RSYSLOG_IMAGE="$(compose_image rsyslog)"
 
 docker run --rm --name "${RSYSLOG_CONTAINER}" \
   -p "${SYSLOG_TCP_PORT}:514" \
   -v "${SCRIPT_DIR}/rsyslog.conf:/etc/rsyslog.conf:ro" \
   -v "${RSYSLOG_LOG}:/var/log/kms-cef.log:rw" \
-  rsyslog/syslog_appliance_alpine:latest \
+  "${RSYSLOG_IMAGE}" \
   2>/dev/null &
 
 # Wait for rsyslog TCP listener to be ready

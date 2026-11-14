@@ -153,9 +153,12 @@ chmod 777 "${COLLECTOR_METRICS_DIR}"
 # Pull images first so container startup is instantaneous and not subject
 # to network download latency during readiness wait loops.
 echo "==> Pulling monitoring images..."
-docker pull otel/opentelemetry-collector-contrib:latest 2>/dev/null
-docker pull victoriametrics/victoria-metrics:latest 2>/dev/null
-docker pull grafana/grafana:latest 2>/dev/null
+OTEL_IMAGE="$(compose_image otel-collector)"
+VM_IMAGE="$(compose_image victoria-metrics)"
+GRAFANA_IMAGE="$(compose_image grafana)"
+docker pull "${OTEL_IMAGE}" 2>/dev/null
+docker pull "${VM_IMAGE}" 2>/dev/null
+docker pull "${GRAFANA_IMAGE}" 2>/dev/null
 echo "==> Starting OTel collector (gRPC port ${OTEL_GRPC_PORT}, Prometheus debug port ${OTEL_PROM_PORT})..."
 docker run --rm --name "${COLLECTOR_CONTAINER}" \
   --network "${MON_NETWORK}" \
@@ -163,7 +166,7 @@ docker run --rm --name "${COLLECTOR_CONTAINER}" \
   -p "${OTEL_PROM_PORT}:8889" \
   -v "${COLLECTOR_CONFIG_FILE}:/etc/otel-collector-config.yaml:ro" \
   -v "${COLLECTOR_METRICS_DIR}:/tmp/otel-metrics-dir:rw" \
-  otel/opentelemetry-collector-contrib:latest \
+  "${OTEL_IMAGE}" \
   --config=/etc/otel-collector-config.yaml \
   2>/dev/null &
 
@@ -173,7 +176,7 @@ echo "==> Starting VictoriaMetrics (port ${VM_PORT})..."
 docker run --rm --name "${VM_CONTAINER}" \
   --network "${MON_NETWORK}" \
   -p "${VM_PORT}:8428" \
-  victoriametrics/victoria-metrics:latest \
+  "${VM_IMAGE}" \
   2>/dev/null &
 
 # ── Start Grafana ─────────────────────────────────────────────────────────────
@@ -187,7 +190,7 @@ docker run --rm --name "${GRAFANA_CONTAINER}" \
   -e GF_SECURITY_ADMIN_PASSWORD=admin \
   -e GF_LOG_LEVEL=error \
   -p "${GRAFANA_PORT}:3000" \
-  grafana/grafana:latest \
+  "${GRAFANA_IMAGE}" \
   2>/dev/null &
 
 # ── Wait for OTel collector gRPC port ────────────────────────────────────────

@@ -9,8 +9,8 @@
 # Env:
 #   AUTH_VERIFIER_REPO   Authentication repo checkout (default: <repo>/authentication)
 #   AUTH_VERIFIER_TIMEOUT  seconds to wait for the Auth Verifier to build and start (default: 1800)
-#   KEYCLOAK_IMAGE       Keycloak image (default: docker.io/keycloak/keycloak:26.4.0)
-#   NGINX_IMAGE          nginx image (default: nginx:1.27-alpine)
+#   KEYCLOAK_IMAGE       Keycloak image (default: the `keycloak` service of the root docker-compose.yml)
+#   NGINX_IMAGE          nginx image (default: the `nginx` service of the root docker-compose.yml)
 #   SAML_SSO_DIR         work dir for keys and configs (default: /tmp/kms-saml-sso)
 set -euo pipefail
 
@@ -20,8 +20,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 source "${REPO_ROOT}/.mise/lib/common.sh"
 
 export SAML_SSO_DIR="${SAML_SSO_DIR:-/tmp/kms-saml-sso}"
-export KEYCLOAK_IMAGE="${KEYCLOAK_IMAGE:-docker.io/keycloak/keycloak:26.4.0}"
-export NGINX_IMAGE="${NGINX_IMAGE:-nginx:1.27-alpine}"
+export KEYCLOAK_IMAGE="${KEYCLOAK_IMAGE:-$(compose_image keycloak)}"
+export NGINX_IMAGE="${NGINX_IMAGE:-$(compose_image nginx)}"
 # Address the host-run Auth Verifier and KMS bind to. The nginx container reaches them through
 # host.docker.internal: Docker Desktop (macOS) delivers that to host loopback, so loopback is enough;
 # on Linux it is the docker bridge gateway. Never 0.0.0.0: the dev Auth Verifier has a default admin login.

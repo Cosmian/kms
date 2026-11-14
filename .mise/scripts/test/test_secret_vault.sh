@@ -42,13 +42,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+VAULT_IMAGE="$(compose_image vault)"
 echo "Starting Vault dev container on port ${VAULT_PORT}..."
 docker run -d \
   --name "${VAULT_CONTAINER}" \
   -p "${VAULT_PORT}:8200" \
   -e "VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TOKEN}" \
   -e "VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200" \
-  hashicorp/vault:1.17 \
+  "${VAULT_IMAGE}" \
   vault server -dev
 
 echo "Waiting for Vault to be ready..."

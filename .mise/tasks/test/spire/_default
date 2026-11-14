@@ -269,11 +269,12 @@ print_status "Testing Docker container network connectivity to KMS..."
 
 print_info "Pre-flight check from host network mode: AppRole login..."
 preflight_ok=false
+CURL_IMAGE="$(compose_image curl)"
 for attempt in 1 2 3 4 5; do
   if docker run --rm \
     --network=host \
     --add-host=host.docker.internal:host-gateway \
-    curlimages/curl:8.10.1 \
+    "${CURL_IMAGE}" \
     -k -sS --connect-timeout 5 \
     -H "Content-Type: application/json" \
     -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \

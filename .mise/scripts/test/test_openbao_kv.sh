@@ -13,13 +13,13 @@ set -euo pipefail
 #   BAO_TOKEN_OTHER   token of a second identity with no grant: enables the 403 check
 #   BAO_CACERT_HOST   PEM CA bundle on the host, mounted into the container
 #   BAO_NETWORK       docker network mode (default: host on Linux, bridge + host-gateway elsewhere)
-#   BAO_IMAGE         OpenBao image (default: ghcr.io/openbao/openbao:2.7.1)
+#   BAO_IMAGE         OpenBao image (default: the `openbao` service of the root docker-compose.yml)
 #   KV_MOUNT          KV mount name (default: kv)
 #   KV_TTL_WAIT_SECS  max seconds to wait for the TTL sweep (default: 30)
 
 : "${BAO_ADDR:?BAO_ADDR must be set}"
 : "${BAO_TOKEN:?BAO_TOKEN must be set}"
-BAO_IMAGE="${BAO_IMAGE:-ghcr.io/openbao/openbao:2.7.1}"
+# BAO_IMAGE is resolved below, once common.sh (compose_image) is sourced and Docker is checked.
 KV_MOUNT="${KV_MOUNT:-kv}"
 KV_TTL_WAIT_SECS="${KV_TTL_WAIT_SECS:-30}"
 BAO_TOKEN_OTHER="${BAO_TOKEN_OTHER:-}"
@@ -32,6 +32,7 @@ source "${SCRIPT_DIR}/../../lib/common.sh"
 require_cmd docker "Docker is required to run the OpenBao CLI."
 require_cmd python3 "python3 is required to parse CLI JSON output."
 require_cmd curl "curl is required for the TTL and authorization checks."
+BAO_IMAGE="${BAO_IMAGE:-$(compose_image openbao)}"
 
 SECRET_PATH="openbao-ci/$$"
 SECRET_NAME="$$"

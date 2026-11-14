@@ -2,6 +2,9 @@
 # Only used for local development and testing.
 # Port isolation: set KMS_TEST_SLOT=N to shift all host ports by N×1000.
 # Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
+# Image references: this file is the single place where third-party test images and their versions
+# are defined. Scripts and other compose files read them with `compose_image <service>`
+# (.mise/lib/common.sh); images only started via `docker run` live in the `images` profile at the end.
 services:
   postgres:
     image: postgres:18
@@ -643,6 +646,64 @@ services:
           echo "SDS probe FAILED: expected '$$MSG', got '$$RESPONSE'" >&2
           exit 1
         fi
+
+  # ── Image catalog (profile: images) ─────────────────────────────────────────
+  # Single source of truth for every third-party image that the test scripts start with
+  # `docker run` or reference from another compose file / manifest. These services are never
+  # started by compose; scripts read the reference with `compose_image <service>`
+  # (.mise/lib/common.sh). Bump a version here, nowhere else.
+  openbao:
+    image: ghcr.io/openbao/openbao:2.7.1
+    profiles: [images]
+  vault:
+    image: hashicorp/vault:1.17
+    profiles: [images]
+  postgres-rotation:
+    image: postgres:16-alpine
+    profiles: [images]
+  mysql-rotation:
+    image: mysql:8.4
+    profiles: [images]
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
+    profiles: [images]
+  grafana:
+    image: grafana/grafana:latest
+    profiles: [images]
+  rsyslog:
+    image: rsyslog/syslog_appliance_alpine:latest
+    profiles: [images]
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    profiles: [images]
+  fluent-bit:
+    image: fluent/fluent-bit:4.0
+    profiles: [images]
+  opensearch:
+    image: opensearchproject/opensearch:3.8.0
+    profiles: [images]
+  splunk:
+    image: splunk/splunk:10.4.2
+    profiles: [images]
+  keycloak:
+    image: docker.io/keycloak/keycloak:26.4.0
+    profiles: [images]
+  nginx:
+    image: nginx:1.27-alpine
+    profiles: [images]
+  oracle:
+    image: container-registry.oracle.com/database/free:23.9.0.0-lite
+    profiles: [images]
+  busybox:
+    image: busybox:1.36
+    profiles: [images]
+  alpine-pki:
+    # Same image as KMIPKit compose test-pki.
+    image: alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+    profiles: [images]
+  curl:
+    image: curlimages/curl:8.10.1
+    profiles: [images]
 
 volumes:
   spire-data-a:

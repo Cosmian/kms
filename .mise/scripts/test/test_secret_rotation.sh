@@ -151,8 +151,9 @@ print_status "rotator: ${ROTATOR_ID}, consumer: ${CONSUMER_ID}"
 # images' init phase serves the Unix socket only, so a TCP login means the final server is up.
 case "${DB_ENGINE}" in
   postgres)
+    ROTATION_IMAGE="${POSTGRES_IMAGE:-$(compose_image postgres-rotation)}"
     docker run -d --name "${DB_NAME}" -e POSTGRES_PASSWORD="${DB_ADMIN_PASSWORD}" \
-      "${POSTGRES_IMAGE:-postgres:16-alpine}" >/dev/null
+      "${ROTATION_IMAGE}" >/dev/null
     db_login() {
       docker exec -e PGPASSWORD="$1" "${DB_NAME}" sh -c \
         "psql -h \$(hostname -i) -U \"$2\" -d postgres --no-psqlrc -v ON_ERROR_STOP=1 -tAc 'select 1'" >/dev/null 2>&1
@@ -171,8 +172,9 @@ SQL
     }
     ;;
   mysql)
+    ROTATION_IMAGE="${MYSQL_IMAGE:-$(compose_image mysql-rotation)}"
     docker run -d --name "${DB_NAME}" -e MYSQL_ROOT_PASSWORD="${DB_ADMIN_PASSWORD}" \
-      "${MYSQL_IMAGE:-mysql:8.4}" >/dev/null
+      "${ROTATION_IMAGE}" >/dev/null
     db_login() {
       docker exec -e MYSQL_PWD="$1" "${DB_NAME}" sh -c \
         "mysql -h 127.0.0.1 -u\"$2\" -e 'select 1'" >/dev/null 2>&1
