@@ -1,8 +1,8 @@
 //! Advanced / miscellaneous configuration step of the KMS configuration wizard.
 //!
 //! Covers: workspace paths, key management, vendor identification, Microsoft
-//! DKE, KMS public URL, KMIP policy, Google CSE, Azure EKM, AWS XKS, and UI
-//! settings.
+//! DKE, KMS public URL, KMIP policy, Google CSE, Azure EKM, AWS XKS, Vault KV,
+//! and UI settings.
 
 #![expect(
     unreachable_pub,
@@ -20,8 +20,8 @@ use strum::IntoEnumIterator;
 use super::PromptResultExt;
 use crate::{
     config::{
-        AzureEkmConfig, EstConfig, GoogleCseConfig, KmipPolicyConfig, KmipPolicyId, ScepConfig,
-        TlsConfig, UiConfig, WorkspaceConfig,
+        AzureEkmConfig, EstConfig, GoogleCseConfig, KmipPolicyConfig, KmipPolicyId, KvConfig,
+        ScepConfig, TlsConfig, UiConfig, WorkspaceConfig,
     },
     core::operations::certify::template::CertTemplate,
     error::KmsError,
@@ -46,6 +46,7 @@ pub struct AdvancedConfig {
     pub google_cse_config: GoogleCseConfig,
     pub azure_ekm_config: AzureEkmConfig,
     pub aws_xks_config: AwsXksConfig,
+    pub kv_config: KvConfig,
     pub est: EstConfig,
     pub scep: ScepConfig,
     pub templates: HashMap<String, CertTemplate>,
@@ -260,6 +261,9 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
     // ── AWS XKS ───────────────────────────────────────────────────────────────
     let aws_xks_config = configure_aws_xks(&theme)?;
 
+    // ── Vault KV ──────────────────────────────────────────────────────────────
+    let kv_config = configure_kv(&theme)?;
+
     // ── UI dist path ──────────────────────────────────────────────────────────
     let ui_dist: String = Input::with_theme(&theme)
         .with_prompt("UI distribution folder path")
@@ -300,10 +304,40 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
         google_cse_config,
         azure_ekm_config,
         aws_xks_config,
+        kv_config,
         est,
         scep,
         templates,
         ui_config: ui,
+    })
+}
+
+fn configure_kv(theme: &ColorfulTheme) -> KResult<KvConfig> {
+    let enabled = Confirm::with_theme(theme)
+        .with_prompt("Enable the Vault KV v2-compatible secret store?")
+        .default(false)
+        .interact()
+        .prompt_err()?;
+
+    if !enabled {
+        return Ok(KvConfig::default());
+    }
+
+    let mount: String = Input::with_theme(theme)
+        .with_prompt("Vault KV mount name")
+        .default("kv".to_owned())
+        .interact_text()
+        .prompt_err()?;
+    let ttl_check_interval_secs: u64 = Input::with_theme(theme)
+        .with_prompt("KV TTL-expiry sweep interval in seconds (0 disables the sweep)")
+        .default(30)
+        .interact_text()
+        .prompt_err()?;
+
+    Ok(KvConfig {
+        enabled,
+        mount,
+        ttl_check_interval_secs,
     })
 }
 

@@ -991,6 +991,63 @@ impl ObjectsStore for PgPool {
                         }
                         uids.push(uid.clone());
                     }
+                    AtomicOperation::CompareAndSwapObject {
+                        uid,
+                        expected_version,
+                        object,
+                        attributes,
+                        tags,
+                    } => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attrs_param = Json(attributes);
+                        let expected_version = i64::try_from(*expected_version)
+                            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+                        let wrapping_key_id = object.wrapping_key_uid();
+                        let stmt = tx
+                            .prepare_cached(get_pgsql_query!("update-object-if-owned-version"))
+                            .await
+                            .map_err(DbError::from)?;
+                        let destroyed_state = State::Destroyed.to_string();
+                        let destroyed_compromised_state = State::Destroyed_Compromised.to_string();
+                        let affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &object_json,
+                                    &attrs_param,
+                                    &wrapping_key_id,
+                                    &uid,
+                                    &user,
+                                    &expected_version,
+                                    &destroyed_state,
+                                    &destroyed_compromised_state,
+                                ],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        if affected == 0 {
+                            return Err(DbError::Conflict(uid.clone()));
+                        }
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare_cached(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare_cached(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
                     AtomicOperation::UpdateState((uid, state)) => {
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("update-object-with-state"))
@@ -1088,6 +1145,27 @@ impl ObjectsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(row.is_some())
+        })
+    }
+
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        pg_retry!(self.pool, |client| {
+            client
+                .execute(
+                    get_pgsql_query!("insert-parameter-if-absent"),
+                    &[&name, &value],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let row = client
+                .query_one(get_pgsql_query!("select-parameter"), &[&name])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(row.get::<usize, String>(0))
         })
     }
 

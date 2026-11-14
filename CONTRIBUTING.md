@@ -208,7 +208,7 @@ For React/TypeScript/WASM conventions, see
   (see `.github/actions/install-mise/action.yml`), or use a version pinned by a git submodule.
 
 Pre-commit hooks enforce the policy locally (`.pre-commit-config.yaml`): `cargo-vet`, `github-actions-sha-pin`,
-`docker-base-image-digest-pin`, `no-curl-pipe-shell`, `npm-policy` and `pnpm-frozen-lockfile` run on commit;
+`docker-base-image-digest-pin`, `no-curl-pipe-shell`, `no-committed-credentials`, `npm-policy` and `pnpm-frozen-lockfile` run on commit;
 `pip-audit-lockfiles`, `govulncheck` and `npm-audit` (which need `pip-audit`, `govulncheck` and Node.js installed, and
 network access) run on `pre-push`.
 

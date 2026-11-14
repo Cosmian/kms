@@ -29,6 +29,7 @@ print_header "CSI Provider E2E (Docker image)"
 k8s_require_tools
 
 REPO_ROOT="${MISE_CONFIG_ROOT}"
+BUSYBOX_IMAGE="$(compose_image busybox)"
 WORK=$(mktemp -d)
 CKMS_BIN=$(k8s_locate_bin ckms ckms)
 
@@ -207,7 +208,7 @@ metadata:
 spec:
   containers:
     - name: test
-      image: busybox:1.36
+      image: ${BUSYBOX_IMAGE}
       imagePullPolicy: IfNotPresent
       command: ["sleep", "600"]
       volumeMounts:

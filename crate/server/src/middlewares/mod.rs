@@ -43,13 +43,18 @@ pub(crate) use spire_token::{
 };
 
 mod session_auth;
-use actix_web::{dev::ServiceRequest, http::header};
-pub(crate) use session_auth::SessionAuth;
+use actix_web::{
+    dev::ServiceRequest,
+    http::{Method, header},
+};
+pub(crate) use session_auth::{SessionAuth, reject_forgeable_session_mutation};
 
 use crate::{
     error::KmsError,
     result::KResult,
-    routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER},
+    routes::{
+        aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER, ssh::SSH_RECORD_OWNER,
+    },
 };
 
 /// Extract a Bearer token from the `Authorization` header of a request.
@@ -76,6 +81,25 @@ pub(crate) fn extract_bearer_token(req: &ServiceRequest) -> KResult<&str> {
         ));
     }
     Ok(token)
+}
+
+/// CSRF guard for ambient cookies: a safe method, or a body whose Content-Type is not
+/// CORS-safelisted (`text/plain`, form types, or none at all), so that a cross-origin page,
+/// including one on a same-site sibling origin a `SameSite` cookie is still sent to, cannot
+/// forge it without a CORS preflight, which the allow-list CORS of the API scopes refuses.
+pub(crate) fn is_not_forgeable_cross_origin(req: &ServiceRequest) -> bool {
+    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
+        return true;
+    }
+    req.headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
+        .is_some_and(|essence| {
+            essence.eq_ignore_ascii_case("application/json")
+                || essence.eq_ignore_ascii_case("application/octet-stream")
+        })
 }
 
 /// Identifies which authentication method was used for a request.
@@ -119,7 +143,11 @@ pub(crate) struct AuthenticatedUser {
 
 /// Internal service identities that must stay unreachable through any externally-derived
 /// authentication path (OIDC/SVID/Auth Verifier JWT, mTLS CN, SPIRE token, UI session).
-const RESERVED_SERVICE_IDENTITIES: [&str; 2] = [AWS_XKS_SERVICE_USER, ENROLLMENT_SERVICE_USER];
+const RESERVED_SERVICE_IDENTITIES: [&str; 3] = [
+    AWS_XKS_SERVICE_USER,
+    ENROLLMENT_SERVICE_USER,
+    SSH_RECORD_OWNER,
+];
 
 /// Whether `name` would resolve to the `reserved` identity in the database: `MySQL` / `MariaDB`
 /// compare the `userid` / `owner` columns with their default `_ci` collation (case-insensitive),

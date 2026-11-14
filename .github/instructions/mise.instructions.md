@@ -288,6 +288,27 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 - Use `:=` to set-and-export defaults: `": ${REDIS_HOST:=127.0.0.1}"`.
 - Never `eval`; never construct commands via string concatenation.
 
+## Docker images in scripts
+
+Third-party images are defined only in the root `docker-compose.yml` (see `docker.instructions.md` § Third-party
+image catalog). In a task or script:
+
+- Look the image up with `compose_image <service>` and assign it to a variable **before** use:
+  `IMAGE="$(compose_image opensearch)"`, then `docker run … "${IMAGE}"` or `image: ${IMAGE}` in a heredoc. A
+  plain assignment stops the script under `set -e` if the lookup fails; `$(compose_image …)` inline in a
+  command argument or heredoc does not (the image would be empty). Look it up once, not inside a retry loop.
+- Keep an existing override variable by writing `X="${X:-$(compose_image svc)}"`.
+- Source `.mise/lib/common.sh` before the first `compose_image` call, and call it after the script's Docker
+  check. In a sourced library, resolve the image inside the function that needs it, not at load time.
+- A new image-only service goes in the `images` profile of the root `docker-compose.yml`; never hardcode a
+  `repo/name:tag` in `.mise/**` or `scripts/**`.
+- A compose file other than the root one (`.mise/scripts/docker-compose.yml`, `saml_sso/docker-compose.yml`)
+  takes images from variables, `image: ${LB_NGINX_IMAGE:?set by <driving script>}`, which the script that
+  drives it sets from `compose_image`.
+- Not covered by the rule, leave them as they are: the KMS's own images (`DOCKER_IMAGE_NAME`, `${IMAGE_REF}`,
+  `local/*:e2e`, `ghcr.io/cosmian/kms-fips:${image_version}`), images derived from a pinned version
+  (`rust:${RUST_VERSION}-bookworm`, `alpine:${ALPINE_TAG}`), Dockerfile `FROM` lines, and GitHub workflows.
+
 ## Naming conventions
 
 | Scope                        | Convention                         | Example                                   |

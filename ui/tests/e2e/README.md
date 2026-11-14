@@ -600,6 +600,18 @@ graph LR
     D --> E[Destroy]
 ```
 
+### kv-secrets-flow
+
+Requires `[kv] kv_enabled = true`; `test_ui.sh` and `test_ui.ps1` enable it.
+
+```mermaid
+graph LR
+    A[Put secret] --> B[Get<br/>reveal values]
+    B --> C[List<br/>folders]
+    C --> D[Soft delete]
+    D --> E[Destroy]
+```
+
 ### access-rights-flow
 
 ```mermaid

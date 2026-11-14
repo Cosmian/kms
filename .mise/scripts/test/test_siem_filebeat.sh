@@ -20,7 +20,7 @@
 # Requires:
 #   - Docker daemon running
 #   - Elasticsearch container running (docker compose up -d elasticsearch)
-#   - Filebeat image available: docker.elastic.co/beats/filebeat:8.17.0
+#   - Filebeat image available: the `filebeat` service image of the root docker-compose.yml
 #
 # Environment variables:
 #   ES_URL           Elasticsearch base URL (default: http://127.0.0.1:9200)
@@ -48,7 +48,7 @@ FILEBEAT_CONTAINER=""
 # Elasticsearch endpoint — can be overridden by env
 ES_URL="${ES_URL:-http://127.0.0.1:${KMS_SLOT_ES_PORT:-9200}}"
 ES_INDEX="${ES_INDEX:-kms-audit}"
-ELASTIC_VERSION="${ELASTIC_VERSION:-8.17.0}"
+FILEBEAT_IMAGE="${FILEBEAT_IMAGE:-$(compose_image filebeat)}"
 
 cleanup() {
   kms_stop
@@ -299,10 +299,10 @@ EOF
 
 # ── Run Filebeat container ────────────────────────────────────────────────────
 
-echo "==> Pulling Filebeat ${ELASTIC_VERSION} image..."
-docker pull "docker.elastic.co/beats/filebeat:${ELASTIC_VERSION}" 2>/dev/null
+echo "==> Pulling Filebeat image ${FILEBEAT_IMAGE}..."
+docker pull "${FILEBEAT_IMAGE}" 2>/dev/null
 
-echo "==> Running Filebeat ${ELASTIC_VERSION} container..."
+echo "==> Running Filebeat container ${FILEBEAT_IMAGE}..."
 # Detect host IP accessible from Docker
 # On Linux: use host networking (--network host)
 # On macOS: use host.docker.internal
@@ -324,7 +324,7 @@ docker run --rm --name "${FILEBEAT_CONTAINER}" \
   -v "${AUDIT_JSONL}:/audit/audit.jsonl:ro" \
   -v "${FB_CONFIG}:/usr/share/filebeat/filebeat.yml:ro" \
   --user root \
-  "docker.elastic.co/beats/filebeat:${ELASTIC_VERSION}" \
+  "${FILEBEAT_IMAGE}" \
   filebeat -e --strict.perms=false \
   2>/dev/null &
 

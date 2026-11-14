@@ -15,6 +15,7 @@ pub mod fpe;
 pub mod google;
 pub mod hash;
 pub mod kms_actions;
+pub mod kv;
 pub(crate) mod labels;
 pub mod login;
 pub mod mac;

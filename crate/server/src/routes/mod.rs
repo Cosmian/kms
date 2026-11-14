@@ -31,11 +31,13 @@ pub mod health;
 pub(crate) mod jose;
 pub(crate) mod jwks;
 pub mod kmip;
+pub(crate) mod kv;
 pub mod ms_dke;
 pub(crate) mod ocsp;
 pub mod root_redirect;
 pub(crate) mod scep;
 pub(crate) mod spire;
+pub(crate) mod ssh;
 pub mod swagger;
 #[cfg(feature = "non-fips")]
 pub(crate) mod tokenize;
@@ -267,5 +269,57 @@ pub(crate) async fn cli_archive_exists() -> HttpResponse {
     }
 }
 
+/// Parse a positive duration into seconds: bare seconds (`"90"`) or a number followed by
+/// `s`, `m`, `h` or `d` (`"30s"`, `"5m"`, `"1h"`, `"2d"`). Surrounding whitespace is ignored.
+///
+/// Zero, signed, overflowing or otherwise malformed durations return `None`.
+pub(crate) fn parse_duration_secs(raw: &str) -> Option<u64> {
+    let value = raw.trim();
+    let (number, multiplier) = [('s', 1), ('m', 60), ('h', 3_600), ('d', 86_400)]
+        .into_iter()
+        .find_map(|(unit, multiplier)| Some((value.strip_suffix(unit)?, multiplier)))
+        .unwrap_or((value, 1));
+    // `u64::from_str` accepts a leading `+`: only plain digits are a duration.
+    if !number.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    number
+        .parse::<u64>()
+        .ok()?
+        .checked_mul(multiplier)
+        .filter(|secs| *secs > 0)
+}
+
 #[cfg(test)]
 mod lint_cleanup_characterization_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::parse_duration_secs;
+
+    #[test]
+    fn duration_grammar() {
+        for (input, expected) in [
+            ("30", Some(30)),
+            (" 30s ", Some(30)),
+            ("5m", Some(300)),
+            ("1h", Some(3_600)),
+            ("2d", Some(172_800)),
+            ("0", None),
+            ("0s", None),
+            ("-1", None),
+            ("-5m", None),
+            ("+5", None),
+            ("", None),
+            ("s", None),
+            ("5w", None),
+            ("1.5h", None),
+            ("1é", None),
+            ("é", None),
+            ("18446744073709551615m", None),
+            ("99999999999999999999999", None),
+        ] {
+            assert_eq!(parse_duration_secs(input), expected, "{input:?}");
+        }
+    }
+}

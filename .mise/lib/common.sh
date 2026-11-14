@@ -221,6 +221,21 @@ docker_ready() {
   has_cmd docker && docker info >/dev/null 2>&1
 }
 
+# Prints the image reference of a service of the root docker-compose.yml, the single source of
+# truth for test images (incl. the `images` profile catalog). Exits when it cannot be resolved.
+# Usage: compose_image <service>
+compose_image() {
+  local root image
+  # Anchored to this library (not the caller's cwd, which may be a temp dir or the test_data submodule).
+  root="${MISE_CONFIG_ROOT:-$(get_repo_root "$(dirname "${BASH_SOURCE[0]}")")}"
+  image="$(docker compose -f "${root}/docker-compose.yml" --profile '*' config --format json |
+    jq -r --arg s "$1" '.services[$s].image // empty')"
+  [ -n "${image}" ] || print_error "no image for service '$1' in ${root}/docker-compose.yml"
+  printf '%s\n' "${image}"
+}
+# Call as `VAR="$(compose_image svc)"` (a plain assignment) so that a failure stops the caller under `set -e`;
+# inside command arguments or heredocs the failure would be ignored and leave an empty image.
+
 get_repo_root() {
   local hint="${1:-$(pwd)}"
   if command -v git >/dev/null 2>&1; then

@@ -32,7 +32,7 @@ KMIPKIT_URL="https://github.com/NeverWe1come/KMIPKit.git"
 # head of PR #56 (feature/KMIPKIT-0015-cosmian-kms-integration)
 KMIPKIT_SHA="21fa97fc712aa5922d2bba12fa596f9dfd5be2e0"
 # same image as KMIPKit compose test-pki
-PKI_IMAGE="alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412"
+PKI_IMAGE="$(compose_image alpine-pki)"
 # hardcoded in KMIPKit's client()
 KMIP_PORT=5696
 

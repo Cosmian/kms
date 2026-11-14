@@ -25,6 +25,9 @@ jobs:
           - {leaf: mariadb, variant: non-fips}
           - {leaf: percona, variant: fips}
           - {leaf: percona, variant: non-fips}
+          # the OpenBao KV scenario replayed on PostgreSQL and MySQL
+          - {leaf: openbao, variant: fips}
+          - {leaf: openbao, variant: non-fips}
           # redis (Findex) is non-FIPS only
           - {leaf: redis, variant: non-fips}
     uses: ./.github/workflows/test-group.yml

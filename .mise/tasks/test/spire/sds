@@ -59,9 +59,10 @@ trap cleanup EXIT
 # ── Prerequisite check ─────────────────────────────────────────────────────────
 print_header "Prerequisite: Docker + Envoy image"
 require_cmd docker
-if ! docker image inspect envoyproxy/envoy:v1.32-latest >/dev/null 2>&1; then
-  print_status "Pulling envoyproxy/envoy:v1.32-latest..."
-  docker pull envoyproxy/envoy:v1.32-latest
+ENVOY_IMAGE="$(compose_image envoy-sds-upstream)"
+if ! docker image inspect "${ENVOY_IMAGE}" >/dev/null 2>&1; then
+  print_status "Pulling ${ENVOY_IMAGE}..."
+  docker pull "${ENVOY_IMAGE}"
 fi
 print_success "Docker and Envoy image available."
 

@@ -21,9 +21,10 @@ use cosmian_logger::debug;
 use redis::{AsyncCommands, Script, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
-    DbError, db_bail, error::DbResult, migrate_block_cipher_mode_if_needed,
+    DbError, db_bail, db_error, error::DbResult, migrate_block_cipher_mode_if_needed,
     stores::redis::findex::Keyword,
 };
 
@@ -164,7 +165,8 @@ impl ObjectsDB {
         format!("do::{uid}")
     }
 
-    fn encrypt_object(&self, uid: &str, redis_db_object: &RedisDbObject) -> DbResult<Vec<u8>> {
+    /// AES-256-GCM under the database key: `nonce || ciphertext || tag`, bound to `aad`.
+    fn seal(&self, aad: &[u8], plaintext: &[u8]) -> DbResult<Vec<u8>> {
         let nonce = {
             let mut nonce_bytes = [0_u8; Aes256Gcm::NONCE_LENGTH];
             KmsRng::new()
@@ -172,38 +174,77 @@ impl ObjectsDB {
                 .map_err(|e| DbError::CryptographicError(format!("RNG failure: {e}")))?;
             Nonce::from(nonce_bytes)
         };
-        let plaintext = serde_json::to_vec(redis_db_object)?;
-        let ct: Vec<u8> = self.dem.encrypt(&nonce, &plaintext, Some(uid.as_bytes()))?;
+        let ct: Vec<u8> = self.dem.encrypt(&nonce, plaintext, Some(aad))?;
         let mut ciphertext = Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + ct.len());
         ciphertext.extend_from_slice(nonce.as_bytes());
         ciphertext.extend(ct);
         Ok(ciphertext)
     }
 
-    pub(crate) fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> DbResult<RedisDbObject> {
-        if ciphertext.len() <= Aes256Gcm::NONCE_LENGTH {
+    /// Inverse of [`Self::seal`].
+    fn open(&self, aad: &[u8], ciphertext: &[u8]) -> DbResult<Zeroizing<Vec<u8>>> {
+        let Some((nonce_bytes, ct)) = ciphertext
+            .split_at_checked(Aes256Gcm::NONCE_LENGTH)
+            .filter(|(_, ct)| !ct.is_empty())
+        else {
             return Err(DbError::CryptographicError("invalid ciphertext".to_owned()));
-        }
-        let nonce_bytes = &ciphertext.get(..Aes256Gcm::NONCE_LENGTH).ok_or_else(|| {
-            DbError::ServerError("decrypt_object: indexing slicing failed for nonce".to_owned())
-        })?;
+        };
+        Ok(Zeroizing::new(self.dem.decrypt(
+            &Nonce::try_from(nonce_bytes)?,
+            ct,
+            Some(aad),
+        )?))
+    }
+
+    fn encrypt_object(&self, uid: &str, redis_db_object: &RedisDbObject) -> DbResult<Vec<u8>> {
+        let plaintext = Zeroizing::new(serde_json::to_vec(redis_db_object)?);
+        self.seal(uid.as_bytes(), &plaintext)
+    }
+
+    pub(crate) fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> DbResult<RedisDbObject> {
         let plaintext = self
-            .dem
-            .decrypt(
-                &Nonce::try_from(*nonce_bytes)?,
-                ciphertext.get(Aes256Gcm::NONCE_LENGTH..).ok_or_else(|| {
-                    DbError::CryptographicError(
-                        "decrypt_object: indexing slicing failed for plaintext".to_owned(),
-                    )
-                })?,
-                Some(uid.as_bytes()),
-            )
+            .open(uid.as_bytes(), ciphertext)
             .with_context(|| format!("decrypt_object uid: {uid}"))?;
         // Mutability below is needed to Migrate legacy BlockCipherMode in-place - otherwise we should destructure and that's very verbose.
         let mut redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)
             .with_context(|| format!("decrypt_object uid: {uid}"))?;
         redis_db_object.object = migrate_block_cipher_mode_if_needed(redis_db_object.object);
         Ok(redis_db_object)
+    }
+
+    /// Redis key of the encrypted server parameter `name`.
+    pub(crate) fn parameter_key(name: &str) -> String {
+        format!("kms::parameter::{name}")
+    }
+
+    /// Return the server parameter `name`, storing `value` first if it is absent.
+    ///
+    /// The value is stored sealed under the database key, bound to `name`, with `SET NX`: the
+    /// first stored value wins across concurrent callers and replicas, and every caller returns
+    /// the winner.
+    pub(crate) async fn get_or_insert_parameter(
+        &self,
+        name: &str,
+        value: &str,
+    ) -> DbResult<String> {
+        let key = Self::parameter_key(name);
+        let aad = format!("\0kms-parameter\0{name}");
+        let mut mgr = self.mgr.clone();
+        let mut stored: Option<Vec<u8>> = mgr.get(&key).await?;
+        if stored.is_none() {
+            let candidate = self.seal(aad.as_bytes(), value.as_bytes())?;
+            mgr.set_nx::<_, _, bool>(&key, candidate).await?;
+            stored = mgr.get(&key).await?;
+        }
+        let sealed = stored
+            .ok_or_else(|| db_error!("server parameter {name} vanished right after insertion"))?;
+        let plaintext = self
+            .open(aad.as_bytes(), &sealed)
+            .with_context(|| format!("server parameter {name}"))?;
+        String::from_utf8(plaintext.to_vec()).map_err(|e| {
+            e.into_bytes().zeroize();
+            db_error!("server parameter {name} is not UTF-8")
+        })
     }
 
     /// Unconditionally write an object. Test-only (seeds legacy objects): production

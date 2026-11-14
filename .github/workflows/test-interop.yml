@@ -26,7 +26,13 @@ jobs:
           - {leaf: kmip-go, variant: fips}
           - {leaf: kmip-go, variant: non-fips}
           - {leaf: kmipkit, variant: non-fips}
+          - {leaf: openbao, variant: fips}
+          - {leaf: openbao, variant: non-fips}
+          - {leaf: openbao-kmip, variant: fips}
+          - {leaf: openbao-kmip, variant: non-fips}
           - {leaf: pykmip, variant: non-fips}
+          - {leaf: ssh-secrets, variant: fips}
+          - {leaf: ssh-secrets, variant: non-fips}
     uses: ./.github/workflows/test-group.yml
     with:
       suite: interop:${{ matrix.leaf }}

@@ -163,6 +163,9 @@ mise test:obs --suite filebeat      # Filebeat → Elasticsearch
 | `test:interop:iris` | non-fips | IRIS mTLS integration |
 | `test:spire` | non-fips | SPIRE + Mistral client full integration |
 | `test:spire:pki` | non-fips | KMS PKI capability validation |
+| `test:interop:openbao` | fips | OpenBao `bao kv` CLI against the KMS KV v2-compatible store |
+| `test:interop:ssh-secrets` | fips | KMS-issued SSH certificates accepted then refused by a real `sshd`, then database password rotation (PostgreSQL and MySQL) published to the KV store with recovery |
+| `test:db:openbao` | fips | The OpenBao KV scenario replayed on PostgreSQL and MySQL (`--db psql\|mysql` for one) |
 
 ### PKCS#11 & disk encryption
 

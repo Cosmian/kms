@@ -11,6 +11,12 @@ source "${SCRIPT_DIR}/../common.sh"
 ROOT_DIR="$(get_repo_root "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 
+# Third-party images of the compose file come from the root docker-compose.yml.
+LB_POSTGRES_IMAGE="$(compose_image postgres)"
+LB_NGINX_IMAGE="$(compose_image nginx)"
+ORACLE_IMAGE="$(compose_image oracle)"
+export LB_POSTGRES_IMAGE LB_NGINX_IMAGE ORACLE_IMAGE
+
 LB_PORT="${KMS_SLOT_LB_PORT}"
 
 log() {

@@ -30,6 +30,7 @@ use crate::{
         elliptic_curves::EllipticCurveCommands,
         google::GoogleCommands,
         hash::HashAction,
+        kv::KvCommands,
         login::{LoginAction, LoginCredential},
         mac::MacCommands,
         opaque_object::OpaqueObjectCommands,
@@ -130,6 +131,9 @@ pub enum KmsActions {
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
     Google(GoogleCommands),
+    /// Read and write secrets in the Vault KV v2-compatible store.
+    #[command(subcommand)]
+    Kv(KvCommands),
     Locate(LocateObjectsAction),
     Login(LoginAction),
     /// Logout from the Identity Provider.
@@ -198,6 +202,7 @@ impl KmsActions {
             }
             Self::Ec(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Google(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Kv(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Locate(action) => {
                 Box::pin(action.run(kms_rest_client)).await?;
             }
