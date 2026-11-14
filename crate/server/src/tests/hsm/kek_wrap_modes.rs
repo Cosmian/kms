@@ -27,7 +27,10 @@ use crate::{
     middlewares::UserId,
     result::KResult,
     tests::{
-        hsm::{create_kek, create_sym_key, export_object, hsm_clap_config},
+        hsm::{
+            create_kek, create_sym_key, export_object, hsm_clap_config,
+            test_helpers::hsm_cannot_generate_gcm_iv,
+        },
         test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
 };
@@ -47,6 +50,9 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
     create_sym_key(&dek_uid, &owner, &kms).await?;
     let dek_bytes = key_bytes(&export_object(&kms, &owner, &dek_uid).await?)?;
 
+    // A FIPS build cannot seal AES-GCM in a token that generates no IV: that mode is then
+    // refused (checked below) instead of being part of the round trips.
+    let no_gcm = hsm_cannot_generate_gcm_iv();
     let mut gcm_export = None;
     for (requested, expected) in [
         (None, BlockCipherMode::GCM),
@@ -59,7 +65,10 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
             BlockCipherMode::AESKeyWrapPadding,
         ),
         (Some(BlockCipherMode::GCM), BlockCipherMode::GCM),
-    ] {
+    ]
+    .into_iter()
+    .filter(|(_, expected)| !(no_gcm && *expected == BlockCipherMode::GCM))
+    {
         let wrapped = export_wrapped(&kms, &owner, &dek_uid, &kek_uid, requested).await?;
         let params = wrapping_params(&wrapped)?;
         assert_eq!(params.block_cipher_mode, Some(expected), "{requested:?}");
@@ -88,40 +97,54 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
         }
     }
 
-    // Objects wrapped before HSM wrapping honoured the requested mode claim AES-KWP but
-    // hold AES-GCM bytes: unwrapping falls back to the HSM default.
-    let mut legacy = gcm_export.ok_or_else(|| KmsError::Default("no GCM export".to_owned()))?;
-    if let Some(eki) = legacy
-        .key_block_mut()?
-        .key_wrapping_data
-        .as_mut()
-        .and_then(|kwd| kwd.encryption_key_information.as_mut())
-    {
-        eki.cryptographic_parameters = Some(CryptographicParameters {
-            block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
-            ..Default::default()
-        });
+    if no_gcm {
+        let error = export_wrapped(&kms, &owner, &dek_uid, &kek_uid, Some(BlockCipherMode::GCM))
+            .await
+            .expect_err("AES-GCM without a token-generated IV must be refused in FIPS");
+        assert!(
+            error
+                .to_string()
+                .contains("needs an IV generated inside the HSM"),
+            "{error}"
+        );
+    } else {
+        // Objects wrapped before HSM wrapping honoured the requested mode claim AES-KWP but
+        // hold AES-GCM bytes: unwrapping falls back to the HSM default.
+        let mut legacy = gcm_export.ok_or_else(|| KmsError::Default("no GCM export".to_owned()))?;
+        if let Some(eki) = legacy
+            .key_block_mut()?
+            .key_wrapping_data
+            .as_mut()
+            .and_then(|kwd| kwd.encryption_key_information.as_mut())
+        {
+            eki.cryptographic_parameters = Some(CryptographicParameters {
+                block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
+                ..Default::default()
+            });
+        }
+        assert_eq!(import_unwrapped(&kms, &owner, legacy).await?, dek_bytes);
     }
-    assert_eq!(import_unwrapped(&kms, &owner, legacy).await?, dek_bytes);
     drop(kms);
 
-    // At rest, the server KEK records the HSM default it actually used.
-    let kek_uuid = Uuid::new_v4();
-    let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
-    clap_config.db.sqlite_path = get_tmp_sqlite_path();
-    let server_kek = as_hsm_uid!(slot, kek_uuid);
-    let kms = test_kms_with_config(clap_config).await?;
-    create_kek(&server_kek, &owner, &kms).await?;
-    let key_uid = Uuid::new_v4().to_string();
-    create_sym_key(&key_uid, &owner, &kms).await?;
-    let stored = stored_object(&kms, &key_uid).await?;
-    let params = wrapping_params(&stored)?;
-    assert_eq!(
-        params.cryptographic_algorithm,
-        Some(CryptographicAlgorithm::AES)
-    );
-    assert_eq!(params.block_cipher_mode, Some(BlockCipherMode::GCM));
-    drop(kms);
+    if !no_gcm {
+        // At rest, the server KEK records the HSM default it actually used.
+        let kek_uuid = Uuid::new_v4();
+        let mut clap_config = hsm_clap_config(&owner, Some(kek_uuid))?;
+        clap_config.db.sqlite_path = get_tmp_sqlite_path();
+        let server_kek = as_hsm_uid!(slot, kek_uuid);
+        let kms = test_kms_with_config(clap_config).await?;
+        create_kek(&server_kek, &owner, &kms).await?;
+        let key_uid = Uuid::new_v4().to_string();
+        create_sym_key(&key_uid, &owner, &kms).await?;
+        let stored = stored_object(&kms, &key_uid).await?;
+        let params = wrapping_params(&stored)?;
+        assert_eq!(
+            params.cryptographic_algorithm,
+            Some(CryptographicAlgorithm::AES)
+        );
+        assert_eq!(params.block_cipher_mode, Some(BlockCipherMode::GCM));
+        drop(kms);
+    }
 
     // At rest with an operator-selected AES-KWP: the stored bytes are RFC 5649 under the KEK.
     // The KEK, created by this KMS version, already carries CKA_WRAP/CKA_UNWRAP.

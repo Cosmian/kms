@@ -550,10 +550,20 @@ mod fips_tests {
             assert!(error.contains("`default` provider is active"), "{error}");
             return;
         }
+        // The FIPS module's install status lives next to the configuration in use (the Nix
+        // OpenSSL has no `/usr/local/cosmian/lib/ssl`); the compiled-in OPENSSLDIR is the
+        // fallback when no `OPENSSL_CONF` is set.
         let (_, version_dir, _) = safe_openssl_version_info();
-        let ssl_dir = version_dir
+        let compiled_in = version_dir
             .trim_start_matches("OPENSSLDIR: \"")
             .trim_end_matches('"');
+        let ssl_dir = std::env::var_os("OPENSSL_CONF")
+            .and_then(|conf| {
+                std::path::Path::new(&conf)
+                    .parent()
+                    .map(|dir| dir.display().to_string())
+            })
+            .unwrap_or_else(|| compiled_in.to_owned());
         let conf = format!(
             "openssl_conf = openssl_init\n.include {ssl_dir}/fipsmodule.cnf\n[openssl_init]\n\
              providers = provider_sect\n[provider_sect]\nfips = fips_sect\nbase = base_sect\n\

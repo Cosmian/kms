@@ -39,7 +39,9 @@ use crate::{
     middlewares::UserId,
     result::KResult,
     tests::{
-        hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id},
+        hsm::test_helpers::{
+            get_hsm_model, get_hsm_password, get_hsm_slot_id, hsm_cannot_generate_gcm_iv,
+        },
         test_utils::https_clap_config,
     },
 };
@@ -214,6 +216,11 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
 
     if let Some(kek_id) = kek_id {
         clap_config.key_encryption_key = Some(as_hsm_uid!(clap_config.hsm.hsm_slot[0], kek_id));
+        if hsm_cannot_generate_gcm_iv() {
+            // The default KEK wrapping is AES-GCM, which this HSM cannot seal in a FIPS build.
+            clap_config.key_encryption_key_wrapping_algorithm =
+                Some("aes-key-wrap-padding".to_owned());
+        }
     }
 
     Ok(clap_config)
