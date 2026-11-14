@@ -1510,3 +1510,124 @@ fn find_profile_count(
     assert_eq!(C_FindObjectsFinal(session), CKR_OK);
     Ok(count)
 }
+
+/// Import an AES key of known value, with the MAC Generate / MAC Verify usage bits; returns its UID.
+fn import_mac_kat_key(key: &[u8]) -> Pkcs11Result<String> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+
+    // Never inside a backend call: the backend blocks on its own runtime.
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let client = KmsClient::new_with_config(ctx.owner_client_config.clone())?;
+        let object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            key,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_usage_mask: Some(
+                    CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify,
+                ),
+                ..Default::default()
+            },
+        )?;
+        let request = import_object_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            object,
+            None,
+            false,
+            false,
+            ["pkcs11-kat-mac"],
+        )?;
+        Ok(client.import(request).await?.unique_identifier.to_string())
+    })
+}
+
+/// Official AES-CMAC (SP 800-38B) and AES-GMAC (IEEE 802.1AE) vectors through the provider and the
+/// KMS: known keys, known tags, tampering rejected.
+#[test]
+#[serial]
+fn test_aes_mac_known_answers_against_the_kms() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::kat_vectors::{
+        aes_cmac_vectors, aes_gmac_vectors,
+    };
+
+    let to_error = |e: &dyn std::fmt::Display| Pkcs11Error::Default(e.to_string());
+    let backend = initialize_backend()?;
+    let cmac = aes_cmac_vectors().map_err(|e| to_error(&e))?;
+    for id in [
+        "sp800-38b-aes128-ex2",
+        "sp800-38b-aes192-ex2",
+        "sp800-38b-aes256-ex2",
+    ] {
+        let v = cmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let uid = import_mac_kat_key(&v.key)?;
+        assert_eq!(
+            backend.mac(&uid, MacAlgorithm::AesCmac, &v.msg)?,
+            v.tag,
+            "{id}"
+        );
+        backend.mac_verify(&uid, MacAlgorithm::AesCmac, &v.msg, &v.tag)?;
+        let mut flipped = v.tag.clone();
+        flipped[0] ^= 0xFF;
+        assert!(
+            matches!(
+                backend.mac_verify(&uid, MacAlgorithm::AesCmac, &v.msg, &flipped),
+                Err(ModuleError::SignatureInvalid)
+            ),
+            "{id}"
+        );
+    }
+
+    let gmac = aes_gmac_vectors().map_err(|e| to_error(&e))?;
+    for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+        let v = gmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let algorithm = MacAlgorithm::AesGmac {
+            iv: v.iv[..].try_into().map_err(|e| to_error(&e))?,
+        };
+        let uid = import_mac_kat_key(&v.key)?;
+        backend.mac_verify(&uid, algorithm, &v.msg, &v.tag)?;
+        let mut flipped = v.tag.clone();
+        flipped[0] ^= 0xFF;
+        assert!(
+            matches!(
+                backend.mac_verify(&uid, algorithm, &v.msg, &flipped),
+                Err(ModuleError::SignatureInvalid)
+            ),
+            "{id}"
+        );
+    }
+    Ok(())
+}
+
+/// AES-GMAC generation with the caller's IV against the IEEE 802.1AE vectors.
+#[test]
+#[serial]
+fn test_aes_gmac_known_answer_with_caller_iv() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::kat_vectors::aes_gmac_vectors;
+
+    let backend = initialize_backend()?;
+    let gmac = aes_gmac_vectors().map_err(|e| Pkcs11Error::Default(e.to_string()))?;
+    for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+        let v = gmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let iv = v.iv[..]
+            .try_into()
+            .map_err(|e: std::array::TryFromSliceError| Pkcs11Error::Default(e.to_string()))?;
+        let uid = import_mac_kat_key(&v.key)?;
+        assert_eq!(
+            backend.mac(&uid, MacAlgorithm::AesGmac { iv }, &v.msg)?,
+            v.tag,
+            "{id}"
+        );
+    }
+    Ok(())
+}
