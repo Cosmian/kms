@@ -198,8 +198,15 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
             a @ (CryptoAlgorithm::AesKeyWrap
             | CryptoAlgorithm::AesKeyWrapPad
             | CryptoAlgorithm::AesGcm),
-        ) => a,
-        // A KEK that does not exist yet keeps failing on first use, as before this check.
+        ) => {
+            // A KEK that does not exist yet (the bootstrap flow creates it after startup) keeps
+            // failing on first use, as before this check.
+            if oracle.get_key_type(kek).await.is_err() {
+                return Ok(());
+            }
+            a
+        }
+        // Same for the default algorithm.
         None if matches!(oracle.get_key_type(kek).await, Ok(Some(KeyType::AesKey))) => {
             CryptoAlgorithm::AesGcm
         }

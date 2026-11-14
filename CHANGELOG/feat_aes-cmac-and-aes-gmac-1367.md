@@ -26,14 +26,18 @@
 - Refuse to start the FIPS server when the non-validated `default` OpenSSL provider is active (for example through `OPENSSL_CONF`), and set the `fips=yes` default property so that no algorithm is fetched outside the FIPS module
 - Refuse, in a FIPS build, to generate an HMAC with a key under 112 bits (NIST SP 800-131A r2) and a PBKDF2 `DeriveKey` with a salt under 16 bytes, fewer than 1,000 iterations or a derived key under 14 bytes (NIST SP 800-132); verifying with a legacy HMAC key stays possible
 - Compute the SHA-1 key identifiers of certificates and CRLs, the AWS XKS integrity hash and the JOSE CEK cache key through the OpenSSL EVP interface (the FIPS provider in a FIPS build), and derive and seal the Crypto Officer ceremony records with OpenSSL (SHAKE-256 and AES-256-GCM with a provider-generated IV). Stored ceremony records and Redis key names stay readable
+- Refuse `CreateKeyPair` for Ed25519 and Ed448 in a FIPS build: the OpenSSL FIPS provider has no EdDSA
+- Fix `Import` of an Ed25519 PKCS#8 key in a FIPS build closing the TLS connection of an in-flight request: the OpenSSL decoder left its failed provider attempts on the thread's error queue and the next `SSL_read` failed on them. The queue is now drained after the parse
 
 ### HSM
 - Remove `allows_caller_iv_in_fips`: a FIPS build never sends an AES-GCM IV to an HSM, `SoftHSM2` and Kryoptic included, and refuses RSA PKCS#1 v1.5 and SHA-1 OAEP encryption on an HSM key
+- Default HSM key wrapping probe tolerates a key encryption key that does not exist yet (the bootstrap flow creates it after startup)
 
 ### CLI
 - Remove AES-XTS from the data and key encryption algorithms of a FIPS build of `ckms`, where the server does not support it
 - `ckms pkcs11 capabilities` skips the caller-IV `CKM_AES_GCM` and `CKM_AES_GMAC` checks in a FIPS build; `C_EncryptMessage` still covers AES-GCM
 - `ckms symmetric encrypt` with a client-side key encryption key generates the AES-GCM IV inside the OpenSSL provider and writes it ahead of the ciphertext (file format unchanged); a FIPS build refuses `--nonce` for AES-GCM
+- `ckms bench` in a FIPS build skips the HSM AES-GCM and RSA PKCS#1 v1.5 encrypt operations that the FIPS server refuses; `bench:hsm --variant fips` starts the `SoftHSM2` and Kryoptic KEK server with `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"`
 
 ### UI
 - Hide the nonce field of AES-GCM encryption when the server runs in FIPS mode

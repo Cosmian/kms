@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{cosmian_kms_crypto::crypto::{
 use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
     cover_crypt::master_keys::create_master_keypair
 }};
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::{KmsRng, is_fips_build};
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
@@ -205,6 +205,27 @@ pub(crate) async fn create_key_pair(
     })
 }
 
+/// The `OpenSSL` FIPS provider is the only provider a FIPS build uses, and it has no `EdDSA`: refuse
+/// the request with a clear reason instead of an `OpenSSL` "unsupported" error.
+fn reject_eddsa_key_pair(algorithm: CryptographicAlgorithm) -> KResult<()> {
+    if is_fips_build()
+        && matches!(
+            algorithm,
+            CryptographicAlgorithm::Ed25519 | CryptographicAlgorithm::Ed448
+        )
+    {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!(
+                "CreateKeyPair: {algorithm:?} is not available in a FIPS build (the OpenSSL FIPS \
+                 provider has no EdDSA); a FIPS build can only create RSA and elliptic-curve \
+                 (EC/ECDSA/ECDH) key pairs"
+            )
+        ))
+    }
+    Ok(())
+}
+
 /// Resolve an attribute that must hold the same value on the private and the public key.
 ///
 /// KMIP 2.1 §6.1.9: Private/Public Key Attributes take precedence over Common Attributes,
@@ -306,6 +327,7 @@ pub(super) fn generate_key_pair(
         ))
     };
     trace!("cryptographic_algorithm: {cryptographic_algorithm}");
+    reject_eddsa_key_pair(cryptographic_algorithm)?;
 
     // Generate the key pair based on the cryptographic algorithm.
     let key_pair = match cryptographic_algorithm {
@@ -622,15 +644,20 @@ pub(super) fn generate_key_pair(
 
 #[cfg(test)]
 mod tests {
-    use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_types::{CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve},
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::ErrorReason,
+            kmip_2_1::{
+                kmip_attributes::Attributes,
+                kmip_types::{
+                    CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve,
+                },
+            },
         },
+        cosmian_kms_crypto::crypto::is_fips_build,
     };
 
-    use super::resolve_shared_attribute;
+    use super::{reject_eddsa_key_pair, resolve_shared_attribute};
     use crate::error::KmsError;
 
     fn curve(recommended_curve: RecommendedCurve) -> Attributes {
@@ -698,6 +725,20 @@ mod tests {
         assert!(matches!(
             err,
             Some(KmsError::Kmip21Error(ErrorReason::Invalid_Attribute, _))
+        ));
+    }
+
+    #[test]
+    fn eddsa_key_pair_is_refused_only_in_a_fips_build() {
+        for algorithm in [
+            CryptographicAlgorithm::Ed25519,
+            CryptographicAlgorithm::Ed448,
+        ] {
+            assert_eq!(reject_eddsa_key_pair(algorithm).is_err(), is_fips_build());
+        }
+        assert!(matches!(
+            reject_eddsa_key_pair(CryptographicAlgorithm::ECDSA),
+            Ok(())
         ));
     }
 }

@@ -405,12 +405,12 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     clap_config_kek.key_encryption_key = Some(kek_id.to_string());
     let kms = test_kms_with_config(clap_config_kek).await?;
 
-    // Create an Ed25519 keypair with UsageLimits on the private key
+    // Create an EC P-256 keypair with UsageLimits on the private key
     let mut create_request = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
         None,
         EMPTY_TAGS,
-        RecommendedCurve::CURVEED25519,
+        RecommendedCurve::P256,
         false,
         None,
     )
@@ -442,10 +442,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
         .sign(
             Sign {
                 unique_identifier: Some(private_key_id.clone()),
-                cryptographic_parameters: Some(CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
-                    ..Default::default()
-                }),
+                cryptographic_parameters: None,
                 data: Some(Zeroizing::new(
                     b"Regression test: KEK wrapping must survive sign".to_vec(),
                 )),

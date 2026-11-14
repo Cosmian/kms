@@ -118,6 +118,11 @@ pub struct TestManifest {
     /// If non-empty and `HSM_MODEL` is set to a model not in this list, the vector is skipped.
     #[serde(default)]
     pub requires_hsm_models: Vec<String>,
+    /// HSM models that cannot run this vector in a FIPS build: it encrypts with AES-GCM and the
+    /// model does not generate the IV inside the HSM (FIPS 140-3 IG C.H), so the server refuses.
+    /// Ignored in a non-FIPS build.
+    #[serde(default)]
+    pub fips_excluded_hsm_models: Vec<String>,
     /// Database backends this vector should be tested against.
     ///
     /// Defaults to `["sqlite"]`. When `KMS_TEST_BACKENDS` env var is set
@@ -1117,6 +1122,19 @@ async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContex
     .await
 }
 
+/// The active HSM model if a FIPS build must skip a vector for it (`fips_excluded_hsm_models`).
+#[cfg(not(feature = "non-fips"))]
+fn fips_excluded_hsm_model(excluded: &[String]) -> Option<String> {
+    let active_model = std::env::var("HSM_MODEL").unwrap_or_else(|_| "softhsm2".to_owned());
+    excluded.contains(&active_model).then_some(active_model)
+}
+
+/// A non-FIPS build never skips a vector for its HSM model.
+#[cfg(feature = "non-fips")]
+const fn fips_excluded_hsm_model(_excluded: &[String]) -> Option<String> {
+    None
+}
+
 /// Run a test vector from a directory containing `manifest.toml` and step JSON files.
 ///
 /// This is the main entry point for vector-based regression tests. It:
@@ -1171,6 +1189,13 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
             );
             return Ok(());
         }
+    }
+    if let Some(active_model) = fips_excluded_hsm_model(&manifest.fips_excluded_hsm_models) {
+        eprintln!(
+            "SKIP vector '{}': HSM model '{active_model}' does not generate AES-GCM IVs, which a FIPS build requires",
+            manifest.name
+        );
+        return Ok(());
     }
     // If server_type is set, use a dedicated server instead of the backend-driven ones
     if let Some(server_type) = &manifest.server_type {
@@ -3071,16 +3096,32 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/kat/symmetric/aes256_cbc").await
     }
 
+    // The GCM KATs encrypt with a caller-chosen IV, which a FIPS build refuses (NIST SP 800-38D 9.1,
+    // FIPS 140-3 IG C.H): they run in non-FIPS builds; the `*_decrypt` vectors cover FIPS.
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_sym_aes128_gcm() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/symmetric/aes128_gcm").await
     }
 
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_sym_aes256_gcm() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/symmetric/aes256_gcm").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_sym_aes128_gcm_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/symmetric/aes128_gcm_decrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_sym_aes256_gcm_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/symmetric/aes256_gcm_decrypt").await
     }
 
     #[cfg(feature = "non-fips")]
@@ -3119,10 +3160,19 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/kat/derive_key/hkdf_sha256").await
     }
 
+    // The 4-byte-salt PBKDF2 KATs are below the 128-bit salt minimum of NIST SP 800-132 5.1, which a
+    // FIPS build enforces: they run in non-FIPS builds; the `*_salt16` vectors cover FIPS.
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_derive_key_pbkdf2_sha256() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/derive_key/pbkdf2_sha256").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_derive_key_pbkdf2_sha256_salt16() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/derive_key/pbkdf2_sha256_salt16").await
     }
 
     // ── KAT vectors: MAC (new) ────────────────────────────────────────────
@@ -3147,10 +3197,17 @@ ObjectType = "SymmetricKey"
 
     // ── KAT vectors: symmetric (new) ─────────────────────────────────────
 
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_sym_aes192_gcm() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/symmetric/aes192_gcm").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_sym_aes192_gcm_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/symmetric/aes192_gcm_decrypt").await
     }
 
     #[tokio::test]
@@ -3203,20 +3260,36 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/kat/derive_key/hkdf_sha512").await
     }
 
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_derive_key_pbkdf2_sha384() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/derive_key/pbkdf2_sha384").await
     }
 
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_derive_key_pbkdf2_sha512() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/derive_key/pbkdf2_sha512").await
     }
 
+    #[tokio::test]
+    async fn test_kat_derive_key_pbkdf2_sha384_salt16() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/derive_key/pbkdf2_sha384_salt16").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_derive_key_pbkdf2_sha512_salt16() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/derive_key/pbkdf2_sha512_salt16").await
+    }
+
     // ── KAT vectors: asymmetric (new) ────────────────────────────────────
 
+    // Ed25519 is not in the OpenSSL 3.1.2 FIPS provider, the only provider a FIPS build uses.
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_asym_ed25519_eddsa_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -3701,6 +3774,22 @@ ObjectType = "SymmetricKey"
             .await
     }
 
+    // A FIPS build generates AES-GCM IVs inside the module and seals with the full tag only.
+    #[cfg(not(feature = "non-fips"))]
+    #[tokio::test]
+    async fn test_neg_cp_encrypt_gcm_caller_iv_fips() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/crypto_params/encrypt_gcm_caller_iv_fips").await
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[tokio::test]
+    async fn test_neg_cp_encrypt_gcm_tag_length_12_fips() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/crypto_params/encrypt_gcm_tag_length_12_fips")
+            .await
+    }
+
     // MD5 is not FIPS-approved; this test documents that RSA-PSS/MD5 succeeds
     // only when the legacy OpenSSL provider is active (non-FIPS mode).
     #[cfg(feature = "non-fips")]
@@ -3886,10 +3975,18 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/kat/mac/aes256_cmac").await
     }
 
+    // 64-bit IV (OASIS CS-BC-M-GCM-3-21) and caller-chosen IV: non-FIPS only, like the single-part GCM KATs.
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_symmetric_aes128_gcm_multi_part() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/kat/symmetric/aes128_gcm_multi_part").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_symmetric_aes128_gcm_multi_part_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/symmetric/aes128_gcm_multi_part_decrypt").await
     }
 
     // ── Negative tests: derive key edge cases ───────────────────────────
@@ -4924,6 +5021,14 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_vec_hsm_kek_import_ed25519() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_import_ed25519").await
+    }
+
+    // Ed25519 signing is not available in the OpenSSL FIPS provider.
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
     async fn test_vec_hsm_kek_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/kek_sign_verify").await
@@ -4947,6 +5052,8 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/kek_ec_p256_create_sign").await
     }
 
+    // Ed25519 is not in the OpenSSL FIPS provider, the only provider a FIPS build uses.
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_hsm_kek_ed25519_create_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5129,6 +5236,8 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha1").await
     }
 
+    // SP 800-131A r2 Table 5: RSA PKCS#1 v1.5 encryption is disallowed, so a FIPS build refuses it.
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_hsm_resident_rsa2048_encrypt_pkcs1v15() -> Result<(), KmsClientError> {
         crate::init_test_logging();
