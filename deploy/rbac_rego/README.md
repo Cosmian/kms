@@ -31,10 +31,12 @@ sequenceDiagram
 | Service | Image | Published on | Purpose |
 | ------- | ----- | ------------ | ------- |
 | `keycloak` | `quay.io/keycloak/keycloak` | `https://keycloak.localhost:8443` | Identity provider. The realm `kms` is imported from `keycloak/kms-realm.json` |
-| `opa` | `openpolicyagent/opa` (`static-debug`) | `http://localhost:8181` | Evaluates `test_data/opa/kms.rego`, logs every decision on the console |
+| `opa` | `openpolicyagent/opa` (`1.22.0-static-debug`) | `http://127.0.0.1:8181` | Evaluates `test_data/opa/kms.rego`, logs every decision on the console |
 | `kms` | `${KMS_IMAGE}` | `https://localhost:9998` | Cosmian KMS configured by `test_data/configs/server/rbac/keycloak_opa.toml` |
 
-All ports are published on the loopback interface only. The third-party images are pinned by digest in `docker-compose.yml`.
+All ports are published on the loopback interface only. The third-party images are pinned by digest in `docker-compose.yml`: a new version is a deliberate edit of the tag and of the digest.
+
+> **Warning:** the REST API of OPA is unauthenticated. Anything that can reach port 8181 can read the policy and replace it or its data (`PUT /v1/policies`, `PUT /v1/data`), and so decide who is allowed. This is why the port is published on the loopback interface only. A production deployment keeps OPA on a private network and authenticates its clients.
 
 ## Prerequisites
 
@@ -88,9 +90,11 @@ Keycloak imports the realm `kms` with five groups, named exactly like the KMS ro
 | `SuperAdmin` | allow | allow | allow | allow |
 | `DomainAdmin` | allow | allow | allow | allow |
 | `CryptoOfficer` | allow | allow | allow | allow |
-| `Auditor` | deny | allow | allow | deny |
+| `Auditor` | deny | deny | allow | deny |
 | `User` | deny | deny | allow | deny |
 | no role | deny | deny | deny | deny |
+
+The `Auditor` is read-only on metadata (`GetAttributes`, `Locate`, access listing) and cannot `Get` a key, so it cannot read key material.
 
 Across domains, only `SuperAdmin` is allowed: `superadmin@acme.com` can `Get` and `GetAttributes` a key of `globex.com`, while every other user, `officer@globex.com` and `user@globex.com` on an `acme.com` key included, is denied.
 
@@ -203,7 +207,7 @@ curl -s http://localhost:8181/v1/data/kms/reasons -d '{"input": {"user": "user@a
 ["denied"]
 ```
 
-The same query with `"roles": ["Auditor"]` answers `["auditor"]`. The KMS server log (`docker compose logs kms`) also reports denials, for example `Access denied: User does not have create access-right.`
+The same query with `"roles": ["Auditor"]` answers `["auditor"]`. The KMS server log (`docker compose logs kms`) also reports every denial by OPA as a `WARN` line containing `OPA_DENIED`, with the user, roles, domains, operation and object, and an operation refused for lack of the `Create` right reports `Access denied: User does not have create access-right.`
 
 ## Add users and groups
 
@@ -215,6 +219,17 @@ Open the Keycloak admin console at `https://keycloak.localhost:8443/admin` and l
 4. Get a token with the `token` helper above and read its claims. A user in no group gets no role, and therefore no access except to the keys it owns.
 
 A new group only has an effect when its name matches a role the policy knows. Keycloak keeps its data inside its container: `docker compose down` discards the changes made in the console, and the next `docker compose up` imports `keycloak/kms-realm.json` again. To keep a new user, add it to that file. Keycloak skips the import while the realm exists, so run `docker compose down` (not `stop`) before `up` to apply an edit of the file.
+
+### Realm hardening
+
+The KMS takes the identity of the caller from the `email` claim and the domain from the `as_rid` claim, so the realm protects both and the credentials that lead to them:
+
+- The **e-mail address and the domain** of a user can be changed by administrators only. A user who could edit its own e-mail address in the account console could take the identity, and so the keys, of another user.
+- An **access token lives 5 minutes** (`accessTokenLifespan` is 300): a revoked role or a deleted user stops working quickly, and a leaked token has a short life.
+- **Brute-force protection** is on: an account is locked temporarily after 5 failed logins.
+- The **password policy** is `length(12) and notUsername and notEmail`. It applies to the passwords set in the console, and the `DEMO_USER_PASSWORD` of `.env` must satisfy it too.
+
+The effects are observable: a password shorter than 12 characters is refused, the account API answers `error-user-attribute-read-only` when a user edits its own e-mail address or domain, and a login with the right password is refused right after 5 failures (Keycloak answers `invalid_grant` without telling why, so that attackers cannot tell a locked account from a wrong password).
 
 ## Change the policy
 
@@ -230,10 +245,11 @@ In `test_data/configs/server/rbac/keycloak_opa.toml`, change `opa_mode = "exclus
 
 ## Known limitations
 
-- **Several operations on someone else's key use the native KMS grants, not OPA.** Even in `exclusive` mode, the server does not ask OPA when a non-owner calls Encrypt or Revoke: an OPA-allowed caller that has no native grant gets `Item_Not_Found`. The server code applies the same native-only check to Decrypt, Sign, SignatureVerify, MAC, MACVerify, Destroy and Rekey, which `verify.sh` does not exercise. Get, GetAttributes and Activate do go through OPA. This is why the last table above is checked against OPA only.
+- **Several operations on someone else's key use the native KMS grants, not OPA.** Even in `exclusive` mode, the server does not ask OPA when a non-owner calls Encrypt or Revoke: an OPA-allowed caller that has no native grant gets `Item_Not_Found`. The server code applies the same native-only check to Decrypt, Sign, SignatureVerify, MAC, MACVerify, Destroy and Rekey, which `verify.sh` does not exercise. Get, GetAttributes and Activate do go through OPA. This is why the last table above is checked against OPA only. Locate is not decided by OPA either: it returns the objects the caller owns or holds a native grant on, so a role-holder does not list the other objects of its domain (a native Crypto Officer, a role this stack does not configure, lists every matching object).
 - **The Web UI is not part of this stack.** Its plain OIDC login stores no `roles` or domain in the session, so OPA would see a user without a role. Roles reach the KMS through bearer tokens, as in this stack.
-- **A user without a domain has an empty domain.** Its token carries no `as_rid` claim, so the KMS sends OPA an empty `user_domain`. `same_domain` in `kms.rego` is a plain equality test, so a user with a role but no domain is treated as a member of the empty domain and reaches every object whose domain is empty. The realm therefore makes the `domain` attribute mandatory when an administrator creates a user; give a `domain` attribute to every user you add to `keycloak/kms-realm.json` as well.
-- **Demo security posture.** Direct access grants (the password grant) are enabled on the public client `kms-demo` to keep the scripts simple, Keycloak runs with its embedded development database, and the certificates come from the public test CA of `test_data`. A production deployment uses the authorization code flow, a production database and its own PKI.
+- **A user without a domain is denied on every key it does not own.** Its token carries no `as_rid` claim, so the KMS sends OPA an empty `user_domain`, and `same_domain` in `kms.rego` requires both the user domain and the object domain to be non-empty and equal. Such a user, like an object created without a domain, matches no role rule: only the owner of the key and a `SuperAdmin` are allowed. The realm makes the `domain` attribute mandatory when an administrator creates a user; give a `domain` attribute to every user you add to `keycloak/kms-realm.json` as well.
+- **Demo security posture.** Direct access grants (the password grant) are enabled on the public client `kms-demo` to keep the scripts simple, Keycloak runs with its embedded development database, and the certificates come from the public test CA of `test_data`. A production deployment uses the authorization code flow, a production database and its own PKI. The realm is nevertheless hardened where it costs nothing: see "Realm hardening" above.
+- **The KMS logs a `SECURITY` warning at startup.** The KMS reaches OPA over cleartext `http://opa:8181`, and the server warns about every cleartext OPA URL whose host is not `localhost` or a loopback IP. The warning is expected here because the traffic never leaves the private Compose network. The KMS has no OPA-specific authentication (no bearer token, no client certificate) and trusts its answers, so a production deployment keeps OPA on the loopback of the KMS host or behind an `https://` proxy that authenticates callers.
 
 ## Files
 

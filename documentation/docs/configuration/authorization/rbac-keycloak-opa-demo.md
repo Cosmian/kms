@@ -55,9 +55,11 @@ For a caller that does not own the key and acts in the same domain as the key. T
 | `SuperAdmin` | allow | allow | allow | allow |
 | `DomainAdmin` | allow | allow | allow | allow |
 | `CryptoOfficer` | allow | allow | allow | allow |
-| `Auditor` | deny | allow | allow | deny |
+| `Auditor` | deny | deny | allow | deny |
 | `User` | deny | deny | allow | deny |
 | no role | deny | deny | deny | deny |
+
+The `Auditor` is read-only on metadata (`GetAttributes`, `Locate`) and cannot `Get` a key, so it cannot read key material.
 
 Across domains only `SuperAdmin` is allowed: `superadmin@acme.com` can `Get` a key of `globex.com`, while every other user is denied on the keys of the other domain. A denied `Get` on another user's key is reported as `Object_Not_Found`.
 
@@ -71,7 +73,7 @@ The KMS validates the Keycloak access token, then sends OPA the identity, the ro
 | `aud` | Audience mapper of the client `kms-demo` | Must equal the audience of `jwt_auth_provider` (`cosmian-kms`) |
 | `email` | E-mail address of the user | User identity (`sub` when the token has no `email`): the owner of a key is the user who created it |
 | `roles` | Names of the groups of the user | `roles` of the OPA input |
-| `as_rid` | Admin-only user attribute `domain` | `user_domain` of the OPA input (`as_rid` is an alias of `as_domain`) |
+| `as_rid` | Admin-only user attribute `domain` | `user_domain` of the OPA input (`as_domain` is accepted as a legacy alias; a claim named `domain` is not read) |
 
 The matching server configuration is the complete fixture `test_data/configs/server/rbac/keycloak_opa.toml`. Its two relevant sections:
 
@@ -86,13 +88,13 @@ opa_url  = "http://opa:8181"
 opa_mode = "exclusive"
 ```
 
-The second field of `jwt_auth_provider` is the JWKS URI of the realm, `<issuer>/protocol/openid-connect/certs` for Keycloak. The KMS requires the standard `sub` and `exp` claims and reads no claim other than the ones listed above, so another identity provider works if its access tokens carry them all.
+The second field of `jwt_auth_provider` is the JWKS URI of the realm, `<issuer>/protocol/openid-connect/certs` for Keycloak. The KMS rejects a token that lacks the standard `exp`, `iss` or `sub` claim, or the `aud` claim when the provider declares an audience, and it reads no claim other than the ones listed above, so another identity provider works if its access tokens carry them all.
 
 ## Known limitations
 
-- **Several operations on someone else's key use the native KMS grants, not OPA.** In the current server, a non-owner calling Encrypt or Revoke is not checked by OPA, even in exclusive mode: a caller that the policy would allow but that has no native grant gets `Item_Not_Found`. The server code applies the same native-only check to Decrypt, Sign, SignatureVerify, MAC, MACVerify, Destroy and Rekey, which the demo does not exercise. Get, GetAttributes and Activate are decided by OPA. `verify.sh` therefore checks Encrypt and Revoke against OPA only.
+- **Several operations on someone else's key use the native KMS grants, not OPA.** In the current server, a non-owner calling Encrypt or Revoke is not checked by OPA, even in exclusive mode: a caller that the policy would allow but that has no native grant gets `Item_Not_Found`. The server code applies the same native-only check to Decrypt, Sign, SignatureVerify, MAC, MACVerify, Destroy and Rekey, which the demo does not exercise. Get, GetAttributes and Activate are decided by OPA. `verify.sh` therefore checks Encrypt and Revoke against OPA only. Locate is not decided by OPA either: it returns the objects the caller owns or holds a native grant on, so a role-holder does not list the other objects of its domain (a native Crypto Officer, a role this stack does not configure, lists every matching object).
 - **The Web UI is not part of the stack.** Its plain OIDC login keeps no `roles` or domain in the session. Roles reach the KMS through bearer tokens, as in this stack.
-- **A user without a domain has an empty domain.** Its token carries no `as_rid` claim, so the KMS sends OPA an empty `user_domain`. `same_domain` in `kms.rego` is a plain equality test, so a user with a role but no domain is treated as a member of the empty domain and reaches every object whose domain is empty. The realm therefore makes the `domain` attribute mandatory when an administrator creates a user; give a `domain` attribute to every user you add to the realm file as well.
+- **A user without a domain is denied on every key it does not own.** Its token carries no `as_rid` claim, so the KMS sends OPA an empty `user_domain`, and `same_domain` in `kms.rego` requires both the user domain and the object domain to be non-empty and equal. Such a user, like an object created without a domain, matches no role rule: only the owner of the key and a `SuperAdmin` are allowed. The realm makes the `domain` attribute mandatory when an administrator creates a user; give a `domain` attribute to every user you add to the realm file as well.
 - **Demo security posture.** The public client `kms-demo` uses the password grant, Keycloak runs with its embedded development database and the certificates come from the public test CA. A production deployment uses the authorization code flow, a production database and its own PKI.
 
 ## See also

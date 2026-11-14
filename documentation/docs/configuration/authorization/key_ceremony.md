@@ -141,13 +141,17 @@ crypto_officer_users = [
     "co-auditor@example.com",
 ]
 crypto_officer_require_ceremony = true
-ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# Prefer the KMS_CEREMONY_SECRET environment variable: a secret in a file is persisted to disk.
+ceremony_secret = "<output of: openssl rand -hex 32>"
 ```
 
 CryptoOfficer privileges are **inactive** at startup. At least **3** users must be listed
 in `crypto_officer_users` when `require_ceremony = true` (the server rejects fewer).
 The role becomes active only after the ceremony completes (KMIP `JoinSplitKey` with all
 ceremony-tagged shares).
+
+!!! warning "Protect the ceremony secret"
+    The ceremony secret seals the ceremony records, which protects the participant identities at rest and prevents forging an activation by writing directly to the database. Generate a fresh random value with `openssl rand -hex 32`, never reuse the example, keep it out of version control, and give it to the server through the `KMS_CEREMONY_SECRET` environment variable or through `ceremony_key_id` (see the [configuration reference](#configuration-reference)).
 
 ---
 
@@ -163,9 +167,6 @@ CO candidate (dual-control enforcement).
 No restart is required — the ceremony candidate exemption allows
 `Create`, `Import`, `CreateSplitKey`, and `JoinSplitKey` even before the ceremony
 completes, breaking the chicken-and-egg problem.
-to custodians. The number of shares is auto-determined by the server from the
-`crypto_officer_users` count, and each share is auto-assigned to a different CO
-candidate (dual-control enforcement).
 
 ```mermaid
 sequenceDiagram
@@ -191,6 +192,9 @@ sequenceDiagram
 !!! note "Source key is destroyed"
     The server destroys the ceremony source key immediately after all shares are stored.
 
+!!! note "Shares are Sensitive"
+    The shares are created with the KMIP `Sensitive` attribute, so a plain `Get` (without key wrapping) of a share is refused, even for its owner and for a user who was granted `Get`. `JoinSplitKey` reads the shares on the server side and still requires the `Get` permission on each of them, so the custodian flow below is unchanged.
+
 ### Phase 2 — Activate Crypto Officer Role (JoinSplitKey)
 
 The CO candidate assembles all $n$ share UIDs (after each other CO grants GET access to
@@ -201,9 +205,7 @@ their share), then calls `JoinSplitKey`. The server:
 3. Verifies all shares originate from the same source key.
 4. Verifies the share count equals the threshold.
 5. Verifies the candidate is in `crypto_officer_users`.
-6. Verifies that at least one share is owned by a **different** CO (dual-control — prevents
-   solo self-activation). The activating candidate may own one or more shares; what is
-   forbidden is that *all* shares belong to the activating candidate alone.
+6. Verifies that every share has a distinct owner (duplicate owners are rejected), that every owner is listed in `crypto_officer_users`, and that at least one share is owned by a **different** CO than the activating candidate (dual-control — prevents solo self-activation). The activating candidate owns at most one share.
 7. Reconstructs the secret via XOR, stores it as a managed object.
 8. Persists a `crypto_officer_activations` record (activated-by, participants, SHA-256 hash).
 9. The candidate is now an **active CryptoOfficer**.
@@ -258,6 +260,9 @@ sequenceDiagram
     Note right of KMS: find_all() bypasses user filter<br/>returns ALL objects in KMS
     KMS-->>CO: [bob_key_id, ...]
 ```
+
+!!! warning "An active CryptoOfficer is outside the OPA policy"
+    An active CryptoOfficer is granted every operation on every non-HSM object, **across domains**, and `Locate` returns every matching object of the database. With OPA in `enforcing` mode the Rego policy cannot restrict these users (see [Mode 3](mode3.md)), and the operations that never reach OPA are always checked natively. Each use is logged as `CRYPTO_OFFICER_ACCESS` on the `audit` log target, so monitor it and keep `crypto_officer_users` small and trusted.
 
 ### Phase 4 — Revocation
 
@@ -317,7 +322,7 @@ When all CO candidates are unavailable:
 | **Peer revocability** | Any CO candidate can revoke the active CO — enables compromise recovery without server restart |
 | **Reconstructed key independent** | Revoking the CO role does NOT destroy the reconstructed key — it remains accessible to its owner as an Operator |
 | **Tag-based escalation prevention** | CO role is determined by `crypto_officer_activations` table only. The `x-cosmian-crypto-officer-ceremony` tag on KMS objects is used only as validation input, never for privilege checks. |
-| **Dual-control enforcement** | Assembling user must not own any share — all shares must come from other CO candidates |
+| **Dual-control enforcement** | Every share has a distinct owner listed in `crypto_officer_users`, and at least one share is owned by a CO other than the activating candidate, so no single user can activate the role alone |
 | **Replay prevention** | Re-activation requires re-running the full ceremony (JoinSplitKey with new ceremony-tagged shares) |
 | **RAM-only reconstruction** | During JoinSplitKey, the XOR secret is reconstructed in process RAM only; zeroized after storing the reconstructed key (ADP-20) |
 | **Ceremony key destruction** | The source key is automatically destroyed after all shares are stored, removing any direct reconstruction path |
@@ -361,12 +366,14 @@ crypto_officer_users = ["key-mgr@example.com"]
 crypto_officer_require_ceremony = true
 
 # Hex-encoded 32-byte secret for ceremony record encryption (AES-256-GCM).
-# Required when crypto_officer_require_ceremony = true.
+# Required when crypto_officer_require_ceremony = true, unless ceremony_key_id is set.
 # Generate with: openssl rand -hex 32
-ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# Prefer the KMS_CEREMONY_SECRET environment variable: a secret in a file is persisted to disk.
+ceremony_secret = "<output of: openssl rand -hex 32>"
 
-# (planned) UID of a KMS symmetric key to use as the ceremony sealing key.
-# When set, takes precedence over ceremony_secret. Enables key rotation and HSM backing.
+# UID of a KMS symmetric key (AES-256) to use as the ceremony sealing key instead of ceremony_secret.
+# When set, takes precedence over ceremony_secret and satisfies crypto_officer_require_ceremony on its own.
+# The key is read once at startup, so restart the server after changing it.
 # The key must be created before enabling require_ceremony (use config-only mode first).
 # ceremony_key_id = "ceremony-seal-2026"
 ```

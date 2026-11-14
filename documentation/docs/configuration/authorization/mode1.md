@@ -148,13 +148,15 @@ against the wildcard object identifier `*`.
 
 ## Privileged users
 
-By default all users can create or import objects. When `privileged_users` is
-configured in `kms.toml`:
+By default all users can create or import objects. When `crypto_officer_users` is configured under `[roles]` in `kms.toml`, the listed users are the privileged users:
 
 - Only privileged users can create/import objects.
 - Privileged users can grant/revoke `create` to regular users.
 - Regular users cannot create unless explicitly granted by a privileged user.
 - Privileged users cannot revoke creation from other privileged users.
+
+!!! warning "`privileged_users` is deprecated and grants the Crypto Officer role"
+    The legacy `privileged_users` option (a hidden command-line flag) no longer defines a separate, weaker role: when `[roles] crypto_officer_users` is not set, the users it lists are promoted to Crypto Officers, which gives them every operation on every non-HSM object, across all domains (see [Key ceremony](key_ceremony.md)). Migrate to `crypto_officer_users` and keep the list to trusted administrators.
 
 ### Operations gated by the privileged-user restriction
 

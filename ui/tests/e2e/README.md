@@ -780,10 +780,7 @@ Key facts verified by these tests:
 
 ### login-page-auth-method-matrix
 
-10 tests verifying that `LoginPage` renders the correct UI for every combination of
-authentication methods that `GET /ui/auth_method` can return. All tests mock the API
-responses via `page.route()` and require no live KMS server — they run against the
-Vite preview server only.
+11 tests verifying that `LoginPage` renders the correct UI for every combination of authentication methods that `GET /ui/auth_method` can return. Tests 1-9 and 11 mock the API responses via `page.route()` and need only the Vite preview server. Test 10 sends the real `GET /ui/auth_method` request, which the preview server proxies to the KMS (`VITE_KMS_URL`, `http://localhost:9998` by default), so it needs a running KMS.
 
 | Test | `auth_methods`                                | Expected primary                       | Expected secondary               |
 | ---- | --------------------------------------------- | -------------------------------------- | -------------------------------- |
@@ -797,6 +794,7 @@ Vite preview server only.
 | 8    | `[]`                                          | (no login form; redirect to `/locate`) | "authentication disabled" banner |
 | 9    | `["AUTH_VERIFIER", "CERT"]` (secondary click) | probe fires immediately                | navigates to `/locate`           |
 | 10   | live `GET /ui/auth_method`                    | `auth_method` equals `auth_methods[0]` | JSON shape validated             |
+| 11   | `["AUTH_VERIFIER", "CERT"]` + 2 realms (OPA RBAC config) | form + realm selector       | CERT button                      |
 
 Key behaviour verified: clicking a "one-click" method (CERT or JWT) in a secondary
 control fires the action immediately without first revealing the button as primary.

@@ -104,12 +104,12 @@ The KMS sends the following JSON document to OPA with every evaluation request:
 
 | Field | Source | Notes |
 |---|---|---|
-| `user` | JWT `sub`, TLS CN, or API-token ID | Authenticated identity; never forged. |
-| `user_domain` | JWT `as_domain` / `as_rid` private claim | Empty for non-JWT authentication. |
+| `user` | JWT `email` (else `sub`), TLS CN, or API-token ID | Authenticated identity; never forged. |
+| `user_domain` | JWT `as_rid` private claim (`as_domain` is accepted as a legacy alias) | Empty for non-JWT authentication or when the claim is absent. |
 | `roles` | JWT `roles` claim (RFC 9068 array) | **Never set by KMS config.** Empty for non-JWT auth → fail-closed. |
 | `operation` | `KmipOperation::to_string()` | Lowercase snake_case KMIP operation name (e.g. `"create"`, `"decrypt"`). |
 | `object_uid` | Target object UID | `"*"` for object-less operations. |
-| `object_domain` | Owner's domain stored with the object | Empty / equals `user_domain` for object-less operations. |
+| `object_domain` | Domain stamped on the object at creation | `""` when no domain was stamped; equals `user_domain` for object-less operations. |
 | `is_owner` | `user == object.owner()` | Owners always receive access regardless of role. |
 
 **Key invariant**: The KMS is role-vocabulary-agnostic.  It forwards whatever
@@ -126,10 +126,10 @@ The repository ships a reference policy implementing five standard roles:
 | `SuperAdmin` | Global (cross-domain) | All operations | ANSI/INCITS 359-2004 §4.2 |
 | `DomainAdmin` | Own domain | All operations | ANSI/INCITS 359-2004 §4.2 |
 | `CryptoOfficer` | Own domain | Key lifecycle: `create`, `create_key_pair`, `import`, `get`, `export`, `locate`, `get_attributes`, `set_attribute`, `modify_attribute`, `delete_attribute`, `add_attribute`, `activate`, `revoke`, `archive`, `recover`, `destroy`, `rekey`, `rekey_key_pair` | FIPS 140-3 §7.4; NIST SP 800-57 Part 2 §4.3 |
-| `Auditor` | Own domain | Read-only: `locate`, `get`, `get_attributes`, `list_access`, `query_access`, `mac_verify` | NIST SP 800-57 Part 2 §4.3; NIST SP 800-53 AU-9 |
-| `User` | Own domain | Crypto-use only: `encrypt`, `decrypt`, `sign`, `verify`, `mac`, `mac_verify`, `derive_key`, `locate`, `get_attributes` | FIPS 140-3 §7.4; PKCS#11 v3.0 |
+| `Auditor` | Own domain | Read-only metadata: `locate`, `get_attributes`, `list_access`, `query_access`, `mac_verify` (no `get`: an Auditor cannot read key material) | NIST SP 800-57 Part 2 §4.3; NIST SP 800-53 AU-9 |
+| `User` | Own domain | Crypto-use only: `encrypt`, `decrypt`, `sign`, `signature_verify`, `mac`, `mac_verify`, `derive_key`, `locate`, `get_attributes` | FIPS 140-3 §7.4; PKCS#11 v3.0 |
 
-Owners always have full access to their objects, regardless of role.
+Owners always have full access to their objects, regardless of role. The domain-scoped roles (every role except `SuperAdmin`) also require the caller's domain and the object's domain to be non-empty and equal, so a caller without a domain, or an object without one, never matches them.
 
 Operators may supply their own Rego file; the default policy is a starting
 point, not a requirement.
@@ -139,7 +139,7 @@ point, not a requirement.
 Any error condition in the OPA call path results in *denial*:
 
 - Network timeout (5 s hardcoded in `OpaClient`)
-- HTTP non-2xx from OPA
+- HTTP non-2xx from OPA (redirects are not followed, so a 3xx response is a denial too)
 - JSON parse failure
 - OPA returns `{"result": null}` (undefined policy)
 
@@ -171,8 +171,7 @@ logical async task and survives `.await` migration safely.
   (`SIGHUP` or bundle polling) without restarting the KMS.
 - **POS-002 Role-vocabulary independence**: KMS config carries no role strings.
   Role names, operations, and domain constraints are entirely OPA's domain.
-- **POS-003 Audit trail**: OPA's decision log (`/v1/data/kms/reason`) provides a
-  per-request, policy-attributed audit record independently of KMS logs.
+- **POS-003 Audit trail**: OPA's decision log and the `/v1/data/kms/reasons` debug rule provide a per-request, policy-attributed audit record independently of KMS logs.
 - **POS-004 Backward compatibility**: `Disabled` mode (no `--opa-url`) leaves
   existing deployments completely unchanged.
 - **POS-005 Native KMS role kept in `Enforcing` mode**: Native Crypto Officers and the
@@ -242,10 +241,7 @@ logical async task and survives `.await` migration safely.
 
 - **IMP-001**: The `OpaClient` uses a 5-second HTTP timeout with fail-closed semantics.
   OPA must be co-located (same host or pod) to avoid latency issues.
-- **IMP-002**: Domain is stamped on every newly created object from the creator's JWT
-  `as_domain` / `as_rid` claim via `OpaUserContext`.  Existing objects upgraded from
-  pre-OPA KMS versions will have an empty domain string; the Rego policy must handle
-  `object_domain == ""` gracefully (e.g., allow owner access regardless of domain).
+- **IMP-002**: Domain is stamped on the objects created by the `Create` operation from the creator's JWT `as_rid` claim (`as_domain` is accepted as a legacy alias) via `OpaUserContext`. The other creation operations (`CreateKeyPair`, `Import`, `Certify`, `DeriveKey`, `ReKey`) do not stamp it yet and store an empty domain, like the objects of databases upgraded from pre-OPA KMS versions. An empty domain means "no domain": the `same_domain` rule of the reference policy requires both domains to be non-empty and equal, so such an object is only reachable by its owner and by the `SuperAdmin` role (fail-closed).
 - **IMP-003**: The `domain` column is added to the SQL backends (SQLite, PostgreSQL, MySQL/MariaDB)
   with `ALTER TABLE objects ADD COLUMN domain` when an existing database is opened, so the migration
   is applied automatically on server startup (`IF NOT EXISTS` on PostgreSQL, a `SHOW COLUMNS` check

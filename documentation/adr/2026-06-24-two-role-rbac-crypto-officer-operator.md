@@ -102,7 +102,7 @@ Any configured CO candidate may revoke the active CO's ceremony:
 
 For deployments requiring finer-grained audit roles (`Auditor`, `DomainAdmin`,
 `SuperAdmin`, `User`) or cross-domain isolation, the OPA integration path
-(`--opa-server-url`) is the recommended mechanism. The `test_data/opa/kms.rego`
+(`--opa-url` with `--opa-mode`) is the recommended mechanism. The `test_data/opa/kms.rego`
 reference policy fully implements those roles with documented normative references.
 
 ## Consequences
@@ -123,13 +123,8 @@ reference policy fully implements those roles with documented normative referenc
 
 ### Negative
 
-- **NEG-001**: Deployments using `privileged_users` must migrate: the config key must
-  be renamed to `crypto_officer_users` (under the new `[roles]` section) and the
-  `--privileged-users` CLI flag replaced with `--crypto-officer-users`. Servers with
-  old configs will emit a parse error on startup.
-- **NEG-002**: There is no built-in Auditor role. Deployments requiring compliance
-  reporting or read-only audit access must use the OPA integration path
-  (`--opa-server-url`) with the reference policy in `test_data/opa/kms.rego`.
+- **NEG-001**: Deployments using `privileged_users` should migrate: move the key to `crypto_officer_users` (under the new `[roles]` section) and replace the `--privileged-users` CLI flag with `--crypto-officer-users`. The legacy option is kept as a hidden, deprecated option so that old configurations keep starting: when `[roles] crypto_officer_users` is not set, the users listed in `privileged_users` are promoted to the Crypto Officer role at startup and a deprecation warning is logged. They therefore gain every Crypto Officer capability, which is broader than the former `Create`-only privilege.
+- **NEG-002**: There is no built-in Auditor role. Deployments requiring compliance reporting or read-only audit access must use the OPA integration path (`--opa-url` with `--opa-mode`) with the reference policy in `test_data/opa/kms.rego`.
 - **NEG-003**: The OPA path requires an external sidecar; teams without OPA must rely
   on database-level or application-level audit logs for auditor-style access control.
 
@@ -170,11 +165,11 @@ reference policy fully implements those roles with documented normative referenc
 - **IMP-002**: `crate/server/src/config/command_line/roles_config.rs` — CLI flags:
   `--crypto-officer-users`, `--crypto-officer-require-ceremony`,
   `--ceremony-secret` (env `KMS_CEREMONY_SECRET`),
-  `--ceremony-key-id` (env `KMS_CEREMONY_KEY_ID`, ADP-26 — accepted by parser, not yet functional),
+  `--ceremony-key-id` (env `KMS_CEREMONY_KEY_ID`, ADP-26, **implemented**),
   `--ceremony-wrapping-key-id` (env `KMS_CEREMONY_WRAP_KEY_ID`, **implemented**).
-  The former `--privileged-users` flag is removed.
+  The former `--privileged-users` flag is hidden and deprecated (see NEG-001).
 - **IMP-003**: `kms.toml` `[roles]` section fields: `crypto_officer_users`,
-  `crypto_officer_require_ceremony`, `ceremony_secret`, `ceremony_key_id` (ADP-26 scaffold),
+  `crypto_officer_require_ceremony`, `ceremony_secret`, `ceremony_key_id` (ADP-26),
   `ceremony_wrapping_key_id`.
 - **IMP-004**: Migration: move `privileged_users = [...]` into `[roles]`, rename to
   `crypto_officer_users`.
@@ -216,7 +211,7 @@ architecture. Key changes that directly affect the artefacts introduced here:
 | **ADP-16** | Planned | `[roles]` TOML section removed; CO candidates assigned per-domain in a DB table. Only `KMS_CEREMONY_SECRET` env var survives. IMP-003/IMP-004 migration instructions become a transitional step only. |
 | **ADP-20** | **Implemented** | Reconstructed ceremony secret XOR-joined in RAM; reconstructed key stored as KMS object. Secret never stored in cleartext. |
 | **ADP-25** | Planned | Server generates the 256-bit ceremony secret internally (random); the operator-supplied `ceremony_secret` TOML field is removed. |
-| **ADP-26** | **Scaffolded** | `ceremony_key_id` config field: references a KMS symmetric key as the ceremony sealing key instead of a static hex secret. Enables key rotation and HSM backing. Accepted by the config parser but not yet functional; `ceremony_secret` is required in the meantime. |
+| **ADP-26** | **Implemented** | `ceremony_key_id` config field: references an AES-256 KMS symmetric key as the ceremony sealing key instead of a static hex secret. The key material is read once from the object store at startup, and `ceremony_key_id` alone satisfies `crypto_officer_require_ceremony` (it takes precedence over `ceremony_secret`). |
 | **ADP-3/15** | Planned | CO candidates assigned per-domain; ceremony activates all CO candidates for that domain simultaneously (vs current per-user activation). |
 
 Until that ADR is merged, the `[roles]` TOML section and the `--crypto-officer-users`
