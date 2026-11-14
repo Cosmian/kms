@@ -1343,6 +1343,60 @@ async fn test_get_attributes_on_split_key_share() -> KResult<()> {
     Ok(())
 }
 
+/// A split-key share is created `Sensitive`, so a plain `Get` of it is refused for every
+/// external caller — the owner who is also an active CO, and a grantee holding the `Get`
+/// permission — while `JoinSplitKey`, which reads the shares server-side, keeps working.
+///
+/// Regression test: the `sensitive = true` attribute was dropped from the shares, which let
+/// anyone holding the `Get` permission on a share read the raw share bytes (CWE-312).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_split_key_shares_are_sensitive_and_refused_by_get() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason;
+
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+
+    // Config-only mode: alice is immediately an active CO.
+    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
+    let key_uid = create_key(&kms, alice).await?;
+    let share_uids = Box::pin(split_key(&kms, alice, &key_uid, 2)).await?;
+    kms.database
+        .grant_operations(
+            &share_uids[0],
+            &UserId::from(bob),
+            std::collections::HashSet::from([KmipOperation::Get]),
+        )
+        .await?;
+
+    for (user, caller) in [(alice, "owner and active CO"), (bob, "grantee")] {
+        let get_req = Get {
+            unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+            key_format_type: None,
+            key_wrap_type: None,
+            key_compression_type: None,
+            key_wrapping_specification: None,
+        };
+        let err = Box::pin(crate::core::operations::get(
+            &kms,
+            get_req,
+            &UserId::from(user),
+        ))
+        .await
+        .expect_err("a plain Get of a share must be refused");
+        assert!(
+            matches!(err, KmsError::Kmip21Error(ErrorReason::Sensitive, _)),
+            "Get of a share by the {caller} must be refused as Sensitive, got: {err}"
+        );
+    }
+
+    // The server-side reconstruction does not go through the Get operation.
+    let joined = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+    assert!(!joined.is_empty(), "shares must still be joinable");
+
+    Ok(())
+}
+
 /// T18 – Cross-key share mixing must be rejected before reconstruction.
 ///
 /// Given two independent split keys A and B, each split into 2 shares owned by

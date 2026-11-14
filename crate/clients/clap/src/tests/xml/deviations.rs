@@ -413,9 +413,12 @@ const SPLIT_KEY_CREATE_POLYNOMIAL: &str = "M-of-N polynomial secret sharing (Spl
                                            implemented: CreateSplitKey is refused (Not Supported \
                                            \"... is not yet implemented; only XOR (n-of-n) is \
                                            supported\")";
-const SPLIT_KEY_SHARE_FORMAT: &str = "XOR CreateSplitKey succeeds and a plain Get of a share is \
-                                      allowed, but the share's Key Block is returned with Key \
-                                      Format Type Opaque where the vector expects Raw";
+const SPLIT_KEY_SHARE_SENSITIVE: &str = "XOR CreateSplitKey succeeds, but the server marks every \
+                                         share Sensitive by design (create_split_key.rs, CWE-312) \
+                                         so the vector's plain Get of a share is refused with \
+                                         Result Reason Sensitive; KMIP 2.1 §4.55 says the server \
+                                         SHALL default Sensitive to False: deliberate deviation \
+                                         pending a product decision";
 const STREAM_3DES: &str = "multi-part Encrypt with a 3DES key: the server refuses 3DES \
                             (Unsupported_Cryptographic_Parameters \"unsupported cryptographic \
                             algorithm: THREE_DES for a symmetric key\"; 1.x: DES)";
@@ -718,13 +721,13 @@ pub(crate) const KNOWN_FAILING: &[(&str, &str, &str)] = &[
     ),
     (
         "TC-SJ-4-14",
-        "key_format_type expected=Raw actual=Opaque",
-        SPLIT_KEY_SHARE_FORMAT,
+        "result_reason: Some(Sensitive)",
+        SPLIT_KEY_SHARE_SENSITIVE,
     ),
     (
         "TC-SJ-4-20",
-        "key_format_type expected=Raw actual=Opaque",
-        SPLIT_KEY_SHARE_FORMAT,
+        "result_reason: Sensitive",
+        SPLIT_KEY_SHARE_SENSITIVE,
     ),
     (
         "TC-DERIVEKEY-3-10",

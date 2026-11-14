@@ -342,6 +342,9 @@ pub(crate) async fn create_split_key(
 
         // Build attributes for the share object — include crypto metadata so
         // GetAttributes and the WebUI Locate table can display algorithm / length / format.
+        // `sensitive = true` ensures Get/Export of a share require explicit key-wrapping
+        // (same protection as any other raw key material — CWE-312). `JoinSplitKey` reads the
+        // shares server-side and is not affected; `merge(.., false)` below never lowers it.
         // KMIP 2.1 §4.57 / §6.1.10: a requested future Activation Date leaves the share Pre-Active.
         let activation_date = requested_attrs.activation_date.unwrap_or(now);
         let state = if activation_date > now {
@@ -367,6 +370,7 @@ pub(crate) async fn create_split_key(
                 .ok()
                 .and_then(|kb| kb.cryptographic_length),
             key_format_type: Some(KeyFormatType::Opaque),
+            sensitive: Some(true),
             ..Attributes::default()
         };
         let mut share_attrs = share_attrs;
