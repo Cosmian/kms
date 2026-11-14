@@ -27,7 +27,7 @@ updates:
     # always fail it. 0 disables version updates; security updates are unaffected (issue #1265).
     open-pull-requests-limit: 0
     schedule:
-      interval: weekly
+      interval: daily
     ignore:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
@@ -41,7 +41,7 @@ updates:
       - /.mise/scripts/test
       - /.mise/scripts/docs
     schedule:
-      interval: weekly
+      interval: daily
     ignore:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
@@ -59,7 +59,7 @@ updates:
     # security updates cannot do (vitest 5.0.0 -> @vitest/mocker 5.0.0, alerts #119/#120).
     # cooldown: 7-day release age required for npm packages (dependencies.instructions.md §3).
     schedule:
-      interval: weekly
+      interval: daily
     cooldown:
       default-days: 7
     ignore:
@@ -76,7 +76,7 @@ updates:
   - package-ecosystem: gomod
     directory: /.mise/scripts/kmip-go
     schedule:
-      interval: weekly
+      interval: daily
     ignore:
       - dependency-name: '*'
         update-types: [version-update:semver-major]
@@ -94,7 +94,7 @@ updates:
       # /.mise/scripts/edb_tde is excluded: its base image is on the private docker.enterprisedb.com
       # registry (no credentials for Dependabot -> private_source_authentication_failure).
     schedule:
-      interval: weekly
+      interval: daily
     ignore:
       # Also keeps SAP ASE on Ubuntu 22.04: it needs libaio.so.1, renamed libaio.so.1t64 from 24.04 on.
       - dependency-name: '*'

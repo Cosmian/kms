@@ -118,6 +118,17 @@ pub(crate) async fn collect_attributes(
                 attributes
             } else {
                 let mut a = owm.attributes().to_owned();
+                // A key wrapped at rest has no readable key-value attributes: the key block still
+                // carries the algorithm, length and format.
+                if a.cryptographic_algorithm.is_none() {
+                    a.cryptographic_algorithm = key_block.cryptographic_algorithm;
+                }
+                if a.cryptographic_length.is_none() {
+                    a.cryptographic_length = key_block.cryptographic_length;
+                }
+                if a.key_format_type.is_none() {
+                    a.key_format_type = Some(key_block.key_format_type);
+                }
                 if let Some(vendor_attributes) = a.vendor_attributes.as_mut() {
                     vendor_attributes.retain(|va| {
                         !(va.vendor_identification == kms.vendor_id()
@@ -167,6 +178,17 @@ pub(crate) async fn collect_attributes(
             )));
         }
     };
+
+    // The server-wide KEK that wraps objects at rest is an internal detail, not an attribute the
+    // client asked for (Export strips this link too); a user-chosen wrapping key stays visible.
+    let mut attributes = attributes;
+    if let Some(kek) = &kms.params.key_wrapping_key
+        && attributes
+            .get_link(LinkType::WrappingKeyLink)
+            .is_some_and(|link| link.to_string() == *kek)
+    {
+        attributes.remove_link(LinkType::WrappingKeyLink);
+    }
 
     trace!("Retrieved object attributes");
     trace!("Processing requested attribute references");

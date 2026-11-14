@@ -1096,7 +1096,7 @@ async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContex
         other => other.to_owned(),
     });
     if effective_kms_db.as_deref() == Some(backend) {
-        return Ok(crate::start_default_test_kms_server().await);
+        return Ok(crate::test_server::start_plain_default_test_kms_server().await);
     }
 
     let root = repo_root()?;

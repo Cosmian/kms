@@ -292,6 +292,11 @@ build_test_deps() {
   fi
 }
 
+# Only the packages whose lib tests start the shared test server (dev-dependency on
+# `test_kms_server`) read KMS_TEST_DB / KMS_HSM_KEK (crate/test_kms_server/src/test_server.rs).
+# Re-derive the list with: grep -rl --include=Cargo.toml test_kms_server crate
+KMS_SHARED_SERVER_TEST_PACKAGES=(-p test_kms_server -p ckms -p cosmian_kms_cli_actions -p cosmian_pkcs11 -p cosmian_kms_k8s_plugin -p cosmian_cng)
+
 _run_workspace_tests() {
   local db="$1"
   require_cmd cargo
@@ -325,11 +330,7 @@ _run_workspace_tests() {
   else
     cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
       -- --ignored --nocapture "test_db_${db}" test_certificate_validate
-    # Only the packages whose lib tests start the shared test server (dev-dependency on
-    # `test_kms_server`) read KMS_TEST_DB (crate/test_kms_server/src/test_server.rs).
-    # Re-derive the list with: grep -rl --include=Cargo.toml test_kms_server crate
-    cargo test --lib -p test_kms_server -p ckms -p cosmian_kms_cli_actions -p cosmian_pkcs11 \
-      -p cosmian_kms_k8s_plugin -p cosmian_cng "${FEATURES_FLAG[@]}" -- --nocapture
+    cargo test --lib "${KMS_SHARED_SERVER_TEST_PACKAGES[@]}" "${FEATURES_FLAG[@]}" -- --nocapture
   fi
 }
 

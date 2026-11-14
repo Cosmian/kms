@@ -3,12 +3,13 @@ use std::sync::Arc;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{ErrorReason, State},
-        kmip_2_1::KmipOperation,
+        kmip_2_1::{KmipOperation, kmip_attributes::Attributes},
         time_normalize,
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
+use time::OffsetDateTime;
 
 use crate::{
     core::{
@@ -32,6 +33,9 @@ use crate::{
 ///
 /// This function assumes that if the user can `Get` the object,
 /// it can then also perform any other operation with it.
+///
+/// A due time-based lifecycle transition (KMIP 2.1 §4.57) is persisted first; the returned
+/// object is then a fresh store snapshot whose state and version match that write.
 pub(crate) async fn retrieve_object_for_operation(
     object_handle: ObjectHandle<'_>,
     operation_type: KmipOperation,
@@ -43,11 +47,17 @@ pub(crate) async fn retrieve_object_for_operation(
          operation_type: {operation_type:?}",
     );
 
-    for mut owm in kms
+    let mut candidates = kms
         .database
         .retrieve_objects(object_handle)
         .await?
-        .into_values()
+        .into_values();
+    // A snapshot re-read after persisting an automatic lifecycle transition is re-validated next.
+    let mut refreshed_owm: Option<Arc<ObjectWithMetadata>> = None;
+    while let Some((mut owm, refreshed)) = refreshed_owm
+        .take()
+        .map(|owm| (owm, true))
+        .or_else(|| candidates.next().map(|owm| (owm, false)))
     {
         trace!("Checking key with ID: {}", owm.id());
         let state = owm.state();
@@ -136,106 +146,34 @@ pub(crate) async fn retrieve_object_for_operation(
                 }
             }
 
-            // KMIP 2.1 Auto-activation: PreActive → Active when ActivationDate has passed (§4.57 transition 4)
-            if effective_state == State::PreActive {
-                let activation_date = owm.attributes().activation_date.or_else(|| {
-                    owm.object()
-                        .attributes()
-                        .ok()
-                        .and_then(|attrs| attrs.activation_date)
-                });
-
-                if let Some(activation_date) = activation_date {
-                    let now = time_normalize()?;
-                    if activation_date <= now {
-                        trace!(
-                            "Auto-activating object {} (activation_date {} <= now {})",
-                            owm.id(),
-                            activation_date,
-                            now
-                        );
-                        let owm_mut = Arc::make_mut(&mut owm);
-                        owm_mut.attributes_mut().state = Some(State::Active);
-                        if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
-                            attributes.state = Some(State::Active);
-                        }
-                        if let Err(e) = kms.database.update_state(owm.id(), State::Active).await {
-                            warn!(
-                                "Failed to persist auto-activation of object {}: {}",
-                                owm.id(),
-                                e
-                            );
-                        }
-                        // Re-check: the now-Active key may also need auto-deactivation
-                        let deactivation_date = owm.attributes().deactivation_date.or_else(|| {
-                            owm.object()
-                                .attributes()
-                                .ok()
-                                .and_then(|attrs| attrs.deactivation_date)
-                        });
-                        if let Some(deactivation_date) = deactivation_date
-                            && deactivation_date <= now
-                        {
-                            trace!(
-                                "Auto-deactivating object {} (deactivation_date {} <= now {})",
-                                owm.id(),
-                                deactivation_date,
-                                now
-                            );
-                            let owm_mut = Arc::make_mut(&mut owm);
-                            owm_mut.attributes_mut().state = Some(State::Deactivated);
-                            if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
-                                attributes.state = Some(State::Deactivated);
-                            }
-                            if let Err(e) = kms
-                                .database
-                                .update_state(owm.id(), State::Deactivated)
-                                .await
-                            {
-                                warn!(
-                                    "Failed to persist auto-deactivation of object {}: {}",
-                                    owm.id(),
-                                    e
-                                );
-                            }
-                        }
+            // KMIP 2.1 §4.57 time-based transitions. A refreshed snapshot already carries the
+            // transition persisted on its first pass, so it is never transitioned again.
+            // Activate performs PreActive → Active itself and must still see PreActive.
+            if !refreshed
+                && operation_type != KmipOperation::Activate
+                && let Some(target) = due_lifecycle_transition(&owm, effective_state)?
+            {
+                trace!(
+                    "Auto-transitioning object {} from {effective_state} to {target}",
+                    owm.id()
+                );
+                match kms.database.update_state(owm.id(), target).await {
+                    // `update_state` bumped the stored version: re-read a coherent snapshot
+                    // (state, attributes, version) so a caller's optimistic lock matches the
+                    // store, and re-validate it from the top. Gone meanwhile → not found.
+                    Ok(()) => {
+                        refreshed_owm = kms.database.retrieve_object_arc(owm.id()).await?;
+                        continue;
                     }
-                }
-            }
-
-            // KMIP 2.1 Auto-deactivation: Active → Deactivated when DeactivationDate has passed (§4.57 transition 6)
-            if owm.attributes().state == Some(State::Active) {
-                let deactivation_date = owm.attributes().deactivation_date.or_else(|| {
-                    owm.object()
-                        .attributes()
-                        .ok()
-                        .and_then(|attrs| attrs.deactivation_date)
-                });
-
-                if let Some(deactivation_date) = deactivation_date {
-                    let now = time_normalize()?;
-                    if deactivation_date <= now {
-                        trace!(
-                            "Auto-deactivating object {} (deactivation_date {} <= now {})",
-                            owm.id(),
-                            deactivation_date,
-                            now
+                    Err(e) => {
+                        warn!(
+                            "Failed to persist automatic transition of object {} to {target}: {e}",
+                            owm.id()
                         );
                         let owm_mut = Arc::make_mut(&mut owm);
-                        owm_mut.attributes_mut().state = Some(State::Deactivated);
+                        owm_mut.attributes_mut().state = Some(target);
                         if let Ok(attributes) = owm_mut.object_mut().attributes_mut() {
-                            attributes.state = Some(State::Deactivated);
-                        }
-                        if let Err(e) = kms
-                            .database
-                            .update_state(owm.id(), State::Deactivated)
-                            .await
-                        {
-                            warn!(
-                                "Failed to persist auto-deactivation of object {}: {}",
-                                owm.id(),
-                                e
-                            );
+                            attributes.state = Some(target);
                         }
                     }
                 }
@@ -366,6 +304,34 @@ async fn opa_decision(
         );
     }
     allowed
+}
+
+/// KMIP 2.1 §4.57 time-based transition due on an object in `state`: `PreActive` → Active once
+/// its Activation Date has passed (transition 4), chained with Active → Deactivated once its
+/// Deactivation Date has passed (transition 6). Dates come from the external attributes, then
+/// from the embedded object attributes. Returns the target state, if it differs from `state`.
+fn due_lifecycle_transition(owm: &ObjectWithMetadata, state: State) -> KResult<Option<State>> {
+    let date = |get: fn(&Attributes) -> Option<OffsetDateTime>| {
+        get(owm.attributes()).or_else(|| owm.object().attributes().ok().and_then(get))
+    };
+    let (activation, deactivation) = match state {
+        State::PreActive => (date(|a| a.activation_date), date(|a| a.deactivation_date)),
+        State::Active => (None, date(|a| a.deactivation_date)),
+        _ => return Ok(None),
+    };
+    if activation.is_none() && deactivation.is_none() {
+        return Ok(None);
+    }
+    let now = time_normalize()?;
+    let active = state == State::Active || activation.is_some_and(|d| d <= now);
+    let target = if active && deactivation.is_some_and(|d| d <= now) {
+        State::Deactivated
+    } else if active {
+        State::Active
+    } else {
+        state
+    };
+    Ok((target != state).then_some(target))
 }
 
 /// Check if a user has permission to perform an operation on an object.
@@ -531,7 +497,13 @@ pub(crate) async fn user_has_permission(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
 mod tests {
+    use std::collections::HashSet;
+
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
             kmip_0::kmip_types::State,
@@ -539,13 +511,20 @@ mod tests {
                 KmipOperation,
                 kmip_attributes::Attributes,
                 kmip_objects::{Object, OpaqueObject},
-                kmip_types::OpaqueDataType,
+                kmip_types::{CryptographicAlgorithm, OpaqueDataType},
+                requests::create_symmetric_key_kmip_object,
             },
+            time_normalize,
         },
-        cosmian_kms_interfaces::ObjectWithMetadata,
+        cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
     };
+    use time::Duration;
 
-    use super::build_opa_input;
+    use super::{build_opa_input, retrieve_object_for_operation};
+    use crate::{
+        core::uid_utils::ObjectHandle, error::KmsError, middlewares::UserId, result::KResult,
+        tests::test_utils::test_kms,
+    };
 
     // ── Helper ──────────────────────────────────────────────────────────────
 
@@ -705,5 +684,145 @@ mod tests {
             KmipOperation::Create,
         );
         assert_eq!(input.user, "alice@tenant.example");
+    }
+
+    // ── Time-based lifecycle transitions ─────────────────────────────────────
+
+    /// A time-based transition persisted during retrieval bumps the stored version: the
+    /// returned object must be the refreshed store snapshot (persisted state, current
+    /// version), so a version-guarded write by the caller does not conflict with the
+    /// retrieval's own write. Covers transition 4, transition 6, and both chained.
+    #[tokio::test]
+    async fn test_auto_transition_returns_refreshed_snapshot() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("retrieve_refresh_owner@example.com");
+        let past = time_normalize()? - Duration::hours(1);
+        let cases = [
+            (State::PreActive, Some(past), None, State::Active),
+            (State::Active, None, Some(past), State::Deactivated),
+            (State::PreActive, Some(past), Some(past), State::Deactivated),
+        ];
+        for (stored_state, activation_date, deactivation_date, expected) in cases {
+            let attributes = Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                state: Some(stored_state),
+                activation_date,
+                deactivation_date,
+                ..Attributes::default()
+            };
+            let object = create_symmetric_key_kmip_object("x-vendor", &[7_u8; 32], &attributes)?;
+            let uid = kms
+                .database
+                .create(None, &owner, &object, &attributes, &HashSet::new(), "")
+                .await?;
+
+            let owm = retrieve_object_for_operation(
+                ObjectHandle::from(uid.as_str()),
+                KmipOperation::GetAttributes,
+                &kms,
+                &owner,
+            )
+            .await?;
+
+            let stored = kms
+                .database
+                .retrieve_object(&uid)
+                .await?
+                .expect("object must still exist");
+            let case = format!("{stored_state} → {expected}");
+            assert_eq!(stored.state(), expected, "{case}: transition persisted");
+            assert_eq!(owm.state(), expected, "{case}: returned state");
+            assert_eq!(owm.attributes().state, Some(expected), "{case}: attributes");
+            assert!(owm.version().is_some(), "{case}: SQLite tracks versions");
+            assert_eq!(owm.version(), stored.version(), "{case}: returned version");
+        }
+        Ok(())
+    }
+
+    /// `Activate` must see a `PreActive` object even when its `ActivationDate` has passed,
+    /// otherwise the explicit Activate would be rejected as Active → Active.
+    #[tokio::test]
+    async fn test_activate_retrieval_skips_auto_transition() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("retrieve_activate_owner@example.com");
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            state: Some(State::PreActive),
+            activation_date: Some(time_normalize()? - Duration::hours(1)),
+            ..Attributes::default()
+        };
+        let object = create_symmetric_key_kmip_object("x-vendor", &[7_u8; 32], &attributes)?;
+        let uid = kms
+            .database
+            .create(None, &owner, &object, &attributes, &HashSet::new(), "")
+            .await?;
+        let owm = retrieve_object_for_operation(
+            ObjectHandle::from(uid.as_str()),
+            KmipOperation::Activate,
+            &kms,
+            &owner,
+        )
+        .await?;
+        assert_eq!(owm.state(), State::PreActive);
+        Ok(())
+    }
+
+    /// The refresh must not weaken the optimistic lock: a write landing after the
+    /// refreshed snapshot was read still rejects a writer holding that snapshot's version.
+    #[tokio::test]
+    async fn test_auto_transition_refresh_keeps_optimistic_lock() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("retrieve_refresh_lock_owner@example.com");
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            state: Some(State::Active),
+            deactivation_date: Some(time_normalize()? - Duration::hours(1)),
+            ..Attributes::default()
+        };
+        let object = create_symmetric_key_kmip_object("x-vendor", &[7_u8; 32], &attributes)?;
+        let uid = kms
+            .database
+            .create(None, &owner, &object, &attributes, &HashSet::new(), "")
+            .await?;
+        let owm = retrieve_object_for_operation(
+            ObjectHandle::from(uid.as_str()),
+            KmipOperation::GetAttributes,
+            &kms,
+            &owner,
+        )
+        .await?;
+        let version = owm.version().expect("SQLite tracks versions");
+
+        // Concurrent writer lands after the refresh.
+        kms.database
+            .update_object(&uid, owm.object(), owm.attributes(), None)
+            .await?;
+
+        let mut stale_attributes = owm.attributes().clone();
+        stale_attributes.rotate_interval = Some(42);
+        let err = kms
+            .database
+            .atomic(
+                &owner,
+                &[AtomicOperation::UpdateObjectIfVersion((
+                    uid.clone(),
+                    owm.object().clone(),
+                    stale_attributes,
+                    None,
+                    version,
+                ))],
+            )
+            .await
+            .expect_err("a write holding the pre-concurrent-write version must be rejected");
+        let err = KmsError::from(err);
+        assert!(matches!(err, KmsError::Conflict(_)), "{err:?}");
+        let stored = kms
+            .database
+            .retrieve_object(&uid)
+            .await?
+            .expect("object must still exist");
+        assert_ne!(stored.attributes().rotate_interval, Some(42));
+        assert_eq!(stored.version(), Some(version + 1));
+        Ok(())
     }
 }

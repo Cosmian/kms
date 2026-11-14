@@ -1,0 +1,27 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://package.cosmian.com/kms/openvex/cosmian-kms",
+  "author": "Cosmian KMS security team <tech@cosmian.com>",
+  "role": "Document Creator",
+  "timestamp": "2026-11-12T16:48:49Z",
+  "version": 1,
+  "tooling": "Hand-curated; checked by `mise run sbom:validate`. Bump version and timestamp on every change.",
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "RUSTSEC-2023-0071",
+        "aliases": ["CVE-2023-49092", "GHSA-c38w-74pg-36hr", "GHSA-4grx-2x9w-596c"]
+      },
+      "products": [{ "@id": "pkg:cargo/rsa@0.9.10" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Scope: rsa 0.9.10 as compiled into the Cosmian KMS server and ckms (all variants). rsa is reached only through jsonwebtoken (JWT RS* signature verification) and, in non-FIPS builds, through pgp 0.21 for OpenPGP encryption, signature verification and key parsing; all of these are public-key operations. Every RSA private-key operation (PKESK decryption, signing, key generation) is performed by OpenSSL (crate/crypto/src/crypto/openpgp/mod.rs: component_session_key, OpensslRsaSigner), so the Marvin timing side channel in rsa private-key decryption is never executed."
+    },
+    {
+      "vulnerability": { "name": "RUSTSEC-2026-0387" },
+      "products": [{ "@id": "pkg:cargo/crypto-bigint@0.5.5" }],
+      "status": "under_investigation",
+      "status_notes": "Scope: crypto-bigint 0.5.5 as compiled into the Cosmian KMS server and ckms. No 0.5.x patch exists (fixed in >= 0.7.6, which the workspace uses for 0.7.x). FIPS builds reach it only via elliptic-curve 0.13 (p256/p384) from jsonwebtoken 10.4 for JWT ES256/ES384 signature verification over public inputs. Non-FIPS builds also reach it via pgp 0.21 -> cx448 0.1.1, used for OpenPGP X448/Ed448 secret-key operations (crate/crypto/src/crypto/openpgp/mod.rs: component_session_key falls back to pgp DecryptionKey::decrypt for non-RSA keys); exploitability of that path is not yet assessed."
+    }
+  ]
+}

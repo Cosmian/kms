@@ -92,9 +92,8 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
     let attributes: Attributes =
         serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
     let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes, domain,
-    ))
+    let version: u64 = row.get(6).context("missing version")?;
+    Ok(ObjectWithMetadata::new(id, object, owner, state, attributes, domain).with_version(version))
 }
 
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
@@ -305,6 +304,19 @@ impl MySqlPool {
             conn.query_drop(add_col).await.map_err(DbError::from)?;
         }
 
+        // Add the optimistic-locking `version` column if not present (same reason as above).
+        let has_version_sql = queries.get("has-column-version").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-version".to_owned())
+        })?;
+        let rows: Vec<mysql_async::Row> =
+            conn.query(has_version_sql).await.map_err(DbError::from)?;
+        if rows.is_empty() {
+            let add_col = queries.get("add-column-version").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-version".to_owned())
+            })?;
+            conn.query_drop(add_col).await.map_err(DbError::from)?;
+        }
+
         // Add activated_by column to crypto_officer_activations if not present.
         // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
         let has_co_col_sql = queries.get("has-column-co-activated-by").ok_or_else(|| {
@@ -462,7 +474,9 @@ impl MySqlPool {
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SELECT 1").await.map_err(DbError::from)
+        conn.query_drop(get_mysql_query!("health-check"))
+            .await
+            .map_err(DbError::from)
     }
 
     // Helper to obtain a pooled connection and configure session settings consistently
@@ -470,10 +484,10 @@ impl MySqlPool {
     // - Lock wait timeout: 10s (avoid long stalls under contention)
     async fn get_configured_conn(&self) -> DbResult<mysql_async::Conn> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        conn.query_drop(get_mysql_query!("set-session-isolation-read-committed"))
             .await
             .map_err(DbError::from)?;
-        conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+        conn.query_drop(get_mysql_query!("set-session-lock-wait-timeout"))
             .await
             .map_err(DbError::from)?;
         Ok(conn)
@@ -611,7 +625,7 @@ impl ObjectsStore for MySqlPool {
             attributes: &Attributes,
             tags: Option<&HashSet<String>>,
         ) -> DbResult<()> {
-            update_object_(uid, object, attributes, tags, tx).await
+            update_object_(uid, object, attributes, tags, None, tx).await
         }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         for attempt in 0..max_retries {
@@ -1211,7 +1225,7 @@ impl PermissionsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let row_opt: Option<mysql_async::Row> = conn
-            .exec_first("SELECT MAX(crl_number) FROM crls", ())
+            .exec_first(get_mysql_query!("select-max-crl-number"), ())
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // MAX() returns one row; the value is NULL when the table is empty.
@@ -1287,11 +1301,14 @@ async fn retrieve_tags_(uid: &str, pool: &Pool) -> DbResult<HashSet<String>> {
     Ok(tags)
 }
 
+/// Update an object; when `expected_version` is set, only if the stored version matches,
+/// else `DbError::Conflict`.
 pub(super) async fn update_object_(
     uid: &str,
     object: &Object,
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
+    expected_version: Option<u64>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
     let object_json = serde_json::to_string(object).map_err(|e| {
@@ -1304,12 +1321,28 @@ pub(super) async fn update_object_(
 
     let wrapping_key_id = object.wrapping_key_uid();
 
-    tx.exec_drop(
-        get_mysql_query!("update-object-with-object"),
-        (object_json, attributes_json, wrapping_key_id, uid),
-    )
-    .await
-    .map_err(DbError::from)?;
+    if let Some(version) = expected_version {
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object-if-version"),
+            (object_json, attributes_json, wrapping_key_id, uid, version),
+        )
+        .await
+        .map_err(DbError::from)?;
+        // The version is bumped on every successful write, so 0 affected rows means
+        // the stored version differs (or the object is gone).
+        if tx.affected_rows() == 0 {
+            return Err(DbError::Conflict(format!(
+                "object {uid} was modified concurrently (expected version {version})"
+            )));
+        }
+    } else {
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object"),
+            (object_json, attributes_json, wrapping_key_id, uid),
+        )
+        .await
+        .map_err(DbError::from)?;
+    }
 
     // Insert the new tags if any
     if let Some(tags) = tags {
@@ -1414,6 +1447,8 @@ pub(super) async fn upsert_(
                 state.to_string(),
                 owner,
                 wrapping_key_id,
+                // Only KMIP Create stamps a domain; an upserted object has none (fail-closed).
+                "",
             ),
         )
         .await
@@ -1691,8 +1726,34 @@ pub(super) async fn atomic_(
                 uids.push(uid.clone());
             }
             AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
+                if let Err(e) =
+                    update_object_(uid, object, attributes, tags.as_ref(), None, tx).await
+                {
                     db_bail!("update of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
+            AtomicOperation::UpdateObjectIfVersion((
+                uid,
+                object,
+                attributes,
+                tags,
+                expected_version,
+            )) => {
+                match update_object_(
+                    uid,
+                    object,
+                    attributes,
+                    tags.as_ref(),
+                    Some(*expected_version),
+                    tx,
+                )
+                .await
+                {
+                    Ok(()) => {}
+                    // Keep the typed conflict so callers can retry.
+                    Err(e @ DbError::Conflict(_)) => return Err(e),
+                    Err(e) => db_bail!("update of object {uid} failed: {e}"),
                 }
                 uids.push(uid.clone());
             }

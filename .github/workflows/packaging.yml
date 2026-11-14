@@ -3,25 +3,12 @@ name: Packaging
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
-        default: 1.99.1
-
   workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain version
-        required: false
-        type: string
-        default: 1.99.1
 
 jobs:
   windows-package:
     uses: ./.github/workflows/build_windows.yml
     with:
-      toolchain: 1.99.1
       archive-name: windows
     secrets:
       AZURE_TENANT_ID_POC: ${{ secrets.AZURE_TENANT_ID_POC }}
@@ -32,8 +19,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
       'schedule'
     uses: ./.github/workflows/packaging-docker.yml
-    with:
-      toolchain: 1.99.1
     secrets: inherit
 
   packages:
@@ -86,6 +71,10 @@ jobs:
           mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target server
           mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target ckms
 
+      - name: Validate SBOM and CBOM (cyclonedx-cli)
+        if: matrix.runner == 'ubuntu-24.04'
+        run: mise run sbom:validate --variant ${{ matrix.features }} --link ${{ matrix.link }}
+
       - name: Upload SBOM artifact
         if: matrix.runner == 'ubuntu-24.04'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -113,8 +102,6 @@ jobs:
   apk:
     uses: ./.github/workflows/packaging-apk.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1
 
   publish-release:
     if: |
@@ -273,6 +260,14 @@ jobs:
           subdir: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}
           files: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}/*
 
+      - name: Push OpenVEX to package.cosmian.com
+        if: matrix.features == 'fips' && matrix.link == 'static'
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          subdir: sbom
+          files: sbom/openvex.json
+
   build-monitoring-archive:
     name: Build monitoring stack archive
     if: |
@@ -338,5 +333,3 @@ jobs:
     needs: packages
     uses: ./.github/workflows/packaging-tests.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1

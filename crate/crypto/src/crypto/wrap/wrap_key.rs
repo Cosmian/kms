@@ -223,6 +223,12 @@ pub fn key_data_to_wrap(
                     .key_bytes()
                     .context("cannot recover asymmetric key bytes ")?
             }
+            Object::PGPKey(PGPKey { key_block, .. }) => {
+                // OpenPGP key material is an opaque packet sequence: wrap the stored bytes
+                key_block
+                    .key_bytes()
+                    .context("cannot recover OpenPGP key bytes ")?
+            }
             Object::PrivateKey(..) => {
                 let pkey = kmip_private_key_to_openssl(object)?;
                 Zeroizing::new(pkey.private_key_to_pkcs8()?)

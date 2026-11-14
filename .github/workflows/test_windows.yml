@@ -4,9 +4,6 @@ name: Windows Tests
 on:
   workflow_call:
     inputs:
-      toolchain:
-        required: true
-        type: string
       archive-name:
         required: true
         type: string
@@ -25,10 +22,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          components: rustfmt, clippy
+      - uses: ./.github/actions/install-rust
 
       - uses: ./.github/actions/windows-vs-ninja
 
@@ -55,10 +49,10 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          targets: wasm32-unknown-unknown
+      - uses: ./.github/actions/install-rust
+
+      # Run in the checkout so the target lands on the rust-toolchain.toml toolchain, not on stable.
+      - run: rustup target add wasm32-unknown-unknown
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -102,9 +96,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
+      - uses: ./.github/actions/install-rust
 
       - uses: ./.github/actions/windows-vs-ninja
 
@@ -137,9 +129,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
+      - uses: ./.github/actions/install-rust
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

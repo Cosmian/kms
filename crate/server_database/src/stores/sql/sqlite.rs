@@ -1,4 +1,4 @@
-// SQLite backend implementation using tokio-rusqlite
+// SQLite backend implementation on top of rusqlite
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -21,7 +21,6 @@ use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
-use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
 use super::{
@@ -47,6 +46,56 @@ use crate::{
         sqlite_queries,
     },
 };
+
+/// Async handle over a `rusqlite` connection; blocking calls run on tokio's blocking pool.
+/// The mutex serialises access to the connection; readers stay parallel because each reader
+/// is its own `Connection`. Dropping the last clone closes the `SQLite` handle synchronously.
+#[derive(Clone)]
+struct Connection(Arc<std::sync::Mutex<rusqlite::Connection>>);
+
+impl Connection {
+    async fn open(path: &Path) -> DbResult<Self> {
+        let path = path.to_path_buf();
+        let conn = tokio::task::spawn_blocking(move || rusqlite::Connection::open(path))
+            .await
+            .map_err(|e| DbError::DatabaseError(format!("sqlite open task failed: {e}")))??;
+        Ok(Self(Arc::new(std::sync::Mutex::new(conn))))
+    }
+
+    async fn call<F, R, E>(&self, f: F) -> DbResult<R>
+    where
+        F: FnOnce(&mut rusqlite::Connection) -> Result<R, E> + Send + 'static,
+        R: Send + 'static,
+        E: Into<DbError> + Send + 'static,
+    {
+        let conn = Arc::clone(&self.0);
+        tokio::task::spawn_blocking(move || {
+            let mut guard = conn
+                .lock()
+                .map_err(|e| DbError::DatabaseError(format!("sqlite connection poisoned: {e}")))?;
+            f(&mut guard).map_err(Into::into)
+        })
+        .await
+        .map_err(|e| DbError::DatabaseError(format!("sqlite task failed: {e}")))?
+    }
+}
+
+/// Maps a `rusqlite` error from an object insert, turning a constraint violation into
+/// an "already exists" KMIP error.
+fn map_insert_error(error: rusqlite::Error) -> DbError {
+    match error {
+        rusqlite::Error::SqliteFailure(sqlite_error, _)
+            if sqlite_error.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            DbError::Kmip21Error(
+                ErrorReason::Object_Already_Exists,
+                "one or more objects already exist".to_owned(),
+            )
+        }
+        other => DbError::from(other),
+    }
+}
+
 /// `SQLite` flavour of the shared queries (`$n` placeholders rewritten to `?n`).
 fn sqlite_converted_queries() -> DbResult<&'static HashMap<String, String>> {
     static CELL: OnceLock<HashMap<String, String>> = OnceLock::new();
@@ -85,9 +134,8 @@ fn is_transient_lock_error(error: &DbError) -> bool {
 /// against contention from other connections. It cannot help while a connection is being
 /// opened, nor while a fresh writer is bootstrapping its schema against a database file whose
 /// previous writer connection (e.g. from an immediately-preceding `KMS` instance in the same
-/// process, as in some tests) has not finished releasing its lock yet — `tokio-rusqlite`
-/// connections close their underlying `SQLite` handle asynchronously on drop, with no
-/// synchronization point available to callers. This retry loop absorbs that narrow window.
+/// process, as in some tests) has not finished releasing its lock yet. This retry loop
+/// absorbs that narrow window, as well as contention from other processes and connections.
 async fn retry_on_transient_lock<T, F, Fut>(mut operation: F) -> DbResult<T>
 where
     F: FnMut() -> Fut,
@@ -128,33 +176,20 @@ impl SqlitePool {
     /// `PRAGMAs` to each. Returns them in a `Vec`.
     async fn open_connections(path: &Path, count: usize) -> DbResult<Vec<Connection>> {
         let mut conns = Vec::with_capacity(count);
+        let pragmas = get_sqlite_query!("connection-pragmas");
         for _ in 0..count {
             // Opening a connection and applying its startup PRAGMAs can transiently race
             // against a previous writer connection to the same file that has not finished
             // closing yet (see `retry_on_transient_lock` for details), so this whole
             // open-and-configure step is retried on a transient lock error.
             let conn = retry_on_transient_lock(|| async {
-                let conn = Connection::open(path).await.map_err(DbError::from)?;
+                let conn = Connection::open(path).await?;
                 conn.call(
-                    |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                        c.execute_batch(
-                            // WAL mode: readers and the single writer never block each other.
-                            "PRAGMA journal_mode=WAL;\
-                             PRAGMA synchronous=NORMAL;\
-                             PRAGMA busy_timeout=5000;\
-                             PRAGMA cache_size=-65536;\
-                             PRAGMA mmap_size=268435456;\
-                             PRAGMA temp_store=MEMORY;",
-                            // cache_size=-65536 → 64 MiB page cache per connection (negative
-                            // value means KiB, positive means pages of 4 KiB each).
-                            // mmap_size=268435456 → 256 MiB memory-mapped I/O window;
-                            // eliminates pread() syscall overhead for read-hot pages.
-                            // temp_store=MEMORY → sort/index temp tables stay in RAM.
-                        )
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        c.execute_batch(pragmas)
                     },
                 )
-                .await
-                .map_err(DbError::from)?;
+                .await?;
                 Ok(conn)
             })
             .await?;
@@ -198,7 +233,7 @@ impl SqlitePool {
 
         // Bootstrap schema and optionally clear database on startup, using trait queries
         let create_parameters = pool.get_query("create-table-parameters")?.to_owned();
-        let create_objects = pool.get_query("create-table-objects")?.to_owned();
+        let create_objects = get_sqlite_query!("create-table-objects").to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
         let idx_objects_owner = pool.get_query("create-index-objects-owner")?.to_owned();
@@ -222,7 +257,6 @@ impl SqlitePool {
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
-        let add_column_domain = pool.get_query("add-column-domain")?.to_owned();
         let clean_crls = pool.get_query("clean-table-crls")?.to_owned();
         // The schema-bootstrap transaction needs a write lock; retry on a transient lock
         // (see `retry_on_transient_lock`) in case a previous writer connection to the same
@@ -242,7 +276,6 @@ impl SqlitePool {
             let idx_objects_type_state = idx_objects_type_state.clone();
             let create_crypto_officer_activations = create_crypto_officer_activations.clone();
             let create_crls = create_crls.clone();
-            let add_column_domain = add_column_domain.clone();
             let clean_objects = clean_objects.clone();
             let clean_read_access = clean_read_access.clone();
             let clean_tags = clean_tags.clone();
@@ -268,12 +301,6 @@ impl SqlitePool {
                                 [],
                             )?;
                             tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
-                            // Migration: add domain column if missing (existing databases)
-                            let has_domain: bool =
-                                tx.prepare("SELECT domain FROM objects LIMIT 0").is_ok();
-                            if !has_domain {
-                                tx.execute(&add_column_domain, [])?;
-                            }
                             if clear_database {
                                 tx.execute(&clean_objects, [])?;
                                 tx.execute(&clean_read_access, [])?;
@@ -285,7 +312,6 @@ impl SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -302,13 +328,20 @@ impl SqlitePool {
         // so we check PRAGMA table_info first.
         let backfill_done =
             pool.get_parameter(WRAPPING_KEY_BACKFILL_PARAM).await? == Some("true".to_owned());
+        let table_info_objects_sql = get_sqlite_query!("table-info-objects");
+        let add_wrapping_sql = get_sqlite_query!("add-column-wrapping-key-id");
+        let add_version_sql = get_sqlite_query!("add-column-version");
+        let add_domain_sql = get_sqlite_query!("add-column-domain");
+        let idx_wrapping_sql = get_sqlite_query!("create-index-objects-wrapping-key-id");
+        let select_null_wrapping_sql = get_sqlite_query!("select-objects-null-wrapping-key");
+        let update_wrapping_sql = get_sqlite_query!("update-wrapping-key-id");
         retry_on_transient_lock(|| async {
             pool.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         let tx = c.transaction()?;
                         let has_column: bool = {
-                            let mut stmt = tx.prepare("PRAGMA table_info(objects)")?;
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
                             let mut rows = stmt.query([])?;
                             let mut found = false;
                             while let Some(row) = rows.next()? {
@@ -321,21 +354,50 @@ impl SqlitePool {
                             found
                         };
                         if !has_column {
-                            tx.execute_batch(
-                                "ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);",
-                            )?;
+                            tx.execute_batch(add_wrapping_sql)?;
+                        }
+                        // Optimistic-locking counter for databases created before it existed.
+                        // Existing rows get version 0 (the column default).
+                        let has_version: bool = {
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut found = false;
+                            while let Some(row) = rows.next()? {
+                                let col_name: String = row.get(1)?;
+                                if col_name == "version" {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        };
+                        if !has_version {
+                            tx.execute_batch(add_version_sql)?;
+                        }
+                        // RBAC domain column for databases created before it existed. Existing
+                        // rows get the empty domain, which never matches (fail-closed).
+                        let has_domain: bool = {
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut found = false;
+                            while let Some(row) = rows.next()? {
+                                let col_name: String = row.get(1)?;
+                                if col_name == "domain" {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        };
+                        if !has_domain {
+                            tx.execute_batch(add_domain_sql)?;
                         }
                         // Index supporting `find-wrapped-by` lookups and the backfill scan.
-                        tx.execute_batch(
-                            "CREATE INDEX IF NOT EXISTS idx_objects_wrapping_key_id \
-                             ON objects (wrapping_key_id);",
-                        )?;
+                        tx.execute_batch(idx_wrapping_sql)?;
                         if !backfill_done {
                             // Backfill: deserialize each object and extract its wrapping key UID.
                             let pairs: Vec<(String, String)> = {
-                                let mut stmt = tx.prepare(
-                                    "SELECT id, object FROM objects WHERE wrapping_key_id IS NULL",
-                                )?;
+                                let mut stmt = tx.prepare(select_null_wrapping_sql)?;
                                 let mut rows = stmt.query([])?;
                                 let mut out = Vec::new();
                                 while let Some(row) = rows.next()? {
@@ -348,7 +410,7 @@ impl SqlitePool {
                                     Ok(obj) => {
                                         if let Some(wrapping_uid) = obj.wrapping_key_uid() {
                                             tx.execute(
-                                                "UPDATE objects SET wrapping_key_id = ?1 WHERE id = ?2",
+                                                update_wrapping_sql,
                                                 rusqlite::params![wrapping_uid, id],
                                             )?;
                                         }
@@ -367,7 +429,6 @@ impl SqlitePool {
                     },
                 )
                 .await
-                .map_err(DbError::from)
         })
         .await?;
         if !backfill_done {
@@ -419,7 +480,6 @@ impl SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             })
             .await?;
             pool.set_parameter(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true")
@@ -430,13 +490,15 @@ impl SqlitePool {
         // SQLite does not support ADD COLUMN IF NOT EXISTS — check PRAGMA first.
         // Also create the unique partial index that prevents duplicate active records
         // per user (enforces n-of-n dual-control at the DB layer).
+        let table_info_co_sql = get_sqlite_query!("table-info-crypto-officer-activations");
+        let add_co_col_sql = get_sqlite_query!("add-column-co-activated-by");
+        let idx_co_active_sql = get_sqlite_query!("create-unique-index-co-activations-active");
         retry_on_transient_lock(|| async {
             pool.writer
                 .call(
                     move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                         let has_activated_by: bool = {
-                            let mut stmt =
-                                c.prepare("PRAGMA table_info(crypto_officer_activations)")?;
+                            let mut stmt = c.prepare(table_info_co_sql)?;
                             let mut rows = stmt.query([])?;
                             let mut found = false;
                             while let Some(row) = rows.next()? {
@@ -449,38 +511,30 @@ impl SqlitePool {
                             found
                         };
                         if !has_activated_by {
-                            c.execute_batch(
-                                "ALTER TABLE crypto_officer_activations \
-                                 ADD COLUMN activated_by VARCHAR(255);",
-                            )?;
+                            c.execute_batch(add_co_col_sql)?;
                         }
                         // Unique partial index: at most one active record per user.
                         // SQLite supports partial indexes since 3.8.9 (2014-08-15).
-                        c.execute_batch(
-                            "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
-                             ON crypto_officer_activations (activated_by) \
-                             WHERE revoked_at IS NULL;",
-                        )?;
+                        c.execute_batch(idx_co_active_sql)?;
                         Ok(())
                     },
                 )
                 .await
-                .map_err(DbError::from)
         })
         .await?;
 
         // Refresh planner statistics so the selective JSON-expression indexes are
         // preferred over idx_objects_state. analysis_limit bounds ANALYZE to a sample,
         // keeping this cheap on very large databases.
+        let optimize_sql = get_sqlite_query!("optimize-planner");
         retry_on_transient_lock(|| async {
             pool.writer
                 .call(
-                    |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                        c.execute_batch("PRAGMA analysis_limit=1000; PRAGMA optimize=0x10002;")
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        c.execute_batch(optimize_sql)
                     },
                 )
                 .await
-                .map_err(DbError::from)
         })
         .await?;
 
@@ -511,8 +565,7 @@ impl SqlitePool {
                         .optional()
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(res)
     }
 
@@ -533,7 +586,6 @@ impl SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -541,10 +593,10 @@ impl SqlitePool {
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
+        let sql = get_sqlite_query!("health-check");
         self.writer
-            .call(|c| c.query_row("SELECT 1", [], |_row| Ok(())))
+            .call(move |c| c.query_row(sql, [], |_row| Ok(())))
             .await
-            .map_err(DbError::from)
     }
 }
 
@@ -598,9 +650,9 @@ fn sqlite_row_to_owm(row: &Row<'_>) -> Result<ObjectWithMetadata, DbError> {
     let attributes: Attributes = serde_json::from_str(&attributes_json)?;
     let state =
         State::try_from(state_str.as_str()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes, domain,
-    ))
+    let version: i64 = row.get(6)?;
+    let owm = ObjectWithMetadata::new(id, object, owner, state, attributes, domain);
+    Ok(owm.with_version(u64::try_from(version).unwrap_or_default()))
 }
 
 #[async_trait(?Send)]
@@ -630,43 +682,32 @@ impl ObjectsStore for SqlitePool {
         let tags_owned: HashSet<String> = tags.clone();
         let uid_for_closure = uid.clone();
         self.writer
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    let tx = c.transaction()?;
+            .call(move |c: &mut rusqlite::Connection| -> DbResult<()> {
+                let tx = c.transaction().map_err(map_insert_error)?;
+                tx.execute(
+                    insert_object,
+                    rusqlite::params![
+                        uid_for_closure,
+                        object_json,
+                        attributes_json,
+                        state_s,
+                        owner_s,
+                        wrapping_key_id,
+                        &domain_s,
+                    ],
+                )
+                .map_err(map_insert_error)?;
+                for tag in &tags_owned {
                     tx.execute(
-                        insert_object,
-                        rusqlite::params![
-                            uid_for_closure,
-                            object_json,
-                            attributes_json,
-                            state_s,
-                            owner_s,
-                            wrapping_key_id,
-                            &domain_s,
-                        ],
-                    )?;
-                    for tag in &tags_owned {
-                        tx.execute(
-                            insert_tag,
-                            params_from_iter([&uid_for_closure, tag.as_str()]),
-                        )?;
-                    }
-                    tx.commit()?;
-                    Ok(())
-                },
-            )
-            .await
-            .map_err(|error| match error {
-                tokio_rusqlite::Error::Error(rusqlite::Error::SqliteFailure(sqlite_error, _))
-                    if sqlite_error.code == rusqlite::ErrorCode::ConstraintViolation =>
-                {
-                    InterfaceError::from(DbError::Kmip21Error(
-                        ErrorReason::Object_Already_Exists,
-                        "one or more objects already exist".to_owned(),
-                    ))
+                        insert_tag,
+                        params_from_iter([&uid_for_closure, tag.as_str()]),
+                    )
+                    .map_err(map_insert_error)?;
                 }
-                other => InterfaceError::from(DbError::from(other)),
-            })?;
+                tx.commit().map_err(map_insert_error)?;
+                Ok(())
+            })
+            .await?;
         Ok(uid)
     }
 
@@ -683,8 +724,7 @@ impl ObjectsStore for SqlitePool {
                     .optional()?;
                 Ok(row)
             })
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(res)
     }
 
@@ -708,8 +748,7 @@ impl ObjectsStore for SqlitePool {
                     .optional()?;
                 Ok(row)
             })
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(res)
     }
 
@@ -730,8 +769,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(tags)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(tags)
     }
 
@@ -772,8 +810,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -790,8 +827,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -811,8 +847,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -836,11 +871,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(uids)
                 },
             )
-            .await
-            .map_err(|e| match e {
-                tokio_rusqlite::Error::Error(db_err) => db_err,
-                other => DbError::from(other),
-            })?;
+            .await?;
         Ok(v)
     }
 
@@ -857,8 +888,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(exists)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(owned)
     }
 
@@ -894,8 +924,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(ids)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(set)
     }
 
@@ -974,8 +1003,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(rows)
     }
 
@@ -1003,8 +1031,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
 
         Ok(filter_due_for_rotation(
             rows.into_iter().map(|(uid, owner, attrs_json)| {
@@ -1056,8 +1083,7 @@ impl ObjectsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
 
         let mut results = Vec::with_capacity(rows.len());
         for (uid, attrs_json) in rows {
@@ -1107,8 +1133,7 @@ impl ObjectsStore for SqlitePool {
                     c.query_row(sql, [], |row| row.get(0))
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(count)
     }
 
@@ -1123,8 +1148,7 @@ impl ObjectsStore for SqlitePool {
                     c.query_row(sql, [], |row| row.get(0))
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(count)
     }
 }
@@ -1150,7 +1174,6 @@ impl Migrate for SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -1176,7 +1199,6 @@ impl Migrate for SqlitePool {
                         },
                     )
                     .await
-                    .map_err(DbError::from)
             }
         })
         .await?;
@@ -1217,8 +1239,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(ids)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(list)
     }
 
@@ -1242,8 +1263,7 @@ impl PermissionsStore for SqlitePool {
                 }
                 Ok(ids)
             })
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(map)
     }
 
@@ -1280,8 +1300,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1322,8 +1341,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1365,8 +1383,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1384,8 +1401,7 @@ impl PermissionsStore for SqlitePool {
                         .optional()
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(result)
     }
 
@@ -1398,8 +1414,7 @@ impl PermissionsStore for SqlitePool {
                     c.query_row(sql, [], |row| row.get(0))
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(count > 0)
     }
 
@@ -1420,8 +1435,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1458,8 +1472,7 @@ impl PermissionsStore for SqlitePool {
                     Ok(())
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(())
     }
 
@@ -1479,8 +1492,7 @@ impl PermissionsStore for SqlitePool {
                     .optional()
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(result)
     }
 
@@ -1499,26 +1511,24 @@ impl PermissionsStore for SqlitePool {
                     Ok(out)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(result)
     }
 
     async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
-        let sql = "SELECT MAX(crl_number) FROM crls".to_owned();
+        let sql = get_sqlite_query!("select-max-crl-number");
         let max: Option<i64> = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
                     // MAX() returns a single row with NULL when the table is empty.
                     // Use Option<i64> to handle both NULL and actual values.
-                    c.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0))
+                    c.query_row(sql, [], |row| row.get::<_, Option<i64>>(0))
                         .optional()
                         .map(Option::flatten)
                 },
             )
-            .await
-            .map_err(DbError::from)?;
+            .await?;
         Ok(max.map(crl_number_from_sql))
     }
 }
@@ -1539,7 +1549,7 @@ impl SqlitePool {
                 LocateParam::I64(i) => rusqlite::types::Value::Integer(i),
             })
             .collect();
-        Ok(self
+        self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<
@@ -1566,7 +1576,7 @@ impl SqlitePool {
                     Ok(out)
                 },
             )
-            .await?)
+            .await
     }
 
     async fn perms(&self, uid: &str, userid: &str) -> DbResult<HashSet<KmipOperation>> {
@@ -1587,7 +1597,6 @@ impl SqlitePool {
                 Ok(res.unwrap_or_default())
             })
             .await
-            .map_err(DbError::from)
     }
 }
 
@@ -1617,6 +1626,7 @@ enum OwnedOp {
         attributes_json: String,
         wrapping_key_id: Option<String>,
         tags: Option<HashSet<String>>,
+        expected_version: Option<i64>,
     },
     UpdateState {
         uid: String,
@@ -1669,22 +1679,13 @@ impl OwnedOp {
                 })
             }
             AtomicOperation::UpdateObject((uid, obj, attrs, tags)) => {
-                let object_json = serde_json::to_string(obj).map_err(|e| {
-                    DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+                Self::update_object(uid, obj, attrs, tags, None)
+            }
+            AtomicOperation::UpdateObjectIfVersion((uid, obj, attrs, tags, expected)) => {
+                let expected = i64::try_from(*expected).map_err(|e| {
+                    DbError::DatabaseError(format!("expected version out of range: {e}"))
                 })?;
-                let attributes_json = serde_json::to_string(attrs).map_err(|e| {
-                    DbError::DatabaseError(format!(
-                        "failed serializing the attributes to JSON: {e}"
-                    ))
-                })?;
-                let wrapping_key_id = obj.wrapping_key_uid();
-                Ok(Self::UpdateObject {
-                    uid: uid.clone(),
-                    object_json,
-                    attributes_json,
-                    wrapping_key_id,
-                    tags: tags.clone(),
-                })
+                Self::update_object(uid, obj, attrs, tags, Some(expected))
             }
             AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
@@ -1692,6 +1693,29 @@ impl OwnedOp {
             }),
             AtomicOperation::Delete(uid) => Ok(Self::Delete(uid.clone())),
         }
+    }
+
+    fn update_object(
+        uid: &str,
+        obj: &Object,
+        attrs: &Attributes,
+        tags: &Option<HashSet<String>>,
+        expected_version: Option<i64>,
+    ) -> DbResult<Self> {
+        let object_json = serde_json::to_string(obj).map_err(|e| {
+            DbError::DatabaseError(format!("failed serializing the object to JSON: {e}"))
+        })?;
+        let attributes_json = serde_json::to_string(attrs).map_err(|e| {
+            DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
+        })?;
+        Ok(Self::UpdateObject {
+            uid: uid.to_owned(),
+            object_json,
+            attributes_json,
+            wrapping_key_id: obj.wrapping_key_uid(),
+            tags: tags.clone(),
+            expected_version,
+        })
     }
 }
 
@@ -1704,11 +1728,13 @@ fn apply_owned_ops(
     let ins_obj_sql = get_sqlite_query!("insert-objects");
     let ins_tag_sql = get_sqlite_query!("insert-tags");
     let upd_obj_sql = get_sqlite_query!("update-object-with-object");
+    let upd_obj_if_version_sql = get_sqlite_query!("update-object-with-object-if-version");
     let del_tag_sql = get_sqlite_query!("delete-tags");
     let ups_obj_sql = get_sqlite_query!("upsert-object");
     let upd_st_sql = get_sqlite_query!("update-object-with-state");
     let del_obj_sql = get_sqlite_query!("delete-object");
     let del_acc_sql = get_sqlite_query!("delete-read-access-for-object");
+    let exists_obj_sql = get_sqlite_query!("exists-object");
 
     for op in ops {
         match op {
@@ -1720,7 +1746,7 @@ fn apply_owned_ops(
                 state_s,
                 tags,
             } => {
-                let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+                let mut stmt = tx.prepare_cached(exists_obj_sql)?;
                 let exists = stmt.exists(params_from_iter([uid]))?;
                 if exists {
                     return Err(DbError::Kmip21Error(
@@ -1784,11 +1810,31 @@ fn apply_owned_ops(
                 attributes_json,
                 wrapping_key_id,
                 tags,
+                expected_version,
             } => {
-                tx.execute(
-                    upd_obj_sql,
-                    rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
-                )?;
+                if let Some(expected) = expected_version {
+                    let rows_affected = tx.execute(
+                        upd_obj_if_version_sql,
+                        rusqlite::params![
+                            object_json,
+                            attributes_json,
+                            wrapping_key_id,
+                            uid,
+                            expected
+                        ],
+                    )?;
+                    if rows_affected == 0 {
+                        return Err(DbError::Conflict(format!(
+                            "object '{uid}' was modified concurrently (expected version \
+                             {expected})"
+                        )));
+                    }
+                } else {
+                    tx.execute(
+                        upd_obj_sql,
+                        rusqlite::params![object_json, attributes_json, wrapping_key_id, uid],
+                    )?;
+                }
                 if let Some(tags) = tags {
                     tx.execute(del_tag_sql, params_from_iter([uid]))?;
                     for tag in tags {

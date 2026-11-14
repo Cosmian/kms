@@ -433,45 +433,34 @@ impl PgPool {
         }
         // Ensure attributes column is jsonb (and convert if needed)
         client
-            .batch_execute(
-                "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
-            )
+            .batch_execute(tmp_loader.get_query("alter-column-attributes-jsonb")?)
             .await
             .map_err(DbError::from)?;
         // Add wrapping_key_id column if not present (idempotent).
         client
-            .batch_execute(
-                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
-            )
+            .batch_execute(tmp_loader.get_query("add-column-wrapping-key-id")?)
+            .await
+            .map_err(DbError::from)?;
+        // Optimistic-locking version counter (idempotent).
+        client
+            .batch_execute(tmp_loader.get_query("add-column-version")?)
             .await
             .map_err(DbError::from)?;
         // Add the RBAC `domain` column to databases created before it existed (idempotent).
-        // Written inline rather than via the shared `add-column-domain` query because that
-        // one has no `IF NOT EXISTS` (SQLite does not support it). A constant default is
-        // added without rewriting the table on PostgreSQL 11+.
         client
-            .batch_execute(
-                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS domain VARCHAR(255) NOT NULL DEFAULT '';",
-            )
+            .batch_execute(tmp_loader.get_query("add-column-domain")?)
             .await
             .map_err(DbError::from)?;
         // Add activated_by column to crypto_officer_activations (idempotent).
         // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
         client
-            .batch_execute(
-                "ALTER TABLE crypto_officer_activations \
-                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
-            )
+            .batch_execute(tmp_loader.get_query("add-column-co-activated-by")?)
             .await
             .map_err(DbError::from)?;
         // Unique partial index: at most one active activation record per user.
         // Prevents duplicate active records even under concurrent JoinSplitKey requests.
         client
-            .batch_execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
-                 ON crypto_officer_activations (activated_by) \
-                 WHERE revoked_at IS NULL;",
-            )
+            .batch_execute(tmp_loader.get_query("create-unique-index-co-activations-active")?)
             .await
             .map_err(DbError::from)?;
         // Create the read-path indexes (idempotent). PostgreSQL supports
@@ -622,7 +611,7 @@ impl PgPool {
             .await
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         client
-            .query_one("SELECT 1", &[])
+            .query_one(get_pgsql_query!("health-check"), &[])
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
@@ -761,9 +750,11 @@ impl ObjectsStore for PgPool {
                 let domain: String = row.try_get(5).unwrap_or_default();
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                Ok(Some(ObjectWithMetadata::new(
-                    id, object, owner, state, attributes, domain,
-                )))
+                let version: i64 = row.get(6);
+                Ok(Some(
+                    ObjectWithMetadata::new(id, object, owner, state, attributes, domain)
+                        .with_version(u64::try_from(version).unwrap_or_default()),
+                ))
             } else {
                 Ok(None)
             }
@@ -947,17 +938,50 @@ impl ObjectsStore for PgPool {
                         }
                         uids.push(uid.clone());
                     }
-                    AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                    AtomicOperation::UpdateObject((uid, object, attributes, tags))
+                    | AtomicOperation::UpdateObjectIfVersion((uid, object, attributes, tags, _)) => {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
-                        let stmt = tx
-                            .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                        if let AtomicOperation::UpdateObjectIfVersion((.., expected)) = op {
+                            let expected = i64::try_from(*expected)
+                                .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+                            let stmt = tx
+                                .prepare_cached(get_pgsql_query!(
+                                    "update-object-with-object-if-version"
+                                ))
+                                .await
+                                .map_err(DbError::from)?;
+                            let n = tx
+                                .execute(
+                                    &stmt,
+                                    &[
+                                        &object_json,
+                                        &attrs_param,
+                                        &wrapping_key_id,
+                                        &uid,
+                                        &expected,
+                                    ],
+                                )
+                                .await
+                                .map_err(DbError::from)?;
+                            if n == 0 {
+                                return Err(DbError::Conflict(format!(
+                                    "object '{uid}' was modified concurrently (expected version {expected})"
+                                )));
+                            }
+                        } else {
+                            let stmt = tx
+                                .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(
+                                &stmt,
+                                &[&object_json, &attrs_param, &wrapping_key_id, &uid],
+                            )
                             .await
                             .map_err(DbError::from)?;
-                        tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
-                            .await
-                            .map_err(DbError::from)?;
+                        }
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))
@@ -1633,7 +1657,7 @@ impl PermissionsStore for PgPool {
     async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
         pg_retry!(self.pool, |client| {
             let rows = client
-                .query("SELECT MAX(crl_number) FROM crls", &[])
+                .query(get_pgsql_query!("select-max-crl-number"), &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             // MAX() returns one row; the value is NULL when the table is empty.
@@ -2014,11 +2038,12 @@ mod tests {
             .await
             .map_err(|e| e.to_string())?;
         tokio::spawn(connection);
+        let sql = pgsql_queries()
+            .map_err(|e| e.to_string())?
+            .get("select-pg-backend-ssl")
+            .ok_or_else(|| "select-pg-backend-ssl SQL query can't be found".to_owned())?;
         client
-            .query_one(
-                "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
-                &[],
-            )
+            .query_one(sql, &[])
             .await
             .map(|row| row.get(0))
             .map_err(|e| e.to_string())

@@ -21,6 +21,11 @@ pub enum AtomicOperation {
     Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
+    /// Same as `UpdateObject` (uid, object, attributes, tags, `expected_version`), but applied only
+    /// if the stored object's version still equals `expected_version` (the value read in
+    /// `ObjectWithMetadata::version`). A mismatch fails the whole batch with `InterfaceError::Conflict`.
+    /// Every successful write to an object increments its version.
+    UpdateObjectIfVersion((String, Object, Attributes, Option<HashSet<String>>, u64)),
     /// Update the state (uid, state)
     UpdateState((String, State)),
     /// Delete (uid)
@@ -34,6 +39,7 @@ impl AtomicOperation {
             Self::Create((uid, _, _, _, _))
             | Self::Upsert((uid, _, _, _, _))
             | Self::UpdateObject((uid, _, _, _))
+            | Self::UpdateObjectIfVersion((uid, _, _, _, _))
             | Self::UpdateState((uid, _))
             | Self::Delete(uid) => uid,
         }

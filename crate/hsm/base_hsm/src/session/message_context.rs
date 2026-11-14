@@ -18,12 +18,14 @@ use pkcs11_sys::{
 use super::session_impl::is_mechanism_unsupported_rv;
 use crate::{HError, HResult, pkcs11_return_code_name, session::Session};
 
-/// Mechanisms the slot's token rejected at `C_MessageSignInit`/`C_MessageVerifyInit`;
-/// shared by every session of one slot.
+/// Mechanisms the slot's token rejected at `C_MessageSignInit`/`C_MessageVerifyInit` and at
+/// `C_MessageEncryptInit`/`C_MessageDecryptInit`; shared by every session of one slot.
 #[derive(Debug, Default)]
 pub(crate) struct MessageMechanismSupport {
     pub(crate) sign_unsupported: HashSet<CK_MECHANISM_TYPE>,
     pub(crate) verify_unsupported: HashSet<CK_MECHANISM_TYPE>,
+    pub(crate) encrypt_refused: HashSet<CK_MECHANISM_TYPE>,
+    pub(crate) decrypt_refused: HashSet<CK_MECHANISM_TYPE>,
 }
 
 /// Which message-based operation family a context belongs to.
@@ -122,6 +124,41 @@ impl Session {
         self.message_mechanism_support()
             .lock()
             .map_err(|e| HError::Default(format!("Failed to lock message mechanism support: {e}")))
+    }
+
+    /// Whether the token already refused the message-based AEAD `mechanism` (`decrypt`: decryption,
+    /// otherwise encryption) as unsupported on this slot, so the classic API is used directly.
+    pub(crate) fn message_aead_unsupported(
+        &self,
+        decrypt: bool,
+        mechanism: CK_MECHANISM_TYPE,
+    ) -> bool {
+        let support = self
+            .message_mechanism_support()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if decrypt {
+            support.decrypt_refused.contains(&mechanism)
+        } else {
+            support.encrypt_refused.contains(&mechanism)
+        }
+    }
+
+    /// Remembers that the token refused the message-based AEAD `mechanism` as unsupported.
+    pub(crate) fn mark_message_aead_unsupported(
+        &self,
+        decrypt: bool,
+        mechanism: CK_MECHANISM_TYPE,
+    ) {
+        let mut support = self
+            .message_mechanism_support()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if decrypt {
+            support.decrypt_refused.insert(mechanism);
+        } else {
+            support.encrypt_refused.insert(mechanism);
+        }
     }
 
     /// Records an explicitly opened context (`message_sign_init`) so `sign` can reuse it.

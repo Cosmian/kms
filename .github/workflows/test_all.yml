@@ -3,10 +3,6 @@ name: Build all
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
   workflow_dispatch:
 
 jobs:
@@ -102,6 +98,7 @@ jobs:
       TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
       TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
       GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+      CSE_CKMS_CONF_TOML: ${{ secrets.CSE_CKMS_CONF_TOML }}
       KMS_CI_AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
       KMS_CI_AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
       KMS_CI_AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
@@ -289,13 +286,11 @@ jobs:
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     steps:
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: 1.99.1
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
+
+      - uses: ./.github/actions/install-rust
 
       - uses: ./.github/actions/cache-openssl-buildrs
         with:
@@ -343,14 +338,11 @@ jobs:
       contents: read
 
     steps:
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain || '1.99.1' }}
-          components: rustfmt, clippy
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
+
+      - uses: ./.github/actions/install-rust
 
       - uses: ./.github/actions/cache-openssl-buildrs
         with:
@@ -383,8 +375,6 @@ jobs:
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/cargo-publish.yml
-    with:
-      toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}
 
@@ -405,7 +395,5 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
     uses: ./.github/workflows/cargo-publish.yml
-    with:
-      toolchain: 1.99.1
     secrets:
       token: ${{ secrets.CRATES_IO }}

@@ -5,7 +5,6 @@ authors.workspace = true
 categories.workspace = true
 edition.workspace = true
 exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
-homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -117,7 +116,6 @@ openssl-sys = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
-pem = { workspace = true }
 proteccio_pkcs11_loader = { workspace = true }
 regex = { workspace = true, features = ["std", "unicode-perl"] }
 reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
@@ -153,16 +151,10 @@ windows-service = { workspace = true }
 actix-http = { workspace = true }
 cosmian_kms_client_utils = { workspace = true }
 cosmian_kms_interfaces = { workspace = true }
-native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
-pem = { workspace = true }
 serial_test = { workspace = true }
 tempfile = { workspace = true }
 tokio-postgres = { workspace = true }
-
-[build-dependencies]
-actix-http = { workspace = true }
-time = { workspace = true, features = ["local-offset", "formatting"] }
 
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING

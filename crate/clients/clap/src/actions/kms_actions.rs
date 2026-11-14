@@ -206,6 +206,16 @@ impl KmsActions {
                     new_config.http_config.access_token = Some(token);
                     new_config.http_config.vault_token = None;
                 }
+                LoginCredential::OAuth(tokens) => {
+                    new_config.http_config.access_token = Some(tokens.token);
+                    new_config.http_config.vault_token = None;
+                    if let (Some(refresh_token), Some(oauth2_conf)) = (
+                        tokens.refresh_token,
+                        new_config.http_config.oauth2_conf.as_mut(),
+                    ) {
+                        oauth2_conf.refresh_token = Some(refresh_token);
+                    }
+                }
                 LoginCredential::VaultToken(token) => {
                     new_config.http_config.vault_token = Some(token);
                     new_config.http_config.access_token = None;

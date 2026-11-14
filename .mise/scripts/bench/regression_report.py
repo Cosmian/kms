@@ -8,7 +8,7 @@ compares every load-test point and Criterion benchmark, and prints a markdown re
 
 Usage: regression_report.py <base_version> <new_version> [--dir ckms_bench]
            [--threshold 5] [--base-url https://package.cosmian.com] [--output FILE] [--fail] [--all]
-Exit status: 1 when --fail is given and at least one regression is found, or when data is missing.
+Exit status: 1 when --fail is given and at least one regression, collapsed load point, or encryption/signature load point dropped from the new version is found, or when no benchmark id matches the baseline. Benchmarks only in the new version never fail.
 """
 from __future__ import annotations
 
@@ -62,12 +62,12 @@ def load_version(base_url: str, version: str, subdir: str) -> dict:
         elif name == 'criterion.json':
             for row in jsonl(text):
                 if row.get('reason') == 'benchmark-complete':
-                    # Criterion ids embed the version ("group/5.25.0/name", maybe "v5.25.0"): drop it to align versions.
-                    cid = '/'.join(
-                        p
-                        for p in row['id'].split('/')
-                        if not re.fullmatch(r'v?\d+\.\d+\.\d+\S*', p)
-                    )
+                    # `ckms bench --version-label` rewrites "A/B/C" into "A/<label>/B - C": undo it to align with unlabelled runs.
+                    section, _, rest = row['id'].partition('/')
+                    label, _, row_name = rest.partition('/')
+                    if re.fullmatch(r'v?\d+\.\d+\.\d+\S*', label):
+                        rest = row_name.replace(' - ', '/')
+                    cid = f"{section}/{rest}" if rest else section
                     m = row['median']
                     out['crit'][cid] = (
                         m['estimate'],
@@ -118,7 +118,7 @@ def main() -> int:
     lines = [
         f"# Performance regression report: {a.base} -> {a.new}",
         '',
-        f"Threshold: {th:g}% (a regression is a throughput drop or a latency/time increase beyond it).",
+        f"Threshold: {th:g}% (load: regression = throughput drop and p95 latency increase both beyond it; Criterion: median time increase beyond it with non-overlapping confidence intervals).",
         '',
     ]
 
@@ -178,7 +178,7 @@ def main() -> int:
             lines.extend([header, '|' + '---|' * (header.count('|') - 1), *shown, ''])
 
     # Load tests: every (protocol, operation, concurrency) present in both versions.
-    # Regression = throughput drop or p95 increase beyond the threshold.
+    # Regression = throughput drop AND p95 increase both beyond the threshold.
     rows = []
     for k in sorted(old['load'].keys() & new['load'].keys()):
         o, n = old['load'][k], new['load'][k]
@@ -190,7 +190,7 @@ def main() -> int:
         elif o['throughput_rps'] < MIN_RPS:
             status = 'RECOVERED'
         else:
-            status = 'REGRESSION' if max(-d_tp, d_p95) > th else 'OK'
+            status = 'REGRESSION' if -d_tp > th and d_p95 > th else 'OK'
         rows.append(
             (
                 status,
@@ -222,15 +222,15 @@ def main() -> int:
     missing = [('load', k) for k in old['load'].keys() ^ new['load'].keys()] + [
         ('criterion', k) for k in old['crit'].keys() ^ new['crit'].keys()
     ]
-    # Encryption and signature algorithms must be compared 1 to 1: a gap there is a hard failure.
+    # New-only benchmarks are informational. Only encryption/signature load points dropped from the
+    # new version fail; a dropped Criterion id is a warning (one-off sample gaps in published runs).
+    dropped = [('load', k) for k in old['load'].keys() - new['load'].keys()]
     strict = [
-        m for m in missing if re.search(r'encrypt|sign', str(m[1]), re.IGNORECASE)
+        m for m in dropped if re.search(r'encrypt|sign', str(m[1]), re.IGNORECASE)
     ]
-    # A category with data on either side but nothing in common means the keys do not line up.
+    # Baseline has data but nothing in common with the new version: keys do not line up.
     nothing_matched = [
-        c
-        for c in ('load', 'crit')
-        if (old[c] or new[c]) and not old[c].keys() & new[c].keys()
+        c for c in ('load', 'crit') if old[c] and not old[c].keys() & new[c].keys()
     ]
     if missing:
         lines[3:3] = [

@@ -1,6 +1,6 @@
 # KMS Benchmarks
 
-Five independent benchmarks exist under `mise run bench:*`, each producing its own
+Seven independent benchmarks exist under `mise run bench:*`, each producing its own
 report under `documentation/docs/benchmarks/<dir>/` (linked from the mdBook
 "Benchmarks" nav section). It's easy to lose track of which is which — this table
 is the canonical reference.
@@ -12,12 +12,14 @@ is the canonical reference.
 | 3 | HSM-delegated crypto | `ckms` + KMS server; `hsm::<slot>::<uuid>` keys — key gen + Encrypt/Sign routed to the HSM's CryptoOracle (PKCS#11), crypto runs ON the HSM | `mise run bench:hsm --delegated` | `ckms_bench_hsm_delegated_softhsm2` (or `_<hsm_backend>`) |
 | 4 | Real PKCS#11 DLL | `cosmian_pkcs11` shared library `dlopen()`-ed + KMS server — drives the real Cryptoki C ABI (`C_Sign`, `C_Encrypt`, ...) | `mise run bench:pkcs11` | `ckms_bench_pkcs11` |
 | 5 | PKCS#11 HSM-delegated | Same as Benchmark 4, but with `hsm::<slot>::<uuid>` HSM-resident keys — `cosmian_pkcs11` makes HTTPS calls to KMS, which routes crypto operations to the HSM's CryptoOracle via PKCS#11 | `mise run bench:pkcs11 --delegated --hsm-model <backend>` | `ckms_bench_pkcs11_hsm_delegated_<hsm_backend>` |
+| 6 | JOSE caches | `ckms` + two fresh KMS servers started from `test_data/configs/server/test/bench_jose_cache.toml`, one with `disable_unwrapped_cache = false` (CEK cache on) and one with `true` (off); same JOSE sweep (`dir`/A256GCM encrypt, RSA-OAEP decrypt replayed vs fresh token) | `mise run bench:jose-cache` | `ckms_bench_jose_cache_on` and `ckms_bench_jose_cache_off` |
+| 7 | JOSE CEK switch | `ckms bench --cek-switch` sends a fixed-rate stream of JWEs (RSA-OAEP decrypt, then `dir` re-encrypt) round-robin over N KMS servers sharing one Kryoptic (or real HSM) token, each with its own SQLite DB; the CEK changes mid-run. Latency timeline, HSM unwraps per CEK, and a performance gate (≥ 95 % of the target rate, 0 errors, recovery) that fails the task | `mise run bench:jose-cek-switch [--label before\|after]` | `ckms_bench_jose_cek_switch_<hsm_model>` |
 
 Benchmarks 2 and 3 are both driven by the same task (`bench/hsm`); the
 `--delegated` flag switches between them. Benchmarks 4 and 5 share the `bench/pkcs11` task;
 the `--delegated` flag switches between them. Benchmarks 1, 2, and 3 drive the KMS's KMIP/REST API directly via the `ckms` client library; Benchmarks 4 and 5 drive the real, `dlopen()`-ed Cryptoki C ABI — the same code path a real PKCS#11 consumer application (e.g. Oracle TDE, OpenSSH, VeraCrypt) uses.
 
-All five accept `--criterion` to also run single-operation Criterion
+Benchmarks 1–5 accept `--criterion` to also run single-operation Criterion
 micro-benchmarks alongside the concurrency sweep, and `--sanity` for a quick
 smoke test. See `mise run bench:<task> --help` for the full flag list of each.
 
@@ -29,9 +31,9 @@ benchmarks published on package.cosmian.com for both versions and compares them 
 listed, plus points whose throughput collapsed below 10 req/s (with the counts of what was compared); `--all` lists every compared point with its OK/REGRESSION/noise status.
 It writes a markdown report to `target/bench_compare/<base>_vs_<new>.md`. `threshold` is a percentage (default 5).
 A Criterion slowdown beyond the threshold counts as a regression only when the confidence intervals do not overlap,
-otherwise it is marked `noise`. Benchmarks present in only one version are listed; a gap in an encryption or signature
-algorithm is flagged. `--dir <report dir>` (default `ckms_bench`), `--fail` (non-zero exit on regression or
-encryption/signature gap). It warns when the two runs' environments (CPU, variant, load parameters) differ: only
+otherwise it is marked `noise`. Benchmarks present in only one version are listed; new-only ones never fail, and a dropped
+Criterion id is a warning. `--dir <report dir>` (default `ckms_bench`), `--fail` (non-zero exit on regression, collapsed
+load point, or an encryption/signature load point dropped from the new version). It warns when the two runs' environments (CPU, variant, load parameters) differ: only
 compare runs from the same benchmark machine.
 
 ## Where a new report goes in the docs nav

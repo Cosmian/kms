@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, time::Duration};
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use cosmian_kmip::kmip_2_1::{
     kmip_objects::{Object, OpaqueObject},
@@ -67,6 +67,8 @@ impl Drop for CachedObject {
 pub struct UnwrappedCache {
     fingerprinter: Fingerprinter,
     inner: Cache<String, CachedObject>,
+    /// Per-uid locks of [`Self::lock_miss`]. Idle locks are dropped after a minute.
+    miss_locks: Cache<String, Arc<tokio::sync::Mutex<()>>>,
     /// When `true` all `peek` / `insert` calls are no-ops; every unwrap goes
     /// straight through to the KEK or HSM, leaving no plaintext key material
     /// in process memory beyond a single operation.
@@ -89,8 +91,9 @@ impl UnwrappedCache {
         max_ttl: Option<Duration>,
         disabled: bool,
     ) -> Self {
+        let capacity = u64::try_from(max_size.get()).unwrap_or(u64::MAX);
         let mut builder = Cache::builder()
-            .max_capacity(u64::try_from(max_size.get()).unwrap_or(u64::MAX))
+            .max_capacity(capacity)
             .time_to_idle(max_age);
         if let Some(ttl) = max_ttl {
             builder = builder.time_to_live(ttl);
@@ -98,6 +101,10 @@ impl UnwrappedCache {
         Self {
             fingerprinter: Fingerprinter::new(),
             inner: builder.build(),
+            miss_locks: Cache::builder()
+                .max_capacity(capacity)
+                .time_to_idle(Duration::from_secs(60))
+                .build(),
             disabled,
         }
     }
@@ -179,6 +186,22 @@ impl UnwrappedCache {
         Ok(())
     }
 
+    /// Serialize the producers of `uid` (single-flight): concurrent callers that missed the
+    /// cache for the same `uid` wait here, so only the first one performs the expensive unwrap
+    /// and the others find its result with [`Self::peek`]. `None` when the cache is disabled
+    /// (nothing would be shared, so callers must not be serialized).
+    /// A lock entry evicted while held only loses coalescing, never correctness.
+    pub async fn lock_miss(&self, uid: &str) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        if self.disabled {
+            return None;
+        }
+        let lock = self
+            .miss_locks
+            .get_with_by_ref(uid, async { Arc::new(tokio::sync::Mutex::new(())) })
+            .await;
+        Some(lock.lock_owned().await)
+    }
+
     /// Returns `true` if the cache contains an entry for `uid`.
     ///
     /// Only used in tests to check cache state without requiring a `wrapped_object`.
@@ -197,6 +220,10 @@ mod tests {
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroUsize,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::Duration,
     };
 
@@ -285,6 +312,61 @@ mod tests {
         assert!(!database.unwrapped_cache.contains(&uid).await);
 
         Ok(())
+    }
+
+    /// Concurrent producers of the same uid unwrap once: the others wait on `lock_miss`, then
+    /// find the first one's result.
+    #[tokio::test]
+    async fn lock_miss_single_flight() -> DbResult<()> {
+        let cache = Arc::new(super::UnwrappedCache::new(
+            Duration::from_secs(60),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
+        ));
+        let attributes = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::default()
+        };
+        let wrapped = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &[0; 32], &attributes)?;
+        let unwrapped = create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &[1; 32], &attributes)?;
+        let unwraps = Arc::new(AtomicUsize::new(0));
+
+        let tasks: Vec<_> = (0..8)
+            .map(|_| {
+                let (cache, wrapped, unwrapped, unwraps) = (
+                    Arc::clone(&cache),
+                    wrapped.clone(),
+                    unwrapped.clone(),
+                    Arc::clone(&unwraps),
+                );
+                tokio::spawn(async move {
+                    let _guard = cache.lock_miss("u").await;
+                    if cache.peek("u", &wrapped).await?.is_none() {
+                        unwraps.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        cache.insert("u".to_owned(), &wrapped, unwrapped).await?;
+                    }
+                    cache.peek("u", &wrapped).await
+                })
+            })
+            .collect();
+        for task in tasks {
+            assert_eq!(task.await.expect("task panicked")?, Some(unwrapped.clone()));
+        }
+        assert_eq!(unwraps.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn lock_miss_disabled_is_none() {
+        let cache = super::UnwrappedCache::new(
+            Duration::from_secs(60),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            true,
+        );
+        assert!(cache.lock_miss("u").await.is_none());
     }
 
     #[tokio::test]

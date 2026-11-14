@@ -45,6 +45,10 @@ pub enum DbError {
     #[error("Inconsistent operation: {0}")]
     InconsistentOperation(String),
 
+    // An optimistic-lock check failed: the object was modified concurrently
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     // Missing arguments in the request
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
@@ -190,21 +194,6 @@ impl From<rusqlite::Error> for DbError {
     }
 }
 
-impl<E: std::error::Error + Send + Sync + 'static> From<tokio_rusqlite::Error<E>> for DbError {
-    fn from(e: tokio_rusqlite::Error<E>) -> Self {
-        // The error type is generic across tokio-rusqlite versions; rely on string content.
-        let msg = e.to_string();
-        if msg.contains("Query is not read-only") {
-            Self::Kmip21Error(
-                ErrorReason::Object_Already_Exists,
-                "one or more objects already exist".to_owned(),
-            )
-        } else {
-            Self::SqlError(msg)
-        }
-    }
-}
-
 impl From<tokio_postgres::Error> for DbError {
     fn from(e: tokio_postgres::Error) -> Self {
         // Normalize common constraint violations to user-friendly messages
@@ -283,6 +272,7 @@ impl From<InterfaceError> for DbError {
             }
             InterfaceError::Unauthorized(s) => Self::Unauthorized(s),
             InterfaceError::InvalidRequest(s) => Self::InvalidRequest(s),
+            InterfaceError::Conflict(s) => Self::Conflict(s),
             x => Self::Store(x.to_string()),
         }
     }
@@ -355,6 +345,7 @@ impl From<DbError> for InterfaceError {
             DbError::Unauthorized(msg) => Self::Unauthorized(msg),
             DbError::InvalidRequest(msg) => Self::InvalidRequest(msg),
             DbError::NotSupported(msg) => Self::NotSupported(msg),
+            DbError::Conflict(msg) => Self::Conflict(msg),
             other => Self::Db(other.to_string()),
         }
     }

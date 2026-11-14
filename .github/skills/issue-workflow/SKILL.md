@@ -1,13 +1,15 @@
 ---
 name: issue-workflow
-description: 'Deterministic end-to-end procedure for resolving a GitHub issue: scope, reproduce (bugs), plan, branch, test-first implementation, variant/backend/UI testing, documentation, the mandatory AGENTS.md §5 execution workflow (including auto-fixing /kms-pr-review), Conventional Commits, PR creation, a one-shot CI status report, and review-feedback handling. Never waits for CI to finish and never merges. Use whenever given a GitHub issue number or URL to resolve.'
+description: 'Deterministic end-to-end procedure for resolving a GitHub issue: scope, reproduce (bugs), plan, user plan approval (the only interactive step), branch, test-first implementation, variant/backend/UI testing, documentation, the mandatory AGENTS.md §5 execution workflow (including auto-fixing /kms-pr-review), Conventional Commits, PR creation, a one-shot CI status report, and review-feedback handling. Never waits for CI and never merges. Use whenever given a GitHub issue number or URL to resolve.'
 ---
 
 # Issue → PR workflow
 
-Every step is mandatory and runs in order. Do not ask whether to run a step. Stop only on a condition listed in step 13.
+Every step is mandatory and runs in order. The only user interaction is the plan-approval gate at the end of step 3; everything before it is read-only and everything after it is automated. Do not ask whether to run a step. After approval, stop only on a condition listed in step 13.
 
 This skill is a router: post-implementation checks point to `AGENTS.md` §5 instead of restating it. Coding rules are in `AGENTS.md` §4 and the per-file instruction files in `.github/instructions/`, which apply automatically by path.
+
+Sub-skills invoked after approval never prompt the user: when a sub-skill says to ask, confirm, or wait for approval (`/refactor-plan` step 8, `/adr` Required Inputs, `/docs-writer` steps 1–2, `/kms-changelog` inputs, `/simplify-code` empty scope), take the answer from the approved plan, the issue, and the diff. If the answer cannot be derived, stop (step 13).
 
 ## 1. Fetch and scope
 
@@ -19,7 +21,7 @@ This skill is a router: post-implementation checks point to `AGENTS.md` §5 inst
 
 ## 2. Reproduce (bugs only)
 
-- Do steps 3 and 4 (plan, then create the branch) before writing any file, so the failing test never lands on the checked-out branch. Then write a failing test at the lowest layer that shows the bug: unit test in the `#[cfg(test)]` module of the faulty file, otherwise a crate integration test, otherwise a test vector (`/kms-test-vector`). Running only the reporter's steps is allowed when no automated test can express the bug, for example UI-only or packaging bugs.
+- Do steps 3 (plan and approval) and 4 (create the branch) before writing any file, so the failing test never lands on the checked-out branch. Then write a failing test at the lowest layer that shows the bug: unit test in the `#[cfg(test)]` module of the faulty file, otherwise a crate integration test, otherwise a test vector (`/kms-test-vector`). Running only the reporter's steps is allowed when no automated test can express the bug, for example UI-only or packaging bugs.
 - Record the result: confirmed (with code path) / not reproduced / insufficient detail.
 - If the result is not reproduced or insufficient detail, stop (step 13). Report the attempt and the environment you used.
 - Keep the failing test. Step 6 must turn it green, and it ships in the PR as the regression test.
@@ -35,13 +37,25 @@ Write the plan in the session before you edit code. It must contain:
 - **Docs impact**: the pages from step 7 that change.
 - **Security impact**: yes or no for auth, access control, crypto, key material, input parsing, and new network surface. Yes selects the reviews in step 8.
 - **Sync rules**: the `AGENTS.md` §5 step 4 task-type rows that will apply.
+- **Branch**: the branch name computed per step 4.
+- **Skills**: every skill steps 5–8 will invoke, each with the file path or trigger that selected it (use the routing in steps 5–8).
+- **Reproduction** (bugs): the failing-test location and layer chosen in step 2.
 
 Route by plan content:
 
-- Multi-file refactor → run `/refactor-plan` first.
-- Architectural decision (new dependency, storage schema, protocol surface, cross-crate interface) → run `/adr`.
-- New trust boundary or external integration → run `/threat-model` in incremental mode.
-- Two or more viable designs whose difference changes user-visible behavior, the API, or the storage format → stop (step 13) and present the options with a recommendation. Otherwise pick the conservative option, record it in the plan, and continue.
+- Multi-file refactor → run `/refactor-plan` now; its plan goes into this plan, and the approval gate below is its confirmation.
+- New or changed function signature (public API, KMIP handler, CLI action, cross-crate interface) → run `/rust-signature-design` now and record its verdict per signature.
+- Architectural decision (new dependency, storage schema, protocol surface, cross-crate interface) → run `/adr`; derive its required inputs from the issue and plan and include the draft ADR title and decision in the plan. The ADR file is written in step 5.
+- New trust boundary or external integration → run `/threat-model` in incremental mode now (read-only analysis); its output is written in step 5.
+- New or changed user-visible behavior → draft the `/docs-writer` outline (document type, audience, page path, table of contents) in **Docs impact**; the gate approves it.
+- Two or more viable designs whose difference changes user-visible behavior, the API, or the storage format → list them in the plan with a recommendation; the user picks at the gate. Otherwise pick the conservative option and record it.
+
+### Plan approval (mandatory gate)
+
+- Present the full plan to the user and block until an explicit answer. Use the harness's blocking question tool: `xd://propose` / `ask` in OMP, `AskUserQuestion` in Claude Code, `request_user_input` in Codex; fall back to numbered options in chat only when none exists. Options: **Approve**, **Request changes**, **Abort**.
+- Request changes → revise the plan, re-run any affected routing skill above, present again. Abort → stop (step 13).
+- Before approval: no branch, no file writes, no commits; only steps 1–3 (gh queries, code reading, read-only skills).
+- After approval: run steps 4–12 without prompting. A required deviation from the approved files, layers, or user-visible behavior → stop (step 13).
 
 ## 4. Rollout and branch
 
@@ -53,7 +67,7 @@ Route by plan content:
 ## 5. Implement (test-first)
 
 - Write the step 3 tests first and confirm they fail. Then implement until they pass.
-- Run the matching domain skill: KMIP operation → `/kmip-compliance`; REST endpoint → `/openapi-endpoint`; test vector → `/kms-test-vector`; `ckms` subcommand or flag → `/ckms-subcommand-test`; UI → `/react-ant-patterns`, plus `/playwright-kms` for E2E; MISE scripts → `/mise`; Rust idioms/design → `/rust-best-practices`.
+- Run the matching domain skill: KMIP operation → `/kmip-compliance`; REST endpoint → `/openapi-endpoint`; test vector → `/kms-test-vector`; `ckms` subcommand or flag → `/ckms-subcommand-test`; a test, script, or smoke run that needs a KMS, Auth Verifier, or ckms config file → `/kms-test-config` (complete fixture in `test_data`, never an inline partial config); UI → `/react-ant-patterns`, plus `/playwright-kms` for E2E; MISE scripts → `/mise`; Rust idioms/design → `/rust-best-practices`; ADR / threat model approved in step 3 → write them now with `/adr` / `/threat-model`.
 - Keep the diff to the issue (`AGENTS.md` §4 "Commit scope"). Unrelated defects go into a new issue, not this branch.
 
 ## 6. Test
@@ -65,6 +79,7 @@ This extends `AGENTS.md` §5 step 1. Run all lines that apply:
 - Database code: `docker compose up -d <service>`, then the backend test (`AGENTS.md` §2 "Database test environment").
 - CLI: `cargo test -p ckms <test-name>`.
 - UI: the three layers in `AGENTS.md` §8.1 "UI test layers"; E2E via `mise run test:ui --variant non-fips`.
+- PKCS#11: changes under `crate/clients/pkcs11/` or PKCS#11 MISE scripts → `/pkcs11-check` (`mise run test:pkcs11:tool`); record the report summary for the PR body.
 - Server-facing change: start `cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data` and exercise the changed path with `ckms` or `curl`. Record the command and the observed output for the PR body.
 - Never `#[ignore]` or delete a failing test to get green.
 
@@ -72,11 +87,12 @@ This extends `AGENTS.md` §5 step 1. Run all lines that apply:
 
 Follow `AGENTS.md` §6.
 
-- New or changed user-visible behavior → run `/docs-writer` for the page under `documentation/docs/`. Add or update the entry in `documentation/docs/SUMMARY.md`. Integrations also need a README row.
+- New or changed user-visible behavior → run `/docs-writer` for the page under `documentation/docs/` using the outline approved in step 3. Add or update the entry in `documentation/docs/SUMMARY.md`. Integrations also need a README row.
 - CLI flag or server config change: the `generate-docs` pre-commit hook regenerates the CLI and config reference. Commit the regenerated files.
 - Public Rust items: `///` docs per `AGENTS.md` §4.
 - UI strings: update every locale bundle under `ui/src/i18n/` (`i18n.instructions.md`).
 - OpenAPI, test-vector README, and SECURITY.md are covered by `AGENTS.md` §5 steps 4 and 5.
+- Any change under `documentation/**` or a `README.md` → run `/kms-docs-verify` on the changed paths and fix every finding.
 
 ## 8. Execution workflow and targeted reviews
 
@@ -84,10 +100,17 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 
 1. `AGENTS.md` §5 step 1 (tests), step 2 (`/kms-test-vector`, unless the change is pure refactoring; when it is not applicable, for example a TLS-layer change with no KMIP behavior, record the reason in the PR body), and step 3 (`cargo clippy-all`, `cargo fmt --all`).
 2. `AGENTS.md` §5 step 4: run `/kms-sync-rules` and apply the rows it emits.
-3. `AGENTS.md` §5 step 5: decide whether SECURITY.md needs an entry (only when a vulnerability shipped in a tagged release) and record the decision.
-4. Targeted reviews, when the step 3 security impact is yes, each once and scoped to the changed paths: `/security-review` for auth, access control, TLS, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run item 1. Out-of-scope exploitable findings go to the maintainers through a private GitHub security advisory or directly, never a public issue or the PR body; the PR body may only say that out-of-scope findings were reported.
-5. `AGENTS.md` §5 step 6: `/kms-pr-review` in self-review mode (auto-fixes, at most 2 cycles). It must leave `review-YYYY-MM-DD/final.md` with a GO verdict. For significant work (new feature, algorithm, auth change, or diff > 200 lines), also run `/kms-adversarial-test` once (`AGENTS.md` §5 step 6.3).
-6. `AGENTS.md` §5 step 7: write `CHANGELOG/<branch with / replaced by _>.md` (`/kms-changelog`).
+3. Code-quality reviews, each once and scoped to the changed paths, in this order:
+   - Rust files changed → `/kms-caveman <paths>` first; reuse its findings in every later review (including `/kms-pr-review`, per its line 30).
+   - Rust diff > 200 lines, or a new feature/algorithm/auth change → `/rust-review-all <paths>` (it covers error propagation, refactor, async, best practices, security, crypto, standards; skip those individual skills here and in item 5 when it ran, and pass its caveman findings rather than re-scanning).
+   - Otherwise, for changed Rust: `/rust-error-propagation` when fallible paths or error types changed; `/rust-clone-audit` always; `/rust-async-refactor` when changed code or callers are async or may block; `/rust-refactor` when the diff adds duplicated or deeply nested logic.
+   - Any code changed (Rust, TypeScript, shell) → `/simplify-code` on the diff.
+   - `.github/workflows/**` or `.github/actions/**` changed → `/ci-efficiency` and `/ci-dedupe` scoped to those files.
+   Apply confirmed fixes, then re-run item 1.
+4. `AGENTS.md` §5 step 5: decide whether SECURITY.md needs an entry (only when a vulnerability shipped in a tagged release) and record the decision.
+5. Targeted reviews, when the step 3 security impact is yes, each once and scoped to the changed paths: `/security-review` for auth, access control, TLS, parsing, or network surface; `/cryptography-review` for `crate/crypto/`, algorithms, or key material; `/actix-web-middleware-audit` for middleware or `.wrap()` changes; `/standards-review` when the code implements an RFC, NIST, KMIP, or PKCS text. Fix confirmed findings, then re-run item 1. Out-of-scope exploitable findings go to the maintainers through a private GitHub security advisory or directly, never a public issue or the PR body; the PR body may only say that out-of-scope findings were reported.
+6. `AGENTS.md` §5 step 6: `/kms-pr-review` in self-review mode (auto-fixes, at most 2 cycles). It must leave `review-YYYY-MM-DD/final.md` with a GO verdict. For significant work (new feature, algorithm, auth change, or diff > 200 lines), also run `/kms-adversarial-test` once (`AGENTS.md` §5 step 6.3).
+7. `AGENTS.md` §5 step 7: write `CHANGELOG/<branch with / replaced by _>.md` (`/kms-changelog`).
 
 ## 9. Commit
 
@@ -103,6 +126,7 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 - `git push -u origin <branch>`. Never force-push (`AGENTS.md` "Force-push prohibition").
 - Confirm that `CHANGELOG/<branch with / replaced by _>.md` exists and is committed.
 - `gh pr create --repo Cosmian/kms --base develop --head <branch> --title "<conventional subject>" --body-file <file>`. The title uses the step 9 Conventional Commits format.
+- Then run `/kms-pr-description` on the new PR so the body matches the pushed diff; it keeps `Fixes #<N>`.
 - The body (`CONTRIBUTING.md` "Pull Requests") contains: `Fixes #<N>`; **What / How / Why**; **Tests**, listing the step 6 commands and smoke output; and **Docs**, listing the pages changed.
 - It also contains the `/kms-pr-review` verdict from `review-YYYY-MM-DD/final.md` (the file is gitignored, so do not commit it).
 - External contributors: sign the CLA when the CLA Assistant bot asks.
@@ -117,7 +141,7 @@ Nothing is committed or pushed until every item below is done. A skill counts as
 
 - Fetch `GH_PAGER=cat gh pr view <PR> --repo Cosmian/kms --comments` and `GH_PAGER=cat gh api repos/Cosmian/kms/pulls/<PR>/comments --paginate`.
 - For each unresolved comment: apply the change, or reply with the reason it was not applied. Comments that raise security concerns trigger the step 8 targeted review for the affected path.
-- After changes: re-run `AGENTS.md` §5 steps 1, 3, and 4, plus step 6 if the new diff exceeds 200 lines. Commit per step 9 and push per step 10 (no force). Reply inside each review thread, never as a new top-level PR comment: `GH_PAGER=cat gh api -X POST repos/Cosmian/kms/pulls/<PR>/comments/<comment-id>/replies -f body='<reply with commit SHA>'`. Do not resolve threads on the reviewer's behalf.
+- After changes: re-run `AGENTS.md` §5 steps 1, 3, and 4, plus step 6 if the new diff exceeds 200 lines. Commit per step 9 and push per step 10 (no force). Re-run `/kms-pr-description`. Reply inside each review thread, never as a new top-level PR comment: `GH_PAGER=cat gh api -X POST repos/Cosmian/kms/pulls/<PR>/comments/<comment-id>/replies -f body='<reply with commit SHA>'`. Do not resolve threads on the reviewer's behalf.
 - The workflow ends once every comment has a change or a reply. CI is reported at step 11, never awaited. Never merge the PR and never close the issue. Report the PR URL, the CI counts, and any open threads.
 
 ## 13. Stop conditions
@@ -127,7 +151,8 @@ Report to the user instead of continuing when:
 - step 1 scope is unresolved, or an open PR already addresses the issue;
 - the issue carries the `Blocked`, `duplicate`, or `question` label;
 - step 2 ends with not reproduced or insufficient detail;
-- step 3 has an open design choice (two or more viable designs with different user-visible behavior, API, or storage format);
+- the user requests abort at the step 3 approval gate, or a sub-skill question cannot be answered from the approved plan, issue, or diff;
+- implementation must deviate from the approved plan's files, layers, or user-visible behavior;
 - step 4 finds uncommitted changes unrelated to the issue;
 - `/kms-pr-review` ends NO-GO or has `needs-human` findings after 2 fix cycles;
 - `/ci-fix` stops after repeated failures with the same root cause;

@@ -3,18 +3,7 @@ name: Packaging - Tests
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
-        default: 1.99.1
   workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
-        required: true
-        type: string
-        default: 1.99.1
 
 jobs:
   # The base-image pull is the dominant Docker Hub rate-limit consumer. `features` and `link`

@@ -35,10 +35,13 @@ SELECT attributes from objects;
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);
+
+-- A constant default is added without rewriting the table on PostgreSQL 11+.
 -- name: add-column-domain
-ALTER TABLE objects ADD COLUMN domain VARCHAR(255) NOT NULL DEFAULT '';
--- name: has-column-domain
-SELECT domain from objects;
+ALTER TABLE objects ADD COLUMN IF NOT EXISTS domain VARCHAR(255) NOT NULL DEFAULT '';
+
+-- name: add-column-version
+ALTER TABLE objects ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (
@@ -71,7 +74,7 @@ DELETE FROM crls;
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id, domain) VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.domain
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.domain, objects.version
         FROM objects
         WHERE objects.id=$1;
 
@@ -79,10 +82,13 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
 SELECT objects.state, objects.attributes FROM objects WHERE objects.id=$1;
 
 -- name: update-object-with-object
-UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3 WHERE id=$4;
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1 WHERE id=$4;
+
+-- name: update-object-with-object-if-version
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1 WHERE id=$4 AND version=$5;
 
 -- name: update-object-with-state
-UPDATE objects SET state=$1 WHERE id=$2;
+UPDATE objects SET state=$1, version=version+1 WHERE id=$2;
 
 -- name: delete-object
 DELETE FROM objects WHERE id=$1;
@@ -90,7 +96,7 @@ DELETE FROM objects WHERE id=$1;
 -- name: upsert-object
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT(id)
-        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5, wrapping_key_id=$6
+        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5, wrapping_key_id=$6, version=objects.version+1
         WHERE objects.owner=$5;
 
 -- name: select-user-accesses-for-object
@@ -263,3 +269,23 @@ SELECT crl_der, generated_at FROM crls WHERE issuer_id = $1;
 
 -- name: list-crl-issuers
 SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;
+
+-- name: health-check
+SELECT 1;
+
+-- name: select-max-crl-number
+SELECT MAX(crl_number) FROM crls;
+
+-- name: alter-column-attributes-jsonb
+ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;
+
+-- name: add-column-co-activated-by
+ALTER TABLE crypto_officer_activations ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);
+
+-- name: create-unique-index-co-activations-active
+CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active
+        ON crypto_officer_activations (activated_by)
+        WHERE revoked_at IS NULL;
+
+-- name: select-pg-backend-ssl
+SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid();

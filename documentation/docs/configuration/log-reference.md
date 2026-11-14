@@ -52,7 +52,6 @@ Crate path: `crate/server`
 | `warn` | `Activate: object {} is already Active, rejecting` | `src/core/operations/activate.rs` | - | - |
 | `warn` | `AWS XKS create: key {uid} already exists (ignoring creation).` | `src/routes/aws_xks/key_metadata.rs` | `uid`: KMIP object UID | - |
 | `warn` | `Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
@@ -210,7 +209,6 @@ Crate path: `crate/server`
 | `debug` | `socket server: client connected from {}` | `src/socket_server.rs` | - | - |
 | `debug` | `socket server: client {} disconnected` | `src/socket_server.rs` | - | - |
 | `debug` | `success` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`: UID of the wrapping key | - |
 | `debug` | `tls_config: {config:#?}` | `src/config/params/tls_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `Token authentication successful` | `src/middlewares/api_token/api_token_auth.rs` | - | - |
 | `debug` | `unwrap key` | `src/routes/google_cse/operations.rs` | - | ×2 in this file |
@@ -238,7 +236,6 @@ Crate path: `crate/server`
 | `trace` | `Attribute: Object type {:?} does not have attributes (nor key block)` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `authentication token validated for {authentication_email}` | `src/routes/google_cse/jwt.rs` | `authentication_email` — … | — |
 | `trace` | `authorization token validated successfully` | `src/routes/google_cse/jwt.rs` | — | — |
-| `trace` | `Auto-activating object {} (activation_date {} <= now {})` | `src/core/retrieve_object_utils.rs` | — | — |
 | `trace` | `build_pkcs12_for_private_key: {} with format: {:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `building chain from leaf certificate:  {}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `building the PKCS12` | `src/core/operations/export_get.rs` | — | — |
@@ -419,7 +416,6 @@ Crate path: `crate/server`
 | `info` | `\n{:?}` | `src/routes/kmip/handlers.rs` | — | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
-| `warn` | `Failed to persist auto-deactivation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
 | `warn` | `failed to re-wrap dependant {dep_uid} with new key: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
 | `warn` | `failed to unwrap dependant {dep_uid}: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
 | `warn` | `skipping re-wrap of dependant {dep_uid}: owned by '{}', not by '{owner}'` | `src/core/operations/rekey/common.rs` | `dep_uid`, `owner` | - |
@@ -429,7 +425,6 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate-cron] Failed to build runtime: {}` | `src/cron.rs` | - | - |
 | `debug` | `[auto-rotate-cron] Running scheduled key auto-rotation check` | `src/cron.rs` | - | - |
 | `debug` | `[auto-rotate-cron] Shutdown signal received; stopping cron thread` | `src/cron.rs` | - | - |
-| `trace` | `Auto-deactivating object {} (deactivation_date {} <= now {})` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
 | `trace` | `execute_keyset_try_each: key {} failed for {}: {}` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
@@ -787,6 +782,9 @@ Crate path: `crate/server`
 | `warn` | `` SECURITY: `--opa-url` uses cleartext http:// to a non-loopback host. Authorization decisions travel unauthenticated and unencrypted: keep OPA on the KMS host's loopback or a trusted private network, or put it behind a TLS-terminating proxy and use https://. `` | `src/config/params/server_params.rs` | - | Logged once at startup. Cleartext HTTP is acceptable only on a trusted private network such as the Compose network of `deploy/rbac_rego`: the KMS has no OPA-specific authentication and cannot authenticate its answers. |
 | `debug` | `OPA non-2xx response body: {body_text:?}` | `src/core/opa/client.rs` | `body_text`: body of the non-2xx OPA response | May echo policy or input details; enable `debug` only while troubleshooting. |
 | `trace` | `OPA {mode} decision for user={:?} op={} obj={:?}: allowed` | `src/core/retrieve_object_utils.rs` | `mode`: `exclusive` or `enforcing` | Only allowed decisions are traced; a denial is logged as `OPA_DENIED` (`warn`, `audit` target). |
+| `warn` | `Failed to persist automatic transition of object {} to {target}: {e}` | `src/core/retrieve_object_utils.rs` | `target`, `e` | - |
+| `info` | `[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check` | `src/core/operations/auto_rotate.rs` | `uid`, `msg` | - |
+| `trace` | `Auto-transitioning object {} from {effective_state} to {target}` | `src/core/retrieve_object_utils.rs` | `effective_state`, `target` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1123,6 +1121,9 @@ Crate path: `crate/hsm/base_hsm`
 | `debug` | `Could not terminate the encryption operation after an error: {e}` | `src/session/session_impl.rs` | `e` | - |
 | `warn` | `{} failed: {rv:#010x} ({}); context dropped` | `src/session/message_context.rs` | `rv` | - |
 | `debug` | `PKCS#11 message-based {0} unsupported for mechanism {mechanism_type:#x} ({1}); using C_{2}Init` | `src/session/message_context.rs` | `0`, `mechanism_type`, `1`, `2` | - |
+| `debug` | `PKCS#11 v3 message AES-GCM decrypt unsupported; using classic: {reason}` | `src/session/session_impl.rs` | `reason` | - |
+| `debug` | `PKCS#11 v3 message AES-GCM failed; trying classic AES-GCM: {message_error}` | `src/session/session_impl.rs` | `message_error` | - |
+| `debug` | `PKCS#11 v3 message AES-GCM unsupported; using classic AES-GCM: {reason}` | `src/session/session_impl.rs` | `reason` | - |
 
 ---
 
@@ -1211,6 +1212,7 @@ Crate path: `crate/clients/client`
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
 | `debug` | `Connection error, retrying with backoff (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
 | `warn` | `Failed to load system CA bundle {bundle}: {e}` | `src/http_client/tls.rs` | `bundle`, `e` | - |
+| `debug` | `OAuth2 callback connection error: {e}` | `src/http_client/login.rs` | `e`: hyper error on a connection to the local OAuth2 redirect listener | Harmless noise from browsers that open and drop speculative connections |
 
 ---
 
@@ -1265,11 +1267,9 @@ Crate path: `crate/clients/pkcs11/provider`
 | `trace` | `find_private_key: {:?}`                                                                                                                                                                                                                                                   | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `find_public_key: {:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `find_symmetric_key: {:?}`                                                                                                                                                                                                                                                 | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
-| `trace` | `Found {} objects`                                                                                                                                                                                                                                                         | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}`                                                                                                                                                                                                                      | `src/backend.rs`            | `algorithm` — …<br>`key_length` — …<br>`label` — …                                                    | —                                                                                               |
 | `trace` | `get_kms_certificate_objects_async: found {} Certificate objects`                                                                                                                                                                                                          | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}`                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
-| `trace` | `get_kms_objects_async: no objects found for tags: {:?}`                                                                                                                                                                                                                   | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_secret_data_objects_async: found {} SecretData objects`                                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}`                                                                                                                                                                                            | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `warn`  | `create_object_from_attributes: unsupported object type: {other}, skipping                      {id}`                                                                                                                                                                      | `src/backend.rs`            | `other`, `id`                                                                                         | —                                                                                               |
@@ -1294,6 +1294,8 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn` | `create_public_key_from_id: failed to export public key {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | - |
 | `debug` | `encrypt_message: ctx: {ctx:?}` | `src/backend.rs` | `ctx` | - |
 | `debug` | `kms_encrypt_async: ciphertext_len: {}` | `src/kms_object.rs` | - | - |
+| `warn` | `batch export denied ({batch_error}); retrying object by object` | `src/kms_object.rs` | `batch_error` | - |
+| `warn` | `skipping object {id}: {error}` | `src/kms_object.rs` | `id`, `error` | - |
 
 ### `cosmian_pkcs11_module`
 

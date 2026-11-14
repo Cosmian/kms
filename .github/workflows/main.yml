@@ -26,30 +26,20 @@ jobs:
     secrets: inherit
 
   cargo-clippy:
-    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
-    with:
-      toolchain: 1.99.1
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
 
   cargo-deny:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
     name: Security Audit
-    with:
-      toolchain: 1.99.1
 
   cargo-machete:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@4dea9311cbb490ce7aed588ae42e1bde70d4547d # develop
-    with:
-      toolchain: 1.99.1
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
 
   supply-chain:
     uses: ./.github/workflows/supply-chain.yml
-    with:
-      toolchain: 1.99.1
 
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
-    with:
-      toolchain: 1.99.1
 
   no-nix:
     uses: ./.github/workflows/no-nix.yml
@@ -63,7 +53,6 @@ jobs:
       && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/test_windows.yml
     with:
-      toolchain: 1.99.1
       archive-name: windows
       # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off-PR only.
       full-suite: ${{ github.event_name != 'pull_request' }}
@@ -73,8 +62,6 @@ jobs:
       'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1
 
   build-documentation:
     name: Build documentation

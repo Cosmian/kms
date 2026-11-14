@@ -15,7 +15,7 @@ use ckms::{
             },
         },
         cosmian_kms_client::{
-            KmsClient,
+            ExportObjectParams, KmsClient,
             reexport::cosmian_kms_client_utils::certificate_utils::{
                 CertificationSource, CertifyRequestParams, build_certify_request,
             },
@@ -52,7 +52,10 @@ use crate::{
         COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend,
     },
     error::{Pkcs11Error, result::Pkcs11Result},
-    kms_object::get_kms_objects_async,
+    kms_object::{
+        batch_export_skipping_denied, get_kms_disk_encryption_data_objects,
+        get_kms_disk_encryption_data_objects_async,
+    },
 };
 
 pub(crate) fn save_pkcs11_client_config() -> String {
@@ -201,13 +204,12 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let kms_rest_client = ctx.get_owner_client();
     create_keys(&kms_rest_client, COSMIAN_PKCS11_DISK_ENCRYPTION_TAG).await?;
 
-    // Export using default per-object format, since the tag may also match non-key objects
-    // (e.g. certificates) depending on other tests and server reuse.
-    let objects = get_kms_objects_async(
+    // Same listing as the provider: one non-exportable key carrying the tag (another test
+    // process on a shared database) must not hide the keys created above.
+    let objects = get_kms_disk_encryption_data_objects_async(
         &kms_rest_client,
         VENDOR_ID_COSMIAN,
-        &[COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned()],
-        None,
+        COSMIAN_PKCS11_DISK_ENCRYPTION_TAG,
     )
     .await?;
 
@@ -273,6 +275,65 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
         private_keys.len()
     );
 
+    Ok(())
+}
+
+/// A sensitive key carrying the disk-encryption tag (another client, or another test process on
+/// a shared database) cannot be exported: it must not hide the exportable ones.
+#[test]
+#[serial]
+fn test_disk_encryption_listing_skips_non_exportable_keys() -> Result<(), Pkcs11Error> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let client = rt.block_on(async {
+        let client = start_default_test_kms_server().await.get_owner_client();
+        create_keys(&client, COSMIAN_PKCS11_DISK_ENCRYPTION_TAG).await?;
+        let sensitive = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[9; 16],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                sensitive: Some(true),
+                ..Default::default()
+            },
+        )?;
+        client
+            .import(import_object_request(
+                VENDOR_ID_COSMIAN,
+                Some("sensitive-vol".to_owned()),
+                sensitive,
+                Some(Attributes {
+                    sensitive: Some(true),
+                    ..Default::default()
+                }),
+                false,
+                true,
+                [COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, "sensitive-vol"],
+            )?)
+            .await?;
+        Ok::<_, Pkcs11Error>(client)
+    })?;
+
+    let labels: Vec<String> = get_kms_disk_encryption_data_objects(
+        &client,
+        VENDOR_ID_COSMIAN,
+        COSMIAN_PKCS11_DISK_ENCRYPTION_TAG,
+    )?
+    .into_iter()
+    .map(|o| o.remote_id)
+    .collect();
+    assert!(
+        labels.contains(&"vol1".to_owned()) && labels.contains(&"vol2".to_owned()),
+        "exportable keys must still be listed, got {labels:?}"
+    );
+
+    // A failure that is not a denial must surface, never become an empty listing.
+    let missing = rt.block_on(batch_export_skipping_denied(
+        &client,
+        vec!["no-such-object".to_owned()],
+        ExportObjectParams::default,
+    ));
+    assert!(missing.is_err(), "a missing object must be an error");
     Ok(())
 }
 

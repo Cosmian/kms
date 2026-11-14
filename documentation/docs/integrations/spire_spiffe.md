@@ -1099,26 +1099,9 @@ infrastructure without requiring any custom audit hook in the KMS or auth-verifi
 
 ---
 
-**Kubernetes Operator (recommended):**
-
-The [Cosmian KMS Kubernetes Operator](kubernetes/operator.md) is the recommended approach
-for Kubernetes deployments. It handles the full lifecycle declaratively — no imperative
-scripts, no image pinning, no RBAC for `kubectl` inside a Job:
-
-1. The Operator's `KMSSecret` custom resource calls `POST /auth/approle/role/{name}/secret-id`
-   on the auth-verifier on the configured schedule and materialises the result as a
-   Kubernetes `Secret`.
-2. An `AppRoleRotation` annotation on the SPIRE `Deployment` tells the Operator to trigger
-   a rolling restart automatically once the `Secret` is updated.
-3. The previous `secret_id_accessor` is archived in the Operator's own state for emergency
-   revocation.
-
-See [Cosmian KMS Kubernetes Operator — AppRole rotation](kubernetes/operator.md#approle-rotation)
-for the full configuration reference.
-
-> **Non-Kubernetes environments** (VMs, bare-metal): use the PAM-orchestrated pattern
-> described above, or a CI/CD pipeline step that calls `ckms vault approle generate-secret-id`
-> and injects the result before restarting the workload identity server process.
+**Non-PAM environments** (VMs, bare-metal, Kubernetes): use a CI/CD pipeline step that calls
+`ckms vault approle generate-secret-id` and injects the result before restarting the workload
+identity server process.
 
 #### List and delete roles
 

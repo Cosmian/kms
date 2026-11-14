@@ -1,0 +1,9 @@
+# nextest runs every test in its own process, so `#[serial(bench_files)]` (in-process) no longer
+# serializes anything. The bench tests create fixed-uid keys (`bench-<name>`) on the shared test
+# server and collide with "Object_Already_Exists" when they overlap.
+[test-groups]
+bench-files = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'package(cosmian_kms_cli_actions) and test(/^actions::bench::/)'
+test-group = 'bench-files'

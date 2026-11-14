@@ -1,0 +1,2 @@
+"name","pname","version","patches","system","out","outputs","store_path","cpe","purl","urls"
+"cosmian-kms-cli-dynamic-5.29.0","cosmian-kms-cli-dynamic","5.29.0","","x86_64-linux","/nix/store/y7m7mxbf4d4mcy974q2ln7pzak9rx43h-cosmian-kms-cli-dynamic-5.29.0","['/nix/store/y7m7mxbf4d4mcy974q2ln7pzak9rx43h-cosmian-kms-cli-dynamic-5.29.0']","/nix/store/qvb3zf84v1gwms6hr2r6llbln01z66s7-cosmian-kms-cli-dynamic-5.29.0.drv","cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.29.0:*:*:*:*:*:*:*","pkg:nix/cosmian-kms-cli-dynamic@5.29.0",""

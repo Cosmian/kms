@@ -1,16 +1,29 @@
+use cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
 use cosmian_kms_client::{
     KmsClient,
+    http_client::Bytes,
     jose::{
         JoseDecryptReq, JoseEncReq, JoseKeyReq, JoseMacReq, JoseSignReq, JoseVerifyReq, b64url,
     },
+    kmip_2_1::kmip_objects::Object,
+};
+use cosmian_kms_crypto::{
+    crypto::{
+        KmsRng,
+        rsa::ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
+        symmetric::symmetric_ciphers::{SymCipher, encrypt, random_key, random_nonce},
+    },
+    openssl::kmip_public_key_to_openssl,
 };
 use criterion::{BenchmarkId, Criterion, Throughput};
 use tokio::runtime::Runtime;
+use zeroize::Zeroizing;
 
 use super::{
     transport::{bench_filter_matches, timed_group},
     types::bench_ko,
 };
+use crate::error::result::{KmsCliResult, KmsCliResultHelper as _};
 
 // =============================================================================
 // JOSE BENCHMARKS (REST /v1/crypto/* endpoints)
@@ -48,7 +61,7 @@ pub(super) fn jose_try_create_ec_kp(
     Some((resp.kid, resp.kid_public?))
 }
 
-fn jose_try_create_rsa_kp(
+pub(super) fn jose_try_create_rsa_kp(
     rt: &Runtime,
     client: &KmsClient,
     alg: &'static str,
@@ -62,6 +75,75 @@ fn jose_try_create_rsa_kp(
     };
     let resp = rt.block_on(client.jose_create_key(req)).ok()?;
     Some((resp.kid, resp.kid_public?))
+}
+
+/// Base64url JWE protected header `{"alg":<alg>,"enc":"A256GCM","kid":<kid>}`.
+pub(super) fn jose_protected_header(alg: &str, kid: &str) -> KmsCliResult<String> {
+    Ok(b64url(
+        serde_json::to_string(&serde_json::json!({"alg": alg, "enc": "A256GCM", "kid": kid}))
+            .context("JOSE protected header serialization")?
+            .as_bytes(),
+    ))
+}
+
+/// Fresh random A256GCM CEK and its RSA-OAEP wrap under `public_key`, with `hash` for both
+/// OAEP and MGF1.
+pub(super) fn jose_wrap_new_cek(
+    public_key: &Object,
+    hash: HashingAlgorithm,
+) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
+    let cek = random_key(&KmsRng::new(), SymCipher::Aes256Gcm)?;
+    let encrypted_key = ckm_rsa_pkcs_oaep_key_wrap(
+        &kmip_public_key_to_openssl(public_key)?,
+        hash,
+        hash,
+        None,
+        &cek,
+    )?;
+    Ok((cek, encrypted_key))
+}
+
+/// `POST /v1/crypto/decrypt` body for an A256GCM JWE under `cek`: fresh IV, AAD = ASCII(`protected`).
+pub(super) fn jose_jwe_decrypt_body(
+    protected: &str,
+    cek: &[u8],
+    encrypted_key: &[u8],
+    plaintext: &[u8],
+) -> KmsCliResult<Bytes> {
+    let iv = random_nonce(&KmsRng::new(), SymCipher::Aes256Gcm)?;
+    let (ciphertext, tag) = encrypt(
+        SymCipher::Aes256Gcm,
+        cek,
+        &iv,
+        protected.as_bytes(),
+        plaintext,
+        None,
+    )?;
+    let req = JoseDecryptReq {
+        protected: protected.to_owned(),
+        encrypted_key: b64url(encrypted_key),
+        iv: b64url(&iv),
+        ciphertext: b64url(&ciphertext),
+        tag: b64url(&tag),
+        aad: None,
+    };
+    Ok(serde_json::to_vec(&req)
+        .context("JOSE decrypt JSON serialization")?
+        .into())
+}
+
+/// Build a `POST /v1/crypto/decrypt` body for a JWE made client-side (like a producer
+/// application): fresh CEK + IV, `RSA-OAEP-256` CEK wrap under `public_key`, `A256GCM`
+/// content encryption with AAD = ASCII(protected). Every call yields a new `encrypted_key`,
+/// so the server's CEK cache never holds it.
+pub(super) fn jose_rsa_oaep_decrypt_body(
+    public_key: &Object,
+    kid: &str,
+    plaintext: &[u8],
+) -> KmsCliResult<Bytes> {
+    let protected = jose_protected_header("RSA-OAEP-256", kid)?;
+    let (cek, encrypted_key) = jose_wrap_new_cek(public_key, HashingAlgorithm::SHA256)?;
+    jose_jwe_decrypt_body(&protected, &cek, &encrypted_key, plaintext)
 }
 
 #[cfg(feature = "non-fips")]
@@ -462,4 +544,96 @@ pub(super) fn bench_jose_batch(c: &mut Criterion, client: &KmsClient, rt: &Runti
         );
     }
     group.finish();
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::{
+            extra::{
+                VENDOR_ID_COSMIAN,
+                fips::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK},
+            },
+            kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm,
+        },
+    };
+    use cosmian_kms_crypto::{
+        crypto::{
+            rsa::{
+                ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap, operation::create_rsa_key_pair,
+            },
+            symmetric::symmetric_ciphers::{SymCipher, decrypt},
+        },
+        openssl::kmip_private_key_to_openssl,
+    };
+    use serde_json::Value;
+
+    use super::jose_rsa_oaep_decrypt_body;
+    use crate::error::result::KmsCliResult;
+
+    fn field(body: &Value, name: &str) -> KmsCliResult<Vec<u8>> {
+        Ok(URL_SAFE_NO_PAD.decode(body[name].as_str().unwrap_or_default())?)
+    }
+
+    #[test]
+    #[expect(clippy::panic_in_result_fn, reason = "assertions in a test")]
+    fn jose_rsa_oaep_decrypt_body_round_trips_and_is_fresh() -> KmsCliResult<()> {
+        let kp = create_rsa_key_pair(
+            VENDOR_ID_COSMIAN,
+            "sk",
+            "pk",
+            Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                cryptographic_length: Some(2048),
+                ..Default::default()
+            },
+            Some(Attributes {
+                cryptographic_usage_mask: Some(FIPS_PRIVATE_RSA_MASK),
+                ..Default::default()
+            }),
+            Some(Attributes {
+                cryptographic_usage_mask: Some(FIPS_PUBLIC_RSA_MASK),
+                ..Default::default()
+            }),
+        )?;
+        let body1: Value = serde_json::from_slice(&jose_rsa_oaep_decrypt_body(
+            kp.public_key(),
+            "pk",
+            b"diagram",
+        )?)?;
+        let body2: Value = serde_json::from_slice(&jose_rsa_oaep_decrypt_body(
+            kp.public_key(),
+            "pk",
+            b"diagram",
+        )?)?;
+
+        let protected = body1["protected"].as_str().unwrap_or_default();
+        let header: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(protected)?)?;
+        assert_eq!(header["alg"], "RSA-OAEP-256");
+        assert_eq!(header["enc"], "A256GCM");
+        assert_eq!(header["kid"], "pk");
+
+        let cek = ckm_rsa_pkcs_oaep_key_unwrap(
+            &kmip_private_key_to_openssl(kp.private_key())?,
+            HashingAlgorithm::SHA256,
+            HashingAlgorithm::SHA256,
+            None,
+            &field(&body1, "encrypted_key")?,
+        )?;
+        let plaintext = decrypt(
+            SymCipher::Aes256Gcm,
+            &cek,
+            &field(&body1, "iv")?,
+            protected.as_bytes(),
+            &field(&body1, "ciphertext")?,
+            &field(&body1, "tag")?,
+            None,
+        )?;
+        assert_eq!(plaintext.as_slice(), b"diagram");
+        assert_ne!(body1["encrypted_key"], body2["encrypted_key"]);
+        Ok(())
+    }
 }

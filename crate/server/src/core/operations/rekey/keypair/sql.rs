@@ -298,3 +298,214 @@ impl SqlKeypairRekeyer {
         ])
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
+mod tests {
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+                kmip_attributes::Attributes,
+                kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+                kmip_types::{LinkType, RecommendedCurve, UniqueIdentifier},
+                requests::create_ec_key_pair_request,
+            },
+        },
+        cosmian_kms_interfaces::AtomicOperation,
+    };
+
+    use super::{RekeyOperation, ReplacementObject, RotationCandidate, SqlKeypairRekeyer};
+    use crate::{
+        core::{KMS, operations::rekey::execute_rekey},
+        error::KmsError,
+        middlewares::UserId,
+        result::KResult,
+    };
+
+    /// Rekeyer that lets another writer modify the public key after the rotation read it.
+    struct PublicKeyWrittenConcurrently {
+        inner: SqlKeypairRekeyer,
+        new_uids: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl RekeyOperation for PublicKeyWrittenConcurrently {
+        type Candidates = [RotationCandidate; 2];
+        type Replacements = [ReplacementObject; 2];
+        type Request = ReKeyKeyPair;
+        type Response = ReKeyKeyPairResponse;
+
+        fn validate(
+            &self,
+            kms: &KMS,
+            request: &ReKeyKeyPair,
+            user: &UserId,
+        ) -> impl Future<Output = KResult<[RotationCandidate; 2]>> {
+            self.inner.validate(kms, request, user)
+        }
+
+        fn generate_replacement(
+            &self,
+            kms: &KMS,
+            user: &UserId,
+            candidates: &[RotationCandidate; 2],
+        ) -> impl Future<Output = KResult<[ReplacementObject; 2]>> {
+            self.inner.generate_replacement(kms, user, candidates)
+        }
+
+        fn prepare_attributes(
+            &self,
+            kms: &KMS,
+            candidates: &[RotationCandidate; 2],
+            replacements: &mut [ReplacementObject; 2],
+        ) -> KResult<()> {
+            self.inner
+                .prepare_attributes(kms, candidates, replacements)?;
+            if let Ok(mut uids) = self.new_uids.lock() {
+                *uids = replacements.iter().map(|r| r.new_uid.clone()).collect();
+            }
+            Ok(())
+        }
+
+        async fn prepare_finalization(
+            &self,
+            kms: &KMS,
+            user: &UserId,
+            candidates: &[RotationCandidate; 2],
+            replacements: &[ReplacementObject; 2],
+        ) -> KResult<Vec<AtomicOperation>> {
+            let [_, pk] = candidates;
+            let mut attributes = pk.owm.attributes().clone();
+            attributes.rotate_offset = Some(42);
+            kms.database
+                .atomic(
+                    user,
+                    &[AtomicOperation::UpdateObject((
+                        pk.uid.clone(),
+                        pk.owm.object().clone(),
+                        attributes,
+                        None,
+                    ))],
+                )
+                .await?;
+            kms.default_prepare_finalization(user, candidates, replacements)
+                .await
+        }
+
+        fn build_response(&self, replacements: &[ReplacementObject; 2]) -> ReKeyKeyPairResponse {
+            self.inner.build_response(replacements)
+        }
+    }
+
+    async fn create_pair(kms: &KMS, user: &UserId) -> KResult<(String, String)> {
+        let request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            EMPTY_TAGS,
+            RecommendedCurve::P256,
+            false,
+            None,
+        )?;
+        let pair = kms.create_key_pair(request, user).await?;
+        Ok((
+            pair.private_key_unique_identifier.to_string(),
+            pair.public_key_unique_identifier.to_string(),
+        ))
+    }
+
+    /// Both replacements and both retirements commit together.
+    #[tokio::test]
+    async fn rotating_a_key_pair_commits_both_replacements_and_retirements() -> KResult<()> {
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let user = UserId::from("keypair_atomic@example.com");
+        let (sk_uid, pk_uid) = create_pair(&kms, &user).await?;
+        let response = kms
+            .rekey_keypair(
+                ReKeyKeyPair {
+                    private_key_unique_identifier: Some(UniqueIdentifier::TextString(
+                        sk_uid.clone(),
+                    )),
+                    ..ReKeyKeyPair::default()
+                },
+                &user,
+            )
+            .await?;
+        for (old, new) in [
+            (&sk_uid, response.private_key_unique_identifier.to_string()),
+            (&pk_uid, response.public_key_unique_identifier.to_string()),
+        ] {
+            let old = kms.database.retrieve_object(old).await?.expect("old key");
+            assert_eq!(old.state(), State::Deactivated);
+            assert_eq!(
+                old.attributes()
+                    .get_link(LinkType::ReplacementObjectLink)
+                    .map(|link| link.to_string()),
+                Some(new.clone())
+            );
+            let new = kms.database.retrieve_object(&new).await?.expect("new key");
+            assert_eq!(new.state(), State::Active);
+        }
+        Ok(())
+    }
+
+    /// A concurrent write to the public key alone rejects the whole rotation: neither
+    /// replacement is persisted and the private key is not retired.
+    #[tokio::test]
+    async fn key_pair_rotation_conflicts_when_only_the_public_key_changed() -> KResult<()> {
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let user = UserId::from("keypair_conflict@example.com");
+        let (sk_uid, pk_uid) = create_pair(&kms, &user).await?;
+        let rekeyer = PublicKeyWrittenConcurrently {
+            inner: SqlKeypairRekeyer {
+                offset: None,
+                private_key_attributes: None::<Attributes>,
+                public_key_attributes: None::<Attributes>,
+            },
+            new_uids: std::sync::Mutex::new(Vec::new()),
+        };
+        let err = Box::pin(execute_rekey(
+            &rekeyer,
+            &kms,
+            &ReKeyKeyPair {
+                private_key_unique_identifier: Some(UniqueIdentifier::TextString(sk_uid.clone())),
+                ..ReKeyKeyPair::default()
+            },
+            &user,
+        ))
+        .await
+        .expect_err("a concurrent public-key write must reject the rotation");
+        assert!(matches!(err, KmsError::Conflict(_)), "{err:?}");
+
+        let new_uids = rekeyer.new_uids.lock().expect("uids lock").clone();
+        assert_eq!(new_uids.len(), 2);
+        for uid in new_uids {
+            assert!(
+                kms.database.retrieve_object(&uid).await?.is_none(),
+                "{uid} persisted"
+            );
+        }
+        for uid in [&sk_uid, &pk_uid] {
+            let old = kms.database.retrieve_object(uid).await?.expect("old key");
+            assert_eq!(old.state(), State::Active);
+            assert!(
+                old.attributes()
+                    .get_link(LinkType::ReplacementObjectLink)
+                    .is_none()
+            );
+        }
+        // the key pair is still rotatable
+        kms.rekey_keypair(
+            ReKeyKeyPair {
+                private_key_unique_identifier: Some(UniqueIdentifier::TextString(sk_uid)),
+                ..ReKeyKeyPair::default()
+            },
+            &user,
+        )
+        .await?;
+        Ok(())
+    }
+}

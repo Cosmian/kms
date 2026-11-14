@@ -34,6 +34,8 @@ fi
 # Environment variables that should survive the transition:
 #   VARIANT, LINK, FEATURES_FLAG, HSM_USER_PASSWORD, KMS_*, REDIS_*, MYSQL_*, etc.
 ensure_nix_shell() {
+  # Re-entry handles secrets; tracing indirect expansions would expose their values.
+  set +x
   # Already inside nix-shell — nothing to do
   if [ "${IN_NIX_SHELL:-0}" = "1" ]; then
     return 0
@@ -72,8 +74,8 @@ ensure_nix_shell() {
     export NIX_PATH="nixpkgs=${PIN_URL}"
   fi
 
-  # Build the environment export string for variables that must survive
-  local env_exports=""
+  # Inherit credentials through the environment, never by embedding them in --run/argv.
+  local var
   for var in VARIANT LINK IN_NIX_SHELL MISE_CONFIG_ROOT MISE_TASK_FILE \
     HSM_USER_PASSWORD SOFTHSM2_CONF SOFTHSM2_HOME \
     KMS_POSTGRES_URL KMS_POSTGRES_MTLS_URL KMS_SLOT_POSTGRES_MTLS_PORT KMS_MYSQL_URL KMS_TEST_DB \
@@ -84,16 +86,19 @@ ensure_nix_shell() {
     KMS_XKS_HOST KMS_XKS_URI_PREFIX KMS_XKS_REGION KMS_XKS_SIGV4_ACCESS_KEY_ID KMS_XKS_SIGV4_SECRET_ACCESS_KEY KMS_ADMIN_URL \
     WITH_WASM WITH_HSM WITH_PYTHON WITH_GO WITH_CURL WITH_XKS WITH_OPENSSH WITH_LUKS WITH_GNUPG_PKCS11; do
     if [ -n "${!var:-}" ]; then
-      env_exports="${env_exports}export ${var}='${!var}'; "
+      export "${var?}"
     fi
   done
+
+  local task_command
+  printf -v task_command '%q ' bash "${task_script}" "$@"
 
   # Re-exec the task script inside nix-shell
   echo "Entering nix-shell (variant=${nix_variant}) for: $(basename "$task_script")"
   exec nix-shell "${repo_root}/shell.nix" \
     --argstr variant "$nix_variant" \
     -I "nixpkgs=${PIN_URL}" \
-    --run "${env_exports}export IN_NIX_SHELL=1; bash '${task_script}' $*"
+    --run "export IN_NIX_SHELL=1; ${task_command}"
 }
 
 # Resolve pinned nixpkgs to a local store path.

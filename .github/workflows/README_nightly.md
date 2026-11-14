@@ -6,7 +6,7 @@
 ## Triggers
 
 `nightly.yml` runs on the schedule (daily 00:00 UTC), on pushes to `develop` and `main`, on tags and on manual
-dispatch. Bot commits from `nix-update-hashes.yml` and `update-log-index.yml` carry `[skip ci]`, so they do not
+dispatch. Bot commits from `nix-update-hashes.yml`, `update-generated-docs.yml` and `package-and-commit-sbom.yml` carry `[skip ci]`, so they do not
 re-trigger it. All jobs are restricted to `Cosmian/kms`: they need secrets that forks do not have.
 
 `main.yml` runs the full nightly test set at 03:00 UTC, three hours after the packaging cron (see "PR versus nightly" in `README_main.md`). The two workflows are independent.
@@ -15,11 +15,10 @@ re-trigger it. All jobs are restricted to `Cosmian/kms`: they need secrets that 
 flowchart TB
     Nightly["nightly.yml<br/>schedule 00:00 UTC · push develop/main · tags · dispatch"]
     Hashes["nix-update-hashes.yml<br/>ubuntu-24.04 · macos-15 · commits with skip ci"]
-    LogIdx["update-log-index.yml<br/>commits with skip ci"]
-    Trigger["trigger-packaging<br/>gh workflow run packaging.yml"]
+    Docs["update-generated-docs.yml<br/>docs · CBOM · licenses · log index · commits with skip ci"]
+    Trigger["package-and-commit-sbom.yml<br/>dispatch packaging.yml · wait · commit SBOMs with skip ci"]
     Pkg["packaging.yml"]
-    Nightly -- "branch refs" --> Hashes & LogIdx
-    Hashes --> Trigger --> Pkg
+    Nightly -- "branch refs" --> Hashes --> Docs --> Trigger --> Pkg
     Nightly -- "tag refs" --> Pkg
     subgraph PkgJobs["packaging.yml jobs"]
         Packages["packages<br/>deb · rpm · dmg · pkcs11 zip"]

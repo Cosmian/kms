@@ -13,7 +13,6 @@ use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
 };
 use time::Date;
-use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use crate::{
     Database,
@@ -752,11 +751,22 @@ impl Database {
         };
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
-        let ids = self
+        let ids = match self
             .record("atomic", async move {
                 db.atomic(user, operations).await.map_err(DbError::from)
             })
-            .await?;
+            .await
+        {
+            Ok(ids) => ids,
+            Err(e @ DbError::Conflict(_)) => {
+                // the cached versions are stale: make the caller's retry read fresh ones
+                for op in operations {
+                    self.object_cache.invalidate(op.get_object_uid()).await;
+                }
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        };
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
@@ -768,6 +778,7 @@ impl Database {
                     }
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, ..))
+                | AtomicOperation::UpdateObjectIfVersion((uid, object, attributes, ..))
                 | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
@@ -791,47 +802,20 @@ impl Database {
     }
 }
 
-/// Extract the X.509 serial number as an uppercase hex string from a KMS `Object`.
+/// Extract the X.509 serial number from a KMS `Object` (`None` if not a certificate or not valid DER).
 ///
-/// Returns `None` if the object is not a certificate or DER parsing fails.
-///
-/// The output **must** exactly match the hex string the OCSP crypto layer computes
-/// for the same certificate (`extract_serial_hex` in `cosmian_kms_crypto::openssl::ocsp`,
-/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or the `_serial=` tag
-/// silently fails to match a real, issued certificate. `BN_bn2hex` strips whole leading
-/// zero *bytes* (already true of
-/// `to_bytes_be()`'s minimal big-endian output) but always prints both hex digits of
-/// the remaining most-significant byte — so a serial such as `0x0A…` renders as `"0A…"`,
-/// not `"A…"`. Do **not** strip leading zero *characters* here: about 1-in-16 randomly
-/// generated serial numbers have a leading nibble of `0`, and naively trimming all
-/// leading `'0'` characters (rather than only whole zero bytes) desynchronises this
-/// hex string from the OCSP layer's for exactly those certificates.
+/// Returns the serial exactly as OpenSSL's `BN_bn2hex` prints it, so it matches the OCSP layer's serial tags.
 pub(crate) fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
-    const UPPER_HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
-
     let cert_bytes = match object {
         Object::Certificate(c) => &c.certificate_value,
         _ => return None,
     };
-    // Use x509-parser to extract the serial number without depending on openssl here.
-    let (_, parsed) = X509Certificate::from_der(cert_bytes).ok()?;
-    // `to_bytes_be()` already yields the minimal big-endian representation (no leading
-    // zero bytes), matching the canonical form OpenSSL's BIGNUM uses internally.
-    let serial_bytes = parsed.serial.to_bytes_be();
-    // ...except for zero, which it yields as `[0]` while `BN_bn2hex` prints `"0"`.
-    if serial_bytes.iter().all(|byte| *byte == 0) {
-        return Some("0".to_owned());
-    }
-    serial_bytes.iter().try_fold(
-        String::with_capacity(serial_bytes.len().saturating_mul(2)),
-        |mut output, byte| {
-            let upper = UPPER_HEX_DIGITS.get(usize::from(*byte >> 4)).copied()?;
-            let lower = UPPER_HEX_DIGITS.get(usize::from(*byte & 0x0F)).copied()?;
-            output.push(char::from(upper));
-            output.push(char::from(lower));
-            Some(output)
-        },
-    )
+    let serial = openssl::x509::X509::from_der(cert_bytes)
+        .ok()?
+        .serial_number()
+        .to_bn()
+        .ok()?;
+    serial.to_hex_str().ok().map(|hex| hex.to_string())
 }
 
 #[cfg(test)]

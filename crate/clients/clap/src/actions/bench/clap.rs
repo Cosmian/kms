@@ -5,6 +5,7 @@ use criterion::Criterion;
 use tokio::runtime::Runtime;
 
 use super::{
+    cek_switch,
     helpers::run_warmup,
     jose::{
         bench_jose_batch, bench_jose_encrypt, bench_jose_key_creation, bench_jose_mac,
@@ -50,6 +51,7 @@ impl BenchAction {
         let warmup_time = self.warmup_time;
         let cooldown_time = self.cooldown_time;
         let load_plaintext_size = self.load_plaintext_size;
+        let cek_switch = self.cek_switch.clone();
         let hsm_prefix = self.hsm.then(|| format!("hsm::{}", self.hsm_slot));
         // Drop the existing client (bound to the current runtime)
         drop(kms_rest_client);
@@ -68,12 +70,23 @@ impl BenchAction {
 
             // Warmup phase for criterion benchmarks (load tests handle warmup
             // per-level using the actual operation at target concurrency).
-            if !load {
+            if !load && !cek_switch.enabled {
                 run_warmup(&rt, &client, warmup_time)?;
             }
 
             // Reset KO accumulator for this run
             bench_ko_reset();
+
+            if cek_switch.enabled {
+                return cek_switch::run(
+                    &rt,
+                    &client,
+                    &cek_switch,
+                    Duration::from_secs(warmup_time),
+                    Duration::from_secs(time),
+                    load_plaintext_size,
+                );
+            }
 
             // Sanity speed implies compact unless the user explicitly chose another format
             let effective_format = if speed == BenchSpeed::Sanity && format == BenchFormat::Text {

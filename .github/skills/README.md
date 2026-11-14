@@ -72,7 +72,7 @@ Orchestrators delegate to or reuse specialist skills; they never repeat a whole 
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, plan, branch/stack, test-first implement, test, document, run `AGENTS.md` §5, commit, open the PR, report CI status once, handle review feedback (never waits for CI, never merges). |
+| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, plan, **user plan approval (the only interactive step)**, then automated branch/stack, test-first implement, test, document, run `AGENTS.md` §5, commit, open the PR, report CI status once, handle review feedback (never waits for CI, never merges). |
 
 ### Security
 

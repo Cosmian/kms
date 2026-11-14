@@ -292,6 +292,7 @@ impl KMS {
             user,
             ObjectHandle::from(uid),
             ObjectHandle::from(&new_uid),
+            None,
             &mut operations,
         ))
         .await?;

@@ -411,8 +411,19 @@ async fn update_as_destroyed(
             mark_destroyed(Attributes::default())
         }
         _ => {
+            // A key wrapped at rest (server KEK) exposes no embedded attributes: fall back to the
+            // stored ones, otherwise the destroyed object loses its digest, dates, algorithm, ...
+            let embedded = object.key_block()?.attributes().ok().cloned();
+            let base = match embedded {
+                Some(attributes) => attributes,
+                None => kms
+                    .database
+                    .retrieve_object(handle.as_str())
+                    .await?
+                    .map_or_else(Attributes::default, |owm| owm.attributes().clone()),
+            };
             let key_block = object.key_block_mut()?;
-            let attributes = mark_destroyed(key_block.attributes().cloned().unwrap_or_default());
+            let attributes = mark_destroyed(base);
             // Empty the Key Material
             key_block.key_format_type = KeyFormatType::Raw;
             key_block.key_value = Some(KeyValue::Structure {

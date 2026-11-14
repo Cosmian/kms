@@ -1,20 +1,20 @@
+use base64::{Engine, engine::general_purpose};
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kmip::kmip_2_1::extra::fips::FIPS_PUBLIC_RSA_MASK;
 #[cfg(feature = "non-fips")]
-use cosmian_kmip::kmip_2_1::{
-    kmip_data_structures::KeyWrappingData,
-    kmip_objects::Object,
-    kmip_types::{CryptographicDomainParameters, EncodingOption, RecommendedCurve},
-};
+use cosmian_kmip::kmip_2_1::kmip_types::{CryptographicDomainParameters, RecommendedCurve};
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask},
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::Attributes,
-        kmip_data_structures::{KeyValue, KeyWrappingSpecification},
+        kmip_data_structures::{
+            KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
+        },
+        kmip_objects::{Object, PrivateKey, PublicKey},
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, EncryptionKeyInformation,
-            KeyFormatType, UniqueIdentifier,
+            CryptographicAlgorithm, CryptographicParameters, EncodingOption,
+            EncryptionKeyInformation, KeyFormatType, UniqueIdentifier,
         },
         requests::create_symmetric_key_kmip_object,
     },
@@ -29,7 +29,9 @@ use openssl::{
     nid::Nid,
 };
 use openssl::{pkey::PKey, rsa::Rsa};
+use zeroize::Zeroizing;
 
+use super::{unwrap_key::unwrap, wrap_key::wrap};
 #[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
 #[cfg(feature = "non-fips")]
@@ -39,12 +41,210 @@ use crate::crypto::{
 use crate::{
     crypto::{
         KmsRng,
-        wrap::{unwrap_key_block, wrap_object_with_key},
+        wrap::{aes_gcm_decrypt, key_data_to_wrap, unwrap_key_block, wrap_object_with_key},
     },
     crypto_bail, crypto_ensure,
     error::{CryptoError, result::CryptoResult},
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
+
+fn gcm_wrapping_key(key_len: usize) -> CryptoResult<(Object, KeyWrappingData)> {
+    let key_bytes = KmsRng::new().random_vec(key_len)?;
+    let key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::WrapKey | CryptographicUsageMask::UnwrapKey,
+            ),
+            ..Default::default()
+        },
+    )?;
+    let wrapping_data = KeyWrappingData {
+        encoding_option: Some(EncodingOption::NoEncoding),
+        encryption_key_information: Some(EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString("gcm-kek".to_owned()),
+            cryptographic_parameters: Some(CryptographicParameters {
+                block_cipher_mode: Some(BlockCipherMode::GCM),
+                ..Default::default()
+            }),
+        }),
+        ..Default::default()
+    };
+    Ok((key, wrapping_data))
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
+fn test_aes_gcm_wrapped_blob_boundaries() -> CryptoResult<()> {
+    for key_len in [16, 24, 32] {
+        let (key, wrapping_data) = gcm_wrapping_key(key_len)?;
+        let key_bytes = key.key_block()?.key_bytes()?;
+        for plaintext_len in [0, 1, 32] {
+            let plaintext = KmsRng::new().random_vec(plaintext_len)?;
+            let wrapped = wrap(&key, &wrapping_data, &plaintext, &KmsRng::new())?;
+            assert_eq!(wrapped.len(), 12 + plaintext_len + 16);
+            let decrypted =
+                aes_gcm_decrypt(&general_purpose::STANDARD.encode(&wrapped), &key_bytes)?;
+            assert!(openssl::memcmp::eq(&decrypted, &plaintext));
+            let KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(unwrapped),
+                ..
+            } = unwrap(&key, &wrapping_data, &wrapped, KeyFormatType::Raw)?
+            else {
+                crypto_bail!("Expected unwrapped raw key bytes");
+            };
+            assert!(openssl::memcmp::eq(&unwrapped, &plaintext));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
+fn test_aes_gcm_rejects_truncated_wrapped_blobs() -> CryptoResult<()> {
+    let (key, wrapping_data) = gcm_wrapping_key(32)?;
+    let key_bytes = key.key_block()?.key_bytes()?;
+    for len in 0..28 {
+        let wrapped = vec![0; len];
+        assert!(matches!(
+            aes_gcm_decrypt(&general_purpose::STANDARD.encode(&wrapped), &key_bytes),
+            Err(CryptoError::Default(message))
+                if message == "Invalid wrapped key - insufficient length."
+        ));
+        assert!(matches!(
+            unwrap(&key, &wrapping_data, &wrapped, KeyFormatType::Raw),
+            Err(CryptoError::Default(message))
+                if message == "Invalid wrapped key - insufficient length."
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
+fn test_no_encoding_preserves_raw_asymmetric_key_bytes() -> CryptoResult<()> {
+    let bytes = KmsRng::new().random_vec(32)?;
+    let key_block = KeyBlock {
+        key_format_type: KeyFormatType::Raw,
+        key_value: Some(KeyValue::Structure {
+            key_material: KeyMaterial::ByteString(bytes.clone()),
+            attributes: None,
+        }),
+        key_compression_type: None,
+        cryptographic_algorithm: None,
+        cryptographic_length: None,
+        key_wrapping_data: None,
+    };
+    for object in [
+        Object::PrivateKey(PrivateKey {
+            key_block: key_block.clone(),
+        }),
+        Object::PublicKey(PublicKey { key_block }),
+    ] {
+        let data = key_data_to_wrap(
+            &object,
+            &KeyWrappingSpecification {
+                encoding_option: Some(EncodingOption::NoEncoding),
+                ..Default::default()
+            },
+        )?;
+        assert!(openssl::memcmp::eq(&data, &bytes));
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
+fn test_no_encoding_serializes_transparent_rsa_keys() -> CryptoResult<()> {
+    let private_key = PKey::from_rsa(Rsa::generate(2048)?)?;
+    let public_key = PKey::public_key_from_der(&private_key.public_key_to_der()?)?;
+    let private_object = openssl_private_key_to_kmip(
+        &private_key,
+        KeyFormatType::TransparentRSAPrivateKey,
+        Some(CryptographicUsageMask::UnwrapKey),
+    )?;
+    let public_object = openssl_public_key_to_kmip(
+        &public_key,
+        KeyFormatType::TransparentRSAPublicKey,
+        Some(CryptographicUsageMask::WrapKey),
+    )?;
+    let specification = KeyWrappingSpecification {
+        encoding_option: Some(EncodingOption::NoEncoding),
+        ..Default::default()
+    };
+    let private_der = key_data_to_wrap(&private_object, &specification)?;
+    let expected_private_der = Zeroizing::new(private_key.private_key_to_pkcs8()?);
+    assert!(openssl::memcmp::eq(&private_der, &expected_private_der));
+    let public_der = key_data_to_wrap(&public_object, &specification)?;
+    assert_eq!(*public_der, public_key.public_key_to_der()?);
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "tests: a failed assertion is the failure signal"
+)]
+fn test_wrap_unwrap_rsa_pkcs1v15() -> CryptoResult<()> {
+    use cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
+
+    let private_key = PKey::from_rsa(Rsa::generate(2048)?)?;
+    let public_key = PKey::public_key_from_der(&private_key.public_key_to_der()?)?;
+    let private_object = openssl_private_key_to_kmip(
+        &private_key,
+        KeyFormatType::TransparentRSAPrivateKey,
+        Some(CryptographicUsageMask::UnwrapKey),
+    )?;
+    let public_object = openssl_public_key_to_kmip(
+        &public_key,
+        KeyFormatType::TransparentRSAPublicKey,
+        Some(CryptographicUsageMask::WrapKey),
+    )?;
+    let wrapping_data = KeyWrappingData {
+        encoding_option: Some(EncodingOption::NoEncoding),
+        encryption_key_information: Some(EncryptionKeyInformation {
+            unique_identifier: UniqueIdentifier::TextString("rsa-kek".to_owned()),
+            cryptographic_parameters: Some(CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::PKCS1v15),
+                ..Default::default()
+            }),
+        }),
+        ..Default::default()
+    };
+    let plaintext = KmsRng::new().random_vec(32)?;
+    let ciphertext = wrap(&public_object, &wrapping_data, &plaintext, &KmsRng::new())?;
+    assert_eq!(ciphertext.len(), 256);
+    let KeyValue::Structure {
+        key_material: KeyMaterial::ByteString(unwrapped),
+        ..
+    } = unwrap(
+        &private_object,
+        &wrapping_data,
+        &ciphertext,
+        KeyFormatType::Raw,
+    )?
+    else {
+        crypto_bail!("Expected unwrapped raw key bytes");
+    };
+    assert!(openssl::memcmp::eq(&unwrapped, &plaintext));
+    Ok(())
+}
 
 #[cfg(feature = "non-fips")]
 #[test]

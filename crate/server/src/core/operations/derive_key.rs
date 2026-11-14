@@ -463,7 +463,7 @@ async fn derive_key_asymmetric(
                 .to_owned(),
         )
     })?;
-    let peer_owm = peer_owm.ok_or_else(|| {
+    let mut peer_owm = peer_owm.ok_or_else(|| {
         KmsError::InvalidRequest(
             "DeriveKey: asymmetric derivation requires access to both referenced objects"
                 .to_owned(),
@@ -502,6 +502,16 @@ async fn derive_key_asymmetric(
                 format!(
                     "DeriveKey: the base key: {}, cannot be unwrapped.",
                     private_owm.id()
+                )
+            })?,
+    );
+    peer_owm.set_object(
+        Box::pin(kms.get_unwrapped(peer_owm.id(), peer_owm.object(), user))
+            .await
+            .with_context(|| {
+                format!(
+                    "DeriveKey: the peer key: {}, cannot be unwrapped.",
+                    peer_owm.id()
                 )
             })?,
     );

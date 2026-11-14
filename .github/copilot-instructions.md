@@ -95,6 +95,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 - Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
 - Regression test: every bug fix ships a test that fails before the fix (or the commit message says why not).
+- SQL: every SQL statement lives as a named entry in the backend's `.sql` file (`crate/server_database/src/stores/sql/query*.sql`, `stores/audit/audit.sql`), never as a string literal in non-test Rust — see `.github/instructions/rust-database.instructions.md` § SQL statements live in SQL files.
 - Secrets: compare in constant time, keep in `Zeroizing`, never log — see `.github/instructions/rust-security.instructions.md`.
 - Commit subjects: conventional-commit type + descriptive subject; never `fix: PR review`, `fix: commit`.
 
@@ -120,7 +121,7 @@ branch again; never rewrite shared history. Applies to every branch.
 
 | Command | When to use |
 |---------|-------------|
-| `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
+| `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, **user plan approval**, then automated implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse/create complete fixtures in `test_data` |
 | `/kms-docs-verify` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |

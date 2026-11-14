@@ -167,7 +167,7 @@ use pkcs11_sys::{
 
 use super::verify::{
     call_get_function_list, call_get_function_list_3_0, call_get_slot_list, call_login,
-    call_open_session, check_rv, ckr_name, set_ckms_conf,
+    call_open_session, check_rv, ckr_name, set_ckms_conf, v2_only_function_list_3_0,
 };
 use crate::{
     actions::{
@@ -892,9 +892,12 @@ pub(crate) async fn run_capabilities(
     // The v3.0 message-based signing functions (`C_MessageSignInit`/`C_SignMessage`/
     // `C_MessageSignFinal`) are not part of the legacy `CK_FUNCTION_LIST` returned by
     // `C_GetFunctionList` above; resolve the extended v3.0 table via `C_GetInterface`.
-    let func_list_3_0_ptr = call_get_function_list_3_0(&lib)?;
-    // SAFETY: as above, checked non-null by `call_get_function_list_3_0`.
-    let func_list_3_0: &CK_FUNCTION_LIST_3_0 = unsafe { &*func_list_3_0_ptr };
+    // A library without a v3.x table (v2.40 only) gets a table limited to its legacy entries, so
+    // every v3.0 probe reports "not implemented" instead of reading past the end of its table.
+    let v2_only_table = v2_only_function_list_3_0(func_list);
+    // SAFETY: a non-null 3.x function list, valid while `lib` stays loaded.
+    let func_list_3_0: &CK_FUNCTION_LIST_3_0 =
+        call_get_function_list_3_0(&lib)?.map_or(&v2_only_table, |ptr| unsafe { &*ptr });
 
     let c_initialize = func_list.C_Initialize.ok_or_else(|| {
         KmsCliError::Default("FAIL [C_Initialize]: not present in function list".to_owned())
