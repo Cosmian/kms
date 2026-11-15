@@ -59,6 +59,15 @@ Only this one key is handled by the KMS. All your secrets, policies and auth met
 
 OpenBao requires a KMIP server that speaks KMIP 1.2 to 1.4 and supports Encrypt and Decrypt with an AES key (`AES_GCM`) or an RSA key. Eviden KMS satisfies this on its binary KMIP listener.
 
+### KMS endpoints used by Part 1
+
+OpenBao only talks to the **binary KMIP socket**, KMIP over TCP with mutual TLS (`[socket_server]`, port `5696` here). No HTTP route is involved at runtime.
+
+|Interface|Used by|Operations|
+|---|---|---|
+|KMIP socket, `kms.example.com:5696`|OpenBao `seal "kmip"`|`Encrypt` and `Decrypt` of the root key with the AES seal key (KMIP 1.4, `AES_GCM`)|
+|HTTP `POST /kmip/2_1` (or `ckms`)|you, once, at setup|`Create` and `Activate` of the AES-256 wrapping key as the OpenBao identity (step 2)|
+
 ### 1. Start the KMS with the KMIP listener and mTLS
 
 The binary KMIP listener requires a client CA, and the OpenBao client certificate must be signed by it. The certificate common name becomes the identity seen by the KMS.
@@ -121,6 +130,24 @@ The `bao` CLI always sends a token in the `X-Vault-Token` header, so the KMS nee
 |---|---|---|---|
 |A|On an OpenBao server|`https://bao.example.com:8200`|In `[vault]`: `vault_api_enabled = true`, `vault_auth_verifier_url` points to the OpenBao server (see the [note](#case-a--log-in-on-the-openbao-server))|
 |B|On the KMS|`https://kms.example.com:9998`|Same `[vault]` keys, with a verifier that serves `/v1/auth/*` (OpenBao/Vault, or the Cosmian Auth Verifier). The KMS forwards `/v1/auth/*` to it. Non-`bao` clients can also use native KMS authentication (JWT, mTLS, API token)|
+
+### KMS endpoints used by Part 2
+
+All routes are served on `/<kv_mount>` and on `/v1/<kv_mount>` (`bao` always sends `/v1/`); the table uses `kv` and `/v1`. KV calls from `bao` carry `X-Vault-Token`; `bao login` requests carry no token, the credential is in the body. Non-`bao` clients can use native KMS authentication on the same KV routes.
+
+|Endpoint|Used by|Purpose|
+|---|---|---|
+|`GET /v1/sys/internal/ui/mounts/<path>`|`bao kv` (first call)|KV v2 detection: tells the CLI the mount is a version 2 store|
+|`PUT`/`POST /v1/kv/data/<path>`|`bao kv put`|Write a new version of a secret (optional `options.ttl` and `options.cas`)|
+|`GET /v1/kv/data/<path>` (`?version=N`)|`bao kv get`|Read the latest or a given version|
+|`DELETE /v1/kv/data/<path>`|`bao kv delete`|Soft delete: hides the latest version|
+|`GET /v1/kv/metadata/<path>`|`bao kv metadata get`|Version bookkeeping of a path|
+|`LIST` or `GET ?list=true /v1/kv/metadata/<prefix>`|`bao kv list`|Child keys under a prefix|
+|`DELETE /v1/kv/metadata/<path>`|`bao kv metadata delete`|Hard delete of every version|
+|`GET /v1/auth/token/lookup-self` (on the verifier)|the KMS itself|Validate `X-Vault-Token` and read `entity_id` (cached)|
+|`/v1/auth/*` (forwarded to the verifier)|`bao login`|Login requests, such as `userpass` or `approle`|
+
+Other methods on these paths are refused as unsupported, and the routes for `kv patch` and version-targeted `undelete` and `destroy` are not implemented. The secrets are stored as KMIP `SecretData` objects.
 
 ### Case A — log in on the OpenBao server
 

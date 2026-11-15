@@ -188,4 +188,18 @@ OUT=$(bao kv get -format=json "${FULL_PATH}")
 assert_eq "$(json_field "${OUT}" "d['data']['metadata']['version']")" "1" "recreated path starts at version 1"
 assert_eq "$(json_field "${OUT}" "d['data']['data']['api_key']")" "recreated" "recreated path is readable"
 
+print_status "raw HTTP: the KV v2 mount preflight, the unprefixed mount, GET list and options.cas"
+EP_PATH="openbao-ci/${SECRET_NAME}-ep"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/v1/sys/internal/ui/mounts/${KV_MOUNT}/${EP_PATH}")" "200" "mount preflight on the KV mount"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/v1/sys/internal/ui/mounts/not-${KV_MOUNT}/x")" "404" "mount preflight on another mount"
+assert_eq "$(kv_status "${BAO_TOKEN}" PUT "/${KV_MOUNT}/data/${EP_PATH}" '{"data":{"k":"v"}}')" "200" "unprefixed mount: write"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/${KV_MOUNT}/data/${EP_PATH}")" "200" "unprefixed mount: read"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/v1/${KV_MOUNT}/metadata/${EP_PATH}")" "200" "metadata read on /v1"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/${KV_MOUNT}/metadata/${EP_PATH}")" "200" "unprefixed mount: metadata read"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/v1/${KV_MOUNT}/metadata/openbao-ci?list=true")" "200" "GET ?list=true lists a prefix"
+assert_eq "$(kv_status "${BAO_TOKEN}" GET "/v1/${KV_MOUNT}/metadata/no-such-prefix-${SECRET_NAME}?list=true")" "404" "GET ?list=true on an empty prefix"
+assert_eq "$(kv_status "${BAO_TOKEN}" PUT "/v1/${KV_MOUNT}/data/${EP_PATH}" '{"data":{"k":"v2"},"options":{"cas":0}}')" "400" "cas=0 on an existing path is refused"
+assert_eq "$(kv_status "${BAO_TOKEN}" PUT "/v1/${KV_MOUNT}/data/${EP_PATH}" '{"data":{"k":"v2"},"options":{"cas":1}}')" "200" "cas equal to the current version is accepted"
+assert_eq "$(kv_status "${BAO_TOKEN}" DELETE "/${KV_MOUNT}/metadata/${EP_PATH}")" "204" "unprefixed mount: hard delete"
+
 print_success "OpenBao kv scenario passed"
