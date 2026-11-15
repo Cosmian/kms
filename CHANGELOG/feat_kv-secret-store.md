@@ -1,3 +1,8 @@
+## Breaking Changes
+
+### Vault API
+- `vault_auth_verifier_url` now receives standard Vault paths: the KMS calls `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` requests unchanged (it used to call `/auth/token/lookup-self` and strip `/v1`). Point it at an OpenBao/Vault server, or at a Cosmian Auth Verifier that serves `/v1/auth/*`; an older Auth Verifier must be upgraded together with the KMS. The Auth Verifier also gains a Vault-compatible `userpass` login (`bao login -method=userpass`).
+
 ## Features
 
 ### API

@@ -1683,7 +1683,7 @@ pub async fn prepare_kms_server(
 
                 // Auth proxy scope: forward /v1/auth/* to the auth-verifier.
                 // SPIRE authenticates via AppRole login at vault_addr/v1/auth/approle/login,
-                // which is forwarded here to the auth-verifier unchanged.
+                // which is forwarded here to the auth-verifier (or OpenBao/Vault) unchanged.
                 // The KMS token-validation middleware still calls auth-verifier directly
                 // (server-to-server) — transit/PKI hot-path requests are never proxied.
                 //
