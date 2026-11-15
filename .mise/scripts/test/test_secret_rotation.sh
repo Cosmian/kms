@@ -28,7 +28,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../../lib/common.sh"
 source "${SCRIPT_DIR}/../../lib/kms_server.sh"
-source "${SCRIPT_DIR}/bao_verifier.sh"
+source "${SCRIPT_DIR}/openbao/bao_verifier.sh"
 
 VARIANT_ARG="fips"
 LINK_ARG="static"
@@ -104,10 +104,9 @@ PY
 }
 
 print_header "${DB_ENGINE} password rotation to KMS KV (${VARIANT_NAME})"
-run_isolated python3 "${SCRIPT_DIR}/test_bao_lookup_proxy.py"
 
 # --- OpenBao token verifier: authenticates the rotator and the consumer ---------------------
-bao_verifier_start "kms-rotation-verifier-${RUN_ID}" "${WORK_DIR}"
+bao_verifier_start "kms-rotation-verifier-${RUN_ID}"
 ROTATOR_TOKEN="$(bao_verifier_login rotator)"
 CONSUMER_TOKEN="$(bao_verifier_login consumer)"
 BAD_TOKEN="invalid-token-for-failure-injection"

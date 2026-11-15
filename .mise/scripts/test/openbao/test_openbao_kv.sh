@@ -27,33 +27,18 @@ BAO_CACERT_HOST="${BAO_CACERT_HOST:-}"
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=.mise/lib/common.sh
-source "${SCRIPT_DIR}/../../lib/common.sh"
+source "${SCRIPT_DIR}/../../../lib/common.sh"
 
 require_cmd docker "Docker is required to run the OpenBao CLI."
 require_cmd python3 "python3 is required to parse CLI JSON output."
 require_cmd curl "curl is required for the TTL and authorization checks."
 BAO_IMAGE="${BAO_IMAGE:-$(compose_image openbao)}"
+source "${SCRIPT_DIR}/bao_cli.sh"
 
 SECRET_PATH="openbao-ci/$$"
 SECRET_NAME="$$"
 FULL_PATH="${KV_MOUNT}/${SECRET_PATH}"
 DATA_URI="/v1/${KV_MOUNT}/data/${SECRET_PATH}"
-
-# Run the OpenBao CLI in a throw-away container. Token passed by name so it stays out of argv.
-bao() {
-  local args=(run --rm -i --entrypoint bao -e BAO_ADDR -e BAO_TOKEN)
-  if [[ -n "${BAO_NETWORK:-}" ]]; then
-    args+=(--network "${BAO_NETWORK}")
-  elif [[ "$(uname -s)" == "Linux" ]]; then
-    args+=(--network host)
-  else
-    args+=(--add-host host.docker.internal:host-gateway)
-  fi
-  if [[ -n "${BAO_CACERT_HOST}" ]]; then
-    args+=(-v "${BAO_CACERT_HOST}:/ca.crt:ro" -e BAO_CACERT=/ca.crt)
-  fi
-  docker "${args[@]}" "${BAO_IMAGE}" "$@"
-}
 
 # Print a JSON field: json_field '<json>' '<python expression on d>'.
 json_field() {

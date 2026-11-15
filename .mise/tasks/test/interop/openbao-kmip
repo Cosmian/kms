@@ -161,7 +161,7 @@ for candidate in python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
 done
 [[ -n "${TAP_PYTHON}" ]] || print_error "the KMIP tap needs a python3 with TLS 1.3 support"
 : >"${TAP_LOG}"
-"${TAP_PYTHON}" "${MISE_CONFIG_ROOT}/.mise/scripts/test/kmip_tap_proxy.py" "${TAP_LISTEN}" "${TAP_PORT}" \
+"${TAP_PYTHON}" "${MISE_CONFIG_ROOT}/.mise/scripts/test/openbao/kmip_tap_proxy.py" "${TAP_LISTEN}" "${TAP_PORT}" \
   127.0.0.1 "${KMIP_PORT}" "${CERTS_DIR}/kms.crt" "${CERTS_DIR}/kms.key" "${CERTS_DIR}/ca.crt" \
   "${CERTS_DIR}/client.crt" "${CERTS_DIR}/client.key" "${TAP_LOG}" &
 TAP_PID=$!
@@ -252,7 +252,7 @@ print_success "OpenBao unsealed again after the restart"
 
 # --- Audit: the KMS must have served KMIP Encrypt and Decrypt for the OpenBao client identity.
 print_status "Checking the KMS log..."
-python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/check_kmip_seal_audit.py" "${KMS_LOG}" \
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/openbao/check_kmip_seal_audit.py" "${KMS_LOG}" \
   "${TAP_LOG}" "${BAO_CLIENT_CN}" "${KEY_UID}"
 
 print_success "OpenBao KMIP seal integration test completed"
