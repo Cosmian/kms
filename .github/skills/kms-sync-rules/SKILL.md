@@ -104,7 +104,7 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 | 4.18 | Database schema/backend ⇔ docs | `crate/server_database/**` | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`) |
 | 4.19 | Third-party dependencies ⇔ supply-chain gates (#1265) | dependency manifests and lock files, `supply-chain/**`, `**/Dockerfile*`, workflow `uses:`/tool installs, submodule bumps | `dependencies.instructions.md` |
 | 4.20 | Test KMS / Auth Verifier configs: complete fixtures in `test_data`, no partial inline configs | `test_data/configs/**`, `test_data/spire/config/**`, `.mise/**`, `crate/**/tests/**` | `test-configs.instructions.md` |
-| 4.21 | Test group README: Mermaid diagrams + table of called `.mise/scripts/test/` scripts, per `.mise/tasks/test/<group>/` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `test-task-readme.instructions.md` |
+| 4.21 | Test task README: update the affected entries and Mermaid diagrams of `.mise/tasks/test/README.md` (no per-group README) | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `test-task-readme.instructions.md` |
 
 ### Rule 4.8 — Non-FIPS gating across the stack
 

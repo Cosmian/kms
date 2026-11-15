@@ -53,7 +53,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check |
 | `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
-| `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | Every `.mise/tasks/test/<group>/` folder keeps a README with Mermaid diagrams and a table of the `.mise/scripts/test/` scripts its tasks call; sync rule 4.21 |
+| `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `.mise/tasks/test/README.md` is the only test-task doc: update the affected task entries and their Mermaid diagrams on every task or script change; sync rule 4.21 |
 
 Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
