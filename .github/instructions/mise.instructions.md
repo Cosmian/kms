@@ -302,9 +302,9 @@ image catalog). In a task or script:
   check. In a sourced library, resolve the image inside the function that needs it, not at load time.
 - A new image-only service goes in the `images` profile of the root `docker-compose.yml`; never hardcode a
   `repo/name:tag` in `.mise/**` or `scripts/**`.
-- A compose file other than the root one (`.mise/scripts/docker-compose.yml`, `saml_sso/docker-compose.yml`)
-  takes images from variables, `image: ${LB_NGINX_IMAGE:?set by <driving script>}`, which the script that
-  drives it sets from `compose_image`.
+- `.mise/scripts/docker-compose.yml` hardcodes its third-party images (`image: postgres:18`); keep them equal to
+  the root `docker-compose.yml` when you bump one. `saml_sso/docker-compose.yml` takes images from variables,
+  which the script that drives it sets from `compose_image`.
 - Not covered by the rule, leave them as they are: the KMS's own images (`DOCKER_IMAGE_NAME`, `${IMAGE_REF}`,
   `local/*:e2e`, `ghcr.io/cosmian/kms-fips:${image_version}`), images derived from a pinned version
   (`rust:${RUST_VERSION}-bookworm`, `alpine:${ALPINE_TAG}`), Dockerfile `FROM` lines, and GitHub workflows.

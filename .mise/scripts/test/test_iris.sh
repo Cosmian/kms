@@ -15,7 +15,6 @@
 #     pull_policy: always to guarantee a valid embedded license.
 #
 # Configurable environment variables:
-#   IRIS_DOCKER_IMAGE   Image to use (default: intersystemsdc/iris-community:latest)
 #   IRIS_LICENSE_KEY    Optional ISC license key (injected as ISC_PACKAGE_LICENSEKEY)
 #   IRIS_CONTAINER_NAME Container name (default: iris-kmip-test)
 #   KMS_KMIP_PORT       KMIP socket port (default: 15696)
@@ -43,7 +42,6 @@ init_build_env "$@"
 setup_test_logging
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-: "${IRIS_DOCKER_IMAGE:=intersystemsdc/iris-community:latest}"
 : "${IRIS_CONTAINER_NAME:=iris-kmip-test}"
 : "${KMS_KMIP_PORT:=$(kms_pick_free_port)}"
 : "${KMS_HTTP_PORT:=$(kms_pick_free_port)}"
@@ -228,7 +226,7 @@ fi
 # ── Step 5: Start IRIS via docker compose ────────────────────────────────────
 echo
 echo "==> Starting IRIS container via docker compose…"
-echo "    Image: ${IRIS_DOCKER_IMAGE:-intersystemsdc/iris-community:latest}"
+echo "    Image: iris service of docker-compose.yml"
 docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d iris
 
 echo "Waiting for IRIS to initialize (up to 120 s)…"

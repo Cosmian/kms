@@ -174,7 +174,7 @@ services:
 
   # === Load balancer stack ===
   postgres:
-    image: ${LB_POSTGRES_IMAGE:?set by test_docker_image.sh / test_lb_kms_shutdown.sh}
+    image: postgres:18
     environment:
       POSTGRES_USER: kms
       POSTGRES_PASSWORD: kms
@@ -242,7 +242,7 @@ services:
       retries: 60
 
   nginx-load-balancer:
-    image: ${LB_NGINX_IMAGE:?set by test_docker_image.sh / test_lb_kms_shutdown.sh}
+    image: nginx:1.27-alpine
     depends_on:
       - kms1
       - kms2
@@ -258,7 +258,7 @@ services:
   # Start with: docker compose --profile oracle up -d --wait
   oracle:
     container_name: oracle
-    image: ${ORACLE_IMAGE:?set by test_docker_image.sh / test_lb_kms_shutdown.sh}
+    image: container-registry.oracle.com/database/free:23.9.0.0-lite
     profiles: [oracle]
     ports:
       - ${KMS_SLOT_ORACLE_PORT:-1521}:1521

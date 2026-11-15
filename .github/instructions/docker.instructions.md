@@ -183,8 +183,9 @@ defined (databases, OpenBao/Vault, SIEM/observability stacks, Keycloak, nginx, b
 - Scripts read an image with `compose_image <service>` (`.mise/lib/common.sh`). Never write a literal
   `repo/name:tag` in a script, a task, a heredoc manifest or another compose file. Bump a version in the root
   file only.
-- Other compose files (`.mise/scripts/docker-compose.yml`, `saml_sso/docker-compose.yml`) take images from
-  variables (`image: ${LB_NGINX_IMAGE:?…}`) that their driving script sets from `compose_image`.
+- `.mise/scripts/docker-compose.yml` is the exception: its third-party images are written literally
+  (`image: postgres:18`), not variabilized. When you bump one in the root file, bump it there too.
+  `saml_sso/docker-compose.yml` takes its images from variables that its driving script sets from `compose_image`.
 - Out of scope: the KMS's own images (`DOCKER_IMAGE_NAME`, `${IMAGE_REF}`, `local/*:e2e`), Dockerfile `FROM`
   lines, and images in GitHub workflows (they cannot read the compose file).
 
