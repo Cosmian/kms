@@ -53,6 +53,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check |
 | `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
+| `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | Every `.mise/tasks/test/<group>/` folder keeps a README with Mermaid diagrams and a table of the `.mise/scripts/test/` scripts its tasks call; sync rule 4.21 |
 
 Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
@@ -364,8 +365,9 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11, 4.19 |
 | New or bumped third-party dependency (crate, npm/Python/Go package, base image, action, installer) | 4.19 (+ 4.11 when a lock file changed) |
 | Test/script needs a KMS, Auth Verifier or ckms config | 4.20 |
+| Test task or `.mise/scripts/test/` script added, renamed, removed or changed | 4.21 |
 
-> **Full sub-rule checklists** (4.1–4.20) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.21) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 

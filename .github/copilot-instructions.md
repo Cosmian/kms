@@ -49,6 +49,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `mermaid.instructions.md` | `**/*.md` |
 | `rust-security.instructions.md` | `crate/**/*.rs` |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
+| `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` |
 
 ---
 
