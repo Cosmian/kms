@@ -777,4 +777,19 @@ mod ff1_characterization_tests {
             "FF1 internal error: AES-256-ECB block encryption failed"
         );
     }
+
+    #[test]
+    fn test_aes_ff1_official_vectors() {
+        for v in crate::kat_vectors::aes_ff1_vectors().unwrap() {
+            let ff1 = FF1fr::<10>::new(&v.key, v.radix).unwrap();
+            let ct: FlexibleNumeralString = ff1
+                .encrypt(&v.tweak, &FlexibleNumeralString::from(v.pt.clone()))
+                .unwrap();
+            assert_eq!(Vec::<u16>::from(ct), v.ct, "{} ({})", v.id, v.source);
+            let pt: FlexibleNumeralString = ff1
+                .decrypt(&v.tweak, &FlexibleNumeralString::from(v.ct.clone()))
+                .unwrap();
+            assert_eq!(Vec::<u16>::from(pt), v.pt, "{} ({})", v.id, v.source);
+        }
+    }
 }

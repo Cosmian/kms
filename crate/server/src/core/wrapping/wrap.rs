@@ -198,8 +198,15 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
             a @ (CryptoAlgorithm::AesKeyWrap
             | CryptoAlgorithm::AesKeyWrapPad
             | CryptoAlgorithm::AesGcm),
-        ) => a,
-        // A KEK that does not exist yet keeps failing on first use, as before this check.
+        ) => {
+            // A KEK that does not exist yet (the bootstrap flow creates it after startup) keeps
+            // failing on first use, as before this check.
+            if oracle.get_key_type(kek).await.is_err() {
+                return Ok(());
+            }
+            a
+        }
+        // Same for the default algorithm.
         None if matches!(oracle.get_key_type(kek).await, Ok(Some(KeyType::AesKey))) => {
             CryptoAlgorithm::AesGcm
         }
@@ -517,6 +524,18 @@ pub(crate) async fn wrap_with_local_key(
         key_wrapping_specification.get_encoding(),
         object.key_block()?.key_format_type
     );
+    // An AES-GCM wrap is one invocation of the KEK with a random IV (SP 800-38D §8.3).
+    if wrapping_key_object.object_type() == ObjectType::SymmetricKey
+        && key_wrapping_specification
+            .encryption_key_information
+            .as_ref()
+            .and_then(|info| info.cryptographic_parameters.as_ref())
+            .is_some_and(|cp| cp.block_cipher_mode == Some(BlockCipherMode::GCM))
+    {
+        kms.database
+            .reserve_gcm_invocations(wrapping_key_uid, 1)
+            .await?;
+    }
     // wrap the object
     wrap_object_with_key(
         object,

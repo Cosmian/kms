@@ -2,46 +2,26 @@ import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
+import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import KeyIdInput from "../../components/common/KeyIdInput";
+import { HEX_BYTES_PATTERN, hexToBytes, type MacType, useMacOptions } from "./macParams";
 
 interface MacComputeFormData {
     keyId?: string;
     tags?: string[];
-    algorithm: string;
+    macType: MacType;
+    /** Only registered (hence present) when the MAC type is HMAC. */
+    algorithm?: string;
     data: string;
 }
-
-const MAC_HASHING_ALGORITHMS = [
-    { label: "SHA-1", value: "SHA1" },
-    { label: "SHA-224", value: "SHA224" },
-    { label: "SHA-256", value: "SHA256" },
-    { label: "SHA-384", value: "SHA384" },
-    { label: "SHA-512", value: "SHA512" },
-    { label: "SHA3-224", value: "SHA3224" },
-    { label: "SHA3-256", value: "SHA3256" },
-    { label: "SHA3-384", value: "SHA3384" },
-    { label: "SHA3-512", value: "SHA3512" },
-];
-
-const buildMacRequest = (keyId: string, algorithm: string, dataHex: string) => ({
-    tag: "Mac",
-    type: "Structure",
-    value: [
-        { tag: "UniqueIdentifier", type: "TextString", value: keyId },
-        {
-            tag: "CryptographicParameters",
-            type: "Structure",
-            value: [{ tag: "HashingAlgorithm", type: "Enumeration", value: algorithm }],
-        },
-        { tag: "Data", type: "ByteString", value: dataHex },
-    ],
-});
 
 const MacComputeForm: React.FC = () => {
     const [form] = Form.useForm<MacComputeFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const { t } = useTranslation("actions");
+    const macType = Form.useWatch("macType", form) ?? "HMAC";
+    const { macTypes, hashingAlgorithms } = useMacOptions();
 
     const onFinish = async (values: MacComputeFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -49,7 +29,7 @@ const MacComputeForm: React.FC = () => {
             if (id == undefined) {
                 throw new Error(t("macCompute.missingKeyId"));
             }
-            const request = buildMacRequest(id, values.algorithm, values.data);
+            const request = wasm.mac_ttlv_request(id, hexToBytes(values.data), values.macType, values.algorithm);
             const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = JSON.parse(result_str) as { tag?: string; value?: Array<{ tag: string; type: string; value: string }> };
@@ -74,7 +54,7 @@ const MacComputeForm: React.FC = () => {
                 </p>
             </div>
 
-            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ algorithm: "SHA256" }}>
+            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={{ macType: "HMAC", algorithm: "SHA256" }}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("macCompute.keyIdentification")}</h3>
@@ -92,14 +72,20 @@ const MacComputeForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <Form.Item
-                            name="algorithm"
-                            label={t("macCompute.hashingAlgorithm")}
-                            rules={[{ required: true, message: t("macCompute.pleaseSelectHashingAlgorithm") }]}
-                            help={t("macCompute.hashingAlgorithmHelp")}
-                        >
-                            <Select data-testid="mac-algorithm-select" options={MAC_HASHING_ALGORITHMS} />
+                        <Form.Item name="macType" label={t("macCompute.macType")} help={t("macCompute.macTypeHelp")}>
+                            <Select data-testid="mac-type-select" options={macTypes} />
                         </Form.Item>
+                        {macType === "HMAC" && (
+                            <Form.Item
+                                name="algorithm"
+                                label={t("macCompute.hashingAlgorithm")}
+                                rules={[{ required: true, message: t("macCompute.pleaseSelectHashingAlgorithm") }]}
+                                help={t("macCompute.hashingAlgorithmHelp")}
+                            >
+                                <Select data-testid="mac-algorithm-select" options={hashingAlgorithms} />
+                            </Form.Item>
+                        )}
+                        {macType === "AES-GMAC" && <p>{t("macCompute.gmacHelp")}</p>}
                     </Card>
 
                     <Card>
@@ -109,7 +95,7 @@ const MacComputeForm: React.FC = () => {
                             rules={[
                                 { required: true, message: t("macCompute.pleaseEnterData") },
                                 {
-                                    pattern: /^[0-9a-fA-F]*$/,
+                                    pattern: HEX_BYTES_PATTERN,
                                     message: t("macCompute.dataHexError"),
                                 },
                             ]}

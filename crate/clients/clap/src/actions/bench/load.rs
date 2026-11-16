@@ -20,6 +20,7 @@ use cosmian_kms_client::{
         requests::{create_rsa_key_pair_request, encrypt_request, symmetric_key_create_request},
     },
 };
+use cosmian_kms_crypto::crypto::is_fips_build;
 use num_traits::ToPrimitive as _;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
@@ -806,15 +807,22 @@ fn prepare_hsm_load_ops(
     }
 
     if needs_encrypt {
-        if let Some(key_id) = try_create_hsm_sym_key(
-            rt,
-            client,
-            hsm_prefix,
-            "load-encrypt-aes-gcm-256",
-            256,
-            CryptographicAlgorithm::AES,
-            ledger,
-        ) {
+        // A FIPS build refuses AES-GCM on an HSM that does not generate the IV itself
+        // (FIPS 140-3 IG C.H).
+        if let Some(key_id) = (!is_fips_build())
+            .then(|| {
+                try_create_hsm_sym_key(
+                    rt,
+                    client,
+                    hsm_prefix,
+                    "load-encrypt-aes-gcm-256",
+                    256,
+                    CryptographicAlgorithm::AES,
+                    ledger,
+                )
+            })
+            .flatten()
+        {
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_gcm_params()),
@@ -840,11 +848,15 @@ fn prepare_hsm_load_ops(
             2048,
             ledger,
         ) {
+            // A FIPS build refuses RSA PKCS#1 v1.5 encryption (NIST SP 800-131A r2).
             for (label, params) in [
                 ("rsa-oaep", rsa_oaep_params()),
                 ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
                 ("rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
-            ] {
+            ]
+            .into_iter()
+            .filter(|(label, _)| !(is_fips_build() && *label == "rsa-pkcs1v15"))
+            {
                 let req = Encrypt {
                     unique_identifier: Some(pub_id.clone()),
                     cryptographic_parameters: Some(params),

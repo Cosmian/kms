@@ -12,7 +12,7 @@ mod keypair;
 mod symmetric;
 
 pub(crate) use common::{
-    RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey, retire_update_op,
+    RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey, versioned_update_op,
 };
 pub(crate) use keypair::rekey_keypair;
 pub(crate) use symmetric::rekey;

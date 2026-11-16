@@ -258,4 +258,31 @@ mod tests {
 
         Ok(())
     }
+
+    /// OAEP decryption against Wycheproof vectors.
+    #[test]
+    fn test_rsa_oaep_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        for g in crate::kat_vectors::rsa_oaep_groups().unwrap() {
+            let pk = PKey::private_key_from_der(&g.private_key_pkcs8).unwrap();
+            for t in &g.tests {
+                let label = (!t.label.is_empty()).then_some(t.label.as_slice());
+                let decrypted =
+                    super::ckm_rsa_pkcs_oaep_key_decrypt(&pk, g.hash, g.mgf_hash, label, &t.ct);
+                if t.valid {
+                    assert_eq!(
+                        decrypted.unwrap().to_vec(),
+                        t.msg,
+                        "{} ({})",
+                        t.id,
+                        g.source
+                    );
+                } else {
+                    decrypted.unwrap_err();
+                }
+            }
+        }
+    }
 }

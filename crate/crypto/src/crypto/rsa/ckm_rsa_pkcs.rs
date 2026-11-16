@@ -154,4 +154,34 @@ mod tests {
 
         Ok(())
     }
+
+    /// PKCS#1 v1.5 decryption against Wycheproof vectors. OpenSSL 3.2+ implicit rejection
+    /// returns a synthetic plaintext instead of an error, so an invalid record must only
+    /// never yield the vector's plaintext.
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_rsa_pkcs1_decrypt_official_vectors() {
+        for g in crate::kat_vectors::rsa_pkcs1_decrypt_groups().unwrap() {
+            let pk = PKey::private_key_from_der(&g.private_key_pkcs8).unwrap();
+            for t in &g.tests {
+                let decrypted = super::ckm_rsa_pkcs_decrypt(&pk, &t.ct);
+                if t.valid {
+                    assert_eq!(
+                        decrypted.unwrap().to_vec(),
+                        t.msg,
+                        "{} ({})",
+                        t.id,
+                        g.source
+                    );
+                } else {
+                    assert!(
+                        decrypted.map_or(true, |m| m.as_slice() != t.msg.as_slice()),
+                        "{} ({})",
+                        t.id,
+                        g.source
+                    );
+                }
+            }
+        }
+    }
 }

@@ -409,6 +409,16 @@ In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA
 by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2)
 which follows FIPS recommendations as well. An additional random 128-bit salt is used.
 
+## Message authentication codes (KMIP MAC / MAC Verify)
+
+| Algorithm | Standard         | FIPS mode | Notes                                                                                                   |
+| --------- | ---------------- | --------- | ------------------------------------------------------------------------------------------------------- |
+| HMAC      | FIPS 198-1       | Yes       | SHA-{1,224,256,384,512}, SHA-3                                                                          |
+| AES-CMAC  | NIST SP 800-38B  | Yes       | AES-128/192/256 keys, 16-byte tag. Selected by Block Cipher Mode `CMAC`.                                |
+| AES-GMAC  | NIST SP 800-38D  | Yes       | AES-128/192/256 keys. Selected by Block Cipher Mode `GCM`. MAC value is a random 12-byte IV followed by the 16-byte tag. |
+
+See the [MAC operation](../../kmip_support/_mac.md) for the request format.
+
 ## Hash functions
 
 The Eviden server supports the following hashing algorithms:

@@ -6,13 +6,12 @@ use std::{
 
 use cosmian_kms_interfaces::CryptoAlgorithm;
 use cosmian_logger::debug;
-#[cfg(feature = "non-fips")]
-use pkcs11_sys::CKM_SHA_1;
 use pkcs11_sys::{
     CK_MECHANISM_TYPE, CKF_DECRYPT, CKF_ENCRYPT, CKF_UNWRAP, CKF_WRAP, CKM_AES_CBC, CKM_AES_GCM,
-    CKM_AES_KEY_WRAP, CKM_AES_KEY_WRAP_KWP, CKM_AES_KEY_WRAP_PAD, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_SHA256,
+    CKM_AES_KEY_WRAP, CKM_AES_KEY_WRAP_KWP, CKM_AES_KEY_WRAP_PAD, CKM_RSA_PKCS_OAEP, CKM_SHA256,
 };
+#[cfg(feature = "non-fips")]
+use pkcs11_sys::{CKM_RSA_PKCS, CKM_SHA_1};
 
 use crate::{
     HError, HResult, SlotManager,
@@ -66,6 +65,8 @@ pub(crate) fn algorithms_for_slot(slot: &SlotManager) -> HResult<Vec<CryptoAlgor
         match mechanism {
             CKM_AES_CBC => algorithms.push(CryptoAlgorithm::AesCbc),
             CKM_AES_GCM => algorithms.push(CryptoAlgorithm::AesGcm),
+            // RSAES-PKCS1-v1_5 is not approved: never offered by a FIPS build.
+            #[cfg(feature = "non-fips")]
             CKM_RSA_PKCS => algorithms.push(CryptoAlgorithm::RsaPkcsV15),
             CKM_RSA_PKCS_OAEP => {
                 add_supported_oaep_algorithms(&supported_hashes, &mut algorithms);

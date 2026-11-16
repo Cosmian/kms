@@ -190,6 +190,8 @@ fn test_hsm_kryoptic_all() -> HResult<()> {
     shared::aes_gcm_encrypt(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
+    shared::aes_mac_known_answers(&slot)?;
+    shared::aes_gcm_known_answers(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;
     shared::rsa_sha256_sign(&slot)?;
     shared::rsa_sign_all_algorithms(&slot)?;

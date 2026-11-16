@@ -69,7 +69,13 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
         KeyFormatType::PKCS8 => {
             let key_bytes = key_block.pkcs_der_bytes()?;
             // This key may be an RSA or EC key
-            PKey::private_key_from_der(&key_bytes)?
+            let pk = PKey::private_key_from_der(&key_bytes)?;
+            // The decoder tries every provider and leaves its failed attempts (e.g. an algorithm
+            // the FIPS provider lacks) on this thread's error queue even when the parse succeeds.
+            // A stale entry makes the next `SSL_read` on the thread fail, which closes the TLS
+            // connection of an in-flight request.
+            drop(openssl::error::ErrorStack::get());
+            pk
         }
         KeyFormatType::ECPrivateKey => {
             let key_bytes = key_block.pkcs_der_bytes()?;

@@ -984,6 +984,60 @@ mod tests {
     }
 
     #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_x25519_official_vectors() {
+        for v in crate::kat_vectors::x25519_vectors().unwrap() {
+            let shared = x25519_key_agreement(&v.private, &v.public);
+            if v.valid {
+                assert_eq!(
+                    shared
+                        .unwrap_or_else(|e| panic!("{} ({}): {e}", v.id, v.source))
+                        .as_slice(),
+                    v.shared.as_slice(),
+                    "{} ({})",
+                    v.id,
+                    v.source
+                );
+            } else {
+                shared.unwrap_err();
+            }
+        }
+    }
+
+    #[test]
+    fn test_ecdh_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        Provider::load(None, "fips").unwrap();
+
+        for v in crate::kat_vectors::ecdh_vectors().unwrap() {
+            let nid = match v.curve.as_str() {
+                "P-256" => Nid::X9_62_PRIME256V1,
+                "P-384" => Nid::SECP384R1,
+                "P-521" => Nid::SECP521R1,
+                other => panic!("unknown curve {other}"),
+            };
+            let shared = ecdh_key_agreement(nid, &v.private, &v.public);
+            // `ecdh_key_agreement` deliberately rejects an all-zero shared secret (also for the
+            // Wycheproof records whose valid result is the point with x = 0).
+            if v.valid && v.shared.iter().all(|b| *b == 0) {
+                assert!(shared.is_err(), "{} ({})", v.id, v.source);
+            } else if v.valid {
+                assert_eq!(
+                    shared
+                        .unwrap_or_else(|e| panic!("{} ({}): {e}", v.id, v.source))
+                        .as_slice(),
+                    v.shared.as_slice(),
+                    "{} ({})",
+                    v.id,
+                    v.source
+                );
+            } else {
+                shared.unwrap_err();
+            }
+        }
+    }
+
+    #[cfg(feature = "non-fips")]
     fn decode_test_hex(hex_value: &str, label: &str) -> Vec<u8> {
         let decoded = hex::decode(hex_value);
         assert!(decoded.is_ok(), "invalid {label} test vector: {decoded:?}");
