@@ -22,6 +22,7 @@ use zeroize::Zeroizing;
 use crate::{
     core::{
         KMS,
+        otel_metrics::outcome_label,
         uid_utils::ObjectHandle,
         wrapping::{authorize_unwrap_with, unwrap_stored_object},
     },
@@ -579,12 +580,13 @@ async fn wrap_using_crypto_oracle(
             None,
             None,
         )
-        .await?;
+        .await;
     if let Some(ref metrics) = kms.metrics {
         let model =
             crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);
-        metrics.record_hsm_operation("Wrap", model);
+        metrics.record_hsm_operation("Wrap", model, outcome_label(&encrypted_content));
     }
+    let encrypted_content = encrypted_content?;
 
     let wrapped_key = pack_wrapped(&encrypted_content);
 

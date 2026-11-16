@@ -187,27 +187,8 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick(), if count_interval_secs > 0 => {
                         if let Some(ref metrics) = kms.metrics {
-                            // ── Non-destroyed key objects count ────────────────────────────────
-                            // Privileged backend count: no ACL filtering, covers all backends.
-                            match kms.database.count_non_destroyed_key_objects().await {
-                                Ok(count) => {
-                                    debug!(
-                                        "[metrics-cron] kms.keys.active.count synced to {}",
-                                        count
-                                    );
-                                    metrics.update_active_keys_count(
-                                        i64::try_from(count).unwrap_or(i64::MAX),
-                                    );
-                                }
-                                Err(e) => {
-                                    // A persistently failing query (e.g. a backend-specific
-                                    // SQL bug) should be visible without debug logging.
-                                    warn!(
-                                        "[metrics-cron] Failed to sync kms.keys.active.count: {}",
-                                        e
-                                    );
-                                }
-                            }
+                            // ── Key inventory and expiry gauges ────────────────────────────────
+                            metrics.sync_key_gauges(&kms.database).await;
 
                             // ── Objects-total absolute sync ────────────────────────────────────
                             match kms.database.count_all_non_destroyed_objects().await {

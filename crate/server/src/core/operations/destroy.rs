@@ -24,6 +24,7 @@ use crate::core::cover_crypt::destroy_user_decryption_keys;
 use crate::{
     core::{
         KMS,
+        otel_metrics::outcome_label,
         uid_utils::{ObjectHandle, resolve_uids},
     },
     error::KmsError,
@@ -225,7 +226,7 @@ pub(crate) async fn recursively_destroy_object(
                         Err(KmsError::Kmip21Error(ErrorReason::Object_Destroyed, _)) => {}
                         other => other?,
                     }
-                    kms.record_cascading_metrics("Destroy", op_start, user);
+                    kms.record_cascading_metrics("Destroy", op_start, user, "success");
                 }
 
                 // destroy the private key
@@ -271,7 +272,7 @@ pub(crate) async fn recursively_destroy_object(
                     // This allows destroying a PreActive public key even if its linked private key is Active
                     if !ids_to_skip.contains(&private_key_id) {
                         let private_key_id_clone = private_key_id.clone();
-                        if let Err(e) = recursively_destroy_object(
+                        let result = recursively_destroy_object(
                             &UniqueIdentifier::TextString(private_key_id),
                             remove,
                             cascade,
@@ -279,15 +280,20 @@ pub(crate) async fn recursively_destroy_object(
                             user,
                             ids_to_skip.clone(),
                         )
-                        .await
-                        {
+                        .await;
+                        if let Err(e) = &result {
                             // Log the error but continue with public key destruction
                             trace!(
                                 "[destroy] Failed to destroy linked private key {}: {:?}. Continuing with public key destruction.",
                                 private_key_id_clone, e
                             );
                         }
-                        kms.record_cascading_metrics("Destroy", op_start, user);
+                        kms.record_cascading_metrics(
+                            "Destroy",
+                            op_start,
+                            user,
+                            outcome_label(&result),
+                        );
                     }
                 }
                 // Destroy the public key

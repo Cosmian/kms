@@ -69,7 +69,7 @@ No HTTP `/metrics` endpoint is exposed — metrics are always pushed, never scra
 
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|
-| `kms.kmip.operations.total` | counter | Total KMIP operations executed | `operation` |
+| `kms.kmip.operations.total` | counter | Total KMIP operations executed | `operation`, `outcome` (`success` · `error`) |
 | `kms.kmip.operations.per_user.total` | counter | Total KMIP operations per user | `operation`, `user` |
 | `kms.kmip.operation.duration` | histogram (s) | Duration of each KMIP operation | `operation` |
 
@@ -117,9 +117,14 @@ object identifiers.
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|
 | `kms.objects.total` | gauge | Total non-destroyed objects in the KMS | — |
-| `kms.keys.active.count` | gauge | Non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, SplitKey) across all states: PreActive, Active, Deactivated, Compromised | — |
+| `kms.keys.active.count` | gauge | Non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, SplitKey) across all states: PreActive, Active, Deactivated, Compromised | `object_type`, `algorithm`, `key_length`, `state` |
+| `kms.keys.expiring_soon.count` | gauge | PreActive and Active keys whose `DeactivationDate` is within the window (cumulative) | `days_until_expiry` (`7` · `30` · `90`) |
 
-Both metrics are refreshed every 30 s by the metrics cron task and seeded at server startup.
+These metrics are refreshed every 30 s by the metrics cron task and seeded at server startup.
+`kms.keys.active.count` emits one series per label combination: use
+`sum(kms_keys_active_count)` for the total. Unset dimensions are labelled `unknown`. See
+[OTLP_METRICS.md](https://github.com/Cosmian/kms/blob/develop/monitoring/OTLP_METRICS.md#objects--keys)
+for the HSM, overflow and Redis-findex specifics, and for tagging keys with vendor attributes.
 
 ### Cache
 
@@ -131,4 +136,4 @@ Both metrics are refreshed every 30 s by the metrics cron task and seeded at ser
 
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|
-| `kms.hsm.operations.total` | counter | HSM operations by type and model | `operation`, `hsm_model` |
+| `kms.hsm.operations.total` | counter | HSM operations by type, model and result | `operation`, `hsm_model`, `outcome` |

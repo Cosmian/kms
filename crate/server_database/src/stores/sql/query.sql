@@ -236,6 +236,19 @@ SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
 AND (attributes ->> 'ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
+-- name: key-inventory
+SELECT attributes ->> 'ObjectType', attributes ->> 'CryptographicAlgorithm',
+(attributes ->> 'CryptographicLength')::BIGINT, state, COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND (attributes ->> 'ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey')
+GROUP BY 1, 2, 3, 4;
+
+-- name: key-deactivation-dates
+SELECT (attributes -> 'DeactivationDate')::TEXT FROM objects
+WHERE state IN ('PreActive', 'Active')
+AND (attributes ->> 'ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey')
+AND attributes -> 'DeactivationDate' IS NOT NULL;
+
 -- ── CRL persistence (RFC 5280 §5) ─────────────────────────────────────────────
 -- One row per CA issuer. On regeneration the row is replaced in-place so that
 -- the public CDP endpoint can resume serving the last signed CRL after restart.

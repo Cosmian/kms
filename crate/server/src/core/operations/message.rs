@@ -28,7 +28,12 @@ use serde::{Deserialize, de::DeserializeOwned};
 use strum::IntoEnumIterator;
 
 use super::{batch_undo, modify_attribute};
-use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
+use crate::{
+    core::{KMS, otel_metrics::outcome_label},
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
+};
 
 /// Maximum number of batch items processed from one `RequestMessage`: items run
 /// sequentially, so an unbounded batch would monopolise a worker and DB connections.
@@ -1038,7 +1043,7 @@ async fn process_operation(
     // Record metrics if enabled
     if let (Some(metrics), Some(start)) = (kms.metrics.as_ref(), start_time) {
         let duration = start.elapsed().as_secs_f64();
-        metrics.record_kmip_operation(operation_name, user);
+        metrics.record_kmip_operation(operation_name, user, outcome_label(&result));
         metrics.record_kmip_operation_duration(operation_name, duration);
 
         // Record error if operation failed

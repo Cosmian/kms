@@ -53,6 +53,7 @@ use crate::{
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, digest::digest,
         },
+        otel_metrics::outcome_label,
         uid_utils::{
             KeysetVersion, ObjectHandle, as_keyset_ref, resolve_keyset_to_single_uid, resolve_uids,
             walk_keyset_chain,
@@ -512,15 +513,15 @@ impl KMS {
             .await?
         {
             ResolvedKey::Oracle { uid, prefix } => {
-                let result = Op::execute_oracle(self, &request, &uid, &prefix).await?;
+                let result = Op::execute_oracle(self, &request, &uid, &prefix).await;
                 if let Some(ref metrics) = self.metrics {
                     let model = crate::core::uid_utils::hsm_model_from_prefix(
                         &self.params.hsm_instances,
                         &prefix,
                     );
-                    metrics.record_hsm_operation(Op::OP_NAME, model);
+                    metrics.record_hsm_operation(Op::OP_NAME, model, outcome_label(&result));
                 }
-                Ok(result)
+                result
             }
             ResolvedKey::Local(owm) => {
                 self.execute_local_with_limits::<Op>(&owm, &request, user)

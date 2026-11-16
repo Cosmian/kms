@@ -292,7 +292,7 @@ pub(crate) async fn recursively_revoke_key(
                             )) => trace!("[revoke] cascade skipped: {msg}"),
                             other => other?,
                         }
-                        kms.record_cascading_metrics("Revoke", op_start, user);
+                        kms.record_cascading_metrics("Revoke", op_start, user, "success");
                     }
                 }
                 Box::pin(revoke_key_core(

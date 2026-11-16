@@ -308,6 +308,20 @@ SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
 AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
+-- name: key-inventory
+SELECT JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')),
+JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.CryptographicAlgorithm')),
+CAST(JSON_EXTRACT(attributes, '$.CryptographicLength') AS SIGNED), state, COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey')
+GROUP BY 1, 2, 3, 4;
+
+-- name: key-deactivation-dates
+SELECT CAST(JSON_EXTRACT(attributes, '$.DeactivationDate') AS CHAR) FROM objects
+WHERE state IN ('PreActive', 'Active')
+AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey')
+AND JSON_EXTRACT(attributes, '$.DeactivationDate') IS NOT NULL;
+
 -- ── CRL persistence (MySQL-specific) ─────────────────────────────────────────
 -- MySQL uses LONGBLOB for binary data and REPLACE INTO for upsert.
 

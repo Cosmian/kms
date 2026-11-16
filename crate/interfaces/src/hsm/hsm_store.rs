@@ -26,8 +26,8 @@ use zeroize::Zeroizing;
 use crate::{
     AtomicOperation, CryptoAlgorithm, CryptoOracle, DestroyedFilter, EcCurve, FindOptions, HSM,
     HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, KeyType, MacAlgorithm, MacKeyMetadata,
-    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
+    InterfaceError, InterfaceResult, KeyInventoryBucket, KeyMaterial, KeyType, MacAlgorithm,
+    MacKeyMetadata, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
@@ -779,7 +779,89 @@ impl ObjectsStore for HsmStore {
         Ok(total)
     }
 
-    /// HSM keys are physically stored on the device and never wrapped in KMIP format.
+    /// Break the HSM keys down by type and algorithm.
+    ///
+    /// Each slot is queried once per typed filter; keys matched by no typed
+    /// filter (e.g. generic secrets) are reported under an `Unknown` object
+    /// type. PKCS#11 `find` does not return key lengths or KMIP states, so
+    /// those dimensions stay `None`. Slot and filter errors are non-fatal, as
+    /// in [`Self::count_non_destroyed_keys`].
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        const TYPED_FILTERS: [(HsmObjectFilter, &str, &str); 5] = [
+            (HsmObjectFilter::AesKey, "SymmetricKey", "AES"),
+            (HsmObjectFilter::RsaPrivateKey, "PrivateKey", "RSA"),
+            (HsmObjectFilter::RsaPublicKey, "PublicKey", "RSA"),
+            (HsmObjectFilter::EcPrivateKey, "PrivateKey", "EC"),
+            (HsmObjectFilter::EcPublicKey, "PublicKey", "EC"),
+        ];
+        let slot_ids = self
+            .hsm
+            .get_available_slot_list()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("HSM key_inventory: failed to list slots: {e}");
+                vec![]
+            });
+        let mut typed_counts = [0_u64; TYPED_FILTERS.len()];
+        let mut unknown: u64 = 0;
+        for slot_id in slot_ids {
+            let total = match self.hsm.find(slot_id, HsmObjectFilter::Any).await {
+                Ok(keys) => u64::try_from(keys.len()).unwrap_or(u64::MAX),
+                Err(e) => {
+                    debug!("HSM key_inventory: slot {slot_id} query failed: {e}");
+                    continue;
+                }
+            };
+            let mut typed_total: u64 = 0;
+            for ((filter, _, _), count) in TYPED_FILTERS.iter().zip(typed_counts.iter_mut()) {
+                match self.hsm.find(slot_id, *filter).await {
+                    Ok(keys) => {
+                        let n = u64::try_from(keys.len()).unwrap_or(u64::MAX);
+                        *count = count.saturating_add(n);
+                        typed_total = typed_total.saturating_add(n);
+                    }
+                    Err(e) => {
+                        debug!("HSM key_inventory: slot {slot_id} typed query failed: {e}");
+                    }
+                }
+            }
+            unknown = unknown.saturating_add(total.saturating_sub(typed_total));
+        }
+        let mut inventory: Vec<(KeyInventoryBucket, u64)> = TYPED_FILTERS
+            .iter()
+            .zip(typed_counts)
+            .filter(|(_, count)| *count > 0)
+            .map(|((_, object_type, algorithm), count)| {
+                (
+                    KeyInventoryBucket {
+                        object_type: (*object_type).to_owned(),
+                        algorithm: Some((*algorithm).to_owned()),
+                        key_length: None,
+                        state: None,
+                    },
+                    count,
+                )
+            })
+            .collect();
+        if unknown > 0 {
+            inventory.push((
+                KeyInventoryBucket {
+                    object_type: "Unknown".to_owned(),
+                    algorithm: None,
+                    key_length: None,
+                    state: None,
+                },
+                unknown,
+            ));
+        }
+        Ok(inventory)
+    }
+
+    /// PKCS#11 objects carry no KMIP `DeactivationDate`.
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
+        Ok(vec![])
+    }
+
     async fn find_wrapped_by(
         &self,
         _wrapping_key_uid: &str,
