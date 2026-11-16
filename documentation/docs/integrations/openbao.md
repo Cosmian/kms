@@ -104,13 +104,22 @@ seal "kmip" {
 
 `server_name` must match a subject alternative name of the KMS certificate. Initialize with `bao operator init`: OpenBao then returns recovery keys instead of unseal keys and unseals itself at every start by calling the KMS.
 
+### HashiCorp Vault is not supported for auto-unseal
+
+`seal "kmip"` exists only in OpenBao. HashiCorp Vault has no KMIP seal: its seal types are the cloud KMS ones (AliCloud, AWS, Azure, GCP, OCI), `transit`, and `pkcs11` (Vault Enterprise only). Vault's KMIP support is an Enterprise secrets engine, which makes Vault a KMIP server, not a client of one. Pointing Vault at the KMS KMIP socket therefore cannot work, and `test:interop:openbao-kmip` runs OpenBao only.
+
+Unsealing Vault with the KMS needs a different integration, not yet implemented:
+
+- **`seal "transit"`** (all Vault editions): the KMS Vault-compatible Transit emulation would need `encrypt/{name}` and `decrypt/{name}` routes and a symmetric key type. Today it only creates asymmetric keys and signs (see [SPIRE and SPIFFE](spire_spiffe.md)).
+- **`seal "pkcs11"`** (Vault Enterprise): requires a PKCS#11 library in front of the KMS and a Vault Enterprise image.
+
 ### Automated test
 
 `mise run test:interop:openbao-kmip --variant fips|non-fips` runs the whole scenario with the pinned image `ghcr.io/openbao/openbao:2.7.1` (override with `BAO_IMAGE`) and needs only Docker. It generates the CA, server and client certificates, starts the KMS, creates the wrapping key, initializes OpenBao, restarts it, and checks that:
 
 - OpenBao reports the `kmip` seal type, is initialized and unsealed, and unseals again after a restart;
 - the KMS served KMIP `Encrypt` and `Decrypt` for the OpenBao client certificate identity only;
-- the raw requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode. The KMS does not log request contents, so OpenBao reaches the KMS through a small mTLS tap (`.mise/scripts/test/openbao/kmip_tap_proxy.py`) that records them and forwards them with the OpenBao client certificate.
+- the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode. The KMS records this in its debug log (`cosmian_kms_server=debug`): the protocol version and, for `Encrypt` and `Decrypt`, the key identifier, the algorithm and the block cipher mode, never the data.
 
 ## Part 2 — Use the KMS as a KV v2 secret store
 
