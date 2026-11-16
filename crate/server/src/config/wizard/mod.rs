@@ -275,6 +275,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         google_cse_config: advanced.google_cse_config,
         azure_ekm_config: advanced.azure_ekm_config,
         aws_xks_config: advanced.aws_xks_config,
+        kv: advanced.kv_config,
         est: advanced.est,
         scep: advanced.scep,
         templates: advanced.templates,

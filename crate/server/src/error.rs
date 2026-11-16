@@ -265,6 +265,7 @@ impl From<InterfaceError> for KmsError {
                 Self::Kmip21Error(ErrorReason::Object_Already_Exists, msg)
             }
             InterfaceError::NotSupported(msg) => Self::NotSupported(msg),
+            InterfaceError::ItemNotFound(msg) => Self::ItemNotFound(msg),
             // Preserve the InvalidRequest variant (used by ObjectHandle::hsm_parts / TryFrom and
             // the object stores) instead of collapsing it into `Default`, which would drop the
             // variant and prefix the message with "Invalid Request: ".

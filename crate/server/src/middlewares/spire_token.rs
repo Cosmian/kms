@@ -3,7 +3,7 @@
 //! Reads `X-Vault-Token` from the request header (wire protocol header used by
 //! the SPIRE vault plugin), computes `SHA-256(token)`, and checks a 30-second
 //! in-memory cache.  On a cache miss, calls
-//! `GET /auth/token/lookup-self` on the auth-verifier instance and
+//! `GET /v1/auth/token/lookup-self` on the auth-verifier instance and
 //! caches the result.  Injects both [`SpireAuthenticatedUser`] and
 //! [`AuthenticatedUser`] into request extensions so that the KMS permission
 //! system correctly attributes requests to the caller instead of falling back
@@ -115,7 +115,7 @@ impl SpireTokenCache {
     }
 }
 
-/// Minimal response shape from `GET /auth/token/lookup-self`.
+/// Minimal response shape from `GET /v1/auth/token/lookup-self`.
 #[derive(Deserialize)]
 struct LookupSelfResponse {
     data: LookupSelfData,
@@ -135,9 +135,11 @@ async fn validate_against_auth_verifier(
     client: &reqwest::Client,
     default_username: &str,
 ) -> Result<SpireAuthenticatedUser, String> {
-    let url = auth_verifier_url
-        .join("/auth/token/lookup-self")
-        .map_err(|e| format!("invalid auth_verifier_url: {e}"))?;
+    // Plain concatenation (not `Url::join`) keeps any base path, e.g. `https://host/vault`.
+    let url = format!(
+        "{}/v1/auth/token/lookup-self",
+        auth_verifier_url.as_str().trim_end_matches('/')
+    );
 
     let resp = client
         .get(url)
@@ -359,7 +361,7 @@ where
 /// Middleware order (last `.wrap()` runs first):
 /// - Reads `X-Vault-Token` (wire protocol header used by the SPIRE vault plugin)
 /// - Checks/updates the 30-second in-memory cache
-/// - On miss: calls auth-verifier `GET /auth/token/lookup-self`
+/// - On miss: calls auth-verifier `GET /v1/auth/token/lookup-self`
 /// - Injects both [`SpireAuthenticatedUser`] and [`AuthenticatedUser`] into extensions
 ///
 /// Returns `403 Forbidden` when the header is absent or the token is invalid.
@@ -593,15 +595,17 @@ mod tests {
 
     // ── auth-verifier lookup-self ────────────────────────────────────────
 
-    /// Start a local auth-verifier answering `GET /auth/token/lookup-self` with `body`
+    /// Start a local auth-verifier answering `GET /v1/auth/token/lookup-self` with `body`
     /// for token `good-token` only (HTTP 403 otherwise). Returns its base URL.
-    fn spawn_mock_auth_verifier(body: serde_json::Value) -> Url {
+    fn spawn_mock_auth_verifier(prefix: &str, body: serde_json::Value) -> Url {
+        let route = format!("{prefix}/v1/auth/token/lookup-self");
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let server = actix_web::HttpServer::new(move || {
             let body = body.clone();
+            let route = route.clone();
             App::new().route(
-                "/auth/token/lookup-self",
+                &route,
                 web::get().to(move |req: actix_web::HttpRequest| {
                     let body = body.clone();
                     async move {
@@ -626,12 +630,30 @@ mod tests {
         Url::parse(&format!("http://127.0.0.1:{port}")).unwrap()
     }
 
+    /// A base path in `vault_auth_verifier_url` is preserved.
+    #[actix_web::test]
+    async fn lookup_self_keeps_base_path() {
+        let url = spawn_mock_auth_verifier(
+            "/prefix",
+            serde_json::json!({"data": {"entity_id": "alice"}}),
+        );
+        let url = Url::parse(&format!("{url}prefix/")).unwrap();
+        let user =
+            validate_against_auth_verifier("good-token", &url, &reqwest::Client::new(), "admin")
+                .await
+                .unwrap();
+        assert_eq!(user.entity, "spire:alice");
+    }
+
     /// The `policies` returned by `lookup-self` are surfaced on the authenticated user.
     #[actix_web::test]
     async fn lookup_self_surfaces_policies() {
-        let url = spawn_mock_auth_verifier(serde_json::json!({
-            "data": {"entity_id": "alice", "policies": ["default", "kms-admin"], "ttl": 60}
-        }));
+        let url = spawn_mock_auth_verifier(
+            "",
+            serde_json::json!({
+                "data": {"entity_id": "alice", "policies": ["default", "kms-admin"], "ttl": 60}
+            }),
+        );
         let user =
             validate_against_auth_verifier("good-token", &url, &reqwest::Client::new(), "admin")
                 .await
@@ -643,7 +665,7 @@ mod tests {
     /// A `lookup-self` payload without `policies` still authenticates (empty policy list).
     #[actix_web::test]
     async fn lookup_self_without_policies_defaults_to_empty() {
-        let url = spawn_mock_auth_verifier(serde_json::json!({"data": {"entity_id": "bob"}}));
+        let url = spawn_mock_auth_verifier("", serde_json::json!({"data": {"entity_id": "bob"}}));
         let user =
             validate_against_auth_verifier("good-token", &url, &reqwest::Client::new(), "admin")
                 .await
@@ -655,9 +677,12 @@ mod tests {
     /// An auth-verifier rejection is an error, never an empty-policy user.
     #[actix_web::test]
     async fn lookup_self_rejected_token_is_an_error() {
-        let url = spawn_mock_auth_verifier(serde_json::json!({
-            "data": {"entity_id": "alice", "policies": ["default"]}
-        }));
+        let url = spawn_mock_auth_verifier(
+            "",
+            serde_json::json!({
+                "data": {"entity_id": "alice", "policies": ["default"]}
+            }),
+        );
         let err =
             validate_against_auth_verifier("bad-token", &url, &reqwest::Client::new(), "admin")
                 .await
@@ -669,9 +694,12 @@ mod tests {
     /// injects the `SpireAuthenticatedUser` with its policies, and caches it.
     #[actix_web::test]
     async fn middleware_cache_miss_injects_policies_and_caches() {
-        let url = spawn_mock_auth_verifier(serde_json::json!({
-            "data": {"entity_id": "carol", "policies": ["p1", "p2"]}
-        }));
+        let url = spawn_mock_auth_verifier(
+            "",
+            serde_json::json!({
+                "data": {"entity_id": "carol", "policies": ["p1", "p2"]}
+            }),
+        );
         let cache = SpireTokenCache::new(30);
         let app = actix_web::test::init_service(
             App::new()

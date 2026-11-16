@@ -24,6 +24,7 @@ mod fpe;
 mod google_cmd;
 mod hash;
 mod hsm;
+mod kv;
 mod login_tests;
 mod mac;
 mod opaque_object;

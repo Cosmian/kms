@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#MISE description="OpenBao CLI scenario with the KMS KV store on PostgreSQL and MySQL (docker compose services)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" help="Database to replay the scenario on" default="all" {
+#USAGE   choices "all" "psql" "mysql"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+# Same scenario as test:interop:openbao, replayed on each database. OPENBAO_DATABASE_URL overrides
+# the default URL only when a single database is selected with --db.
+docker_ready || skip_test "Docker is not installed or not running"
+
+# Usage: run_on <compose-service> <readiness-command> <default-url>; returns 77 when the service
+# cannot run here. The readiness command runs inside the container over TCP: neither image has a
+# healthcheck, an open host port only means Docker's proxy is listening, and the images' init phase
+# serves the Unix socket only, so a TCP success means the final server accepts logins.
+run_on() {
+  local service="$1" probe="$2" url="$3" ready=false
+  print_header "OpenBao KV scenario on ${service} (${VARIANT_NAME})"
+  docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d "${service}" || {
+    print_warning "could not start compose: ${service}"
+    return 77
+  }
+  for _ in $(seq 1 60); do
+    if docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T "${service}" sh -c "${probe}" >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "${ready}" == true ]] || {
+    print_warning "${service} did not accept TCP logins within 120s"
+    return 77
+  }
+  OPENBAO_DATABASE_URL="${url}" mise run test:interop:openbao --variant "${VARIANT}" --link "${LINK}"
+}
+
+DB="${usage_db:-all}"
+PSQL_URL="postgresql://kms:kms@127.0.0.1:5432/kms"
+MYSQL_URL="mysql://kms:kms@127.0.0.1:3306/kms"
+if [[ "${DB}" != "all" ]]; then
+  PSQL_URL="${OPENBAO_DATABASE_URL:-${PSQL_URL}}"
+  MYSQL_URL="${OPENBAO_DATABASE_URL:-${MYSQL_URL}}"
+fi
+
+failed=0 ran=0
+for db in psql mysql; do
+  [[ "${DB}" == "all" || "${DB}" == "${db}" ]] || continue
+  if [[ "${db}" == "psql" ]]; then
+    rc=0
+    run_on postgres "pg_isready -h 127.0.0.1 -U kms -d kms" "${PSQL_URL}" || rc=$?
+  else
+    rc=0
+    run_on mysql "mysqladmin ping -h 127.0.0.1 -uroot -pkms --silent" "${MYSQL_URL}" || rc=$?
+  fi
+  case "${rc}" in
+    0) ran=$((ran + 1)) ;;
+    77) [[ "${CI:-}" == true ]] && failed=1 ;;
+    *) failed=1 ;;
+  esac
+done
+[[ "${failed}" -eq 0 ]] || print_error "OpenBao KV scenario failed or a database was unavailable in CI"
+[[ "${ran}" -gt 0 ]] || skip_test "no database could be started"

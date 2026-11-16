@@ -13,7 +13,7 @@
 #      parsed events to an output JSON file
 #   5. Verify that all KMS audit fields are correctly extracted by Fluent Bit
 #
-# Requires: Docker daemon running, docker pull access for fluent/fluent-bit:3
+# Requires: Docker daemon running, docker pull access for the `fluent-bit` image of the root docker-compose.yml
 #
 # Usage:
 #   bash .mise/scripts/test/test_siem_fluent_bit.sh [--variant fips|non-fips]
@@ -33,6 +33,7 @@ FLUENT_OUTPUT=""
 FLUENT_DIR=""
 VENV_DIR=""
 FLUENT_CONTAINER=""
+FLUENT_IMAGE="$(compose_image fluent-bit)"
 
 cleanup() {
   kms_stop
@@ -179,7 +180,7 @@ EOF
 # ── Run Fluent Bit container ──────────────────────────────────────────────────
 
 echo "==> Running Fluent Bit container to tail the audit JSONL file..."
-echo "    fluent/fluent-bit:4.0 — official Docker image (Apache 2.0)"
+echo "    ${FLUENT_IMAGE} — official Docker image (Apache 2.0)"
 
 # Capture Fluent Bit's stdout (which carries the json_lines output) to a file.
 # stderr (banner + log messages) is suppressed — only JSON event lines reach stdout.
@@ -188,7 +189,7 @@ docker run --rm --name "${FLUENT_CONTAINER}" \
   -v "${FLUENT_DIR}:/fluent:rw" \
   -v "${AUDIT_JSONL}:/audit/audit.jsonl:ro" \
   -v "${FB_CONFIG}:/fluent-bit/etc/fluent-bit.conf:ro" \
-  fluent/fluent-bit:4.0 \
+  "${FLUENT_IMAGE}" \
   /fluent-bit/bin/fluent-bit \
   -c /fluent-bit/etc/fluent-bit.conf \
   2>/dev/null >"${FLUENT_OUTPUT}" &

@@ -267,6 +267,7 @@ impl From<InterfaceError> for DbError {
     fn from(value: InterfaceError) -> Self {
         match value {
             InterfaceError::Db(s) => Self::Store(s),
+            InterfaceError::ItemNotFound(s) => Self::ItemNotFound(s),
             InterfaceError::ObjectAlreadyExists(s) => {
                 Self::Kmip21Error(ErrorReason::Object_Already_Exists, s)
             }

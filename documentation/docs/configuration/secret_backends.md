@@ -185,6 +185,87 @@ cosmian_kms --backend cosmian-kms -c /etc/cosmian/kms.toml
 
 ---
 
+## Vault-compatible KV Secret Store
+
+The KMS can expose a Vault KV v2-compatible secret store backed by KMIP `SecretData` objects. Enable it in the server configuration:
+
+```toml
+[kv]
+kv_enabled = true
+kv_mount = "kv"
+kv_ttl_check_interval_secs = 30
+```
+
+The KV routes apply the same CORS policy as the main KMS API (`cors_allowed_origins`); Vault and OpenBao clients do not need CORS.
+
+The API is available below `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*`, and also below `/v1/<kv_mount>/...` because the `vault` and `bao` CLIs always send the `/v1` prefix. Writes are accepted with `POST` or `PUT`. The `kv_mount` name must be a single path segment different from `vault_transit_mount` and `vault_pki_mount`; the server refuses to start otherwise. The mount only claims its own `data/` and `metadata/` sub-paths, so a name that equals another scope (for example `health`) never hides that scope's routes. An empty value means `kv`. A write creates a new version, while reads return the latest version unless `?version=<number>` is provided. All versions are retained indefinitely. Metadata listing uses `GET /<kv_mount>/metadata/<prefix>?list=true`. Paths and listing prefixes are limited to 219 characters so generated tags fit the SQL backends.
+
+KV operations use the metadata object's access rights:
+
+| KV operation | Required KMIP access right |
+|--------------|----------------------------|
+| Write a secret | `Import` |
+| Read a secret | `Get` |
+| Read metadata or list paths | `Locate` |
+| Soft-delete or hard-delete | `Destroy` |
+
+A `Get` grant also allows reading metadata and listing, as elsewhere in the KMS. Writes and deletes require the exact `Import` or `Destroy` grant: a read-only grantee cannot replace or delete a secret.
+
+The first writer owns the path. Other identities must receive the matching access right on the metadata object through the normal access-grant API. A grantee that writes to a path someone else owns must also send `options.expected_owner` naming that owner (`ckms kv put --expected-owner`), otherwise the write is refused; on a new path `expected_owner`, if sent, must name the caller. When role enforcement is on, every write (new path or new version) is checked as a KMIP `Import`: an Operator needs the Create permission, and an Operator without it gets `403 permission denied` even on a path it was granted `Import` on. A missing path and a path the caller may not use both answer `403 permission denied`. A `DELETE` on `data/<path>` soft-deletes the current version; a `DELETE` on `metadata/<path>` destroys all versions and the metadata object. Destroyed versions have their secret bytes wiped, as with the KMIP `Destroy` operation. Hard-deleted paths no longer appear in metadata listings. Listing is available as `GET metadata/<prefix>?list=true` and as the Vault `LIST` verb; an empty listing answers `404`. A path holds at most 1,000 versions (further writes answer `400` until the path is hard-deleted), and a listing that would exceed 10,000 candidates answers `400`.
+
+Concurrent writes to the same path use a metadata compare-and-swap. If another write wins first, the request returns `409 Conflict` and can be retried. `options.cas` is honoured as in Vault KV v2: `0` writes only if the path does not exist, `N` only if the current version is `N`. Version object IDs are recorded in metadata so hard-delete does not depend on a current tag-index listing. A path's metadata object lives on an identifier derived from the path with a server key (stored once in the database `parameters` table as `kv_metadata_uid_key`, which KMIP clients cannot read). Clients can choose the identifier of the objects they create, but cannot compute that identifier, and tags starting with `_` are rejected or stripped on `Create`, `Register` and `Import`, so they can neither take over nor block a path.
+
+An optional write TTL (a positive duration such as `30s`, `5m`, `1h` or `2d`) can be supplied with the Vault KV v2 request body. The background sweep destroys expired versions, wiping their secret bytes, at the configured `kv_ttl_check_interval_secs` interval. Set the interval to `0` to disable the sweep.
+
+When the Vault-compatible authentication API is enabled and an auth-verifier URL is configured, requests may authenticate with the `X-Vault-Token` header. Native KMS authentication methods remain available on the same scope.
+
+Use the OpenBao CLI with the supported KV v2 operations by pointing it at the KMS and using the `kv` mount:
+
+```bash
+export BAO_ADDR=https://kms.example.com:9998
+export BAO_TOKEN=<Vault token, see "Authenticating the bao CLI" below>
+bao kv put kv/myapp/config api_key=xyz
+bao kv get kv/myapp/config
+bao kv get -version=1 kv/myapp/config
+bao kv list kv/myapp
+```
+
+### Internal record identifiers
+
+The KMS keeps some of its own state as ordinary KMIP objects: the KV path metadata and the SSH CA and role records. KMIP clients may choose the UID of the objects they create, so a predictable UID such as `kv/<path>` would let a client pre-create an object there and block the path or the SSH configuration. The KMS therefore uses the first 16 bytes of `HMAC-SHA256(server key, domain || record name)` as the UID of these records.
+
+The server key is 32 random bytes from the KMS RNG, stored in the `parameters` table (`kv_metadata_uid_key`), which no KMIP operation can read or write. It is created on first use by the KV store or the SSH CA/role API (a read is enough). All instances and replicas sharing the database use the same key: the first stored value wins.
+
+The same key also derives the tag that marks KV versions carrying a TTL, so that no client can make the TTL sweep visit its own objects. The key only names and marks internal records: it encrypts nothing and never touches secret material.
+
+### Authenticating the bao CLI
+
+The `BAO_TOKEN` is a Vault token that a verifier configured with `vault_auth_verifier_url` accepts. The KMS validates it with `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` (the login requests) to `<url>/v1/auth/*` unchanged. The URL is the base URL of the verifier, with no `/v1` suffix. There are two cases.
+
+**With an existing OpenBao or Vault server.** Set `vault_auth_verifier_url` to that server's base URL. Users log in to their OpenBao as usual, or through the KMS since `/v1/auth/*` is forwarded, then use the same token with `BAO_ADDR=<KMS>`.
+
+**With the Cosmian Auth Verifier only.** Set `vault_auth_verifier_url` to the Auth Verifier and `vault_userpass_realm` in the Auth Verifier configuration (the realm whose userpass accounts may log in). It needs the Auth Verifier version that serves `/v1/auth/*`.
+
+- Humans: `BAO_ADDR=<KMS> bao login -method=userpass username=<user>`.
+- Machines: `BAO_ADDR=<KMS> bao write auth/approle/login role_id=<ROLE_ID> secret_id=<SECRET_ID>`.
+- The KMS identity is `spire:userpass:<realm>:<user>` for users and `spire:<role>` for AppRoles.
+
+```mermaid
+sequenceDiagram
+    participant User as bao CLI
+    participant Kms as Eviden KMS
+    participant Verifier as Auth Verifier or OpenBao
+    User->>Kms: POST /v1/auth/userpass/login/alice
+    Kms->>Verifier: forwarded unchanged
+    Verifier-->>User: token (through the KMS)
+    User->>Kms: PUT /v1/kv/data/app<br/>X-Vault-Token
+    Kms->>Verifier: GET /v1/auth/token/lookup-self
+    Verifier-->>Kms: entity_id
+    Kms-->>User: 200
+```
+
+The OpenBao CLI integration test runs in CI with both FIPS and non-FIPS builds. It covers the operations listed above, but does not claim full Vault KV v2 API parity. Partial updates (`kv patch`) and version-targeted delete/undelete/destroy operations are not implemented.
+
 ## Security considerations
 
 | Concern | Mitigation |

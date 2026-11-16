@@ -516,7 +516,7 @@ human-readable string like `"spire-server"` (or, per tenant, `"spire-server-a"`/
    Issues token:  hvs.xxxxx   carrying   entity = "spire-server"   (the NAME, not the UUID)
 
 ③ KMS spire_token_middleware validates the token:
-     GET /auth/token/lookup-self  →  { data: { entity_id: "spire-server", ... } }
+     GET /v1/auth/token/lookup-self  →  { data: { entity_id: "spire-server", ... } }
 
 ④ KMS sets:  AuthenticatedUser { username: "spire-server" }
    → every KMS object created under this token is owned by "spire-server"

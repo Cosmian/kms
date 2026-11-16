@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+#MISE description="bao CLI against the KMS KV store with the Cosmian Auth Verifier issuing tokens (userpass and AppRole)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/spire_test.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+WORK_DIR="$(mktemp -d /tmp/kms-openbao-av-XXXXXX)"
+AV_PID=""
+
+# Keep the original exit status: kms_stop succeeding must not mask a failed scenario.
+cleanup() {
+  local rc=$?
+  if [[ "${rc}" -ne 0 ]]; then
+    if [[ -s "${KMS_LOG_FILE:-}" ]]; then tail -n 40 "${KMS_LOG_FILE}" >&2 || true; fi
+    if [[ -s "${WORK_DIR}/av.log" ]]; then tail -n 40 "${WORK_DIR}/av.log" >&2 || true; fi
+  fi
+  kms_stop
+  if [[ -n "${AV_PID}" ]]; then kill "${AV_PID}" 2>/dev/null || true; fi
+  rm -rf -- "${WORK_DIR:?}"
+  exit "${rc}"
+}
+trap cleanup EXIT
+
+# From rule://test-configs section 3: fails when the key is absent from the fixture.
+set_toml_value() { # <file> <key> <already-quoted-value>
+  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
+  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
+require_cmd docker
+require_cmd cargo
+require_cmd curl
+require_cmd python3
+
+print_header "OpenBao CLI + Auth Verifier + KMS KV v2 integration test (${VARIANT_NAME})"
+
+# ── Auth Verifier: issues the Vault tokens ──────────────────────────────────────────────────
+AV_PORT="$(kms_pick_free_port)"
+AV_URL="http://127.0.0.1:${AV_PORT}"
+cp "${REPO_ROOT}/test_data/configs/auth_verifier/vault_kv.toml" "${WORK_DIR}/av.toml"
+set_toml_value "${WORK_DIR}/av.toml" host_port "${AV_PORT}"
+set_toml_value "${WORK_DIR}/av.toml" connection_url "\"sqlite://${WORK_DIR}/av.db\""
+print_status "Building the Auth Verifier..."
+AV_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
+# The fixture paths are relative to the repository root.
+(cd "${REPO_ROOT}" && exec "${AV_BIN}" "${WORK_DIR}/av.toml") >"${WORK_DIR}/av.log" 2>&1 &
+AV_PID=$!
+wait_for_port 127.0.0.1 "${AV_PORT}" 60 || print_error "Auth Verifier did not start: $(tail -n 20 "${WORK_DIR}/av.log")"
+
+# ── Provisioning: realm, two users, one AppRole (fresh database, every call must succeed) ─────
+COOKIE_JAR="${WORK_DIR}/av.cookies"
+av_curl() { # <method> <path> <json-body>
+  curl -fsS -b "${COOKIE_JAR}" -c "${COOKIE_JAR}" -H "Content-Type: application/json" \
+    -X "$1" "${AV_URL}$2" ${3:+-d "$3"}
+}
+json_field() { # json_field '<json>' '<python expression on d>'
+  printf '%s' "$1" | python3 -c "import sys, json; d = json.load(sys.stdin); print($2)"
+}
+
+curl -fsS -c "${COOKIE_JAR}" -u admin:change_me -H "Content-Type: application/json" \
+  -X POST "${AV_URL}/login?realm=_" -d '{"public_key_pem":null,"totp_code":null}' >/dev/null
+av_curl POST /admins/realms '{"id":"kv-users","auth_params":{"username_password_params":{"allow_expired_passwords":false}},"session_max_age_seconds":3600,"session_max_stale_age_seconds":7200}' >/dev/null
+for u in alice bob; do
+  av_curl POST /realms/kv-users/userpass \
+    "{\"realm\":\"kv-users\",\"username\":\"${u}\",\"password_input\":{\"plaintext\":\"${u}-password\"},\"change_password\":false,\"roles\":[]}" >/dev/null
+done
+av_curl POST /auth/approle/role/kv-app '{"token_ttl":3600,"token_policies":["default"]}' >/dev/null
+ROLE_ID="$(json_field "$(av_curl GET /auth/approle/role/kv-app/role-id)" "d['data']['role_id']")"
+SECRET_ID="$(json_field "$(av_curl POST /auth/approle/role/kv-app/secret-id '{}')" "d['data']['secret_id']")"
+
+# ── KMS: complete fixture, only scalar values changed (rule://test-configs section 3) ─────────
+KMS_CONFIG_FILE="${WORK_DIR}/kms.toml"
+KMS_LOG_FILE="${WORK_DIR}/kms.log"
+KMS_PORT="$(kms_pick_free_port)"
+KMS_URL="http://127.0.0.1:${KMS_PORT}"
+mkdir -p "${WORK_DIR}/kms-data" "${WORK_DIR}/workspace" "${WORK_DIR}/tmp"
+cp "${REPO_ROOT}/test_data/configs/server/auth/vault_kv.toml" "${KMS_CONFIG_FILE}"
+set_toml_value "${KMS_CONFIG_FILE}" port "${KMS_PORT}"
+set_toml_value "${KMS_CONFIG_FILE}" sqlite_path "\"${WORK_DIR}/kms-data\""
+set_toml_value "${KMS_CONFIG_FILE}" root_data_path "\"${WORK_DIR}/workspace\""
+set_toml_value "${KMS_CONFIG_FILE}" tmp_path "\"${WORK_DIR}/tmp\""
+set_toml_value "${KMS_CONFIG_FILE}" vault_auth_verifier_url "\"${AV_URL}\""
+
+print_status "Building KMS server..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_start_from_bin "$(get_kms_bin)"
+print_status "KMS KV store at ${KMS_URL}"
+
+# On Linux the container shares the host network; elsewhere it reaches the host by name.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  export BAO_ADDR="http://127.0.0.1:${KMS_PORT}"
+else
+  export BAO_ADDR="http://host.docker.internal:${KMS_PORT}"
+fi
+BAO_CACERT_HOST=""
+BAO_IMAGE="${BAO_IMAGE:-$(compose_image openbao)}"
+source "${REPO_ROOT}/.mise/scripts/test/openbao/bao_cli.sh"
+
+# ── Logins, all through the KMS (it forwards /v1/auth/* to the Auth Verifier) ─────────────────
+TOKEN_OWNER="$(BAO_TOKEN='' bao login -method=userpass -token-only username=alice password=alice-password)"
+TOKEN_OTHER="$(BAO_TOKEN='' bao login -method=userpass -token-only username=bob password=bob-password)"
+if BAO_TOKEN='' bao login -method=userpass -token-only username=alice password=wrong >/dev/null 2>&1; then
+  print_error "userpass login with a wrong password must fail"
+fi
+# Token method: exercises /v1/auth/token/lookup-self through the proxy.
+BAO_TOKEN='' bao login -no-store "${TOKEN_OWNER}" >/dev/null
+APP_TOKEN="$(BAO_TOKEN='' bao write -field=token auth/approle/login role_id="${ROLE_ID}" secret_id="${SECRET_ID}")"
+print_status "userpass and AppRole logins succeeded through the KMS"
+
+# ── KV scenario ─────────────────────────────────────────────────────────────────────────────
+BAO_TOKEN="${TOKEN_OWNER}" BAO_TOKEN_OTHER="${TOKEN_OTHER}" KV_MOUNT="kv" \
+  bash "${REPO_ROOT}/.mise/scripts/test/openbao/test_openbao_kv.sh"
+
+BAO_TOKEN="${APP_TOKEN}" bao kv put -mount=kv "approle-ci/$$" v=1 >/dev/null
+[[ "$(BAO_TOKEN="${APP_TOKEN}" bao kv get -mount=kv -field=v "approle-ci/$$")" == "1" ]] ||
+  print_error "AppRole token could not read back its secret"
+
+print_success "OpenBao CLI + Auth Verifier integration tests completed"

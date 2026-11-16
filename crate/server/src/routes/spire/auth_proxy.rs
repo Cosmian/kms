@@ -3,11 +3,11 @@
 //! When `vault_api_enabled = true`, the KMS becomes the single `vault_addr`
 //! endpoint for SPIRE. All `/v1/auth/*` requests (`AppRole` login, token
 //! `lookup-self`, `renew-self`, `revoke-self`) are forwarded to the
-//! auth-verifier instance configured via `vault_auth_verifier_url`, with the
-//! `/v1` prefix stripped (auth-verifier registers routes without `/v1`).
+//! auth-verifier (or OpenBao/Vault) instance configured via
+//! `vault_auth_verifier_url`, unchanged: `/v1/auth/*` → `<url>/v1/auth/*`.
 //!
 //! The proxy:
-//! - preserves the HTTP method, full path minus `/v1`, query string,
+//! - preserves the HTTP method, full path, query string,
 //!   `X-Vault-Token`, `Content-Type`, and raw request body;
 //! - returns the auth-verifier response status and body byte-for-byte;
 //! - returns HTTP 502 if auth-verifier is unreachable.
@@ -28,10 +28,10 @@ pub(crate) async fn proxy_auth_request(
     auth_verifier_url: web::Data<Url>,
     body: web::Bytes,
 ) -> HttpResponse {
-    // Build target URL: auth-verifier routes are registered WITHOUT the `/v1` prefix.
-    // Strip it from the incoming KMS path so `/v1/auth/{tail}` → `/auth/{tail}`.
+    // `/v1/auth/*` is forwarded to `<vault_auth_verifier_url>/v1/auth/*`, which the
+    // Auth Verifier and OpenBao/Vault both serve.
     let base = auth_verifier_url.as_str().trim_end_matches('/');
-    let path = req.path().strip_prefix("/v1").unwrap_or_else(|| req.path());
+    let path = req.path();
 
     // Security: this proxy is intentionally unauthenticated and scoped to `/auth/*`.
     // Actix does not normalize the path, so `req.path()` may still contain `.`/`..`

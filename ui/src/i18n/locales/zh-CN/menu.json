@@ -138,6 +138,7 @@
     "access-rights/obtained": "我获得的",
     "access-rights/crypto-officer": "加密官",
     "hsm-status": "HSM 状态",
+    "kv-secrets": "密钥值 (KV)",
     "hyperscalers": "云服务提供商",
     "azure": "Azure",
     "azure/import-kek": "导入 KEK",

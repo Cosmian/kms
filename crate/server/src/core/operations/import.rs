@@ -204,7 +204,7 @@ pub(super) fn recover_tags(
             ..
         }) = key_block.key_value.as_ref()
     {
-        return attributes.get_tags(vendor_id);
+        return without_system_tags(attributes.get_tags(vendor_id));
     }
     HashSet::new()
 }
@@ -1255,6 +1255,35 @@ pub(super) fn process_opaque_object(
             user,
         )],
     ))
+}
+
+/// Tags embedded in an imported object's own attributes are client-controlled too.
+#[cfg(test)]
+mod recover_tags_tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::SecretDataType, kmip_2_1::requests::create_secret_data_kmip_object,
+    };
+
+    use super::*;
+
+    #[test]
+    fn embedded_system_tags_are_dropped() {
+        let mut attributes = Attributes::default();
+        attributes
+            .set_tags("cosmian", ["_kv::metadata", "_kv::meta::app/key", "mine"])
+            .expect("tags are settable");
+        let object = create_secret_data_kmip_object(
+            "cosmian",
+            b"secret",
+            SecretDataType::Password,
+            &attributes,
+        )
+        .expect("secret data object is built");
+        assert_eq!(
+            recover_tags("cosmian", &Attributes::default(), &object),
+            HashSet::from(["mine".to_owned()])
+        );
+    }
 }
 
 #[cfg(all(test, feature = "non-fips"))]

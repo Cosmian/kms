@@ -41,11 +41,15 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use tokio::sync::OnceCell;
-use tokio::sync::RwLock;
+use tokio::sync::{OnceCell, RwLock};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
+use zeroize::Zeroizing;
+
+/// Database parameter holding the internal UID key; the KV-era name keeps existing KV UIDs.
+const INTERNAL_UID_KEY_PARAM: &str = "kv_metadata_uid_key";
+/// Length in bytes of the internal UID key.
+const INTERNAL_UID_KEY_LENGTH: usize = 32;
 
 #[cfg(target_os = "linux")]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
@@ -146,12 +150,50 @@ pub struct KMS {
 
     /// Constraints set by the KMIP Set Constraints operation (in memory only).
     pub(crate) constraints: ConstraintStore,
+
+    /// Server-wide key deriving internal, unguessable object UIDs; see [`KMS::internal_uid_key`].
+    internal_uid_key: OnceCell<Zeroizing<Vec<u8>>>,
 }
 
 impl KMS {
     /// Returns the vendor identification string used for KMIP `VendorAttribute` operations.
     pub(crate) fn vendor_id(&self) -> &str {
         &self.params.vendor_identification
+    }
+
+    /// The server-wide secret key from which internal records derive their UIDs (HMAC key).
+    ///
+    /// Generated once from the KMS RNG and stored in the database parameters table, which no
+    /// KMIP operation can read or write; the first stored value wins, so every instance and
+    /// replica sharing the database uses the same key. Cached in this instance after the first
+    /// call: later calls do no database or RNG work.
+    ///
+    /// # Errors
+    /// Fails if the RNG or the database fails, or if the stored value is not a 32-byte hex key.
+    pub(crate) async fn internal_uid_key(&self) -> KResult<&Zeroizing<Vec<u8>>> {
+        self.internal_uid_key
+            .get_or_try_init(|| async {
+                let mut candidate = Zeroizing::new([0_u8; INTERNAL_UID_KEY_LENGTH]);
+                self.rng
+                    .fill_bytes(&mut candidate[..])
+                    .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
+                let candidate_hex = Zeroizing::new(hex::encode(&candidate[..]));
+                let stored = Zeroizing::new(
+                    self.database
+                        .get_or_insert_parameter(INTERNAL_UID_KEY_PARAM, &candidate_hex)
+                        .await?,
+                );
+                let key = Zeroizing::new(hex::decode(stored.as_str()).map_err(|_e| {
+                    KmsError::ServerError("corrupt internal UID key parameter".to_owned())
+                })?);
+                if key.len() != INTERNAL_UID_KEY_LENGTH {
+                    return Err(KmsError::ServerError(
+                        "corrupt internal UID key parameter: expected 32 bytes".to_owned(),
+                    ));
+                }
+                Ok::<_, KmsError>(key)
+            })
+            .await
     }
 
     /// Instantiate a new KMS instance with the given server parameters.
@@ -349,6 +391,7 @@ impl KMS {
             multi_part: MultiPartStore::default(),
             tickets: TicketStore::default(),
             constraints: ConstraintStore::default(),
+            internal_uid_key: OnceCell::new(),
         })
     }
 
@@ -728,6 +771,67 @@ mod tests {
         assert!(
             !file_path.exists(),
             "the file backend must never be used as a fallback"
+        );
+        Ok(())
+    }
+
+    /// Test config whose `SQLite` database is the file `sqlite_path`.
+    fn config_with_sqlite(sqlite_path: &std::path::Path) -> crate::config::ClapConfig {
+        let mut conf = crate::tests::test_utils::https_clap_config();
+        conf.db.sqlite_path = sqlite_path.to_path_buf();
+        conf
+    }
+
+    /// The internal UID key is a 32-byte secret, initialised once per instance even under
+    /// concurrent first use, converges across instances sharing a database (replicas), survives
+    /// a restart and differs between databases.
+    #[tokio::test]
+    async fn internal_uid_key_is_stable_per_database() -> KResult<()> {
+        use crate::tests::test_utils::{test_kms, test_kms_with_config};
+
+        let dir = tempfile::TempDir::new().expect("temporary directory");
+        let path = dir.path().join("kms.sqlite");
+        let first = test_kms_with_config(config_with_sqlite(&path)).await?;
+        let replica = test_kms_with_config(config_with_sqlite(&path)).await?;
+
+        let key = {
+            let (a, b, c, r) = tokio::try_join!(
+                first.internal_uid_key(),
+                first.internal_uid_key(),
+                first.internal_uid_key(),
+                replica.internal_uid_key(),
+            )?;
+            assert_eq!(a.len(), INTERNAL_UID_KEY_LENGTH);
+            assert!(
+                a.iter().any(|byte| *byte != 0),
+                "the key must come from the RNG"
+            );
+            assert!(
+                std::ptr::eq(a, b) && std::ptr::eq(a, c),
+                "one instance must hold a single cached key"
+            );
+            assert_eq!(
+                a.as_slice(),
+                r.as_slice(),
+                "replicas must converge on one key"
+            );
+            assert!(std::ptr::eq(a, first.internal_uid_key().await?));
+            Zeroizing::new(a.to_vec())
+        };
+        drop(first);
+        drop(replica);
+
+        let restarted = test_kms_with_config(config_with_sqlite(&path)).await?;
+        assert_eq!(
+            restarted.internal_uid_key().await?.as_slice(),
+            key.as_slice(),
+            "a restart must keep the key, or every derived UID would change"
+        );
+        let other_database = test_kms().await?;
+        assert_ne!(
+            other_database.internal_uid_key().await?.as_slice(),
+            key.as_slice(),
+            "each database must have its own key"
         );
         Ok(())
     }

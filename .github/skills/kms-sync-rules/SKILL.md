@@ -40,6 +40,7 @@ Apply this path → rule mapping to the detected file list:
 | `crate/server/src/middlewares/**` or `crate/server/src/config/wizard/auth_wizard.rs` | **4.9** |
 | `test_data/vectors/**` or `crate/test_kms_server/**` | verify 4.10 completeness |
 | `test_data/configs/**`, `test_data/spire/config/**`, or a `.mise/**` / `crate/**/tests/**` change that writes a KMS, Auth Verifier or ckms config | **4.20** |
+| `.mise/tasks/test/**` or `.mise/scripts/test/**` (task or script added, renamed, removed, behaviour changed) | **4.21** |
 | `Cargo.lock` or `ui/pnpm-lock.yaml` | **4.11**, 4.19 |
 | `crate/server/src/routes/aws_xks/**` or `azure_ekm/**` or `google_cse/**` or `ms_dke/**` | **4.12**, 4.10 |
 | `crate/hsm/**` | **4.13** |
@@ -103,6 +104,7 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 | 4.18 | Database schema/backend ⇔ docs | `crate/server_database/**` | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`) |
 | 4.19 | Third-party dependencies ⇔ supply-chain gates (#1265) | dependency manifests and lock files, `supply-chain/**`, `**/Dockerfile*`, workflow `uses:`/tool installs, submodule bumps | `dependencies.instructions.md` |
 | 4.20 | Test KMS / Auth Verifier configs: complete fixtures in `test_data`, no partial inline configs | `test_data/configs/**`, `test_data/spire/config/**`, `.mise/**`, `crate/**/tests/**` | `test-configs.instructions.md` |
+| 4.21 | Test task README: update the affected entries and Mermaid diagrams of `.mise/tasks/test/README.md` (no per-group README) | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `test-task-readme.instructions.md` |
 
 ### Rule 4.8 — Non-FIPS gating across the stack
 

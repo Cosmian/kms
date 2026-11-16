@@ -273,6 +273,10 @@ cors_allowed_origins = ["http://127.0.0.1:${VITE_PORT}"]
 tls_cert_file = "${SERVER_CERT}"
 tls_key_file = "${SERVER_KEY}"
 clients_ca_cert_file = "${CLIENTS_CA_CERT}"
+
+# Vault KV v2-compatible secret store, exercised by tests/e2e/kv-secrets-flow.spec.ts.
+[kv]
+kv_enabled = true
 HSMEOF
 
 echo "==> Starting KMS server with SoftHSM2 (port ${KMS_PORT}) …"

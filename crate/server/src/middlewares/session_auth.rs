@@ -19,9 +19,10 @@ use std::{
 
 use actix_session::SessionExt as _;
 use actix_web::{
-    Error, HttpMessage,
-    body::{BoxBody, EitherBody},
+    Error, HttpMessage, HttpResponse,
+    body::{BoxBody, EitherBody, MessageBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
+    middleware::Next,
 };
 use cosmian_logger::{debug, trace, warn};
 use futures::{
@@ -29,7 +30,36 @@ use futures::{
     future::{Ready, ok},
 };
 
-use crate::middlewares::{AuthMethod, AuthenticatedUser, UserId, reject_reserved_service_identity};
+use crate::middlewares::{
+    AuthMethod, AuthenticatedUser, UserId, is_not_forgeable_cross_origin,
+    reject_reserved_service_identity,
+};
+
+/// CSRF guard for scopes whose JSON extractor accepts any Content-Type (the Vault KV scopes:
+/// Vault/`bao` clients omit it). A mutation authenticated by the ambient session cookie must
+/// carry a Content-Type a cross-origin page cannot send without a CORS preflight; bearer,
+/// token and certificate callers are unaffected. Wrap it inside the authentication stack so
+/// that [`SessionAuth`] has already run.
+pub(crate) async fn reject_forgeable_session_mutation<B: MessageBody>(
+    req: ServiceRequest,
+    next: Next<B>,
+) -> Result<ServiceResponse<EitherBody<B>>, Error> {
+    let session_authenticated = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .is_some_and(|user| user.auth_method == AuthMethod::Session);
+    if session_authenticated && !is_not_forgeable_cross_origin(&req) {
+        warn!(
+            "Session: refusing a cookie-authenticated {} without a JSON Content-Type",
+            req.method()
+        );
+        let response = HttpResponse::UnsupportedMediaType().json(serde_json::json!({
+            "errors": ["a session-authenticated write requires `Content-Type: application/json`"]
+        }));
+        return Ok(req.into_response(response).map_into_right_body());
+    }
+    Ok(next.call(req).await?.map_into_left_body())
+}
 
 /// Middleware factory — registered unconditionally on all UI-facing scopes.
 pub(crate) struct SessionAuth;

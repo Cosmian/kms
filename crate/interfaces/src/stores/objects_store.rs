@@ -21,6 +21,17 @@ pub enum AtomicOperation {
     Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
+    /// Replace an object's content only if the caller owns it, it is not destroyed and its
+    /// version still equals `expected_version` (the value read in
+    /// `ObjectWithMetadata::version`), preserving its state. Any mismatch fails the whole batch
+    /// with `InterfaceError::Conflict`; a success increments the version.
+    CompareAndSwapObject {
+        uid: String,
+        expected_version: u64,
+        object: Box<Object>,
+        attributes: Attributes,
+        tags: Option<HashSet<String>>,
+    },
     /// Same as `UpdateObject` (uid, object, attributes, tags, `expected_version`), but applied only
     /// if the stored object's version still equals `expected_version` (the value read in
     /// `ObjectWithMetadata::version`). A mismatch fails the whole batch with `InterfaceError::Conflict`.
@@ -41,7 +52,8 @@ impl AtomicOperation {
             | Self::UpdateObject((uid, _, _, _))
             | Self::UpdateObjectIfVersion((uid, _, _, _, _))
             | Self::UpdateState((uid, _))
-            | Self::Delete(uid) => uid,
+            | Self::Delete(uid)
+            | Self::CompareAndSwapObject { uid, .. } => uid,
         }
     }
 
@@ -269,6 +281,22 @@ pub trait ObjectsStore {
     /// and managed separately). Default: no-op.
     async fn set_key_label(&self, _uid: &str, _label: &str) -> InterfaceResult<()> {
         Ok(())
+    }
+
+    /// Return the server-internal parameter `name`, storing `value` first if it is absent.
+    ///
+    /// The insert is atomic: concurrent callers, including other server replicas sharing the
+    /// database, all get the first stored value. Parameters are not KMIP objects, so no client
+    /// operation can read or write them. Stores that encrypt their data at rest (Redis-findex)
+    /// encrypt parameters too. Stores without a parameters table do not support it.
+    async fn get_or_insert_parameter(
+        &self,
+        _name: &'static str,
+        _value: &str,
+    ) -> InterfaceResult<String> {
+        Err(crate::InterfaceError::NotSupported(
+            "server parameters are not supported by this object store".to_owned(),
+        ))
     }
 
     /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
