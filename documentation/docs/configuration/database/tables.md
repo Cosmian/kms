@@ -39,6 +39,7 @@ erDiagram
         string state
         string owner
         string wrapping_key_id FK
+        string domain
         bigint version
     }
     READ_ACCESS {
@@ -77,6 +78,7 @@ The central table. One row per KMIP object.
 | `state` | `VARCHAR(32)` | The KMIP lifecycle state of the object (for example `Active`, `Destroyed`). |
 | `owner` | `VARCHAR(255)` | The user identifier of the object's owner. |
 | `wrapping_key_id` | `VARCHAR(128)` | The UID of the key that wraps this object. Self-reference to `objects.id`. |
+| `domain` | `VARCHAR(255)` | The RBAC domain the object belongs to. `NOT NULL DEFAULT ''`: the empty string means that the object has no domain. |
 | `version` | `BIGINT NOT NULL DEFAULT 0` (PG/MySQL) / `INTEGER NOT NULL DEFAULT 0` (SQLite) | Optimistic-lock counter, incremented on every write; key rotation commits only if the version it read is still current. |
 
 The following secondary indexes are created on `objects`:
@@ -91,6 +93,10 @@ The following secondary indexes are created on `objects`:
 | `idx_objects_type_state` | `ObjectType` attribute, `state` | PostgreSQL, SQLite |
 
 Indexes are created at server startup. On an existing large database, the first start after an upgrade takes proportionally longer, and PostgreSQL blocks writes to `objects` while each new index builds.
+
+The `domain` column did not exist in earlier schemas. When the server opens an existing database, it adds the column if it is missing, on SQLite, PostgreSQL and MySQL/MariaDB alike; existing objects get the empty domain.
+
+On MySQL/MariaDB the server checks for the column before adding it, so when several instances are started for the first time at the very same moment against the same database, one of them may fail with a duplicate-column error: restart it.
 
 ## read_access
 

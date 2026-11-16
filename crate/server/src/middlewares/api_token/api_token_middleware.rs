@@ -47,6 +47,8 @@ where
                         req.extensions_mut().insert(AuthenticatedUser {
                             username: UserId::from(kms_server.params.default_username.as_str()),
                             auth_method: AuthMethod::ApiToken,
+                            roles: Vec::new(),
+                            domain: None,
                         });
                     }
                     Err(e) => {

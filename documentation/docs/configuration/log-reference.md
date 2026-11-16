@@ -180,7 +180,6 @@ Crate path: `crate/server`
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
-| `debug` | `JWT Access granted to {email}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `email`: user email address | - |
 | `debug` | `JWT authentication failed: {e:?}` | `src/middlewares/jwt/jwt_middleware.rs` | `e`: caught error | - |
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |
@@ -556,7 +555,6 @@ Crate path: `crate/server`
 | `error` | `JoinSplitKey: CO ceremony activation failed — rolling back reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
 | `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed; orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
 | `warn` | `` `force_default_username = true` combined with `privileged_users` is deprecated and will become an error in a future release. All requests run under the same identity, making Crypto Officer dual-control meaningless. Please migrate to `[roles] crypto_officer_users` and remove `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
-| `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | - | - |
 | `warn` | `SigV4 failure: {sigv4_err}` | `src/routes/aws_xks/sigv4_middleware.rs` | `sigv4_err`: SigV4 validation error detail (signature mismatch, expired timestamp, bad credentials, etc.) | Authentication failure — check client SigV4 credentials, clock skew (±5 min), and signed headers. |
 | `info` | `` AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service identity `{AWS_XKS_SERVICE_USER}` `` | `src/start_kms_server.rs` | `migrated`, `AWS_XKS_SERVICE_USER` | - |
 | `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
@@ -572,6 +570,7 @@ Crate path: `crate/server`
 | `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
 | `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
 | `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
+| `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
 | `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
 | `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
 | `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
@@ -582,6 +581,10 @@ Crate path: `crate/server`
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
+| `error` | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | - | - |
+| `warn` | `OPA request failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
+| `warn` | `OPA response parse failed (fail-closed deny): {e}` | `src/core/opa/client.rs` | `e` | - |
+| `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | `ceremony_key_id`: KMS UID of the AES-256 ceremony sealing key | Confirms the sealing key was loaded successfully; key material is never logged. |
 | `info` | `GET /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `info` | `POST /ocsp/ ({} bytes)` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
@@ -608,7 +611,7 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error other than contention (EACCES, EROFS, directory-creation failure) | Deployment fault distinct from the benign "held by another instance" case; retried on the same interval. |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
-| `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
+| `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT carries neither a usable `email` claim nor a usable `sub` claim. A `spiffe://` `sub` is only accepted when `--jwt-svid-auth` is enabled for the issuer; the plain-`sub` fallback is reserved to issuers that did not opt into SPIFFE |
 | `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
 | `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
@@ -638,6 +641,8 @@ Crate path: `crate/server`
 | `info` | `GET /.well-known/est/csrattrs` | `src/routes/est/csrattrs.rs` | - | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported on this build. All other algorithms (including PQC and Covercrypt) are unaffected.` | `src/openssl_providers.rs` | `e` | - |
 | `warn` | `Legacy OpenSSL provider unavailable ({e}); old PKCS#12/RC2 formats are unsupported in this test run. All other algorithms are unaffected.` | `src/openssl_providers.rs` | `e` | - |
+| `debug` | `JWT Access granted to {email}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `email` | - |
+| `debug` | `JWT Access granted to {sub} (no email claim, using sub)!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub` | - |
 | `debug` | `decrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | - | - |
 | `debug` | `encrypt request: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | - | - |
 | `debug` | `get metadata request: {}` | `src/routes/aws_xks/key_metadata.rs` | - | - |
@@ -771,6 +776,12 @@ Crate path: `crate/server`
 | `trace` | `Sign request` | `src/core/operations/sign.rs` | - | - |
 | `trace` | `SignatureVerify request` | `src/core/operations/signature_verify.rs` | - | - |
 | `trace` | `Validate request` | `src/core/operations/validate.rs` | - | - |
+| `warn` | `OPA is enabled with the Redis-Findex backend, which does not store the per-object domain: the DomainAdmin, CryptoOfficer, Auditor and User roles can never act on other users' objects (only SuperAdmins can). Use SQLite, PostgreSQL or MySQL for domain-based RBAC.` | `src/config/params/server_params.rs` | - | Logged once at startup when an OPA mode is combined with the Redis-Findex backend, which does not persist the per-object domain. Use a SQL backend for domain-based RBAC. |
+| `warn` | `OPA returned non-2xx (fail-closed deny): {status}` | `src/core/opa/client.rs` | `status`: HTTP status returned by OPA | The request is denied (fail-closed). A redirect is a non-2xx answer too, because redirects are not followed. The response body is only logged at `debug` level. |
+| `warn` | `OPA_DENIED: request denied by the OPA policy, or OPA was unavailable (fail-closed)` | `src/core/retrieve_object_utils.rs` | Structured fields: `user`, `roles`, `user_domain`, `operation`, `object_id`, `object_domain`, `mode` | Audit event on the `audit` log target, emitted only when `RUST_LOG` enables it (for example `audit=warn`). Also raised when OPA is unreachable (fail-closed). Identity and domain fields use `Debug` formatting, so control characters are escaped. |
+| `warn` | `` SECURITY: `--opa-url` uses cleartext http:// to a non-loopback host. Authorization decisions travel unauthenticated and unencrypted: keep OPA on the KMS host's loopback or a trusted private network, or put it behind a TLS-terminating proxy and use https://. `` | `src/config/params/server_params.rs` | - | Logged once at startup. Cleartext HTTP is acceptable only on a trusted private network such as the Compose network of `deploy/rbac_rego`: the KMS has no OPA-specific authentication and cannot authenticate its answers. |
+| `debug` | `OPA non-2xx response body: {body_text:?}` | `src/core/opa/client.rs` | `body_text`: body of the non-2xx OPA response | May echo policy or input details; enable `debug` only while troubleshooting. |
+| `trace` | `OPA {mode} decision for user={:?} op={} obj={:?}: allowed` | `src/core/retrieve_object_utils.rs` | `mode`: `exclusive` or `enforcing` | Only allowed decisions are traced; a denial is logged as `OPA_DENIED` (`warn`, `audit` target). |
 | `warn` | `Failed to persist automatic transition of object {} to {target}: {e}` | `src/core/retrieve_object_utils.rs` | `target`, `e` | - |
 | `info` | `[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check` | `src/core/operations/auto_rotate.rs` | `uid`, `msg` | - |
 | `trace` | `Auto-transitioning object {} from {effective_state} to {target}` | `src/core/retrieve_object_utils.rs` | `effective_state`, `target` | - |

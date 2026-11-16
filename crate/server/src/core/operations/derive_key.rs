@@ -674,6 +674,7 @@ async fn persist_single_base_derived_object(
             &derived_object,
             attributes,
             &tags,
+            "",
         )
         .await
         .map_err(|e| {

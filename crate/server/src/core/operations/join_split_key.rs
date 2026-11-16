@@ -394,6 +394,7 @@ pub(crate) async fn join_split_key(
             &reconstructed_object,
             &reconstructed_attrs,
             &tags,
+            "",
         )
         .await?;
 
@@ -509,13 +510,14 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     if !co_cfg.require_ceremony {
         kms_bail!(KmsError::InvalidRequest(
-            "This server uses config-only Crypto Officer mode: no ceremony is required.".to_owned()
+            "This server uses config-only Crypto Officer mode — no ceremony is required."
+                .to_owned()
         ));
     }
 
     if !co_cfg.users.iter().any(|u| u == user.as_str()) {
         kms_bail!(KmsError::Unauthorized(
-            "Ceremony activation rejected: the requesting user is not listed in \
+            "Ceremony activation rejected — the requesting user is not listed in \
              `crypto_officer_users`"
                 .to_owned()
         ));
@@ -525,7 +527,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     if !reconstructed.all_ceremony_tagged {
         kms_bail!(KmsError::Unauthorized(
-            "Ceremony activation rejected: not all shares are tagged with \
+            "Ceremony activation rejected — not all shares are tagged with \
              `x-cosmian-crypto-officer-ceremony`."
                 .to_owned()
         ));
@@ -536,14 +538,17 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     if unique_participants.len() != participants.len() {
         kms_bail!(KmsError::Unauthorized(format!(
-            "Ceremony activation rejected: duplicate share owners detected. \
+            "Ceremony activation rejected — duplicate share owners detected. \
              Owners: {participants:?}"
         )));
     }
 
+    // Verify that at least one share comes from a DIFFERENT CO (dual-control).
+    // This prevents the assembling user from self-activating by creating all shares alone.
     if !participants.iter().any(|p| p.as_str() != user.as_str()) {
         kms_bail!(KmsError::Unauthorized(
-            "Ceremony activation rejected: at least one share must come from a different party."
+            "Ceremony activation rejected — at least one share must come from a different \
+             Crypto Officer (NIST SP 800-57 Part 2 Rev 1 §4.6 dual control)."
                 .to_owned()
         ));
     }
@@ -551,7 +556,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
     for participant in participants {
         if !co_cfg.users.iter().any(|u| u == participant) {
             kms_bail!(KmsError::Unauthorized(format!(
-                "Ceremony activation rejected: share owner '{participant}' is not in \
+                "Ceremony activation rejected — share owner '{participant}' is not in \
                  `crypto_officer_users`"
             )));
         }

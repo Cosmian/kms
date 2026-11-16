@@ -283,6 +283,7 @@ mod tests {
             _: &Object,
             _: &Attributes,
             _: &HashSet<String>,
+            _: &str,
         ) -> InterfaceResult<String> {
             unused()
         }

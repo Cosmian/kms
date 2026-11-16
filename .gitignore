@@ -41,6 +41,7 @@ node_modules/
 crate/server/ui*
 ui_non_fips/
 ui/test-results
+/test-results
 
 # OS / IDE / AI Tools
 .DS_Store

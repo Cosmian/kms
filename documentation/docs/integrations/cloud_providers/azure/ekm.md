@@ -232,7 +232,7 @@ azure_ekm_disable_client_auth = false
 
 When Azure Managed HSM connects to the EKM proxy over mTLS, Eviden KMS authenticates it as a regular KMIP user, using the **Subject CN of the client certificate** as the username (see [TLS Client Certificate configuration](../../../configuration/configurations.md#tls-client-cert) and the [Authentication guide](../../../configuration/authentication.md)). This identity is the `subjectCommonName` returned by `az keyvault ekm-connection certificate show` (see [Azure Managed HSM Setup](#azure-managed-hsm-setup)), generally of the form `<hsm-name>.managedhsmclient.azure.net`.
 
-Because the external key is owned by whichever KMS user created it, you must explicitly grant this Managed HSM identity the rights to read and use that key, using [`ckms access-rights grant`](../../../configuration/authorization.md):
+Because the external key is owned by whichever KMS user created it, you must explicitly grant this Managed HSM identity the rights to read and use that key, using [`ckms access-rights grant`](../../../configuration/authorization/index.md):
 
 ```bash
 ckms access-rights grant <hsm-name>.managedhsmclient.azure.net -i <kms-key-uid> get get_attributes encrypt decrypt

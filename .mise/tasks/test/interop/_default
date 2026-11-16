@@ -9,4 +9,4 @@
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
-run_test_leaves "$(dirname "$0")" ase db2 edb-tde iris jose kmip-go kmipkit pykmip
+run_test_leaves "$(dirname "$0")" ase db2 edb-tde iris jose kmip-go kmipkit opa-rbac pykmip

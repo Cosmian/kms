@@ -14,11 +14,12 @@ CREATE TABLE IF NOT EXISTS objects (
         state VARCHAR(32),
         owner VARCHAR(255),
         wrapping_key_id VARCHAR(128),
+        domain VARCHAR(255) NOT NULL DEFAULT '',
         version INTEGER NOT NULL DEFAULT 0
 );
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.domain, objects.version
         FROM objects
         WHERE objects.id=$1;
 
@@ -74,6 +75,9 @@ PRAGMA table_info(crypto_officer_activations);
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
+
+-- name: add-column-domain
+ALTER TABLE objects ADD COLUMN domain VARCHAR(255) NOT NULL DEFAULT '';
 
 -- name: add-column-version
 ALTER TABLE objects ADD COLUMN version INTEGER NOT NULL DEFAULT 0;

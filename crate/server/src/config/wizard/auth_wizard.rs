@@ -201,12 +201,24 @@ pub(crate) fn configure_auth(
             .default(false)
             .interact()
             .prompt_err()?;
-        let realm: Option<String> = if enable_ui_login {
+        let realm: Option<Vec<String>> = if enable_ui_login {
             let realm: String = Input::with_theme(&theme)
-                .with_prompt("Realm to authenticate the Web UI against")
+                .with_prompt(
+                    "Realm(s) to authenticate the Web UI against (comma-separated for multiple)",
+                )
                 .interact_text()
                 .prompt_err()?;
-            Some(realm)
+            let realms: Vec<String> = realm
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect();
+            if realms.is_empty() {
+                None
+            } else {
+                Some(realms)
+            }
         } else {
             None
         };

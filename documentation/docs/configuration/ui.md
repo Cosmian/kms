@@ -151,23 +151,18 @@ When the KMS is deployed alongside a [Cosmian authentication server](https://git
 
 The AS's session token is validated by the KMS server and never forwarded to the browser: only the resulting user identity is kept in the KMS's own session cookie.
 
-#### 1. Using the Configuration File (`.toml`)
+#### Using the Configuration File (`.toml`)
 
 ```toml
-[cosmian_auth]
-cosmian_auth_server_url = "https://your-auth-server:8443"
-cosmian_auth_realm = "your_realm"
-cosmian_auth_accept_invalid_certs = false  # set true only for dev/test self-signed certs
+[auth_verifier]
+auth_verifier_url = "https://your-auth-server:8443"
+auth_verifier_realm = "your_realm"
+auth_verifier_accept_invalid_certs = false  # set true only for dev/test self-signed certs
 ```
 
-Both `cosmian_auth_server_url` and `cosmian_auth_realm` must be set for the UI login form to appear — `cosmian_auth_server_url` alone only enables validation of bearer tokens already issued by the AS for direct API access.
+Both `auth_verifier_url` and `auth_verifier_realm` must be set for the UI login form to appear — `auth_verifier_url` alone only enables validation of bearer tokens already issued by the AS for direct API access.
 
-#### 2. Using Command-Line Arguments
-
-```bash
---cosmian-auth-server-url "https://your-auth-server:8443" \
---cosmian-auth-realm "your_realm"
-```
+The `[auth_verifier]` table is read from the configuration file only: it has no command-line flag and no environment variable.
 
 !!! note
     If the account requires a password change or has an expired password, the UI surfaces the Cosmian authentication server's message directly; the password must be changed through the Cosmian authentication server (or its own admin UI), not through the KMS.

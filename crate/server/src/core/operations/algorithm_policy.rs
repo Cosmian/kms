@@ -1329,6 +1329,7 @@ mod tests {
             "owner",
             State::Active,
             Attributes::default(),
+            String::new(),
         ))
     }
 
@@ -1389,6 +1390,7 @@ mod tests {
             "owner",
             State::Active,
             Attributes::default(),
+            String::new(),
         );
         let params = custom_policy(KmipAllowlistsConfig {
             block_cipher_modes: Some(vec![BlockCipherMode::GCM]),

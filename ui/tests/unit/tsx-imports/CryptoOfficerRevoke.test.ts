@@ -90,22 +90,18 @@ describe("CO revocation: dormant CO candidate can peer-revoke", () => {
         mockStatus({
             ...baseActiveStatus,
             is_crypto_officer: false,
-            // active_co_users contains alice; current user (bob) is a dormant CO candidate
+            // active_co_users contains alice; current user (bob/carol) is dormant
         }),
     );
 
-    // smokeRender is called with initialUserId so that status.users.includes(userId) is true.
-    // Without it, userId is null (AuthContext default) and the revoke controls are hidden —
-    // intentionally: users who are not yet identified should not see CO revoke controls.
-
     test("renders the peer-revoke button for a dormant CO candidate", async () => {
-        smokeRender(React.createElement(CryptoOfficerRole), { initialUserId: "bob@example.com" });
+        smokeRender(React.createElement(CryptoOfficerRole));
         await screen.findByTestId("disable-btn");
         expect(screen.getByTestId("disable-btn")).toBeInTheDocument();
     });
 
     test("peer-revoke button is disabled when no target is selected", async () => {
-        smokeRender(React.createElement(CryptoOfficerRole), { initialUserId: "bob@example.com" });
+        smokeRender(React.createElement(CryptoOfficerRole));
         const btn = await screen.findByTestId("disable-btn");
         expect(btn).toBeDisabled();
     });

@@ -331,6 +331,7 @@ impl SqlitePool {
         let table_info_objects_sql = get_sqlite_query!("table-info-objects");
         let add_wrapping_sql = get_sqlite_query!("add-column-wrapping-key-id");
         let add_version_sql = get_sqlite_query!("add-column-version");
+        let add_domain_sql = get_sqlite_query!("add-column-domain");
         let idx_wrapping_sql = get_sqlite_query!("create-index-objects-wrapping-key-id");
         let select_null_wrapping_sql = get_sqlite_query!("select-objects-null-wrapping-key");
         let update_wrapping_sql = get_sqlite_query!("update-wrapping-key-id");
@@ -372,6 +373,24 @@ impl SqlitePool {
                         };
                         if !has_version {
                             tx.execute_batch(add_version_sql)?;
+                        }
+                        // RBAC domain column for databases created before it existed. Existing
+                        // rows get the empty domain, which never matches (fail-closed).
+                        let has_domain: bool = {
+                            let mut stmt = tx.prepare(table_info_objects_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut found = false;
+                            while let Some(row) = rows.next()? {
+                                let col_name: String = row.get(1)?;
+                                if col_name == "domain" {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            found
+                        };
+                        if !has_domain {
+                            tx.execute_batch(add_domain_sql)?;
                         }
                         // Index supporting `find-wrapped-by` lookups and the backfill scan.
                         tx.execute_batch(idx_wrapping_sql)?;
@@ -625,13 +644,14 @@ fn sqlite_row_to_owm(row: &Row<'_>) -> Result<ObjectWithMetadata, DbError> {
     let attributes_json: String = row.get(2)?;
     let owner: String = row.get(3)?;
     let state_str: String = row.get(4)?;
+    let domain: String = row.get::<_, String>(5).unwrap_or_default();
     let object: Object = serde_json::from_str(&object_json)?;
     let object = migrate_block_cipher_mode_if_needed(object);
     let attributes: Attributes = serde_json::from_str(&attributes_json)?;
     let state =
         State::try_from(state_str.as_str()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    let version: i64 = row.get(5)?;
-    let owm = ObjectWithMetadata::new(id, object, owner, state, attributes);
+    let version: i64 = row.get(6)?;
+    let owm = ObjectWithMetadata::new(id, object, owner, state, attributes, domain);
     Ok(owm.with_version(u64::try_from(version).unwrap_or_default()))
 }
 
@@ -644,6 +664,7 @@ impl ObjectsStore for SqlitePool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> InterfaceResult<String> {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let object_json = serde_json::to_string(object)
@@ -653,6 +674,7 @@ impl ObjectsStore for SqlitePool {
         let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
         let owner_s: String = owner.as_str().to_owned();
         let wrapping_key_id = object.wrapping_key_uid();
+        let domain_s = domain.to_owned();
 
         let insert_object = get_sqlite_query!("insert-objects");
         let insert_tag = get_sqlite_query!("insert-tags");
@@ -671,6 +693,7 @@ impl ObjectsStore for SqlitePool {
                         state_s,
                         owner_s,
                         wrapping_key_id,
+                        &domain_s,
                     ],
                 )
                 .map_err(map_insert_error)?;
@@ -1740,6 +1763,8 @@ fn apply_owned_ops(
                         state_s,
                         owner,
                         wrapping_key_id,
+                        // atomic creates carry no domain: store the empty default
+                        "",
                     ],
                 )?;
                 for tag in tags {

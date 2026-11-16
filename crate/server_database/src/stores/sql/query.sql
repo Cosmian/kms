@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS objects (
         attributes jsonb NOT NULL,
         state VARCHAR(32),
         owner VARCHAR(255),
-        wrapping_key_id VARCHAR(128)
+        wrapping_key_id VARCHAR(128),
+        domain VARCHAR(255) NOT NULL DEFAULT ''
 );
 -- name: add-column-attributes
 ALTER TABLE objects ADD COLUMN attributes json;
@@ -34,6 +35,10 @@ SELECT attributes from objects;
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);
+
+-- A constant default is added without rewriting the table on PostgreSQL 11+.
+-- name: add-column-domain
+ALTER TABLE objects ADD COLUMN IF NOT EXISTS domain VARCHAR(255) NOT NULL DEFAULT '';
 
 -- name: add-column-version
 ALTER TABLE objects ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
@@ -66,10 +71,10 @@ DELETE FROM tags;
 DELETE FROM crls;
 
 -- name: insert-objects
-INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id, domain) VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.domain, objects.version
         FROM objects
         WHERE objects.id=$1;
 

@@ -151,8 +151,14 @@ redis_master_password = "master-password"
 ## crypto_officer_require_ceremony = true
 
 # Hex-encoded 32-byte secret for ceremony record encryption (AES-256-GCM).
-# Required when any role has require_ceremony = true.
+# Required when any role has require_ceremony = true, unless `ceremony_key_id` is set.
 # All ceremony activation records are encrypted with keys derived from this secret,
 # preventing forgery via direct database writes and protecting participant identities.
 # Generate with: openssl rand -hex 32
 ## ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+# Alternative to `ceremony_secret`: the UID of an AES-256 symmetric key stored in the KMS
+# itself, read once at startup. It takes precedence over `ceremony_secret` and, on its own,
+# satisfies `crypto_officer_require_ceremony`. The server refuses to start when the key is
+# missing or is not 32 bytes long.
+## ceremony_key_id = "ceremony-sealing-key"

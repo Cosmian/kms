@@ -89,9 +89,17 @@ where
                 let username = UserId::from(user_id);
                 match reject_reserved_service_identity(&username) {
                     Ok(()) => {
+                        let roles = session
+                            .get::<Vec<String>>("roles")
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        let domain = session.get::<String>("domain").ok().flatten();
                         req.extensions_mut().insert(AuthenticatedUser {
                             username,
                             auth_method: AuthMethod::Session,
+                            domain,
+                            roles,
                         });
                     }
                     Err(error) => {

@@ -13,6 +13,7 @@ use cosmian_kms_server_database::{
 };
 use cosmian_logger::{debug, warn};
 use ipnet::IpNet;
+use zeroize::Zeroizing;
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
@@ -24,7 +25,10 @@ use crate::{
             proxy_params::ProxyParams,
         },
     },
-    core::operations::certify::template::CertTemplate,
+    core::{
+        opa::{OpaMode, OpaParams},
+        operations::certify::template::CertTemplate,
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
     routes::aws_xks::AwsXksParams,
@@ -321,21 +325,23 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
+    /// OPA (Open Policy Agent) RBAC evaluation parameters.
+    /// When set, the KMS calls OPA before (or instead of) its internal permission check.
+    pub(crate) opa_params: Option<crate::core::opa::OpaParams>,
+
     /// Crypto Officer role configuration (role-based access control).
     pub crypto_officer: CryptoOfficerConfig,
 
     /// Ceremony record encryption keys.
     ///
-    /// Derived from `ceremony_secret` at startup, or resolved from the object
-    /// store when `ceremony_key_id` is set. `None` when no role requires a ceremony.
+    /// Derived from `ceremony_secret` at startup. `None` when no role requires a ceremony.
     /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
     /// and verified on read — preventing forgery and protecting participant identities.
     pub ceremony_keys: Option<Arc<CeremonyKeys>>,
-
-    /// UID of the KMS symmetric key used as the ceremony record sealing key.
+    /// UID of a KMS symmetric key used to derive ceremony sealing keys at startup.
     ///
-    /// When set, `ceremony_key_id` takes precedence over `ceremony_secret`.
-    /// The key is fetched from the object store after database initialization.
+    /// When set, this takes precedence over `ceremony_secret`; raw key bytes are fetched
+    /// from the object store and converted into [`CeremonyKeys`].
     pub ceremony_key_id: Option<String>,
 
     /// AWS XKS parameters, if any
@@ -880,6 +886,7 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
+            opa_params: resolve_opa_params(conf.opa.opa_url, &conf.opa.opa_mode)?,
             crypto_officer: {
                 // Backward compat: if the deprecated `privileged_users` field is set and
                 // `[roles] crypto_officer_users` is not configured, promote those users to
@@ -916,57 +923,12 @@ impl ServerParams {
                 }
                 co
             },
-            ceremony_keys: {
-                let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
-                match (
-                    &conf.roles.ceremony_key_id,
-                    &conf.roles.ceremony_secret,
-                    any_ceremony_required,
-                ) {
-                    // ceremony_key_id takes precedence — keys resolved after DB init;
-                    // or neither provided and ceremony is not required.
-                    (Some(_), _, _) | (None, None, false) => None,
-                    // Only ceremony_secret provided — derive keys now
-                    (None, Some(hex_secret), _) => {
-                        let bytes = hex::decode(hex_secret).map_err(|e| {
-                            KmsError::ServerError(format!(
-                                "ceremony_secret: invalid hex encoding: {e}"
-                            ))
-                        })?;
-                        if bytes.len() != cosmian_kms_server_database::CEREMONY_SECRET_LENGTH {
-                            return Err(KmsError::ServerError(format!(
-                                "ceremony_secret must be exactly {} bytes ({} hex chars), got {} bytes",
-                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH,
-                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH * 2,
-                                bytes.len(),
-                            )));
-                        }
-                        let mut secret =
-                            [0_u8; cosmian_kms_server_database::CEREMONY_SECRET_LENGTH];
-                        secret.copy_from_slice(&bytes);
-                        let keys = CeremonyKeys::derive(&secret);
-                        // Zeroize the local copy
-                        secret.fill(0);
-                        tracing::warn!(
-                            "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
-                             variable is used in production to avoid persisting the secret to disk. \
-                             If loaded from a config file, ensure it has restrictive permissions \
-                             (0600) and is not committed to version control."
-                        );
-                        Some(Arc::new(keys))
-                    }
-                    // Neither provided but ceremony required
-                    (None, None, true) => {
-                        return Err(KmsError::ServerError(
-                            "ceremony_secret or ceremony_key_id is required when any role has \
-                             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
-                             symmetric key UID, or generate a secret with: openssl rand -hex 32"
-                                .to_owned(),
-                        ));
-                    }
-                }
-            },
-            ceremony_key_id: conf.roles.ceremony_key_id.clone(),
+            ceremony_keys: derive_ceremony_keys(
+                conf.roles.ceremony_key_id.as_deref(),
+                conf.roles.ceremony_secret.as_deref(),
+                conf.roles.crypto_officer_require_ceremony,
+            )?,
+            ceremony_key_id: conf.roles.ceremony_key_id,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
             aws_xks_params: if conf.aws_xks_config.enable {
@@ -1121,6 +1083,18 @@ impl ServerParams {
                      use the reserved enrollment service identity `{reserved}`"
                 )));
             }
+        }
+
+        // The Redis-Findex store keeps no per-object domain: every object reads back with an
+        // empty one, which the domain-scoped OPA rules never match. That fails closed, but the
+        // domain-based roles become unusable, so tell the operator at startup.
+        if res.opa_params.is_some() && res.main_db_params.as_ref().is_some_and(is_redis_findex) {
+            warn!(
+                "OPA is enabled with the Redis-Findex backend, which does not store the \
+                 per-object domain: the DomainAdmin, CryptoOfficer, Auditor and User roles can \
+                 never act on other users' objects (only SuperAdmins can). Use SQLite, \
+                 PostgreSQL or MySQL for domain-based RBAC."
+            );
         }
 
         debug!("{res:#?}");
@@ -1291,6 +1265,129 @@ fn ensure_svid_providers_have_audience(providers: Option<&[IdpConfig]>) -> KResu
         )));
     }
     Ok(())
+}
+
+/// Resolve the OPA sidecar settings, refusing combinations that would leave the operator
+/// believing OPA enforces authorization when it does not.
+///
+/// `--opa-mode` defaults to `disabled`, so a URL given without a mode would start a server
+/// that never consults OPA and authorizes with the native KMS permission logic alone: a silent
+/// fail-open misconfiguration. It is rejected instead of ignored.
+fn resolve_opa_params(url: Option<String>, mode: &str) -> KResult<Option<OpaParams>> {
+    let mode = mode.parse::<OpaMode>().map_err(|_e| {
+        KmsError::InvalidRequest(
+            "invalid `opa_mode` value; expected one of: disabled, exclusive, enforcing".to_owned(),
+        )
+    })?;
+    match (url, mode) {
+        (None, OpaMode::Disabled) => Ok(None),
+        (None, active_mode) => Err(KmsError::InvalidRequest(format!(
+            "`--opa-mode {active_mode}` requires `--opa-url` to be set; \
+             OPA cannot be active without a server URL"
+        ))),
+        (Some(_), OpaMode::Disabled) => Err(KmsError::InvalidRequest(
+            "`--opa-url` is set but `--opa-mode` is `disabled`: OPA would never be consulted and \
+             requests would be authorized by the native KMS permission logic alone. Set \
+             `--opa-mode` to `exclusive` or `enforcing`, or remove `--opa-url`"
+                .to_owned(),
+        )),
+        (Some(url), mode) => {
+            validate_opa_url(&url)?;
+            Ok(Some(OpaParams { url, mode }))
+        }
+    }
+}
+
+/// Check that the OPA URL is an `http(s)` URL and warn when authorization decisions would
+/// travel in clear text beyond the local host.
+///
+/// The OPA client has no authentication of its own beyond credentials embedded in the URL
+/// (`reqwest` sends them as HTTP Basic), so unless the network or a proxy protects the
+/// endpoint, whoever can reach or impersonate it decides who is authorized.
+fn validate_opa_url(url: &str) -> KResult<()> {
+    // The URL is deliberately not echoed back: it may embed credentials.
+    let parsed = url::Url::parse(url)
+        .map_err(|e| KmsError::InvalidRequest(format!("invalid `--opa-url`: {e}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(KmsError::InvalidRequest(format!(
+            "`--opa-url` must be an http:// or https:// URL, got the scheme `{}`",
+            parsed.scheme()
+        )));
+    }
+    let is_loopback = match parsed.host() {
+        Some(url::Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    if parsed.scheme() == "http" && !is_loopback {
+        warn!(
+            "SECURITY: `--opa-url` uses cleartext http:// to a non-loopback host. Authorization \
+             decisions travel unauthenticated and unencrypted: keep OPA on the KMS host's \
+             loopback or a trusted private network, or put it behind a TLS-terminating proxy \
+             and use https://."
+        );
+    }
+    Ok(())
+}
+
+/// Whether `db` is the Redis-Findex backend, which does not persist the per-object domain.
+#[cfg(feature = "non-fips")]
+const fn is_redis_findex(db: &MainDbParams) -> bool {
+    matches!(db, MainDbParams::RedisFindex(..))
+}
+
+/// Whether `db` is the Redis-Findex backend (never compiled in FIPS mode).
+#[cfg(not(feature = "non-fips"))]
+const fn is_redis_findex(_db: &MainDbParams) -> bool {
+    false
+}
+
+/// Derive the ceremony record sealing keys that do not need the database.
+///
+/// `ceremony_key_id` takes precedence over `ceremony_secret`: its key material lives in the
+/// object store and is only resolved once the database is initialised (see `KMS::instantiate`),
+/// so nothing is derived here and the key id alone satisfies `require_ceremony`. Otherwise the
+/// keys are derived from the hex `ceremony_secret`; the decoded bytes and the fixed-size copy
+/// are wiped on drop. An invalid secret is never echoed in the error.
+fn derive_ceremony_keys(
+    key_id: Option<&str>,
+    hex_secret: Option<&str>,
+    ceremony_required: bool,
+) -> KResult<Option<Arc<CeremonyKeys>>> {
+    match (key_id, hex_secret, ceremony_required) {
+        (Some(_), _, _) | (None, None, false) => Ok(None),
+        (None, Some(hex_secret), _) => {
+            let bytes = Zeroizing::new(hex::decode(hex_secret).map_err(|_e| {
+                KmsError::ServerError("ceremony_secret: invalid hex encoding".to_owned())
+            })?);
+            if bytes.len() != cosmian_kms_server_database::CEREMONY_SECRET_LENGTH {
+                return Err(KmsError::ServerError(format!(
+                    "ceremony_secret must be exactly {} bytes ({} hex chars), got {} bytes",
+                    cosmian_kms_server_database::CEREMONY_SECRET_LENGTH,
+                    cosmian_kms_server_database::CEREMONY_SECRET_LENGTH * 2,
+                    bytes.len(),
+                )));
+            }
+            let mut secret =
+                Zeroizing::new([0_u8; cosmian_kms_server_database::CEREMONY_SECRET_LENGTH]);
+            secret.copy_from_slice(&bytes);
+            let keys = CeremonyKeys::derive(&secret);
+            tracing::warn!(
+                "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
+                 variable is used in production to avoid persisting the secret to disk. \
+                 If loaded from a config file, ensure it has restrictive permissions \
+                 (0600) and is not committed to version control."
+            );
+            Ok(Some(Arc::new(keys)))
+        }
+        (None, None, true) => Err(KmsError::ServerError(
+            "ceremony_secret or ceremony_key_id is required when any role has \
+             require_ceremony = true. Set ceremony_key_id to an existing AES-256 \
+             symmetric key UID, or generate a secret with: openssl rand -hex 32"
+                .to_owned(),
+        )),
+    }
 }
 
 impl fmt::Debug for ServerParams {
@@ -1558,6 +1655,14 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
         }
 
+        if let Some(ref opa) = self.opa_params {
+            debug_struct
+                .field("opa_url", &opa.url)
+                .field("opa_mode", &opa.mode);
+        } else {
+            debug_struct.field("opa_mode", &"disabled");
+        }
+
         debug_struct.field(
             "ceremony_keys",
             &self.ceremony_keys.as_ref().map(|_| "<configured>"),
@@ -1579,8 +1684,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        AuditBackendParams, BlockCipherMode, CryptographicAlgorithm, PaddingMethod, ServerParams,
-        ensure_svid_providers_have_audience, normalized_pg_authority, parse_kek_wrapping_algorithm,
+        AuditBackendParams, BlockCipherMode, CryptographicAlgorithm, OpaMode, PaddingMethod,
+        ServerParams, derive_ceremony_keys, ensure_svid_providers_have_audience,
+        normalized_pg_authority, parse_kek_wrapping_algorithm, resolve_opa_params,
     };
     use crate::{
         config::{ClapConfig, HttpConfig, IdpConfig, command_line::MainDBConfig},
@@ -1868,5 +1974,129 @@ mod tests {
         let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false)
             .expect_err("an algorithm without a KEK is rejected");
         assert!(err.to_string().contains("requires key_encryption_key"));
+    }
+
+    /// A URL without an active mode must not start a server that silently skips OPA: the
+    /// mode defaults to `disabled`, so this is the exact shape of a forgotten `opa_mode`.
+    #[test]
+    fn opa_url_with_disabled_mode_is_rejected() {
+        let error = resolve_opa_params(Some("http://127.0.0.1:8181".to_owned()), "disabled")
+            .expect_err("`opa_url` with `opa_mode = disabled` must be refused");
+        let message = error.to_string();
+        assert!(message.contains("--opa-url"), "{message}");
+        assert!(message.contains("--opa-mode"), "{message}");
+
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.opa.opa_url = Some("http://127.0.0.1:8181".to_owned());
+        // `opa_mode` keeps its default value: `disabled`.
+        ServerParams::try_from(conf)
+            .expect_err("startup must refuse `opa_url` without an active `opa_mode`");
+    }
+
+    /// The other half of the contract: an active mode needs a URL, an unknown mode is refused,
+    /// and the valid combinations resolve unchanged.
+    #[test]
+    fn opa_params_resolve_valid_combinations_only() {
+        assert!(
+            resolve_opa_params(None, "disabled")
+                .expect("no URL and disabled is the default")
+                .is_none()
+        );
+        resolve_opa_params(None, "enforcing").expect_err("an active mode requires a URL");
+        resolve_opa_params(Some("http://127.0.0.1:8181".to_owned()), "permissive")
+            .expect_err("an unknown mode is refused");
+
+        for (raw_mode, mode) in [
+            ("exclusive", OpaMode::Exclusive),
+            ("Enforcing", OpaMode::Enforcing),
+        ] {
+            let params =
+                resolve_opa_params(Some("https://opa.example.org:8181".to_owned()), raw_mode)
+                    .expect("an active mode with a URL is valid")
+                    .expect("an active mode yields parameters");
+            assert_eq!(params.mode, mode);
+            assert_eq!(params.url, "https://opa.example.org:8181");
+        }
+    }
+
+    /// The OPA URL must be a well-formed `http(s)` URL, and a rejected URL is never echoed in
+    /// the error because it may embed credentials.
+    #[test]
+    fn opa_url_must_be_http_or_https() {
+        for bad in [
+            "",
+            "localhost:8181",
+            "ftp://opa.example.org",
+            "opa.example.org",
+        ] {
+            resolve_opa_params(Some(bad.to_owned()), "enforcing")
+                .expect_err("a non-http(s) OPA URL must be refused");
+        }
+        let error = resolve_opa_params(
+            Some("ftp://user:hunter2@opa.example.org".to_owned()),
+            "enforcing",
+        )
+        .expect_err("a non-http(s) OPA URL must be refused");
+        assert!(
+            !error.to_string().contains("hunter2"),
+            "the error must not echo the URL credentials: {error}"
+        );
+    }
+
+    /// `ceremony_key_id` is resolved from the object store after the database is initialised,
+    /// so it alone must satisfy `crypto_officer_require_ceremony`: no `ceremony_secret` is
+    /// needed and nothing is derived at startup. A regression refused to start in this setup,
+    /// which made the documented `ceremony_key_id` bootstrap flow impossible.
+    #[test]
+    fn ceremony_key_id_alone_satisfies_require_ceremony() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.roles.crypto_officer_users = Some(vec![
+            "co1@example.org".to_owned(),
+            "co2@example.org".to_owned(),
+            "co3@example.org".to_owned(),
+        ]);
+        conf.roles.crypto_officer_require_ceremony = true;
+        conf.roles.ceremony_key_id = Some("ceremony-seal-2026".to_owned());
+
+        let params = ServerParams::try_from(conf)
+            .expect("`ceremony_key_id` must satisfy `require_ceremony` without `ceremony_secret`");
+        assert!(params.ceremony_keys.is_none());
+        assert_eq!(
+            params.ceremony_key_id.as_deref(),
+            Some("ceremony-seal-2026")
+        );
+    }
+
+    /// The source of the ceremony sealing keys: the key id wins, a valid secret is derived,
+    /// and a missing, malformed or wrong-length secret is refused without echoing it.
+    #[test]
+    fn ceremony_keys_come_from_key_id_or_a_valid_secret() {
+        // `CeremonyKeys` holds secrets and has no `Debug`: report only whether keys were derived.
+        fn derived(
+            key_id: Option<&str>,
+            secret: Option<&str>,
+            required: bool,
+        ) -> Result<bool, String> {
+            derive_ceremony_keys(key_id, secret, required)
+                .map(|keys| keys.is_some())
+                .map_err(|e| e.to_string())
+        }
+
+        let secret = "11".repeat(32);
+
+        assert_eq!(derived(Some("seal"), Some(&secret), true), Ok(false));
+        assert_eq!(derived(None, None, false), Ok(false));
+        assert_eq!(derived(None, Some(&secret), false), Ok(true));
+
+        let missing = derived(None, None, true).expect_err("a required ceremony needs a source");
+        assert!(missing.contains("ceremony_secret"), "{missing}");
+        assert!(missing.contains("ceremony_key_id"), "{missing}");
+
+        let not_hex = derived(None, Some("not-a-hex-secret"), false)
+            .expect_err("a secret that is not hex is refused");
+        assert!(!not_hex.contains("not-a-hex-secret"), "{not_hex}");
+        derived(None, Some("abcd"), false).expect_err("a secret of the wrong length is refused");
     }
 }

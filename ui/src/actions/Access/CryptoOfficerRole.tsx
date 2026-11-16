@@ -115,7 +115,7 @@ const CryptoOfficerRole: React.FC = () => {
             } catch (splitErr) {
                 // Compensating delete: destroy the orphaned AES key before re-throwing
                 try {
-                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, true);
+                    const destroyReq = wasm.destroy_ttlv_request(createdKeyId, false);
                     await sendKmipRequest(destroyReq, serverUrl);
                 } catch {
                     /* best-effort; ignore cleanup errors */
@@ -284,13 +284,11 @@ const CryptoOfficerRole: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Only CO candidates (active or dormant) see the revoke section.
-                                Active COs can self-revoke (empty target) or peer-revoke.
-                                Dormant candidates can only peer-revoke (button disabled otherwise).
-                                Non-CO users are excluded: ceremony_activated is system-wide
-                                (any CO active), but users who are not CO candidates have no
-                                meaningful action here and should not see the controls. */}
-                            {status.ceremony_activated && (status.is_crypto_officer || status.users.includes(userId ?? "")) && (
+                            {/* Any CO candidate (active or dormant) can revoke an active CO.
+                                Active COs can also self-revoke by leaving the target empty.
+                                Dormant candidates (in users list but no active activation) can
+                                only peer-revoke — the button is disabled if no target is set. */}
+                            {status.ceremony_activated && status.users.length > 0 && (
                                 <div className="pt-2 border-t space-y-3">
                                     <p className="text-sm font-medium">{t("cryptoOfficer.revokeRole")}</p>
                                     <Space direction="vertical" style={{ display: "flex" }}>
@@ -342,10 +340,8 @@ const CryptoOfficerRole: React.FC = () => {
                     </Card>
                 )}
 
-                {/* Ceremony workflow — shown when ceremony is required and the current user is not yet active.
-                    With the per-user model multiple COs can be simultaneously active, so we gate on
-                    `is_crypto_officer` (am I personally active?) not `ceremony_activated` (is anyone active?). */}
-                {status && status.enabled && status.require_ceremony && !status.is_crypto_officer && (
+                {/* Ceremony workflow — only shown when ceremony mode is required and role is dormant */}
+                {status && status.enabled && status.require_ceremony && !status.ceremony_activated && (
                     <>
                         {/* ── Step 1: Create & Split Key ────────────────────────────── */}
                         <Card title={t("cryptoOfficer.step1Title", { count: status.custodians_count })} data-testid="split-key-step-card">

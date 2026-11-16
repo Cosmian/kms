@@ -1,0 +1,194 @@
+{
+  "realm": "kms",
+  "displayName": "Cosmian KMS RBAC demo",
+  "enabled": true,
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 300,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "passwordPolicy": "length(12) and notUsername and notEmail",
+  "groups": [
+    { "name": "SuperAdmin" },
+    { "name": "DomainAdmin" },
+    { "name": "CryptoOfficer" },
+    { "name": "Auditor" },
+    { "name": "User" }
+  ],
+  "clients": [
+    {
+      "clientId": "kms-demo",
+      "name": "Cosmian KMS RBAC demo client",
+      "description": "Public client that obtains bearer tokens for the KMS with the password grant. Copy its four protocol mappers to any client that must call the KMS.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "kms-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "full.path": "false",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "kms-domain",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "domain",
+            "claim.name": "as_rid",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "kms-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "cosmian-kms",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "kms-email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"validations\":{\"length\":{\"min\":3,\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"Email\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"firstName\",\"displayName\":\"First name\",\"validations\":{\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"lastName\",\"displayName\":\"Last name\",\"validations\":{\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"domain\",\"displayName\":\"KMS domain (as_rid claim)\",\"validations\":{\"length\":{\"max\":255}},\"required\":{\"roles\":[\"admin\"]},\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]}}]}"
+          ]
+        }
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "superadmin@acme.com",
+      "email": "superadmin@acme.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Super",
+      "lastName": "Admin",
+      "attributes": { "domain": ["acme.com"] },
+      "groups": ["/SuperAdmin"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "admin@acme.com",
+      "email": "admin@acme.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Domain",
+      "lastName": "Admin",
+      "attributes": { "domain": ["acme.com"] },
+      "groups": ["/DomainAdmin"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "officer@acme.com",
+      "email": "officer@acme.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Crypto",
+      "lastName": "Officer",
+      "attributes": { "domain": ["acme.com"] },
+      "groups": ["/CryptoOfficer"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "auditor@acme.com",
+      "email": "auditor@acme.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Au",
+      "lastName": "Ditor",
+      "attributes": { "domain": ["acme.com"] },
+      "groups": ["/Auditor"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "user@acme.com",
+      "email": "user@acme.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Plain",
+      "lastName": "User",
+      "attributes": { "domain": ["acme.com"] },
+      "groups": ["/User"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "norole@acme.com",
+      "email": "norole@acme.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "No",
+      "lastName": "Role",
+      "attributes": { "domain": ["acme.com"] },
+      "groups": [],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "officer@globex.com",
+      "email": "officer@globex.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Globex",
+      "lastName": "Officer",
+      "attributes": { "domain": ["globex.com"] },
+      "groups": ["/CryptoOfficer"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "user@globex.com",
+      "email": "user@globex.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Globex",
+      "lastName": "User",
+      "attributes": { "domain": ["globex.com"] },
+      "groups": ["/User"],
+      "credentials": [{ "type": "password", "value": "${DEMO_USER_PASSWORD}", "temporary": false }]
+    }
+  ]
+}

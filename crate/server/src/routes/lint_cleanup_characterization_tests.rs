@@ -92,6 +92,9 @@ crypto_officer_require_ceremony = false
 [aws_xks_config]
 aws_xks_enable = false
 
+[opa]
+opa_mode = "disabled"
+
 [kmip.allowlists]
 
 [jwks_endpoint]

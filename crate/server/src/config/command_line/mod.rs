@@ -13,6 +13,7 @@ mod jwks_endpoint_config;
 mod kmip_policy_config;
 mod logging;
 mod ocsp_config;
+mod opa_config;
 mod proxy_config;
 mod roles_config;
 mod scep_config;
@@ -42,6 +43,7 @@ pub use kmip_policy_config::{
 };
 pub use logging::{LoggingConfig, get_default_rolling_log_dir};
 pub use ocsp_config::{NoncePolicyConfig, OcspConfig};
+pub use opa_config::OpaConfig;
 pub use proxy_config::ProxyConfig;
 pub use roles_config::RolesConfig;
 pub use scep_config::ScepConfig;

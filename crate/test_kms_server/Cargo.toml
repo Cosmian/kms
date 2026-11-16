@@ -45,6 +45,6 @@ x509-parser = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 futures = { workspace = true }
-reqwest = { workspace = true, features = ["rustls-tls", "cookies"] }
+reqwest = { workspace = true, features = ["rustls-tls", "json", "cookies"] }
 tempfile = { workspace = true }
 zeroize = { workspace = true }
