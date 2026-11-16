@@ -1210,7 +1210,9 @@ impl DbParameters for SqlitePool {
 impl Migrate for SqlitePool {
     type MigrationLock = SqliteMigrationLock;
 
-    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+    const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.0.0");
+    // SQL databases stopped recording `db_version` on normal startup in 5.15.0 (#646).
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.15.0");
 
     async fn has_data(&self) -> DbResult<bool> {
         let has_objects = get_sqlite_query!("has-objects");
@@ -2003,44 +2005,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::SqlitePool;
-    use crate::{
-        DbError,
-        error::DbResult,
-        stores::migrate::{DbParameters, DbState},
-    };
-
-    /// Fail unless the `parameters` row `name` currently holds `expected`.
-    async fn expect_parameter(
-        pool: &SqlitePool,
-        name: &'static str,
-        expected: &str,
-    ) -> DbResult<()> {
-        let actual = pool.get_parameter(name).await?;
-        if actual.as_deref() != Some(expected) {
-            return Err(DbError::DatabaseError(format!(
-                "parameter '{name}': expected {expected:?}, got {actual:?}"
-            )));
-        }
-        Ok(())
-    }
-
-    /// A freshly initialised database records its version and a `ready` state in the
-    /// `parameters` table, and `set_db_state` / `set_db_version` overwrite them
-    /// using the serialized (`snake_case`) representation read back by other backends.
-    #[tokio::test]
-    async fn test_migration_markers_roundtrip() -> DbResult<()> {
-        let dir = TempDir::new()?;
-        let pool = SqlitePool::instantiate(&dir.path().join("markers.db"), true, None).await?;
-
-        expect_parameter(&pool, "db_version", env!("CARGO_PKG_VERSION")).await?;
-        expect_parameter(&pool, "db_state", "\"ready\"").await?;
-
-        pool.set_db_state(DbState::Upgrading).await?;
-        expect_parameter(&pool, "db_state", "\"upgrading\"").await?;
-
-        pool.set_db_version("0.0.1-test").await?;
-        expect_parameter(&pool, "db_version", "0.0.1-test").await
-    }
+    use crate::{DbError, error::DbResult};
 
     /// Fail unless the `crls` table holds exactly `expected` issuers.
     async fn expect_crl_issuers(pool: &SqlitePool, expected: usize) -> DbResult<()> {

@@ -22,7 +22,6 @@ pub(crate) const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_seri
 /// Maximum time a starting instance waits for another instance's migration lock.
 pub(crate) const MIGRATION_LOCK_TIMEOUT: Duration = Duration::from_mins(31);
 const MIGRATION_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(500);
-const SUPPORTED_BASELINE: Version = Version(5, 20, 0);
 
 /// Data transformations whose markers and version checkpoints are owned by the runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +81,13 @@ fn newer_database_error(recorded: &str, target: &str) -> DbError {
     db_error!(
         "Database version {recorded} is newer than this KMS server version {target}: \
          refusing to start. Upgrade the KMS server to {recorded} or later."
+    )
+}
+
+fn older_database_error(recorded: &str, minimum: &str) -> DbError {
+    db_error!(
+        "Legacy database: recorded version {recorded} is older than the minimum supported version \
+         {minimum} (pre-{minimum} data is unsupported; export and re-import)."
     )
 }
 
@@ -168,6 +174,9 @@ pub(crate) trait Migrate: DbParameters {
     /// A populated, unversioned database is refused when this is `None`.
     const UNVERSIONED_BASELINE: Option<&'static str>;
 
+    /// Recorded versions below this floor are refused (for example pre-5.0 SQL or pre-5.12 Redis).
+    const MIN_RECORDED_VERSION: Option<&'static str> = None;
+
     /// Check for stored objects, not metadata or the migration lock itself.
     async fn has_data(&self) -> DbResult<bool>;
 
@@ -208,16 +217,14 @@ pub(crate) trait Migrate: DbParameters {
                 baseline
             }
         };
-        let mut recorded_version = recorded.parse::<Version>()?;
+        let recorded_version = recorded.parse::<Version>()?;
         if recorded_version > target_version {
             return Err(newer_database_error(recorded, target));
         }
-        if recorded_version < SUPPORTED_BASELINE {
-            tracing::warn!(
-                recorded,
-                "transparent migration supported from 5.20.0; attempting all registered steps"
-            );
-            recorded_version = Version(0, 0, 0);
+        if let Some(minimum) = Self::MIN_RECORDED_VERSION
+            && recorded_version < minimum.parse::<Version>()?
+        {
+            return Err(older_database_error(recorded, minimum));
         }
         let applied = apply_pending_steps(self, recorded_version, target_version).await?;
         self.set_db_version(target).await?;
@@ -236,8 +243,15 @@ pub(crate) trait Migrate: DbParameters {
         let target_version = target.parse::<Version>()?;
         if let Some(recorded) = self.get_db_version().await? {
             let recorded_version = recorded.parse::<Version>()?;
-            if !clear_database && recorded_version > target_version {
-                return Err(newer_database_error(&recorded, target));
+            if !clear_database {
+                if recorded_version > target_version {
+                    return Err(newer_database_error(&recorded, target));
+                }
+                if let Some(minimum) = Self::MIN_RECORDED_VERSION
+                    && recorded_version < minimum.parse::<Version>()?
+                {
+                    return Err(older_database_error(&recorded, minimum));
+                }
             }
         }
         self.ensure_schema(clear_database).await?;
@@ -326,7 +340,8 @@ mod tests {
     impl Migrate for InMemoryMigrationBackend {
         type MigrationLock = InMemoryMigrationLock;
 
-        const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+        const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.0.0");
+        const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.15.0");
 
         async fn has_data(&self) -> DbResult<bool> {
             Ok(true)
@@ -586,9 +601,7 @@ mod tests {
             MigrationStep::CertificateSerialTagBackfill,
         ];
         type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [MigrationStep]);
-        let cases: [Case<'_>; 4] = [
-            // Below the supported baseline: warn, then attempt every registered step.
-            ("below baseline", &[("db_version", "5.14.0")], &BOTH),
+        let cases: [Case<'_>; 3] = [
             // A crash after a checkpoint leaves `upgrading`; the run resumes from the checkpoint.
             (
                 "interrupted run",
@@ -605,7 +618,7 @@ mod tests {
                 ],
                 &[],
             ),
-            // Unversioned and populated: assumed to be the 5.20.0 baseline.
+            // Unversioned and populated: assumed to be the 5.15.0 baseline.
             ("unversioned", &[], &BOTH),
         ];
         for (name, parameters, expected) in cases {
@@ -624,6 +637,20 @@ mod tests {
                 "{name}: the run must stamp the target version and finish ready"
             );
         }
+
+        let legacy = InMemoryMigrationBackend::default();
+        legacy.set_db_version("4.20.0").await?;
+        let error = legacy
+            .bootstrap(false, "5.29.0")
+            .await
+            .err()
+            .ok_or_else(|| db_error!("A pre-5.0.0 database must be refused"))?;
+        db_ensure!(
+            error.to_string().contains("Legacy database")
+                && error.to_string().contains("4.20.0")
+                && error.to_string().contains("5.0.0"),
+            "Unexpected pre-5.0.0 error: {error}"
+        );
         Ok(())
     }
 

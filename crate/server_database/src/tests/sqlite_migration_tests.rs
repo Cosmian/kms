@@ -5,8 +5,12 @@ use std::{
     time::Duration,
 };
 
-use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{KmipOperation, kmip_objects::Object},
+};
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
+use openssl::x509::X509;
 use rusqlite::{Connection, types::Value};
 use tempfile::TempDir;
 
@@ -265,29 +269,40 @@ async fn assert_wrapped_key_found(pool: &SqlitePool) -> DbResult<()> {
 async fn assert_serial_tag(pool: &SqlitePool, present: bool) -> DbResult<()> {
     let mut seen_serials = HashSet::new();
     for cert_id in ["mig_cert", "bulk_cert_2"] {
+        let cert = pool
+            .retrieve(cert_id)
+            .await?
+            .ok_or_else(|| db_error!("Missing fixture certificate {cert_id}"))?;
+        let Object::Certificate(certificate) = cert.object() else {
+            return Err(db_error!("Fixture object {cert_id} is not a certificate"));
+        };
+        let raw_hex = X509::from_der(&certificate.certificate_value)
+            .map_err(|error| db_error!("Invalid fixture X.509 DER for {cert_id}: {error}"))?
+            .serial_number()
+            .to_bn()
+            .and_then(|bn| bn.to_hex_str())
+            .map_err(|error| db_error!("Invalid fixture X.509 serial for {cert_id}: {error}"))?
+            .to_string();
+        let expected_tag = format!("_serial={raw_hex}");
         let tags = pool.retrieve_tags(cert_id).await?;
         let serial_tags: Vec<_> = tags
             .iter()
             .filter(|tag| tag.starts_with("_serial="))
+            .map(String::as_str)
             .collect();
+        let expected: &[&str] = if present {
+            &[expected_tag.as_str()]
+        } else {
+            &[]
+        };
         db_ensure!(
-            serial_tags.len() == usize::from(present),
-            "For {cert_id}: expected serial tag present={present}, got {serial_tags:?}"
+            serial_tags == expected,
+            "For {cert_id}: expected serial tags {expected:?}, got {serial_tags:?}"
         );
-        if let Some(tag) = serial_tags.first() {
-            let serial = tag
-                .strip_prefix("_serial=")
-                .ok_or_else(|| db_error!("Missing certificate serial tag prefix"))?;
+        if present {
             db_ensure!(
-                !serial.is_empty()
-                    && serial
-                        .bytes()
-                        .all(|byte| byte.is_ascii_digit() || matches!(byte, b'A'..=b'F')),
-                "Expected a nonempty uppercase hexadecimal serial tag for {cert_id}"
-            );
-            db_ensure!(
-                seen_serials.insert(serial.to_owned()),
-                "Duplicate certificate serial tag across fixture certificates: {serial}"
+                seen_serials.insert(expected_tag),
+                "Duplicate certificate serial tag across fixture certificates for {cert_id}"
             );
         }
     }
@@ -456,6 +471,11 @@ async fn test_sqlite_migration_refuses_newer_or_invalid_version_untouched() -> D
             "99.0.0",
             "Database Error: Database version 99.0.0 is newer than this KMS server version \
              5.29.0: refusing to start. Upgrade the KMS server to 99.0.0 or later.",
+        ),
+        (
+            "4.20.0",
+            "Database Error: Legacy database: recorded version 4.20.0 is older than the minimum \
+             supported version 5.0.0 (pre-5.0.0 data is unsupported; export and re-import).",
         ),
         ("not-a-version", "not-a-version"),
     ];
