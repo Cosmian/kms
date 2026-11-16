@@ -1,12 +1,19 @@
 ---
 name: Install Rust
-description: Install the Rust toolchain with dtolnay/rust-toolchain. Must run after actions/checkout.
+description: Install the Rust toolchain pinned in rust-toolchain.toml with dtolnay/rust-toolchain. Must run after actions/checkout.
 
 runs:
   using: composite
   steps:
+    # Installing `stable` while rust-toolchain.toml pins another version makes rustup
+    # later re-install the pinned one over the runner's preinstalled copy (clippy conflict).
+    - name: Read pinned toolchain
+      id: pin
+      shell: bash
+      run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
       with:
-        toolchain: stable
-        components: rustfmt, clippy
+        toolchain: ${{ steps.pin.outputs.channel }}
+        components: rustfmt, clippy, rust-src
