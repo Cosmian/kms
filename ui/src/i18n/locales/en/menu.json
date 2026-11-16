@@ -104,6 +104,8 @@
     "secret-data/activate": "Activate",
     "secret-data/revoke": "Revoke",
     "secret-data/destroy": "Destroy",
+    "ssh-certificate": "SSH Certificate",
+    "generate-password": "Generate Password",
     "opaque-object": "Opaque Object",
     "opaque-object/create": "Create",
     "opaque-object/export": "Export",

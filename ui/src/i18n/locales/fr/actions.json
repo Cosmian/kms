@@ -918,6 +918,23 @@
         "deleted": "Dernière version supprimée",
         "destroyed": "Toutes les versions détruites"
     },
+    "sshCertificate": {
+        "title": "Certificat utilisateur SSH",
+        "intro": "Émettre un certificat utilisateur OpenSSH de courte durée avec une AC SSH gérée par le KMS.",
+        "role": "Rôle de signature",
+        "publicKey": "Clé publique OpenSSH",
+        "principals": "Principaux autorisés",
+        "principalsHelp": "Noms de connexion séparés par des virgules.",
+        "ttl": "TTL (facultatif)",
+        "submit": "Signer le certificat",
+        "responseTitle": "Certificat SSH signé"
+    },
+    "generatePassword": {
+        "title": "Générer un mot de passe",
+        "intro": "Générer un mot de passe de 32 caractères avec l'aléa géré par le KMS.",
+        "submit": "Générer le mot de passe",
+        "result": "Mot de passe généré"
+    },
     "hsmStatus": {
         "title": "État du HSM",
         "refresh": "Actualiser",

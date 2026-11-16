@@ -25,6 +25,7 @@ pub mod rng;
 pub mod rsa;
 pub mod secret_data;
 pub mod shared;
+pub mod ssh;
 pub mod symmetric;
 pub mod vault;
 pub mod version;

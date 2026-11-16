@@ -918,6 +918,23 @@
         "deleted": "Latest version deleted",
         "destroyed": "All versions destroyed"
     },
+    "sshCertificate": {
+        "title": "SSH User Certificate",
+        "intro": "Issue a short-lived OpenSSH user certificate with a KMS-managed SSH CA.",
+        "role": "Signing role",
+        "publicKey": "OpenSSH public key",
+        "principals": "Valid principals",
+        "principalsHelp": "Comma-separated login names.",
+        "ttl": "TTL (optional)",
+        "submit": "Sign certificate",
+        "responseTitle": "Signed SSH certificate"
+    },
+    "generatePassword": {
+        "title": "Generate Password",
+        "intro": "Generate a fresh 32-character password using KMS-managed randomness.",
+        "submit": "Generate password",
+        "result": "Generated password"
+    },
     "hsmStatus": {
         "title": "HSM Status",
         "refresh": "Refresh",

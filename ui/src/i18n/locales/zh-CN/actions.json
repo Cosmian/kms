@@ -918,6 +918,23 @@
         "deleted": "最新版本已删除",
         "destroyed": "所有版本已销毁"
     },
+    "sshCertificate": {
+        "title": "SSH 用户证书",
+        "intro": "使用 KMS 管理的 SSH CA 签发短期 OpenSSH 用户证书。",
+        "role": "签名角色",
+        "publicKey": "OpenSSH 公钥",
+        "principals": "有效主体",
+        "principalsHelp": "用逗号分隔登录名。",
+        "ttl": "TTL（可选）",
+        "submit": "签发证书",
+        "responseTitle": "已签名 SSH 证书"
+    },
+    "generatePassword": {
+        "title": "生成密码",
+        "intro": "使用 KMS 管理的随机数生成 32 个字符的新密码。",
+        "submit": "生成密码",
+        "result": "生成的密码"
+    },
     "hsmStatus": {
         "title": "HSM 状态",
         "refresh": "刷新",

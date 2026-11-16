@@ -39,6 +39,7 @@ use crate::{
         rsa::RsaCommands,
         secret_data::SecretDataCommands,
         shared::LocateObjectsAction,
+        ssh::{PasswordAction, SshCommands},
         symmetric::SymmetricCommands,
         vault::VaultCommands,
         version::ServerVersionAction,
@@ -134,6 +135,11 @@ pub enum KmsActions {
     /// Read and write secrets in the Vault KV v2-compatible store.
     #[command(subcommand)]
     Kv(KvCommands),
+    /// Sign OpenSSH user certificates with a KMS-managed SSH CA.
+    #[command(subcommand)]
+    Ssh(SshCommands),
+    /// Generate a random password using the KMS.
+    Password(PasswordAction),
     Locate(LocateObjectsAction),
     Login(LoginAction),
     /// Logout from the Identity Provider.
@@ -203,6 +209,8 @@ impl KmsActions {
             Self::Ec(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Google(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Kv(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Ssh(action) => Box::pin(action.process(&kms_rest_client)).await?,
+            Self::Password(action) => Box::pin(action.run(&kms_rest_client)).await?,
             Self::Locate(action) => {
                 Box::pin(action.run(kms_rest_client)).await?;
             }

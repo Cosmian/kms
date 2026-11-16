@@ -45,6 +45,12 @@ graph LR
 
 ## Symmetric Keys
 
+## SSH and password utilities
+
+### ssh-password-flow
+
+Covers Web UI password generation and validates the returned 32-character alphanumeric value.
+
 ### sym-key-flow
 
 ```mermaid
