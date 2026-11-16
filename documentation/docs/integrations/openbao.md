@@ -119,7 +119,7 @@ Unsealing Vault with the KMS needs a different integration, not yet implemented:
 
 - OpenBao reports the `kmip` seal type, is initialized and unsealed, and unseals again after a restart;
 - the KMS served KMIP `Encrypt` and `Decrypt` for the OpenBao client certificate identity only;
-- the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode. The KMS records this in its debug log (`cosmian_kms_server=debug`): the protocol version and, for `Encrypt` and `Decrypt`, the key identifier, the algorithm and the block cipher mode, never the data.
+- the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode. The KMS records this in its debug log (`cosmian_kms_server=debug`): for every operation, the protocol version, the key identifier, the algorithm and the block cipher mode, never the data, the IV or any key material.
 
 ## Part 2 — Use the KMS as a KV v2 secret store
 

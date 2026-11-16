@@ -3,7 +3,6 @@ use std::{
     ops::Not,
 };
 
-use base64::{Engine, engine::general_purpose};
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
@@ -40,44 +39,29 @@ use crate::{
     ttlv::Interval,
 };
 
-/// Extension trait to add base64 display functionality to byte types
-pub(crate) trait Base64Display {
-    fn to_base64(&self) -> String;
+/// `Display` text of a byte string: its length, never its content (it may be a plaintext, a
+/// key or a PIN).
+pub(crate) trait LenDisplay {
+    /// `<N bytes>`, or `None` for an absent optional value.
+    fn len_display(&self) -> String;
 }
 
-impl Base64Display for Vec<u8> {
-    fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self)
+impl LenDisplay for [u8] {
+    fn len_display(&self) -> String {
+        format!("<{} bytes>", self.len())
     }
 }
 
-impl Base64Display for &Vec<u8> {
-    fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self)
+impl LenDisplay for Vec<u8> {
+    fn len_display(&self) -> String {
+        self.as_slice().len_display()
     }
 }
 
-impl Base64Display for Zeroizing<Vec<u8>> {
-    fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self)
-    }
-}
-
-impl Base64Display for Option<Vec<u8>> {
-    fn to_base64(&self) -> String {
-        self.as_ref().map_or_else(
-            || "None".to_owned(),
-            |bytes| general_purpose::STANDARD.encode(bytes),
-        )
-    }
-}
-
-impl Base64Display for Option<Zeroizing<Vec<u8>>> {
-    fn to_base64(&self) -> String {
-        self.as_ref().map_or_else(
-            || "None".to_owned(),
-            |bytes| general_purpose::STANDARD.encode(bytes),
-        )
+impl<T: LenDisplay> LenDisplay for Option<T> {
+    fn len_display(&self) -> String {
+        self.as_ref()
+            .map_or_else(|| "None".to_owned(), LenDisplay::len_display)
     }
 }
 
@@ -89,8 +73,8 @@ impl Base64Display for Option<Zeroizing<Vec<u8>>> {
 ///     req field_name,       // required field (always displayed)
 ///     opt field_name,       // optional field (displayed only if Some)
 ///     req_debug field_name, // required field displayed with Debug
-///     req_b64 field_name,   // required field displayed as base64
-///     opt_b64 field_name,   // optional field displayed as base64 (skipped if None)
+///     req_len field_name,   // required byte string, only its length is displayed
+///     opt_len field_name,   // optional byte string, only its length is displayed (skipped if None)
 /// });
 /// ```
 macro_rules! impl_display {
@@ -114,12 +98,14 @@ macro_rules! impl_display {
     (@field $f:ident, $self:ident, req_debug, $field:ident) => {
         write!($f, concat!("  ", stringify!($field), ": {:?}"), $self.$field)?;
     };
-    (@field $f:ident, $self:ident, req_b64, $field:ident) => {
-        write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.to_base64())?;
+    // Byte strings (plaintext, ciphertext, IV, tag, MAC, signature, seed, ...) are never written
+    // to a string, so a `{request}` log line cannot leak them: only their length is shown.
+    (@field $f:ident, $self:ident, req_len, $field:ident) => {
+        write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.len_display())?;
     };
-    (@field $f:ident, $self:ident, opt_b64, $field:ident) => {
-        if $self.$field.is_some() {
-            write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.to_base64())?;
+    (@field $f:ident, $self:ident, opt_len, $field:ident) => {
+        if let Some(v) = &$self.$field {
+            write!($f, concat!("  ", stringify!($field), ": {}"), v.len_display())?;
         }
     };
 }
@@ -508,12 +494,12 @@ impl Display for PKCS11 {
         write!(
             f,
             "  PKCS11InputParameters: {}",
-            self.pkcs11_input_parameters.to_base64()
+            self.pkcs11_input_parameters.len_display()
         )?;
         write!(
             f,
             "  CorrelationValue: {}",
-            self.correlation_value.to_base64()
+            self.correlation_value.len_display()
         )?;
         write!(f, "}}")?;
         Ok(())
@@ -573,7 +559,7 @@ impl Display for PKCS11Response {
         write!(
             f,
             "  PKCS11OutputParameters: {}",
-            self.pkcs11_output_parameters.to_base64()
+            self.pkcs11_output_parameters.len_display()
         )?;
         if let Some(code) = &self.pkcs11_return_code {
             write!(f, "  PKCS11ReturnCode: {code:?}")?;
@@ -583,7 +569,7 @@ impl Display for PKCS11Response {
         write!(
             f,
             "  CorrelationValue: {}",
-            self.correlation_value.to_base64()
+            self.correlation_value.len_display()
         )?;
         write!(f, "}}")?;
         Ok(())
@@ -1105,7 +1091,7 @@ pub struct RNGRetrieveResponse {
     pub data: Vec<u8>,
 }
 
-impl_display!(RNGRetrieveResponse, "RNGRetrieveResponse", { req_b64 data });
+impl_display!(RNGRetrieveResponse, "RNGRetrieveResponse", { req_len data });
 
 /// `RNGSeed` operation
 ///
@@ -1118,7 +1104,7 @@ pub struct RNGSeed {
     pub data: Vec<u8>,
 }
 
-impl_display!(RNGSeed, "RNGSeed", { req_b64 data });
+impl_display!(RNGSeed, "RNGSeed", { req_len data });
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -1308,7 +1294,7 @@ pub struct Certify {
 impl_display!(Certify, "Certify", {
     opt unique_identifier,
     opt certificate_request_type,
-    opt_b64 certificate_request_value,
+    opt_len certificate_request_value,
     opt attributes,
     opt protection_storage_masks,
 });
@@ -1373,7 +1359,7 @@ impl_display!(ReCertify, "ReCertify", {
     opt unique_identifier,
     opt certificate_request_unique_identifier,
     opt certificate_request_type,
-    opt_b64 certificate_request_value,
+    opt_len certificate_request_value,
     opt offset,
     opt attributes,
     opt protection_storage_masks,
@@ -1562,13 +1548,13 @@ pub struct Decrypt {
 impl_display!(Decrypt, "Decrypt", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 i_v_counter_nonce,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len i_v_counter_nonce,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
-    opt_b64 authenticated_encryption_additional_data,
-    opt_b64 authenticated_encryption_tag,
+    opt_len authenticated_encryption_additional_data,
+    opt_len authenticated_encryption_tag,
 });
 
 /// When decrypting data with Cover Crypt we can have some
@@ -1640,8 +1626,8 @@ pub struct DecryptResponse {
 
 impl_display!(DecryptResponse, "DecryptResponse", {
     req unique_identifier,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
 });
 
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -1903,12 +1889,12 @@ pub struct Encrypt {
 impl_display!(Encrypt, "Encrypt", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 i_v_counter_nonce,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len i_v_counter_nonce,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
-    opt_b64 authenticated_encryption_additional_data,
+    opt_len authenticated_encryption_additional_data,
 });
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -1947,10 +1933,10 @@ pub struct EncryptResponse {
 
 impl_display!(EncryptResponse, "EncryptResponse", {
     req unique_identifier,
-    opt_b64 data,
-    opt_b64 i_v_counter_nonce,
-    opt_b64 correlation_value,
-    opt_b64 authenticated_encryption_tag,
+    opt_len data,
+    opt_len i_v_counter_nonce,
+    opt_len correlation_value,
+    opt_len authenticated_encryption_tag,
 });
 
 /// Export
@@ -2320,8 +2306,8 @@ pub struct Hash {
 
 impl_display!(Hash, "Hash", {
     req cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -2338,8 +2324,8 @@ pub struct HashResponse {
 }
 
 impl_display!(HashResponse, "HashResponse", {
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
 });
 
 /// `CreateSplitKey`
@@ -2665,8 +2651,8 @@ pub struct MAC {
 impl_display!(MAC, "Mac", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -2687,8 +2673,8 @@ pub struct MACResponse {
 
 impl_display!(MACResponse, "MacResponse", {
     req unique_identifier,
-    opt_b64 mac_data,
-    opt_b64 correlation_value,
+    opt_len mac_data,
+    opt_len correlation_value,
 });
 
 /// MAC Verify (KMIP 2.1 §6.1.33, Table 262)
@@ -2720,9 +2706,9 @@ pub struct MACVerify {
 impl_display!(MACVerify, "MACVerify", {
     req unique_identifier,
     opt cryptographic_parameters,
-    req_b64 data,
-    req_b64 mac_data,
-    opt_b64 correlation_value,
+    req_len data,
+    req_len mac_data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -2743,7 +2729,7 @@ pub struct MACVerifyResponse {
 impl_display!(MACVerifyResponse, "MACVerifyResponse", {
     req unique_identifier,
     opt validity_indicator,
-    opt_b64 correlation_value,
+    opt_len correlation_value,
 });
 
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
@@ -3223,7 +3209,7 @@ impl Display for Validate {
                 write!(
                     f,
                     "  certificate: {}",
-                    certificate.certificate_value.to_base64()
+                    certificate.certificate_value.len_display()
                 )?;
             }
         }
@@ -3309,9 +3295,9 @@ pub struct Sign {
 impl_display!(Sign, "Sign", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 digested_data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len digested_data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -3336,8 +3322,8 @@ pub struct SignResponse {
 
 impl_display!(SignResponse, "SignResponse", {
     req unique_identifier,
-    opt_b64 signature_data,
-    opt_b64 correlation_value,
+    opt_len signature_data,
+    opt_len correlation_value,
 });
 
 /// Signature Verify operation request
@@ -3373,10 +3359,10 @@ pub struct SignatureVerify {
 impl_display!(SignatureVerify, "SignatureVerify", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 digested_data,
-    opt_b64 signature_data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len digested_data,
+    opt_len signature_data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -3401,14 +3387,60 @@ pub struct SignatureVerifyResponse {
 impl_display!(SignatureVerifyResponse, "SignatureVerifyResponse", {
     req unique_identifier,
     opt validity_indicator,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
 });
 
 #[cfg(test)]
 mod tests {
-    use super::{Activate, PKCS11Function};
-    use crate::kmip_2_1::kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration};
+    use zeroize::Zeroizing;
+
+    use super::{Activate, Encrypt, PKCS11Function};
+    use crate::kmip_2_1::{
+        kmip_data_structures::DerivationParameters,
+        kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration},
+    };
+
+    /// Logging `{request}` must never write plaintext, IV, nonce or AAD: only their lengths.
+    #[test]
+    fn encrypt_display_shows_byte_lengths_not_content() {
+        let encrypt = Encrypt {
+            data: Some(Zeroizing::new(b"top-secret-plaintext".to_vec())),
+            i_v_counter_nonce: Some(b"secret-iv-12".to_vec()),
+            authenticated_encryption_additional_data: Some(b"secret-aad".to_vec()),
+            ..Encrypt::default()
+        };
+        let shown = encrypt.to_string();
+        assert!(shown.contains("data: <20 bytes>"), "{shown}");
+        assert!(shown.contains("i_v_counter_nonce: <12 bytes>"), "{shown}");
+        assert!(
+            shown.contains("authenticated_encryption_additional_data: <10 bytes>"),
+            "{shown}"
+        );
+        for leaked in ["secret", "plaintext", "dG9w", "c2VjcmV0"] {
+            assert!(!shown.contains(leaked), "{leaked} leaked in: {shown}");
+        }
+    }
+
+    /// The salt, IV and derivation data of a key derivation are secrets of the caller.
+    #[test]
+    fn derivation_parameters_display_hides_bytes() {
+        let shown = DerivationParameters {
+            initialization_vector: Some(b"SECRET-IV".to_vec()),
+            derivation_data: Some(Zeroizing::new(b"SECRET-DATA".to_vec())),
+            salt: Some(b"SECRET-SALT".to_vec()),
+            ..DerivationParameters::default()
+        }
+        .to_string();
+        for field in [
+            "initialization_vector: <9 bytes>",
+            "derivation_data: <11 bytes>",
+            "salt: <11 bytes>",
+        ] {
+            assert!(shown.contains(field), "{shown}");
+        }
+        assert!(!shown.contains("SECRET"), "{shown}");
+    }
 
     /// KMIP 2.1 §11.38: codes are the 1-based offsets in `CK_FUNCTION_LIST_3_0`
     /// (`version` excluded): `C_Initialize`, `C_Finalize`, `C_GetInfo`, ...

@@ -1266,3 +1266,49 @@ async fn preflight_reports_kv_v2_only_for_the_mount() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(body["errors"].is_array());
 }
+
+/// A mount named like another scope must not shadow that scope: the guard hands every request
+/// that is not a KV `data/`/`metadata/` route on to the later services.
+#[tokio::test]
+async fn mount_named_like_another_scope_does_not_shadow_it() {
+    let kms = test_kms_instance().await;
+    let app = init_service(
+        App::new()
+            .app_data(Data::new(kms))
+            .wrap(from_fn(inject_test_user))
+            .service(
+                web::scope("/health")
+                    .guard(mount_guard("/health"))
+                    .configure(configure_routes),
+            )
+            .service(web::resource("/health").to(|| async { "other-scope" }))
+            .service(web::resource("/health/live").to(|| async { "other-scope" })),
+    )
+    .await;
+    for uri in ["/health", "/health/live"] {
+        let (status, body) = send_raw(&app, TestRequest::get().uri(uri), "alice").await;
+        assert_eq!(
+            (status, body.as_str()),
+            (StatusCode::OK, "other-scope"),
+            "{uri}"
+        );
+    }
+    // KV claimed these: a path that does not exist answers with the KV `permission denied` envelope.
+    for uri in ["/health/data/x", "/health/metadata/x"] {
+        let (status, body) = send_raw(&app, TestRequest::get().uri(uri), "alice").await;
+        assert_eq!(
+            (status, body.as_str()),
+            (StatusCode::FORBIDDEN, DENIED),
+            "{uri}"
+        );
+    }
+    // Not KV routes: nobody serves them, and the KV scope did not answer.
+    for uri in ["/health/database/x", "/health/dataX/x", "/health/other"] {
+        let (status, body) = send_raw(&app, TestRequest::get().uri(uri), "alice").await;
+        assert_eq!(
+            (status, body.as_str()),
+            (StatusCode::NOT_FOUND, ""),
+            "{uri}"
+        );
+    }
+}

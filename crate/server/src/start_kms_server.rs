@@ -1439,6 +1439,62 @@ pub async fn prepare_kms_server(
                     }),
             );
 
+        let native_auth = NativeAuthStack {
+            kms_server: &kms_server_for_http,
+            use_api_token_auth,
+            use_cert_auth,
+            use_vault_token_auth,
+            auth_verifier: &auth_verifier,
+            auth_verifier_session_realm: &auth_verifier_session_realm,
+            jwt_configurations: &jwt_configurations,
+            spire_cache: &spire_cache,
+            spire_auth_verifier_url: &spire_auth_verifier_url,
+            vault_http_client: &vault_http_client,
+            spire_default_username: &spire_default_username,
+        };
+
+        if enable_kv {
+            // The Vault KV v2-compatible secret store. Accepts native KMS auth and, when
+            // `vault_api_enabled = true`, an `X-Vault-Token` header so that Vault/`bao`
+            // clients (OpenBao) authenticate once.
+            //
+            // The same routes are mounted on `/<kv_mount>` (native clients, kept for backward
+            // compatibility) and on `/v1/<kv_mount>` (what `vault`/`bao` always send), plus the
+            // KV v2 detection the CLI performs first on `/v1/sys/internal/ui/mounts`. The mount
+            // name needs no reserved-name list: the mount scopes claim only their own
+            // `data/`/`metadata/` routes (`kv::mount_guard`), so they cannot shadow another scope.
+            // They are registered before every unguarded scope (`/google_cse`, `/ms_dke`, ...),
+            // which would otherwise swallow a mount of the same name.
+            let use_any_auth = use_vault_token_auth
+                || use_jwt_auth
+                || use_cert_auth
+                || use_api_token_auth
+                || use_auth_verifier;
+            let kv_mount = &kms_server_for_http.params.kv.mount;
+            let native_path = format!("/{kv_mount}");
+            let v1_path = format!("/v1/{kv_mount}");
+            app = app
+                .service(
+                    kv_scope(
+                        &native_path,
+                        kv::configure_routes,
+                        use_any_auth,
+                        &native_auth,
+                    )
+                    .guard(kv::mount_guard(&native_path)),
+                )
+                .service(
+                    kv_scope(&v1_path, kv::configure_routes, use_any_auth, &native_auth)
+                        .guard(kv::mount_guard(&v1_path)),
+                )
+                .service(kv_scope(
+                    "/v1/sys/internal/ui/mounts",
+                    kv::configure_mount_routes,
+                    use_any_auth,
+                    &native_auth,
+                ));
+        }
+
         if kms_server_for_http.params.kms_public_url.is_some()
             && kms_server_for_http.params.google_cse.enable
         {
@@ -1497,56 +1553,6 @@ pub async fn prepare_kms_server(
                 .service(ms_dke::get_key)
                 .service(ms_dke::decrypt);
             app = app.service(ms_dke_scope);
-        }
-
-        let native_auth = NativeAuthStack {
-            kms_server: &kms_server_for_http,
-            use_api_token_auth,
-            use_cert_auth,
-            use_vault_token_auth,
-            auth_verifier: &auth_verifier,
-            auth_verifier_session_realm: &auth_verifier_session_realm,
-            jwt_configurations: &jwt_configurations,
-            spire_cache: &spire_cache,
-            spire_auth_verifier_url: &spire_auth_verifier_url,
-            vault_http_client: &vault_http_client,
-            spire_default_username: &spire_default_username,
-        };
-
-        if enable_kv {
-            // The Vault KV v2-compatible secret store. Accepts native KMS auth and, when
-            // `vault_api_enabled = true`, an `X-Vault-Token` header so that Vault/`bao`
-            // clients (OpenBao) authenticate once.
-            //
-            // The same routes are mounted on `/<kv_mount>` (native clients, kept for backward
-            // compatibility) and on `/v1/<kv_mount>` (what `vault`/`bao` always send), plus the
-            // KV v2 detection the CLI performs first on `/v1/sys/internal/ui/mounts`. The mount
-            // name is validated against the other scopes in `ServerParams::try_from`.
-            let use_any_auth = use_vault_token_auth
-                || use_jwt_auth
-                || use_cert_auth
-                || use_api_token_auth
-                || use_auth_verifier;
-            let kv_mount = &kms_server_for_http.params.kv.mount;
-            app = app
-                .service(kv_scope(
-                    &format!("/{kv_mount}"),
-                    kv::configure_routes,
-                    use_any_auth,
-                    &native_auth,
-                ))
-                .service(kv_scope(
-                    &format!("/v1/{kv_mount}"),
-                    kv::configure_routes,
-                    use_any_auth,
-                    &native_auth,
-                ))
-                .service(kv_scope(
-                    "/v1/sys/internal/ui/mounts",
-                    kv::configure_mount_routes,
-                    use_any_auth,
-                    &native_auth,
-                ));
         }
 
         if enable_aws_xks {
@@ -2488,9 +2494,12 @@ mod tests {
         };
 
         let auth = TestAuthStack::new(Some(live_auth_verifier().await)).await;
-        let app = test::init_service(App::new().app_data(Data::new(auth.kms.clone())).service(
-            kv_scope("/v1/kv", kv::configure_routes, true, &auth.stack()),
-        ))
+        let app = test::init_service(
+            App::new().app_data(Data::new(auth.kms.clone())).service(
+                kv_scope("/v1/kv", kv::configure_routes, true, &auth.stack())
+                    .guard(kv::mount_guard("/v1/kv")),
+            ),
+        )
         .await;
         let bearer = (
             actix_web::http::header::AUTHORIZATION,
@@ -2555,12 +2564,10 @@ mod tests {
                     .build(),
                 )
                 .route("/login", web::post().to(login))
-                .service(kv_scope(
-                    "/v1/kv",
-                    kv::configure_routes,
-                    false,
-                    &auth.stack(),
-                )),
+                .service(
+                    kv_scope("/v1/kv", kv::configure_routes, false, &auth.stack())
+                        .guard(kv::mount_guard("/v1/kv")),
+                ),
         )
         .await;
         let login_response =

@@ -13,11 +13,10 @@ use serde::{
 use strum::{Display, VariantNames};
 use zeroize::Zeroize;
 
-// Bring the Base64Display extension trait into scope to use `.to_base64()` on byte buffers
-use super::kmip_operations::Base64Display;
 use super::{
     kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyWrappingData, KeyWrappingSpecification},
+    kmip_operations::LenDisplay,
     kmip_types::{
         CertificateRequestType, Digest, LinkType, LinkedObjectIdentifier, OpaqueDataType,
         SplitKeyMethod,
@@ -292,7 +291,7 @@ impl Display for Object {
                 f,
                 "Certificate(certificate_type: {certificate_type:?}, certificate_value: \
                  {})",
-                certificate_value.to_base64()
+                certificate_value.len_display()
             ),
             Self::CertificateRequest(CertificateRequest {
                 certificate_request_type,
@@ -300,7 +299,8 @@ impl Display for Object {
             }) => write!(
                 f,
                 "CertificateRequest(certificate_request_type: {certificate_request_type:?}, \
-                 certificate_request_value: {certificate_request_value:?})"
+                 certificate_request_value: {})",
+                certificate_request_value.len_display()
             ),
             Self::OpaqueObject(OpaqueObject {
                 opaque_data_type,
@@ -308,7 +308,8 @@ impl Display for Object {
             }) => write!(
                 f,
                 "OpaqueObject(opaque_data_type: {opaque_data_type:?}, opaque_data_value: \
-                 {opaque_data_value:?})"
+                 {})",
+                opaque_data_value.len_display()
             ),
             Self::PGPKey(PGPKey {
                 pgp_key_version,

@@ -17,6 +17,7 @@ use zeroize::{Zeroize, Zeroizing};
 use super::{
     kmip_attributes::Attributes,
     kmip_objects::ObjectType,
+    kmip_operations::LenDisplay,
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, EncodingOption, EncryptionKeyInformation,
         KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
@@ -67,13 +68,19 @@ impl Display for DerivationParameters {
             ));
         }
         if let Some(initialization_vector) = &self.initialization_vector {
-            parts.push(format!("initialization_vector: {initialization_vector:?}"));
+            parts.push(format!(
+                "initialization_vector: {}",
+                initialization_vector.len_display()
+            ));
         }
         if let Some(derivation_data) = &self.derivation_data {
-            parts.push(format!("derivation_data: {derivation_data:?}"));
+            parts.push(format!(
+                "derivation_data: {}",
+                derivation_data.len_display()
+            ));
         }
         if let Some(salt) = &self.salt {
-            parts.push(format!("salt: {salt:?}"));
+            parts.push(format!("salt: {}", salt.len_display()));
         }
         if let Some(iteration_count) = &self.iteration_count {
             parts.push(format!("iteration_count: {iteration_count}"));
