@@ -17,7 +17,6 @@ use zeroize::{Zeroize, Zeroizing};
 use super::{
     kmip_attributes::Attributes,
     kmip_objects::ObjectType,
-    kmip_operations::LenDisplay,
     kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, EncodingOption, EncryptionKeyInformation,
         KeyCompressionType, KeyFormatType, LinkType, LinkedObjectIdentifier,
@@ -33,6 +32,7 @@ use crate::{
         RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
+    len_display::LenDisplay,
     pad_be_bytes,
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };

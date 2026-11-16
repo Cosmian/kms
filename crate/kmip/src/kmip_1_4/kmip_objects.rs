@@ -15,7 +15,8 @@ use super::{
 use crate::{
     error::KmipError,
     kmip_0::kmip_types::{CertificateType, SecretDataType},
-    kmip_2_1::{self, kmip_operations::LenDisplay},
+    kmip_2_1,
+    len_display::LenDisplay,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

@@ -16,7 +16,6 @@ use zeroize::Zeroize;
 use super::{
     kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyWrappingData, KeyWrappingSpecification},
-    kmip_operations::LenDisplay,
     kmip_types::{
         CertificateRequestType, Digest, LinkType, LinkedObjectIdentifier, OpaqueDataType,
         SplitKeyMethod,
@@ -26,6 +25,7 @@ use crate::{
     creation_time,
     error::KmipError,
     kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType, State},
+    len_display::LenDisplay,
 };
 
 /// A Managed Cryptographic Object that is a digital certificate.

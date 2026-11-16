@@ -3,6 +3,7 @@ mod error;
 pub mod kmip_0;
 pub mod kmip_1_4;
 pub mod kmip_2_1;
+mod len_display;
 mod safe_bigint;
 mod time_utils;
 pub mod ttlv;

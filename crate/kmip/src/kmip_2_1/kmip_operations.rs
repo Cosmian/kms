@@ -36,34 +36,9 @@ use crate::{
         },
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
+    len_display::LenDisplay,
     ttlv::Interval,
 };
-
-/// `Display` text of a byte string: its length, never its content (it may be a plaintext, a
-/// key or a PIN).
-pub(crate) trait LenDisplay {
-    /// `<N bytes>`, or `None` for an absent optional value.
-    fn len_display(&self) -> String;
-}
-
-impl LenDisplay for [u8] {
-    fn len_display(&self) -> String {
-        format!("<{} bytes>", self.len())
-    }
-}
-
-impl LenDisplay for Vec<u8> {
-    fn len_display(&self) -> String {
-        self.as_slice().len_display()
-    }
-}
-
-impl<T: LenDisplay> LenDisplay for Option<T> {
-    fn len_display(&self) -> String {
-        self.as_ref()
-            .map_or_else(|| "None".to_owned(), LenDisplay::len_display)
-    }
-}
 
 /// Implements `Display` for KMIP operation structs with required and optional fields.
 ///
@@ -794,9 +769,9 @@ impl Display for LoginResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "LoginResponse {{ ticket_type: {}, ticket_value: <{} bytes> }}",
+            "LoginResponse {{ ticket_type: {}, ticket_value: {} }}",
             self.ticket.ticket_type,
-            self.ticket.ticket_value.len()
+            self.ticket.ticket_value.len_display()
         )
     }
 }
