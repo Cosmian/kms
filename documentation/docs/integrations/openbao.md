@@ -57,7 +57,7 @@ OpenBao encrypts everything it stores with a barrier key, itself protected by a 
 
 Only this one key is handled by the KMS. All your secrets, policies and auth methods stay in OpenBao, and you keep operating OpenBao as before.
 
-OpenBao requires a KMIP server that speaks KMIP 1.2 to 1.4 and supports Encrypt and Decrypt with an AES key (`AES_GCM`) or an RSA key. Eviden KMS satisfies this on its binary KMIP listener.
+OpenBao requires a KMIP server that speaks KMIP 1.2 to 1.4 and supports Encrypt and Decrypt with an AES key (`AES_GCM`) or an RSA key (`RSA_OAEP_*`, addressed by its private key identifier). Eviden KMS supports `AES_GCM` on its binary KMIP listener, in the non-FIPS build only. It does not support the `RSA_OAEP_*` modes: `Encrypt` with a private key identifier is rejected.
 
 !!! warning "FIPS build"
     OpenBao's KMIP seal chooses the AES-GCM IV itself and sends it with `Encrypt`. A FIPS build of Eviden KMS generates the IV inside the FIPS module and refuses one supplied by the client (see [FIPS](../certifications_and_compliance/fips.md)), so the auto-unseal needs the non-FIPS build.

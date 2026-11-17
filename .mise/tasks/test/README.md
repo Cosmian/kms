@@ -838,6 +838,7 @@ sequenceDiagram
     Test->>KMS: POST /kmip/2_1 Create AES-256 (CN=openbao-seal)
     Test->>KMS: POST /kmip/2_1 Activate
     Test->>Bao: start with seal "kmip"
+    alt non-FIPS variant
     Test->>Bao: bao operator init
     Bao->>KMS: KMIP Encrypt (master key, AES-GCM)
     KMS-->>Bao: wrapped key
@@ -848,6 +849,13 @@ sequenceDiagram
     Bao-->>Test: unsealed again
     Test->>Audit: KMS debug log
     Audit-->>Test: Encrypt and Decrypt by openbao-seal only, KMIP 1.4, AES-GCM, wrapping key
+    else FIPS variant
+        Test->>Bao: bao operator init
+        Bao->>KMS: KMIP Encrypt (caller-supplied AES-GCM IV)
+        KMS-->>Bao: Invalid_Field, IV refused in FIPS mode
+        Bao-->>Test: init fails
+        Test->>Test: grep the KMS log for the refusal by openbao-seal, then stop
+    end
 ```
 
 ### `test:interop:ssh-secrets`
