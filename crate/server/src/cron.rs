@@ -148,13 +148,15 @@ pub fn spawn_kv_ttl_cron(kms: Arc<KMS>, interval_secs: u64) -> oneshot::Sender<(
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        match Box::pin(crate::routes::kv::metadata::sweep_expired_versions(&kms)).await {
-                            Ok(0) => {}
-                            Ok(destroyed) => {
-                                info!("[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)");
+                        run_with_cluster_lock(&kms, "kv-ttl", || async {
+                            match Box::pin(crate::routes::kv::metadata::sweep_expired_versions(&kms)).await {
+                                Ok(0) => {}
+                                Ok(destroyed) => {
+                                    info!("[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)");
+                                }
+                                Err(e) => warn!("[kv-ttl-cron] sweep failed: {e}"),
                             }
-                            Err(e) => warn!("[kv-ttl-cron] sweep failed: {e}"),
-                        }
+                        }).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[kv-ttl-cron] Shutdown signal received; stopping");

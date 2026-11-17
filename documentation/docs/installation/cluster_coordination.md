@@ -49,7 +49,7 @@ a database lock named after the job:
 | CRL refresh | `crl-refresh` | one node per run |
 | Object counter reconciliation | `metrics-reconcile` | one node per run |
 | Metrics gauges refresh (`kms.keys.active.count`, `kms.objects.total`) | none | every node (each node exports its own gauges) |
-| KV secret TTL expiry | none | every node |
+| KV secret TTL expiry | `kv-ttl` | one node per run |
 
 ```mermaid
 sequenceDiagram

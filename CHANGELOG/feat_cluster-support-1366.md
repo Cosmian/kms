@@ -2,7 +2,7 @@
 
 ### Multi-node cluster support: scheduled-job locks, heartbeats, richer `/health` (#1366)
 
-- Scheduled jobs (auto-rotation, CRL refresh, metrics reconciliation) now take a PostgreSQL advisory lock or a
+- Scheduled jobs (auto-rotation, CRL refresh, metrics reconciliation, KV secret TTL expiry) now take a PostgreSQL advisory lock or a
   MySQL/MariaDB named lock, so a job runs on one node at a time. SQLite is single-node and Redis-with-Findex is not
   coordinated yet.
 - Each node writes a heartbeat to a new `cluster_nodes` table (created automatically) and a leader is elected for
