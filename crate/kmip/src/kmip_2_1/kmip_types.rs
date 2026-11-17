@@ -2237,14 +2237,15 @@ impl Display for UsageLimits {
 }
 
 impl UsageLimits {
-    /// Units still available (KMIP 2.1 §4.59 Usage Limits Count). Objects stored before the
-    /// server tracked the Count had their Total decremented instead, so the Total is the remaining
-    /// budget when the Count is absent.
+    /// Units still available (KMIP 2.1 §4.59 Usage Limits Count), capped by the Total. Releases
+    /// before the server tracked the Count decremented the Total instead and could leave a stale
+    /// Count above it, so the remaining budget is the smaller of the two, or the Total when the
+    /// Count is absent.
     #[must_use]
     pub const fn remaining(&self) -> i64 {
         match self.usage_limits_count {
-            Some(count) => count,
-            None => self.usage_limits_total,
+            Some(count) if count < self.usage_limits_total => count,
+            _ => self.usage_limits_total,
         }
     }
 
@@ -2343,6 +2344,72 @@ mod usage_limits_tests {
         };
         limits.reset_count();
         assert_eq!(limits.usage_limits_count, Some(16));
+    }
+
+    /// A pre-upgrade object whose Total was decremented while a stale Count stayed higher keeps
+    /// only the Total as its budget.
+    #[test]
+    fn usage_limits_stale_count_above_total_is_capped() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(100),
+            usage_limits_total: 5,
+        };
+        assert_eq!(limits.remaining(), 5);
+        assert!(limits.allows(0));
+        limits.consume(0);
+        assert_eq!(limits.usage_limits_count, Some(4));
+        assert_eq!(limits.usage_limits_total, 5);
+        assert_eq!(limits.remaining(), 4);
+    }
+
+    #[test]
+    fn usage_limits_consumed_count_below_total_is_remaining() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Byte,
+            usage_limits_count: Some(10),
+            usage_limits_total: 16,
+        };
+        assert_eq!(limits.remaining(), 10);
+        assert!(limits.allows(10));
+        assert!(!limits.allows(11));
+        limits.consume(4);
+        assert_eq!(limits.usage_limits_count, Some(6));
+        assert_eq!(limits.usage_limits_total, 16);
+    }
+
+    #[test]
+    fn usage_limits_legacy_without_count_uses_total() {
+        let limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: None,
+            usage_limits_total: 3,
+        };
+        assert_eq!(limits.remaining(), 3);
+        assert!(limits.allows(0));
+    }
+
+    #[test]
+    fn usage_limits_exhausted_budget_denies_and_stays_at_zero() {
+        for (count, total) in [(Some(0), 5), (Some(7), 0), (None, 0)] {
+            let mut limits = UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: count,
+                usage_limits_total: total,
+            };
+            assert_eq!(limits.remaining(), 0, "count {count:?}, total {total}");
+            assert!(!limits.allows(0), "count {count:?}, total {total}");
+            limits.consume(0);
+            assert_eq!(
+                limits.usage_limits_count,
+                Some(0),
+                "count {count:?}, total {total}"
+            );
+            assert_eq!(
+                limits.usage_limits_total, total,
+                "count {count:?}, total {total}"
+            );
+        }
     }
 }
 

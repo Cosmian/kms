@@ -597,6 +597,7 @@ pub(super) fn requested_share_attributes(
     attributes.vendor_attributes = None;
     attributes.unique_identifier = None;
     attributes.link = None;
+    attributes.reset_usage_limits_count();
     (attributes, tags)
 }
 

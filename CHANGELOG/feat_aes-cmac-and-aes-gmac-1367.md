@@ -27,9 +27,10 @@
 
 ### FIPS
 - A FIPS build generates every AES-GCM IV inside the OpenSSL FIPS provider (NIST SP 800-38D §9.1, FIPS 140-3 IG C.H) and refuses an `Encrypt` or `MAC` (GMAC) request, a PKCS#11 `C_EncryptInit` or an HSM encryption that carries an IV chosen by the client. Client action: leave `IVCounterNonce` out of the request; the server returns the IV it generated, `C_EncryptMessage` with `CKG_GENERATE_RANDOM` is the PKCS#11 way. A FIPS build seals AES-GCM with the full 16-byte tag and decrypts with the 96-bit IV it generates; a non-FIPS build still accepts a caller IV
-- Count the AES-GCM invocations made with each key in the new `gcm_invocations` table (created at startup) and refuse `Encrypt`, `MAC` and AES-GCM wrapping with `Permission_Denied` once a key reaches 2^32 invocations (NIST SP 800-38D §8.3); decryption stays possible, rekey to continue
+- Count the AES-GCM invocations made with each key in the new `gcm_invocations` table (created at startup) and refuse `Encrypt`, `MAC` and AES-GCM wrapping with `Permission_Denied` once a key reaches 2^32 invocations (NIST SP 800-38D §8.3); decryption stays possible, rekey to continue. Keys stored wrapped are counted too. Destroying or deleting a key evicts it from the server caches even when deleting its counter fails. Downgrading is DEGRADED: an earlier release does not count its own invocations (see `gcm_invocations` in the database tables documentation)
 - Enforce the AES-GCM invocation cap on the Redis-findex store too (atomic Lua reservation, non-FIPS builds); it used to grant every reservation
-- Fix KMIP `Usage Limits` accounting: the budget is now reserved atomically (version-checked update with retries, `Conflict` after 8 failed attempts) before the operation, so concurrent requests can no longer overrun it; consumption decrements the `Usage Limits Count`, never the Total (KMIP 2.1 §4.59), and objects stored before keep using their Total as the remaining budget. The server sets the Count to the Total on `Create`, `CreateKeyPair`, `Register`, `DeriveKey` and on a client `Add`/`Set`/`Modify Attribute` of `Usage Limits` (a client Count is ignored)
+- Fix KMIP `Usage Limits` accounting: the budget is now reserved atomically (version-checked update with retries, `Conflict` after 8 failed attempts) before the operation, so concurrent requests can no longer overrun it; consumption decrements the `Usage Limits Count`, never the Total (KMIP 2.1 §4.59). The remaining budget is the smaller of the Count and the Total (the Total when no Count is stored), so objects whose Total an earlier release decremented keep their remaining budget after upgrade, including those carrying a stale higher Count. The server sets the Count to the Total on `Create`, `CreateKeyPair`, `Register`, `DeriveKey`, `JoinSplitKey` and on a client `Add`/`Set`/`Modify Attribute` of `Usage Limits` (a client Count is ignored)
+- Downgrading with usage-limited objects is DEGRADED and mixed-version operation is not supported: an earlier release ignores the Count and grants the full Total again. Before downgrading, quiesce all writers and set each object's `Usage Limits` Total to its remaining budget with a KMIP `ModifyAttribute`, as described under `objects` in the database tables documentation
 - Refuse to start the FIPS server when the non-validated `default` OpenSSL provider is active (for example through `OPENSSL_CONF`), and set the `fips=yes` default property so that no algorithm is fetched outside the FIPS module
 - Refuse, in a FIPS build, to generate an HMAC with a key under 112 bits (NIST SP 800-131A r2) and a PBKDF2 `DeriveKey` with a salt under 16 bytes, fewer than 1,000 iterations or a derived key under 14 bytes (NIST SP 800-132); verifying with a legacy HMAC key stays possible
 - Compute the SHA-1 key identifiers of certificates and CRLs, the AWS XKS integrity hash and the JOSE CEK cache key through the OpenSSL EVP interface (the FIPS provider in a FIPS build), and derive and seal the Crypto Officer ceremony records with OpenSSL (SHAKE-256 and AES-256-GCM with a provider-generated IV). Stored ceremony records and Redis key names stay readable
@@ -44,10 +45,19 @@
 - Remove AES-XTS from the data and key encryption algorithms of a FIPS build of `ckms`, where the server does not support it
 - `ckms pkcs11 capabilities` skips the caller-IV `CKM_AES_GCM` and `CKM_AES_GMAC` checks in a FIPS build; `C_EncryptMessage` still covers AES-GCM
 - `ckms symmetric encrypt` with a client-side key encryption key generates the AES-GCM IV inside the OpenSSL provider and writes it ahead of the ciphertext (file format unchanged); a FIPS build refuses `--nonce` for AES-GCM
-- `ckms bench` in a FIPS build skips the HSM AES-GCM and RSA PKCS#1 v1.5 encrypt operations that the FIPS server refuses; `bench:hsm --variant fips` starts the `SoftHSM2` and Kryoptic KEK server with `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"`
+- `ckms bench` in a FIPS build skips the HSM AES-GCM, RSA PKCS#1 v1.5 and SHA-1 OAEP encrypt operations that the FIPS server refuses; `bench:hsm --variant fips` starts the `SoftHSM2` and Kryoptic KEK server with `key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"`
 
 ### UI
 - Hide the nonce field of AES-GCM encryption when the server runs in FIPS mode
+
+## Documentation
+
+- List `CMAC` in the documented `DEFAULT` KMIP algorithm policy
+- Document that the PKCS#11 provider's `CKM_AES_GMAC` runs as KMIP `MAC` / `MACVerify` and needs the `MAC Generate` / `MAC Verify` usage bits, not `Encrypt`
+
+## Testing
+
+- Use salts of at least 16 bytes in the PBKDF2 `DeriveKey` CLI success tests so they pass the FIPS salt minimum; shorter salts stay in rejection tests
 
 ---
 

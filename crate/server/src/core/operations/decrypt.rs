@@ -1261,12 +1261,45 @@ mod tests {
         let kms = test_kms().await?;
         let user = UserId::from("user");
         let uid = gcm_key(&kms, &user).await?;
-        let total = || kms.database.reserve_gcm_invocations(&uid, 0);
+        assert_gcm_invocations_counted(&kms, &user, &uid).await
+    }
+
+    /// A key stored wrapped is counted too: its cipher is only resolvable once unwrapped.
+    #[tokio::test]
+    async fn test_gcm_invocations_are_counted_for_wrapped_key() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let wrapping = gcm_key(&kms, &user).await?;
+        let create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            Some(&wrapping),
+        )?;
+        let uid = kms
+            .create(create, &user)
+            .await?
+            .unique_identifier
+            .to_string();
+        let stored = kms
+            .database
+            .retrieve_object(&uid)
+            .await?
+            .expect("key stored");
+        assert!(stored.object().is_wrapped());
+        assert_gcm_invocations_counted(&kms, &user, &uid).await
+    }
+
+    async fn assert_gcm_invocations_counted(kms: &KMS, user: &UserId, uid: &str) -> KResult<()> {
+        let total = || kms.database.reserve_gcm_invocations(uid, 0);
         assert_eq!(total().await?, 0);
 
         let parallel = 16_u64;
         for response in
-            join_all((0..parallel).map(|_| kms.encrypt(gcm_encrypt(&uid, b"message"), &user))).await
+            join_all((0..parallel).map(|_| kms.encrypt(gcm_encrypt(uid, b"message"), user))).await
         {
             response?;
         }
@@ -1274,36 +1307,36 @@ mod tests {
 
         let init = Encrypt {
             init_indicator: Some(true),
-            ..gcm_encrypt(&uid, b"mess")
+            ..gcm_encrypt(uid, b"mess")
         };
-        let part = kms.encrypt(init, &user).await?;
+        let part = kms.encrypt(init, user).await?;
         let last = Encrypt {
             correlation_value: part.correlation_value,
             final_indicator: Some(true),
-            ..gcm_encrypt(&uid, b"age")
+            ..gcm_encrypt(uid, b"age")
         };
-        kms.encrypt(last, &user).await?;
+        kms.encrypt(last, user).await?;
         assert_eq!(total().await?, parallel + 1);
 
         let bulk = BulkData::from(vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()])
             .serialize()?
             .to_vec();
-        kms.encrypt(gcm_encrypt(&uid, &bulk), &user).await?;
+        kms.encrypt(gcm_encrypt(uid, &bulk), user).await?;
         assert_eq!(total().await?, parallel + 4);
 
         // decryption is not counted, and destroying the key forgets the count
-        let sealed = kms.encrypt(gcm_encrypt(&uid, b"message"), &user).await?;
+        let sealed = kms.encrypt(gcm_encrypt(uid, b"message"), user).await?;
         let (ciphertext, iv, tag) = (
             sealed.data.unwrap(),
             sealed.i_v_counter_nonce.unwrap(),
             sealed.authenticated_encryption_tag.unwrap(),
         );
         assert_eq!(total().await?, parallel + 5);
-        let id = UniqueIdentifier::TextString(uid.clone());
-        kms.decrypt(decrypt(&id, &ciphertext, &iv, Some(&tag), None), &user)
+        let id = UniqueIdentifier::TextString(uid.to_owned());
+        kms.decrypt(decrypt(&id, &ciphertext, &iv, Some(&tag), None), user)
             .await?;
         assert_eq!(total().await?, parallel + 5);
-        kms.database.update_state(&uid, State::Destroyed).await?;
+        kms.database.update_state(uid, State::Destroyed).await?;
         assert_eq!(total().await?, 0);
         Ok(())
     }

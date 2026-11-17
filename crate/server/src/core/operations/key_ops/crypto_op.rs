@@ -197,7 +197,8 @@ pub(crate) trait CryptoOpSpec {
     fn usage_data_len(request: &Self::Request) -> usize;
 
     /// Number of AES-GCM invocations with a server-generated IV that this request makes with the
-    /// key `owm`. NIST SP 800-38D §8.3 caps them at 2^32 per key; the server refuses more.
+    /// key `owm`, which is already unwrapped. NIST SP 800-38D §8.3 caps them at 2^32 per key; the
+    /// server refuses more.
     ///
     /// Default: 0 - override for the operations that encrypt with AES-GCM.
     fn gcm_invocations(_owm: &ObjectWithMetadata, _request: &Self::Request) -> u64 {
@@ -564,26 +565,39 @@ impl KMS {
         enforce_kmip_algorithm_policy_for_retrieved_key(&self.params, Op::OP_NAME, owm.id(), owm)?;
         owm.enforce_usage_limits(data_len)?;
 
+        // Unwrapping replaces the wrapped key material with plaintext: only the disposable
+        // `unwrapped` copy may ever hold it. `owm` must remain wrapped, as it is what the
+        // usage-limit reservation persists (COSMIAN-2026-015). A non-wrapped key is used in
+        // place, without the ~800-byte deep clone.
+        let unwrapped = if owm.object().is_wrapped() {
+            let object = Box::pin(self.get_unwrapped(owm.id(), owm.object(), user))
+                .await
+                .with_context(|| {
+                    format!(
+                        "{}: the key: {}, cannot be unwrapped.",
+                        Op::OP_NAME,
+                        owm.id()
+                    )
+                })?;
+            Some(ObjectWithMetadata::new(
+                owm.id().to_owned(),
+                object,
+                owm.owner(),
+                owm.state(),
+                owm.attributes().clone(),
+            ))
+        } else {
+            None
+        };
+        let key = unwrapped.as_ref().unwrap_or(owm);
+
         // Reserved before the operation: a failure afterwards wastes invocations, it never lets
-        // one be used twice.
-        let gcm_invocations = Op::gcm_invocations(owm, request);
+        // one be used twice. Classified on the unwrapped key: the cipher needs its key bytes.
+        let gcm_invocations = Op::gcm_invocations(key, request);
         if gcm_invocations > 0 {
             self.database
                 .reserve_gcm_invocations(owm.id(), gcm_invocations)
                 .await?;
-        }
-
-        // Fast path: a non-wrapped key with no usage limits — by far the most
-        // common crypto request (e.g. a plain symmetric key served from the
-        // object cache). There is nothing to unwrap, so no plaintext key material
-        // ever needs to leave `owm`, and there are no usage limits to reserve.
-        // Operate directly on the cached `owm`, skipping both the ~800-byte deep
-        // clone and the persistence round-trip.
-        //
-        // COSMIAN-2026-015 does not apply here: the key is not wrapped, so nothing
-        // is unwrapped and no key material is ever written back to storage.
-        if !owm.object().is_wrapped() && owm.attributes().usage_limits.is_none() {
-            return Op::execute_local(self, owm, request, user);
         }
 
         // Reserved before the operation, atomically: concurrent requests can never overrun the
@@ -593,33 +607,7 @@ impl KMS {
             self.reserve_usage_limits(owm, user, Op::OP_NAME, data_len)
                 .await?;
         }
-
-        // Slow path: the key is wrapped, so a clone is required.
-        //
-        // Unwrapping mutates the object, replacing the wrapped key material with
-        // plaintext. Only the disposable `local_owm` clone may ever hold plaintext
-        // key material -- `owm` must remain wrapped, as it is what the usage-limit
-        // reservation persisted (COSMIAN-2026-015).
-        if owm.object().is_wrapped() {
-            let unwrapped = Box::pin(self.get_unwrapped(owm.id(), owm.object(), user))
-                .await
-                .with_context(|| {
-                    format!(
-                        "{}: the key: {}, cannot be unwrapped.",
-                        Op::OP_NAME,
-                        owm.id()
-                    )
-                })?;
-            let local_owm = ObjectWithMetadata::new(
-                owm.id().to_owned(),
-                unwrapped,
-                owm.owner(),
-                owm.state(),
-                owm.attributes().clone(),
-            );
-            return Op::execute_local(self, &local_owm, request, user);
-        }
-        Op::execute_local(self, owm, request, user)
+        Op::execute_local(self, key, request, user)
     }
 
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.

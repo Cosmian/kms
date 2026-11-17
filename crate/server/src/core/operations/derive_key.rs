@@ -663,6 +663,7 @@ async fn persist_single_base_derived_object(
         attributes.activation_date,
     )?;
     *attributes = derived_attributes;
+    attributes.reset_usage_limits_count();
     if let Ok(object_attributes) = derived_object.attributes_mut() {
         *object_attributes = attributes.clone();
     }

@@ -17,7 +17,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_operations::{Create, DeriveKey, Get},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, DerivationMethod, KeyFormatType,
-            UniqueIdentifier,
+            UniqueIdentifier, UsageLimits, UsageLimitsUnit,
         },
         requests::create_derivation_object_request,
     },
@@ -278,6 +278,72 @@ async fn test_derive_key_hkdf() -> KResult<()> {
         _ => panic!("Expected SymmetricKey object"),
     }
 
+    Ok(())
+}
+
+/// Regression: the server owns the Usage Limits Count of a derived key. A client Count far
+/// above the Total is reset to the Total in both the stored metadata and the key block.
+#[tokio::test]
+async fn test_derive_key_resets_client_usage_limits_count() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("usage_limits_owner");
+    let base_key_id = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+
+    let derive_request = DeriveKey::new_single_base(
+        ObjectType::SymmetricKey,
+        base_key_id,
+        DerivationMethod::HKDF,
+        DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            initialization_vector: None,
+            derivation_data: Some(Zeroizing::new(b"usage limits info".to_vec())),
+            salt: Some(b"HKDF salt".to_vec()),
+            iteration_count: None,
+        },
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+            ),
+            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+            object_type: Some(ObjectType::SymmetricKey),
+            usage_limits: Some(UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: Some(1_000_000_000),
+                usage_limits_total: 4,
+            }),
+            ..Attributes::default()
+        },
+    );
+    let uid = kms
+        .derive_key(derive_request, &owner)
+        .await?
+        .unique_identifier
+        .to_string();
+
+    let owm = kms
+        .database
+        .retrieve_object(&uid)
+        .await?
+        .expect("derived key must be stored");
+    let expected = Some(UsageLimits {
+        usage_limits_unit: UsageLimitsUnit::Object,
+        usage_limits_count: Some(4),
+        usage_limits_total: 4,
+    });
+    assert_eq!(owm.attributes().usage_limits, expected, "stored metadata");
+    assert_eq!(
+        owm.object().attributes()?.usage_limits,
+        expected,
+        "key-block attributes"
+    );
     Ok(())
 }
 

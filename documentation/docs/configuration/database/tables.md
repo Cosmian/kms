@@ -98,6 +98,20 @@ The following secondary indexes are created on `objects`:
 
 Indexes are created at server startup. On an existing large database, the first start after an upgrade takes proportionally longer, and PostgreSQL blocks writes to `objects` while each new index builds.
 
+**Downgrade (Usage Limits).** The current release consumes the KMIP `Usage Limits` budget of an object by decrementing `UsageLimitsCount` and never changes `UsageLimitsTotal`, the configured budget; both are stored in the `attributes` column and in the key block attributes. The remaining budget is the smaller of the Count and the Total, or the Total when the Count is absent. Releases before it ignore the Count and decrement and enforce the Total only. After an upgrade, objects written by such a release therefore keep their remaining budget, including those carrying a stale Count above their decremented Total. The downgrade verdict is DEGRADED:
+
+- An earlier release grants every usage-limited object its full Total again, including objects the current release has exhausted, unless the procedure below runs first.
+- Mixed-version operation (an earlier release and the current release serving the same database, for example during a rolling restart) is not supported for usage-limited objects: the two releases cannot share one representation of the budget, and the earlier release ignores the consumption recorded by the current release.
+
+To downgrade without restoring spent budgets:
+
+1. Quiesce all writers: stop client traffic and every server instance except one current-release instance, reachable only by the administrator.
+2. For each object that carries a `UsageLimits` attribute, read it with `ckms attributes get --id <UID> --attribute UsageLimits` and compute the remaining budget: the smaller of `UsageLimitsCount` and `UsageLimitsTotal`, or `UsageLimitsTotal` when the Count is absent.
+3. As the object owner, or a user granted `ModifyAttribute` on the object, send a KMIP `ModifyAttribute` request whose `NewAttribute` is `UsageLimits` with the same `UsageLimitsUnit` and `UsageLimitsTotal` set to the remaining budget, as JSON TTLV to the `/kmip/2_1` endpoint (see [The JSON TTLV KMIP API](../../kmip_support/json_ttlv_api.md)). The server sets the Count to the new Total. `ckms attributes set` and `ckms attributes modify` cannot set `Usage Limits`.
+4. Verify with `ckms attributes get --id <UID> --attribute UsageLimits` that `UsageLimitsTotal` and `UsageLimitsCount` both equal the remaining budget, back up the database, stop the last current-release instance, then start the earlier release.
+
+After upgrading again, the Total the earlier release decremented caps the remaining budget, so its consumption is kept.
+
 ## read_access
 
 Stores the operations that a given user is allowed to perform on a given object.

@@ -24,9 +24,12 @@ use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation,
     extra::tagging::VENDOR_ID_COSMIAN,
+    kmip_attributes::Attributes,
     kmip_objects::ObjectType,
     kmip_operations::{CreateSplitKey, Get, JoinSplitKey},
-    kmip_types::{CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier},
+    kmip_types::{
+        CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, UsageLimits, UsageLimitsUnit,
+    },
     requests::symmetric_key_create_request,
 };
 
@@ -2042,6 +2045,52 @@ async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
     let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
     assert_ne!(reconstructed_uid.len(), 0);
 
+    Ok(())
+}
+
+/// Regression: the server owns the Usage Limits Count of a reconstructed key. A client
+/// Count far above the Total in the `JoinSplitKey` attributes is reset to the Total.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_join_split_key_resets_client_usage_limits_count() -> KResult<()> {
+    let alice = "alice@example.com";
+    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
+    let key_uid = create_key(&kms, alice).await?;
+    let share_uids = split_key(&kms, alice, &key_uid, 2).await?;
+
+    let req = JoinSplitKey {
+        unique_identifier: share_uids
+            .iter()
+            .map(|u| UniqueIdentifier::TextString(u.clone()))
+            .collect(),
+        object_type: ObjectType::SymmetricKey,
+        secret_data_type: None,
+        attributes: Some(Attributes {
+            usage_limits: Some(UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: Some(1_000_000_000),
+                usage_limits_total: 4,
+            }),
+            ..Attributes::default()
+        }),
+        protection_storage_masks: None,
+    };
+    let resp = kms.join_split_key(req, &UserId::from(alice)).await?;
+    let reconstructed_uid = uid_string(&resp.unique_identifier)?;
+
+    let owm = kms
+        .database
+        .retrieve_object(&reconstructed_uid)
+        .await?
+        .expect("reconstructed key must be stored");
+    assert_eq!(
+        owm.attributes().usage_limits,
+        Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(4),
+            usage_limits_total: 4,
+        })
+    );
     Ok(())
 }
 
