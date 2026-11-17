@@ -1526,7 +1526,9 @@ impl DbParameters for PgPool {
 impl Migrate for PgPool {
     type MigrationLock = PgMigrationLock;
 
-    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+    const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.0.0");
+    // SQL databases stopped recording `db_version` on normal startup in 5.15.0 (#646).
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.15.0");
 
     async fn has_data(&self) -> DbResult<bool> {
         let client = pg_get_client(&self.pool).await?;

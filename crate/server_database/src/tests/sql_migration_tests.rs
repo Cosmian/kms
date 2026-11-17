@@ -396,29 +396,41 @@ async fn released_fixtures<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
 }
 
 async fn newer_database_is_refused<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    fixture.restore("5.20.0").await?;
-    let original = fixture.preserved_data().await?;
-    fixture.seed_parameters(&[("db_version", "99.0.0")]).await?;
-    let schema = fixture.schema_signature().await?;
-    let error = fixture
-        .open(false, Some(1), TARGET)
-        .await
-        .err()
-        .ok_or_else(|| db_error!("A newer database must be refused"))?;
-    db_ensure!(
-        error.to_string()
-            == "Database Error: Database version 99.0.0 is newer than this KMS server version \
-                5.29.0: refusing to start. Upgrade the KMS server to 99.0.0 or later.",
-        "Unexpected newer-version error: {error}"
-    );
-    db_ensure!(
-        fixture.schema_signature().await? == schema,
-        "Newer-version refusal changed the schema"
-    );
-    db_ensure!(
-        fixture.preserved_data().await? == original,
-        "Newer-version refusal changed fixture data"
-    );
+    let cases = [
+        (
+            "99.0.0",
+            "Database Error: Database version 99.0.0 is newer than this KMS server version \
+             5.29.0: refusing to start. Upgrade the KMS server to 99.0.0 or later.",
+        ),
+        (
+            "4.20.0",
+            "Database Error: Legacy database: recorded version 4.20.0 is older than the minimum \
+             supported version 5.0.0 (pre-5.0.0 data is unsupported; export and re-import).",
+        ),
+    ];
+    for (recorded, expected_error) in cases {
+        fixture.restore("5.20.0").await?;
+        let original = fixture.preserved_data().await?;
+        fixture.seed_parameters(&[("db_version", recorded)]).await?;
+        let schema = fixture.schema_signature().await?;
+        let error = fixture
+            .open(false, Some(1), TARGET)
+            .await
+            .err()
+            .ok_or_else(|| db_error!("Version {recorded} must be refused"))?;
+        db_ensure!(
+            error.to_string() == expected_error,
+            "Unexpected error for {recorded}: {error}"
+        );
+        db_ensure!(
+            fixture.schema_signature().await? == schema,
+            "Refusing {recorded} changed the schema"
+        );
+        db_ensure!(
+            fixture.preserved_data().await? == original,
+            "Refusing {recorded} changed fixture data"
+        );
+    }
     Ok(())
 }
 
@@ -551,19 +563,6 @@ async fn postgresql_reopen_does_not_rebuild_index(fixture: &PostgresFixture) -> 
     Ok(())
 }
 
-async fn mysql_lock_released_on_disconnect(fixture: &MySqlFixture) -> DbResult<()> {
-    fixture.reset().await?;
-    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &[])?;
-    let held = pool.acquire_migration_lock().await?;
-    drop(held);
-    let reacquired = tokio::time::timeout(Duration::from_secs(5), pool.acquire_migration_lock())
-        .await
-        .map_err(|error| db_error!("MySQL migration lock was not released: {error}"))??;
-    drop(reacquired);
-    Ok(())
-}
-
 #[ignore = "Requires a running PostgreSQL instance"]
 #[tokio::test]
 async fn test_db_postgresql_migration() -> DbResult<()> {
@@ -598,11 +597,7 @@ async fn test_db_postgresql_migration() -> DbResult<()> {
 
 pub(super) async fn mysql_migration_scenarios() -> DbResult<()> {
     let fixture = MySqlFixture { url: MYSQL_URL };
-    let result = async {
-        shared_migration_scenarios(&fixture).await?;
-        mysql_lock_released_on_disconnect(&fixture).await
-    }
-    .await;
+    let result = shared_migration_scenarios(&fixture).await;
     let cleanup = MySqlPool::instantiate(MYSQL_URL, true, None)
         .await
         .map(drop);

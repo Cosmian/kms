@@ -2,7 +2,7 @@
 
 ### Database
 
-- Run PostgreSQL, MySQL, MariaDB, and Percona XtraDB Cluster startup migrations through the versioned runner with cross-instance locks and newer-database refusal ([#1271](https://github.com/Cosmian/kms/issues/1271))
+- Run PostgreSQL, MySQL, MariaDB, and Percona XtraDB Cluster startup migrations through the versioned runner with cross-instance locks and refusal of newer or pre-`5.0.0` databases ([#1271](https://github.com/Cosmian/kms/issues/1271))
 
 ## Bug Fixes
 

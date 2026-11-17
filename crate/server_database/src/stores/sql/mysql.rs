@@ -1114,7 +1114,9 @@ impl DbParameters for MySqlPool {
 impl Migrate for MySqlPool {
     type MigrationLock = MySqlMigrationLock;
 
-    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.20.0");
+    const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.0.0");
+    // SQL databases stopped recording `db_version` on normal startup in 5.15.0 (#646).
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.15.0");
 
     async fn has_data(&self) -> DbResult<bool> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
