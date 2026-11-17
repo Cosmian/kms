@@ -1,6 +1,6 @@
 ---
 name: ckms-subcommand-test
-description: 'Generate and run integration tests for a new or modified ckms subcommand: test file, helpers, happy-path + error-case + CO-gating coverage, module registration, cargo test -p ckms. Use after adding a ckms subcommand or flag, or when CI/review flags missing CLI test coverage.'
+description: 'Generate and run integration tests for a new or modified ckms subcommand: test file, helpers, happy-path + error-case + CO-gating coverage, module registration, cargo test -p ckms. Enforces the rule that no clap action ships without Rust tests on the ckms binary. Use after adding a ckms subcommand or flag, before committing any change under crate/clients/clap/src/actions/, or when CI/review flags missing CLI test coverage.'
 ---
 
 # ckms Subcommand Integration Tests
@@ -13,10 +13,30 @@ project's established test patterns.
 - After adding a new `ckms` subcommand or new flags to an existing one.
 - When a code review or CI failure indicates missing test coverage for a CLI command.
 - When `/kms-sync-rules` emits sync rule 4.4 (CLI ↔ UI parity) and the CLI side has no tests.
+- Before committing any change under `crate/clients/clap/src/actions/`.
+
+## Hard rule
+
+**No clap action is added or changed without Rust integration tests that run the `ckms` binary** (`crate/clients/ckms/src/tests/`, via `run_ckms` / `run_ckms_expect_error`). A clap action is a subcommand, a flag (`#[arg(...)]`), an accepted value of a flag, or a flag default. Unit tests in `crate/clients/clap/` do not satisfy the rule. The tests are committed with the action, never deferred, never `#[ignore]`d. An action without tests is a **High** review finding and a blocker for `/kms-sync-rules`. Normative text: `.github/instructions/rust-cli.instructions.md` § Mandatory.
 
 ---
 
-## Step 0 — Identify the subcommand
+## Step 0 — Find the untested actions, then identify the subcommand
+
+List the clap actions the branch adds or changes and whether any `ckms` test changed with them:
+
+```bash
+BASE=$(git merge-base HEAD origin/develop)
+# added/changed clap actions (also lists untracked files via the second command)
+git diff -U0 "$BASE" -- crate/clients/clap/src/actions \
+  | grep -E '^\+\s*(#\[(arg|command)\(|#\[derive\(.*(Parser|Args|Subcommand)|pub (struct|enum) )'
+git ls-files --others --exclude-standard crate/clients/clap/src/actions
+# ckms binary tests changed with them
+git diff --name-only "$BASE" -- crate/clients/ckms/src/tests
+git ls-files --others --exclude-standard crate/clients/ckms/src/tests
+```
+
+Actions listed by the first two commands with an empty result from the last two are untested: write the tests now (Steps 1-4). A non-empty test list is not enough on its own: confirm each listed flag is exercised by a test that asserts an effect specific to it.
 
 Locate the implementation:
 
@@ -226,6 +246,7 @@ Fix every failure before proceeding. Never mark tests `#[ignore]`.
 
 Verify before closing the task:
 
+- [ ] Step 0 lists no untested clap action (every added/changed subcommand, flag, value or default has a `ckms` binary test in the same commit).
 - [ ] Happy path: default flags succeed and produce a parseable output.
 - [ ] Every non-default flag exercised at least once.
 - [ ] At least one error case: invalid input, object not found, or permission denied.

@@ -264,6 +264,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
 - **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed — see .github/instructions/rust.instructions.md § Randomness.
 - **Regression test**: every bug fix ships a test that fails before the fix (or the commit message says why that is impossible) — see `rust.instructions.md` § Testing.
+- **CLI tests**: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
 - **Secrets**: compare in constant time, keep in `Zeroizing`, never log — see `rust-security.instructions.md`.
 - **Commit subjects**: conventional-commit type + a descriptive subject (`fix(server): reject MAC with wrong length`); never `fix: PR review`, `fix: commit`, `fix: last fixes`.
 
@@ -441,7 +442,7 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse or add a complete fixture in `test_data`; `audit` finds partial inline configs |
 | `/kms-db-compat [base-ref]` | When a change touches `crate/server_database/`, `*.sql` or persisted KMIP types — upgrade/downgrade (N-1) verdict per change, SQLite proof in both directions |
-| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
+| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag (mandatory: no clap action without `ckms` binary tests)** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then deletes them |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |

@@ -60,6 +60,7 @@ Additional heuristic checks:
 
 - If any changed Rust file contains `#[cfg(feature = "non-fips")]` changes → add **4.8**
 - If `crate/clients/ckms/src/commands.rs` changed → add **4.15**
+- If a changed file under `crate/clients/clap/src/actions/` adds a `#[derive(Parser|Args|Subcommand)]` type, a `pub struct`/`pub enum`, a `#[command(` or a `#[arg(` line and no file under `crate/clients/ckms/src/tests/` changed → emit a **blocker**: no clap action without Rust tests on the `ckms` binary (`rust-cli.instructions.md` § Mandatory; run `/ckms-subcommand-test` Step 0 to list the untested actions)
 - If `crate/server/src/start_kms_server.rs` changed → verify 4.1, 4.2, 4.8, 4.9 as applicable
 - If any changed file is in `crate/server/src/middlewares/`, `crate/server/src/core/operations/`, or `crate/crypto/src/` **and** the change fixes a security bug → remind: **update `SECURITY.md`** with a `COSMIAN-YYYY-NNN` entry (run `/security-review` to generate it)
 - If a changed file under `.github/workflows/`, `.github/actions/` or `.mise/` adds or changes a `uses:` reference, a tool install (`cargo install`, `go install`, `pip install`, `npm install -g`) or a `curl`/`wget` download → add **4.19**

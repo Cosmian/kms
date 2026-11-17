@@ -41,11 +41,15 @@ cargo test -p ckms                             # full integration test suite
 cargo test -p ckms -- <filter>                 # single test or module, e.g. split_key
 ```
 
-### Mandatory: write tests for every new subcommand
+### Mandatory: no clap action without `ckms` binary tests
 
-**Every new `ckms` subcommand (or new flag on an existing one) requires a corresponding
-integration test.** Agents must write these tests as part of implementing the feature —
-never defer them to a follow-up. Run `/ckms-subcommand-test` for the guided workflow.
+**No clap action may be added or extended without Rust integration tests that drive the `ckms` binary.** This covers a new subcommand (a `#[derive(Parser)]`/`#[derive(Args)]`/`#[derive(Subcommand)]` type or enum variant under `crate/clients/clap/src/actions/`), a new flag or `#[arg(...)]` field, a new accepted value of an existing flag, and a change of a flag's default.
+
+- The tests live in `crate/clients/ckms/src/tests/<feature>/` and run the real binary through `run_ckms` / `run_ckms_expect_error` against a test KMS server. Unit tests inside `crate/clients/clap/` do not count: they never exercise argument parsing, the binary's configuration loading or the server round trip.
+- The tests ship in the same change as the action, and in the same commit (CLI layer). Never defer them to a follow-up, never leave them `#[ignore]`d, never register a module that contains no test.
+- Each new flag has a test that asserts an effect specific to that flag; a call whose result is discarded proves nothing.
+- A change that adds a clap action and touches no file under `crate/clients/ckms/src/tests/` is incomplete: do not commit it, and flag it as a **High** finding in review.
+- Run `/ckms-subcommand-test` for the guided workflow; its Step 0 lists the untested actions of the current diff.
 
 ### Test file layout
 
