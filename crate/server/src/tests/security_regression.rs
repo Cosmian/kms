@@ -1380,3 +1380,51 @@ async fn test_get_attributes_without_identifier_selects_nothing() -> KResult<()>
     assert!(!err.to_string().contains(&foreign_key.to_string()));
     Ok(())
 }
+
+/// Regression test: the server owns the Usage Limits Count of a `ReKey` replacement. A Count
+/// sent in the request attributes is reset to the Total instead of granting a larger budget.
+///
+/// Guards: KMIP 2.1 §4.59 (Usage Limits Count is server-managed)
+#[tokio::test]
+async fn test_rekey_ignores_client_usage_limits_count() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_operations::ReKey,
+        kmip_types::{UsageLimits, UsageLimitsUnit},
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("rekey_usage_limits_owner@example.com");
+    let key = create_aes_key(&kms, owner.as_ref()).await?;
+    let response = kms
+        .rekey(
+            ReKey {
+                unique_identifier: Some(key),
+                attributes: Some(Attributes {
+                    usage_limits: Some(UsageLimits {
+                        usage_limits_unit: UsageLimitsUnit::Object,
+                        usage_limits_count: Some(1_000_000_000),
+                        usage_limits_total: 4,
+                    }),
+                    ..Attributes::default()
+                }),
+                ..ReKey::default()
+            },
+            &owner,
+        )
+        .await?;
+    let owm = kms
+        .database
+        .retrieve_object(&response.unique_identifier.to_string())
+        .await?
+        .expect("replacement key must be stored");
+    assert_eq!(
+        owm.attributes().usage_limits,
+        Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(4),
+            usage_limits_total: 4,
+        })
+    );
+    Ok(())
+}

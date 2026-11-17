@@ -587,6 +587,8 @@ pub(crate) fn setup_new_key(
                 }
             }
         }
+        // The server owns the Usage Limits Count (KMIP 2.1 §4.59): a requested Count is ignored.
+        key_attrs.reset_usage_limits_count();
     }
 
     // For SymmetricKey, PrivateKey, and SecretData, re-initialize NeverExtractable
