@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:a5b13c1e-1a30-4df9-994b-7f12cdc81267",
+  "serialNumber": "urn:uuid:18f49f17-b1f6-4a0e-ace8-f5e6380eb93d",
   "metadata": {
-    "timestamp": "2026-11-16T02:42:36.367407+00:00",
+    "timestamp": "2026-11-16T23:33:14.794176+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/4gnlbmpnkp7xh3cmm3lmpdddfpciqail-cosmian-kms-cli-5.29.0.drv",
+      "bom-ref": "/nix/store/bcngdbxwnvj3yn3x482dnviy7lr9p9hx-cosmian-kms-cli-5.29.0.drv",
       "name": "cosmian-kms-cli",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-cli@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/frpvgmq9lhxw24dvqx0fhh3p21dzzciv-cosmian-kms-cli-5.29.0"
+          "value": "/nix/store/wys9n1gy3bl6dw9ixnbgkf7hplpa4m8w-cosmian-kms-cli-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/4gnlbmpnkp7xh3cmm3lmpdddfpciqail-cosmian-kms-cli-5.29.0.drv"
+          "value": "/nix/store/bcngdbxwnvj3yn3x482dnviy7lr9p9hx-cosmian-kms-cli-5.29.0.drv"
         }
       ]
     }
@@ -16553,6 +16553,90 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/ssh-cipher@0.2.0",
+      "name": "ssh-cipher",
+      "version": "0.2.0",
+      "purl": "pkg:cargo/ssh-cipher@0.2.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/SSH/tree/master/ssh-cipher"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ssh-cipher:ssh-cipher:0.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ssh-encoding@0.2.0",
+      "name": "ssh-encoding",
+      "version": "0.2.0",
+      "purl": "pkg:cargo/ssh-encoding@0.2.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/SSH/tree/master/ssh-encoding"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ssh-encoding:ssh-encoding:0.2.0:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ssh-key@0.6.7",
+      "name": "ssh-key",
+      "version": "0.6.7",
+      "purl": "pkg:cargo/ssh-key@0.6.7",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 OR MIT"
+        }
+      ],
+      "supplier": {
+        "name": "RustCrypto Developers"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/RustCrypto/SSH/tree/master/ssh-key"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "no-nvd-entry"
+        }
+      ],
+      "cpe": "cpe:2.3:a:ssh-key:ssh-key:0.6.7:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/stable_deref_trait@1.2.1",
       "name": "stable_deref_trait",
       "version": "1.2.1",
@@ -22699,17 +22783,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/knip@6.44.1",
+      "bom-ref": "pkg:npm/knip@6.44.2",
       "name": "knip",
-      "version": "6.44.1",
-      "purl": "pkg:npm/knip@6.44.1",
+      "version": "6.44.2",
+      "purl": "pkg:npm/knip@6.44.2",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:knip:knip:6.44.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:knip:knip:6.44.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23091,17 +23175,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/oxc-parser@0.155.0",
+      "bom-ref": "pkg:npm/oxc-parser@0.156.0",
       "name": "oxc-parser",
-      "version": "0.155.0",
-      "purl": "pkg:npm/oxc-parser@0.155.0",
+      "version": "0.156.0",
+      "purl": "pkg:npm/oxc-parser@0.156.0",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:oxc-parser:oxc-parser:0.155.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:oxc-parser:oxc-parser:0.156.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24799,17 +24883,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/tailwindcss@4.3.4",
+      "bom-ref": "pkg:npm/tailwindcss@4.3.5",
       "name": "tailwindcss",
-      "version": "4.3.4",
-      "purl": "pkg:npm/tailwindcss@4.3.4",
+      "version": "4.3.5",
+      "purl": "pkg:npm/tailwindcss@4.3.5",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:tailwindcss:tailwindcss:4.3.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:tailwindcss:tailwindcss:4.3.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25051,17 +25135,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/unbash@6.0.2",
+      "bom-ref": "pkg:npm/unbash@6.0.4",
       "name": "unbash",
-      "version": "6.0.2",
-      "purl": "pkg:npm/unbash@6.0.2",
+      "version": "6.0.4",
+      "purl": "pkg:npm/unbash@6.0.4",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:unbash:unbash:6.0.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:unbash:unbash:6.0.4:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25388,7 +25472,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/4gnlbmpnkp7xh3cmm3lmpdddfpciqail-cosmian-kms-cli-5.29.0.drv"
+      "ref": "/nix/store/bcngdbxwnvj3yn3x482dnviy7lr9p9hx-cosmian-kms-cli-5.29.0.drv"
     }
   ],
   "vulnerabilities": []
