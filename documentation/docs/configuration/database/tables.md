@@ -61,7 +61,7 @@ erDiagram
     }
     GCM_INVOCATIONS {
         string object_id PK
-        bigint invocations
+        bigint count
     }
     CRYPTO_OFFICER_ACTIVATIONS {
         timestamp activated_at
@@ -193,7 +193,7 @@ one per software AES-GCM key wrap. Decryption is not counted.
 | Column | Type | Description |
 | ------ | ---- | ----------- |
 | `object_id` | `VARCHAR(128)` | Primary key. The UID of the AES key in the `objects` table. |
-| `invocations` | `BIGINT` | Invocations made so far, at most 4294967296 (2^32). |
+| `count` | `BIGINT` | Invocations made so far, at most 4294967296 (2^32). |
 
 The row is independent of the object: counting does not change the object version, so it never
 conflicts with a `ReKey` or any other write to the key, and it is not visible through KMIP

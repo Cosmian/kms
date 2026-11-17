@@ -359,8 +359,8 @@ SET SESSION innodb_lock_wait_timeout=10;
 -- name: create-table-gcm_invocations
 CREATE TABLE IF NOT EXISTS gcm_invocations
 (
-    object_id   VARCHAR(128) NOT NULL PRIMARY KEY,
-    invocations BIGINT       NOT NULL
+    object_id VARCHAR(128) NOT NULL PRIMARY KEY,
+    `count`   BIGINT       NOT NULL
 );
 
 -- name: clean-table-gcm_invocations
@@ -370,13 +370,13 @@ DELETE FROM gcm_invocations;
 DELETE FROM gcm_invocations WHERE object_id NOT IN (SELECT id FROM objects);
 
 -- name: init-gcm-invocations
-INSERT IGNORE INTO gcm_invocations (object_id, invocations) VALUES (?, 0);
+INSERT IGNORE INTO gcm_invocations (object_id, `count`) VALUES (?, 0);
 
 -- name: select-gcm-invocations-for-update
-SELECT invocations FROM gcm_invocations WHERE object_id = ? FOR UPDATE;
+SELECT `count` FROM gcm_invocations WHERE object_id = ? FOR UPDATE;
 
 -- name: update-gcm-invocations
-UPDATE gcm_invocations SET invocations = invocations + ? WHERE object_id = ?;
+UPDATE gcm_invocations SET `count` = `count` + ? WHERE object_id = ?;
 
 -- name: delete-gcm-invocations
 DELETE FROM gcm_invocations WHERE object_id = ?;
