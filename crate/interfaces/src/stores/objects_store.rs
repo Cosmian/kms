@@ -373,11 +373,11 @@ pub trait ObjectsStore {
         Ok(())
     }
 
-    /// Reserve `count` invocations of AES-GCM (or GMAC) with a random IV under the key `uid`
+    /// Reserve `invocations` invocations of AES-GCM (or GMAC) with a random IV under the key `uid`
     /// against the cap [`GCM_MAX_INVOCATIONS`] (NIST SP 800-38D §8.3).
     ///
     /// Returns the new total, or `None` when the reservation would exceed the cap, in which case
-    /// nothing is reserved. A `count` of 0 returns the current total.
+    /// nothing is reserved. An `invocations` of 0 returns the current total.
     ///
     /// The count is kept apart from the object, so reserving never changes its version. The
     /// default grants every reservation: a store that keeps no count leaves the cap to the module
@@ -385,9 +385,9 @@ pub trait ObjectsStore {
     async fn reserve_gcm_invocations(
         &self,
         _uid: &str,
-        count: u64,
+        invocations: u64,
     ) -> InterfaceResult<Option<u64>> {
-        Ok(Some(count))
+        Ok(Some(invocations))
     }
 
     /// Forget the AES-GCM invocation count of the key `uid` (the key is destroyed).

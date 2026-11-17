@@ -432,6 +432,11 @@ impl PgPool {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
         }
+        // Drop counters orphaned by an older KMS (downgrade then upgrade).
+        client
+            .batch_execute(tmp_loader.get_query("purge-orphan-gcm-invocations")?)
+            .await
+            .map_err(DbError::from)?;
         // Ensure attributes column is jsonb (and convert if needed)
         client
             .batch_execute(tmp_loader.get_query("alter-column-attributes-jsonb")?)
@@ -1375,17 +1380,21 @@ impl ObjectsStore for PgPool {
         })
     }
 
-    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
-        if count > GCM_MAX_INVOCATIONS {
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        if invocations > GCM_MAX_INVOCATIONS {
             return Ok(None);
         }
         // within the cap, so they fit an i64
-        let (count, max) = (count.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
+        let (invocations, max) = (invocations.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
         pg_retry!(self.pool, |client| {
             let row = client
                 .query_opt(
                     get_pgsql_query!("reserve-gcm-invocations"),
-                    &[&uid, &count, &max],
+                    &[&uid, &invocations, &max],
                 )
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;

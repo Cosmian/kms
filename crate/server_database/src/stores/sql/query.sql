@@ -299,18 +299,21 @@ SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid();
 
 -- name: create-table-gcm_invocations
 CREATE TABLE IF NOT EXISTS gcm_invocations (
-    object_id VARCHAR(128) NOT NULL PRIMARY KEY,
-    count     BIGINT       NOT NULL
+    object_id   VARCHAR(128) NOT NULL PRIMARY KEY,
+    invocations BIGINT       NOT NULL
 );
 
 -- name: clean-table-gcm_invocations
 DELETE FROM gcm_invocations;
 
+-- name: purge-orphan-gcm-invocations
+DELETE FROM gcm_invocations WHERE object_id NOT IN (SELECT id FROM objects);
+
 -- name: reserve-gcm-invocations
-INSERT INTO gcm_invocations (object_id, count) VALUES ($1, $2)
-ON CONFLICT (object_id) DO UPDATE SET count = gcm_invocations.count + $2
-WHERE gcm_invocations.count + $2 <= $3
-RETURNING count;
+INSERT INTO gcm_invocations (object_id, invocations) VALUES ($1, $2)
+ON CONFLICT (object_id) DO UPDATE SET invocations = gcm_invocations.invocations + $2
+WHERE gcm_invocations.invocations + $2 <= $3
+RETURNING invocations;
 
 -- name: delete-gcm-invocations
 DELETE FROM gcm_invocations WHERE object_id = $1;

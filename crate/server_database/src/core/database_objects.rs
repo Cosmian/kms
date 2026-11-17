@@ -432,18 +432,18 @@ impl Database {
         Ok(())
     }
 
-    /// Reserve `count` AES-GCM (or GMAC) invocations with a random IV under the key `uid`
+    /// Reserve `invocations` AES-GCM (or GMAC) invocations with a random IV under the key `uid`
     /// against the cap of NIST SP 800-38D §8.3, and return the key's new total.
     ///
     /// Call it before encrypting: a crash after the reservation wastes invocations, it never
-    /// lets one be used twice. A `count` of 0 returns the current total.
+    /// lets one be used twice. An `invocations` of 0 returns the current total.
     ///
     /// # Errors
     /// `Permission_Denied` when the key would exceed [`GCM_MAX_INVOCATIONS`] invocations
-    pub async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> DbResult<u64> {
+    pub async fn reserve_gcm_invocations(&self, uid: &str, invocations: u64) -> DbResult<u64> {
         self.record("reserve_gcm_invocations", async move {
             let db = self.get_object_store(uid).await?;
-            db.reserve_gcm_invocations(uid, count)
+            db.reserve_gcm_invocations(uid, invocations)
                 .await?
                 .ok_or_else(|| {
                     DbError::Kmip21Error(

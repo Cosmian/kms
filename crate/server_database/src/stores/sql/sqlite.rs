@@ -255,6 +255,7 @@ impl SqlitePool {
             .to_owned();
         let create_crls = pool.get_query("create-table-crls")?.to_owned();
         let create_gcm_invocations = get_sqlite_query!("create-table-gcm_invocations").to_owned();
+        let purge_gcm_invocations = get_sqlite_query!("purge-orphan-gcm-invocations").to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
@@ -279,6 +280,7 @@ impl SqlitePool {
             let create_crypto_officer_activations = create_crypto_officer_activations.clone();
             let create_crls = create_crls.clone();
             let create_gcm_invocations = create_gcm_invocations.clone();
+            let purge_gcm_invocations = purge_gcm_invocations.clone();
             let clean_objects = clean_objects.clone();
             let clean_read_access = clean_read_access.clone();
             let clean_tags = clean_tags.clone();
@@ -313,6 +315,9 @@ impl SqlitePool {
                                 tx.execute(&clean_crls, [])?;
                                 tx.execute(&clean_gcm_invocations, [])?;
                             }
+                            // Drop counters orphaned by an older KMS that deleted keys without
+                            // deleting their counters (downgrade then upgrade).
+                            tx.execute(&purge_gcm_invocations, [])?;
                             tx.commit()?;
                             Ok(())
                         },
@@ -1151,20 +1156,26 @@ impl ObjectsStore for SqlitePool {
         Ok(count)
     }
 
-    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
-        if count > GCM_MAX_INVOCATIONS {
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        if invocations > GCM_MAX_INVOCATIONS {
             return Ok(None);
         }
         let sql = get_sqlite_query!("reserve-gcm-invocations");
         let uid = uid.to_owned();
         // within the cap, so it fits an i64
-        let (count, max) = (count.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
+        let (invocations, max) = (invocations.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
         let total = self
             .writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
-                    c.query_row(sql, rusqlite::params![uid, count, max], |row| row.get(0))
-                        .optional()
+                    c.query_row(sql, rusqlite::params![uid, invocations, max], |row| {
+                        row.get(0)
+                    })
+                    .optional()
                 },
             )
             .await?;

@@ -259,6 +259,11 @@ impl MySqlPool {
                 .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
             conn.query_drop(sql).await.map_err(DbError::from)?;
         }
+        // Drop counters orphaned by an older KMS (downgrade then upgrade).
+        let purge_sql = queries.get("purge-orphan-gcm-invocations").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: purge-orphan-gcm-invocations".to_owned())
+        })?;
+        conn.query_drop(purge_sql).await.map_err(DbError::from)?;
 
         // Optional: clear database content for tests to ensure isolation
         if clear_database {
@@ -991,8 +996,12 @@ impl ObjectsStore for MySqlPool {
         Ok(count.unwrap_or(0))
     }
 
-    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
-        if count > GCM_MAX_INVOCATIONS {
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        if invocations > GCM_MAX_INVOCATIONS {
             return Ok(None);
         }
         for attempt in 0..MYSQL_DEADLOCK_MAX_RETRIES {
@@ -1001,7 +1010,7 @@ impl ObjectsStore for MySqlPool {
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            let outcome = match reserve_gcm_invocations_(uid, count, &mut tx).await {
+            let outcome = match reserve_gcm_invocations_(uid, invocations, &mut tx).await {
                 Ok(total) => tx.commit().await.map(|()| total).map_err(DbError::from),
                 Err(e) => {
                     tx.rollback().await.map_err(DbError::from)?;
@@ -1408,11 +1417,11 @@ pub(super) async fn update_state_(
     Ok(())
 }
 
-/// Add `count` to the AES-GCM invocation count of `uid` under a row lock; `None` (nothing
+/// Add `invocations` to the AES-GCM invocation count of `uid` under a row lock; `None` (nothing
 /// added) when the new count would exceed the cap.
 async fn reserve_gcm_invocations_(
     uid: &str,
-    count: u64,
+    invocations: u64,
     tx: &mut Transaction<'_>,
 ) -> DbResult<Option<u64>> {
     // the row must exist to be locked
@@ -1427,13 +1436,16 @@ async fn reserve_gcm_invocations_(
         .await
         .map_err(DbError::from)?
         .unwrap_or_default();
-    let total = current.cast_unsigned() + count;
+    let total = current.cast_unsigned() + invocations;
     if total > GCM_MAX_INVOCATIONS {
         return Ok(None);
     }
-    tx.exec_drop(get_mysql_query!("update-gcm-invocations"), (count, uid))
-        .await
-        .map_err(DbError::from)?;
+    tx.exec_drop(
+        get_mysql_query!("update-gcm-invocations"),
+        (invocations, uid),
+    )
+    .await
+    .map_err(DbError::from)?;
     Ok(Some(total))
 }
 

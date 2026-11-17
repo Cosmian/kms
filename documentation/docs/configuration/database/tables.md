@@ -61,7 +61,7 @@ erDiagram
     }
     GCM_INVOCATIONS {
         string object_id PK
-        bigint count
+        bigint invocations
     }
     CRYPTO_OFFICER_ACTIVATIONS {
         timestamp activated_at
@@ -193,7 +193,7 @@ one per software AES-GCM key wrap. Decryption is not counted.
 | Column | Type | Description |
 | ------ | ---- | ----------- |
 | `object_id` | `VARCHAR(128)` | Primary key. The UID of the AES key in the `objects` table. |
-| `count` | `BIGINT` | Invocations made so far, at most 4294967296 (2^32). |
+| `invocations` | `BIGINT` | Invocations made so far, at most 4294967296 (2^32). |
 
 The row is independent of the object: counting does not change the object version, so it never
 conflicts with a `ReKey` or any other write to the key, and it is not visible through KMIP
@@ -203,7 +203,15 @@ attributes. Once the cap is reached, `Encrypt`, `MAC` and wrapping with that key
 The count is per UID, not per key material: exporting a key and importing it again under another
 UID restarts the count. Keeping a key fresh is the operator's responsibility (SP 800-38D §8.1).
 Keys held in an HSM are not counted here: the HSM module enforces the cap under its Security
-Policy. The Redis-with-Findex backend (non-FIPS builds only) keeps no count.
+Policy. The Redis-with-Findex backend (non-FIPS builds only) keeps the count in
+`gcm_invocations::<uid>` keys instead of a table.
+
+**Downgrade.** An older KMS ignores this table (and the Redis keys). It does not count its own
+AES-GCM invocations, so after upgrading again the count under-reports those invocations: rekey
+AES-GCM keys that were used heavily while downgraded. An older KMS also deletes keys without
+deleting their counters; the upgraded server removes counters whose object no longer exists at
+every startup. To remove the counters manually, run `DROP TABLE gcm_invocations;` (SQL) or
+`redis-cli --scan --pattern 'gcm_invocations::*' | xargs -r redis-cli DEL` (Redis).
 
 ## Links between tables
 

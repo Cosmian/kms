@@ -31,7 +31,7 @@ use super::{
     FINDEX_KEY_LENGTH,
     objects_db::{
         ACTIVE_KEY_COUNT_KEY, DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject,
-        keywords_from_attributes,
+        SCAN_BATCH_HINT, keywords_from_attributes,
     },
     permissions::PermissionDB,
 };
@@ -68,8 +68,10 @@ return total
 static RESERVE_GCM_INVOCATIONS_SCRIPT: LazyLock<Script> =
     LazyLock::new(|| Script::new(RESERVE_GCM_INVOCATIONS_LUA));
 
+const GCM_INVOCATIONS_KEY_PREFIX: &str = "gcm_invocations::";
+
 fn gcm_invocations_key(uid: &str) -> String {
-    format!("gcm_invocations::{uid}")
+    format!("{GCM_INVOCATIONS_KEY_PREFIX}{uid}")
 }
 
 /// Returns `true` when an object's state counts toward the live-object total.
@@ -359,6 +361,9 @@ impl RedisWithFindex {
             }
         }
 
+        // Drop counters orphaned by an older KMS (downgrade then upgrade).
+        redis_with_findex.purge_orphan_gcm_invocations().await?;
+
         // One-time backfill of the `wrapped_by::<uid>` Findex index for objects
         // created before that index existed. Gated by a completion marker so the
         // O(N) scan runs at most once per database (a fresh database has no
@@ -367,6 +372,49 @@ impl RedisWithFindex {
         Box::pin(redis_with_findex.backfill_certificate_serial_tags()).await?;
 
         Ok(redis_with_findex)
+    }
+
+    /// Delete AES-GCM invocation counters whose object no longer exists.
+    ///
+    /// An older KMS deletes keys without deleting their counters; a reused UID
+    /// would otherwise inherit the stale count.
+    pub(crate) async fn purge_orphan_gcm_invocations(&self) -> DbResult<()> {
+        let map_err = |e: redis::RedisError| {
+            DbError::DatabaseError(format!("Failed to purge AES-GCM invocation counters: {e}"))
+        };
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(format!("{GCM_INVOCATIONS_KEY_PREFIX}*"))
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(map_err)?;
+            for key in keys {
+                let uid = key
+                    .strip_prefix(GCM_INVOCATIONS_KEY_PREFIX)
+                    .unwrap_or(key.as_str());
+                let exists: u64 = redis::cmd("EXISTS")
+                    .arg(ObjectsDB::object_key(uid))
+                    .query_async(&mut self.mgr.clone())
+                    .await
+                    .map_err(map_err)?;
+                if exists == 0 {
+                    redis::cmd("DEL")
+                        .arg(&key)
+                        .query_async::<()>(&mut self.mgr.clone())
+                        .await
+                        .map_err(map_err)?;
+                }
+            }
+            cursor = next_cursor;
+            if cursor == 0 {
+                return Ok(());
+            }
+        }
     }
 
     /// Backfill the `wrapped_by::<uid>` Findex index for wrapped objects that
@@ -1512,10 +1560,14 @@ impl ObjectsStore for RedisWithFindex {
         Ok(count)
     }
 
-    async fn reserve_gcm_invocations(&self, uid: &str, count: u64) -> InterfaceResult<Option<u64>> {
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
         RESERVE_GCM_INVOCATIONS_SCRIPT
             .key(gcm_invocations_key(uid))
-            .arg(count)
+            .arg(invocations)
             .arg(GCM_MAX_INVOCATIONS)
             .invoke_async::<Option<u64>>(&mut self.mgr.clone())
             .await

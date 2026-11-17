@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, future::Future};
 
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, State},
@@ -1475,5 +1475,51 @@ pub(super) async fn gcm_invocations_test<DB: ObjectsStore>(db: &DB) -> DbResult<
 
     db.delete_gcm_invocations(&capped).await?;
     assert_eq!(db.reserve_gcm_invocations(&capped, 0).await?, Some(0));
+    Ok(())
+}
+
+/// Counters left behind by a KMS that was downgraded and deleted keys are purged at the next
+/// startup, so a reused UID does not inherit a stale count; counters of live objects survive.
+pub(super) async fn gcm_invocations_orphan_purge_test<DB, F, Fut>(
+    db: &DB,
+    reopen: F,
+) -> DbResult<()>
+where
+    DB: ObjectsStore,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = DbResult<DB>>,
+{
+    log_init(None);
+    let key = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[7_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    let live_uid = Uuid::new_v4().to_string();
+    db.create(
+        Some(live_uid.clone()),
+        &UserId::from("orphan_purge_owner"),
+        &key,
+        key.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+    let orphan_uid = Uuid::new_v4().to_string();
+    assert_eq!(db.reserve_gcm_invocations(&orphan_uid, 5).await?, Some(5));
+    assert_eq!(db.reserve_gcm_invocations(&live_uid, 5).await?, Some(5));
+
+    let reopened = reopen().await?;
+    assert_eq!(
+        reopened.reserve_gcm_invocations(&orphan_uid, 0).await?,
+        Some(0)
+    );
+    assert_eq!(
+        reopened.reserve_gcm_invocations(&live_uid, 0).await?,
+        Some(5)
+    );
+    reopened.delete(&live_uid).await?;
     Ok(())
 }
