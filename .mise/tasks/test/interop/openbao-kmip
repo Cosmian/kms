@@ -15,9 +15,9 @@ setup_test_logging
 # OpenBao uses the KMS as its KMIP seal: the master key stays in the KMS, OpenBao only holds
 # the encrypted copy. The scenario initializes OpenBao, restarts it and checks it unseals
 # itself again by calling Decrypt on the KMS, then proves from the KMS log that the KMIP
-# Encrypt/Decrypt operations came from the OpenBao client certificate. OpenBao reaches the KMS
-# through kmip_tap_proxy.py, which records the raw requests (the KMS does not log request
-# contents) so the test can check they are KMIP 1.4, AES-GCM and target the wrapping key.
+# Encrypt/Decrypt operations came from the OpenBao client certificate. The KMS debug log (RUST_LOG
+# below) also records each KMIP request's protocol version, target key and algorithm, so the test
+# checks they are KMIP 1.4, AES-GCM and target the wrapping key without any network tap.
 
 require_cmd docker
 require_cmd cargo
@@ -25,21 +25,18 @@ require_cmd curl
 require_cmd openssl
 require_cmd python3
 
-BAO_IMAGE="${BAO_IMAGE:-ghcr.io/openbao/openbao:2.7.1}"
+BAO_IMAGE="${BAO_IMAGE:-$(compose_image openbao)}"
 BAO_NAME="kms-openbao-seal-$$"
 BAO_VOLUME="kms-openbao-seal-data-$$"
 BAO_CLIENT_CN="openbao-seal"
 WORK_DIR="$(mktemp -d /tmp/kms-openbao-kmip-XXXXXX)"
 CERTS_DIR="${WORK_DIR}/certs"
 KMS_LOG="${WORK_DIR}/kms.log"
-TAP_LOG="${WORK_DIR}/kmip-tap.log"
 KMS_PID=""
-TAP_PID=""
 mkdir -p "${CERTS_DIR}" "${WORK_DIR}/data"
 
 cleanup() {
   local rc=$?
-  if [[ -n "${TAP_PID}" ]]; then kill "${TAP_PID}" 2>/dev/null || true; fi
   if [[ -n "${KMS_PID}" ]]; then kill "${KMS_PID}" 2>/dev/null || true; fi
   docker rm -f "${BAO_NAME}" >/dev/null 2>&1 || true
   docker volume rm "${BAO_VOLUME}" >/dev/null 2>&1 || true
@@ -136,36 +133,14 @@ print_info "Wrapping key: ${KEY_UID}"
 # --- OpenBao with the KMIP seal. On Linux the container shares the host network; elsewhere it
 # reaches the host by name, and server_name pins the hostname checked against the KMS certificate.
 BAO_PORT="$(kms_pick_free_port)"
-TAP_PORT="$(kms_pick_free_port)"
 if [[ "$(uname -s)" == "Linux" ]]; then
   NETWORK_ARGS=(--network host)
-  TAP_LISTEN="127.0.0.1"
-  KMIP_ENDPOINT="127.0.0.1:${TAP_PORT}"
+  KMIP_ENDPOINT="127.0.0.1:${KMIP_PORT}"
 else
   NETWORK_ARGS=()
-  TAP_LISTEN="0.0.0.0"
-  KMIP_ENDPOINT="host.docker.internal:${TAP_PORT}"
+  KMIP_ENDPOINT="host.docker.internal:${KMIP_PORT}"
 fi
 
-# --- KMIP tap: OpenBao -> tap (mTLS, KMS certificate) -> KMS (mTLS, OpenBao certificate).
-print_status "Starting the KMIP tap in front of the KMS socket server..."
-# The tap talks TLS 1.3 to the KMS (a FIPS KMS requires the Extended Master Secret for TLS 1.2),
-# which the Apple Command Line Tools Python (LibreSSL) cannot do.
-TAP_PYTHON=""
-for candidate in python3 /usr/local/bin/python3 /opt/homebrew/bin/python3; do
-  if command -v "${candidate}" >/dev/null 2>&1 &&
-    "${candidate}" -c 'import ssl, sys; sys.exit(0 if ssl.HAS_TLSv1_3 else 1)' 2>/dev/null; then
-    TAP_PYTHON="${candidate}"
-    break
-  fi
-done
-[[ -n "${TAP_PYTHON}" ]] || print_error "the KMIP tap needs a python3 with TLS 1.3 support"
-: >"${TAP_LOG}"
-"${TAP_PYTHON}" "${MISE_CONFIG_ROOT}/.mise/scripts/test/kmip_tap_proxy.py" "${TAP_LISTEN}" "${TAP_PORT}" \
-  127.0.0.1 "${KMIP_PORT}" "${CERTS_DIR}/kms.crt" "${CERTS_DIR}/kms.key" "${CERTS_DIR}/ca.crt" \
-  "${CERTS_DIR}/client.crt" "${CERTS_DIR}/client.key" "${TAP_LOG}" &
-TAP_PID=$!
-wait_for_port 127.0.0.1 "${TAP_PORT}" 30 || print_error "the KMIP tap did not open"
 cat >"${WORK_DIR}/bao.hcl" <<HCL
 storage "raft" {
   path = "/openbao/file"
@@ -252,7 +227,7 @@ print_success "OpenBao unsealed again after the restart"
 
 # --- Audit: the KMS must have served KMIP Encrypt and Decrypt for the OpenBao client identity.
 print_status "Checking the KMS log..."
-python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/check_kmip_seal_audit.py" "${KMS_LOG}" \
-  "${TAP_LOG}" "${BAO_CLIENT_CN}" "${KEY_UID}"
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/openbao/check_kmip_seal_audit.py" "${KMS_LOG}" \
+  "${BAO_CLIENT_CN}" "${KEY_UID}"
 
 print_success "OpenBao KMIP seal integration test completed"

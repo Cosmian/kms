@@ -695,7 +695,6 @@ test_command() {
         --keep AZURE_CLIENT_ID \
         --keep AZURE_CLIENT_SECRET \
         --keep AZURE_KV_NAME \
-        --keep IRIS_DOCKER_IMAGE \
         --keep IRIS_LICENSE_KEY \
         --keep VARIANT \
         --keep LINK \

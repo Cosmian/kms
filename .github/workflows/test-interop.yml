@@ -28,6 +28,8 @@ jobs:
           - {leaf: kmipkit, variant: non-fips}
           - {leaf: openbao, variant: fips}
           - {leaf: openbao, variant: non-fips}
+          - {leaf: openbao-auth-verifier, variant: fips}
+          - {leaf: openbao-auth-verifier, variant: non-fips}
           - {leaf: openbao-kmip, variant: fips}
           - {leaf: openbao-kmip, variant: non-fips}
           - {leaf: pykmip, variant: non-fips}

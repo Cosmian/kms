@@ -622,7 +622,7 @@ struct AppRoleLoginAuth {
 ///
 /// Sends `POST {server_url}/v1/auth/approle/login` with a JSON body of
 /// `{"role_id": ..., "secret_id": ...}`. The KMS transparently proxies this to
-/// the configured auth-verifier (`/auth/approle/login`), which validates the
+/// the configured auth-verifier (`/v1/auth/approle/login`), which validates the
 /// credentials and returns a Vault-compatible token.
 ///
 /// The returned `client_token` is stored in `http_config.vault_token` and

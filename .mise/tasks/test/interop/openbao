@@ -13,7 +13,7 @@ kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 
 REPO_ROOT="$(get_repo_root)"
-source "${REPO_ROOT}/.mise/scripts/test/bao_verifier.sh"
+source "${REPO_ROOT}/.mise/scripts/test/openbao/bao_verifier.sh"
 WORK_DIR="$(mktemp -d /tmp/kms-openbao-XXXXXX)"
 
 # Keep the original exit status: kms_stop succeeding must not mask a failed scenario.
@@ -39,12 +39,10 @@ require_cmd curl
 require_cmd python3
 
 print_header "OpenBao + KMS KV v2 integration test (${VARIANT_NAME})"
-run_isolated python3 "${REPO_ROOT}/.mise/scripts/test/test_bao_lookup_proxy.py"
 
-# Identities: a throw-away OpenBao dev server acts as the token verifier (the KMS calls its
-# /auth/token/lookup-self, which a small proxy maps to OpenBao's /v1 path). Two userpass logins
-# give two tokens, each mapped to its own entity.
-bao_verifier_start "kms-openbao-verifier-$$" "${WORK_DIR}"
+# Identities: a throw-away OpenBao dev server is the token verifier (the KMS calls its
+# /v1/auth/token/lookup-self directly). Two userpass logins give two tokens, each mapped to its own entity.
+bao_verifier_start "kms-openbao-verifier-$$"
 TOKEN_OWNER="$(bao_verifier_login alice)"
 TOKEN_OTHER="$(bao_verifier_login bob)"
 
@@ -89,6 +87,6 @@ BAO_ADDR="${BAO_ADDR_FOR_CONTAINER}" \
   BAO_TOKEN="${TOKEN_OWNER}" \
   BAO_TOKEN_OTHER="${TOKEN_OTHER}" \
   KV_MOUNT="kv" \
-  bash "${REPO_ROOT}/.mise/scripts/test/test_openbao_kv.sh"
+  bash "${REPO_ROOT}/.mise/scripts/test/openbao/test_openbao_kv.sh"
 
 print_success "OpenBao integration tests completed"

@@ -223,11 +223,37 @@ Use the OpenBao CLI with the supported KV v2 operations by pointing it at the KM
 
 ```bash
 export BAO_ADDR=https://kms.example.com:9998
-export BAO_TOKEN=<token issued by the auth-verifier>
+export BAO_TOKEN=<Vault token, see "Authenticating the bao CLI" below>
 bao kv put kv/myapp/config api_key=xyz
 bao kv get kv/myapp/config
 bao kv get -version=1 kv/myapp/config
 bao kv list kv/myapp
+```
+
+### Authenticating the bao CLI
+
+The `BAO_TOKEN` is a Vault token that a verifier configured with `vault_auth_verifier_url` accepts. The KMS validates it with `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` (the login requests) to `<url>/v1/auth/*` unchanged. The URL is the base URL of the verifier, with no `/v1` suffix. There are two cases.
+
+**With an existing OpenBao or Vault server.** Set `vault_auth_verifier_url` to that server's base URL. Users log in to their OpenBao as usual, or through the KMS since `/v1/auth/*` is forwarded, then use the same token with `BAO_ADDR=<KMS>`.
+
+**With the Cosmian Auth Verifier only.** Set `vault_auth_verifier_url` to the Auth Verifier and `vault_userpass_realm` in the Auth Verifier configuration (the realm whose userpass accounts may log in). It needs the Auth Verifier version that serves `/v1/auth/*`.
+
+- Humans: `BAO_ADDR=<KMS> bao login -method=userpass username=<user>`.
+- Machines: `BAO_ADDR=<KMS> bao write auth/approle/login role_id=<ROLE_ID> secret_id=<SECRET_ID>`.
+- The KMS identity is `spire:userpass:<realm>:<user>` for users and `spire:<role>` for AppRoles.
+
+```mermaid
+sequenceDiagram
+    participant User as bao CLI
+    participant Kms as Eviden KMS
+    participant Verifier as Auth Verifier or OpenBao
+    User->>Kms: POST /v1/auth/userpass/login/alice
+    Kms->>Verifier: forwarded unchanged
+    Verifier-->>User: token (through the KMS)
+    User->>Kms: PUT /v1/kv/data/app<br/>X-Vault-Token
+    Kms->>Verifier: GET /v1/auth/token/lookup-self
+    Verifier-->>Kms: entity_id
+    Kms-->>User: 200
 ```
 
 The OpenBao CLI integration test runs in CI with both FIPS and non-FIPS builds. It covers the operations listed above, but does not claim full Vault KV v2 API parity. Partial updates (`kv patch`) and version-targeted delete/undelete/destroy operations are not implemented.

@@ -31,12 +31,13 @@ print_status "Starting ephemeral OpenSearch container (no volume, --rm)"
 # Pinned to the current stable release (not :latest) so this test stays reproducible;
 # bump deliberately when a new OpenSearch major/minor ships, see release notes:
 # https://github.com/opensearch-project/OpenSearch/releases
+OPENSEARCH_IMAGE="$(compose_image opensearch)"
 docker run -d --rm --name "${CONTAINER_NAME}" \
   -p "127.0.0.1::9200" \
   -e "discovery.type=single-node" \
   -e "DISABLE_SECURITY_PLUGIN=true" \
   -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
-  opensearchproject/opensearch:3.8.0 >/dev/null
+  "${OPENSEARCH_IMAGE}" >/dev/null
 
 # Docker picks a free host port: the compose elasticsearch service (filebeat leaf) already binds KMS_SLOT_ES_PORT.
 OPENSEARCH_PORT="$(docker port "${CONTAINER_NAME}" 9200/tcp | head -n1 | sed 's/.*://')"

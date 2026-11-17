@@ -19,9 +19,9 @@
 # ──────────────────
 # workflow_dispatch — manual invocation on a branch; trigger_packaging=true by
 #                     default so packaging follows automatically.
-# release.yml       — Job 2: trigger_packaging=false (release.yml has its own
-#                     trigger-packaging job that waits for packaging and polls
-#                     its outcome).
+# release.yml       — Job 2: trigger_packaging=false (package-and-commit-sbom.yml
+#                     owns packaging: it dispatches, waits and commits SBOMs).
+# nightly.yml       — trigger_packaging=false, for the same reason.
 # (packaging.yml does NOT call this workflow; it is a pure build workflow.)
 
 name: Update Nix vendor hashes

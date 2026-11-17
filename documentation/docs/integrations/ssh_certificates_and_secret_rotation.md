@@ -107,14 +107,9 @@ ssh-keygen -t ecdsa -b 256 -f "$HOME/.ssh/id_ecdsa"
 Submit only the public key. The optional `ttl` must not exceed the role's `max_ttl`; if omitted, the role's `default_ttl` is used.
 
 ```bash
-curl --fail-with-body --silent --show-error \
-  --request POST "$API_URL/v1/ssh/sign/developers" \
-  --header "Authorization: Bearer $API_TOKEN" \
-  --header "Content-Type: application/json" \
-  --data "$(jq -n \
-    --arg public_key "$(cat "$HOME/.ssh/id_ecdsa.pub")" \
-    '{public_key:$public_key,valid_principals:["alice"],ttl:"15m"}')" \
-  | jq -r '.data.signed_key' > "$HOME/.ssh/id_ecdsa-cert.pub"
+ckms ssh sign developers "$(cat "$HOME/.ssh/id_ecdsa.pub")" \
+  --principal alice \
+  --ttl 15m > "$HOME/.ssh/id_ecdsa-cert.pub"
 ```
 
 Use `ssh-keygen -L -f "$HOME/.ssh/id_ecdsa-cert.pub"` to inspect the certificate. Configure the SSH client to use the certificate alongside its private key, then connect as one of the certificate's allowed principals.
@@ -143,12 +138,7 @@ sequenceDiagram
 `POST /v1/secrets/password` requires the caller's KMS `Create` permission. It returns a fresh 32-character alphanumeric value in `data.password`; it neither stores nor logs the password.
 
 ```bash
-curl --fail-with-body --silent --show-error \
-  --request POST "$API_URL/v1/secrets/password" \
-  --header "Authorization: Bearer $API_TOKEN" \
-  --header "Content-Type: application/json" \
-  --data '{}' \
-  | jq -er '.data.password'
+ckms password
 ```
 
 The endpoint does not modify the external system or publish the value to KV, and it knows nothing about the system the password is for. The application orchestrating a rotation is responsible for both operations and for recovering from partial failure.
@@ -188,12 +178,7 @@ set -euo pipefail
 umask 077
 pending_file=$(mktemp "${TMPDIR:-/tmp}/kms-rotation.XXXXXX")
 password=$(
-  curl --fail-with-body --silent --show-error \
-    --request POST "$API_URL/v1/secrets/password" \
-    --header "Authorization: Bearer $API_TOKEN" \
-    --header "Content-Type: application/json" \
-    --data '{}' \
-    | jq -er '.data.password'
+  ckms password
 )
 printf '%s' "$password" > "$pending_file"
 unset password
@@ -224,15 +209,13 @@ printf "ALTER USER 'app_user'@'%%' IDENTIFIED BY '%s';" "$(<"$pending_file")" \
 rm -f "$admin_cnf"
 ```
 
-Publish the same password to the KV v2 path. The path and token must be authorized by the KMS KV configuration:
+Publish the same password to the KV v2 path. The path and token used by `ckms` must be authorized by the KMS KV configuration:
 
 ```bash
-jq -n --rawfile password "$pending_file" '{data:{password:$password}}' \
-  | curl --fail-with-body --silent --show-error \
-      --request POST "$API_URL/v1/kv/data/database/app" \
-      --header "X-Vault-Token: $KV_TOKEN" \
-      --header "Content-Type: application/json" \
-      --data-binary @-
+pending_secret_file=$(mktemp "${TMPDIR:-/tmp}/kms-rotation-secret.XXXXXX")
+jq -n --rawfile password "$pending_file" '{password:$password}' > "$pending_secret_file"
+ckms kv put --from-file "$pending_secret_file" database/app
+rm -f "$pending_secret_file"
 ```
 
 After the KV write succeeds, remove the pending file:

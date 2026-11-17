@@ -10,7 +10,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ProtocolVersion, ResultStatusEnumeration,
         },
     },
-    kmip_1_4::kmip_types::OperationEnumeration as Kmip14OperationEnumeration,
+    kmip_1_4::{
+        kmip_operations::Operation as Kmip14Operation,
+        kmip_types::OperationEnumeration as Kmip14OperationEnumeration,
+    },
     kmip_2_1::{
         extra::tagging::VENDOR_ATTR_TAG,
         kmip_messages::{
@@ -23,7 +26,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     time_normalize,
     ttlv::{KmipFlavor, TTLV, TTLValue, TtlvDeserializer, TtlvError, to_ttlv},
 };
-use cosmian_logger::{error, info, trace};
+use cosmian_logger::{debug, error, info, trace};
 use serde::{Deserialize, de::DeserializeOwned};
 use strum::IntoEnumIterator;
 
@@ -45,6 +48,106 @@ impl std::fmt::Debug for BatchOperations<'_> {
             .finish()
     }
 }
+/// Lazily formats the non-secret parameters of an `Encrypt` or `Decrypt` batch item for the debug
+/// log: the key unique identifier, the cryptographic algorithm and the block cipher mode, exactly
+/// as the client sent them (KMIP 1.4 or 2.1). The data, the IV and the nonce are never logged.
+struct CryptoRequestDetails<'a>(ProtocolVersion, &'a BatchItemInput);
+
+impl std::fmt::Display for CryptoRequestDetails<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let BatchItemInput::Item(item) = self.1 else {
+            return Ok(());
+        };
+        match &**item {
+            RequestMessageBatchItemVersioned::V14(item) => match &item.request_payload {
+                Kmip14Operation::Encrypt(request) => write_crypto_details(
+                    f,
+                    self.0,
+                    "Encrypt",
+                    request.unique_identifier.as_deref(),
+                    request.cryptographic_parameters.as_ref().map(|p| {
+                        (
+                            debug_opt(&p.cryptographic_algorithm),
+                            debug_opt(&p.block_cipher_mode),
+                        )
+                    }),
+                ),
+                Kmip14Operation::Decrypt(request) => write_crypto_details(
+                    f,
+                    self.0,
+                    "Decrypt",
+                    request.unique_identifier.as_deref(),
+                    request.cryptographic_parameters.as_ref().map(|p| {
+                        (
+                            debug_opt(&p.cryptographic_algorithm),
+                            debug_opt(&p.block_cipher_mode),
+                        )
+                    }),
+                ),
+                _ => Ok(()),
+            },
+            RequestMessageBatchItemVersioned::V21(item) => match &item.request_payload {
+                Operation::Encrypt(request) => write_crypto_details(
+                    f,
+                    self.0,
+                    "Encrypt",
+                    request
+                        .unique_identifier
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .as_deref(),
+                    request.cryptographic_parameters.as_ref().map(|p| {
+                        (
+                            debug_opt(&p.cryptographic_algorithm),
+                            debug_opt(&p.block_cipher_mode),
+                        )
+                    }),
+                ),
+                Operation::Decrypt(request) => write_crypto_details(
+                    f,
+                    self.0,
+                    "Decrypt",
+                    request
+                        .unique_identifier
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .as_deref(),
+                    request.cryptographic_parameters.as_ref().map(|p| {
+                        (
+                            debug_opt(&p.cryptographic_algorithm),
+                            debug_opt(&p.block_cipher_mode),
+                        )
+                    }),
+                ),
+                _ => Ok(()),
+            },
+        }
+    }
+}
+
+fn debug_opt<T: std::fmt::Debug>(value: &Option<T>) -> String {
+    value
+        .as_ref()
+        .map_or_else(|| "None".to_owned(), |value| format!("{value:?}"))
+}
+
+fn write_crypto_details(
+    f: &mut std::fmt::Formatter<'_>,
+    version: ProtocolVersion,
+    operation: &str,
+    unique_identifier: Option<&str>,
+    parameters: Option<(String, String)>,
+) -> std::fmt::Result {
+    let (algorithm, mode) = parameters.unwrap_or_else(|| ("None".to_owned(), "None".to_owned()));
+    write!(
+        f,
+        "[{operation}] protocol_version={}.{} unique_identifier={} cryptographic_algorithm={algorithm} block_cipher_mode={mode}",
+        version.protocol_version_major,
+        version.protocol_version_minor,
+        unique_identifier.unwrap_or("None")
+    )
+}
+
 /// Maps internal operation failures to the KMIP result reason and message returned to clients.
 pub(crate) fn kmip_error_response_fields(error: &KmsError) -> (ErrorReason, String) {
     match error {
@@ -455,6 +558,20 @@ pub(crate) async fn process_message(
                 .unwrap_or(&[])
         ),
     );
+    // Debug only: what the client asked for, which the info line above does not show. Lets a test
+    // prove the protocol version, the target key and the algorithm without a network tap.
+    for item in request.batch_item.iter().take(10).filter(|item| {
+        matches!(
+            item.operation(),
+            OperationEnumeration::Encrypt | OperationEnumeration::Decrypt
+        )
+    }) {
+        debug!(
+            user = user.as_str(),
+            "KMIP request {}",
+            CryptoRequestDetails(request.request_header.protocol_version, item)
+        );
+    }
     if request.batch_item.is_empty()
         || request.request_header.batch_count != i32::try_from(request.batch_item.len())?
     {
