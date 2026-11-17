@@ -1264,38 +1264,6 @@ fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<
         .transpose()
 }
 
-/// First path segments the KV mount must not take: it is served at both `/<mount>` and
-/// `/v1/<mount>`, so it would shadow an existing scope or route (actix-web does not fall
-/// through from a matching scope to later services).
-const KV_RESERVED_MOUNTS: &[&str] = &[
-    "v1",
-    "sys",
-    "auth",
-    "crypto",
-    "kmip",
-    "ui",
-    "aws",
-    "ms_dke",
-    "google_cse",
-    "tokenize",
-    // Default-scope and application-level routes.
-    ".well-known",
-    "access",
-    "certificates",
-    "download-cli",
-    "health",
-    "hsm",
-    "jwks.json",
-    "ocsp",
-    "openapi.yaml",
-    "public",
-    "scep",
-    "secrets",
-    "server-info",
-    "ssh",
-    "swagger",
-];
-
 /// Resolve the KV mount name. An empty value (what a TOML generated from `Default` contains)
 /// means the documented default `kv`. Collisions are only an error when KV is enabled.
 fn resolve_kv_mount(
@@ -1314,11 +1282,10 @@ fn resolve_kv_mount(
             "`kv_mount` must be a single path segment, got `{mount}`"
         )));
     }
-    if KV_RESERVED_MOUNTS.contains(&mount) || mount == transit_mount || mount == pki_mount {
+    if mount == transit_mount || mount == pki_mount {
         return Err(KmsError::ServerError(format!(
-            "`kv_mount = {mount}` collides with an existing route: pick a mount name that is \
-             not used by another scope (reserved: {KV_RESERVED_MOUNTS:?}, `vault_transit_mount`, \
-             `vault_pki_mount`)"
+            "`kv_mount = {mount}` collides with `vault_transit_mount` or `vault_pki_mount`: pick \
+             another mount name"
         )));
     }
     Ok(mount.to_owned())
@@ -1956,26 +1923,18 @@ mod tests {
         );
     }
 
-    /// KV is served at `/<mount>` and `/v1/<mount>`: a mount that names another scope is refused
-    /// at startup instead of silently shadowing Transit/PKI/auth/crypto or the KMIP routes.
+    /// A mount equal to the configured Transit or PKI mount is refused at startup. Other scope
+    /// names are accepted: the KV scopes only claim their own `data/`/`metadata/` routes.
     #[test]
     fn kv_mount_rejects_collisions_when_enabled() {
-        for reserved in [
-            "v1",
-            "sys",
-            "auth",
-            "crypto",
-            "kmip",
-            "access",
-            "ssh",
-            "secrets",
-            "health",
-            "transit",
-            "custom-pki",
-        ] {
+        for reserved in ["transit", "custom-pki"] {
             let err = resolve_kv_mount(true, reserved, "transit", "custom-pki")
                 .expect_err("colliding mount must be rejected");
             assert!(err.to_string().contains("collides"), "{err}");
+        }
+        for other_scope in ["health", "crypto", "access"] {
+            resolve_kv_mount(true, other_scope, "transit", "custom-pki")
+                .expect("another scope's name is a valid mount");
         }
         resolve_kv_mount(true, "a/b", "transit", "pki").expect_err("nested mount must be rejected");
     }

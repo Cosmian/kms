@@ -502,6 +502,9 @@ spin@0.9.9 (1): MIT
 spinning_top@0.3.0 (2): MIT, Apache-2.0
 spki@0.7.3 (2): Apache-2.0, MIT
 sqlite-wasm-rs@0.6.2 (1): MIT
+ssh-cipher@0.2.0 (2): Apache-2.0, MIT
+ssh-encoding@0.2.0 (2): Apache-2.0, MIT
+ssh-key@0.6.7 (2): Apache-2.0, MIT
 stable_deref_trait@1.2.1 (2): MIT, Apache-2.0
 stringprep@0.1.5 (2): MIT, Apache-2.0
 strsim@0.11.1 (1): MIT

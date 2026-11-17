@@ -1528,19 +1528,22 @@ pub async fn prepare_kms_server(
                 || use_api_token_auth
                 || use_auth_verifier;
             let kv_mount = &kms_server_for_http.params.kv.mount;
+            let native_path = format!("/{kv_mount}");
+            let v1_path = format!("/v1/{kv_mount}");
             app = app
-                .service(kv_scope(
-                    &format!("/{kv_mount}"),
-                    kv::configure_routes,
-                    use_any_auth,
-                    &native_auth,
-                ))
-                .service(kv_scope(
-                    &format!("/v1/{kv_mount}"),
-                    kv::configure_routes,
-                    use_any_auth,
-                    &native_auth,
-                ))
+                .service(
+                    kv_scope(
+                        &native_path,
+                        kv::configure_routes,
+                        use_any_auth,
+                        &native_auth,
+                    )
+                    .guard(kv::mount_guard(&native_path)),
+                )
+                .service(
+                    kv_scope(&v1_path, kv::configure_routes, use_any_auth, &native_auth)
+                        .guard(kv::mount_guard(&v1_path)),
+                )
                 .service(kv_scope(
                     "/v1/sys/internal/ui/mounts",
                     kv::configure_mount_routes,
@@ -2490,9 +2493,12 @@ mod tests {
         };
 
         let auth = TestAuthStack::new(Some(live_auth_verifier().await)).await;
-        let app = test::init_service(App::new().app_data(Data::new(auth.kms.clone())).service(
-            kv_scope("/v1/kv", kv::configure_routes, true, &auth.stack()),
-        ))
+        let app = test::init_service(
+            App::new().app_data(Data::new(auth.kms.clone())).service(
+                kv_scope("/v1/kv", kv::configure_routes, true, &auth.stack())
+                    .guard(kv::mount_guard("/v1/kv")),
+            ),
+        )
         .await;
         let bearer = (
             actix_web::http::header::AUTHORIZATION,
@@ -2557,12 +2563,10 @@ mod tests {
                     .build(),
                 )
                 .route("/login", web::post().to(login))
-                .service(kv_scope(
-                    "/v1/kv",
-                    kv::configure_routes,
-                    false,
-                    &auth.stack(),
-                )),
+                .service(
+                    kv_scope("/v1/kv", kv::configure_routes, false, &auth.stack())
+                        .guard(kv::mount_guard("/v1/kv")),
+                ),
         )
         .await;
         let login_response =

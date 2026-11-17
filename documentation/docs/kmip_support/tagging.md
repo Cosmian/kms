@@ -13,6 +13,7 @@ In addition, the KMS server will automatically add a system tag to objects based
 - `_sd`: for a secret data
 - `_oo`: for an opaque object
 - `_pgp`: for an OpenPGP key
+- `_kv`, `_kv::…`: for objects managed by the [Vault-compatible KV secret store](../configuration/secret_backends.md#vault-compatible-kv-secret-store) (see [KV store tags](#kv-store-tags))
 
 Since there is no provision in the KMIP 2.1 specification for tagging. The Eviden KMS server implements tagging using the following KMIP 2.1 extensions:
 
@@ -72,3 +73,17 @@ A certificate whose DER cannot be parsed is skipped and stays without a `_serial
 is logged when the stored object cannot be deserialized (see the [log reference](../configuration/log-reference.md)).
 
 The backfill runs once, at the first start of an upgraded server. During a rolling upgrade, upgrade every node before the first upgraded node starts; a certificate created by a not-yet-upgraded node after the marker is written stays untagged.
+
+## KV store tags
+
+The KV secret store marks the `SecretData` objects it manages with system tags in the `_kv` family. They are set by the server only: a `_`-prefixed tag supplied by a client is rejected on `Create` and stripped on `Import`, so a client cannot forge them.
+
+|Tag|Set on|Purpose|
+|---|---|---|
+|`_kv`|every KV object (metadata and versions)|Marks the object as KV-managed|
+|`_kv::metadata`|metadata objects|Lists the paths visible to a caller|
+|`_kv::meta::<path>`|a path's metadata object|Finds the metadata object of `<path>`|
+|`_kv::version::<path>::<version>`|a version object|Finds version `<version>` of `<path>`|
+|`_kv::ttl-active::<hash>`|live versions with a TTL|Lets the TTL sweep visit only these versions. `<hash>` is derived from the server's [internal key](../configuration/secret_backends.md#internal-record-identifiers), so it cannot be guessed|
+
+The longest tag must fit in a `VARCHAR(255)` column, which bounds the KV path length (the server refuses longer paths).

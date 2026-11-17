@@ -8,6 +8,8 @@ use serde::{
 };
 use strum::Display;
 
+use crate::len_display::LenDisplay;
+
 #[kmip_enum]
 pub enum TicketType {
     Login = 0x0000_0001,
@@ -113,7 +115,7 @@ impl std::fmt::Debug for Ticket {
             .field("ticket_type", &self.ticket_type)
             .field(
                 "ticket_value",
-                &format_args!("<{} bytes>", self.ticket_value.len()),
+                &format_args!("{}", self.ticket_value.len_display()),
             )
             .finish()
     }

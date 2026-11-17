@@ -107,35 +107,6 @@ Possible values:  `"true", "false"`
 **`markdown`** [[33]](#33-ckms-markdown)  Regenerate the CLI documentation in Markdown format
 
 **`configure`** [[34]](#34-ckms-configure)  Configure the KMS CLI (create ckms.toml)
-**`locate`** [[18]](#18-ckms-locate)  Locate cryptographic objects inside the KMS
-
-**`login`** [[19]](#19-ckms-login)  Login to the KMS server identity provider.
-
-**`logout`** [[20]](#20-ckms-logout)  Logout from the Identity Provider
-
-**`hash`** [[21]](#21-ckms-hash)  Hash arbitrary data.
-
-**`mac`** [[22]](#22-ckms-mac)  MAC utilities: compute or verify a MAC value.
-
-**`rng`** [[23]](#23-ckms-rng)  RNG utilities: retrieve random bytes or seed RNG
-
-**`server`** [[24]](#24-ckms-server)  Server-related commands
-
-**`rsa`** [[25]](#25-ckms-rsa)  Manage RSA keys. Encrypt and decrypt data using RSA keys
-
-**`opaque-object`** [[26]](#26-ckms-opaque-object)  Create, import, export, revoke and destroy Opaque Objects
-
-**`pkcs11`** [[27]](#27-ckms-pkcs11)  Verify PKCS#11 shared library integration
-
-**`secret-data`** [[28]](#28-ckms-secret-data)  Create, import, export and destroy secret data
-
-**`sym`** [[29]](#29-ckms-sym)  Manage symmetric keys. Encrypt and decrypt data
-
-**`vault`** [[30]](#30-ckms-vault)  Vault-compatible `AppRole` identity management
-
-**`markdown`** [[31]](#31-ckms-markdown)  Regenerate the CLI documentation in Markdown format
-
-**`configure`** [[32]](#32-ckms-configure)  Configure the KMS CLI (create ckms.toml)
 
 ---
 

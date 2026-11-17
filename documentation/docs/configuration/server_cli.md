@@ -793,7 +793,9 @@ Options:
           [env: KMS_VAULT_API_ENABLED=]
 
       --vault-auth-verifier-url <VAULT_AUTH_VERIFIER_URL>
-          Base URL of the auth-verifier server used to validate `X-Vault-Token` headers.
+          Base URL of the token verifier: a Cosmian Auth Verifier or an OpenBao/Vault server.
+
+          The KMS validates `X-Vault-Token` with `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` (logins) to `<url>/v1/auth/*`. With the Auth Verifier, requires the version that serves `/v1/auth/*`.
 
           Required when `vault_api_enabled = true`. Example: `https://auth.example.com`
 

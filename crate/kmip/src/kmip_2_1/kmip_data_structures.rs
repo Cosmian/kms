@@ -32,6 +32,7 @@ use crate::{
         RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
+    len_display::LenDisplay,
     pad_be_bytes,
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
@@ -67,13 +68,19 @@ impl Display for DerivationParameters {
             ));
         }
         if let Some(initialization_vector) = &self.initialization_vector {
-            parts.push(format!("initialization_vector: {initialization_vector:?}"));
+            parts.push(format!(
+                "initialization_vector: {}",
+                initialization_vector.len_display()
+            ));
         }
         if let Some(derivation_data) = &self.derivation_data {
-            parts.push(format!("derivation_data: {derivation_data:?}"));
+            parts.push(format!(
+                "derivation_data: {}",
+                derivation_data.len_display()
+            ));
         }
         if let Some(salt) = &self.salt {
-            parts.push(format!("salt: {salt:?}"));
+            parts.push(format!("salt: {}", salt.len_display()));
         }
         if let Some(iteration_count) = &self.iteration_count {
             parts.push(format!("iteration_count: {iteration_count}"));

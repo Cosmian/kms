@@ -6,8 +6,8 @@ Usage: check_kmip_seal_audit.py <kms.log> <client-cn> <key-uid>
 
 `kms.log` is the KMS log written with `cosmian_kms_server=debug`. It holds, per KMIP request
 message, an info line with the operations and the authenticated user, and debug lines with the
-protocol version, operation and, for Encrypt and Decrypt, the target key identifier, the cryptographic
-algorithm and the block cipher mode (never the data or the IV). The script asserts that:
+protocol version, operation, target key identifier, cryptographic algorithm and block cipher mode of
+every operation (never the data, the IV or key material). The script asserts that:
   * Encrypt and Decrypt were served for the OpenBao client certificate identity, and for nobody else;
   * OpenBao sent Encrypt and Decrypt requests that are KMIP 1.4, target the wrapping key and use
     AES in GCM mode.

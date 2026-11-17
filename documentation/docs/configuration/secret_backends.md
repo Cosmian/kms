@@ -198,7 +198,7 @@ kv_ttl_check_interval_secs = 30
 
 The KV routes apply the same CORS policy as the main KMS API (`cors_allowed_origins`); Vault and OpenBao clients do not need CORS.
 
-The API is available below `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*`, and also below `/v1/<kv_mount>/...` because the `vault` and `bao` CLIs always send the `/v1` prefix. Writes are accepted with `POST` or `PUT`. The `kv_mount` name must be a single path segment that does not collide with another scope or route (`v1`, `sys`, `auth`, `crypto`, `kmip`, `ui`, `aws`, `ms_dke`, `google_cse`, `tokenize`, `.well-known`, `access`, `certificates`, `download-cli`, `health`, `hsm`, `jwks.json`, `ocsp`, `openapi.yaml`, `public`, `scep`, `secrets`, `server-info`, `ssh`, `swagger`, `vault_transit_mount`, `vault_pki_mount`); the server refuses to start otherwise. An empty value means `kv`. A write creates a new version, while reads return the latest version unless `?version=<number>` is provided. All versions are retained indefinitely. Metadata listing uses `GET /<kv_mount>/metadata/<prefix>?list=true`. Paths and listing prefixes are limited to 219 characters so generated tags fit the SQL backends.
+The API is available below `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*`, and also below `/v1/<kv_mount>/...` because the `vault` and `bao` CLIs always send the `/v1` prefix. Writes are accepted with `POST` or `PUT`. The `kv_mount` name must be a single path segment different from `vault_transit_mount` and `vault_pki_mount`; the server refuses to start otherwise. The mount only claims its own `data/` and `metadata/` sub-paths, so a name that equals another scope (for example `health`) never hides that scope's routes. An empty value means `kv`. A write creates a new version, while reads return the latest version unless `?version=<number>` is provided. All versions are retained indefinitely. Metadata listing uses `GET /<kv_mount>/metadata/<prefix>?list=true`. Paths and listing prefixes are limited to 219 characters so generated tags fit the SQL backends.
 
 KV operations use the metadata object's access rights:
 
@@ -229,6 +229,14 @@ bao kv get kv/myapp/config
 bao kv get -version=1 kv/myapp/config
 bao kv list kv/myapp
 ```
+
+### Internal record identifiers
+
+The KMS keeps some of its own state as ordinary KMIP objects: the KV path metadata and the SSH CA and role records. KMIP clients may choose the UID of the objects they create, so a predictable UID such as `kv/<path>` would let a client pre-create an object there and block the path or the SSH configuration. The KMS therefore uses the first 16 bytes of `HMAC-SHA256(server key, domain || record name)` as the UID of these records.
+
+The server key is 32 random bytes from the KMS RNG, stored in the `parameters` table (`kv_metadata_uid_key`), which no KMIP operation can read or write. It is created on first use by the KV store or the SSH CA/role API (a read is enough). All instances and replicas sharing the database use the same key: the first stored value wins.
+
+The same key also derives the tag that marks KV versions carrying a TTL, so that no client can make the TTL sweep visit its own objects. The key only names and marks internal records: it encrypts nothing and never touches secret material.
 
 ### Authenticating the bao CLI
 

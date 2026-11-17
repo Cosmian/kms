@@ -101,13 +101,38 @@ fn unsupported_operation() -> std::future::Ready<KvResult<HttpResponse>> {
     std::future::ready(Err(KvApiError::UnsupportedOperation))
 }
 
+/// First path segments of the routes served below a mount by [`configure_routes`].
+const DATA_SEGMENT: &str = "data";
+const METADATA_SEGMENT: &str = "metadata";
+
+/// Guard for a scope mounted at `mount_path` (`/<kv_mount>` or `/v1/<kv_mount>`): it claims only
+/// the requests [`configure_routes`] serves. Actix keeps looking at the later services when a
+/// scope guard fails, so a mount name equal to another scope (`health`, `access`, `crypto`, ...)
+/// cannot shadow that scope's routes, and no list of reserved names has to be kept in sync with
+/// the router.
+pub(crate) fn mount_guard(mount_path: &str) -> impl guard::Guard + use<> {
+    let prefix = format!("{mount_path}/");
+    guard::fn_guard(move |ctx| {
+        ctx.head()
+            .uri
+            .path()
+            .strip_prefix(&prefix)
+            .is_some_and(|rest| {
+                [DATA_SEGMENT, METADATA_SEGMENT].iter().any(|segment| {
+                    rest.strip_prefix(segment)
+                        .is_some_and(|after| after.starts_with('/'))
+                })
+            })
+    })
+}
+
 /// Register the KV routes, their extractor configuration and the scope fallback on a scope
 /// mounted at `/<kv_mount>` or `/v1/<kv_mount>`.
 pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.app_data(json_config())
         .app_data(query_config())
         .service(
-            web::resource("/data/{tail}*")
+            web::resource(format!("/{DATA_SEGMENT}/{{tail}}*"))
                 .route(web::get().to(get_secret))
                 .route(web::post().to(put_secret))
                 .route(web::put().to(put_secret))
@@ -115,7 +140,7 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .default_service(web::to(unsupported_operation)),
         )
         .service(
-            web::resource("/metadata/{tail}*")
+            web::resource(format!("/{METADATA_SEGMENT}/{{tail}}*"))
                 .route(web::get().to(read_or_list_metadata))
                 .route(
                     web::route()

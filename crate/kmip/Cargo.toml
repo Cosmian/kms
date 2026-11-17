@@ -26,7 +26,6 @@ non-fips = []
 interop = []
 
 [dependencies]
-base64 = { workspace = true }
 bitflags = { workspace = true }
 cosmian_crypto_core = { workspace = true }
 cosmian_logger = { workspace = true }
