@@ -13,6 +13,7 @@ Base ref: the argument, default `origin/develop`, falling back to `HEAD~1` (as i
 
 ```bash
 BASE="${1:-origin/develop}"
+git rev-parse -q --verify "$BASE" >/dev/null || BASE=HEAD~1
 # merge-base form (no `...`): includes uncommitted tracked changes, so it works in self-review before commit
 git diff "$(git merge-base "$BASE" HEAD)" -- crate/server_database crate/kmip/src/kmip_0/kmip_types.rs crate/kmip/src/kmip_2_1/kmip_attributes.rs crate/kmip/src/kmip_2_1/kmip_objects.rs crate/kmip/src/kmip_2_1/kmip_types.rs
 git status --short | grep '^??' | grep -E 'crate/(server_database|kmip)'   # untracked new files are not in the diff
