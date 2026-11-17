@@ -15,6 +15,7 @@ readonly MYSQL_IMAGE="mysql:8.0@sha256:99d774bf02a48a1bb1c599920d2571946d31e5940
 readonly REDIS_IMAGE="redis:7.2@sha256:5b816bb37d9707a70f10ef5002ecf8ee431750d397010fc4314c93dca887962f"
 # Test-only database password for ephemeral containers on the isolated network.
 readonly DB_PASSWORD="kms-upgrade-gate"
+readonly NIGHTLY_BASELINE_VERSION="5.20.0"
 
 VARIANT="fips"
 BACKEND_ARG="all"
@@ -44,24 +45,9 @@ parse_args() {
   [ -n "${NEW_IMAGE}" ] || print_error "--new-image (or DOCKER_IMAGE_NAME) is required."
 }
 
-# Read SUPPORTED_BASELINE (e.g. 5.20.0) directly from migrate.rs so the pool tracks code changes.
-read_supported_baseline() {
-  python3 - "${REPO_ROOT}/crate/server_database/src/stores/migrate.rs" <<'PY'
-import re, sys
-from pathlib import Path
-text = Path(sys.argv[1]).read_text(encoding="utf-8")
-m = re.search(r"SUPPORTED_BASELINE:\s*Version\s*=\s*Version\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", text)
-if not m:
-    raise SystemExit("Could not parse SUPPORTED_BASELINE from migrate.rs")
-print(f"{m.group(1)}.{m.group(2)}.{m.group(3)}")
-PY
-}
-
-# Resolve the ordered list of old KMS versions to test (N-1, baseline, + 2 round-robin middle tags).
+# Resolve the ordered list of old KMS versions to test (baseline 5.20.0, N-1, + 2 round-robin middle tags).
 resolve_old_versions() {
-  local baseline
-  baseline="$(read_supported_baseline)"
-  python3 - "${REPO_ROOT}" "${baseline}" "${OLD_VERSION_ARG}" "${ROTATION_INDEX}" "${GITHUB_REF_NAME:-}" <<'PY'
+  python3 - "${REPO_ROOT}" "${NIGHTLY_BASELINE_VERSION}" "${OLD_VERSION_ARG}" "${ROTATION_INDEX}" "${GITHUB_REF_NAME:-}" <<'PY'
 import re, subprocess, sys, time
 repo_root, baseline, arg, rot, ref_name = sys.argv[1:6]
 if arg != "nightly":
