@@ -695,15 +695,15 @@ pub fn aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
-/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`): a non-FIPS build encrypts
-/// with a KMS-chosen IV, a FIPS build must refuse rather than send one.
+/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`, the `Crypt2Pay` simulator): a
+/// non-FIPS build encrypts with a KMS-chosen IV, a FIPS build must refuse rather than send one.
 #[cfg(feature = "non-fips")]
 pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> HResult<()> {
     aes_gcm_encrypt(slot)
 }
 
-/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`): a non-FIPS build encrypts
-/// with a KMS-chosen IV, a FIPS build must refuse rather than send one.
+/// AES-GCM on a token that cannot generate an IV itself (`SoftHSM2`, the `Crypt2Pay` simulator): a
+/// non-FIPS build encrypts with a KMS-chosen IV, a FIPS build must refuse rather than send one.
 #[cfg(not(feature = "non-fips"))]
 pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> HResult<()> {
     let Err(error) = aes_gcm_encrypt(slot) else {
@@ -715,6 +715,25 @@ pub fn aes_gcm_encrypt_token_without_iv_generation(slot: &Arc<SlotManager>) -> H
         return Err(error);
     }
     Ok(())
+}
+
+/// AES-GCM on a token that may generate the IV itself (Proteccio, `Crypt2Pay` hardware): a
+/// non-FIPS build must encrypt; a FIPS build passes when the HSM generates the IV, or when the
+/// KMS refuses because it did not.
+#[cfg(feature = "non-fips")]
+pub fn aes_gcm_encrypt_if_hsm_generates_iv(slot: &Arc<SlotManager>) -> HResult<()> {
+    aes_gcm_encrypt(slot)
+}
+
+/// AES-GCM on a token that may generate the IV itself (Proteccio, `Crypt2Pay` hardware): a
+/// non-FIPS build must encrypt; a FIPS build passes when the HSM generates the IV, or when the
+/// KMS refuses because it did not.
+#[cfg(not(feature = "non-fips"))]
+pub fn aes_gcm_encrypt_if_hsm_generates_iv(slot: &Arc<SlotManager>) -> HResult<()> {
+    match aes_gcm_encrypt(slot) {
+        Err(error) if error.to_string().contains("did not generate an AES-GCM IV") => Ok(()),
+        other => other,
+    }
 }
 
 /// Fail with `message` unless `condition`; unlike `assert!`, lets the caller destroy its key.

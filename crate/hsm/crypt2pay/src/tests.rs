@@ -41,14 +41,14 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_all() -> HResult<()> {
-    crypt2pay_all(crypt2pay_aes_gcm_encrypt)
+    crypt2pay_all(shared::aes_gcm_encrypt_if_hsm_generates_iv)
 }
 
 // Hardware and the simulator can both lack HSM-generated AES-GCM IVs in FIPS mode.
 #[test]
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and the Crypt2pay simulator"]
 fn test_crypt2pay_simulator_all() -> HResult<()> {
-    crypt2pay_all(simulator_aes_gcm_encrypt)
+    crypt2pay_all(shared::aes_gcm_encrypt_token_without_iv_generation)
 }
 
 fn crypt2pay_all(aes_gcm_check: fn(&Arc<SlotManager>) -> HResult<()>) -> HResult<()> {
@@ -83,38 +83,6 @@ fn crypt2pay_all(aes_gcm_check: fn(&Arc<SlotManager>) -> HResult<()>) -> HResult
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_created_since(&slot, &before)?;
     Ok(())
-}
-
-#[cfg(not(feature = "non-fips"))]
-fn simulator_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
-    let Err(error) = shared::aes_gcm_encrypt(slot) else {
-        return Err(HError::Default(
-            "The simulator accepted AES-GCM without generating an IV in FIPS mode".to_owned(),
-        ));
-    };
-    if !error.to_string().contains("did not generate an AES-GCM IV") {
-        return Err(error);
-    }
-    Ok(())
-}
-
-#[cfg(feature = "non-fips")]
-fn simulator_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
-    shared::aes_gcm_encrypt(slot)
-}
-
-#[cfg(not(feature = "non-fips"))]
-fn crypt2pay_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
-    match shared::aes_gcm_encrypt(slot) {
-        Ok(()) => Ok(()),
-        Err(error) if error.to_string().contains("did not generate an AES-GCM IV") => Ok(()),
-        Err(error) => Err(error),
-    }
-}
-
-#[cfg(feature = "non-fips")]
-fn crypt2pay_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
-    shared::aes_gcm_encrypt(slot)
 }
 
 #[cfg(not(feature = "non-fips"))]
@@ -160,7 +128,7 @@ fn test_hsm_crypt2pay_exportable_aes_key() -> HResult<()> {
 #[ignore = "Requires Linux, Crypt2pay PKCS#11 library, and HSM environment"]
 fn test_hsm_crypt2pay_aes_gcm_encrypt() -> HResult<()> {
     let slot = shared::instantiate_and_get_slot::<Crypt2payCapabilityProvider>(&cfg()?)?;
-    crypt2pay_aes_gcm_encrypt(&slot)
+    shared::aes_gcm_encrypt_if_hsm_generates_iv(&slot)
 }
 
 #[test]
