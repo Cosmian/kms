@@ -62,6 +62,9 @@ Because the KMS nodes are stateless, the **shared database is the source of trut
 (and periodically test restores) using your database engine's recommended procedures.
 In-memory object caches validate lifecycle state and security-sensitive attributes against the shared database using a short bounded revalidation interval (2 seconds by default). This preserves hot-path cache performance while bounding cross-node propagation lag when keys are revoked, deactivated, or destroyed on any node.
 
+How the nodes share background jobs and report their state (`/health`, `/cluster/status`) is described in
+[Cluster coordination](./cluster_coordination.md).
+
 ## Configuring the load balancer
 
 Since the KMS servers are stateless, any load-balancing strategy may be selected, such as a simple round-robin.

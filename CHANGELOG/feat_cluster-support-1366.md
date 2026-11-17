@@ -13,3 +13,8 @@
 - `GET /health` now reports per-dependency latency and the status of each configured HSM. A failing HSM reports
   `DEGRADED` (HTTP 200) while a failing database still reports `DOWN` (HTTP 503). The HSM check reflects the PKCS#11
   library's answer: some libraries (e.g. Crypt2pay) do not report an unreachable device.
+
+## Documentation
+
+- Add the [Cluster coordination](documentation/docs/installation/cluster_coordination.md) page (#1366), with Mermaid
+  diagrams of the job locks and the heartbeat, and the `/health` and `/cluster/status` responses.
