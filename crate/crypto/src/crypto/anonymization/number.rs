@@ -1,7 +1,7 @@
-use chrono::{DateTime, Datelike, TimeZone, Timelike};
 use rand_distr::num_traits::Pow;
+use time::{Month, Time};
 
-use super::{AnoError, TimeUnit, datetime_to_rfc3339};
+use super::{AnoError, TimeUnit, date_helper::parse_rfc3339, datetime_to_rfc3339};
 use crate::crypto::float_conv::{f64_to_i64_saturating, i64_to_f64};
 
 /// The `NumberAggregator` is a data anonymization technique used to round
@@ -122,38 +122,20 @@ impl DateAggregator {
     /// The rounded date in RFC 3339 if the rounding is successful,
     /// otherwise returns an `AnoError`.
     pub fn apply_on_date(&self, date_str: &str) -> Result<String, AnoError> {
-        // Parse the date string into a DateTime.
-        let date = DateTime::parse_from_rfc3339(date_str).map_err(|e| {
-            AnoError::AnonymizationError(format!(
-                "invalid RFC3339 date '{date_str}': {e} (expected format: 2023-04-07T12:34:56+02:00)"
-            ))
-        })?;
-        let tz = date.timezone();
-
-        let (y, mo, d, h, mi, s) = match self.time_unit {
-            TimeUnit::Second => (
-                date.year(),
-                date.month(),
-                date.day(),
-                date.hour(),
-                date.minute(),
-                date.second(),
-            ),
-            TimeUnit::Minute => (
-                date.year(),
-                date.month(),
-                date.day(),
-                date.hour(),
-                date.minute(),
-                0,
-            ),
-            TimeUnit::Hour => (date.year(), date.month(), date.day(), date.hour(), 0, 0),
-            TimeUnit::Day => (date.year(), date.month(), date.day(), 0, 0, 0),
-            TimeUnit::Month => (date.year(), date.month(), 1, 0, 0, 0),
-            TimeUnit::Year => (date.year(), 1, 1, 0, 0, 0),
+        let date = parse_rfc3339(date_str)?;
+        let truncated = match self.time_unit {
+            TimeUnit::Second => date.replace_nanosecond(0),
+            TimeUnit::Minute => date.replace_nanosecond(0).and_then(|d| d.replace_second(0)),
+            TimeUnit::Hour => date.replace_time(Time::MIDNIGHT).replace_hour(date.hour()),
+            TimeUnit::Day => Ok(date.replace_time(Time::MIDNIGHT)),
+            TimeUnit::Month => date.replace_time(Time::MIDNIGHT).replace_day(1),
+            TimeUnit::Year => date
+                .replace_time(Time::MIDNIGHT)
+                .replace_day(1)
+                .and_then(|d| d.replace_month(Month::January)),
         };
 
-        datetime_to_rfc3339(tz.with_ymd_and_hms(y, mo, d, h, mi, s), date_str)
+        datetime_to_rfc3339(truncated, date_str)
     }
 }
 

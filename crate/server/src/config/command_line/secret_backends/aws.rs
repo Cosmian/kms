@@ -1,7 +1,7 @@
 //! AWS Systems Manager Parameter Store backend.
 
-use chrono::Utc;
 use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
+use time::{OffsetDateTime, macros::format_description};
 
 use super::{
     AwsSsmBackendConfig, KResult, KmsError, SecretBackend,
@@ -25,9 +25,15 @@ impl AwsSsmBackend {
 
     /// Build a SigV4-signed request and call the SSM `GetParameter` API.
     async fn call_ssm(&self, region: &str, param: &str, uri: &str) -> KResult<serde_json::Value> {
-        let now = Utc::now();
-        let dt = now.format("%Y%m%dT%H%M%SZ").to_string();
-        let date = now.format("%Y%m%d").to_string();
+        let now = OffsetDateTime::now_utc();
+        let dt = now
+            .format(format_description!(
+                "[year][month][day]T[hour][minute][second]Z"
+            ))
+            .map_err(|e| KmsError::ServerError(format!("AWS SSM: cannot format date: {e}")))?;
+        let date = now
+            .format(format_description!("[year][month][day]"))
+            .map_err(|e| KmsError::ServerError(format!("AWS SSM: cannot format date: {e}")))?;
         let host = format!("ssm.{region}.amazonaws.com");
         let body = serde_json::json!({"Name": param, "WithDecryption": true}).to_string();
         let payload_hash = sha256_hex(body.as_bytes())?;

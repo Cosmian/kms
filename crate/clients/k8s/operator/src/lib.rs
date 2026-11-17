@@ -27,10 +27,8 @@ pub async fn serve(args: ServeArgs) -> Result<(), OperatorError> {
 
     let k8s = Client::try_default().await.map_err(OperatorError::Kube)?;
 
-    let default_refresh = cfg
-        .default_refresh_interval
-        .parse::<humantime::Duration>()
-        .map_or(Duration::from_secs(3600), Into::into);
+    let default_refresh = controller::parse_duration(&cfg.default_refresh_interval)
+        .unwrap_or(Duration::from_secs(3600));
 
     let ctx = Arc::new(Context {
         k8s,

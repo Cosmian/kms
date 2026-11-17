@@ -5,9 +5,6 @@ pub enum AnoError {
     /// A generic anonymization logic error.
     #[error("Anonymization error: {0}")]
     AnonymizationError(String),
-    /// A date/time parsing failure.
-    #[error(transparent)]
-    ChronoParse(#[from] chrono::ParseError),
     /// A regex compilation failure.
     #[error(transparent)]
     Regex(#[from] regex::Error),

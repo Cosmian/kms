@@ -264,7 +264,6 @@ base64 = "0.22"
 bitflags = "2.9"
 bytes = "1"
 cc = "1.4"
-chrono = "0.4"
 clap = { version = "4.5", default-features = false }
 clap-config-fallback = { version = "0.3", default-features = false, features = ["derive", "toml", "json"] }
 console_error_panic_hook = "0.1"
@@ -285,7 +284,6 @@ governor = "0.10"
 hex = { version = "0.4", default-features = false }
 http = "1.4"
 http-body-util = "0.1"
-humantime = "2"
 hyper = "1"
 hyper-openssl = "0.10"
 hyper-util = "0.1"
@@ -304,7 +302,6 @@ moka = { version = "0.12", default-features = false, features = ["future"] }
 mysql_async = { version = "0.37", default-features = false }
 num-bigint-dig = { version = "0.9", default-features = false }
 num-traits = "0.2"
-oauth2 = { version = "5.0", default-features = false }
 openssl = { version = "0.10", default-features = false }
 openssl-sys = "0.9"
 opentelemetry = "0.32"
@@ -331,7 +328,6 @@ rusqlite = "0.41"
 rust-ini = "0.21"
 rustls = { version = "0.23", default-features = false }
 schemars = "1"
-scratchstack-aws-signature = "0.11"
 serde = "1.0"
 serde-wasm-bindgen = "0.6.5"
 serde_ignored = "0.1"

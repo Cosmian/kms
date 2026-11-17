@@ -615,7 +615,7 @@ mod tests {
     }
 
     fn now_usize() -> usize {
-        usize::try_from(chrono::Utc::now().timestamp()).unwrap()
+        usize::try_from(time::OffsetDateTime::now_utc().unix_timestamp()).unwrap()
     }
 
     /// Non-regression test for the Google CSE authorization token audience

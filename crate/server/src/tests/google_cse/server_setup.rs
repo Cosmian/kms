@@ -158,7 +158,7 @@ async fn certs_signature_verifies_with_signed_validation() {
         jwks: Arc::new(JwksManager {
             uris: vec![LOCAL_KACLS_URL.to_owned()],
             jwks: RwLock::new(HashMap::from([(LOCAL_KACLS_URL.to_owned(), jwks)])),
-            last_update: RwLock::new(Some(chrono::Utc::now())),
+            last_update: RwLock::new(Some(time::OffsetDateTime::now_utc())),
             last_force_refresh: RwLock::new(None),
             proxy_params: None,
             accept_invalid_certs: false,
@@ -171,7 +171,7 @@ async fn certs_signature_verifies_with_signed_validation() {
     assert_eq!(claims.kacls_url.as_deref(), Some(LOCAL_KACLS_URL));
 
     // same `kid`, same claims, another signing key
-    let now = chrono::Utc::now().timestamp();
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let forged = sign_test_jwt(
         &kid,
         &json!({

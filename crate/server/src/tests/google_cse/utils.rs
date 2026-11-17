@@ -77,7 +77,7 @@ pub(crate) fn build_jwks_manager_with_key(kid: &str, rsa: &Rsa<Private>) -> Arc<
     Arc::new(JwksManager {
         uris: vec![],
         jwks: std::sync::RwLock::new(map),
-        last_update: std::sync::RwLock::new(Some(chrono::Utc::now())),
+        last_update: std::sync::RwLock::new(Some(time::OffsetDateTime::now_utc())),
         last_force_refresh: std::sync::RwLock::new(None),
         proxy_params: None,
         accept_invalid_certs: false,
@@ -135,7 +135,7 @@ pub(crate) fn local_google_cse_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
 }
 
 fn now_and_expiry() -> (usize, usize) {
-    let now = usize::try_from(chrono::Utc::now().timestamp()).unwrap();
+    let now = usize::try_from(time::OffsetDateTime::now_utc().unix_timestamp()).unwrap();
     (now, now + 3600)
 }
 
