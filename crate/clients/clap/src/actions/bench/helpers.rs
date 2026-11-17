@@ -26,6 +26,7 @@ use cosmian_kms_client::{
         },
     },
 };
+use cosmian_kms_crypto::crypto::is_fips_build;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -233,6 +234,23 @@ pub(super) fn hsm_rsa_pkcs1v15_encrypt_params() -> CryptographicParameters {
         padding_method: Some(PaddingMethod::PKCS1v15),
         ..Default::default()
     }
+}
+
+/// RSA encrypt variants benchmarked against an HSM, as `(label, parameters)`.
+///
+/// A FIPS build keeps only RSA-OAEP-SHA256: the FIPS HSM support check refuses both
+/// RSA-OAEP-SHA1 and RSA PKCS#1 v1.5 (NIST SP 800-131A r2), so benchmarking them would time a
+/// rejection rather than an encryption.
+pub(super) fn hsm_rsa_encrypt_variants() -> Vec<(&'static str, CryptographicParameters)> {
+    let fips = is_fips_build();
+    [
+        ("rsa-oaep", rsa_oaep_params()),
+        ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
+        ("rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
+    ]
+    .into_iter()
+    .filter(|(label, _)| !fips || *label == "rsa-oaep")
+    .collect()
 }
 
 /// RSA PKCS#1 v1.5 sign, hash-and-sign in one HSM call
@@ -695,3 +713,30 @@ pub(super) fn try_create_hsm_ec_kp(
 // =============================================================================
 // ENCRYPT BENCHMARKS
 // =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(not(feature = "non-fips"))]
+    const EXPECTED_LABELS: [&str; 1] = ["rsa-oaep"];
+    #[cfg(feature = "non-fips")]
+    const EXPECTED_LABELS: [&str; 3] = ["rsa-oaep", "rsa-oaep-sha1", "rsa-pkcs1v15"];
+
+    #[test]
+    fn hsm_rsa_encrypt_variants_follow_build_mode() {
+        let variants = hsm_rsa_encrypt_variants();
+        let labels: Vec<_> = variants.iter().map(|(label, _)| *label).collect();
+        assert_eq!(labels, EXPECTED_LABELS);
+        if is_fips_build() {
+            for (label, params) in &variants {
+                assert_eq!(params.padding_method, Some(PaddingMethod::OAEP), "{label}");
+                assert_eq!(
+                    params.hashing_algorithm,
+                    Some(HashingAlgorithm::SHA256),
+                    "{label}"
+                );
+            }
+        }
+    }
+}

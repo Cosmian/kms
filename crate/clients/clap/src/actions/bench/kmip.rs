@@ -44,10 +44,10 @@ use super::helpers::{
 use super::{
     helpers::{
         HsmKeyLedger, aes_cbc_params, aes_gcm_params, aes_xts_params, create_rsa_kp,
-        create_sym_key, hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
-        rsa_kwp_params, rsa_oaep_params, rsa_oaep_sha1_params, try_create_ec_kp,
-        try_create_hsm_ec_kp, try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks,
-        with_fips_rsa_masks, with_private_key_uid,
+        create_sym_key, hsm_rsa_encrypt_variants, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
+        rsa_kwp_params, rsa_oaep_params, try_create_ec_kp, try_create_hsm_ec_kp,
+        try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks, with_fips_rsa_masks,
+        with_private_key_uid,
     },
     transport::{Transport, bench_message_id, bench_op, bench_op_id, timed_group},
     types::bench_ko,
@@ -1595,15 +1595,9 @@ pub(super) fn bench_hsm_encrypt(
     if let Some((pub_id, _priv_id)) =
         try_create_hsm_rsa_kp(rt, client, hsm_prefix, "encrypt-rsa-2048", 2048, &ledger)
     {
-        // A FIPS build refuses RSA PKCS#1 v1.5 encryption (NIST SP 800-131A r2).
-        for (label, params) in [
-            ("hsm-rsa-oaep", rsa_oaep_params()),
-            ("hsm-rsa-oaep-sha1", rsa_oaep_sha1_params()),
-            ("hsm-rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
-        ]
-        .into_iter()
-        .filter(|(label, _)| !(is_fips_build() && *label == "hsm-rsa-pkcs1v15"))
-        {
+        // A FIPS build keeps only RSA-OAEP-SHA256 (see `hsm_rsa_encrypt_variants`).
+        for (label, params) in hsm_rsa_encrypt_variants() {
+            let label = format!("hsm-{label}");
             let mut group = timed_group(c, format!("{slug}/encrypt/{label}"));
             let enc_req = Encrypt {
                 unique_identifier: Some(pub_id.clone()),

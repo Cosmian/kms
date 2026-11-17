@@ -31,10 +31,9 @@ use zeroize::Zeroizing;
 use super::jose::jose_try_create_okp_kp;
 use super::{
     helpers::{
-        HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key,
-        hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_oaep_params,
-        rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp, try_create_hsm_rsa_kp,
-        try_create_hsm_sym_key,
+        HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key, hsm_rsa_encrypt_variants,
+        hsm_rsa_pkcs1v15_sign_params, hsm_uid, try_create_ec_kp, try_create_hsm_ec_kp,
+        try_create_hsm_rsa_kp, try_create_hsm_sym_key,
     },
     jose::{
         jose_create_sym_key, jose_rsa_oaep_decrypt_body, jose_try_create_ec_kp,
@@ -848,15 +847,8 @@ fn prepare_hsm_load_ops(
             2048,
             ledger,
         ) {
-            // A FIPS build refuses RSA PKCS#1 v1.5 encryption (NIST SP 800-131A r2).
-            for (label, params) in [
-                ("rsa-oaep", rsa_oaep_params()),
-                ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
-                ("rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
-            ]
-            .into_iter()
-            .filter(|(label, _)| !(is_fips_build() && *label == "rsa-pkcs1v15"))
-            {
+            // A FIPS build keeps only RSA-OAEP-SHA256 (see `hsm_rsa_encrypt_variants`).
+            for (label, params) in hsm_rsa_encrypt_variants() {
                 let req = Encrypt {
                     unique_identifier: Some(pub_id.clone()),
                     cryptographic_parameters: Some(params),
