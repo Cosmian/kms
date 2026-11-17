@@ -1797,10 +1797,10 @@ pub fn multi_threaded_rsa(
 
 /// Number of throughput measurements attempted by [`concurrent_sign_does_not_degrade`].
 const MAX_ATTEMPTS: usize = 3;
-/// Minimum 8-thread rate as a fraction of the 1-thread rate. Software HSMs (`SoftHSM2`, Kryoptic)
-/// serialize on internal locks, so on a shared CI runner the ratio hovers around 1.0 and
-/// dipped below 0.8 in all attempts on noise alone. A real regression (a session-pool deadlock
-/// or a global lock held across the call) collapses throughput well below half.
+/// Minimum 8-thread rate as a fraction of the 1-thread rate. The ratio is noise-sensitive on
+/// shared CI runners (0.8 failed in all attempts); 0.5 still catches a collapse such as
+/// session-pool thrashing or a deadlock-like stall. A backend that merely serializes calls
+/// stays near 1.0 and is not detected.
 const MIN_CONCURRENT_RATE_RATIO: f64 = 0.5;
 
 /// Assert that concurrent HSM signing does not experience throughput collapse under concurrency (8 threads vs 1 thread).
