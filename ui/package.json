@@ -52,8 +52,8 @@
         "knip": "^6.44.2",
         "prettier": "^3.9.10",
         "typescript": "~5.9.3",
-        "typescript-eslint": "^8.72.1",
-        "vite": "^7.3.7",
+        "typescript-eslint": "^8.72.2",
+        "vite": "^7.3.8",
         "vitest": "^5.1.0"
     },
     "pnpm": {
