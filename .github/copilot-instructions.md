@@ -50,6 +50,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `rust-security.instructions.md` | `crate/**/*.rs` |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` |
+| `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` |
 
 ---
 
@@ -125,6 +126,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, **user plan approval**, then automated implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse/create complete fixtures in `test_data` |
+| `/kms-db-compat` | When a change touches crate/server_database/, *.sql or persisted KMIP types — upgrade/downgrade (N-1) verdict per change |
 | `/kms-docs-verify` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |
 | `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` (report schema: `.github/skills/shared/orchestrator-contract.md` §4) |
 | `/kms-caveman [path]` | One read-only mechanical Rust triage pass before deeper Rust reviews; also the dedicated panic/brutal-exit scan. Not a substitute for semantic or security review |
@@ -163,6 +165,8 @@ When a prompt matches a trigger below, read `.github/skills/<skill>/SKILL.md` an
 | `/threat-model` | `\bthreat[- ]model` |
 | `/kms-test-vector` | `\b(create\|add\|new)\b.*\btest vectors?\b` |
 | `/kms-adversarial-test` | `\badversarial test` |
+| `/kms-db-compat` | `\b(downgrad\w*\|rollback\|roll back\|backward[- ]compat\w*\|mixed[- ]version\|rolling upgrade)\b.*\b(database\|db\|schema\|sql\w*\|postgres\w*\|mysql\|mariadb\|redis)\b` |
+| `/kms-db-compat` | `\b(database\|db\|schema)\s+(upgrade\|migration)\b` |
 | `/adr` | `\barchitectural decision record\b` |
 
 ## Credit-Saving Strategies

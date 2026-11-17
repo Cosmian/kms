@@ -37,6 +37,7 @@ Apply this path → rule mapping to the detected file list:
 | `crate/clients/wasm/src/**` | **4.5** |
 | `crate/server/src/config/**` | **4.6**, 4.7 |
 | `crate/server_database/**` | **4.18** |
+| `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_{attributes,objects,types}.rs` (persisted serde form changed) | **4.18** |
 | `crate/server/src/middlewares/**` or `crate/server/src/config/wizard/auth_wizard.rs` | **4.9** |
 | `test_data/vectors/**` or `crate/test_kms_server/**` | verify 4.10 completeness |
 | `test_data/configs/**`, `test_data/spire/config/**`, or a `.mise/**` / `crate/**/tests/**` change that writes a KMS, Auth Verifier or ckms config | **4.20** |
@@ -101,7 +102,7 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 | 4.15 | CLI documentation auto-generation | `crate/clients/ckms/src/**`, `crate/clients/clap/src/**` | `cli-ui-sync.instructions.md` |
 | 4.16 | E2E test documentation | `ui/tests/e2e/**` | `playwright.instructions.md` |
 | 4.17 | OpenSSL version updates | `crate/crypto/build.rs` | `openssl-build.instructions.md` |
-| 4.18 | Database schema/backend ⇔ docs | `crate/server_database/**` | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`) |
+| 4.18 | Database schema/backend ⇔ docs ⇔ version compatibility | `crate/server_database/**`, persisted KMIP types | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`; upgrade/downgrade: `database-compatibility.instructions.md`, workflow `/kms-db-compat`) |
 | 4.19 | Third-party dependencies ⇔ supply-chain gates (#1265) | dependency manifests and lock files, `supply-chain/**`, `**/Dockerfile*`, workflow `uses:`/tool installs, submodule bumps | `dependencies.instructions.md` |
 | 4.20 | Test KMS / Auth Verifier configs: complete fixtures in `test_data`, no partial inline configs | `test_data/configs/**`, `test_data/spire/config/**`, `.mise/**`, `crate/**/tests/**` | `test-configs.instructions.md` |
 | 4.21 | Test task README: update the affected entries and Mermaid diagrams of `.mise/tasks/test/README.md` (no per-group README) | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `test-task-readme.instructions.md` |
