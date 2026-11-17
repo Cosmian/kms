@@ -409,13 +409,13 @@ async fn step_by_step_matches_all_at_once(fixture: &RedisFixture) -> DbResult<()
     Ok(())
 }
 
-/// Released databases migrate to the target. The last row is recorded after the oldest step
-/// (5.15.0) yet below the 5.20.0 baseline, so only the reset to 0.0.0 offers every step.
+/// Released databases migrate to the target. The 5.14.0-recorded row offers every step,
+/// completing `AttributesJsonb` as a no-op on Redis while advancing a pre-5.20 Redis version.
 async fn released_fixtures(fixture: &RedisFixture) -> DbResult<()> {
     let cases: [(&str, Option<&str>, &[MigrationStep]); 3] = [
         ("5.24.0", None, &BOTH_STEPS),
         ("5.28.0", None, &[CertificateSerialTagBackfill]),
-        ("5.20.0", Some("5.16.0"), &MIGRATION_STEPS),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
     ];
     for (version, recorded, expected) in cases {
         fixture.restore(version).await?;

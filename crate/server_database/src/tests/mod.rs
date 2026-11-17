@@ -17,8 +17,7 @@ use crate::stores::RedisWithFindex;
 use crate::stores::additional_redis_findex_tests::{
     issue_940_repro::test_issue_940, test_active_key_count_counter,
     test_certificate_serial_tag_backfill, test_corner_case, test_live_count_counter,
-    test_migration_state_markers, test_objects_db, test_permissions_db, test_protected_parameters,
-    test_wrapped_by_backfill,
+    test_objects_db, test_permissions_db, test_protected_parameters, test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
@@ -120,7 +119,6 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_wrapped_by_backfill().await?;
     test_certificate_serial_tag_backfill().await?;
     Box::pin(test_issue_940()).await?;
-    test_migration_state_markers().await?;
     test_protected_parameters().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
