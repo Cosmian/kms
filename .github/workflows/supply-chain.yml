@@ -79,6 +79,12 @@ jobs:
         with:
           node-version: '22'
 
+      # npm 10.9.9 (bundled with Node 22) throws EMISSINGSIGNATUREKEY in `npm audit signatures` when a
+      # package's attestations response has no keyed (publish) bundle: its pacote 19.0.2
+      # lib/registry.js:259 lacks the `attestationKeyIds.length > 0` guard that npm 11.11.0 has.
+      - name: Install npm 11
+        run: npm install -g npm@11.11.0
+
       - uses: ./.github/actions/install-mise
 
       # PRs fail only on advisories they add; the daily develop run and tags fail on any advisory.
