@@ -7,7 +7,7 @@ This guide is for operators moving a running KMS from a 5.x release to 6.0. 6.0 
 1. **Inventory the KMIP clients and integrations** that talk to the server, and for each one note which operations it sends (create/register, locate/get, encrypt/decrypt/MAC, rotate, revoke/destroy). The [client changes](#client-changes) table below tells you which of them can break.
 2. **Take a cold backup of the database** with the server stopped. For SQLite, copy the whole `sqlite_path` directory (`cp -a`). For the other backends, use the backend's own dump tool.
 3. **Plan recovery as "restore the backup with the old binary".** Opening a database written by 6.0 with a 5.x server is not supported, even if a pre-runner binary does not refuse startup. Restore the pre-upgrade backup before starting the 5.x binary. Keys and changes made after that backup are not retained.
-4. **Check your source database version.** Databases created on KMS `5.20.0` or later upgrade automatically across all backends. If you run an older 5.x database (especially Redis with Findex below `5.12.0`, non-FIPS only), check [Database Migrations](./database_migrations.md#supported-source-versions) first.
+4. **Check your source database version.** SQL databases created on KMS `5.0.0` or later and Redis-with-Findex databases (*non-FIPS only*) created on `5.12.0` or later upgrade automatically at startup. Older databases are refused at startup and require export and re-import; see [Database Migrations](./database_migrations.md#supported-source-versions).
 5. **If you use Set Constraints, configure a Crypto Officer first** (see the table below): `[roles] crypto_officer_users`.
 
 ## Client changes

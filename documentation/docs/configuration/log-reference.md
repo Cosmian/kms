@@ -855,7 +855,6 @@ Crate path: `crate/server_database`
 | `warn` | `Interrupted database migration detected; resuming` | `src/stores/migrate.rs` | - | - |
 | `warn` | `Redis migration lock was already expired or replaced before release` | `src/stores/redis/migrations/mod.rs` | - | - |
 | `warn` | `serial tag backfill: skipping object with unparsable certificate DER or non-certificate payload` | `src/stores/migrate.rs` | - | - |
-| `warn` | `transparent migration supported from 5.20.0; attempting all registered steps` | `src/stores/migrate.rs` | - | - |
 | `info` | `Applying database migration step` | `src/stores/migrate.rs` | - | - |
 | `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |

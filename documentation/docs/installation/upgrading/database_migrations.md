@@ -8,10 +8,10 @@ For KMIP protocol and client behavior changes when upgrading to 6.0, see [Upgrad
 
 You can upgrade directly to the current release without installing intermediate versions in between, subject to the version boundaries below:
 
-| Backend | `5.20.0` or later | Older `5.x` releases | Earlier versions |
-| --- | --- | --- | --- |
-| **SQLite**, **PostgreSQL**, **MySQL**, **MariaDB**, **Percona XtraDB Cluster** | Automatic in-place upgrade at startup. | `5.0.0`–`5.19.x`: logs a warning at startup and applies all pending updates. | `< 5.0.0`: export all objects from the old KMS, initialize an empty database on the new KMS, and import them. |
-| **Redis with Findex** *(non-FIPS only)* | Automatic in-place upgrade at startup. | `5.12.0`–`5.19.x`: logs a warning at startup and applies all pending updates. | `< 5.12.0`: startup is refused. Export all objects from the old KMS, initialize an empty Redis database on the new KMS, and import them. |
+| Backend | Supported in-place upgrade | Earlier versions |
+| --- | --- | --- |
+| **SQLite**, **PostgreSQL**, **MySQL**, **MariaDB**, **Percona XtraDB Cluster** | `5.0.0` or later: automatic in-place upgrade at startup. | `< 5.0.0`: startup is refused when `db_version` is below `5.0.0`. Export all objects from the old KMS, initialize an empty database on the new KMS, and import them. |
+| **Redis with Findex** *(non-FIPS only)* | `5.12.0` or later: automatic in-place upgrade at startup. | `< 5.12.0` (or unversioned): startup is refused. Export all objects from the old KMS, initialize an empty Redis database on the new KMS, and import them. |
 
 On large databases, the first startup after an upgrade takes longer than a normal boot while new indexes or data backfills run.
 
