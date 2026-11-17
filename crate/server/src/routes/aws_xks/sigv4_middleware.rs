@@ -21,30 +21,24 @@ use actix_web::{
     dev::{Payload, Service, ServiceRequest, ServiceResponse, Transform},
     web::{Bytes, BytesMut},
 };
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use cosmian_logger::debug;
 use futures::{
     Future, StreamExt,
     future::{Ready, err, ok},
 };
-use openssl::{error::ErrorStack, hash::MessageDigest, pkey::PKey, sign::Signer};
-use scratchstack_aws_signature::{
-    GetSigningKeyRequest, GetSigningKeyResponse, KSigningKey, NO_ADDITIONAL_SIGNED_HEADERS,
-    SignatureOptions, sigv4_validate_request,
-};
+use time::{Duration, OffsetDateTime};
 use tokio::sync::Semaphore;
 use url::form_urlencoded;
 
 use crate::{
     core::KMS,
-    routes::{
-        aws_xks::error::{XksErrorName, XksErrorReply},
-        enrollment::secrets_equal,
+    routes::aws_xks::{
+        error::{XksErrorName, XksErrorReply},
+        sigv4::{parse_sigv4_timestamp, verify_sigv4_request},
     },
 };
 
 const XKS_SIGV4_ALLOWED_MISMATCH_MINUTES: i64 = 5;
-const SIGV4_TIMESTAMP_FORMAT: &str = "%Y%m%dT%H%M%SZ";
 
 /// Bounds the number of concurrent `SigV4` verification tasks running on the Tokio blocking
 /// thread pool. Each unauthenticated XKS request can trigger CPU-heavy canonicalization and
@@ -161,9 +155,6 @@ where
                     "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
                 )
             )?;
-            let access_key_id = params.sigv4_access_key_id;
-            let access_key = params.sigv4_secret_access_key;
-
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
 
@@ -178,20 +169,10 @@ where
 
             let http_request = to_http_request(&actix_web_http_request, body_bytes.clone())?;
 
-            let access_key_id_for_svc = access_key_id.clone();
-            let access_key_for_svc = access_key.clone();
-            let mut get_signing_key_svc = SigningKeyService {
-                access_key_id: access_key_id_for_svc,
-                access_key: access_key_for_svc,
-            };
-
-            // Canonicalization and body hashing inside `sigv4_validate_request` run synchronously
-            // and scale with the request body size (up to 64 MB for XKS), so running them
-            // directly on the Actix worker would let a burst of large concurrent requests starve
-            // all HTTP workers (CWE-400). Offload the whole verification call to the blocking
-            // thread pool; `get_signing_key_svc` performs no actual I/O (pure HMAC derivation),
-            // so driving its future with `block_on` inside the blocking task is sound and keeps
-            // that CPU-bound work off the async reactor as well.
+            // Canonicalization and body hashing run synchronously and scale with the request body
+            // size (up to 64 MB for XKS), so running them directly on the Actix worker would let
+            // a burst of large concurrent requests starve all HTTP workers (CWE-400). Offload the
+            // whole verification to the blocking thread pool.
             //
             // Bound the number of concurrent verification tasks with a semaphore: an
             // unauthenticated caller could otherwise submit an unbounded number of large signed
@@ -214,33 +195,19 @@ where
                     ))
                 })?;
 
-            let server_timestamp = Utc::now();
+            let server_timestamp = OffsetDateTime::now_utc();
 
-            // `scratchstack-aws-signature` 0.11.4 hard-codes a 15-minute SigV4 timestamp skew
-            // and exposes no public override. Keep the previous 5-minute XKS anti-replay window
-            // here to avoid CWE-294 replay-window widening until upstream provides a tunable API.
+            // 5-minute XKS anti-replay window (CWE-294).
             enforce_sigv4_request_freshness(&http_request, server_timestamp)?;
 
-            let region = params.region.clone();
-            let service_name = params.service.clone();
-            let runtime_handle = tokio::runtime::Handle::current();
-            let sigv4_result = tokio::task::spawn_blocking(move || {
-                runtime_handle.block_on(sigv4_validate_request(
-                    http_request,
-                    region.as_str(),
-                    service_name.as_str(),
-                    &mut get_signing_key_svc,
-                    server_timestamp,
-                    &NO_ADDITIONAL_SIGNED_HEADERS,
-                    SignatureOptions::default(),
-                ))
-            })
-            .await
-            .map_err(|join_err| {
-                actix_web::error::ErrorInternalServerError(format!(
-                    "SigV4 verification task panicked: {join_err}"
-                ))
-            })?;
+            let sigv4_result =
+                tokio::task::spawn_blocking(move || verify_sigv4_request(&http_request, &params))
+                    .await
+                    .map_err(|join_err| {
+                        actix_web::error::ErrorInternalServerError(format!(
+                            "SigV4 verification task panicked: {join_err}"
+                        ))
+                    })?;
             drop(permit);
 
             if let Err(sigv4_err) = sigv4_result {
@@ -268,21 +235,22 @@ fn authentication_failed_error(message: impl Into<String>) -> Error {
 
 fn enforce_sigv4_request_freshness<B>(
     request: &http::Request<B>,
-    server_timestamp: DateTime<Utc>,
+    server_timestamp: OffsetDateTime,
 ) -> Result<(), Error> {
     let request_timestamp = extract_sigv4_request_timestamp(request)?;
-    // Parsed SigV4 timestamps have whole-second precision (the `%Y%m%dT%H%M%SZ` format has no
-    // fractional seconds), while `server_timestamp` retains subsecond precision. Floor the
+    // Parsed SigV4 timestamps have whole-second precision (the `YYYYMMDD'T'HHMMSS'Z'` format has
+    // no fractional seconds), while `server_timestamp` retains subsecond precision. Floor the
     // server timestamp first so that requests exactly on the 5-minute boundary are not spuriously
-    // rejected due to the sub-second remainder of `Utc::now()`.
+    // rejected due to the sub-second remainder of `OffsetDateTime::now_utc()`.
     let server_timestamp = server_timestamp
-        - Duration::nanoseconds(i64::from(server_timestamp.timestamp_subsec_nanos()));
+        .replace_nanosecond(0)
+        .unwrap_or(server_timestamp);
     let allowed_mismatch = Duration::minutes(XKS_SIGV4_ALLOWED_MISMATCH_MINUTES);
     let min_timestamp = server_timestamp
-        .checked_sub_signed(allowed_mismatch)
+        .checked_sub(allowed_mismatch)
         .unwrap_or(server_timestamp);
     let max_timestamp = server_timestamp
-        .checked_add_signed(allowed_mismatch)
+        .checked_add(allowed_mismatch)
         .unwrap_or(server_timestamp);
 
     if request_timestamp < min_timestamp || request_timestamp > max_timestamp {
@@ -294,13 +262,12 @@ fn enforce_sigv4_request_freshness<B>(
     Ok(())
 }
 
-fn extract_sigv4_request_timestamp<B>(request: &http::Request<B>) -> Result<DateTime<Utc>, Error> {
-    // Match `scratchstack-aws-signature`'s own precedence and parsing for header-authenticated
-    // requests: the `x-amz-date` header takes priority, then the `Date` header — both parsed as
-    // the basic SigV4 timestamp format (the validator's `parse_from_iso8601` accepts this format
-    // for both headers; RFC 2822 is never used for SigV4). The `X-Amz-Date` query parameter is
-    // only relevant to query-string (presigned URL) authentication, so it is checked last, as a
-    // fallback, rather than ahead of the `Date` header.
+fn extract_sigv4_request_timestamp<B>(request: &http::Request<B>) -> Result<OffsetDateTime, Error> {
+    // Same precedence as `verify_sigv4_request` for header-authenticated requests: the
+    // `x-amz-date` header takes priority, then the `Date` header — both parsed as the basic SigV4
+    // timestamp format (RFC 2822 is never used for SigV4). The `X-Amz-Date` query parameter is
+    // only relevant to query-string (presigned URL) authentication, which the verifier rejects,
+    // so it is checked last, as a fallback, rather than ahead of the `Date` header.
     if let Some(timestamp) = request.headers().get("x-amz-date") {
         return parse_sigv4_header_timestamp(timestamp.to_str().map_err(|error| {
             authentication_failed_error(format!(
@@ -327,91 +294,10 @@ fn extract_sigv4_request_timestamp<B>(request: &http::Request<B>) -> Result<Date
     ))
 }
 
-fn parse_sigv4_header_timestamp(timestamp: &str) -> Result<DateTime<Utc>, Error> {
-    NaiveDateTime::parse_from_str(timestamp, SIGV4_TIMESTAMP_FORMAT)
-        .map(|parsed| parsed.and_utc())
-        .map_err(|error| {
-            authentication_failed_error(format!("Invalid SigV4 X-Amz-Date value: {error}"))
-        })
-}
-
-/// A Tower `Service` that retrieves the `SigV4` signing key for a given access key ID.
-///
-/// XKS uses a single static key pair; this service validates the access key ID
-/// and derives the HMAC signing key from the pre-configured secret.
-struct SigningKeyService {
-    access_key_id: String,
-    access_key: String,
-}
-
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
-
-impl tower_service::Service<GetSigningKeyRequest> for SigningKeyService {
-    type Error = BoxError;
-    type Future = Pin<Box<dyn Future<Output = Result<GetSigningKeyResponse, BoxError>> + Send>>;
-    type Response = GetSigningKeyResponse;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: GetSigningKeyRequest) -> Self::Future {
-        let access_key_id = self.access_key_id.clone();
-        let access_key = self.access_key.clone();
-        Box::pin(async move {
-            if !secrets_equal(&access_key_id, req.access_key()) {
-                return Err(Box::<dyn std::error::Error + Send + Sync>::from(
-                    std::io::Error::new(
-                        std::io::ErrorKind::PermissionDenied,
-                        format!("Access key id {} not found", req.access_key()),
-                    ),
-                ));
-            }
-            let signing_key =
-                derive_signing_key(&access_key, req.request_date(), req.region(), req.service())
-                    .map_err(Box::<dyn std::error::Error + Send + Sync>::from)?;
-            // XKS does not use IAM principals — build response with signing key only
-            GetSigningKeyResponse::builder()
-                .signing_key(signing_key)
-                .build()
-                .map_err(Box::<dyn std::error::Error + Send + Sync>::from)
-        })
-    }
-}
-
-/// Derives a `SigV4` `K_signing` key, supporting the full XKS-spec secret length range (43–64 chars).
-// `KSecretKey::from_str` only accepts exactly M-4 chars (default M=44 → 40 chars); `KSigningKey`
-// has no public constructor from raw bytes, so transmute is the only sound approach without
-// modifying the upstream scratchstack library.
-#[expect(
-    unsafe_code,
-    reason = "transmute into scratchstack KSigningKey, which has no public constructor from raw bytes"
-)]
-fn derive_signing_key(
-    secret: &str,
-    date: chrono::NaiveDate,
-    region: &str,
-    service: &str,
-) -> Result<KSigningKey, ErrorStack> {
-    let hmac_raw = |key: &[u8], msg: &[u8]| -> Result<[u8; 32], ErrorStack> {
-        let pkey = PKey::hmac(key)?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &pkey)?;
-        signer.update(msg)?;
-        let mut out = [0_u8; 32];
-        signer.sign(&mut out)?;
-        Ok(out)
-    };
-
-    let k_secret = format!("AWS4{secret}");
-    let date_str = date.format("%Y%m%d").to_string();
-    let k_date = hmac_raw(k_secret.as_bytes(), date_str.as_bytes())?;
-    let k_region = hmac_raw(&k_date, region.as_bytes())?;
-    let k_service = hmac_raw(&k_region, service.as_bytes())?;
-    let k_signing = hmac_raw(&k_service, b"aws4_request")?;
-
-    // SAFETY: `KSigningKey` is a single-field newtype over `[u8; 32]` with no padding;
-    // its size and alignment are identical to `[u8; 32]`, making this transmute sound.
-    Ok(unsafe { std::mem::transmute::<[u8; 32], KSigningKey>(k_signing) })
+fn parse_sigv4_header_timestamp(timestamp: &str) -> Result<OffsetDateTime, Error> {
+    parse_sigv4_timestamp(timestamp).map_err(|error| {
+        authentication_failed_error(format!("Invalid SigV4 X-Amz-Date value: {error}"))
+    })
 }
 
 fn to_http_request(
@@ -471,24 +357,9 @@ fn to_http_request(
 #[cfg(test)]
 mod tests {
     use actix_web::body::MessageBody;
+    use time::macros::datetime;
 
     use super::*;
-
-    /// AWS published `SigV4` example (docs: "Examples of how to derive a signing key").
-    #[test]
-    fn derive_signing_key_matches_aws_example() {
-        let key = derive_signing_key(
-            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            chrono::NaiveDate::from_ymd_opt(2012, 2, 15).expect("valid date"),
-            "us-east-1",
-            "iam",
-        )
-        .expect("derive signing key");
-        assert_eq!(
-            hex::encode(key.as_ref()),
-            "f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d"
-        );
-    }
 
     #[test]
     fn extract_sigv4_request_timestamp_prefers_header_value() {
@@ -497,44 +368,43 @@ mod tests {
             .header("X-Amz-Date", "20260903T120100Z")
             .header(http::header::DATE, "Thu, 03 Sep 2026 12:03:00 GMT")
             .body(Vec::<u8>::new())
-            .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
+            .map(|request| extract_sigv4_request_timestamp(&request));
 
         assert!(matches!(
             timestamp,
-            Ok(Ok(ref value)) if value == "2026-09-03T12:01:00+00:00"
+            Ok(Ok(value)) if value == datetime!(2026-09-03 12:01:00 UTC)
         ));
     }
 
     #[test]
     fn extract_sigv4_request_timestamp_prefers_date_header_over_query() {
         // No `x-amz-date` header: the `Date` header must take precedence over the
-        // `X-Amz-Date` query parameter, matching `scratchstack-aws-signature`'s own
-        // precedence for header-authenticated requests.
+        // `X-Amz-Date` query parameter, matching `verify_sigv4_request`'s precedence for
+        // header-authenticated requests.
         let timestamp = http::Request::builder()
             .uri("/?X-Amz-Date=20260903T120200Z")
             .header(http::header::DATE, "20260903T120100Z")
             .body(Vec::<u8>::new())
-            .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
+            .map(|request| extract_sigv4_request_timestamp(&request));
 
         assert!(matches!(
             timestamp,
-            Ok(Ok(ref value)) if value == "2026-09-03T12:01:00+00:00"
+            Ok(Ok(value)) if value == datetime!(2026-09-03 12:01:00 UTC)
         ));
     }
 
     #[test]
     fn extract_sigv4_request_timestamp_accepts_date_header_basic_sigv4_format() {
-        // The `Date` header must be parsed using the basic SigV4 timestamp format (as the
-        // upstream validator does via `parse_from_iso8601`), not RFC 2822.
+        // The `Date` header must be parsed using the basic SigV4 timestamp format, not RFC 2822.
         let timestamp = http::Request::builder()
             .uri("/")
             .header(http::header::DATE, "20260903T120000Z")
             .body(Vec::<u8>::new())
-            .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
+            .map(|request| extract_sigv4_request_timestamp(&request));
 
         assert!(matches!(
             timestamp,
-            Ok(Ok(ref value)) if value == "2026-09-03T12:00:00+00:00"
+            Ok(Ok(value)) if value == datetime!(2026-09-03 12:00:00 UTC)
         ));
     }
 
@@ -543,12 +413,31 @@ mod tests {
         let timestamp = http::Request::builder()
             .uri("/?X-Amz-Date=20260903T120200Z")
             .body(Vec::<u8>::new())
-            .map(|request| extract_sigv4_request_timestamp(&request).map(|ts| ts.to_rfc3339()));
+            .map(|request| extract_sigv4_request_timestamp(&request));
 
         assert!(matches!(
             timestamp,
-            Ok(Ok(ref value)) if value == "2026-09-03T12:02:00+00:00"
+            Ok(Ok(value)) if value == datetime!(2026-09-03 12:02:00 UTC)
         ));
+    }
+
+    #[test]
+    fn parse_sigv4_header_timestamp_rejects_other_formats() {
+        for timestamp in [
+            "2026-09-03T12:00:00Z",
+            "20260903T120000",
+            "20260903T120000+0000",
+            "20260903T120000Zx",
+            "20261303T120000Z",
+        ] {
+            let error = parse_sigv4_header_timestamp(timestamp)
+                .expect_err("timestamp must be rejected")
+                .to_string();
+            assert!(
+                error.contains("Invalid SigV4 X-Amz-Date value"),
+                "{timestamp}: {error}"
+            );
+        }
     }
 
     #[test]
@@ -601,8 +490,8 @@ mod tests {
     #[test]
     fn enforce_sigv4_request_freshness_floors_subsecond_server_timestamp() {
         // A request exactly 5 minutes old (whole seconds) must be accepted even when
-        // `server_timestamp` carries a subsecond remainder (as `Utc::now()` normally does);
-        // otherwise the documented inclusive 5-minute boundary is not honored.
+        // `server_timestamp` carries a subsecond remainder (as `OffsetDateTime::now_utc()`
+        // normally does); otherwise the documented inclusive 5-minute boundary is not honored.
         let result = parse_sigv4_header_timestamp("20260903T120000Z").map(|parsed| {
             let server_timestamp = parsed + Duration::milliseconds(500);
             http::Request::builder()

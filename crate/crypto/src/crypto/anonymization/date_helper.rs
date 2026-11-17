@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use chrono::LocalResult;
+use time::{OffsetDateTime, error::ComponentRange, format_description::well_known::Rfc3339};
 
 use super::AnoError;
 
@@ -31,11 +31,32 @@ impl FromStr for TimeUnit {
     }
 }
 
-/// Converts a `DateTime` to RFC3339 format.
+/// Parses an RFC3339 date string.
 ///
 /// # Arguments
 ///
-/// * `date_time` - The `DateTime` value to convert.
+/// * `date_str` - The date string to parse.
+///
+/// # Returns
+///
+/// The parsed `OffsetDateTime` (keeping the original UTC offset), or an `AnoError` if the
+/// string is not a valid RFC3339 date.
+pub(super) fn parse_rfc3339(date_str: &str) -> Result<OffsetDateTime, AnoError> {
+    OffsetDateTime::parse(date_str, &Rfc3339).map_err(|e| {
+        AnoError::AnonymizationError(format!(
+            "invalid RFC3339 date '{date_str}': {e} (expected format: 2023-04-07T12:34:56+02:00)"
+        ))
+    })
+}
+
+/// Converts an `OffsetDateTime` to RFC3339 format.
+///
+/// The offset is always printed numerically (`+00:00` for UTC, never `Z`) and sub-seconds
+/// are not printed.
+///
+/// # Arguments
+///
+/// * `date_time` - The date computation result to convert.
 /// * `original_date` - The original date value as a string (for error
 ///   messages).
 ///
@@ -45,16 +66,20 @@ impl FromStr for TimeUnit {
 ///   conversion is successful.
 /// * `Err(AnoError)` - An error indicating the reason for conversion failure.
 pub fn datetime_to_rfc3339(
-    date_time: chrono::LocalResult<chrono::DateTime<chrono::FixedOffset>>,
+    date_time: Result<OffsetDateTime, ComponentRange>,
     original_date: &str,
 ) -> Result<String, AnoError> {
-    match date_time {
-        LocalResult::None => Err(AnoError::AnonymizationError(format!(
-            "Could not apply method on date `{original_date}`."
-        ))),
-        LocalResult::Single(date) => Ok(date.to_rfc3339()),
-        LocalResult::Ambiguous(_, _) => Err(AnoError::AnonymizationError(format!(
-            "Applying method on date `{original_date}` lead to ambiguous result."
-        ))),
-    }
+    let date = date_time.map_err(|e| {
+        AnoError::AnonymizationError(format!(
+            "Could not apply method on date `{original_date}`: {e}."
+        ))
+    })?;
+    date.format(time::macros::format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]"
+    ))
+    .map_err(|e| {
+        AnoError::AnonymizationError(format!(
+            "Could not format date resulting from `{original_date}`: {e}"
+        ))
+    })
 }

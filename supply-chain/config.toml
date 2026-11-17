@@ -106,9 +106,9 @@ criteria = "safe-to-deploy"
 notes = "workspace static-file serving; bump fixes RUSTSEC-2026-0443 — unaudited, pending review"
 
 [[exemptions.actix-http]]
-version = "3.20.3"
+version = "3.21.3"
 criteria = "safe-to-deploy"
-notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
+notes = "bump for RUSTSEC-2026-0552/0553/0554 (>=3.21.3) — unaudited, pending review"
 
 [[exemptions.actix-rt]]
 version = "2.15.0"
@@ -693,10 +693,6 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 version = "0.5.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.iana-time-zone]]
-version = "0.1.65"
-criteria = "safe-to-deploy"
-
 [[exemptions.idea]]
 version = "0.5.1"
 criteria = "safe-to-deploy"
@@ -815,6 +811,11 @@ version = "0.39.1"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
+[[exemptions.libz-sys]]
+version = "1.1.33"
+criteria = "safe-to-deploy"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265; bump for RUSTSEC-2026-0544"
+
 [[exemptions.linked_hash_set]]
 version = "0.1.6"
 criteria = "safe-to-deploy"
@@ -919,10 +920,6 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 
 [[exemptions.num_threads]]
 version = "0.1.7"
-criteria = "safe-to-deploy"
-
-[[exemptions.oauth2]]
-version = "5.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-system-configuration]]
@@ -1117,11 +1114,6 @@ criteria = "safe-to-deploy"
 version = "2.3.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.qualifier_attr]]
-version = "0.2.2"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
 [[exemptions.quanta]]
 version = "0.12.6"
 criteria = "safe-to-deploy"
@@ -1252,22 +1244,6 @@ criteria = "safe-to-deploy"
 version = "1.2.3"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.scratchstack-arn]]
-version = "0.4.9"
-criteria = "safe-to-deploy"
-
-[[exemptions.scratchstack-aws-principal]]
-version = "0.4.9"
-criteria = "safe-to-deploy"
-
-[[exemptions.scratchstack-aws-signature]]
-version = "0.11.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.scratchstack-errors]]
-version = "0.4.9"
-criteria = "safe-to-deploy"
 
 [[exemptions.sec1]]
 version = "0.8.1"

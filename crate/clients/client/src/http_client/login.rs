@@ -1,15 +1,70 @@
 use std::collections::HashMap;
 
-use base64::{Engine as _, prelude::BASE64_STANDARD};
-use http::{HeaderMap, HeaderValue, StatusCode, header::ACCEPT};
-use oauth2::{
-    AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
-    Scope, TokenUrl, basic::BasicClient,
+use base64::{
+    Engine as _,
+    prelude::{BASE64_STANDARD, BASE64_URL_SAFE_NO_PAD},
 };
+use cosmian_kms_crypto::crypto::KmsRng;
+use http::{HeaderMap, HeaderValue, StatusCode, header::ACCEPT};
 use serde::{Deserialize, Serialize};
 use url::Url;
+use zeroize::Zeroizing;
 
 use super::{HttpClientError, error::result::HttpClientResult};
+
+/// Entropy of the PKCE code verifier: 32 bytes encode to 43 base64url characters, the RFC 7636 §4.1
+/// minimum length (and the recommended 256 bits).
+const PKCE_VERIFIER_BYTES: usize = 32;
+/// Entropy of the CSRF `state` token (RFC 6749 §10.12).
+const CSRF_TOKEN_BYTES: usize = 32;
+
+/// `len` random bytes from [`KmsRng`], base64url-encoded without padding.
+///
+/// The result is a secret (PKCE verifier, CSRF token): it is wiped on drop.
+fn random_token(len: usize) -> HttpClientResult<Zeroizing<String>> {
+    let bytes = KmsRng::new()
+        .random_vec(len)
+        .map_err(|e| HttpClientError::Default(format!("cannot generate random bytes: {e}")))?;
+    Ok(Zeroizing::new(BASE64_URL_SAFE_NO_PAD.encode(&*bytes)))
+}
+
+/// PKCE `S256` code challenge (RFC 7636 §4.2): `BASE64URL(SHA256(verifier))`, no padding.
+fn pkce_challenge(verifier: &str) -> HttpClientResult<String> {
+    let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), verifier.as_bytes())?;
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(&*digest))
+}
+
+/// Constant-time equality of two secret strings.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    // `memcmp::eq` requires equal lengths; the length of a random token is not secret.
+    a.len() == b.len() && openssl::memcmp::eq(a.as_bytes(), b.as_bytes())
+}
+
+/// Build the authorization request URL (RFC 6749 §4.1.1 with the PKCE parameters of RFC 7636 §4.3).
+///
+/// Query parameters already present in the configured `authorize_url` are preserved.
+fn authorization_url(
+    login_config: &Oauth2LoginConfig,
+    redirect_url: &Url,
+    state: &str,
+    code_challenge: &str,
+) -> HttpClientResult<Url> {
+    let mut url = Url::parse(&login_config.authorize_url)?;
+    {
+        let mut query = url.query_pairs_mut();
+        query
+            .append_pair("response_type", "code")
+            .append_pair("client_id", &login_config.client_id)
+            .append_pair("redirect_uri", redirect_url.as_str())
+            .append_pair("state", state)
+            .append_pair("code_challenge", code_challenge)
+            .append_pair("code_challenge_method", "S256");
+        if !login_config.scopes.is_empty() {
+            query.append_pair("scope", &login_config.scopes.join(" "));
+        }
+    }
+    Ok(url)
+}
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Oauth2LoginConfig {
@@ -68,8 +123,8 @@ pub struct LoginState {
     login_config: Oauth2LoginConfig,
     redirect_url: Url,
     pub auth_url: Url,
-    pkce_verifier: PkceCodeVerifier,
-    csrf_token: CsrfToken,
+    pkce_verifier: Zeroizing<String>,
+    csrf_token: Zeroizing<String>,
 }
 
 /// This function initializes the login process.
@@ -108,35 +163,20 @@ impl LoginState {
             HttpClientError::Default(format!("Failed to set redirect URL port to {port}"))
         })?;
 
-        // Create an OAuth2 client by specifying the client ID, client secret,
-        // authorization URL and token URL.
-        let client = BasicClient::new(ClientId::new(login_config.client_id.clone()))
-            .set_client_secret(ClientSecret::new(login_config.client_secret.clone()))
-            .set_auth_uri(AuthUrl::new(login_config.authorize_url.clone())?)
-            .set_token_uri(TokenUrl::new(login_config.token_url.clone())?)
-            // Set the URL the user will be redirected to after the authorization process.
-            .set_redirect_uri(RedirectUrl::new(redirect_url.to_string())?);
+        // Validate the token endpoint now so a bad configuration fails before the browser opens.
+        Url::parse(&login_config.token_url)?;
 
-        // Generate a PKCE challenge.
-        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-
-        let scopes = login_config
-            .scopes
-            .iter()
-            .map(|s| Scope::new(s.clone()))
-            .collect::<Vec<_>>();
-
-        // Generate the full authorization URL.
-        let auth_request = client
-            .authorize_url(CsrfToken::new_random)
-            // Set the desired scopes.
-            .add_scopes(scopes)
-            // Set the PKCE code challenge.
-            .set_pkce_challenge(pkce_challenge);
-        let (auth_url, csrf_token) = auth_request.url();
+        // PKCE (RFC 7636): random verifier, S256 challenge.
+        let pkce_verifier = random_token(PKCE_VERIFIER_BYTES)?;
+        let pkce_challenge = pkce_challenge(&pkce_verifier)?;
+        // CSRF token, echoed back by the IdP in the `state` parameter.
+        let csrf_token = random_token(CSRF_TOKEN_BYTES)?;
 
         // This is the URL you should redirect the user to,
         // in order to trigger the authorization process.
+        let auth_url =
+            authorization_url(&login_config, &redirect_url, &csrf_token, &pkce_challenge)?;
+
         Ok(Self {
             login_config,
             redirect_url,
@@ -196,7 +236,7 @@ impl LoginState {
         let received_state = auth_parameters.get("state").ok_or_else(|| {
             HttpClientError::Default("state not received on authentication".to_owned())
         })?;
-        if received_state != self.csrf_token.secret() {
+        if !constant_time_eq(received_state, &self.csrf_token) {
             return Err(HttpClientError::Default(
                 "state received on authentication does not match".to_owned(),
             ));
@@ -343,7 +383,7 @@ pub(crate) struct OAuthResponse {
 pub(crate) async fn request_token(
     login_config: &Oauth2LoginConfig,
     redirect_url: &Url,
-    pkce_verifier: &PkceCodeVerifier,
+    pkce_verifier: &str,
     authorization_code: &str,
 ) -> HttpClientResult<OAuthTokens> {
     let params = [
@@ -352,7 +392,7 @@ pub(crate) async fn request_token(
         ("client_id", login_config.client_id.as_str()),
         ("code", authorization_code),
         ("client_secret", login_config.client_secret.as_str()),
-        ("code_verifier", pkce_verifier.secret()),
+        ("code_verifier", pkce_verifier),
     ];
     token_endpoint_request(&login_config.token_url, &params).await
 }
@@ -818,5 +858,133 @@ mod characterization_tests {
             "{response}"
         );
         handle.abort();
+    }
+}
+
+#[cfg(test)]
+mod pkce_tests {
+    use std::collections::HashMap;
+
+    use url::Url;
+
+    use super::{
+        LoginState, Oauth2LoginConfig, authorization_url, constant_time_eq, pkce_challenge,
+        random_token,
+    };
+
+    fn config(authorize_url: &str, scopes: &[&str]) -> Oauth2LoginConfig {
+        Oauth2LoginConfig {
+            client_id: "my client&id".to_owned(),
+            client_secret: "secret".to_owned(),
+            authorize_url: authorize_url.to_owned(),
+            token_url: "https://idp.example.com/token".to_owned(),
+            scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
+            refresh_token: None,
+        }
+    }
+
+    /// RFC 7636 appendix B test vector.
+    #[test]
+    fn pkce_challenge_matches_rfc7636_appendix_b() {
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk").unwrap(),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
+    #[test]
+    fn random_token_is_unpadded_base64url_of_requested_entropy() {
+        let token = random_token(32).unwrap();
+        assert_eq!(token.len(), 43);
+        assert!(
+            token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+            "{}",
+            token.as_str()
+        );
+    }
+
+    #[test]
+    fn state_and_verifier_differ_between_logins() {
+        let cfg = config("https://idp.example.com/auth", &[]);
+        let a = LoginState::try_from_with_port(cfg.clone(), 17_954).unwrap();
+        let b = LoginState::try_from_with_port(cfg, 17_954).unwrap();
+        assert_ne!(*a.csrf_token, *b.csrf_token);
+        assert_ne!(*a.pkce_verifier, *b.pkce_verifier);
+        assert_ne!(*a.csrf_token, *a.pkce_verifier);
+        assert_ne!(a.auth_url, b.auth_url);
+    }
+
+    #[test]
+    fn authorization_url_contains_all_parameters() {
+        let redirect = Url::parse("http://localhost:17899/authorization").unwrap();
+        let url = authorization_url(
+            &config(
+                "https://idp.example.com/auth?prompt=consent",
+                &["openid", "email"],
+            ),
+            &redirect,
+            "st",
+            "ch",
+        )
+        .unwrap();
+        let pairs: Vec<(String, String)> = url.query_pairs().into_owned().collect();
+        let expected = [
+            ("prompt", "consent"),
+            ("response_type", "code"),
+            ("client_id", "my client&id"),
+            ("redirect_uri", "http://localhost:17899/authorization"),
+            ("state", "st"),
+            ("code_challenge", "ch"),
+            ("code_challenge_method", "S256"),
+            ("scope", "openid email"),
+        ]
+        .map(|(k, v)| (k.to_owned(), v.to_owned()));
+        assert_eq!(pairs, expected);
+        let query = url.query().unwrap();
+        assert!(
+            query.contains("redirect_uri=http%3A%2F%2Flocalhost%3A17899%2Fauthorization"),
+            "{query}"
+        );
+        assert!(query.contains("client_id=my+client%26id"), "{query}");
+        assert!(query.ends_with("scope=openid+email"), "{query}");
+        assert_eq!(url.host_str(), Some("idp.example.com"));
+        assert_eq!(url.path(), "/auth");
+    }
+
+    #[test]
+    fn authorization_url_without_scopes_has_no_scope_parameter() {
+        let redirect = Url::parse("http://localhost:17899/authorization").unwrap();
+        let url = authorization_url(
+            &config("https://idp.example.com/auth", &[]),
+            &redirect,
+            "st",
+            "ch",
+        )
+        .unwrap();
+        let pairs: HashMap<String, String> = url.query_pairs().into_owned().collect();
+        assert!(!pairs.contains_key("scope"));
+        assert_eq!(pairs.len(), 6);
+    }
+
+    #[test]
+    fn invalid_urls_are_rejected() {
+        let redirect = Url::parse("http://localhost:17899/authorization").unwrap();
+        drop(authorization_url(&config("not a url", &[]), &redirect, "s", "c").unwrap_err());
+        let mut cfg = config("https://idp.example.com/auth", &[]);
+        cfg.token_url = "not a url".to_owned();
+        drop(
+            LoginState::try_from_with_port(cfg, 17_955)
+                .map(|_| ())
+                .unwrap_err(),
+        );
+    }
+
+    #[test]
+    fn constant_time_eq_compares_content_and_length() {
+        assert!(constant_time_eq("abc", "abc"));
+        assert!(!constant_time_eq("abc", "and"));
+        assert!(!constant_time_eq("abc", "abcd"));
     }
 }
