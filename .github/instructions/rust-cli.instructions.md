@@ -37,8 +37,8 @@ The UI mirrors the `ckms` CLI tool feature-for-feature.
 
 ```bash
 cargo test -p cosmian_kms_cli_actions          # unit tests inside clap actions
-cargo test -p ckms                             # full integration test suite
-cargo test -p ckms -- <filter>                 # single test or module, e.g. split_key
+cargo test -p ckms --features non-fips        # full integration test suite (the module only compiles with non-fips)
+cargo test -p ckms --features non-fips -- <filter>  # single test or module, e.g. split_key; check `N passed` is above 0
 ```
 
 ### Mandatory: no clap action without `ckms` binary tests

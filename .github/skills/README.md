@@ -109,7 +109,7 @@ Orchestrators delegate to or reuse specialist skills; they never repeat a whole 
 | KMS Docs Verify | `/kms-docs-verify [all]` | Verify documentation claims (ckms commands, flags, KMS_* env vars, config keys, versions, links, nav, generated files) against the code; every hit is a candidate to fix or justify. |
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md`; `/kms-changelog consolidate <version>` merges all `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, regroups them and deletes them. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |
-| **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag; no clap action ships without `ckms` binary tests.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms`. |
+| **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag; no clap action ships without `ckms` binary tests.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms --features non-fips`. |
 | MISE | `/mise` | Create/modify MISE task and library Bash scripts following `.mise/` conventions. |
 
 ### Code Quality

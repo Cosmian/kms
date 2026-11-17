@@ -232,13 +232,13 @@ mod <feature>;
 
 ```bash
 # Run only the new tests (fast feedback):
-cargo test -p ckms -- <feature>
+cargo test -p ckms --features non-fips -- <feature>
 
 # Run the full ckms suite to check for regressions:
-cargo test -p ckms
+cargo test -p ckms --features non-fips
 ```
 
-Fix every failure before proceeding. Never mark tests `#[ignore]`.
+`crate/clients/ckms/src/lib.rs` compiles `mod tests` only with `--features non-fips`. Without the flag cargo builds no integration test, matches 0 tests and still reports success: never run the commands above without it, and never treat "0 failures" as proof. Check that the `test result` line reports `N passed` with `N` at least the number of tests you wrote. Fix every failure before proceeding. Never mark tests `#[ignore]`.
 
 ---
 
@@ -253,7 +253,7 @@ Verify before closing the task:
 - [ ] CO-gated commands: operator rejection test exists (`#[cfg(feature = "non-fips")]`).
 - [ ] Helper function is `pub(crate)` and re-exported from `mod.rs` if other tests need it.
 - [ ] New module registered in `crate/clients/ckms/src/tests/mod.rs` with correct feature gate.
-- [ ] `cargo test -p ckms -- <feature>` passes with 0 failures.
+- [ ] `cargo test -p ckms --features non-fips -- <feature>` reports at least one executed test per new test and 0 failures (a run with `0 passed` proves nothing).
 
 ---
 

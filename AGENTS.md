@@ -75,7 +75,7 @@ cargo build --features non-fips      # non-FIPS: extra algorithms, PQC, Covercry
 cargo test-fips                      # test --lib --workspace
 cargo test-non-fips                  # test --lib --workspace --features non-fips
 cargo test -p cosmian_kms_server     # single crate
-cargo test -p ckms
+cargo test -p ckms --features non-fips   # integration tests compile only with non-fips; without it 0 tests run
 
 # ── Lint ─────────────────────────────────────────────────────────────────
 cargo clippy-all                     # clippy --workspace --all-targets --all-features -- -D warnings
@@ -442,7 +442,7 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse or add a complete fixture in `test_data`; `audit` finds partial inline configs |
 | `/kms-db-compat [base-ref]` | When a change touches `crate/server_database/`, `*.sql` or persisted KMIP types — upgrade/downgrade (N-1) verdict per change, SQLite proof in both directions |
-| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag (mandatory: no clap action without `ckms` binary tests)** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
+| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag (mandatory: no clap action without `ckms` binary tests)** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms --features non-fips` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then deletes them |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
