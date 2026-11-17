@@ -1,6 +1,6 @@
 ---
 name: ckms-subcommand-test
-description: 'Generate and run integration tests for a new or modified ckms subcommand: test file, helpers, happy-path + error-case + CO-gating coverage, module registration, cargo test -p ckms. Enforces the rule that no clap action ships without Rust tests on the ckms binary. Use after adding a ckms subcommand or flag, before committing any change under crate/clients/clap/src/actions/, or when CI/review flags missing CLI test coverage.'
+description: 'Generate and run integration tests for a new or modified ckms subcommand: test file, helpers, happy-path + error-case + CO-gating coverage, module registration, cargo test -p ckms --features non-fips. Enforces the rule that no clap action ships without Rust tests on the ckms binary. Use after adding a ckms subcommand or flag, before committing any change under crate/clients/clap/src/actions/, or when CI/review flags missing CLI test coverage.'
 ---
 
 # ckms Subcommand Integration Tests
