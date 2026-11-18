@@ -2,17 +2,18 @@
 
 use std::env;
 
-use crate::start_default_test_kms_server_with_hsm_and_kek_for_vectors;
-use crate::{
-    start_default_test_kms_server_with_hsm_and_kek,
-    start_default_test_kms_server_with_utimaco_and_kek,
-};
 use cosmian_kms_client::cosmian_kmip::{
     kmip_0::kmip_types::KeyWrapType,
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN, kmip_operations::Get,
         kmip_types::CryptographicAlgorithm, requests::symmetric_key_create_request,
     },
+};
+
+use crate::{
+    start_default_test_kms_server_with_hsm_and_kek,
+    start_default_test_kms_server_with_hsm_and_kek_for_vectors,
+    start_default_test_kms_server_with_utimaco_and_kek,
 };
 
 #[cfg(not(feature = "non-fips"))]

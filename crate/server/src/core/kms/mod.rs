@@ -91,6 +91,12 @@ use crate::{
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
         let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());
+        if lib_path.is_empty() {
+            return Err(KmsError::InvalidRequest(format!(
+                "The {} HSM has no default PKCS#11 library on this platform: set {}",
+                $hsm_name, $env_var
+            )));
+        }
         let hsm: Arc<dyn HSM + Send + Sync> = Arc::new(
             <$hsm_type>::instantiate(&lib_path, $slot_passwords).map_err(|e| {
                 KmsError::InvalidRequest(format!(
@@ -851,5 +857,29 @@ mod tests {
             "each database must have its own key"
         );
         Ok(())
+    }
+
+    /// Regression test: off Windows `idemia_sphere` has no default PKCS#11 library, so an unset
+    /// `IDEMIA_SPHERE_PKCS11_LIB` must be refused with a message naming the variable (not a raw
+    /// `dlopen` error).
+    #[cfg(not(target_os = "windows"))]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::remove_var is unsafe in edition 2024; only this test touches this variable"
+    )]
+    #[test]
+    fn idemia_sphere_without_lib_path_names_the_env_var() {
+        // SAFETY: no other test reads or writes `IDEMIA_SPHERE_PKCS11_LIB`.
+        unsafe {
+            std::env::remove_var("IDEMIA_SPHERE_PKCS11_LIB");
+        }
+        let error = KMS::instantiate_one_hsm("idemia_sphere", std::collections::HashMap::new())
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            error.contains("set IDEMIA_SPHERE_PKCS11_LIB"),
+            "unexpected error: {error}"
+        );
     }
 }
