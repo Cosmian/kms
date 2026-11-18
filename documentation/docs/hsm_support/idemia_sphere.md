@@ -34,8 +34,8 @@ CI runs. From the repository root, with the simulator package unpacked in `<PACK
 
 | Parameter | Default | Description |
 |---|---|---|
-| `-PackageDir` | `$env:IDEMIA_SIM_PACKAGE_DIR` | Directory holding the three package files. When empty, the package is downloaded from `-PackageUrl`. |
-| `-PackageUrl` | `$env:IDEMIA_SIM_PACKAGE_URL`, else the Cosmian CI storage | Zip archive of the three package files. |
+| `-PackageDir` | `$env:IDEMIA_SIM_PACKAGE_DIR` | Directory holding the three package files. When empty, the package is taken from `-PackageUrl`, else from the `hsm-idemia-simulator.zip` shipped next to the script in the `reusable_scripts` submodule. |
+| `-PackageUrl` | `$env:IDEMIA_SIM_PACKAGE_URL`, else empty | Zip archive of the three package files (HTTP/HTTPS only). |
 | `-SimRoot` | `C:\Idemia_HSM_Simulator` | Simulator root folder. |
 | `-SoftHsmRoot` | `C:\SoftHSMv2` | SoftHSM2 folder (the leaf must be `SoftHSMv2`). |
 | `-SecurityLevel` | `NON_FIPS` | `NON_FIPS` or `FIPS`, written to `SECURITY_LEVEL`. |

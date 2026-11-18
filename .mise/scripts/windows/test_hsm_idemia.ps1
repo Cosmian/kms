@@ -25,8 +25,9 @@
 # Usage (from the repository root):
 #   .\.mise\scripts\windows\test_hsm_idemia.ps1 [-Fips] [-PackageDir <dir with librooky-simulator.dll, ...>]
 #
-# Without -PackageDir (nor $env:IDEMIA_SIM_PACKAGE_DIR) the simulator package is downloaded by
-# prepare_idemia_hsm.ps1. When IDEMIA_SPHERE_PKCS11_LIB is already exported (CI), the simulator
+# Without -PackageDir (nor $env:IDEMIA_SIM_PACKAGE_DIR) prepare_idemia_hsm.ps1 uses the
+# hsm-idemia-simulator.zip shipped in the reusable_scripts submodule. When IDEMIA_SPHERE_PKCS11_LIB
+# is already exported (CI), the simulator
 # must have been staged with the matching security level.
 # Runs under Windows PowerShell 5.1 and PowerShell 7.
 # ============================================================================
