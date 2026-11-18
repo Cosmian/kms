@@ -96,11 +96,17 @@ pub(crate) async fn configure_ca(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// Serves the CA public key as OpenSSH text.
+///
+/// The key is public and served without authentication, so any origin may read it from a browser
+/// (`*` is valid because credentials are never involved); this lets a Web UI hosted on another
+/// origin display it after configuring the CA.
 #[get("/v1/ssh/public_key")]
 pub(crate) async fn get_public_key(kms: Data<Arc<KMS>>) -> KResult<HttpResponse> {
     let configuration = get_ca_configuration(&kms).await?;
     Ok(HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
+        .insert_header((actix_web::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"))
         .body(configuration.public_key))
 }
 
@@ -638,6 +644,13 @@ mod tests {
                 .get(actix_web::http::header::CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok()),
             Some("text/plain; charset=utf-8")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(actix_web::http::header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .and_then(|value| value.to_str().ok()),
+            Some("*")
         );
         assert_eq!(
             actix_test::read_body(response).await.as_ref(),

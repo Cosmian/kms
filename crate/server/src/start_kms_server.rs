@@ -1814,6 +1814,7 @@ pub async fn prepare_kms_server(
                 "/rotation-policy{_:.*}",
                 "/kv-secrets{_:.*}",
                 "/ssh-certificate{_:.*}",
+                "/ssh-ca{_:.*}",
                 "/generate-password{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
