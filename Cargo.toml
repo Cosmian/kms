@@ -30,6 +30,7 @@ members = [
   "crate/hsm/azure_cloud_hsm",
   "crate/hsm/proteccio",
   "crate/hsm/crypt2pay",
+  "crate/hsm/idemia_sphere",
   "crate/hsm/softhsm2",
   "crate/hsm/kryoptic",
   "crate/hsm/smartcardhsm",
@@ -229,6 +230,7 @@ cosmian_kms_server_database = { path = "crate/server_database", version = "5.29.
 cosmian_pkcs11_module = { path = "crate/clients/pkcs11/module", version = "5.29.0" }
 crypt2pay_pkcs11_loader = { path = "crate/hsm/crypt2pay", version = "5.29.0" }
 gcp_cloud_hsm_pkcs11_loader = { path = "crate/hsm/gcp_cloud_hsm", version = "5.29.0" }
+idemia_sphere_pkcs11_loader = { path = "crate/hsm/idemia_sphere", version = "5.29.0" }
 kmip-derive = { path = "crate/kmip-derive", version = "5.29.0" }
 kryoptic_pkcs11_loader = { path = "crate/hsm/kryoptic", version = "5.29.0" }
 luna_pkcs11_loader = { path = "crate/hsm/luna", version = "5.29.0" }

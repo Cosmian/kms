@@ -16,7 +16,12 @@ pub const SOFTHSM2_PKCS11_LIB: &str = "/opt/homebrew/lib/softhsm/libsofthsm2.so"
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub const SOFTHSM2_PKCS11_LIB: &str = "/usr/local/lib/softhsm/libsofthsm2.so";
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+/// The Windows path is the install location of the `SoftHSM2` distribution staged by
+/// `prepare_idemia_hsm.ps1` (`C:\SoftHSMv2`).
+#[cfg(target_os = "windows")]
+pub const SOFTHSM2_PKCS11_LIB: &str = r"C:\SoftHSMv2\lib\softhsm\libsofthsm2.dll";
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub const SOFTHSM2_PKCS11_LIB: &str = "libsofthsm2.so";
 
 #[cfg(test)]

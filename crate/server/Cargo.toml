@@ -55,6 +55,7 @@ non-fips = [
   "aws_cloudhsm_pkcs11_loader/non-fips",
   "azure_cloud_hsm_pkcs11_loader/non-fips",
   "crypt2pay_pkcs11_loader/non-fips",
+  "idemia_sphere_pkcs11_loader/non-fips",
   "luna_pkcs11_loader/non-fips",
   "proteccio_pkcs11_loader/non-fips",
   "smartcardhsm_pkcs11_loader/non-fips",
@@ -101,6 +102,7 @@ gcp_cloud_hsm_pkcs11_loader = { workspace = true }
 governor = { workspace = true, features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+idemia_sphere_pkcs11_loader = { workspace = true }
 ipnet = { workspace = true, features = ["serde"] }
 jsonwebtoken = { workspace = true }
 kryoptic_pkcs11_loader = { workspace = true }
