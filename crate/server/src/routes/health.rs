@@ -100,8 +100,21 @@ fn dependency(
     }
 }
 
+/// Longest time `/health` waits for the database to answer. A database that accepts the connection
+/// but never replies must report `DOWN` (HTTP 503), not leave the probe of a load balancer hanging.
+const DB_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Longest time `/health` waits for one HSM slot to answer.
 const HSM_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+async fn probe_database(
+    timeout: Duration,
+    check: impl Future<Output = Result<(), String>>,
+) -> Result<(), String> {
+    tokio::time::timeout(timeout, check)
+        .await
+        .unwrap_or_else(|_| Err(format!("no answer within {} ms", timeout.as_millis())))
+}
 
 /// How long the answer of an HSM slot probe is reused by later `/health` calls.
 const HSM_PROBE_TTL: Duration = Duration::from_secs(2);
@@ -217,8 +230,12 @@ async fn health_dependencies(kms: &Arc<KMS>) -> (DependencyHealth, Vec<Dependenc
         MainDbKind::RedisFindex => "redis-findex",
     };
 
-    let start = Instant::now();
-    let database = dependency(db_name, start, kms.database.health_check().await);
+    // Both probes run concurrently so a silent database and a silent HSM cost 2 s, not 4 s.
+    let database = async {
+        let start = Instant::now();
+        let check = probe_database(DB_PROBE_TIMEOUT, kms.database.health_check()).await;
+        dependency(db_name, start, check)
+    };
 
     let hsm_dependencies = join_all(kms.params.hsm_instances.iter().enumerate().map(
         |(index, instance)| async move {
@@ -227,10 +244,9 @@ async fn health_dependencies(kms: &Arc<KMS>) -> (DependencyHealth, Vec<Dependenc
             let check = check_hsm(kms, index, slots).await;
             dependency(instance.prefix.clone(), start, check)
         },
-    ))
-    .await;
+    ));
 
-    (database, hsm_dependencies)
+    tokio::join!(database, hsm_dependencies)
 }
 
 fn overall_status(database: HealthStatus, hsm: &[DependencyHealth]) -> HealthStatus {
@@ -300,6 +316,18 @@ mod tests {
             .await
             .expect("probe after TTL");
         assert_eq!(started.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn silent_database_reports_down_instead_of_hanging() {
+        let hung = probe_database(TIMEOUT, std::future::pending()).await;
+        assert_eq!(hung, Err("no answer within 50 ms".to_owned()));
+
+        assert_eq!(probe_database(TIMEOUT, async { Ok(()) }).await, Ok(()));
+        assert_eq!(
+            probe_database(TIMEOUT, async { Err("refused".to_owned()) }).await,
+            Err("refused".to_owned())
+        );
     }
 
     #[test]

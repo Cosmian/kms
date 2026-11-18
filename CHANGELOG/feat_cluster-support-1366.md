@@ -14,7 +14,8 @@
   `DEGRADED` (HTTP 200) while a failing database still reports `DOWN` (HTTP 503). The HSM check reflects the PKCS#11
   library's answer: some libraries (e.g. Crypt2pay) do not report an unreachable device. Each HSM slot is probed with a
   2 second limit and at most one probe per slot at a time, so an HSM that stops answering makes the node `DEGRADED`
-  without hanging `/health` or exhausting the server's threads.
+  without hanging `/health` or exhausting the server's threads. The database check has the same 2 second limit: a
+  database that stops answering now gives `DOWN` (HTTP 503) instead of a request that never returns.
 
 ## Bug Fixes
 

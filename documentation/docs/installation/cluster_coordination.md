@@ -143,7 +143,7 @@ status and the state and latency of each dependency:
 | ------------- | --------- | ------- |
 | `UP` | 200 | The database and every configured HSM answer. |
 | `DEGRADED` | 200 | The database answers, but at least one HSM does not. |
-| `DOWN` | 503 | The database does not answer. |
+| `DOWN` | 503 | The database does not answer, or does not answer within 2 seconds. |
 
 Example response from a node with one HSM:
 
