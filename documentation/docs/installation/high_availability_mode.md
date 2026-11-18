@@ -3,7 +3,9 @@
 This mode offers high availability through redundancy and load-balancing.
 
 The KMS servers are stateless, so they can be scaled horizontally from a single node up to any number of nodes,
-simply by connecting them all to the same database and fronting them with a load balancer.
+simply by connecting them all to the same database and fronting them with a load balancer. The
+[Deployment profiles](./deployment_profiles.md) page compares the other ways to reach the nodes, with or without
+HAProxy.
 
 ![high-availability](../drawings/high-availability.drawio.svg)
 

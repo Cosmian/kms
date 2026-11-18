@@ -29,6 +29,8 @@
 
 - Add the [Cluster coordination](documentation/docs/installation/cluster_coordination.md) page ([#1366](https://github.com/Cosmian/kms/issues/1366)), with Mermaid
   diagrams of the job locks and the heartbeat, and the `/health` and `/cluster/status` responses.
+- Add the [Deployment profiles](documentation/docs/installation/deployment_profiles.md) page ([#1366](https://github.com/Cosmian/kms/issues/1366)): single node, cloud load balancer, round-robin DNS, Keepalived
+  without HAProxy (with a tested configuration), and HAProxy, with the limits of each and Mermaid diagrams.
 
 ---
 
