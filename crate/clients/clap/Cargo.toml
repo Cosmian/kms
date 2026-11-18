@@ -53,6 +53,7 @@ leb128 = { workspace = true }
 libc = { workspace = true }
 libloading = { workspace = true }
 num-traits = { workspace = true }
+openssl = { workspace = true }
 pem = { workspace = true }
 pkcs11-sys = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls-tls", "cookies"] }
@@ -60,6 +61,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 spiffe = { workspace = true, features = ["workload-api", "jwt"] }
+ssh-key = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
@@ -70,7 +72,6 @@ x509-cert = { workspace = true, features = ["pem"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-openssl = { workspace = true }
 serial_test = { workspace = true }
 tempfile = { workspace = true }
 test_kms_server = { workspace = true }

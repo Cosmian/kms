@@ -84,6 +84,16 @@ curl --fail-with-body --silent --show-error \
   --data '{"allowed_principals":["alice","db-admin"],"allowed_users":["alice@example.com"],"default_ttl":"15m","max_ttl":"1h"}'
 ```
 
+With the `ckms` CLI, a Crypto Officer does the same in two commands. `ckms ssh ca create` creates an ECDSA P-256 key pair in the KMS (`--curve` selects another curve), makes it the CA and prints its OpenSSH public key; `ckms ssh ca set <KEY_ID>` uses an existing key you own instead, and `ckms ssh ca public-key` prints the public key again. The role above becomes:
+
+```bash
+ckms ssh ca create
+ckms ssh role put developers \
+  --allowed-principal alice db-admin \
+  --allowed-user alice@example.com \
+  --default-ttl 15m --max-ttl 1h
+```
+
 Role names may contain ASCII letters, digits, `_`, `-`, and `.`. Principal names are exact login names; wildcard principals and duplicate entries are rejected. `allowed_users` lists the authenticated KMS user names (for example the JWT email, the client certificate subject, or the API-token user) that may sign with the role; wildcards are rejected, and an empty or omitted list restricts the role to active Crypto Officers. The certificate includes the `permit-pty` extension.
 
 ```mermaid
@@ -110,6 +120,14 @@ Submit only the public key. The optional `ttl` must not exceed the role's `max_t
 ckms ssh sign developers "$(cat "$HOME/.ssh/id_ecdsa.pub")" \
   --principal alice \
   --ttl 15m > "$HOME/.ssh/id_ecdsa-cert.pub"
+```
+
+A *principal* is a name written into the certificate: for a user certificate, the login name `sshd` accepts the certificate for. Every `--principal` must be allowed by the role.
+
+Without an existing key, `--generate-key` creates an ECDSA P-256 key pair locally (the private key never reaches the KMS) and writes `PATH` (mode `0600`), `PATH.pub` and `PATH-cert.pub`; existing files are never overwritten:
+
+```bash
+ckms ssh sign developers --generate-key "$HOME/.ssh/id_dev" --principal alice
 ```
 
 Use `ssh-keygen -L -f "$HOME/.ssh/id_ecdsa-cert.pub"` to inspect the certificate. Configure the SSH client to use the certificate alongside its private key, then connect as one of the certificate's allowed principals.
