@@ -76,7 +76,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
-    routes::enrollment_guard::EnrollmentGuard,
+    routes::{enrollment_guard::EnrollmentGuard, health::HsmProbes},
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
@@ -104,6 +104,9 @@ macro_rules! instantiate_hsm_with_env {
 pub struct KMS {
     /// Process-specific identifier used by the cluster heartbeat.
     pub(crate) node_id: String,
+
+    /// Probe state of the HSM slots checked by `GET /health`.
+    pub(crate) hsm_probes: HsmProbes,
 
     /// The server parameters are built from the configuration file or command line arguments.
     pub(crate) params: Arc<ServerParams>,
@@ -386,6 +389,7 @@ impl KMS {
 
         Ok(Self {
             node_id: uuid::Uuid::new_v4().to_string(),
+            hsm_probes: HsmProbes::default(),
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),

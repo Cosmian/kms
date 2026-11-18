@@ -45,11 +45,11 @@ a database lock named after the job:
 
 | Job | Lock name | Runs on |
 | --- | --------- | ------- |
-| Key auto-rotation and renewal warnings | `auto-rotation` | one node per run |
-| CRL refresh | `crl-refresh` | one node per run |
-| Object counter reconciliation | `metrics-reconcile` | one node per run |
+| Key auto-rotation and renewal warnings | `auto-rotation` | one node at a time |
+| CRL refresh | `crl-refresh` | one node at a time |
+| Object counter reconciliation | `metrics-reconcile` | one node at a time |
 | Metrics gauges refresh (`kms.keys.active.count`, `kms.objects.total`) | none | every node (each node exports its own gauges) |
-| KV secret TTL expiry | `kv-ttl` | one node per run |
+| KV secret TTL expiry | `kv-ttl` | one node at a time |
 
 ```mermaid
 sequenceDiagram
@@ -57,7 +57,7 @@ sequenceDiagram
     participant DB as Shared database
     participant B as Node 2
 
-    Note over A,B: The job timer fires on both nodes
+    Note over A,B: The job timers of both nodes fire at about the same time
     A->>DB: try lock "auto-rotation"
     DB-->>A: granted
     B->>DB: try lock "auto-rotation"
@@ -67,6 +67,11 @@ sequenceDiagram
     A->>DB: release lock
     Note over A,B: On the next run, either node may take the lock
 ```
+
+The lock prevents **overlapping** runs, not repeated ones: each node keeps its own timer, so over time every node
+runs each job, one after the other. This is harmless for jobs that find nothing to do the second time (rotation, CRL
+refresh, counter reconciliation, TTL expiry). Key-renewal warnings are de-duplicated in each node's memory, so with
+several nodes the same warning can be emitted once per node.
 
 How the locks work:
 
@@ -149,6 +154,12 @@ Example response from a node with one HSM:
 With the HAProxy configuration of the [High-availability](./high_availability_mode.md) page (`http-check expect
 status 200`), a `DEGRADED` node stays in the load-balancing pool, so it keeps serving the requests that do not use
 the failing HSM.
+
+Each HSM slot is probed with a bounded wait: a slot that does not answer within 2 seconds is reported `DOWN` (with the
+message `no answer within 2000 ms`), so `/health` never hangs and the node is `DEGRADED`. The answer of a slot is reused
+for 2 seconds, and at most one probe per slot runs at a time: while a probe is still waiting for the HSM, later
+`/health` calls report the slot `DOWN` without starting another one, so repeated health checks cannot exhaust the
+server's threads.
 
 !!! note "HSM status depends on the PKCS#11 library"
     The HSM check asks each configured slot for its list of mechanisms. Some PKCS#11 libraries (for example

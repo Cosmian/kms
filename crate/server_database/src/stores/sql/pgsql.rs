@@ -646,12 +646,7 @@ impl PgPool {
             .await
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         let row = client
-            .query_one(
-                "SELECT pg_try_advisory_lock(\
-                    hashtextextended(current_database() || ':' || $1, 0)\
-                )",
-                &[&lock_name],
-            )
+            .query_one(get_pgsql_query!("try-cron-lock").as_str(), &[&lock_name])
             .await
             .map_err(DbError::from)?;
         if row.get::<_, bool>(0) {
@@ -679,28 +674,27 @@ impl PgPool {
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         let tx = client.transaction().await.map_err(DbError::from)?;
         if is_leader {
-            tx.execute("UPDATE cluster_nodes SET is_leader = FALSE", &[])
+            tx.execute(get_pgsql_query!("clear-cluster-leader").as_str(), &[])
                 .await
                 .map_err(DbError::from)?;
         }
         tx.execute(
-            "INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader) \
-             VALUES ($1, $2, $3, $4) \
-             ON CONFLICT (node_id) DO UPDATE SET \
-                 version = EXCLUDED.version, \
-                 last_heartbeat = EXCLUDED.last_heartbeat, \
-                 is_leader = EXCLUDED.is_leader",
+            get_pgsql_query!("upsert-cluster-node").as_str(),
             &[&node_id, &version, &last_heartbeat, &is_leader],
         )
         .await
         .map_err(DbError::from)?;
-        tx.execute(
-            "DELETE FROM cluster_nodes WHERE last_heartbeat < $1",
-            &[&stale_before],
-        )
-        .await
-        .map_err(DbError::from)?;
-        tx.commit().await.map_err(DbError::from)
+        tx.commit().await.map_err(DbError::from)?;
+        // Outside the transaction: the leader's `clear-cluster-leader` locks every row, so a
+        // DELETE on stale rows inside the transaction could deadlock with another node's heartbeat.
+        client
+            .execute(
+                get_pgsql_query!("delete-stale-cluster-nodes").as_str(),
+                &[&stale_before],
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 
     pub(crate) async fn list_cluster_nodes(
@@ -714,8 +708,7 @@ impl PgPool {
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         let rows = client
             .query(
-                "SELECT node_id, version, last_heartbeat, is_leader \
-                 FROM cluster_nodes WHERE last_heartbeat >= $1 ORDER BY node_id",
+                get_pgsql_query!("select-live-cluster-nodes").as_str(),
                 &[&minimum_heartbeat],
             )
             .await
@@ -795,9 +788,7 @@ impl ClusterLockGuard for PgCronLock {
         };
         let row = client
             .query_one(
-                "SELECT pg_advisory_unlock(\
-                    hashtextextended(current_database() || ':' || $1, 0)\
-                )",
+                get_pgsql_query!("release-cron-lock").as_str(),
                 &[&self.lock_name],
             )
             .await

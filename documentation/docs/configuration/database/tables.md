@@ -243,10 +243,10 @@ next heartbeat.
 
 | Column | Type | Description |
 | ------ | ---- | ----------- |
-| `node_id` | `VARCHAR(64)` | Process-specific UUID and primary key. |
-| `version` | `VARCHAR(64)` | KMS package version reported by the process. |
-| `last_heartbeat` | `BIGINT` | Last heartbeat as Unix seconds. |
-| `is_leader` | `BOOLEAN` | Whether this node is the displayed cluster leader. |
+| `node_id` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | Process-specific UUID and primary key. |
+| `version` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | KMS package version reported by the process. |
+| `last_heartbeat` | `BIGINT` (PG/MySQL) / `INTEGER` (SQLite) | Last heartbeat as Unix seconds. |
+| `is_leader` | `BOOLEAN` (PG/MySQL) / `INTEGER` (SQLite, 0 or 1) | Whether this node is the displayed cluster leader. |
 
 ## Links between tables
 

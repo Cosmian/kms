@@ -61,7 +61,7 @@ pub fn spawn_cluster_heartbeat_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     shutdown_tx
 }
 
-async fn update_cluster_heartbeat(kms: &Arc<KMS>) {
+pub(crate) async fn update_cluster_heartbeat(kms: &Arc<KMS>) {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let stale_before = now.saturating_sub(CLUSTER_NODE_TIMEOUT_SECS);
     let node_id = &kms.node_id;
@@ -354,43 +354,43 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                     _ = interval.tick(), if count_interval_secs > 0 => {
                         // Not cluster-locked: the gauges live in this process's OTel exporter.
                         if let Some(ref metrics) = kms.metrics {
-                                // Privileged backend count: no ACL filtering, covers all backends.
-                                match kms.database.count_non_destroyed_key_objects().await {
-                                    Ok(count) => {
-                                        debug!(
-                                            "[metrics-cron] kms.keys.active.count synced to {}",
-                                            count
-                                        );
-                                        metrics.update_active_keys_count(
-                                            i64::try_from(count).unwrap_or(i64::MAX),
-                                        );
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            "[metrics-cron] Failed to sync kms.keys.active.count: {}",
-                                            e
-                                        );
-                                    }
+                            // Privileged backend count: no ACL filtering, covers all backends.
+                            match kms.database.count_non_destroyed_key_objects().await {
+                                Ok(count) => {
+                                    debug!(
+                                        "[metrics-cron] kms.keys.active.count synced to {}",
+                                        count
+                                    );
+                                    metrics.update_active_keys_count(
+                                        i64::try_from(count).unwrap_or(i64::MAX),
+                                    );
                                 }
-
-                                match kms.database.count_all_non_destroyed_objects().await {
-                                    Ok(count) => {
-                                        debug!(
-                                            "[metrics-cron] kms.objects.total synced to {}",
-                                            count
-                                        );
-                                        metrics.update_objects_total(
-                                            i64::try_from(count).unwrap_or(i64::MAX),
-                                        );
-                                    }
-                                    Err(e) => {
-                                        debug!(
-                                            "[metrics-cron] Failed to sync kms.objects.total: {}",
-                                            e
-                                        );
-                                    }
+                                Err(e) => {
+                                    warn!(
+                                        "[metrics-cron] Failed to sync kms.keys.active.count: {}",
+                                        e
+                                    );
                                 }
                             }
+
+                            match kms.database.count_all_non_destroyed_objects().await {
+                                Ok(count) => {
+                                    debug!(
+                                        "[metrics-cron] kms.objects.total synced to {}",
+                                        count
+                                    );
+                                    metrics.update_objects_total(
+                                        i64::try_from(count).unwrap_or(i64::MAX),
+                                    );
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        "[metrics-cron] Failed to sync kms.objects.total: {}",
+                                        e
+                                    );
+                                }
+                            }
+                        }
                     }
                     _ = reconcile_interval.tick() => {
                         run_with_cluster_lock(&kms, "metrics-reconcile", || async {

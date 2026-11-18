@@ -623,39 +623,93 @@ mod tests {
     }
 
     async fn assert_heartbeats(database: &Database) {
+        // The database may be shared with real nodes and other tests: use unique node ids and
+        // only look at them.
+        let suffix = uuid::Uuid::new_v4();
+        let (node_a, node_b) = (format!("node-a-{suffix}"), format!("node-b-{suffix}"));
+        let own = |nodes: Vec<ClusterNode>| -> Vec<ClusterNode> {
+            nodes
+                .into_iter()
+                .filter(|n| n.node_id == node_a || n.node_id == node_b)
+                .collect()
+        };
+
         database
-            .record_cluster_heartbeat("node-a", "1.0", 100, true, 0)
+            .record_cluster_heartbeat(&node_a, "1.0", 100, true, 0)
             .await
             .expect("record leader heartbeat");
         database
-            .record_cluster_heartbeat("node-b", "1.0", 101, false, 0)
+            .record_cluster_heartbeat(&node_b, "1.0", 101, false, 0)
             .await
             .expect("record follower heartbeat");
 
-        let nodes = database
+        let nodes = own(database
             .list_cluster_nodes(0)
             .await
-            .expect("list cluster nodes");
+            .expect("list cluster nodes"));
         assert_eq!(nodes.len(), 2);
-        assert!(nodes.iter().any(|n| n.node_id == "node-a" && n.is_leader));
-        assert!(nodes.iter().any(|n| n.node_id == "node-b" && !n.is_leader));
+        assert!(nodes.iter().any(|n| n.node_id == node_a && n.is_leader));
+        assert!(nodes.iter().any(|n| n.node_id == node_b && !n.is_leader));
 
         database
-            .record_cluster_heartbeat("node-b", "1.0", 1_000, true, 500)
+            .record_cluster_heartbeat(&node_b, "1.0", 1_000, true, 500)
             .await
             .expect("elect node-b and prune stale node");
-        let nodes = database
+        let nodes = own(database
             .list_cluster_nodes(500)
             .await
-            .expect("list live cluster nodes");
+            .expect("list live cluster nodes"));
         assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].node_id, "node-b");
+        assert_eq!(nodes[0].node_id, node_b);
         assert!(nodes[0].is_leader);
+
+        // Leave nothing behind in a shared database.
+        database
+            .record_cluster_heartbeat(&node_b, "1.0", 0, false, 1)
+            .await
+            .expect("expire test node");
+    }
+
+    /// Heartbeats of the leader and of a follower, with a stale row to prune, run at the same
+    /// time. When the stale-row DELETE shared the upsert transaction on PostgreSQL, the leader's
+    /// "clear all leader flags" UPDATE and the follower's DELETE could deadlock.
+    async fn assert_concurrent_heartbeats_do_not_deadlock(database: &Database) {
+        let suffix = uuid::Uuid::new_v4();
+        let (leader, follower, stale) = (
+            format!("node-leader-{suffix}"),
+            format!("node-follower-{suffix}"),
+            format!("node-stale-{suffix}"),
+        );
+        // `last_heartbeat` is far in the past, so only these rows (and expired ones) are pruned.
+        for round in 0..200_i64 {
+            database
+                .record_cluster_heartbeat(&follower, "1.0", 1_000 + round, false, 0)
+                .await
+                .expect("seed follower");
+            database
+                .record_cluster_heartbeat(&stale, "1.0", 1, false, 0)
+                .await
+                .expect("seed stale node");
+            let (a, b) = tokio::join!(
+                database.record_cluster_heartbeat(&leader, "1.0", 2_000 + round, true, 10),
+                database.record_cluster_heartbeat(&follower, "1.0", 1_000 + round, false, 10),
+            );
+            a.expect("leader heartbeat must not fail");
+            b.expect("follower heartbeat must not fail");
+        }
+        database
+            .record_cluster_heartbeat(&leader, "1.0", 0, false, 1)
+            .await
+            .expect("expire leader");
+        database
+            .record_cluster_heartbeat(&follower, "1.0", 0, false, 1)
+            .await
+            .expect("expire follower");
     }
 
     /// Two servers sharing one database must never run the same job at the same time.
     async fn assert_cron_lock_exclusion(params: &MainDbParams) {
-        let node_a = instantiate(params, true).await;
+        let node_a = instantiate(params, false).await;
         let node_b = instantiate(params, false).await;
 
         let ran_by_a = node_a
@@ -726,23 +780,27 @@ mod tests {
     // docker run --name postgres -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432 -d postgres
     #[ignore = "Requires a running PostgreSQL instance"]
     #[tokio::test]
-    async fn postgres_cluster_heartbeat_and_cron_lock() {
+    async fn test_db_postgresql_cluster_heartbeat_and_cron_lock() {
         let url = option_env!("KMS_POSTGRES_URL")
             .unwrap_or("postgres://kms:kms@127.0.0.1:5432/kms")
             .to_owned();
         let params = MainDbParams::Postgres(url, None);
         assert_cron_lock_exclusion(&params).await;
-        assert_heartbeats(&instantiate(&params, false).await).await;
+        let database = instantiate(&params, false).await;
+        assert_heartbeats(&database).await;
+        assert_concurrent_heartbeats_do_not_deadlock(&database).await;
     }
 
     // docker run --name mysql --env MYSQL_DATABASE=kms --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
     #[ignore = "Requires a running MySQL or MariaDB instance"]
     #[tokio::test]
-    async fn mysql_cluster_heartbeat_and_cron_lock() {
+    async fn test_db_mysql_cluster_heartbeat_and_cron_lock() {
         let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
         let params = MainDbParams::Mysql(url.parse().expect("valid MySQL URL"), None);
         assert_cron_lock_exclusion(&params).await;
-        assert_heartbeats(&instantiate(&params, false).await).await;
+        let database = instantiate(&params, false).await;
+        assert_heartbeats(&database).await;
+        assert_concurrent_heartbeats_do_not_deadlock(&database).await;
     }
 }
 

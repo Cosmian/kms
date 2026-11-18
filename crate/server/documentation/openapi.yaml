@@ -1910,6 +1910,8 @@ paths:
         Returns global UP/DEGRADED/DOWN status and per-dependency status and latency.
         A failed database reports DOWN; a failed HSM reports DEGRADED. The HSM check reflects the
         PKCS#11 library's answer, and some libraries (e.g. Crypt2pay) do not report an unreachable device.
+        Each HSM slot is probed with a 2 second limit; a slot that does not answer in time is reported
+        DOWN, and at most one probe per slot runs at a time.
         Used by load balancers and service dependency checks.
       operationId: getHealth
       responses:

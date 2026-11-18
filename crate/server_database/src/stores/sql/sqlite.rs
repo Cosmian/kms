@@ -605,25 +605,20 @@ impl SqlitePool {
     ) -> DbResult<()> {
         let node_id = node_id.to_owned();
         let version = version.to_owned();
+        let clear_leader = get_sqlite_query!("clear-cluster-leader");
+        let upsert = get_sqlite_query!("upsert-cluster-node");
+        let delete_stale = get_sqlite_query!("delete-stale-cluster-nodes");
         self.writer
             .call(move |conn| -> Result<(), rusqlite::Error> {
                 let tx = conn.transaction()?;
                 if is_leader {
-                    tx.execute("UPDATE cluster_nodes SET is_leader = 0", [])?;
+                    tx.execute(clear_leader, [])?;
                 }
                 tx.execute(
-                    "INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader) \
-                     VALUES (?1, ?2, ?3, ?4) \
-                     ON CONFLICT (node_id) DO UPDATE SET \
-                         version = excluded.version, \
-                         last_heartbeat = excluded.last_heartbeat, \
-                         is_leader = excluded.is_leader",
+                    upsert,
                     rusqlite::params![node_id, version, last_heartbeat, is_leader],
                 )?;
-                tx.execute(
-                    "DELETE FROM cluster_nodes WHERE last_heartbeat < ?1",
-                    [stale_before],
-                )?;
+                tx.execute(delete_stale, [stale_before])?;
                 tx.commit()
             })
             .await
@@ -633,12 +628,10 @@ impl SqlitePool {
         &self,
         minimum_heartbeat: i64,
     ) -> DbResult<Vec<ClusterNode>> {
+        let select = get_sqlite_query!("select-live-cluster-nodes");
         self.writer
             .call(move |conn| -> Result<Vec<ClusterNode>, rusqlite::Error> {
-                let mut statement = conn.prepare(
-                    "SELECT node_id, version, last_heartbeat, is_leader \
-                     FROM cluster_nodes WHERE last_heartbeat >= ?1 ORDER BY node_id",
-                )?;
+                let mut statement = conn.prepare(select)?;
                 statement
                     .query_map([minimum_heartbeat], |row| {
                         Ok(ClusterNode {
