@@ -93,14 +93,55 @@ function Assert-ServiceEnvironment {
     Write-Host "OK: service environment"
 }
 
+# Everything needed to tell why the service did not reach Running, printed before failing.
+function Write-ServiceDiagnostics {
+    param([string]$Dir)
+    Write-Step "Diagnostics: service did not reach Running"
+    & sc.exe query $ServiceName | ForEach-Object { Write-Host "$_" }
+    Get-ChildItem -LiteralPath $Dir -Recurse -Filter "*log*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Host "--- $($_.FullName)"
+        Get-Content -LiteralPath $_.FullName -Tail 60 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "$_" }
+    }
+    Get-WinEvent -FilterHashtable @{ LogName = "Application", "System"; StartTime = (Get-Date).AddMinutes(-10) } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match "CosmianKMS|cosmian_kms" } | Select-Object -First 10 |
+        ForEach-Object { Write-Host "[$($_.LogName)] $($_.ProviderName): $($_.Message)" }
+    # Same command line as the service, from a console, to capture the server's own output.
+    Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
+    $out = Join-Path $env:TEMP "kms-console.out"
+    $err = Join-Path $env:TEMP "kms-console.err"
+    $envVars = @{}
+    foreach ($name in $OpenSslVars) { $envVars[$name] = [Environment]::GetEnvironmentVariable($name, "Machine") }
+    if (-not $envVars["OPENSSL_CONF"]) {
+        $envVars["OPENSSL_CONF"] = "$Dir\openssl\ssl\openssl.cnf"
+        $envVars["OPENSSL_MODULES"] = "$Dir\openssl\ossl-modules"
+        $envVars["OPENSSL_CONF_INCLUDE"] = "$Dir\openssl\ssl"
+    }
+    $p = Invoke-WithEnv $envVars {
+        Start-Process -FilePath (Join-Path $Dir "cosmian_kms.exe") -ArgumentList "-c", "`"$Dir\kms.toml`"" `
+            -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -WindowStyle Hidden
+    }
+    $null = $p.Handle
+    $null = $p.WaitForExit(20000)
+    Write-Host "console run: exited=$($p.HasExited) code=$(if ($p.HasExited) { $p.ExitCode })"
+    if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    foreach ($f in @($out, $err)) {
+        Write-Host "--- $f"
+        Get-Content -LiteralPath $f -Tail 60 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "$_" }
+    }
+}
+
 function Assert-ServiceAnswers {
+    param([string]$Dir)
     Write-Step "Service $ServiceName"
     $svc = Get-Service $ServiceName
     if ($svc.Status -ne "Running") {
         try { $svc.WaitForStatus("Running", [TimeSpan]::FromSeconds(60)) } catch { }
         $svc.Refresh()
     }
-    if ($svc.Status -ne "Running") { throw "service $ServiceName is $($svc.Status), expected Running" }
+    if ($svc.Status -ne "Running") {
+        Write-ServiceDiagnostics -Dir $Dir
+        throw "service $ServiceName is $($svc.Status), expected Running"
+    }
     $resp = Wait-ForHttp $VersionUri 90
     Write-Host "OK: GET /version -> $($resp.StatusCode): $($resp.Content)"
 }
@@ -191,7 +232,7 @@ try {
     Write-Host "Installed in $installedDir"
     Assert-PackageLayout -Dir $installedDir -Variant $Variant
     if ($Variant -eq "fips") { Assert-ServiceEnvironment -Dir $installedDir }
-    Assert-ServiceAnswers
+    Assert-ServiceAnswers -Dir $installedDir
     if ($Variant -eq "fips") {
         Assert-FailsClosedWithoutProvider -Dir $installedDir
         Assert-LauncherWorks -Dir $installedDir
