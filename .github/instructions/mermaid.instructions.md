@@ -1,6 +1,6 @@
 ---
 name: 'Mermaid Diagrams'
-description: 'Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check'
+description: 'Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, label width limits (no right-edge clipping), supported Markdown subset, no keyword ids, mmdc render check'
 applyTo: "**/*.md"
 ---
 
