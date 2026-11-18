@@ -129,8 +129,12 @@ What to expect:
 | -------- | --------- | ------------------------------- |
 | PostgreSQL | yes | yes |
 | MySQL / MariaDB | yes | yes |
+| Percona XtraDB Cluster (default `pxc_strict_mode=ENFORCING`) | **no**: the server refuses `GET_LOCK`, so every node runs every job | yes |
 | SQLite | not needed (single node) | yes, shows one node |
 | Redis with Findex (non-FIPS only) | **no**: every node runs every job | **no**: `/cluster/status` returns an empty node list |
+
+When the database refuses `GET_LOCK` (Percona XtraDB Cluster), the server logs one warning and runs the scheduled jobs
+on every node, as it did before job locks existed.
 
 ## Monitoring
 

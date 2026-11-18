@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -23,7 +24,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode, NoopClusterLockGuard},
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
@@ -98,6 +99,10 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
 
 /// MySQL error codes meaning "this column / key already exists" (`ER_DUP_FIELDNAME`, `ER_DUP_KEYNAME`).
 const MYSQL_ALREADY_EXISTS_CODES: [u16; 2] = [1060, 1061];
+
+/// Set once the "`GET_LOCK` refused" warning has been logged, so a refusing server does not flood
+/// the log at every cron tick.
+static GET_LOCK_REFUSED_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Run a schema-changing statement that MySQL cannot make `IF NOT EXISTS`. Several nodes may
 /// bootstrap the same fresh database at once: another node creating the column or index between
@@ -498,10 +503,26 @@ impl MySqlPool {
     ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
         let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
         // NULL (a GET_LOCK internal error) must not panic the row conversion.
-        let acquired: Option<Option<i64>> = conn
+        let acquired: Option<Option<i64>> = match conn
             .exec_first(get_mysql_query!("try-cron-lock"), (lock_name,))
             .await
-            .map_err(DbError::from)?;
+        {
+            Ok(acquired) => acquired,
+            // Percona XtraDB Cluster refuses GET_LOCK in its default strict mode: run the job on
+            // every node, as with Redis, rather than on none.
+            Err(mysql_async::Error::Server(e))
+                if e.code == 1105 && e.message.contains("GET_LOCK") =>
+            {
+                if !GET_LOCK_REFUSED_WARNED.swap(true, Ordering::Relaxed) {
+                    warn!(
+                        "The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node",
+                        e.message
+                    );
+                }
+                return Ok(Some(Box::new(NoopClusterLockGuard)));
+            }
+            Err(e) => return Err(DbError::from(e)),
+        };
         match acquired.flatten() {
             Some(1) => Ok(Some(Box::new(MySqlCronLock {
                 conn,
@@ -2030,10 +2051,15 @@ mod tests {
         let name = format!("vanished-{}", Uuid::new_v4());
 
         let mut conn = pool.lock_pool.get_conn().await.expect("lock connection");
-        let held: Option<Option<i64>> = conn
+        let held: Option<Option<i64>> = match conn
             .exec_first(queries["try-cron-lock"].as_str(), (name.as_str(),))
             .await
-            .expect("take lock");
+        {
+            Ok(held) => held,
+            // Percona XtraDB Cluster refuses GET_LOCK: there is no lock to vanish.
+            Err(mysql_async::Error::Server(e)) if e.code == 1105 => return,
+            Err(e) => panic!("take lock: {e}"),
+        };
         assert_eq!(held.flatten(), Some(1));
         // Drop the lock behind the guard's back: the later RELEASE_LOCK then answers NULL.
         let dropped: Option<Option<i64>> = conn

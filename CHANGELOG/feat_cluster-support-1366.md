@@ -4,7 +4,8 @@
 
 - Scheduled jobs (auto-rotation, CRL refresh, metrics reconciliation, KV secret TTL expiry) now take a PostgreSQL advisory lock or a
   MySQL/MariaDB named lock, so a job runs on one node at a time. SQLite is single-node and Redis-with-Findex is not
-  coordinated yet.
+  coordinated yet. Percona XtraDB Cluster refuses named locks in its default strict mode: the server then logs one
+  warning and runs the jobs on every node, as before.
 - Each node writes a heartbeat to a new `cluster_nodes` table (created automatically) and a leader is elected for
   display. A node is considered gone after 15 seconds without heartbeat. The leader does not gate any work, so a
   failover never interrupts service.

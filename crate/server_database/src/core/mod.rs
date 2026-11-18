@@ -155,7 +155,7 @@ pub(crate) trait ClusterLockGuard: Send {
     async fn release(self: Box<Self>) -> DbResult<()>;
 }
 
-struct NoopClusterLockGuard;
+pub(crate) struct NoopClusterLockGuard;
 
 #[async_trait]
 impl ClusterLockGuard for NoopClusterLockGuard {
@@ -762,6 +762,43 @@ mod tests {
         assert!(acquired, "cancelled job left its lock held");
     }
 
+    /// A server that refuses `GET_LOCK` (Percona `XtraDB` Cluster) gives no locks: the jobs must still run.
+    async fn assert_cron_jobs_run_without_locks(params: &MainDbParams) {
+        let node_a = instantiate(params, false).await;
+        let node_b = instantiate(params, false).await;
+
+        let ran_by_a = node_a
+            .with_cron_lock("job", || async {
+                assert!(
+                    node_b
+                        .with_cron_lock("job", || async {})
+                        .await
+                        .expect("run without a lock")
+                );
+            })
+            .await
+            .expect("run without a lock");
+        assert!(ran_by_a);
+    }
+
+    /// Whether the MySQL-compatible server refuses `GET_LOCK` (Percona `XtraDB` Cluster in its default
+    /// strict mode).
+    async fn mysql_refuses_get_lock(url: &str) -> bool {
+        let pool = mysql_async::Pool::new(url);
+        let mut conn = pool.get_conn().await.expect("connect to MySQL");
+        let refused = matches!(
+            mysql_async::prelude::Queryable::query_first::<Option<i64>, _>(
+                &mut conn,
+                "SELECT GET_LOCK('kms-get-lock-probe', 0)",
+            )
+            .await,
+            Err(mysql_async::Error::Server(ref e)) if e.code == 1105
+        );
+        drop(conn);
+        pool.disconnect().await.expect("disconnect from MySQL");
+        refused
+    }
+
     #[tokio::test]
     async fn sqlite_cluster_heartbeat_and_cron_lock_round_trip() {
         let directory = tempfile::tempdir().expect("create temporary database directory");
@@ -797,7 +834,11 @@ mod tests {
     async fn test_db_mysql_cluster_heartbeat_and_cron_lock() {
         let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
         let params = MainDbParams::Mysql(url.parse().expect("valid MySQL URL"), None);
-        assert_cron_lock_exclusion(&params).await;
+        if mysql_refuses_get_lock(url).await {
+            assert_cron_jobs_run_without_locks(&params).await;
+        } else {
+            assert_cron_lock_exclusion(&params).await;
+        }
         let database = instantiate(&params, false).await;
         assert_heartbeats(&database).await;
         assert_concurrent_heartbeats_do_not_deadlock(&database).await;
