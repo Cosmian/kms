@@ -37,6 +37,7 @@ Apply this path → rule mapping to the detected file list:
 | `crate/clients/wasm/src/**` | **4.5** |
 | `crate/server/src/config/**` | **4.6**, 4.7 |
 | `crate/server_database/**` | **4.18** |
+| `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_{attributes,objects,types}.rs` (persisted serde form changed) | **4.18** |
 | `crate/server/src/middlewares/**` or `crate/server/src/config/wizard/auth_wizard.rs` | **4.9** |
 | `test_data/vectors/**` or `crate/test_kms_server/**` | verify 4.10 completeness |
 | `test_data/configs/**`, `test_data/spire/config/**`, or a `.mise/**` / `crate/**/tests/**` change that writes a KMS, Auth Verifier or ckms config | **4.20** |
@@ -59,6 +60,7 @@ Additional heuristic checks:
 
 - If any changed Rust file contains `#[cfg(feature = "non-fips")]` changes → add **4.8**
 - If `crate/clients/ckms/src/commands.rs` changed → add **4.15**
+- If a changed file under `crate/clients/clap/src/actions/` adds a `#[derive(Parser|Args|Subcommand)]` type, a `pub struct`/`pub enum`, a `#[command(` or a `#[arg(` line and no file under `crate/clients/ckms/src/tests/` changed → emit a **blocker**: no clap action without Rust tests on the `ckms` binary (`rust-cli.instructions.md` § Mandatory; run `/ckms-subcommand-test` Step 0 to list the untested actions)
 - If `crate/server/src/start_kms_server.rs` changed → verify 4.1, 4.2, 4.8, 4.9 as applicable
 - If any changed file is in `crate/server/src/middlewares/`, `crate/server/src/core/operations/`, or `crate/crypto/src/` **and** the change fixes a security bug → remind: **update `SECURITY.md`** with a `COSMIAN-YYYY-NNN` entry (run `/security-review` to generate it)
 - If a changed file under `.github/workflows/`, `.github/actions/` or `.mise/` adds or changes a `uses:` reference, a tool install (`cargo install`, `go install`, `pip install`, `npm install -g`) or a `curl`/`wget` download → add **4.19**
@@ -101,7 +103,7 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 | 4.15 | CLI documentation auto-generation | `crate/clients/ckms/src/**`, `crate/clients/clap/src/**` | `cli-ui-sync.instructions.md` |
 | 4.16 | E2E test documentation | `ui/tests/e2e/**` | `playwright.instructions.md` |
 | 4.17 | OpenSSL version updates | `crate/crypto/build.rs` | `openssl-build.instructions.md` |
-| 4.18 | Database schema/backend ⇔ docs | `crate/server_database/**` | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`) |
+| 4.18 | Database schema/backend ⇔ docs ⇔ version compatibility | `crate/server_database/**`, persisted KMIP types | `rust-database.instructions.md` (table-level detail: `database-tables.instructions.md`; upgrade/downgrade: `database-compatibility.instructions.md`, workflow `/kms-db-compat`) |
 | 4.19 | Third-party dependencies ⇔ supply-chain gates (#1265) | dependency manifests and lock files, `supply-chain/**`, `**/Dockerfile*`, workflow `uses:`/tool installs, submodule bumps | `dependencies.instructions.md` |
 | 4.20 | Test KMS / Auth Verifier configs: complete fixtures in `test_data`, no partial inline configs | `test_data/configs/**`, `test_data/spire/config/**`, `.mise/**`, `crate/**/tests/**` | `test-configs.instructions.md` |
 | 4.21 | Test task README: update the affected entries and Mermaid diagrams of `.mise/tasks/test/README.md` (no per-group README) | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `test-task-readme.instructions.md` |

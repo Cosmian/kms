@@ -63,3 +63,23 @@ pub fn x509_signing_digest<T: HasPublic>(key: &PKeyRef<T>) -> MessageDigest {
         _ => MessageDigest::null(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use openssl::provider::Provider;
+
+    use super::hashing_algorithm_to_openssl;
+    use crate::crypto::is_fips_build;
+
+    /// Every ACVP / OpenSSL digest vector through the KMS hash mapping.
+    #[test]
+    fn test_sha_official_vectors() {
+        let _fips = is_fips_build().then(|| Provider::load(None, "fips").unwrap());
+
+        for v in crate::kat_vectors::sha_vectors().unwrap() {
+            let md =
+                openssl::hash::hash(hashing_algorithm_to_openssl(v.hash).unwrap(), &v.msg).unwrap();
+            assert_eq!(md.to_vec(), v.md, "{} ({})", v.id, v.source);
+        }
+    }
+}

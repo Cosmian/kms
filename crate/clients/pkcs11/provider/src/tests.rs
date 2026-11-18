@@ -25,13 +25,17 @@ use ckms::{
 use cosmian_config_utils::ConfigUtils;
 use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
+    ModuleError,
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
         C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
+    traits::{
+        AES_GMAC_IV_SIZE, Backend, KeyAlgorithm, MacAlgorithm, MacUsage, SignatureAlgorithm,
+        backend as registered_backend,
+    },
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
@@ -393,6 +397,97 @@ fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
     assert_ne!(first, second, "two calls must not return the same bytes");
     // The two chunks of one call (65_536 + 4_464 bytes) must not be a repeat of each other.
     assert_ne!(first.get(..4_464), first.get(65_536..));
+    Ok(())
+}
+
+/// AES-CMAC and the PKCS#11 AES-GMAC (caller IV, tag only) through the provider backend against a
+/// live KMS: the tags are the standard ones, tampering is rejected, and both run as KMIP `MAC`, so
+/// they need the key's MAC Generate / MAC Verify usage bits.
+#[test]
+#[serial]
+fn test_aes_mac_against_the_kms() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::crypto::symmetric::mac::{
+        aes_cmac, aes_gmac,
+    };
+
+    let backend = initialize_backend()?;
+    let to_error = |e: &dyn std::fmt::Display| Pkcs11Error::Default(e.to_string());
+    let data = b"cosmian pkcs11 aes mac".to_vec();
+    let iv = [0x42_u8; AES_GMAC_IV_SIZE];
+    let gmac = MacAlgorithm::AesGmac { iv };
+
+    // A key generated with CKA_SIGN and CKA_VERIFY, and a default key (Encrypt bit, no MAC bits).
+    let mac_key = backend
+        .generate_key_with_mac_usage(
+            KeyAlgorithm::Aes256,
+            32,
+            false,
+            Some("test-aes-mac-1367-both"),
+            MacUsage {
+                generate: true,
+                verify: true,
+            },
+        )
+        .map_err(|e| to_error(&e))?;
+    let plain_key = backend
+        .generate_key(
+            KeyAlgorithm::Aes256,
+            32,
+            false,
+            Some("test-aes-mac-1367-plain"),
+        )
+        .map_err(|e| to_error(&e))?;
+
+    let id = mac_key.remote_id();
+    let key_bytes = mac_key.raw_bytes().map_err(|e| to_error(&e))?;
+    let expected = aes_gmac(&key_bytes, iv, &data).map_err(|e| to_error(&e))?;
+    let expected_tag = expected.get(AES_GMAC_IV_SIZE..).unwrap_or_default();
+
+    // GMAC: the signature is the 16-byte tag of the standard algorithm for the caller's IV.
+    let tag = backend.mac(id, gmac, &data).map_err(|e| to_error(&e))?;
+    assert_eq!(tag, expected_tag);
+    backend
+        .mac_verify(id, gmac, &data, &tag)
+        .map_err(|e| to_error(&e))?;
+
+    let mut flipped = tag.clone();
+    flipped[0] ^= 0xFF;
+    let other_iv = MacAlgorithm::AesGmac {
+        iv: [0x43; AES_GMAC_IV_SIZE],
+    };
+    for (algorithm, message, signature) in [
+        (gmac, data.as_slice(), flipped.as_slice()),
+        (other_iv, data.as_slice(), tag.as_slice()),
+        (gmac, b"another message".as_slice(), tag.as_slice()),
+    ] {
+        assert!(matches!(
+            backend.mac_verify(id, algorithm, message, signature),
+            Err(ModuleError::SignatureInvalid)
+        ));
+    }
+
+    // CMAC with the same key.
+    let expected = aes_cmac(&key_bytes, &data).map_err(|e| to_error(&e))?;
+
+    let tag = backend
+        .mac(id, MacAlgorithm::AesCmac, &data)
+        .map_err(|e| to_error(&e))?;
+    assert_eq!(tag, expected);
+    backend
+        .mac_verify(id, MacAlgorithm::AesCmac, &data, &tag)
+        .map_err(|e| to_error(&e))?;
+    let mut flipped = tag;
+    flipped[0] ^= 0xFF;
+    assert!(matches!(
+        backend.mac_verify(id, MacAlgorithm::AesCmac, &data, &flipped),
+        Err(ModuleError::SignatureInvalid)
+    ));
+    // Without the MAC bits neither CMAC nor GMAC is allowed.
+    for algorithm in [MacAlgorithm::AesCmac, gmac] {
+        backend
+            .mac(plain_key.remote_id(), algorithm, &data)
+            .unwrap_err();
+    }
     Ok(())
 }
 
@@ -1414,4 +1509,125 @@ fn find_profile_count(
     );
     assert_eq!(C_FindObjectsFinal(session), CKR_OK);
     Ok(count)
+}
+
+/// Import an AES key of known value, with the MAC Generate / MAC Verify usage bits; returns its UID.
+fn import_mac_kat_key(key: &[u8]) -> Pkcs11Result<String> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+
+    // Never inside a backend call: the backend blocks on its own runtime.
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let client = KmsClient::new_with_config(ctx.owner_client_config.clone())?;
+        let object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            key,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_usage_mask: Some(
+                    CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify,
+                ),
+                ..Default::default()
+            },
+        )?;
+        let request = import_object_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            object,
+            None,
+            false,
+            false,
+            ["pkcs11-kat-mac"],
+        )?;
+        Ok(client.import(request).await?.unique_identifier.to_string())
+    })
+}
+
+/// Official AES-CMAC (SP 800-38B) and AES-GMAC (IEEE 802.1AE) vectors through the provider and the
+/// KMS: known keys, known tags, tampering rejected.
+#[test]
+#[serial]
+fn test_aes_mac_known_answers_against_the_kms() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::kat_vectors::{
+        aes_cmac_vectors, aes_gmac_vectors,
+    };
+
+    let to_error = |e: &dyn std::fmt::Display| Pkcs11Error::Default(e.to_string());
+    let backend = initialize_backend()?;
+    let cmac = aes_cmac_vectors().map_err(|e| to_error(&e))?;
+    for id in [
+        "sp800-38b-aes128-ex2",
+        "sp800-38b-aes192-ex2",
+        "sp800-38b-aes256-ex2",
+    ] {
+        let v = cmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let uid = import_mac_kat_key(&v.key)?;
+        assert_eq!(
+            backend.mac(&uid, MacAlgorithm::AesCmac, &v.msg)?,
+            v.tag,
+            "{id}"
+        );
+        backend.mac_verify(&uid, MacAlgorithm::AesCmac, &v.msg, &v.tag)?;
+        let mut flipped = v.tag.clone();
+        flipped[0] ^= 0xFF;
+        assert!(
+            matches!(
+                backend.mac_verify(&uid, MacAlgorithm::AesCmac, &v.msg, &flipped),
+                Err(ModuleError::SignatureInvalid)
+            ),
+            "{id}"
+        );
+    }
+
+    let gmac = aes_gmac_vectors().map_err(|e| to_error(&e))?;
+    for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+        let v = gmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let algorithm = MacAlgorithm::AesGmac {
+            iv: v.iv[..].try_into().map_err(|e| to_error(&e))?,
+        };
+        let uid = import_mac_kat_key(&v.key)?;
+        backend.mac_verify(&uid, algorithm, &v.msg, &v.tag)?;
+        let mut flipped = v.tag.clone();
+        flipped[0] ^= 0xFF;
+        assert!(
+            matches!(
+                backend.mac_verify(&uid, algorithm, &v.msg, &flipped),
+                Err(ModuleError::SignatureInvalid)
+            ),
+            "{id}"
+        );
+    }
+    Ok(())
+}
+
+/// AES-GMAC generation with the caller's IV against the IEEE 802.1AE vectors.
+#[test]
+#[serial]
+fn test_aes_gmac_known_answer_with_caller_iv() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::kat_vectors::aes_gmac_vectors;
+
+    let backend = initialize_backend()?;
+    let gmac = aes_gmac_vectors().map_err(|e| Pkcs11Error::Default(e.to_string()))?;
+    for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+        let v = gmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let iv = v.iv[..]
+            .try_into()
+            .map_err(|e: std::array::TryFromSliceError| Pkcs11Error::Default(e.to_string()))?;
+        let uid = import_mac_kat_key(&v.key)?;
+        assert_eq!(
+            backend.mac(&uid, MacAlgorithm::AesGmac { iv }, &v.msg)?,
+            v.tag,
+            "{id}"
+        );
+    }
+    Ok(())
 }

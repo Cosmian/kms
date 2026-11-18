@@ -117,7 +117,7 @@ impl KMS {
 
         for (c, r) in candidates.iter().zip(replacements.iter()) {
             let (old_object, old_attributes) = retire_old_key(&c.owm, &r.new_uid)?;
-            operations.push(retire_update_op(&c.owm, old_object, old_attributes));
+            operations.push(versioned_update_op(&c.owm, old_object, old_attributes));
             // see `retire_old_key`: only an Active object is moved to Deactivated
             if c.owm.effective_state() == State::Active {
                 operations.push(AtomicOperation::UpdateState((
@@ -587,6 +587,8 @@ pub(crate) fn setup_new_key(
                 }
             }
         }
+        // The server owns the Usage Limits Count (KMIP 2.1 §4.59): a requested Count is ignored.
+        key_attrs.reset_usage_limits_count();
     }
 
     // For SymmetricKey, PrivateKey, and SecretData, re-initialize NeverExtractable
@@ -692,9 +694,9 @@ fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, A
     Ok((old_object, old_attributes))
 }
 
-/// Retire a source only if its stored version still matches the validated snapshot.
-/// Stores that do not track versions use the unconditional update.
-pub(crate) fn retire_update_op(
+/// Update the object only if its stored version still equals the one in `owm`; stores without
+/// versions use the unconditional update.
+pub(crate) fn versioned_update_op(
     owm: &ObjectWithMetadata,
     object: Object,
     attributes: Attributes,

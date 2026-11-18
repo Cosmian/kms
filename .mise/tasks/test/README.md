@@ -799,6 +799,8 @@ To run it by hand: `mise run test:interop:openbao-auth-verifier --variant non-fi
 
 The scenario checks that `bao operator init` completes with seal type `kmip` (no software seal fallback), that OpenBao is unsealed, and that after a container restart it unseals itself again. OpenBao connects straight to the KMS KMIP socket. The KMS runs with `cosmian_kms_server=debug`, which logs each KMIP request's operation, protocol version, target key identifier, cryptographic algorithm and block cipher mode (never the data, the IV or key material). [`check_kmip_seal_audit.py`](../../scripts/test/openbao/check_kmip_seal_audit.py) reads only the KMS log and asserts that KMIP `Encrypt` and `Decrypt` were served for the `openbao-seal` client certificate identity only, and that the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode.
 
+In the `fips` variant the scenario cannot succeed by design: OpenBao picks the AES-GCM IV itself and ignores the one the server returns, and a FIPS KMS refuses a caller-supplied AES-GCM IV (FIPS 140-3 IG C.H). The task then asserts that `bao operator init` fails and that the KMS log holds that refusal for the `openbao-seal` identity, and stops before the unseal and audit steps.
+
 To run it by hand: `mise run test:interop:openbao-kmip --variant non-fips`. The KMS must listen with `[socket_server]` and `clients_ca_cert_file` set, and OpenBao must trust the CA that signed the KMS certificate (`server_name` must match a SAN of that certificate).
 
 HashiCorp Vault is deliberately not covered: it has no `seal "kmip"` stanza, so `BAO_IMAGE` must not be pointed at a Vault image. Its seals are the cloud KMS ones, `transit` (the KMS Transit emulation has no `encrypt`/`decrypt` routes) and Enterprise-only `pkcs11`; supporting Vault needs a different KMS integration, see [OpenBao and Eviden KMS](../../../documentation/docs/integrations/openbao.md#hashicorp-vault-is-not-supported-for-auto-unseal).
@@ -836,6 +838,7 @@ sequenceDiagram
     Test->>KMS: POST /kmip/2_1 Create AES-256 (CN=openbao-seal)
     Test->>KMS: POST /kmip/2_1 Activate
     Test->>Bao: start with seal "kmip"
+    alt non-FIPS variant
     Test->>Bao: bao operator init
     Bao->>KMS: KMIP Encrypt (master key, AES-GCM)
     KMS-->>Bao: wrapped key
@@ -846,6 +849,13 @@ sequenceDiagram
     Bao-->>Test: unsealed again
     Test->>Audit: KMS debug log
     Audit-->>Test: Encrypt and Decrypt by openbao-seal only, KMIP 1.4, AES-GCM, wrapping key
+    else FIPS variant
+        Test->>Bao: bao operator init
+        Bao->>KMS: KMIP Encrypt (caller-supplied AES-GCM IV)
+        KMS-->>Bao: Invalid_Field, IV refused in FIPS mode
+        Bao-->>Test: init fails
+        Test->>Test: grep the KMS log for the refusal by openbao-seal, then stop
+    end
 ```
 
 ### `test:interop:ssh-secrets`

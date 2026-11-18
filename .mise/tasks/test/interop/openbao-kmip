@@ -202,6 +202,30 @@ STATUS="$(bao_status)" || print_error "OpenBao did not answer"
 [[ "$(printf '%s' "${STATUS}" | json_field type)" == "kmip" ]] ||
   print_error "the seal type is not kmip: ${STATUS}"
 
+# OpenBao's KMIP seal picks the AES-GCM IV itself, stores it, and sends it with Encrypt (it ignores
+# the IV the server returns). A FIPS KMS draws the IV inside the FIPS module (SP 800-38D §9.1,
+# FIPS 140-3 IG C.H) and refuses a caller-supplied one, so the seal cannot work in this variant by
+# design. The FIPS run therefore asserts that refusal instead of an unseal.
+if [[ "${VARIANT}" == "fips" ]]; then
+  print_status "Initializing OpenBao: the FIPS KMS must refuse the caller-supplied AES-GCM IV..."
+  if bao_cli operator init -recovery-shares=1 -recovery-threshold=1 -format=json >/dev/null 2>&1; then
+    print_error "OpenBao initialized against a FIPS KMS: a caller-supplied AES-GCM IV must be refused"
+  fi
+  REFUSED=""
+  for _ in $(seq 1 10); do
+    if grep -q "Encrypt: an IV/Counter/Nonce cannot be supplied for AES-GCM in FIPS mode" "${KMS_LOG}"; then
+      REFUSED=1
+      break
+    fi
+    sleep 1
+  done
+  [[ -n "${REFUSED}" ]] || print_error "the KMS log has no FIPS refusal of the caller-supplied IV"
+  grep -qE "KMIP request \[Encrypt\] .* user=\"${BAO_CLIENT_CN}\"" "${KMS_LOG}" ||
+    print_error "the refused Encrypt was not sent by ${BAO_CLIENT_CN}"
+  print_success "The FIPS KMS refused the caller-supplied AES-GCM IV; the OpenBao KMIP seal needs the non-FIPS variant"
+  exit 0
+fi
+
 print_status "Initializing OpenBao (auto-unseal through the KMS)..."
 bao_cli operator init -recovery-shares=1 -recovery-threshold=1 -format=json >"${WORK_DIR}/init.json" ||
   print_error "operator init failed (see the OpenBao and KMS logs)"

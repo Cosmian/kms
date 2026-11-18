@@ -24,7 +24,6 @@ impl HsmProvider for SmartcardHsmCapabilityProvider {
                 key_wrap_pad_is_rfc5649: false,
                 gcm: AesGcmCapabilities {
                     supports_caller_iv: true,
-                    allows_caller_iv_in_fips: false,
                     supports_message: true,
                 },
             },

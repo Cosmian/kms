@@ -2097,6 +2097,7 @@ impl From<MAC> for kmip_2_1::kmip_operations::MAC {
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
             data: value.data,
+            i_v_counter_nonce: None,
             correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,
             final_indicator: value.final_indicator,

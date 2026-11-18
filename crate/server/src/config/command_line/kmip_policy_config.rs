@@ -304,6 +304,8 @@ impl KmipAllowlistsConfig {
                 // GCM/CCM: standard AEAD modes (GCM is the most common).
                 BlockCipherMode::GCM,
                 BlockCipherMode::CCM,
+                // CMAC: AES-CMAC message authentication (NIST SP 800-38B); AES-GMAC uses GCM.
+                BlockCipherMode::CMAC,
                 // XTS: disk/storage encryption mode; included for client interoperability.
                 BlockCipherMode::XTS,
                 // NIST key wrap (RFC 3394) and padding variant (RFC 5649): standard wrapping.

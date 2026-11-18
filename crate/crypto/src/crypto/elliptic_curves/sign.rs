@@ -542,3 +542,82 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod official_vectors {
+    use cosmian_kmip::kmip_2_1::{kmip_operations::Sign, kmip_types::CryptographicParameters};
+    use openssl::pkey::{Id, PKey};
+
+    use super::eddsa_sign;
+    use crate::kat_vectors::EddsaGroup;
+
+    fn check_eddsa_sign(groups: &[EddsaGroup], id: Id) {
+        let mut checked = 0;
+        for g in groups.iter().filter(|g| !g.private.is_empty()) {
+            let pk = PKey::private_key_from_raw_bytes(&g.private, id).unwrap();
+            for t in g.tests.iter().filter(|t| t.valid) {
+                let request = Sign {
+                    data: Some(t.msg.clone().into()),
+                    cryptographic_parameters: Some(CryptographicParameters::default()),
+                    ..Default::default()
+                };
+                assert_eq!(
+                    eddsa_sign(&request, &pk).unwrap(),
+                    t.sig,
+                    "{} ({})",
+                    t.id,
+                    g.source
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "no signing vector checked");
+    }
+
+    #[test]
+    fn test_ed25519_sign_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        check_eddsa_sign(&crate::kat_vectors::ed25519_groups().unwrap(), Id::ED25519);
+    }
+
+    /// ACVP `DetECDSA` (RFC 6979) P-256 / SHA-256 signing through `ecdsa_sign`.
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_ecdsa_p256_rfc6979_sign_official_vectors() {
+        use cosmian_kmip::kmip_2_1::kmip_types::DigitalSignatureAlgorithm;
+        use openssl::{
+            bn::{BigNum, BigNumContext},
+            ec::{EcGroup, EcKey, EcPoint},
+            nid::Nid,
+        };
+
+        use super::ecdsa_sign;
+
+        let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+        let mut ctx = BigNumContext::new().unwrap();
+        for v in crate::kat_vectors::ecdsa_p256_rfc6979_sign_vectors().unwrap() {
+            let d = BigNum::from_slice(&v.private).unwrap();
+            let mut public = EcPoint::new(&group).unwrap();
+            public.mul_generator2(&group, &d, &mut ctx).unwrap();
+            let ec_key = EcKey::from_private_components(&group, &d, &public).unwrap();
+            let pk = PKey::from_ec_key(ec_key).unwrap();
+            let request = Sign {
+                data: Some(v.msg.clone().into()),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            assert_eq!(
+                ecdsa_sign(&request, &pk).unwrap(),
+                v.sig,
+                "{} ({})",
+                v.id,
+                v.source
+            );
+        }
+    }
+}

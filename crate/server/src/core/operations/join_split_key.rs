@@ -377,6 +377,7 @@ pub(crate) async fn join_split_key(
         }
     }
     reconstructed_attrs.merge(&requested_attrs, false);
+    reconstructed_attrs.reset_usage_limits_count();
     kms.constraints
         .check(reconstructed_object.object_type(), &reconstructed_attrs)?;
 

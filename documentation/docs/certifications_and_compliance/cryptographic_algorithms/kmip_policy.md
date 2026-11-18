@@ -58,7 +58,7 @@ In particular, it allowlists:
 - Hash functions: `SHA256`, `SHA384`, `SHA512`, `SHA3256`, `SHA3384`, `SHA3512`
 - Signature algorithms: `SHA256WithRSAEncryption`, `SHA384WithRSAEncryption`, `SHA512WithRSAEncryption`, `RSASSAPSS`, `ECDSAWithSHA256`, `ECDSAWithSHA384`, `ECDSAWithSHA512`
 - Curves: `P256`, `P384`, `P521`, `CURVE25519`, `CURVE448`
-- Block cipher modes: `GCM`, `CCM`, `XTS`, `NISTKeyWrap`, `AESKeyWrapPadding`, `GCMSIV`
+- Block cipher modes: `GCM`, `CCM`, `CMAC`, `XTS`, `NISTKeyWrap`, `AESKeyWrapPadding`, `GCMSIV`
 - Padding methods: `OAEP`, `PSS`, `PKCS5`
 - MGF hashes: `SHA256`, `SHA384`, `SHA512`
 - Mask generators: `MGF1`

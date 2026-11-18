@@ -35,7 +35,7 @@ use crate::{
         symmetric::{
             rfc3394::rfc3394_wrap,
             rfc5649::rfc5649_wrap,
-            symmetric_ciphers::{SymCipher, encrypt, random_nonce},
+            symmetric_ciphers::{SymCipher, aes_gcm_encrypt_generated_iv},
         },
         wrap::common::rsa_parameters,
     },
@@ -351,16 +351,9 @@ pub(super) fn wrap(
                             key_bytes.len(),
                         )?;
 
-                        let nonce = random_nonce(rng, aead)?;
-
-                        let (ct, authenticated_encryption_tag) = encrypt(
-                            aead,
-                            &key_bytes,
-                            &nonce,
-                            &[],
-                            key_to_wrap,
-                            Some(padding_method),
-                        )?;
+                        // the IV is drawn inside the OpenSSL provider (SP 800-38D §8.2.2)
+                        let (nonce, ct, authenticated_encryption_tag) =
+                            aes_gcm_encrypt_generated_iv(aead, &key_bytes, &[], key_to_wrap)?;
                         let mut ciphertext = Vec::with_capacity(
                             nonce.len() + ct.len() + authenticated_encryption_tag.len(),
                         );

@@ -424,6 +424,10 @@ impl Attributes {
 
     get_attribute!(get_sensitive, AttributeType::Sensitive, Sensitive, bool);
 
+    get_attribute!(get_sign, AttributeType::Sign, Sign, bool);
+
+    get_attribute!(get_verify, AttributeType::Verify, Verify, bool);
+
     #[must_use]
     pub fn get(&self, attribute_type: AttributeType) -> Option<&Attribute> {
         self.0

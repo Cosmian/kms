@@ -2236,6 +2236,46 @@ impl Display for UsageLimits {
     }
 }
 
+impl UsageLimits {
+    /// Units still available (KMIP 2.1 §4.59 Usage Limits Count), capped by the Total. Releases
+    /// before the server tracked the Count decremented the Total instead and could leave a stale
+    /// Count above it, so the remaining budget is the smaller of the two, or the Total when the
+    /// Count is absent.
+    #[must_use]
+    pub const fn remaining(&self) -> i64 {
+        match self.usage_limits_count {
+            Some(count) if count < self.usage_limits_total => count,
+            _ => self.usage_limits_total,
+        }
+    }
+
+    /// Units that protecting `data_len` bytes consumes.
+    #[must_use]
+    pub fn units(&self, data_len: usize) -> i64 {
+        match self.usage_limits_unit {
+            UsageLimitsUnit::Byte => i64::try_from(data_len).unwrap_or(i64::MAX),
+            UsageLimitsUnit::Object => 1,
+        }
+    }
+
+    /// Whether the remaining budget covers protecting `data_len` bytes.
+    #[must_use]
+    pub fn allows(&self, data_len: usize) -> bool {
+        self.remaining() >= self.units(data_len)
+    }
+
+    /// Consume the units of protecting `data_len` bytes from the Count; the Total never changes.
+    pub fn consume(&mut self, data_len: usize) {
+        self.usage_limits_count =
+            Some(self.remaining().saturating_sub(self.units(data_len)).max(0));
+    }
+
+    /// Start a full budget: the server sets the Count to the Total and ignores any client Count.
+    pub const fn reset_count(&mut self) {
+        self.usage_limits_count = Some(self.usage_limits_total);
+    }
+}
+
 // Conversions with the KMIP 1.x structure (same units and codes)
 impl From<crate::kmip_0::kmip_types::UsageLimits> for UsageLimits {
     fn from(v: crate::kmip_0::kmip_types::UsageLimits) -> Self {
@@ -2261,6 +2301,114 @@ impl From<UsageLimits> for crate::kmip_0::kmip_types::UsageLimits {
             usage_limits_unit: unit,
             usage_limits_count: v.usage_limits_count,
             usage_limits_total: v.usage_limits_total,
+        }
+    }
+}
+
+#[cfg(test)]
+mod usage_limits_tests {
+    use super::{UsageLimits, UsageLimitsUnit};
+
+    #[test]
+    fn usage_limits_byte_consumes_count_not_total() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Byte,
+            usage_limits_count: None,
+            usage_limits_total: 16,
+        };
+        assert!(limits.allows(16));
+        limits.consume(16);
+        assert_eq!(limits.usage_limits_count, Some(0));
+        assert_eq!(limits.usage_limits_total, 16);
+        assert!(!limits.allows(1));
+    }
+
+    #[test]
+    fn usage_limits_object_consumes_one_unit() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(1),
+            usage_limits_total: 2,
+        };
+        limits.consume(0);
+        assert_eq!(limits.usage_limits_count, Some(0));
+        assert!(!limits.allows(0));
+    }
+
+    #[test]
+    fn usage_limits_reset_count_restores_total() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Byte,
+            usage_limits_count: Some(5),
+            usage_limits_total: 16,
+        };
+        limits.reset_count();
+        assert_eq!(limits.usage_limits_count, Some(16));
+    }
+
+    /// A pre-upgrade object whose Total was decremented while a stale Count stayed higher keeps
+    /// only the Total as its budget.
+    #[test]
+    fn usage_limits_stale_count_above_total_is_capped() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(100),
+            usage_limits_total: 5,
+        };
+        assert_eq!(limits.remaining(), 5);
+        assert!(limits.allows(0));
+        limits.consume(0);
+        assert_eq!(limits.usage_limits_count, Some(4));
+        assert_eq!(limits.usage_limits_total, 5);
+        assert_eq!(limits.remaining(), 4);
+    }
+
+    #[test]
+    fn usage_limits_consumed_count_below_total_is_remaining() {
+        let mut limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Byte,
+            usage_limits_count: Some(10),
+            usage_limits_total: 16,
+        };
+        assert_eq!(limits.remaining(), 10);
+        assert!(limits.allows(10));
+        assert!(!limits.allows(11));
+        limits.consume(4);
+        assert_eq!(limits.usage_limits_count, Some(6));
+        assert_eq!(limits.usage_limits_total, 16);
+    }
+
+    #[test]
+    fn usage_limits_legacy_without_count_uses_total() {
+        let limits = UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: None,
+            usage_limits_total: 3,
+        };
+        assert_eq!(limits.remaining(), 3);
+        assert!(limits.allows(0));
+    }
+
+    #[test]
+    fn usage_limits_exhausted_budget_denies_and_stays_at_zero() {
+        for (count, total) in [(Some(0), 5), (Some(7), 0), (None, 0)] {
+            let mut limits = UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: count,
+                usage_limits_total: total,
+            };
+            assert_eq!(limits.remaining(), 0, "count {count:?}, total {total}");
+            assert!(!limits.allows(0), "count {count:?}, total {total}");
+            limits.consume(0);
+            assert_eq!(
+                limits.usage_limits_count,
+                Some(0),
+                "count {count:?}, total {total}"
+            );
+            assert_eq!(
+                limits.usage_limits_total, total,
+                "count {count:?}, total {total}"
+            );
         }
     }
 }

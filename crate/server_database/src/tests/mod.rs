@@ -27,7 +27,8 @@ use crate::{
         database_tests::{
             atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
-            find_with_options_test, update_if_version_test, wrapping_key_link_test,
+            find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
+            update_if_version_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -87,6 +88,21 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     Ok(redis_findex)
 }
 
+/// Same Redis as `get_redis_with_findex` but with a fixed master key, so a second instance can
+/// reopen the database written by the first one.
+#[cfg(feature = "non-fips")]
+async fn get_redis_fixed_key(clear_database: bool) -> DbResult<RedisWithFindex> {
+    use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
+
+    use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
+    let redis_url = get_redis_url();
+    let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
+        &mut [7_u8; REDIS_WITH_FINDEX_MASTER_KEY_LENGTH],
+    );
+    RedisWithFindex::instantiate(redis_url, master_key, clear_database).await
+}
+
 #[ignore = "Requires a running Redis instance"]
 #[cfg(feature = "non-fips")]
 #[tokio::test]
@@ -118,6 +134,11 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
     Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
+    gcm_invocations_test(&get_redis_with_findex().await?).await?;
+    gcm_invocations_orphan_purge_test(&get_redis_fixed_key(true).await?, || {
+        get_redis_fixed_key(false)
+    })
+    .await?;
     Ok(())
 }
 
@@ -157,6 +178,11 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     find_with_options_test(&get_sqlite(&db_file).await?).await?;
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
     Box::pin(update_if_version_test(&get_sqlite(&db_file).await?)).await?;
+    gcm_invocations_test(&get_sqlite(&db_file).await?).await?;
+    gcm_invocations_orphan_purge_test(&get_sqlite(&db_file).await?, || {
+        SqlitePool::instantiate(&db_file, false, None)
+    })
+    .await?;
     Ok(())
 }
 
@@ -388,6 +414,16 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     find_with_options_test(&get_pgsql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
     Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
+    gcm_invocations_test(&get_pgsql().await?).await?;
+    gcm_invocations_orphan_purge_test(&get_pgsql().await?, || async {
+        PgPool::instantiate(
+            option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms"),
+            false,
+            None,
+        )
+        .await
+    })
+    .await?;
     Ok(())
 }
 
@@ -562,5 +598,15 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     count_non_destroyed_keys_test(&get_mysql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
+    gcm_invocations_test(&get_mysql().await?).await?;
+    gcm_invocations_orphan_purge_test(&get_mysql().await?, || async {
+        MySqlPool::instantiate(
+            option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms"),
+            false,
+            None,
+        )
+        .await
+    })
+    .await?;
     Ok(())
 }

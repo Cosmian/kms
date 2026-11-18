@@ -17,6 +17,7 @@ pub enum DataEncryptionAlgorithm {
     #[default]
     AesGcm,
     AesCbc,
+    #[cfg(feature = "non-fips")]
     AesXts,
     #[cfg(feature = "non-fips")]
     AesGcmSiv,
@@ -40,6 +41,7 @@ impl From<DataEncryptionAlgorithm> for CryptographicParameters {
                 block_cipher_mode: Some(BlockCipherMode::CBC),
                 ..Self::default()
             },
+            #[cfg(feature = "non-fips")]
             DataEncryptionAlgorithm::AesXts => Self {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 block_cipher_mode: Some(BlockCipherMode::XTS),
@@ -152,6 +154,7 @@ pub fn parse_decrypt_elements(
                 (AES_128_GCM_IV_LENGTH, AES_128_GCM_MAC_LENGTH)
             }
             BlockCipherMode::CBC => (AES_128_CBC_IV_LENGTH, AES_128_CBC_MAC_LENGTH),
+            #[cfg(feature = "non-fips")]
             BlockCipherMode::XTS => (AES_128_XTS_TWEAK_LENGTH, AES_128_XTS_MAC_LENGTH),
             BlockCipherMode::AESKeyWrapPadding => (RFC5649_IV_LENGTH, RFC5649_MAC_LENGTH),
             BlockCipherMode::NISTKeyWrap => (RFC3394_IV_LENGTH, RFC3394_MAC_LENGTH),
