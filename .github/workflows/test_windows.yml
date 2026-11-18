@@ -139,6 +139,15 @@ jobs:
       - name: Build static OpenSSL
         uses: ./.github/actions/build-static-openssl
 
+      # The OpenSSL 3.1.2 FIPS provider build (nmake) takes ~15 minutes: cache the install. The
+      # script reuses a complete install, so a hit skips the build.
+      - name: Cache the OpenSSL FIPS provider
+        if: matrix.variant == 'fips'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\openssl-fips
+          key: openssl-fips-3.1.2-${{ runner.os }}-${{ hashFiles('.mise/scripts/windows/prepare_windows_fips_provider.ps1') }}
+
       # Downloads the simulator package (a hard failure when unavailable: no silent skip), installs
       # SoftHSM2 + the simulator and exports HSM_* / IDEMIA_SPHERE_PKCS11_LIB / PATH to the next steps.
       - name: Prepare the Idemia SPHERE HSM simulator
