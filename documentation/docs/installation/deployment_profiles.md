@@ -200,8 +200,8 @@ Limits of this profile:
 - An open KMIP connection is cut when the VIP moves: the client has to reconnect.
 - The check follows what [`/health` tells a load balancer today](#what-health-tells-a-load-balancer-today): a node whose
   HSM fails, or whose KMIP socket server is down, keeps the VIP.
-- It does not work in the public clouds that do not carry a VIP between machines (VRRP is not delivered in a virtual
-  private network): use profile 2 there. This was not tested in a cloud.
+- It does not work on AWS: in a test, an address added to an instance's network interface was not reachable from the
+  other instances of the same subnet. Use profile 2 there. Other public clouds were not tested.
 
 ## Profile 5: HAProxy
 
