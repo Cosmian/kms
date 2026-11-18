@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:3a586f5a-304d-4fe4-8fd4-a0a25bf5adf9",
+  "serialNumber": "urn:uuid:7e5dcd19-bd76-488c-aaca-720776716ed1",
   "metadata": {
-    "timestamp": "2026-11-18T02:37:43.960625+00:00",
+    "timestamp": "2026-11-18T11:18:45.315081+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/j0fxkg31kni4bkzk0kcrjka8hjlsbz73-cosmian-kms-cli-5.29.0.drv",
+      "bom-ref": "/nix/store/3mqwnvpimvv8yjmh6bcgzcvrqd5jxx46-cosmian-kms-cli-5.29.0.drv",
       "name": "cosmian-kms-cli",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-cli@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/s58494960k1135ci250jxb0bd9di6ldl-cosmian-kms-cli-5.29.0"
+          "value": "/nix/store/4b1xpqp7gmil2hwhamwawaa2z5z7wv9b-cosmian-kms-cli-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/j0fxkg31kni4bkzk0kcrjka8hjlsbz73-cosmian-kms-cli-5.29.0.drv"
+          "value": "/nix/store/3mqwnvpimvv8yjmh6bcgzcvrqd5jxx46-cosmian-kms-cli-5.29.0.drv"
         }
       ]
     }
@@ -25029,7 +25029,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/j0fxkg31kni4bkzk0kcrjka8hjlsbz73-cosmian-kms-cli-5.29.0.drv"
+      "ref": "/nix/store/3mqwnvpimvv8yjmh6bcgzcvrqd5jxx46-cosmian-kms-cli-5.29.0.drv"
     }
   ],
   "vulnerabilities": []
