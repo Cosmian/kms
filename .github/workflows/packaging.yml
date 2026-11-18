@@ -15,6 +15,16 @@ jobs:
       AZURE_CLIENT_ID_POC: ${{ secrets.AZURE_CLIENT_ID_POC }}
       AZURE_CLIENT_SECRET_POC: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
 
+  windows-package-fips:
+    uses: ./.github/workflows/build_windows.yml
+    with:
+      archive-name: windows-fips
+      variant: fips
+    secrets:
+      AZURE_TENANT_ID_POC: ${{ secrets.AZURE_TENANT_ID_POC }}
+      AZURE_CLIENT_ID_POC: ${{ secrets.AZURE_CLIENT_ID_POC }}
+      AZURE_CLIENT_SECRET_POC: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
+
   docker:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
       'schedule'

@@ -63,12 +63,7 @@ Set-BuildEnv
 # -- Simulator ----------------------------------------------------------------
 if (-not $env:IDEMIA_SPHERE_PKCS11_LIB) {
     Write-Step "Staging the Idemia HSM simulator ($SecurityLevel)"
-    $prepare = Join-Path $RepoRoot ".github\reusable_scripts\prepare_idemia_hsm.ps1"
-    $prepareArgs = @{ SecurityLevel = $SecurityLevel }
-    if ($PackageDir) { $prepareArgs["PackageDir"] = $PackageDir }
-    & $prepare @prepareArgs
-    Import-DotEnv (Join-Path $RepoRoot ".idemia-sim\env")
-    $env:PATH = "$env:IDEMIA_SOFTHSM_BIN;$env:PATH"
+    Initialize-SoftHsmStaging -PackageDir $PackageDir -PrepareArgs @{ SecurityLevel = $SecurityLevel }
 }
 foreach ($name in @("IDEMIA_SPHERE_PKCS11_LIB", "HSM_MODEL", "HSM_SLOT_ID", "HSM_USER_PASSWORD")) {
     if (-not (Test-Path "env:$name")) { throw "$name is not set: the Idemia simulator is not staged" }
@@ -82,27 +77,9 @@ $KmsEnv = @{}
 $MarkerBase = Join-Path $ShimDir "idemia"
 if ($Fips) {
     Write-Step "FIPS provider and IV shims"
-    & (Join-Path $RepoRoot ".mise\scripts\windows\prepare_windows_fips_provider.ps1")
-    $fipsEnv = Read-DotEnv (Join-Path $RepoRoot ".openssl-fips\env")
-    New-IvShims -OutDir $ShimDir | Out-Null
-    # SoftHSM2's own configuration, exported by prepare_idemia_hsm.ps1.
-    $KmsEnv = @{
-        OPENSSL_CONF                = $fipsEnv["OPENSSL_CONF"]
-        OPENSSL_MODULES             = $fipsEnv["OPENSSL_MODULES"]
-        SHIM_BACKEND_ISOLATE_OPENSSL = "1"
-        SHIM_BACKEND_LIB            = $SimLib
-    }
+    $KmsEnv = Initialize-FipsHsmEnv -ShimDir $ShimDir -Backend @{ SHIM_BACKEND_LIB = $SimLib }
 }
-
-# Environment of a KMS step behind an IV shim variant; $Marker receives the shim's call log.
-function Get-ShimEnv {
-    param([string]$Variant, [string]$Marker)
-    if (Test-Path -LiteralPath $Marker) { Remove-Item -LiteralPath $Marker -Force }
-    $vars = $KmsEnv.Clone()
-    $vars["IDEMIA_SPHERE_PKCS11_LIB"] = Join-Path $ShimDir "$Variant.dll"
-    $vars["FIPS_IV_SHIM_MARKER"] = $Marker
-    return $vars
-}
+$ShimCommon = @{ ShimDir = $ShimDir; BaseEnv = $KmsEnv; LibVar = "IDEMIA_SPHERE_PKCS11_LIB" }
 
 # -- Tests --------------------------------------------------------------------
 Write-Step "1/$TOTAL Loader tests"
@@ -121,7 +98,7 @@ $SynologySkips = @(
 $ivEnv = @{}
 if ($Fips) {
     $ivMarker = "$MarkerBase-iv.txt"
-    $ivEnv = Get-ShimEnv -Variant "gen\shim-v2" -Marker $ivMarker
+    $ivEnv = Get-ShimEnv @ShimCommon -Variant "gen\shim-v2" -Marker $ivMarker
 }
 
 Write-Step "2/$TOTAL Server key-level HSM tests"
@@ -129,43 +106,33 @@ Write-Step "2/$TOTAL Server key-level HSM tests"
 # (hsm_cannot_generate_gcm_iv): it tells them the shim in front of the module generates the IV.
 $step2Env = $ivEnv.Clone()
 if ($Fips) { $step2Env["HSM_GENERATES_GCM_IV"] = "1" }
-Invoke-WithEnv $step2Env {
-    Invoke-Cargo (@("test", "-p", "cosmian_kms_server") + $FeatureArgs + @("--",
-        "tests::hsm::test_hsm_all", "--ignored", "--exact", "--nocapture"))
-}
+Invoke-KmsTest -Env $step2Env -Features $FeatureArgs -CargoTestArgs @("-p", "cosmian_kms_server", "--",
+    "tests::hsm::test_hsm_all", "--ignored", "--exact", "--nocapture")
 
 Write-Step "3/$TOTAL HSM test vectors"
-Invoke-WithEnv $ivEnv {
-    Invoke-Cargo (@("test", "-p", "test_kms_server") + $FeatureArgs + @("--lib", "--", "test_vec_hsm", "--nocapture"))
-}
+Invoke-KmsTest -Env $ivEnv -Features $FeatureArgs -CargoTestArgs @("-p", "test_kms_server", "--lib", "--", "test_vec_hsm", "--nocapture")
 
 Write-Step "4/$TOTAL KMS startup with an HSM-held KEK"
 if ($Fips) {
     # The simulator cannot generate GCM IVs itself: behind the shim (which generates them) the
     # AES-GCM KEK boots and every IV is HSM-generated.
-    Invoke-WithEnv $ivEnv {
-        Invoke-Cargo @("test", "-p", "test_kms_server", "--lib", "--", "--ignored", "--exact",
-            "hsm_startup_tests::test_startup_with_hsm_kek_idemia_sphere_simulator_iv_layer", "--nocapture")
-    }
+    Invoke-KmsTest -Env $ivEnv -CargoTestArgs @("-p", "test_kms_server", "--lib", "--", "--ignored", "--exact",
+        "hsm_startup_tests::test_startup_with_hsm_kek_idemia_sphere_simulator_iv_layer", "--nocapture")
     Assert-HsmGeneratedIvs -Path $ivMarker
 } else {
-    Invoke-Cargo (@("test", "-p", "test_kms_server") + $FeatureArgs + @("--lib", "--",
-        "--ignored", "--exact", "hsm_startup_tests::test_startup_with_hsm_kek_idemia_sphere_simulator", "--nocapture"))
+    Invoke-KmsTest -Features $FeatureArgs -CargoTestArgs @("-p", "test_kms_server", "--lib", "--",
+        "--ignored", "--exact", "hsm_startup_tests::test_startup_with_hsm_kek_idemia_sphere_simulator", "--nocapture")
 }
 
 Write-Step "5/$TOTAL Shared-server suite (normal launch)"
 Remove-Item Env:KMS_HSM_KEK -ErrorAction SilentlyContinue
-Invoke-WithEnv $ivEnv {
-    Invoke-Cargo (@("test", "--lib", "-p", "test_kms_server") + $FeatureArgs + @("--", "--nocapture") + $SynologySkips)
-}
+Invoke-KmsTest -Env $ivEnv -Features $FeatureArgs -CargoTestArgs (@("--lib", "-p", "test_kms_server", "--", "--nocapture") + $SynologySkips)
 
 Write-Step "6/$TOTAL Shared-server suite (HSM-held KEK, KMS_HSM_KEK=1)"
 # KMS_HSM_KEK is read at runtime by the singleton test server, hence a separate cargo invocation.
 $env:KMS_HSM_KEK = "1"
 try {
-    Invoke-WithEnv $ivEnv {
-        Invoke-Cargo (@("test", "--lib", "-p", "test_kms_server") + $FeatureArgs + @("--", "--nocapture") + $SynologySkips)
-    }
+    Invoke-KmsTest -Env $ivEnv -Features $FeatureArgs -CargoTestArgs (@("--lib", "-p", "test_kms_server", "--", "--nocapture") + $SynologySkips)
 } finally {
     Remove-Item Env:KMS_HSM_KEK -ErrorAction SilentlyContinue
 }
@@ -175,7 +142,7 @@ Write-Step "7/$TOTAL Real cosmian_kms.exe start with hsm_model = idemia_sphere"
 Invoke-Cargo (@("build", "-p", "cosmian_kms_server", "--bin", "cosmian_kms") + $FeatureArgs)
 $work = Join-Path $env:TEMP "kms-idemia-test"
 $confFile = New-KmsConf -WorkDir $work -Port $KMS_PORT -Model "idemia_sphere" -Slot $env:HSM_SLOT_ID -Password $env:HSM_USER_PASSWORD
-$realEnv = if ($Fips) { Get-ShimEnv -Variant "gen\shim-v2" -Marker "$MarkerBase-real.txt" } else { @{} }
+$realEnv = if ($Fips) { Get-ShimEnv @ShimCommon -Variant "gen\shim-v2" -Marker "$MarkerBase-real.txt" } else { @{} }
 Test-RealKmsStart -ConfFile $confFile -Port $KMS_PORT -LogFile (Join-Path $work "kms.log") -ExtraEnv $realEnv
 if (-not (Select-String -LiteralPath $SIM_LOG -SimpleMatch -Quiet -Pattern "C_Initialize")) {
     throw "$SIM_LOG has no C_Initialize: the server did not load the Idemia simulator"
@@ -188,11 +155,9 @@ if ($Fips) {
     # IV. Run last: it is a negative scenario.
     Write-Step "FIPS: a module that does not generate the GCM IV is refused"
     $refuseMarker = "$MarkerBase-refuse.txt"
-    $refuseEnv = Get-ShimEnv -Variant "accept\shim-v2" -Marker $refuseMarker
-    Invoke-WithEnv $refuseEnv {
-        Invoke-Cargo @("test", "-p", "test_kms_server", "--lib", "--", "--ignored", "--exact",
-            "hsm_startup_tests::test_startup_with_hsm_kek_idemia_sphere_simulator", "--nocapture")
-    }
+    $refuseEnv = Get-ShimEnv @ShimCommon -Variant "accept\shim-v2" -Marker $refuseMarker
+    Invoke-KmsTest -Env $refuseEnv -CargoTestArgs @("-p", "test_kms_server", "--lib", "--", "--ignored", "--exact",
+        "hsm_startup_tests::test_startup_with_hsm_kek_idemia_sphere_simulator", "--nocapture")
     Assert-ShimMarker -Path $refuseMarker -Require @("gcm-iv-zero") -Forbid @("gcm-iv-generated", "gcm-iv-nonzero")
 }
 

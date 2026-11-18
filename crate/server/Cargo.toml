@@ -456,6 +456,12 @@ target = "kms.toml"
 src = "../../ui/dist"
 target = "ui/"
 
+# OpenSSL provider files: variant.txt for every installer; the FIPS installer also gets
+# ssl/, ossl-modules/ and cosmian_kms_fips.cmd (staged by cargo_build.ps1 New-PackageOpensslDir)
+[[package.metadata.packager.resources]]
+src = "../../target/windows-package-openssl"
+target = "openssl/"
+
 # NSIS-specific configuration
 [package.metadata.packager.nsis]
 # Custom template that registers the KMS server as a Windows service

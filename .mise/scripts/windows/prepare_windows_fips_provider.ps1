@@ -35,6 +35,8 @@ Set-StrictMode -Version Latest
 
 if ($env:OS -ne "Windows_NT") { throw "prepare_windows_fips_provider.ps1 runs on Windows only" }
 
+. (Join-Path $PSScriptRoot "common.ps1")
+
 # Must stay identical to OPENSSL_FIPS_* in crate/crypto/build.rs.
 $Version = "3.1.2"
 $Tarball = "openssl-$Version.tar.gz"
@@ -81,12 +83,7 @@ foreach ($candidate in @("C:\Strawberry\perl\bin\perl.exe") + @(Get-Command perl
 }
 if (-not $perl) { throw "a native Windows perl (Strawberry Perl) is required to build OpenSSL" }
 
-$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-if (-not (Test-Path -LiteralPath $vswhere)) { throw "vswhere.exe not found: Visual Studio with the C++ toolchain is required" }
-$vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $vsPath) { throw "no Visual Studio installation with the MSVC x64 tools found" }
-$vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
-if (-not (Test-Path -LiteralPath $vcvars)) { throw "vcvars64.bat not found in $vsPath" }
+$vcvars = (Get-VisualStudio).VcVars
 
 # -- Source -------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null

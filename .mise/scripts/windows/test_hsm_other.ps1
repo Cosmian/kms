@@ -42,11 +42,7 @@ Set-BuildEnv
 # -- SoftHSM2 token -----------------------------------------------------------
 if (-not (Test-Path -LiteralPath $SoftHsmLib) -or -not $env:HSM_SLOT_ID) {
     Write-Step "Staging SoftHSM2 and a fresh token"
-    $prepare = Join-Path $RepoRoot ".github\reusable_scripts\prepare_idemia_hsm.ps1"
-    $prepareArgs = @{}
-    if ($PackageDir) { $prepareArgs["PackageDir"] = $PackageDir }
-    & $prepare @prepareArgs
-    Import-DotEnv (Join-Path $RepoRoot ".idemia-sim\env")
+    Initialize-SoftHsmStaging -PackageDir $PackageDir
 }
 $env:PATH = "C:\SoftHSMv2\bin;$env:PATH"
 foreach ($name in @("SOFTHSM2_CONF", "HSM_SLOT_ID", "HSM_USER_PASSWORD")) {
@@ -56,29 +52,23 @@ $env:HSM_MODEL = "other"
 
 # -- FIPS provider and IV shims -----------------------------------------------
 Write-Step "IV shims ($Variant)"
-New-IvShims -OutDir $ShimDir
-$BaseEnv = @{ SHIM_BACKEND_LIB = $SoftHsmLib }
+$Backend = @{ SHIM_BACKEND_LIB = $SoftHsmLib }
 if ($Fips) {
-    & (Join-Path $RepoRoot ".mise\scripts\windows\prepare_windows_fips_provider.ps1")
-    $fipsEnv = Read-DotEnv (Join-Path $RepoRoot ".openssl-fips\env")
     # SoftHSM2 loads its own OpenSSL: it must not load the KMS's FIPS provider into the same process.
-    $BaseEnv["OPENSSL_CONF"] = $fipsEnv["OPENSSL_CONF"]
-    $BaseEnv["OPENSSL_MODULES"] = $fipsEnv["OPENSSL_MODULES"]
-    $BaseEnv["SHIM_BACKEND_ISOLATE_OPENSSL"] = "1"
+    $BaseEnv = Initialize-FipsHsmEnv -ShimDir $ShimDir -Backend $Backend
+} else {
+    New-IvShims -OutDir $ShimDir | Out-Null
+    $BaseEnv = $Backend
 }
+$ShimCommon = @{ ShimDir = $ShimDir; BaseEnv = $BaseEnv; LibVar = "OTHER_HSM_PKCS11_LIB" }
 
 # Run one test against a shim; returns the marker path.
 function Invoke-OtherTest {
     param([string]$Policy, [string]$Mode, [string]$TestName)
     $marker = Join-Path $ShimDir "other-$Policy-$Mode-$TestName.txt"
-    if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker -Force }
-    $vars = $BaseEnv.Clone()
-    $vars["OTHER_HSM_PKCS11_LIB"] = Join-Path $ShimDir "$Policy\shim-$Mode.dll"
-    $vars["FIPS_IV_SHIM_MARKER"] = $marker
-    Invoke-WithEnv $vars {
-        Invoke-Cargo (@("test", "-p", "test_kms_server") + $FeatureArgs + @("--lib", "--",
-            "--ignored", "--exact", "hsm_startup_tests::$TestName", "--nocapture"))
-    }
+    $vars = Get-ShimEnv @ShimCommon -Variant "$Policy\shim-$Mode" -Marker $marker
+    Invoke-KmsTest -Env $vars -Features $FeatureArgs -CargoTestArgs @("-p", "test_kms_server", "--lib", "--",
+        "--ignored", "--exact", "hsm_startup_tests::$TestName", "--nocapture")
     return $marker
 }
 

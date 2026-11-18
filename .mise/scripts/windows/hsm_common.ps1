@@ -2,7 +2,8 @@
 # hsm_common.ps1 -- helpers shared by test_hsm_idemia.ps1 and test_hsm_other.ps1.
 #
 # Dot-source it:  . (Join-Path $PSScriptRoot "hsm_common.ps1")
-# Expects $RepoRoot to be set by the caller. Runs under Windows PowerShell 5.1 and PowerShell 7.
+# Expects $RepoRoot to be set by the caller; shared helpers live in common.ps1.
+# Runs under Windows PowerShell 5.1 and PowerShell 7.
 #
 # FIPS variant. The KMS then loads the OpenSSL FIPS provider (fips.dll, built by
 # .mise\scripts\windows\prepare_windows_fips_provider.ps1) through OPENSSL_CONF /
@@ -14,74 +15,12 @@
 # SHIM_BACKEND_ISOLATE_OPENSSL (see .mise\scripts\test\pkcs11_fips_iv_shim.c).
 # ============================================================================
 
+. (Join-Path $PSScriptRoot "common.ps1")
+
 # A previous CI step may have exported the FIPS configuration to every later step: drop it, the
 # KMS steps get it explicitly (Invoke-WithEnv), the loader tests and builds must not see it.
 Remove-Item Env:OPENSSL_CONF -ErrorAction SilentlyContinue
 Remove-Item Env:OPENSSL_MODULES -ErrorAction SilentlyContinue
-
-function Write-Step { param([string]$Msg) Write-Host "`n=== $Msg ===" -ForegroundColor Cyan }
-
-# Run cargo and fail on a non-zero exit code. cargo writes its progress on stderr:
-# Windows PowerShell 5.1 would turn that into a terminating error under "Stop".
-function Invoke-Cargo {
-    param([string[]]$CargoArgs)
-    Write-Host "> cargo $($CargoArgs -join ' ')"
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        & cargo @CargoArgs 2>&1 | ForEach-Object { Write-Host "$_" }
-        $code = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $previous
-    }
-    if ($code -ne 0) { throw "cargo $($CargoArgs -join ' ') failed with exit code $code" }
-}
-
-function Import-DotEnv {
-    param([string]$Path)
-    foreach ($line in Get-Content -LiteralPath $Path) {
-        if ($line -match '^([A-Z0-9_]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
-    }
-}
-
-# Read a dotenv file into a hashtable without touching the process environment.
-function Read-DotEnv {
-    param([string]$Path)
-    $values = @{}
-    foreach ($line in Get-Content -LiteralPath $Path) {
-        if ($line -match '^([A-Z0-9_]+)=(.*)$') { $values[$Matches[1]] = $Matches[2] }
-    }
-    return $values
-}
-
-# Run a script block with extra environment variables, restoring the previous values afterwards.
-function Invoke-WithEnv {
-    param([hashtable]$Vars, [scriptblock]$Block)
-    $saved = @{}
-    foreach ($name in $Vars.Keys) {
-        $saved[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
-        [Environment]::SetEnvironmentVariable($name, [string]$Vars[$name], "Process")
-    }
-    try {
-        & $Block
-    } finally {
-        foreach ($name in $Vars.Keys) {
-            [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
-        }
-    }
-}
-
-# vcpkg manifest mode installs to vcpkg_installed\<triplet> (project-relative);
-# classic mode installs to %VCPKG_INSTALLATION_ROOT%\packages\<port>_<triplet>.
-function Set-BuildEnv {
-    $manifestDir = Join-Path (Get-Location) "vcpkg_installed\x64-windows-static"
-    if (Test-Path $manifestDir) {
-        $env:OPENSSL_DIR = $manifestDir
-    } elseif ($env:VCPKG_INSTALLATION_ROOT) {
-        $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
-    }
-    $env:RUST_LOG = "cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
-}
 
 # Build the IV shim variants shim-v2, shim-v3 and shim-v3-stubs into <OutDir>\gen (a module that
 # generates the GCM IV and refuses a caller IV: FIPS behaviour) and <OutDir>\accept (a module
@@ -109,15 +48,10 @@ function New-IvShims {
                 & $gcc.Source @gccArgs
                 if ($LASTEXITCODE -ne 0) { throw "gcc failed building $policy\$name" }
             } else {
-                $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-                $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-                if (-not $vsPath) { throw "neither gcc nor MSVC found: cannot build the IV shim" }
-                $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat"
                 $clDefines = ($defines | ForEach-Object { "/D$_" }) -join " "
                 $objDir = Join-Path $dir "obj-$name"
                 New-Item -ItemType Directory -Force -Path $objDir | Out-Null
-                cmd /c "`"$vcvars`" >nul && cl /nologo /LD /O2 $clDefines /Fo`"$objDir\\`" /Fe`"$out`" `"$source`" bcrypt.lib"
-                if ($LASTEXITCODE -ne 0) { throw "cl failed building $policy\$name" }
+                Invoke-InVsEnv "cl /nologo /LD /O2 $clDefines /Fo`"$objDir\\`" /Fe`"$out`" `"$source`" bcrypt.lib"
             }
         }
     }
@@ -163,20 +97,11 @@ function Test-RealKmsStart {
         $kms = Start-Process -FilePath $kmsExe -ArgumentList "-c", $ConfFile -PassThru -NoNewWindow `
             -RedirectStandardOutput $LogFile -RedirectStandardError "$LogFile.err"
         try {
-            $up = $false
-            $deadline = (Get-Date).AddSeconds(60)
-            while ((Get-Date) -lt $deadline -and -not $kms.HasExited) {
-                try {
-                    $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/version" -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
-                    if ($resp.StatusCode -eq 200) { $up = $true; break }
-                } catch { }
-                Start-Sleep -Milliseconds 500
-            }
-            if (-not $up) {
-                if (Test-Path "$LogFile.err") { Get-Content "$LogFile.err" | Select-Object -First 40 | Write-Host }
-                throw "cosmian_kms.exe did not answer on http://127.0.0.1:$Port/version within 60 s"
-            }
+            $resp = Wait-ForHttp "http://127.0.0.1:$Port/version" 60 $kms
             Write-Host "GET /version -> 200: $($resp.Content)"
+        } catch {
+            if (Test-Path "$LogFile.err") { Get-Content "$LogFile.err" | Select-Object -First 40 | Write-Host }
+            throw "cosmian_kms.exe did not answer on http://127.0.0.1:$Port/version: $_"
         } finally {
             if (-not $kms.HasExited) {
                 Stop-Process -Id $kms.Id -Force -ErrorAction SilentlyContinue
@@ -222,4 +147,53 @@ function Assert-SimulatorSecurityLevel {
     if ($actual -ne $Expected) {
         throw "the staged simulator runs SECURITY_LEVEL=$actual but this run needs ${Expected}: re-stage it with prepare_idemia_hsm.ps1 -SecurityLevel $Expected"
     }
+}
+
+# FIPS variant of the HSM tests: build the OpenSSL FIPS provider, the IV shims, and return the
+# environment every KMS step needs (OPENSSL_CONF / OPENSSL_MODULES for the KMS, plus the shim's
+# own backend: SHIM_BACKEND_ISOLATE_OPENSSL keeps an OpenSSL-based PKCS#11 backend from loading
+# the same fips.dll twice). $Backend is merged in, e.g. @{ SHIM_BACKEND_LIB = <backend dll> }.
+function Initialize-FipsHsmEnv {
+    param([string]$ShimDir, [hashtable]$Backend)
+    & (Join-Path $RepoRoot ".mise\scripts\windows\prepare_windows_fips_provider.ps1") | Out-Null
+    $fipsEnv = Read-DotEnv (Join-Path $RepoRoot ".openssl-fips\env")
+    New-IvShims -OutDir $ShimDir | Out-Null
+    $base = @{
+        OPENSSL_CONF                 = $fipsEnv["OPENSSL_CONF"]
+        OPENSSL_MODULES              = $fipsEnv["OPENSSL_MODULES"]
+        SHIM_BACKEND_ISOLATE_OPENSSL = "1"
+    }
+    foreach ($name in $Backend.Keys) { $base[$name] = $Backend[$name] }
+    return $base
+}
+
+# Environment of a KMS step behind an IV shim variant (<ShimDir>\<Variant>.dll). $Marker
+# receives the shim's call log and is deleted first. $LibVar names the variable through which
+# the KMS finds its PKCS#11 library (IDEMIA_SPHERE_PKCS11_LIB or OTHER_HSM_PKCS11_LIB).
+function Get-ShimEnv {
+    param([string]$ShimDir, [hashtable]$BaseEnv, [string]$LibVar, [string]$Variant, [string]$Marker)
+    if (Test-Path -LiteralPath $Marker) { Remove-Item -LiteralPath $Marker -Force }
+    $vars = $BaseEnv.Clone()
+    $vars[$LibVar] = Join-Path $ShimDir "$Variant.dll"
+    $vars["FIPS_IV_SHIM_MARKER"] = $Marker
+    return $vars
+}
+
+# Stage the Idemia simulator / SoftHSM2 with prepare_idemia_hsm.ps1 and export its environment.
+# $PrepareArgs are extra parameters of the script (e.g. SecurityLevel).
+function Initialize-SoftHsmStaging {
+    param([string]$PackageDir, [hashtable]$PrepareArgs = @{})
+    $prepare = Join-Path $RepoRoot ".github\reusable_scripts\prepare_idemia_hsm.ps1"
+    $scriptArgs = $PrepareArgs.Clone()
+    if ($PackageDir) { $scriptArgs["PackageDir"] = $PackageDir }
+    & $prepare @scriptArgs
+    Import-DotEnv (Join-Path $RepoRoot ".idemia-sim\env")
+    if ($env:IDEMIA_SOFTHSM_BIN) { $env:PATH = "$env:IDEMIA_SOFTHSM_BIN;$env:PATH" }
+}
+
+# cargo test with extra environment variables. $Features are cargo arguments
+# (e.g. @("--features", "non-fips")), placed right after `cargo test`; $CargoTestArgs follow.
+function Invoke-KmsTest {
+    param([string[]]$Features = @(), [string[]]$CargoTestArgs, [hashtable]$Env = @{})
+    Invoke-WithEnv $Env { Invoke-Cargo (@("test") + $Features + $CargoTestArgs) }
 }

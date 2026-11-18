@@ -1,35 +1,19 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-# Note: $PSNativeCommandUseErrorActionPreference is PS 7.3+ only.
-# We use Invoke-NativeCommand below which handles exit codes explicitly and
-# works correctly in both PowerShell 5.1 and 7.
+# Shared helpers (Invoke-Native, Read-DotEnv, Get-WorkspaceVersion, ...). Note that
+# $PSNativeCommandUseErrorActionPreference is PS 7.3+ only: Invoke-Native checks exit codes
+# explicitly, which works in both PowerShell 5.1 and 7.
+. (Join-Path $PSScriptRoot "common.ps1")
 
-# ---------------------------------------------------------------------------
-# Helper: run a native command, stream its output, and throw on non-zero exit.
-# Works in both PS 5.1 and PS 7:
-#   - PS 5.1 sends native stderr to the error stream as ErrorRecord objects.
-#     Setting $ErrorActionPreference = "Continue" locally prevents termination
-#     while still letting cargo/rustup output flow through normally.
-#   - PS 7 does not have this issue; Continue is still harmless there.
-#   - Exit code is always checked explicitly after the command.
-# ---------------------------------------------------------------------------
-function Invoke-NativeCommand {
-    param(
-        [Parameter(Mandatory)][string]   $Exe,
-        [Parameter(ValueFromRemainingArguments)][string[]] $Arguments
-    )
-    # Override locally so native stderr does not trigger $ErrorActionPreference = "Stop"
-    $ErrorActionPreference = "Continue"
-    & $Exe @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "'$Exe $($Arguments -join ' ')' failed with exit code $LASTEXITCODE"
-    }
-}
+# Usage (from the repository root):
+#   . .\.mise\scripts\windows\cargo_build.ps1
+#   BuildProject [-Variant non-fips|fips]
+#
+# non-fips: server + ckms CLI (with the PKCS#11 and CNG DLLs) installers.
+# fips:     server installer only; it ships the OpenSSL FIPS provider (see New-PackageOpensslDir).
 
-function BuildProject {
-    # -------------------------------------------------------------------------
-    # Environment setup: pin volumes to workspace drive
-    # -------------------------------------------------------------------------
+# Environment setup: pin volumes to the workspace drive, toolchain, static OpenSSL.
+function Initialize-BuildEnvironment {
     # GitHub Actions Windows runners may have workspace on D: while CARGO_HOME
     # defaults to C: (via HOME).  C: has limited free space (~14 GB total, ~2 GB
     # free) and cargo-packager downloads NSIS (~3 MB base + plugins) into the
@@ -53,44 +37,27 @@ function BuildProject {
     $env:TEMP = $windowsTemp
     Write-Host "TMP=$env:TMP TEMP=$env:TEMP"
 
-    # -------------------------------------------------------------------------
-    # Toolchain
-    # -------------------------------------------------------------------------
-
     # Add target - rustup exits 1 when the target is already installed.
     try {
-        Invoke-NativeCommand rustup target add x86_64-pc-windows-msvc
+        Invoke-Native "rustup" @("target", "add", "x86_64-pc-windows-msvc")
     }
     catch {
         Write-Host "Note: $_ (target is likely already installed)"
     }
 
-    # -------------------------------------------------------------------------
-    # OpenSSL (static, from vcpkg)
-    # vcpkg manifest mode (vcpkg.json in repo root) installs packages under
-    #   vcpkg_installed\<triplet>\ (relative to the project, e.g. D:\a\kms\kms)
-    # vcpkg classic mode installs under
-    #   %VCPKG_INSTALLATION_ROOT%\packages\<port>_<triplet>\ (e.g. C:\vcpkg)
-    # Prefer manifest-mode path; fall back to classic-mode path.
-    # -------------------------------------------------------------------------
-    $manifestDir = Join-Path (Get-Location) "vcpkg_installed\x64-windows-static"
-    if (Test-Path $manifestDir) {
-        $env:OPENSSL_DIR = $manifestDir
-    } else {
-        $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } `
-            elseif ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } `
-            else { throw "Neither VCPKG_INSTALLATION_ROOT nor VCPKG_ROOT is set" }
-        $env:OPENSSL_DIR = "$vcpkgRoot\packages\openssl_x64-windows-static"
-    }
+    # OpenSSL (static, from vcpkg): manifest-mode path first, then classic mode.
+    $openSslDir = Resolve-OpenSslDir
+    if (-not $openSslDir) { throw "OPENSSL_DIR not found: neither vcpkg_installed nor VCPKG_INSTALLATION_ROOT/VCPKG_ROOT is available" }
+    $env:OPENSSL_DIR = $openSslDir
     Write-Host "OPENSSL_DIR=$env:OPENSSL_DIR"
     if (-not (Test-Path $env:OPENSSL_DIR)) {
         throw "OPENSSL_DIR not found: $env:OPENSSL_DIR"
     }
     Get-ChildItem $env:OPENSSL_DIR
+}
 
-    # -------------------------------------------------------------------------
-    # cargo-packager - install only when the installed version differs
-    # -------------------------------------------------------------------------
+# cargo-packager - install only when the installed version differs.
+function Install-CargoPackager {
     $requiredPackagerVersion = "0.11.7"
     $installedVersion = $null
     try {
@@ -101,55 +68,31 @@ function BuildProject {
 
     if ($installedVersion -ne $requiredPackagerVersion) {
         Write-Host "Installing cargo-packager $requiredPackagerVersion (found: '$installedVersion')..."
-        Invoke-NativeCommand cargo install --version $requiredPackagerVersion cargo-packager --locked
+        Invoke-Native "cargo" @("install", "--version", $requiredPackagerVersion, "cargo-packager", "--locked")
     }
     else {
         Write-Host "cargo-packager $requiredPackagerVersion already installed - skipping."
     }
+}
 
-    # -------------------------------------------------------------------------
-    # Build all binaries from workspace root
-    # -------------------------------------------------------------------------
+# Build all binaries from the workspace root.
+function Build-Binaries {
+    param([ValidateSet("non-fips", "fips")][string]$Variant)
+    if ($Variant -eq "fips") {
+        # Default features = FIPS. No CLI, PKCS#11 or CNG in the FIPS installer.
+        Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_kms_server")
+        return
+    }
     # Server needs --no-default-features; PKCS#11 DLL and ckms CLI keep defaults.
-    Invoke-NativeCommand cargo build --release --package cosmian_kms_server --features "non-fips" --no-default-features
-    Invoke-NativeCommand cargo build --release --package cosmian_pkcs11 --package ckms --features "non-fips"
+    Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_kms_server", "--features", "non-fips", "--no-default-features")
+    Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_pkcs11", "--package", "ckms", "--features", "non-fips")
+    # CNG KSP DLL (bundled into the ckms NSIS installer via cargo-packager)
+    Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_cng", "--features", "non-fips")
+}
 
-    # -------------------------------------------------------------------------
-    # Package server NSIS installer
-    # -------------------------------------------------------------------------
-    Invoke-NativeCommand cargo packager --verbose --formats nsis --release --packages cosmian_kms_server
-
-    Get-ChildItem -Path "target\release" -Filter "cosmian_kms*setup.exe" | ForEach-Object {
-        Write-Host "Server installer: $($_.Name)"
-    }
-
-    # -------------------------------------------------------------------------
-    # Verify no dynamic OpenSSL dependency in the server binary
-    # -------------------------------------------------------------------------
-    $dumpbin = $null
-
-    # 1. Try vswhere (available on GitHub Actions and most VS 2022 installs)
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (Test-Path $vswhere) {
-        $vsPath = & $vswhere -latest -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath 2>$null
-        if ($vsPath) {
-            $dumpbin = Get-ChildItem -Recurse "$vsPath\VC\Tools\MSVC" -Filter "dumpbin.exe" `
-                -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -like "*HostX64\x64*" } |
-            Select-Object -First 1 -ExpandProperty FullName
-        }
-    }
-
-    # 2. Fallback: search under the standard VS 2022 install path
-    if (-not $dumpbin) {
-        $dumpbin = Get-ChildItem -Recurse "$env:ProgramFiles\Microsoft Visual Studio\2022" `
-            -Filter "dumpbin.exe" -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -like "*HostX64\x64*" } |
-        Select-Object -First 1 -ExpandProperty FullName
-    }
-
+# Verify no dynamic OpenSSL dependency in the server binary.
+function Assert-StaticOpenSsl {
+    $dumpbin = Find-Dumpbin
     if ($dumpbin) {
         Write-Host "Using dumpbin: $dumpbin"
         $dynamicLibs = & $dumpbin /dependents target\release\cosmian_kms.exe 2>&1
@@ -161,30 +104,101 @@ function BuildProject {
     else {
         Write-Warning "dumpbin.exe not found - skipping dynamic-link check."
     }
-
-    # -------------------------------------------------------------------------
-    # Build CNG KSP DLL (bundled into the NSIS installer via cargo-packager)
-    # -------------------------------------------------------------------------
-    Invoke-NativeCommand cargo build --release --package cosmian_cng --features "non-fips"
-
-    # -------------------------------------------------------------------------
-    # Package ckms CLI NSIS installer (includes PKCS#11 DLL and CNG DLL)
-    # -------------------------------------------------------------------------
-    # Copy DLLs where cargo-packager looks for them (relative to ckms crate)
-    New-Item -ItemType Directory -Path "crate\clients\ckms\target\release" -Force | Out-Null
-    Copy-Item -Force "target\release\cosmian_pkcs11.dll" "crate\clients\ckms\target\release\cosmian_pkcs11.dll"
-    Copy-Item -Force "target\release\cosmian_cng.dll" "crate\clients\ckms\target\release\cosmian_cng.dll"
-    Write-Host "Copied cosmian_pkcs11.dll and cosmian_cng.dll to crate\clients\ckms\target\release\"
-
-    Invoke-NativeCommand cargo packager --verbose --formats nsis --release --packages ckms
-
-    Get-ChildItem -Path "target\release" -Filter "ckms*setup.exe" | ForEach-Object {
-        Write-Host "CLI installer: $($_.Name)"
-    }
-
-    exit 0
 }
 
+# Stage target\windows-package-openssl, the `openssl/` resource of the server installer
+# (crate/server/Cargo.toml). It always holds variant.txt; the FIPS variant adds the relocatable
+# OpenSSL FIPS provider setup. It must exist before New-Installers (the packager copies it).
+function New-PackageOpensslDir {
+    param([ValidateSet("non-fips", "fips")][string]$Variant, [string]$OutDir = "target\windows-package-openssl")
+    if (Test-Path -LiteralPath $OutDir) { Remove-Item -Recurse -Force -LiteralPath $OutDir }
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+    Set-Content -Encoding ASCII -LiteralPath (Join-Path $OutDir "variant.txt") -Value $Variant
+    if ($Variant -ne "fips") { return }
 
-# Example usage:
-# BuildProject
+    # Builds fips.dll in C:\openssl-fips and writes .openssl-fips\env; idempotent.
+    & (Join-Path $PSScriptRoot "prepare_windows_fips_provider.ps1")
+    $fipsEnv = Read-DotEnv ".openssl-fips\env"
+    $sslDir = Join-Path $OutDir "ssl"
+    $modulesDir = Join-Path $OutDir "ossl-modules"
+    New-Item -ItemType Directory -Force -Path $sslDir, $modulesDir | Out-Null
+
+    Copy-Item -LiteralPath (Join-Path $fipsEnv["OPENSSL_MODULES"] "fips.dll") -Destination $modulesDir
+    Copy-Item -LiteralPath (Join-Path (Split-Path $fipsEnv["OPENSSL_CONF"]) "fipsmodule.cnf") -Destination $sslDir
+
+    # The provider's openssl.cnf includes fipsmodule.cnf by absolute build path: make it relative
+    # (resolved through OPENSSL_CONF_INCLUDE) so that it works wherever the installer puts it.
+    $includePattern = '(?m)^\.include[ \t]+.*fipsmodule\.cnf(?=[ \t]*\r?$)'
+    $cnf = Get-Content -Raw -LiteralPath $fipsEnv["OPENSSL_CONF"]
+    if ($cnf -notmatch $includePattern) { throw "no '.include ...fipsmodule.cnf' line in $($fipsEnv['OPENSSL_CONF'])" }
+    $cnf = $cnf -replace $includePattern, ".include fipsmodule.cnf"
+    Set-Content -Encoding ASCII -LiteralPath (Join-Path $sslDir "openssl.cnf") -Value $cnf
+
+    # Console launcher: the service gets the same variables from the registry (installer.nsi).
+    $launcher = @(
+        "@echo off",
+        "set `"KMS_HOME=%~dp0..`"",
+        "set `"OPENSSL_CONF=%KMS_HOME%\openssl\ssl\openssl.cnf`"",
+        "set `"OPENSSL_MODULES=%KMS_HOME%\openssl\ossl-modules`"",
+        "set `"OPENSSL_CONF_INCLUDE=%KMS_HOME%\openssl\ssl`"",
+        "`"%KMS_HOME%\cosmian_kms.exe`" %*"
+    ) -join "`r`n"
+    [System.IO.File]::WriteAllText((Join-Path (Resolve-Path $OutDir).Path "cosmian_kms_fips.cmd"), "$launcher`r`n", [System.Text.Encoding]::ASCII)
+    Write-Host "Staged the OpenSSL FIPS provider package in $OutDir"
+    Get-ChildItem -Recurse $OutDir | ForEach-Object { Write-Host $_.FullName }
+}
+
+# Rename the cargo-packager outputs to cosmian-kms-{server,cli}-<variant>-static-openssl_<ver>_x86_64.exe
+# (cargo-packager names them after the binary: cosmian_kms_{version}_{arch}-setup.exe).
+function Rename-Installers {
+    param([ValidateSet("non-fips", "fips")][string]$Variant)
+    $version = Get-WorkspaceVersion
+    $arch = "x86_64"
+    $servers = @(Get-ChildItem -Path "target\release" -Filter "cosmian_kms_*setup.exe")
+    if ($servers.Count -eq 0) { throw "no server installer (cosmian_kms_*setup.exe) found in target\release" }
+    foreach ($file in $servers) {
+        $newName = "cosmian-kms-server-$Variant-static-openssl_${version}_${arch}.exe"
+        Move-Item -Force $file.FullName (Join-Path $file.DirectoryName $newName)
+        Write-Host "Renamed $($file.Name) -> $newName"
+    }
+    if ($Variant -ne "non-fips") { return }
+    foreach ($file in @(Get-ChildItem -Path "target\release" -Filter "ckms*setup.exe")) {
+        $newName = "cosmian-kms-cli-non-fips-static-openssl_${version}_${arch}.exe"
+        Move-Item -Force $file.FullName (Join-Path $file.DirectoryName $newName)
+        Write-Host "Renamed $($file.Name) -> $newName"
+    }
+}
+
+# Package the NSIS installers and give them their final names.
+function New-Installers {
+    param([ValidateSet("non-fips", "fips")][string]$Variant)
+    Invoke-Native "cargo" @("packager", "--verbose", "--formats", "nsis", "--release", "--packages", "cosmian_kms_server")
+    Get-ChildItem -Path "target\release" -Filter "cosmian_kms*setup.exe" | ForEach-Object {
+        Write-Host "Server installer: $($_.Name)"
+    }
+
+    if ($Variant -eq "non-fips") {
+        # Copy DLLs where cargo-packager looks for them (relative to ckms crate)
+        New-Item -ItemType Directory -Path "crate\clients\ckms\target\release" -Force | Out-Null
+        Copy-Item -Force "target\release\cosmian_pkcs11.dll" "crate\clients\ckms\target\release\cosmian_pkcs11.dll"
+        Copy-Item -Force "target\release\cosmian_cng.dll" "crate\clients\ckms\target\release\cosmian_cng.dll"
+        Write-Host "Copied cosmian_pkcs11.dll and cosmian_cng.dll to crate\clients\ckms\target\release\"
+
+        Invoke-Native "cargo" @("packager", "--verbose", "--formats", "nsis", "--release", "--packages", "ckms")
+        Get-ChildItem -Path "target\release" -Filter "ckms*setup.exe" | ForEach-Object {
+            Write-Host "CLI installer: $($_.Name)"
+        }
+    }
+
+    Rename-Installers -Variant $Variant
+}
+
+function BuildProject {
+    param([ValidateSet("non-fips", "fips")][string]$Variant = "non-fips")
+    Initialize-BuildEnvironment
+    Install-CargoPackager
+    Build-Binaries -Variant $Variant
+    Assert-StaticOpenSsl
+    New-PackageOpensslDir -Variant $Variant
+    New-Installers -Variant $Variant
+}

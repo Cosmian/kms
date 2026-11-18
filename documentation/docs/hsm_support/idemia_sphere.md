@@ -26,7 +26,9 @@ Leave `IS_HSM_IDEMIA_SPHERE = false` in the simulator configuration.
 
 `.github/reusable_scripts/prepare_idemia_hsm.ps1` performs every step of this section, and is what the KMS
 CI runs. From the repository root, with the simulator package unpacked in `<PACKAGE_DIR>`
-(it must hold `librooky-simulator.dll`, `rooky-simulator.cfg` and `SoftHSM V2.7.0.zip`):
+(it must hold `librooky-simulator.dll`, `rooky-simulator.cfg` and `SoftHSM V2.7.0.zip`; the
+`hsm-idemia-simulator.zip` in the `reusable_scripts` submodule also bundles `libcrypto-3-x64.dll`, the OpenSSL
+runtime SoftHSM2 needs and the GitHub Windows runners do not provide):
 
 ```powershell
 .\.github\reusable_scripts\prepare_idemia_hsm.ps1 -PackageDir '<PACKAGE_DIR>'
@@ -144,6 +146,83 @@ DLL is not found (check `PATH` and `libcrypto-3-x64.dll`), 193 that the DLL is n
 
 An HSM key can wrap every key the KMS stores, with `key_encryption_key`. See
 [Automatically using the server configuration](hsm_operations.md#automatically-using-the-server-configuration).
+
+## PKCS#11 capabilities of the simulator DLL
+
+Observed on `librooky-simulator.dll` (V0.0.0.1, x86\_64) by loading it, calling `C_GetFunctionList`, `C_GetInfo`,
+`C_GetMechanismList` and `C_GetMechanismInfo` on a SoftHSM2 2.7 token, once per `SECURITY_LEVEL`.
+
+### PKCS#11 version
+
+- **v2.x function table, no v3 interface.** The DLL exports `C_GetFunctionList` and no `C_GetInterfaceList` /
+  `C_GetInterface`, and the returned `CK_FUNCTION_LIST` has the 68 v2 entries: none of the v3.0 message-based
+  functions (`C_MessageEncryptInit`, `C_EncryptMessage`, `C_SignMessage`, …) or v3.2 additions exist.
+- The version field of the function list is `0.0` (never set by the simulator); do not use it to detect the version.
+- `C_GetInfo` is forwarded to the backend and reports the backend's data (`cryptokiVersion` 3.2 and manufacturer
+  `SoftHSM` for SoftHSM2 2.7). That is the backend's version, not a v3 capability of the DLL.
+- Tokens report the backend's identity (`SoftHSM project`, model `SoftHSM v2`); the label is the one set at
+  `--init-token` (`idemia_sim`).
+
+### Exported functions
+
+78 exports: 61 standard `C_*` functions and 17 Idemia `CS_*` functions.
+
+| Group | Functions | Status |
+|---|---|---|
+| General | `C_Initialize`, `C_Finalize`, `C_GetInfo`, `C_GetFunctionList` | available |
+| Slots and tokens | `C_GetSlotList`, `C_GetSlotInfo`, `C_GetTokenInfo`, `C_GetMechanismList`, `C_GetMechanismInfo`, `C_InitToken`, `C_InitPIN`, `C_SetPIN`, `C_WaitForSlotEvent` | available |
+| Sessions | `C_OpenSession`, `C_CloseSession`, `C_CloseAllSessions`, `C_GetSessionInfo`, `C_GetOperationState`, `C_SetOperationState`, `C_Login`, `C_Logout` | available |
+| Objects | `C_CreateObject`, `C_CopyObject`, `C_DestroyObject`, `C_GetObjectSize`, `C_GetAttributeValue`, `C_SetAttributeValue`, `C_FindObjectsInit`, `C_FindObjects`, `C_FindObjectsFinal` | available |
+| Encryption | `C_EncryptInit`, `C_Encrypt`, `C_EncryptUpdate`, `C_EncryptFinal`, `C_DecryptInit`, `C_Decrypt`, `C_DecryptUpdate`, `C_DecryptFinal` | available |
+| Digest | `C_DigestInit`, `C_Digest`, `C_DigestUpdate`, `C_DigestKey`, `C_DigestFinal` | available |
+| Sign / verify | `C_SignInit`, `C_Sign`, `C_SignUpdate`, `C_SignFinal`, `C_VerifyInit`, `C_Verify`, `C_VerifyUpdate`, `C_VerifyFinal` | available |
+| Key management | `C_GenerateKey`, `C_GenerateKeyPair`, `C_WrapKey`, `C_UnwrapKey`, `C_DeriveKey` | available in `NON_FIPS`; refused in `FIPS` (per the configuration file) |
+| Random | `C_SeedRandom`, `C_GenerateRandom` | available |
+| Legacy | `C_GetFunctionStatus`, `C_CancelFunction` | exported |
+| Not provided | `C_SignRecoverInit`, `C_SignRecover`, `C_VerifyRecoverInit`, `C_VerifyRecover`, `C_DigestEncryptUpdate`, `C_DecryptDigestUpdate`, `C_SignEncryptUpdate`, `C_DecryptVerifyUpdate` | NULL in the function list (neither exported nor forwarded) |
+| Idemia SPHERE | `CS_ClusterAllocate/Deallocate/Sync`, `CS_DomainAllocate/Deallocate/Sync`, `CS_FarmAllocate/Deallocate/Sync`, `CS_GetInfo`, `CS_HSMProvisioning`, `CS_HSMDeprovisioning`, `CS_ListCluster`, `CS_ListDomain`, `CS_ListFarm`, `CS_ListSE`, `CS_SendFrame` | forwarded to the backend only when `IS_HSM_IDEMIA_SPHERE = true`, else `CKR_FUNCTION_NOT_SUPPORTED`; not used by the KMS |
+
+The eight functions of the "Not provided" row are non-NULL in the SoftHSM2 function table but NULL in the
+simulator's, so the simulator does not forward them.
+
+### Mechanisms
+
+The simulator filters the backend's 79 mechanisms: `C_GetMechanismList` returns **48** in `NON_FIPS` and **39** in
+`FIPS`; `C_GetMechanismInfo` refuses (`CKR_MECHANISM_INVALID`) every mechanism not in the list, except as noted.
+Sizes are key bits (RSA, EC), bytes (AES), or the size range reported by SoftHSM2.
+
+| Family | Mechanisms (`CKM_`) | `NON_FIPS` | `FIPS` |
+|---|---|---|---|
+| RSA key pair | `RSA_PKCS_KEY_PAIR_GEN` (512–16384) | yes | yes |
+| RSA raw / OAEP | `RSA_PKCS` (encrypt, decrypt, sign, verify, wrap, unwrap), `RSA_PKCS_OAEP` (encrypt, decrypt, wrap, unwrap) | yes | no |
+| RSA signatures with digest | `SHA224/256/384/512_RSA_PKCS`, `SHA224/256/384/512_RSA_PKCS_PSS`, `RSA_PKCS_PSS` | yes | yes |
+| RSA signatures with SHA-1 | `SHA1_RSA_PKCS`, `SHA1_RSA_PKCS_PSS` | yes | no |
+| RSA key wrap | `RSA_AES_KEY_WRAP` | yes | yes |
+| EC key pair | `ECDSA_KEY_PAIR_GEN` (112–521 bits) | yes | yes |
+| ECDSA | `ECDSA_SHA224/256/384/512` | yes | yes |
+| ECDSA raw / SHA-1 | `ECDSA`, `ECDSA_SHA1` | yes | no |
+| ECDH | `ECDH1_DERIVE` | yes | yes |
+| AES | `AES_KEY_GEN` (16–32), `AES_ECB`, `AES_CBC`, `AES_CBC_PAD`, `AES_CTR`, `AES_GCM`, `AES_CMAC`, `AES_ECB_ENCRYPT_DATA`, `AES_CBC_ENCRYPT_DATA` | yes | yes |
+| AES key wrap | `AES_KEY_WRAP` (RFC 3394) | yes | no |
+| Triple-DES | `DES3_KEY_GEN`, `DES3_CBC`, `DES3_CBC_PAD` | yes | yes |
+| Double-length DES | `DES2_KEY_GEN` | yes | no |
+| Digests | `SHA_1`, `SHA224`, `SHA256`, `SHA384`, `SHA512` | yes | yes |
+| HMAC | `SHA224/256/384/512_HMAC` | yes | yes |
+| HMAC SHA-1 | `SHA_1_HMAC` | yes | no |
+| DSA | `DSA_PARAMETER_GEN` only (512–1024) | yes | yes |
+
+Mechanisms of the backend that the simulator refuses in both modes: `RSA_X_509`, `MD5_RSA_PKCS`, `DSA_KEY_PAIR_GEN`,
+`DSA*` signatures, `DH_PKCS_*`, `DES_*` (single DES), `DES3_ECB`, `DES3_CMAC`, `DES*_ENCRYPT_DATA`, `MD5`,
+`MD5_HMAC`, `GENERIC_SECRET_KEY_GEN`, `CONCATENATE_*`, `EC_EDWARDS_KEY_PAIR_GEN`, `EDDSA`, `AES_KEY_WRAP_PAD`
+(`CKM_AES_KEY_WRAP_KWP`-style wrapping is therefore not available through the simulator).
+
+Notes:
+
+- No EdDSA, Montgomery curves (X25519/X448), ML-KEM/ML-DSA/SLH-DSA, AES-XTS, AES-CCM or HMAC-based
+  key-derivation mechanisms are offered.
+- `AES_GCM` is listed for encrypt and decrypt only (no wrap/unwrap); in `FIPS` mode the IV is not generated by the
+  token (see [FIPS mode](#fips-mode)).
+- Every mechanism of the `FIPS` list is also in the `NON_FIPS` list.
 
 ## Algorithm support
 
