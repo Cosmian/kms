@@ -159,7 +159,9 @@ By default a `DEGRADED` node answers `200`, so with the HAProxy configuration of
 [HAProxy and Keepalived](./haproxy_keepalived.md) page (`http-check expect status 200`) it stays in the load-balancing
 pool and keeps serving the requests that do not use the failing HSM. To take such a node out of the pool, check
 `GET /health?strict=true` instead: it answers `503` for a `DEGRADED` node as well as for a `DOWN` one. The body is the
-same, so the failing dependency is still visible.
+same, so the failing dependency is still visible. In a test with HAProxy (`inter 1s fall 2 rise 2`) checking
+`GET /health?strict=true`, a node whose database stopped answering was taken out of the pool about 2 seconds later and
+came back about 2 seconds after the database answered again, while requests through HAProxy kept succeeding.
 
 The `kmip` entry only appears when the KMIP socket server is enabled. It reports whether the socket server is still
 running: it does not open a connection to the KMIP port, so it does not detect a firewall or network problem in front

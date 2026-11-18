@@ -34,6 +34,34 @@ async fn test_health_endpoint_ok() {
 }
 
 #[tokio::test]
+async fn test_degraded_node_answers_503_only_in_strict_mode() {
+    log_init(option_env!("RUST_LOG"));
+
+    // The test config enables the KMIP socket server and this KMS never starts it: the node is
+    // `DEGRADED` (the database answers, the KMIP socket server is not running).
+    let kms = test_utils::test_kms().await.expect("instantiate KMS");
+    let app = test_utils::test_app_with_kms(kms, None).await;
+
+    let degraded: serde_json::Value = test_utils::get_json_with_uri(&app, "/health")
+        .await
+        .expect("a DEGRADED node answers 200 OK");
+    assert_eq!(degraded["status"], "DEGRADED");
+    assert_eq!(degraded["dependencies"]["database"]["status"], "UP");
+    assert_eq!(degraded["dependencies"]["kmip"]["status"], "DOWN");
+
+    let strict = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/health?strict=true")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(strict.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let strict_body: serde_json::Value = test::read_body_json(strict).await;
+    assert_eq!(strict_body["status"], "DEGRADED");
+}
+
+#[tokio::test]
 async fn test_cluster_status_lists_heartbeating_node_as_leader() {
     log_init(option_env!("RUST_LOG"));
 
