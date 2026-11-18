@@ -6,12 +6,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use actix_web::{HttpRequest, HttpResponse, get, web::Data};
+use actix_web::{
+    HttpRequest, HttpResponse, get,
+    web::{Data, Query},
+};
 use cosmian_kms_interfaces::InterfaceResult;
 use cosmian_kms_server_database::MainDbKind;
 use cosmian_logger::info;
 use futures::future::join_all;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
 use crate::{core::KMS, result::KResult};
@@ -39,6 +42,9 @@ struct Dependencies {
     database: DependencyHealth,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     hsm: Vec<DependencyHealth>,
+    /// Only present when the KMIP socket server is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kmip: Option<DependencyHealth>,
 }
 
 #[derive(Serialize, Debug)]
@@ -48,6 +54,14 @@ pub(crate) struct HealthResponse {
     dependencies: Dependencies,
 }
 
+#[derive(Deserialize)]
+struct HealthQuery {
+    /// Answer HTTP 503 when the node is `DEGRADED` too, so that a load balancer takes it out of
+    /// its pool.
+    #[serde(default)]
+    strict: bool,
+}
+
 /// Health endpoint for load balancers and service dependency checks.
 ///
 /// Returns JSON with a global UP/DEGRADED/DOWN status and per-dependency status.
@@ -55,16 +69,24 @@ pub(crate) struct HealthResponse {
 /// Notes:
 /// - Each HSM slot is probed with a bounded wait (see `HSM_PROBE_TIMEOUT`); an HSM that does
 ///   not answer in time makes the node `DEGRADED`, never a hanging health check.
+/// - When the KMIP socket server is enabled, a socket server task that has ended makes the node
+///   `DEGRADED`.
+/// - `DEGRADED` answers HTTP 200, or HTTP 503 with `?strict=true`. `DOWN` always answers 503.
 /// - For SQL databases, performs a lightweight `SELECT 1`.
 /// - For Redis-Findex (non-FIPS builds), performs a lightweight health check.
 #[get("/health")]
-pub(crate) async fn get_health(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<HttpResponse> {
+pub(crate) async fn get_health(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+    query: Query<HealthQuery>,
+) -> KResult<HttpResponse> {
     info!("GET /health {}", kms.get_user(&req));
 
     let start = Instant::now();
 
     let (db_dep, hsm_deps) = health_dependencies(&kms).await;
-    let global_status = overall_status(db_dep.status, &hsm_deps);
+    let kmip_dep = kmip_socket_dependency(&kms);
+    let global_status = overall_status(db_dep.status, &hsm_deps, kmip_dep.as_ref());
 
     let response = HealthResponse {
         status: global_status,
@@ -72,12 +94,14 @@ pub(crate) async fn get_health(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult
         dependencies: Dependencies {
             database: db_dep,
             hsm: hsm_deps,
+            kmip: kmip_dep,
         },
     };
 
-    let http_response = match response.status {
-        HealthStatus::Up | HealthStatus::Degraded => actix_web::HttpResponse::Ok().json(response),
-        HealthStatus::Down => actix_web::HttpResponse::ServiceUnavailable().json(response),
+    let http_response = if is_unavailable(response.status, query.strict) {
+        actix_web::HttpResponse::ServiceUnavailable().json(response)
+    } else {
+        actix_web::HttpResponse::Ok().json(response)
     };
 
     Ok(http_response)
@@ -249,17 +273,47 @@ async fn health_dependencies(kms: &Arc<KMS>) -> (DependencyHealth, Vec<Dependenc
     tokio::join!(database, hsm_dependencies)
 }
 
-fn overall_status(database: HealthStatus, hsm: &[DependencyHealth]) -> HealthStatus {
+fn overall_status(
+    database: HealthStatus,
+    hsm: &[DependencyHealth],
+    kmip: Option<&DependencyHealth>,
+) -> HealthStatus {
     if database == HealthStatus::Down {
         HealthStatus::Down
     } else if hsm
         .iter()
+        .chain(kmip)
         .any(|dependency| dependency.status == HealthStatus::Down)
     {
         HealthStatus::Degraded
     } else {
         HealthStatus::Up
     }
+}
+
+/// Whether `/health` answers HTTP 503: always when `DOWN`, and when `DEGRADED` in strict mode.
+fn is_unavailable(status: HealthStatus, strict: bool) -> bool {
+    status == HealthStatus::Down || (strict && status == HealthStatus::Degraded)
+}
+
+/// The KMIP socket server runs in one task for the whole life of the process: it only ends when
+/// it fails, and the node then no longer serves KMIP over TCP although HTTP still answers.
+fn kmip_socket_check(task: Option<&JoinHandle<()>>) -> Result<(), String> {
+    if task.is_some_and(|task| !task.is_finished()) {
+        Ok(())
+    } else {
+        Err("the KMIP socket server is not running (details in the server log)".to_owned())
+    }
+}
+
+fn kmip_socket_dependency(kms: &KMS) -> Option<DependencyHealth> {
+    kms.params.start_socket_server.then(|| {
+        dependency(
+            "kmip",
+            Instant::now(),
+            kmip_socket_check(kms.socket_server_task.get()),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -340,13 +394,44 @@ mod tests {
         }];
 
         assert_eq!(
-            overall_status(HealthStatus::Up, &failed_hsm),
+            overall_status(HealthStatus::Up, &failed_hsm, None),
             HealthStatus::Degraded
         );
         assert_eq!(
-            overall_status(HealthStatus::Down, &failed_hsm),
+            overall_status(HealthStatus::Down, &failed_hsm, None),
             HealthStatus::Down
         );
-        assert_eq!(overall_status(HealthStatus::Up, &[]), HealthStatus::Up);
+        assert_eq!(
+            overall_status(HealthStatus::Up, &[], None),
+            HealthStatus::Up
+        );
+    }
+
+    #[tokio::test]
+    async fn ended_kmip_socket_server_degrades_the_node() {
+        let running = tokio::spawn(std::future::pending::<()>());
+        assert_eq!(kmip_socket_check(Some(&running)), Ok(()));
+        running.abort();
+
+        let ended = tokio::spawn(async {});
+        while !ended.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        assert!(kmip_socket_check(Some(&ended)).is_err());
+        assert!(kmip_socket_check(None).is_err());
+
+        let kmip_down = dependency("kmip", Instant::now(), kmip_socket_check(None));
+        assert_eq!(
+            overall_status(HealthStatus::Up, &[], Some(&kmip_down)),
+            HealthStatus::Degraded
+        );
+    }
+
+    #[test]
+    fn strict_mode_turns_degraded_into_unavailable() {
+        assert!(!is_unavailable(HealthStatus::Up, true));
+        assert!(!is_unavailable(HealthStatus::Degraded, false));
+        assert!(is_unavailable(HealthStatus::Degraded, true));
+        assert!(is_unavailable(HealthStatus::Down, false));
     }
 }

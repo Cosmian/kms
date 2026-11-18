@@ -122,6 +122,8 @@ backend kmip_backend
     balance roundrobin
 
     # Health check via Eviden KMS /health endpoint (HTTP port 9998)
+    # Use GET /health?strict=true to also take out nodes reported DEGRADED
+    # (an HSM or the KMIP socket server is down): see "Cluster coordination".
     option httpchk GET /health
     http-check expect status 200
 

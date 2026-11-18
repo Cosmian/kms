@@ -145,19 +145,25 @@ status and the state and latency of each dependency:
 
 | Global status | HTTP code | Meaning |
 | ------------- | --------- | ------- |
-| `UP` | 200 | The database and every configured HSM answer. |
-| `DEGRADED` | 200 | The database answers, but at least one HSM does not. |
+| `UP` | 200 | The database, every configured HSM and the KMIP socket server (when enabled) are fine. |
+| `DEGRADED` | 200, or 503 with `?strict=true` | The database answers, but at least one HSM does not, or the KMIP socket server has stopped. |
 | `DOWN` | 503 | The database check fails, or does not answer within 2 seconds. |
 
-Example response from a node with one HSM:
+Example response from a node with one HSM and the KMIP socket server enabled:
 
 ```json
-{"status":"UP","latency_ms":3,"dependencies":{"database":{"name":"postgres","status":"UP","latency_ms":2},"hsm":[{"name":"hsm","status":"UP","latency_ms":0}]}}
+{"status":"UP","latency_ms":3,"dependencies":{"database":{"name":"postgres","status":"UP","latency_ms":2},"hsm":[{"name":"hsm","status":"UP","latency_ms":0}],"kmip":{"name":"kmip","status":"UP","latency_ms":0}}}
 ```
 
-With the HAProxy configuration of the [HAProxy and Keepalived](./haproxy_keepalived.md) page (`http-check expect
-status 200`), a `DEGRADED` node stays in the load-balancing pool, so it keeps serving the requests that do not use
-the failing HSM.
+By default a `DEGRADED` node answers `200`, so with the HAProxy configuration of the
+[HAProxy and Keepalived](./haproxy_keepalived.md) page (`http-check expect status 200`) it stays in the load-balancing
+pool and keeps serving the requests that do not use the failing HSM. To take such a node out of the pool, check
+`GET /health?strict=true` instead: it answers `503` for a `DEGRADED` node as well as for a `DOWN` one. The body is the
+same, so the failing dependency is still visible.
+
+The `kmip` entry only appears when the KMIP socket server is enabled. It reports whether the socket server is still
+running: it does not open a connection to the KMIP port, so it does not detect a firewall or network problem in front
+of the port.
 
 Each HSM slot is probed with a bounded wait: a slot that does not answer within 2 seconds is reported `DOWN` (with the
 message `no answer within 2000 ms`), so `/health` never hangs and the node is `DEGRADED`. The answer of a slot is reused

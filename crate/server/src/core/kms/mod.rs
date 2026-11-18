@@ -7,7 +7,7 @@ pub(crate) mod permissions;
 use std::{
     collections::HashMap,
     num::NonZeroUsize,
-    sync::{Arc, atomic::AtomicU64},
+    sync::{Arc, OnceLock, atomic::AtomicU64},
 };
 
 // AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
@@ -41,7 +41,10 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
-use tokio::sync::{OnceCell, RwLock};
+use tokio::{
+    sync::{OnceCell, RwLock},
+    task::JoinHandle,
+};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 use zeroize::Zeroizing;
@@ -107,6 +110,10 @@ pub struct KMS {
 
     /// Probe state of the HSM slots checked by `GET /health`.
     pub(crate) hsm_probes: HsmProbes,
+
+    /// Task running the KMIP socket server, set once it started (only when it is enabled).
+    /// `GET /health` reports the node `DEGRADED` when this task has ended.
+    pub(crate) socket_server_task: OnceLock<JoinHandle<()>>,
 
     /// The server parameters are built from the configuration file or command line arguments.
     pub(crate) params: Arc<ServerParams>,
@@ -390,6 +397,7 @@ impl KMS {
         Ok(Self {
             node_id: uuid::Uuid::new_v4().to_string(),
             hsm_probes: HsmProbes::default(),
+            socket_server_task: OnceLock::new(),
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),

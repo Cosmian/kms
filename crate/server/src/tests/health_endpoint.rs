@@ -23,6 +23,14 @@ async fn test_health_endpoint_ok() {
     assert_eq!(response["dependencies"]["database"]["status"], "UP");
     assert!(response["dependencies"]["database"]["latency_ms"].is_u64());
     assert!(response["dependencies"].get("hsm").is_none());
+    // The test server enables the KMIP socket server: it is reported as a dependency.
+    assert_eq!(response["dependencies"]["kmip"]["status"], "UP");
+
+    // Strict mode only changes the HTTP code of a DEGRADED node: an UP node still answers 200.
+    let strict: serde_json::Value = test_utils::get_json_with_uri(&app, "/health?strict=true")
+        .await
+        .expect("strict health endpoint should return 200 OK on a healthy node");
+    assert_eq!(strict["status"], "UP");
 }
 
 #[tokio::test]
