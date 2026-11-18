@@ -106,9 +106,9 @@ criteria = "safe-to-deploy"
 notes = "workspace static-file serving; bump fixes RUSTSEC-2026-0443 — unaudited, pending review"
 
 [[exemptions.actix-http]]
-version = "3.20.3"
+version = "3.22.0"
 criteria = "safe-to-deploy"
-notes = "transitive of actix-files 0.7.4 bump (RUSTSEC-2026-0443) — unaudited, pending review"
+notes = "bump to 3.22.0 for RUSTSEC-2026-0552 and RUSTSEC-2026-0553 — unaudited, pending review"
 
 [[exemptions.actix-rt]]
 version = "2.15.0"
@@ -814,6 +814,11 @@ criteria = "safe-to-deploy"
 version = "0.39.1"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+
+[[exemptions.libz-sys]]
+version = "1.1.33"
+criteria = "safe-to-deploy"
+notes = "bump to 1.1.33 for RUSTSEC-2026-0544 (zlib heap buffer overflow) — unaudited, pending review"
 
 [[exemptions.linked_hash_set]]
 version = "0.1.6"
