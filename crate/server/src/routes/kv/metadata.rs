@@ -17,7 +17,7 @@
 //! - `list` → [`KmipOperation::Locate`] (discovery only, no data exposure).
 //! - `delete` (soft or hard) → [`KmipOperation::Destroy`].
 //!
-//! `get` accepts a `Get` (or `Export`) grant and `list` accepts a `Locate` or `Get` grant;
+//! `get` and `list` accept a `Get` grant as covering them, like the rest of the KMS;
 //! `put` and `delete` require the exact operation, so a read-only grantee can neither
 //! replace nor destroy a secret.
 //!
@@ -416,9 +416,9 @@ pub(crate) fn secret_bytes(object: &Object) -> KvResult<&[u8]> {
 
 /// Require that `user` holds `op` on the path's metadata object.
 ///
-/// `Get` (read) is granted by `Get` or `Export`; `Locate` (list) by `Locate` or `Get`. Writes
-/// (`Import`) and deletes (`Destroy`) require that exact operation: a read-only grantee must
-/// not be able to replace or destroy a secret.
+/// Reads (`Get`, `Locate`) accept a `Get` grant as a read-everything grant, like the rest of
+/// the KMS. Writes (`Import`) and deletes (`Destroy`) require that exact operation: a
+/// read-only grantee must not be able to replace or destroy a secret.
 pub(crate) async fn authorize(
     kms: &KMS,
     owm: &ObjectWithMetadata,
@@ -426,10 +426,9 @@ pub(crate) async fn authorize(
     op: KmipOperation,
 ) -> KvResult<()> {
     let allowed = match op {
-        KmipOperation::Get => user_has_permission(user, Some(owm), &op, kms).await,
-        // Listing a path is allowed for anyone who may read it.
-        KmipOperation::Locate => Ok(user_has_permission(user, Some(owm), &op, kms).await?
-            || user_has_permission(user, Some(owm), &KmipOperation::Get, kms).await?),
+        KmipOperation::Get | KmipOperation::Locate => {
+            user_has_permission(user, Some(owm), &op, kms).await
+        }
         _ => kms.user_can_perform_operation(owm, user, &op).await,
     }?;
     if allowed {
