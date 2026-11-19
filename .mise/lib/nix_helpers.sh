@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # .mise/lib/nix_helpers.sh — Nix shell re-entry and build helpers.
 #
-# Replaces the IN_NIX_SHELL guard pattern from nix.sh. When a task requires
+# Replaces the legacy IN_NIX_SHELL guard pattern. When a task requires
 # Nix-provided tools (OpenSSL FIPS, SoftHSM2, etc.), it calls ensure_nix_shell
 # which re-execs the task script inside nix-shell if not already inside one.
 #

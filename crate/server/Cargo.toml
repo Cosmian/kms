@@ -55,6 +55,7 @@ non-fips = [
   "aws_cloudhsm_pkcs11_loader/non-fips",
   "azure_cloud_hsm_pkcs11_loader/non-fips",
   "crypt2pay_pkcs11_loader/non-fips",
+  "idemia_sphere_pkcs11_loader/non-fips",
   "luna_pkcs11_loader/non-fips",
   "proteccio_pkcs11_loader/non-fips",
   "smartcardhsm_pkcs11_loader/non-fips",
@@ -101,6 +102,7 @@ gcp_cloud_hsm_pkcs11_loader = { workspace = true }
 governor = { workspace = true, features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+idemia_sphere_pkcs11_loader = { workspace = true }
 ipnet = { workspace = true, features = ["serde"] }
 jsonwebtoken = { workspace = true }
 kryoptic_pkcs11_loader = { workspace = true }
@@ -453,6 +455,12 @@ target = "kms.toml"
 [[package.metadata.packager.resources]]
 src = "../../ui/dist"
 target = "ui/"
+
+# OpenSSL provider files: variant.txt for every installer; the FIPS installer also gets
+# ssl/, ossl-modules/ and cosmian_kms_fips.cmd (staged by cargo_build.ps1 New-PackageOpensslDir)
+[[package.metadata.packager.resources]]
+src = "../../target/windows-package-openssl"
+target = "openssl/"
 
 # NSIS-specific configuration
 [package.metadata.packager.nsis]

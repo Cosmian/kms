@@ -30,6 +30,10 @@ use cosmian_logger::trace;
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(target_os = "linux")]
 use gcp_cloud_hsm_pkcs11_loader::{GCP_CLOUD_HSM_PKCS11_LIB, GcpCloudHsm};
+// The Idemia SPHERE HSM simulator is a Windows DLL; the real HSM client library is
+// configured through `IDEMIA_SPHERE_PKCS11_LIB` on Linux and macOS.
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use idemia_sphere_pkcs11_loader::{IDEMIA_SPHERE_PKCS11_LIB, IdemiaSphere};
 // SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use kryoptic_pkcs11_loader::{KRYOPTIC_PKCS11_LIB, Kryoptic};
@@ -39,7 +43,7 @@ use luna_pkcs11_loader::{LUNA_PKCS11_LIB, Luna};
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
 use tokio::sync::{OnceCell, RwLock};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -55,13 +59,15 @@ const INTERNAL_UID_KEY_LENGTH: usize = 32;
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 #[cfg(target_os = "macos")]
 const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
+#[cfg(target_os = "windows")]
+const OTHER_HSM_PKCS11_LIB: &str = "libkmshsm.dll";
 
 // Reuse HSM instances across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
 // same process for CLI tests exercising privileged & non-privileged endpoints.
 // Each element is `Arc<dyn HSM>` for one configured HSM instance, in the same
 // order as `ServerParams::hsm_instances`.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
 use crate::{
@@ -81,10 +87,16 @@ use crate::{
 
 /// Macro to instantiate an HSM with support for environment variable override.
 /// Returns an `Arc<dyn HSM + Send + Sync>` without touching any global state.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
         let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());
+        if lib_path.is_empty() {
+            return Err(KmsError::InvalidRequest(format!(
+                "The {} HSM has no default PKCS#11 library on this platform: set {}",
+                $hsm_name, $env_var
+            )));
+        }
         let hsm: Arc<dyn HSM + Send + Sync> = Arc::new(
             <$hsm_type>::instantiate(&lib_path, $slot_passwords).map_err(|e| {
                 KmsError::InvalidRequest(format!(
@@ -534,10 +546,10 @@ impl KMS {
             return Ok(vec![]);
         }
 
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        kms_bail!("Fatal: HSMs are only supported on Linux and macOS");
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        kms_bail!("Fatal: HSMs are not supported on this platform");
 
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         {
             // Reuse pre-existing global instances when available (test-server reuse pattern).
             if let Some(existing) = GLOBAL_HSMS.get() {
@@ -555,7 +567,7 @@ impl KMS {
     }
 
     /// Instantiate a single HSM by model name.
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     fn instantiate_one_hsm(
         model: &str,
         slot_passwords: std::collections::HashMap<usize, Option<String>>,
@@ -585,6 +597,7 @@ impl KMS {
                 "Utimaco",
                 slot_passwords
             )),
+            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
             "softhsm2" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
                 "SOFTHSM2_PKCS11_LIB",
@@ -592,6 +605,7 @@ impl KMS {
                 "Softhsm2",
                 slot_passwords
             )),
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             "kryoptic" => Ok(instantiate_hsm_with_env!(
                 Kryoptic,
                 "KRYOPTIC_PKCS11_LIB",
@@ -599,6 +613,7 @@ impl KMS {
                 "Kryoptic",
                 slot_passwords
             )),
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             "smartcardhsm" => Ok(instantiate_hsm_with_env!(
                 Smartcardhsm,
                 "SMARTCARDHSM_PKCS11_LIB",
@@ -638,7 +653,7 @@ impl KMS {
                 "Luna",
                 slot_passwords
             )),
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 OtherHsm,
                 "OTHER_HSM_PKCS11_LIB",
@@ -646,10 +661,17 @@ impl KMS {
                 "Other",
                 slot_passwords
             )),
+            "idemia_sphere" => Ok(instantiate_hsm_with_env!(
+                IdemiaSphere,
+                "IDEMIA_SPHERE_PKCS11_LIB",
+                IDEMIA_SPHERE_PKCS11_LIB,
+                "Idemia SPHERE",
+                slot_passwords
+            )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
                  luna, proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, \
-                 gcp_cloud_hsm, softhsm2, utimaco, kryoptic, other"
+                 gcp_cloud_hsm, softhsm2, utimaco, kryoptic, idemia_sphere, other"
             ),
         }
     }
@@ -835,5 +857,29 @@ mod tests {
             "each database must have its own key"
         );
         Ok(())
+    }
+
+    /// Regression test: off Windows `idemia_sphere` has no default PKCS#11 library, so an unset
+    /// `IDEMIA_SPHERE_PKCS11_LIB` must be refused with a message naming the variable (not a raw
+    /// `dlopen` error).
+    #[cfg(not(target_os = "windows"))]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::remove_var is unsafe in edition 2024; only this test touches this variable"
+    )]
+    #[test]
+    fn idemia_sphere_without_lib_path_names_the_env_var() {
+        // SAFETY: no other test reads or writes `IDEMIA_SPHERE_PKCS11_LIB`.
+        unsafe {
+            std::env::remove_var("IDEMIA_SPHERE_PKCS11_LIB");
+        }
+        let error = KMS::instantiate_one_hsm("idemia_sphere", std::collections::HashMap::new())
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            error.contains("set IDEMIA_SPHERE_PKCS11_LIB"),
+            "unexpected error: {error}"
+        );
     }
 }

@@ -118,6 +118,70 @@ jobs:
             ${{ runner.temp }}\kms-cng-test-server.log
             ${{ runner.temp }}\kms-cng-test-server.log.err
 
+  test-hsm-idemia:
+    name: ${{ inputs.archive-name }} - HSM tests (Idemia SPHERE simulator, ${{ matrix.variant }})
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # fips: simulator in SECURITY_LEVEL=FIPS + OpenSSL FIPS provider (fips.dll) + IV shim.
+        variant: [non-fips, fips]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      # The OpenSSL 3.1.2 FIPS provider build (nmake) takes ~15 minutes: cache the install. The
+      # script reuses a complete install, so a hit skips the build.
+      - name: Cache the OpenSSL FIPS provider
+        if: matrix.variant == 'fips'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\openssl-fips
+          key: openssl-fips-3.1.2-${{ runner.os }}-${{ hashFiles('.mise/scripts/windows/prepare_windows_fips_provider.ps1') }}
+
+      # Downloads the simulator package (a hard failure when unavailable: no silent skip), installs
+      # SoftHSM2 + the simulator and exports HSM_* / IDEMIA_SPHERE_PKCS11_LIB / PATH to the next steps.
+      - name: Prepare the Idemia SPHERE HSM simulator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $level = if ('${{ matrix.variant }}' -eq 'fips') { "FIPS" } else { "NON_FIPS" }
+          .\.github\reusable_scripts\prepare_idemia_hsm.ps1 -SecurityLevel $level
+
+      # The FIPS variant builds the OpenSSL FIPS provider and the PKCS#11 IV shims itself.
+      - name: HSM tests on the Idemia SPHERE simulator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $fips = '${{ matrix.variant }}' -eq 'fips'
+          if ($fips) { .\.mise\scripts\windows\test_hsm_idemia.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_idemia.ps1 }
+
+      - name: hsm_model=other startup scenarios (SoftHSM2 behind the IV shim)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $fips = '${{ matrix.variant }}' -eq 'fips'
+          if ($fips) { .\.mise\scripts\windows\test_hsm_other.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_other.ps1 }
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: hsm-idemia-test-logs-windows-${{ matrix.variant }}
+          path: |
+            C:\Idemia_HSM_Simulator\log\HSM_simulator.log
+            ${{ runner.temp }}\kms-idemia-test\kms.log
+            ${{ runner.temp }}\kms-idemia-test\kms.log.err
+
   test-est-interop:
     name: ${{ inputs.archive-name }} - EST interoperability tests
     runs-on: windows-2022

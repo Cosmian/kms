@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#MISE description="Run Idemia SPHERE HSM tests against the Windows Idemia HSM simulator (Windows only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant (fips: simulator in SECURITY_LEVEL=FIPS + OpenSSL FIPS provider)" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; the simulator tests use SQLite)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+setup_test_logging
+
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN* | Windows_NT) : ;;
+  *) skip_test "Windows only (the Idemia simulator is a Windows DLL)" ;;
+esac
+
+print_header "Running Idemia SPHERE simulator HSM tests (${VARIANT_NAME})"
+
+# The PowerShell script stages the simulator (prepare_idemia_hsm.ps1, downloads the package unless
+# IDEMIA_SIM_PACKAGE_DIR is set; -Fips stages it in SECURITY_LEVEL=FIPS and builds the OpenSSL
+# FIPS provider) and runs every test step.
+FIPS_FLAG=()
+[ "$VARIANT" = fips ] && FIPS_FLAG=(-Fips)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${MISE_CONFIG_ROOT}/.mise/scripts/windows/test_hsm_idemia.ps1" ${FIPS_FLAG[@]+"${FIPS_FLAG[@]}"}
+
+print_success "Idemia SPHERE simulator HSM tests completed"

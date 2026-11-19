@@ -25,6 +25,7 @@
     - [Quick reference](hsm_support/luna_quick_reference.md)
   - [Trustway Crypt2pay](hsm_support/crypt2pay.md)
   - [Trustway Proteccio](hsm_support/proteccio.md)
+  - [Idemia SPHERE](hsm_support/idemia_sphere.md)
   - [Utimaco General Purpose](hsm_support/utimaco.md)
   - [Smart card HSM / Nitrokey HSM 2](hsm_support/sc_hsm.md)
   - [AWS CloudHSM](hsm_support/aws_cloudhsm.md)

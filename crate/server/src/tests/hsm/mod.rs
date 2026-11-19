@@ -41,6 +41,7 @@ use crate::{
     tests::{
         hsm::test_helpers::{
             get_hsm_model, get_hsm_password, get_hsm_slot_id, hsm_cannot_generate_gcm_iv,
+            hsm_rejects_raw_signing_mechanisms,
         },
         test_utils::https_clap_config,
     },
@@ -142,22 +143,40 @@ async fn test_hsm_all() {
         .await
         .unwrap();
 
-    info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
-    Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
+    // The sub-CA tests sign with an RSA HSM root through raw `CKM_RSA_PKCS`, and the EC sub-CA
+    // through raw `CKM_ECDSA`: a FIPS-mode token rejects both at use (it only accepts the
+    // hash-and-sign `CKM_ECDSA_SHA*` / `CKM_SHA*_RSA_PKCS` forms).
+    if hsm_rejects_raw_signing_mechanisms() {
+        info!(
+            "HSM: sub_ca and sub_ca_ec skipped (the token rejects raw CKM_RSA_PKCS and CKM_ECDSA in FIPS mode)"
+        );
+    } else {
+        info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
+        Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
 
-    info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
-    Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+        info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+    }
 
-    info!("HSM: ssh_ca (OpenSSH certificates signed by a non-extractable CA key)");
-    Box::pin(ssh_ca::test_hsm_ssh_ca()).await.unwrap();
+    // Windows has no OpenSSH `sshd` (the test authenticates against a real `sshd -i`): a
+    // limitation of the host, not of the HSM.
+    #[cfg(not(target_os = "windows"))]
+    {
+        info!("HSM: ssh_ca (OpenSSH certificates signed by a non-extractable CA key)");
+        Box::pin(ssh_ca::test_hsm_ssh_ca()).await.unwrap();
+    }
 
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 
     // SoftHSM2 2.6.1 rejects CKM_RSA_PKCS_OAEP with explicit mechanism parameters
-    // (CKR_ARGUMENTS_BAD), so the RSA-OAEP decrypt oracle cannot be exercised there.
-    if get_hsm_model().as_deref() == Some("softhsm2") {
-        info!("HSM: jose_decrypt skipped (SoftHSM2 does not support RSA-OAEP decrypt)");
+    // (CKR_ARGUMENTS_BAD), so the RSA-OAEP decrypt oracle cannot be exercised there. The Idemia
+    // HSM Simulator (SoftHSM2 2.7.0 backend) returns the same CKR_ARGUMENTS_BAD on C_DecryptInit.
+    if matches!(
+        get_hsm_model().as_deref(),
+        Some("softhsm2" | "idemia_sphere")
+    ) {
+        info!("HSM: jose_decrypt skipped (the backend does not support RSA-OAEP decrypt)");
     } else {
         info!("HSM: jose_decrypt");
         Box::pin(jose_decrypt::test_jose_hsm_decryption())
@@ -217,6 +236,8 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "aws_cloudhsm".to_owned();
         } else if unwrapped_model == "azure_cloud_hsm" {
             clap_config.hsm.hsm_model = "azure_cloud_hsm".to_owned();
+        } else if unwrapped_model == "idemia_sphere" {
+            clap_config.hsm.hsm_model = "idemia_sphere".to_owned();
         } else if unwrapped_model == "other" {
             clap_config.hsm.hsm_model = "other".to_owned();
         } else {

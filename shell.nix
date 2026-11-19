@@ -232,7 +232,7 @@ pkgs.mkShell {
     export OPENSSL_NO_VENDOR=1
 
     # Check which variant is requested (defaults to non-fips if not set)
-    # VARIANT should be set by nix.sh via the command string OR via --argstr
+    # VARIANT should be set via the command string OR via --argstr
     # Prefer the Nix argument passed via --argstr, fall back to environment variable
     VARIANT_MODE="${variant}"
 

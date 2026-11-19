@@ -296,17 +296,3 @@ Shared helpers sourced by tasks — not called directly.
 | `k8s.sh` | Kubernetes / Minikube helpers |
 
 ---
-
-## Legacy CI entrypoint (`.mise/scripts/nix.sh`)
-
-`nix.sh` is a thin wrapper kept for backward compatibility with existing CI pipelines.
-It delegates to the MISE tasks above via `nix-shell`. Prefer `mise run` for new workflows.
-
-```bash
-bash .mise/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] \
-  docker [--load] [--test] [--force]
-  test <type>
-  package
-  sbom
-  update-hashes
-```

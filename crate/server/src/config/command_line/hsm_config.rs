@@ -18,6 +18,7 @@ pub enum HsmModel {
     AwsCloudhsm,
     AzureCloudHsm,
     GcpCloudHsm,
+    IdemiaSphere,
     Other,
 }
 
@@ -33,6 +34,7 @@ impl HsmModel {
         Self::AwsCloudhsm,
         Self::AzureCloudHsm,
         Self::GcpCloudHsm,
+        Self::IdemiaSphere,
         Self::Other,
     ];
 
@@ -49,6 +51,7 @@ impl HsmModel {
             Self::AwsCloudhsm => "aws_cloudhsm",
             Self::AzureCloudHsm => "azure_cloud_hsm",
             Self::GcpCloudHsm => "gcp_cloud_hsm",
+            Self::IdemiaSphere => "idemia_sphere",
             Self::Other => "other",
         }
     }
@@ -65,7 +68,8 @@ impl fmt::Display for HsmModel {
 pub struct HsmConfig {
     /// The HSM model.
     /// `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-    /// `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+    /// `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, `Kryoptic`,
+    /// and `Idemia SPHERE`
     /// are natively supported.
     /// Other HSMs are supported too; specify `other` and check the documentation
     #[clap(
@@ -82,6 +86,7 @@ pub struct HsmConfig {
             "azure_cloud_hsm",
             "gcp_cloud_hsm",
             "kryoptic",
+            "idemia_sphere",
             "other"
         ]),
         default_value = "proteccio"

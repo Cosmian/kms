@@ -370,7 +370,6 @@ mod tests {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),
                 otlp: Some("http://localhost:4317".to_owned()),
                 quiet: false,
-                #[cfg(not(target_os = "windows"))]
                 log_to_syslog: false,
                 rolling_log_dir: Some(PathBuf::from("[rolling log dir]")),
                 rolling_log_name: Some("kms_log".to_owned()),
