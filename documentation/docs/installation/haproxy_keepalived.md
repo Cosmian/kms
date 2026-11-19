@@ -3,8 +3,8 @@
 HAProxy spreads the client requests over the KMS nodes and stops sending requests to a node that fails its health
 check. Keepalived gives HAProxy a single, stable address, a **virtual IP (VIP)**, that moves to another HAProxy node
 when one fails. This page describes how to set both up in front of several KMS nodes that share one database (see
-[High-availability](./high_availability_mode.md)). To compare this setup with the other ways to reach the nodes, see
-[Deployment profiles](./deployment_profiles.md).
+[High availability and deployment profiles](./high_availability_mode.md), which also helps you choose between this
+setup and the other ways to reach the nodes).
 
 ## One HAProxy, or HAProxy with Keepalived
 
@@ -45,7 +45,7 @@ flowchart TB
         nodeN["Eviden KMS<br/>Node n"]:::kms
     end
 
-    db[("🗄️ Shared database<br/>(SQL / Redis)")]:::db
+    db[("🗄️ Shared database<br/>(PostgreSQL / MySQL / MariaDB)")]:::db
 
     client1 -->|single endpoint| vip
     client2 --> vip

@@ -30,8 +30,11 @@
 
 - Add the [Cluster coordination](documentation/docs/installation/cluster_coordination.md) page ([#1366](https://github.com/Cosmian/kms/issues/1366)), with Mermaid
   diagrams of the job locks and the heartbeat, and the `/health` and `/cluster/status` responses.
-- Add the [Deployment profiles](documentation/docs/installation/deployment_profiles.md) page ([#1366](https://github.com/Cosmian/kms/issues/1366)): single node, cloud load balancer, round-robin DNS, Keepalived
-  without HAProxy (with a tested configuration), and HAProxy, with the limits of each and Mermaid diagrams.
+- Rework the high-availability documentation ([#1366](https://github.com/Cosmian/kms/issues/1366)): the
+  [High availability and deployment profiles](documentation/docs/installation/high_availability_mode.md) page compares
+  the ways to run the KMS (single node or Cosmian confidential VM, cloud load balancer, round-robin DNS, Keepalived
+  without HAProxy with a tested configuration, HAProxy), with the limits of each and Mermaid diagrams. The HAProxy and
+  Keepalived setup has its own page, [HAProxy and Keepalived](documentation/docs/installation/haproxy_keepalived.md).
 
 ---
 

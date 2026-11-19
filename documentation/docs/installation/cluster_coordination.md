@@ -1,7 +1,7 @@
 # Cluster coordination
 
 When several KMS nodes share one PostgreSQL or MySQL/MariaDB database (see
-[High-availability](./high_availability_mode.md)), they coordinate through that database:
+[High availability and deployment profiles](./high_availability_mode.md)), they coordinate through that database:
 
 - each background job runs on **one node at a time**;
 - each node publishes a **heartbeat**, so the cluster can list its live nodes;
