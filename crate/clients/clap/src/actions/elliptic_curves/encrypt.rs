@@ -52,7 +52,8 @@ impl EncryptAction {
 
         data = encrypt_response
             .data
-            .context("The encrypted data is empty")?;
+            .context("The encrypted data is empty")?
+            .to_vec();
 
         // Write the encrypted file
         let output_file = self

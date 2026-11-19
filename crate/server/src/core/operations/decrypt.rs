@@ -1169,8 +1169,8 @@ mod tests {
         let part2 = kms.encrypt(last, &user).await?;
         assert!(part2.i_v_counter_nonce.is_none());
         let ciphertext = [
-            part1.data.unwrap_or_default(),
-            part2.data.unwrap_or_default(),
+            part1.data.unwrap_or_default().to_vec(),
+            part2.data.unwrap_or_default().to_vec(),
         ]
         .concat();
         let tag = part2.authenticated_encryption_tag.unwrap();

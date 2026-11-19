@@ -167,6 +167,7 @@ async fn rsa_encrypt_sample(client: &KmsClient, pk_id: &str) -> Vec<u8> {
         .expect("RSA OAEP encrypt (setup)")
         .data
         .unwrap()
+        .to_vec()
 }
 
 // ── Bench entry point ─────────────────────────────────────────────────────────

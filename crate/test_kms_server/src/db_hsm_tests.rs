@@ -182,7 +182,10 @@ async fn test_db_softhsm2_impl() -> Result<(), KmsClientError> {
             None,
         )?)
         .await?;
-    let ciphertext_v1 = enc_resp.data.expect("encrypt: no ciphertext in response");
+    let ciphertext_v1 = enc_resp
+        .data
+        .expect("encrypt: no ciphertext in response")
+        .to_vec();
     let nonce_v1 = enc_resp.i_v_counter_nonce;
     let tag_v1 = enc_resp.authenticated_encryption_tag;
 
@@ -297,7 +300,7 @@ async fn test_db_softhsm2_impl() -> Result<(), KmsClientError> {
             None,
         )?)
         .await?;
-    let ciphertext_v2 = enc_resp2.data.expect("encrypt v2: no ciphertext");
+    let ciphertext_v2 = enc_resp2.data.expect("encrypt v2: no ciphertext").to_vec();
     let nonce_v2 = enc_resp2.i_v_counter_nonce;
     let tag_v2 = enc_resp2.authenticated_encryption_tag;
 

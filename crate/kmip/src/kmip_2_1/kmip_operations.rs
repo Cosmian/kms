@@ -1882,9 +1882,10 @@ pub struct EncryptResponse {
     /// Cryptographic Object that was the key
     /// used for the encryption operation.
     pub unique_identifier: UniqueIdentifier,
-    /// The encrypted data (as a Byte String).
+    /// The encrypted data (as a Byte String). For a KEM encapsulation this carries the shared
+    /// secret, hence the redacting type.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
     /// The value used if the Cryptographic
     /// Parameters specified Random IV and
     /// the IV/Counter/Nonce value was not

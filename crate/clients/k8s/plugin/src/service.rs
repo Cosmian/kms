@@ -110,7 +110,7 @@ impl KeyManagementService for KmsPluginService {
         info!(uid = %req.uid, key_id = %self.wrapping_key_uid, "DEK wrapped successfully");
 
         Ok(Response::new(EncryptResponse {
-            ciphertext,
+            ciphertext: ciphertext.to_vec(),
             key_id: self.wrapping_key_uid.clone(),
             annotations,
         }))

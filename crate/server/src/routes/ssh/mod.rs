@@ -802,7 +802,7 @@ mod tests {
             .sign(
                 Sign {
                     unique_identifier: Some(UniqueIdentifier::TextString(ca_uid)),
-                    data: Some(Zeroizing::new(b"forged certificate".to_vec()).into()),
+                    data: Some(b"forged certificate".to_vec().into()),
                     ..Default::default()
                 },
                 &UserId::from("alice"),

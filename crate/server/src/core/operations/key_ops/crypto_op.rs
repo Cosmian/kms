@@ -1038,7 +1038,6 @@ mod tests {
         cosmian_kms_interfaces::ObjectWithMetadata,
     };
     use time::Duration;
-    use zeroize::Zeroizing;
 
     use super::ObjectLifecycleExt;
     use crate::result::KResult;
@@ -1048,7 +1047,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3, 4]).into()),
+                    key_material: KeyMaterial::ByteString(vec![1, 2, 3, 4].into()),
                     attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,

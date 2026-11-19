@@ -21,7 +21,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use uuid::Uuid;
 
 #[cfg(feature = "non-fips")]
-#[cfg(feature = "non-fips")]
 use crate::{error::KmsError, result::KResult, tests::test_utils};
 
 #[cfg(feature = "non-fips")]
@@ -117,7 +116,7 @@ async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
     // Bulk decrypt the messages
     let response: DecryptResponse = test_utils::post_2_1(
         &app,
-        decrypt_request(key_id.clone(), BlockCipherMode::CBC, ciphertexts.clone()),
+        decrypt_request(key_id.clone(), BlockCipherMode::CBC, ciphertexts.to_vec()),
     )
     .await?;
     let plaintexts = response

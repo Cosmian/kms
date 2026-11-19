@@ -27,11 +27,11 @@ macro_rules! update_artifacts_from_payload {
                         .unwrap_or_default()
                         .to_vec();
                     $state.last_encrypt_artifacts =
-                        Some((data.clone(), iv.clone().to_vec(), tag.clone()));
+                        Some((data.to_vec(), iv.clone().to_vec(), tag.clone()));
                     if let Some(aad) = $pending_aad.take() {
                         $state
                             .encrypt_artifacts_by_aad
-                            .insert(aad, (data.clone(), iv.clone().to_vec(), tag.clone()));
+                            .insert(aad, (data.to_vec(), iv.clone().to_vec(), tag.clone()));
                     }
                 }
                 _ => $state.last_encrypt_artifacts = None,

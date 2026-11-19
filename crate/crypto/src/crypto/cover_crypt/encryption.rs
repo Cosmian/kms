@@ -179,7 +179,7 @@ impl EncryptionSystem for CoverCryptEncryption {
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
-            data: encrypted_data,
+            data: encrypted_data.map(Into::into),
             i_v_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: ad.map(|a| a.to_vec().into()),

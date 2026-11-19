@@ -17,7 +17,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     ttlv::KmipFlavor,
 };
 use cosmian_logger::log_init;
-use zeroize::Zeroizing;
 
 use crate::tests::ttlv_tests::get_client;
 
@@ -31,9 +30,7 @@ fn test_register_2_1() {
     let object = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
-            key_value: Some(KeyValue::ByteString(
-                Zeroizing::new(vec![1, 2, 3, 4]).into(),
-            )),
+            key_value: Some(KeyValue::ByteString(vec![1, 2, 3, 4].into())),
             key_compression_type: None,
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),

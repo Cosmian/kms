@@ -161,7 +161,7 @@ async fn rsa_encrypt(dek_uid: &str, owner: &str, kms: &Arc<KMS>, data: &[u8]) ->
         response.unique_identifier,
         UniqueIdentifier::TextString(dek_uid.to_owned())
     );
-    Ok(response.data.unwrap_or_default())
+    Ok(response.data.unwrap_or_default().to_vec())
 }
 
 async fn rsa_decrypt(

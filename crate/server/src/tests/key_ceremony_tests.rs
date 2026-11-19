@@ -1448,7 +1448,7 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
     );
 
     let iv = enc_resp.i_v_counter_nonce;
-    let ciphertext = enc_resp.data.unwrap_or_default();
+    let ciphertext = enc_resp.data.unwrap_or_default().to_vec();
     let tag = enc_resp.authenticated_encryption_tag;
 
     assert!(

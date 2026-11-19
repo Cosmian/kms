@@ -108,7 +108,7 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
         )
         .await?;
 
-    let ciphertext = encrypt_response.data.unwrap();
+    let ciphertext = encrypt_response.data.unwrap().to_vec();
     let iv = encrypt_response.i_v_counter_nonce;
 
     // Decrypt with trace level logging active
@@ -325,7 +325,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         )
         .await?;
 
-    let ciphertext = encrypt_response.data.unwrap();
+    let ciphertext = encrypt_response.data.unwrap().to_vec();
     let decrypt_response = kms
         .decrypt(
             Decrypt {

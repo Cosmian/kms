@@ -86,7 +86,6 @@ pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_AES_GMAC,
 ];
 
-#[derive(Debug)]
 pub enum Mechanism {
     AesKeyGen,
     AesCbc {
@@ -128,6 +127,48 @@ pub enum Mechanism {
     /// combinations are rejected as `MechanismInvalid`, mirroring the fact
     /// that the KMS backend only exposes the SHA-256 OAEP variant here.
     RsaOaep,
+}
+
+/// Prints the byte parameters (`iv`, `aad`) as lengths only, never their content.
+impl std::fmt::Debug for Mechanism {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AesKeyGen => f.write_str("AesKeyGen"),
+            Self::AesCbc { iv } => f.debug_struct("AesCbc").field("iv_len", &iv.len()).finish(),
+            Self::AesCbcPad { iv } => f
+                .debug_struct("AesCbcPad")
+                .field("iv_len", &iv.len())
+                .finish(),
+            Self::AesGcm { iv, aad } => f
+                .debug_struct("AesGcm")
+                .field("iv_len", &iv.len())
+                .field("aad_len", &aad.len())
+                .finish(),
+            Self::AesCmac => f.write_str("AesCmac"),
+            Self::AesGmac { iv } => f
+                .debug_struct("AesGmac")
+                .field("iv_len", &iv.len())
+                .finish(),
+            Self::Ecdsa => f.write_str("Ecdsa"),
+            Self::EdDsa => f.write_str("EdDsa"),
+            Self::RsaPkcs => f.write_str("RsaPkcs"),
+            Self::RsaPkcsSha1 => f.write_str("RsaPkcsSha1"),
+            Self::RsaPkcsSha256 => f.write_str("RsaPkcsSha256"),
+            Self::RsaPkcsSha384 => f.write_str("RsaPkcsSha384"),
+            Self::RsaPkcsSha512 => f.write_str("RsaPkcsSha512"),
+            Self::RsaPss {
+                digest_algorithm,
+                mask_generation_function,
+                salt_length,
+            } => f
+                .debug_struct("RsaPss")
+                .field("digest_algorithm", digest_algorithm)
+                .field("mask_generation_function", mask_generation_function)
+                .field("salt_length", salt_length)
+                .finish(),
+            Self::RsaOaep => f.write_str("RsaOaep"),
+        }
+    }
 }
 
 /// Parses a raw `CK_MECHANISM` into a [`Mechanism`].

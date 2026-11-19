@@ -4,6 +4,7 @@ mod kmip_2_1_tests;
 mod mongodb;
 mod mysql;
 mod proptest_roundtrip;
+mod redaction;
 mod serialize_deserialize;
 mod serializer_deserializer;
 mod ttlv_wire;

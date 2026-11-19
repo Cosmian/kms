@@ -166,7 +166,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 ))
             })?;
 
-        trace!("Refreshed user decryption key {usk:?}");
+        trace!("Refreshed user decryption key");
 
         let user_decryption_key_bytes = usk.serialize().map_err(|e| {
             CryptoError::Kmip(format!("covercrypt: failed serializing the user key: {e}"))

@@ -872,7 +872,7 @@ async fn kms_encrypt_async(
     };
     debug!("kms_encrypt_async: ciphertext_len: {}", ciphertext.len());
     Ok(MessageEncryptionOutput {
-        ciphertext,
+        ciphertext: ciphertext.to_vec(),
         iv,
         tag,
     })
@@ -1367,7 +1367,7 @@ pub(crate) async fn kms_sign_async(
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters,
-        data: data_bytes.map(zeroize::Zeroizing::new).map(Into::into),
+        data: data_bytes.map(Into::into),
         digested_data: digested_data_bytes,
         correlation_value: None,
         init_indicator: None,

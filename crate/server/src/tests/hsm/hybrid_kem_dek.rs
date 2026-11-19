@@ -644,7 +644,7 @@ pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
                     .clone()
                     .unwrap_or_default()
                     .to_vec(),
-                response.data.clone().unwrap_or_default(),
+                response.data.clone().unwrap_or_default().to_vec(),
                 response
                     .authenticated_encryption_tag
                     .clone()

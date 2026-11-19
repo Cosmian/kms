@@ -340,6 +340,7 @@ async fn kmip_encrypt_dek(
     let response = kms.encrypt(encrypt_request, user).await?;
     response
         .data
+        .map(|data| data.to_vec())
         .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))
 }
 

@@ -535,7 +535,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
             return visitor.visit_str(&element.tag);
         }
         if let TTLValue::TextString(s) = &element.value {
-            trace!("... text string: value: {}", s);
+            // never log the value: it can be a credential password (see `SECRET_LEAF_TAGS`)
+            trace!("... text string: value of {} chars", s.len());
             visitor.visit_str(s)
         } else if let TTLValue::ByteString(bytes) = &element.value {
             // Some KMIP 2.1 interop vectors encode ShortUniqueIdentifier as a ByteString even though

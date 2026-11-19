@@ -143,7 +143,7 @@ impl TryFrom<CK_ATTRIBUTE_TYPE> for AttributeType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum Attribute {
     AlwaysAuthenticate(bool),
     AlwaysSensitive(bool),
@@ -190,6 +190,61 @@ pub enum Attribute {
     Verify(bool),
     VerifyRecover(bool),
     Wrap(bool),
+}
+
+/// Byte-array attributes (`CKA_VALUE`, private-key components, ...) can hold key material,
+/// so only their length is printed, never their content.
+impl std::fmt::Debug for Attribute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.attribute_type().to_string();
+        let mut tuple = f.debug_tuple(&name);
+        match self {
+            Self::Application(v)
+            | Self::Coefficient(v)
+            | Self::EcParams(v)
+            | Self::EcPoint(v)
+            | Self::Exponent1(v)
+            | Self::Exponent2(v)
+            | Self::Id(v)
+            | Self::Issuer(v)
+            | Self::Modulus(v)
+            | Self::Modifiable(v)
+            | Self::Prime1(v)
+            | Self::Prime2(v)
+            | Self::PrivateExponent(v)
+            | Self::PublicExponent(v)
+            | Self::SerialNumber(v)
+            | Self::Subject(v)
+            | Self::UniqueId(v)
+            | Self::Value(v) => tuple.field(&format_args!("<{} bytes>", v.len())),
+            Self::AlwaysAuthenticate(v)
+            | Self::AlwaysSensitive(v)
+            | Self::Decrypt(v)
+            | Self::Derive(v)
+            | Self::Encrypt(v)
+            | Self::Extractable(v)
+            | Self::NeverExtractable(v)
+            | Self::Private(v)
+            | Self::Sensitive(v)
+            | Self::Sign(v)
+            | Self::SignRecover(v)
+            | Self::Token(v)
+            | Self::Trusted(v)
+            | Self::Unwrap(v)
+            | Self::Verify(v)
+            | Self::VerifyRecover(v)
+            | Self::Wrap(v) => tuple.field(v),
+            Self::CertificateCategory(v)
+            | Self::CertificateType(v)
+            | Self::Class(v)
+            | Self::KeyType(v)
+            | Self::ModulusBits(v)
+            | Self::ProfileId(v)
+            | Self::ValueLen(v) => tuple.field(v),
+            Self::Label(v) => tuple.field(v),
+        };
+        tuple.finish()
+    }
 }
 
 impl Attribute {
@@ -315,7 +370,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
         } else {
             &[]
         };
-        trace!("Attribute::try_from: value: {val:?}");
+        trace!("Attribute::try_from: value: <{} bytes>", val.len());
 
         let attr = match attr_type {
             AttributeType::AlwaysAuthenticate => {

@@ -84,3 +84,18 @@ impl<const LENGTH: usize> Drop for Secret<LENGTH> {
 }
 
 impl<const LENGTH: usize> ZeroizeOnDrop for Secret<LENGTH> {}
+
+#[cfg(test)]
+mod tests {
+    use super::Secret;
+
+    #[test]
+    fn debug_never_prints_secret_bytes() {
+        let secret = Secret::<16>::from_unprotected_bytes(&mut [0xAB; 16]);
+        for rendered in [format!("{secret:?}"), format!("{secret:#?}")] {
+            assert_eq!(rendered, "Secret(<16 bytes>)");
+            assert!(!rendered.contains("171"));
+            assert!(!rendered.to_lowercase().contains("ab"));
+        }
+    }
+}

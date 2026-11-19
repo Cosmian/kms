@@ -556,7 +556,7 @@ async fn test_gpg_public_only_import_then_kms_encrypts() {
     let sign_res = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(kms_uid.clone())),
-            data: Some(zeroize::Zeroizing::new(b"hello".to_vec()).into()),
+            data: Some(b"hello".to_vec().into()),
             ..Sign::default()
         })
         .await;
@@ -594,7 +594,7 @@ async fn test_gpg_protected_key_import_cannot_sign() {
     let sign_res = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(kms_uid.clone())),
-            data: Some(zeroize::Zeroizing::new(b"cannot sign".to_vec()).into()),
+            data: Some(b"cannot sign".to_vec().into()),
             ..Sign::default()
         })
         .await;
@@ -1166,7 +1166,7 @@ async fn test_gpg_cannot_decrypt_with_wrong_key() {
         })
         .await
         .unwrap();
-    let cipher_a = enc_resp.data.unwrap();
+    let cipher_a = enc_resp.data.unwrap().to_vec();
 
     let cipher_file = gpg_home.path().join("cipher_a.gpg");
     fs::write(&cipher_file, &cipher_a).unwrap();
@@ -1368,7 +1368,7 @@ async fn test_pgp_sign_rejects_streaming() {
     let sign_res = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            data: Some(zeroize::Zeroizing::new(b"chunk".to_vec()).into()),
+            data: Some(b"chunk".to_vec().into()),
             init_indicator: Some(true),
             ..Sign::default()
         })

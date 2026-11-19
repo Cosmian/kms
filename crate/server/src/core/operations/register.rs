@@ -299,7 +299,6 @@ mod tests {
         use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
             Activate, Encrypt, MAC,
         };
-        use zeroize::Zeroizing;
 
         let kms = test_kms().await?;
         let owner = UserId::from("mdo-negative@example.com");
@@ -346,7 +345,7 @@ mod tests {
             .encrypt(
                 Encrypt {
                     unique_identifier: Some(uid.clone()),
-                    data: Some(Zeroizing::new(b"secret".to_vec()).into()),
+                    data: Some(b"secret".to_vec().into()),
                     ..Encrypt::default()
                 },
                 &owner,

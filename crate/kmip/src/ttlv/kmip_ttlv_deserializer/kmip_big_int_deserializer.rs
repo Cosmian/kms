@@ -386,3 +386,22 @@ impl<'de> SeqAccess<'de> for KmipBigIntDeserializer {
         seed.deserialize(self).map(Some)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use num_bigint_dig::{BigInt, Sign};
+
+    use super::KmipBigIntDeserializer;
+    use crate::ttlv::KmipBigInt;
+
+    #[test]
+    fn debug_prints_the_limb_count_only() {
+        let limbs = [0xF123_4567_u32, 0xE0DE_ADBE, 0x1234_5678];
+        let bytes: Vec<u8> = limbs.iter().flat_map(|l| l.to_be_bytes()).collect();
+        let big = KmipBigInt::from(BigInt::from_bytes_be(Sign::Plus, &bytes));
+        let deserializer = KmipBigIntDeserializer::instantiate(&big).unwrap();
+        for out in [format!("{deserializer:?}"), format!("{deserializer:#?}")] {
+            assert_eq!(out, "KmipBigIntDeserializer(<3 limbs>)");
+        }
+    }
+}

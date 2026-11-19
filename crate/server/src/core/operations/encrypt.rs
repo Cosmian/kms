@@ -219,7 +219,7 @@ impl CryptoOpSpec for EncryptOp {
         );
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            data: Some(encrypted_content.ciphertext),
+            data: Some(encrypted_content.ciphertext.into()),
             i_v_counter_nonce: encrypted_content.iv.map(Into::into),
             correlation_value: request.correlation_value.clone(),
             authenticated_encryption_tag: encrypted_content.tag.map(Into::into),
@@ -353,7 +353,7 @@ pub(super) fn encrypt_bulk(
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 item_request.data = Some(plaintext.into());
                 let response = encrypt_with_public_key(&item_request, server_params, owm, rng)?;
-                ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
+                ciphertexts.push(response.data.unwrap_or_default().into());
             }
         }
         Object::Certificate(Certificate {
@@ -369,7 +369,7 @@ pub(super) fn encrypt_bulk(
                     certificate_value,
                     rng,
                 )?;
-                ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
+                ciphertexts.push(response.data.unwrap_or_default().into());
             }
         }
         other => kms_bail!(KmsError::NotSupported(format!(
@@ -383,7 +383,7 @@ pub(super) fn encrypt_bulk(
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         // ciphertexts are not secret: move the buffer out instead of copying it
-        data: Some(std::mem::take(&mut *serialized)),
+        data: Some(std::mem::take(&mut *serialized).into()),
         i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,
@@ -446,7 +446,7 @@ fn encrypt_with_symmetric_key(
         .map_err(|e| KmsError::CryptographicError(format!("FPE encrypt failed: {e}")))?;
         return Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(ciphertext),
+            data: Some(ciphertext.into()),
             i_v_counter_nonce: None,
             correlation_value: request.correlation_value.clone(),
             authenticated_encryption_tag: None,
@@ -493,7 +493,7 @@ fn encrypt_with_symmetric_key(
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(ciphertext),
+        data: Some(ciphertext.into()),
         // KMIP 2.1 Table 215: the IV is returned only when the server generated it.
         i_v_counter_nonce: generated_nonce.then(|| nonce.into_owned()).map(Into::into),
         correlation_value: None,
@@ -855,7 +855,7 @@ fn encrypt_multi_part(
     )?;
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: (!data.is_empty()).then_some(data),
+        data: (!data.is_empty()).then(|| data.into()),
         i_v_counter_nonce: nonce.map(Into::into),
         correlation_value,
         authenticated_encryption_tag: tag.map(Into::into),
@@ -1069,7 +1069,7 @@ fn kem_encrypt_response(
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(pack_kem_encapsulation(shared_secret, encapsulation)?.to_vec()),
+        data: Some(pack_kem_encapsulation(shared_secret, encapsulation)?.into()),
         i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,
@@ -1116,7 +1116,7 @@ fn encrypt_with_pkey(
     };
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_owned()),
-        data: Some(ciphertext),
+        data: Some(ciphertext.into()),
         i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,

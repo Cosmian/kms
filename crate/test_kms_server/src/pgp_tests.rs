@@ -249,7 +249,7 @@ async fn test_pgp_encrypt_decrypt_rsa() {
         ..Encrypt::default()
     };
     let enc_resp = client.encrypt(enc_req).await.unwrap();
-    let ciphertext = enc_resp.data.expect("ciphertext present");
+    let ciphertext = enc_resp.data.expect("ciphertext present").to_vec();
     assert_ne!(ciphertext.len(), 0);
     assert_ne!(&ciphertext[..], plaintext);
 
@@ -282,7 +282,7 @@ async fn test_pgp_encrypt_decrypt_ed25519() {
         ..Encrypt::default()
     };
     let enc_resp = client.encrypt(enc_req).await.unwrap();
-    let ciphertext = enc_resp.data.expect("ciphertext present");
+    let ciphertext = enc_resp.data.expect("ciphertext present").to_vec();
     assert_ne!(ciphertext.len(), 0);
     assert_ne!(&ciphertext[..], plaintext);
 

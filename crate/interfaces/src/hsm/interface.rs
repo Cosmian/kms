@@ -184,7 +184,6 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
 
 /// RSA private key value representation
 /// All values are in big-endian format
-#[derive(Debug)]
 pub struct RsaPrivateKeyMaterial {
     pub modulus: Vec<u8>,
     pub public_exponent: Vec<u8>,
@@ -194,6 +193,15 @@ pub struct RsaPrivateKeyMaterial {
     pub exponent_1: Zeroizing<Vec<u8>>,
     pub exponent_2: Zeroizing<Vec<u8>>,
     pub coefficient: Zeroizing<Vec<u8>>,
+}
+
+/// Prints only the modulus size: the private components must never reach the logs.
+impl std::fmt::Debug for RsaPrivateKeyMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RsaPrivateKeyMaterial")
+            .field("modulus_len", &self.modulus.len())
+            .finish_non_exhaustive()
+    }
 }
 
 /// RSA public key value representation
@@ -206,10 +214,19 @@ pub struct RsaPublicKeyMaterial {
 
 /// EC private key value representation.
 /// `d` is the private scalar in big-endian format; `curve` identifies the NIST curve.
-#[derive(Debug)]
 pub struct EcPrivateKeyMaterial {
     pub curve: EcCurve,
     pub d: Zeroizing<Vec<u8>>,
+}
+
+/// Prints only the curve and the scalar length: `d` must never reach the logs.
+impl std::fmt::Debug for EcPrivateKeyMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EcPrivateKeyMaterial")
+            .field("curve", &self.curve)
+            .field("d_len", &self.d.len())
+            .finish()
+    }
 }
 
 /// EC public key value representation.
@@ -221,13 +238,28 @@ pub struct EcPublicKeyMaterial {
 }
 
 /// Key material representation
-#[derive(Debug)]
 pub enum KeyMaterial {
     AesKey(Zeroizing<Vec<u8>>),
     RsaPrivateKey(RsaPrivateKeyMaterial),
     RsaPublicKey(RsaPublicKeyMaterial),
     EcPrivateKey(EcPrivateKeyMaterial),
     EcPublicKey(EcPublicKeyMaterial),
+}
+
+/// Prints the variant and sizes only: the `AesKey` bytes must never reach the logs.
+impl std::fmt::Debug for KeyMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AesKey(key) => f
+                .debug_tuple("AesKey")
+                .field(&format_args!("<{} bytes>", key.len()))
+                .finish(),
+            Self::RsaPrivateKey(key) => f.debug_tuple("RsaPrivateKey").field(key).finish(),
+            Self::RsaPublicKey(key) => f.debug_tuple("RsaPublicKey").field(key).finish(),
+            Self::EcPrivateKey(key) => f.debug_tuple("EcPrivateKey").field(key).finish(),
+            Self::EcPublicKey(key) => f.debug_tuple("EcPublicKey").field(key).finish(),
+        }
+    }
 }
 
 /// HSM object representation

@@ -95,7 +95,8 @@ impl EncryptAction {
 
         data = encrypt_response
             .data
-            .context("The encrypted data are empty")?;
+            .context("The encrypted data are empty")?
+            .to_vec();
 
         // Write the encrypted data
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {

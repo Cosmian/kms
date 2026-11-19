@@ -65,10 +65,10 @@ impl ResponseMessage {
                     Operation::EncryptResponse(response) => response
                         .data
                         .as_ref()
+                        .map(|data| data.to_vec())
                         .ok_or_else(|| {
                             KmipError::Default("Missing data in Encrypt Response".to_owned())
-                        })
-                        .cloned(),
+                        }),
                     Operation::HashResponse(response) => response
                         .data
                         .as_ref()

@@ -77,7 +77,8 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, &request).await?;
     let _encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     Ok(())
 }
@@ -122,7 +123,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, request).await?;
     let encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     // Create a user decryption key
     let udk_tag = "udk";
@@ -174,7 +176,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, &request).await?;
     let encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     // Create a user decryption key
     let udk1_tag = "udk1";
@@ -284,7 +287,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, &request).await?;
     let encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
     let request = decrypt_request(

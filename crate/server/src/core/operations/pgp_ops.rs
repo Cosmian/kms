@@ -281,7 +281,7 @@ mod imp {
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(ciphertext),
+            data: Some(ciphertext.into()),
             i_v_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: None,

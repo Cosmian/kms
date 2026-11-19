@@ -163,7 +163,7 @@ pub(super) async fn symmetric_encrypt(
     );
     Ok([
         response.i_v_counter_nonce.unwrap_or_default().to_vec(),
-        response.data.unwrap_or_default(),
+        response.data.unwrap_or_default().to_vec(),
         response
             .authenticated_encryption_tag
             .unwrap_or_default()

@@ -634,6 +634,7 @@ fn infer_hmac_hashing_algorithm(
 mod tests {
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
+            SensitiveBytes,
             kmip_0::kmip_types::{
                 BlockCipherMode, CryptographicUsageMask, ErrorReason, HashingAlgorithm,
             },
@@ -1263,7 +1264,7 @@ mod tests {
                             block_cipher_mode: Some(BlockCipherMode::GCM),
                             ..Default::default()
                         }),
-                        data: Some(zeroize::Zeroizing::new(Vec::new()).into()),
+                        data: Some(SensitiveBytes::default()),
                         i_v_counter_nonce: Some(iv.to_vec().into()),
                         authenticated_encryption_additional_data: Some(
                             b"hello world".to_vec().into(),

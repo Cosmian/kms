@@ -255,7 +255,8 @@ impl EncryptAction {
         // extract the ciphertext and write it
         let data = encrypt_response
             .data
-            .context("The encrypted data is empty")?;
+            .context("The encrypted data is empty")?
+            .to_vec();
 
         // extract the authentication tag (only mandatory for AEAD modes: GCM, GCM-SIV, ChaCha20-Poly1305)
         // Note: For server_side_encrypt, the algorithm used is determined by the cryptographic_parameters

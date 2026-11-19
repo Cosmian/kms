@@ -631,7 +631,6 @@ mod tests {
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     };
-    use zeroize::Zeroizing;
 
     use super::*;
 
@@ -676,7 +675,7 @@ mod tests {
         let kb = KeyBlock {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0_u8; 8]).into())),
+            key_value: Some(KeyValue::ByteString(vec![0_u8; 8].into())),
             cryptographic_algorithm: None,
             cryptographic_length: None,
             key_wrapping_data: None,

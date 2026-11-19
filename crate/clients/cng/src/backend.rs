@@ -536,7 +536,7 @@ pub fn encrypt_data(
             hashing_algorithm: hash_alg,
             ..Default::default()
         };
-        // Encrypt.data is Option<Zeroizing<Vec<u8>>>
+        // Encrypt.data is Option<SensitiveBytes>
         let encrypt_op = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             cryptographic_parameters: Some(params),
@@ -548,6 +548,7 @@ pub fn encrypt_data(
             .await
             .map_err(|e| KspError::Backend(e.to_string()))?;
         resp.data
+            .map(|data| data.to_vec())
             .ok_or_else(|| KspError::Backend("KMS encrypt returned no data".to_owned()))
     })
 }

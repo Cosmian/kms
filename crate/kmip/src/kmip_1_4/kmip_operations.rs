@@ -1754,7 +1754,7 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
-            data: value.data,
+            data: value.data.map(|d| d.to_vec()),
             i_v_counter_nonce: value.i_v_counter_nonce,
             correlation_value: value.correlation_value,
             authenticated_encryption_tag: value.authenticated_encryption_tag,

@@ -21,12 +21,15 @@ pub struct TTLV {
     pub value: TTLValue,
 }
 
-/// Leaf tags whose value is a secret even when it is a `TextString`.
-const SECRET_LEAF_TAGS: [&str; 4] = [
+/// Leaf tags whose value is a secret even when it is a `TextString`. `LinkedObjectIdentifier` is
+/// there because the target of a `PKCS12PasswordLink` is the PKCS#12 password (or the id of the
+/// secret holding it) and a leaf does not know the type of the link it belongs to.
+const SECRET_LEAF_TAGS: [&str; 5] = [
     "Password",
     "OneTimePassword",
     "HashedPassword",
     "TicketValue",
+    "LinkedObjectIdentifier",
 ];
 
 /// `Debug` never prints the value of a secret leaf tag (credential passwords), on top of the
@@ -44,6 +47,7 @@ impl std::fmt::Debug for TTLV {
         d.finish()
     }
 }
+
 impl TTLV {
     /// Constructs a TTLV node with a borrowed static tag.
     #[must_use]
