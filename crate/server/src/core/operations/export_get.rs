@@ -431,9 +431,20 @@ pub(crate) async fn export_get(
             .await?;
             pgp_ops::pgp_export_convert(&mut owm, request.key_format_type)?;
         }
-        ObjectType::OpaqueObject | ObjectType::SplitKey => {
-            // Opaque Objects and SplitKey shares are returned as-is. KMIP does not define
-            // alternate export formats for these types; no wrapping/unwrapping semantics apply.
+        ObjectType::OpaqueObject => {
+            // Opaque Objects are returned as-is. KMIP does not define alternate export formats
+            // for this type; no wrapping/unwrapping semantics apply.
+        }
+        ObjectType::SplitKey => {
+            // Shares are stored wrapped by the server KEK: honour `NotWrapped` like other keys.
+            Box::pin(unwrap_if_requested(
+                &mut owm,
+                &request.key_wrap_type,
+                kms,
+                user,
+                ObjectType::SplitKey,
+            ))
+            .await?;
         }
         ObjectType::CertificateRequest => {
             kms_bail!(

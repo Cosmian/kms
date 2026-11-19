@@ -1123,8 +1123,17 @@ pub async fn prepare_kms_server(
         .and_then(AuthVerifierConfig::saml_session_realm)
         .map(Arc::from);
 
+    // `X-Vault-Token` counts as configured authentication on every scope: a request without
+    // any credential is rejected instead of running as `default_username`.
+    let use_vault_token_auth =
+        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
+    let use_any_auth = use_vault_token_auth
+        || use_jwt_auth
+        || use_cert_auth
+        || use_api_token_auth
+        || use_auth_verifier;
     // Insecure defaults remain supported for development; make them visible in production logs.
-    if !(use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier) {
+    if !use_any_auth {
         cosmian_logger::warn!(
             "SECURITY: no authentication method is configured: every request is served as the \
              default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for \
@@ -1348,8 +1357,6 @@ pub async fn prepare_kms_server(
     //
     // When `vault_api_enabled = false` or `vault_auth_verifier_url` is absent, a dummy
     // context is created but never invoked: `Condition::new(false, …)` is a no-op.
-    let use_vault_token_auth =
-        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
     let spire_cache = SpireTokenCache::new(kms_server.params.vault.token_cache_ttl_secs);
     let spire_auth_verifier_url: Url = match &kms_server.params.vault.auth_verifier_url {
         Some(url) => url.clone(),
@@ -1465,11 +1472,6 @@ pub async fn prepare_kms_server(
             // `data/`/`metadata/` routes (`kv::mount_guard`), so they cannot shadow another scope.
             // They are registered before every unguarded scope (`/google_cse`, `/ms_dke`, ...),
             // which would otherwise swallow a mount of the same name.
-            let use_any_auth = use_vault_token_auth
-                || use_jwt_auth
-                || use_cert_auth
-                || use_api_token_auth
-                || use_auth_verifier;
             let kv_mount = &kms_server_for_http.params.kv.mount;
             let native_path = format!("/{kv_mount}");
             let v1_path = format!("/v1/{kv_mount}");
@@ -1526,7 +1528,7 @@ pub async fn prepare_kms_server(
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                    use_any_auth,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -1618,18 +1620,9 @@ pub async fn prepare_kms_server(
             // Cors must run first to handle OPTIONS preflight before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
-            //
-            // vault_token_optional_middleware is intentionally *optional*: it enriches the
-            // request identity when `X-Vault-Token` is present but does NOT mandate that a
-            // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
-            // the endpoint actually require authentication.
-            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
             let tokenize_scope = wrap_native_auth(
                 web::scope("/tokenize").app_data(web::JsonConfig::default().limit(65_536)),
-                Condition::new(
-                    use_any_auth,
-                    ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
-                ),
+                ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
                 &native_auth,
             )
                 .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
@@ -1912,7 +1905,7 @@ pub async fn prepare_kms_server(
             ),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                use_any_auth,
             ),
             &native_auth,
         )
@@ -1941,7 +1934,7 @@ pub async fn prepare_kms_server(
             web::scope(""),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                use_any_auth,
             ),
             &native_auth,
         )
@@ -2655,6 +2648,57 @@ mod tests {
             test::call_service(&app, tokenless).await.status(),
             StatusCode::OK
         );
+    }
+
+    /// Native-auth POST endpoints that exist only in non-FIPS builds.
+    #[cfg(feature = "non-fips")]
+    const TOKENIZE: &[&str] = &["/tokenize/hash"];
+    #[cfg(not(feature = "non-fips"))]
+    const TOKENIZE: &[&str] = &[];
+
+    /// With the Vault token as the only configured method, a request without credentials must
+    /// be rejected on every authenticated scope instead of running as `default_username`.
+    #[actix_web::test]
+    async fn vault_token_only_auth_rejects_requests_without_credentials() {
+        use reqwest::{StatusCode, header::CONTENT_TYPE};
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.socket_server.start = false;
+        config.vault.api_enabled = true;
+        config.vault.auth_verifier_url = Some("http://127.0.0.1:9".to_owned());
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let status = |response: reqwest::Result<reqwest::Response>| response.unwrap().status();
+        assert_eq!(
+            status(client.get(format!("{base}/version")).send().await),
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(client.get(format!("{base}/me")).send().await),
+            StatusCode::UNAUTHORIZED
+        );
+        let posts = ["/kmip/2_1", "/v1/crypto/keys", "/v1/secrets/password"];
+        for path in posts.iter().chain(TOKENIZE) {
+            let response = client
+                .post(format!("{base}{path}"))
+                .header(CONTENT_TYPE, "application/json")
+                .body("{}")
+                .send()
+                .await;
+            assert_eq!(status(response), StatusCode::UNAUTHORIZED, "{path}");
+        }
+        handle.stop(false).await;
     }
 }
 

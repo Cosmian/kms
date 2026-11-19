@@ -426,8 +426,30 @@ export VAULT_APPROLE_SECRET_ID="<secret_id>"
 ### 0. PKI CA key provisioning (prerequisite)
 
 Before SPIRE can sign its intermediate CA, the KMS must hold a CA key with the tag
-configured in `--vault-pki-ca-key-label` (default: `vault_pki_ca`). Create it once with
-the `ckms` CLI:
+configured in `--vault-pki-ca-key-label` (default: `vault_pki_ca`).
+
+When the Vault token verifier is the only authentication method, the KMS answers `401`
+to token-less requests, so `ckms` must authenticate as the server admin
+(`default_username`, e.g. `admin`) with an mTLS client certificate whose CN equals that
+name. Make the KMS trust the CA that signed it, then point `ckms` at the certificate:
+
+```toml
+# kms.toml
+default_username = "admin"
+
+[tls]
+clients_ca_cert_file = "/etc/cosmian/clients-ca.crt"   # CA that signed the admin client cert
+```
+
+```toml
+# ckms.toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+tls_client_pem_cert_path = "/etc/cosmian/admin.crt"   # CN=admin, extendedKeyUsage=clientAuth
+tls_client_pem_key_path  = "/etc/cosmian/admin.key"
+```
+
+Create the key once with the `ckms` CLI:
 
 ```bash
 # Generate a P-384 key pair and a self-signed root CA certificate in KMS.

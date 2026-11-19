@@ -42,7 +42,10 @@ use crate::{
     middlewares::UserId,
     result::KResult,
     routes::ocsp,
-    tests::test_utils::{get_tmp_sqlite_path, https_clap_config, test_kms, test_kms_with_config},
+    tests::test_utils::{
+        assert_stored_wrapped_by_kek, get_tmp_sqlite_path, https_clap_config, test_kms,
+        test_kms_with_config, test_kms_with_kek,
+    },
 };
 
 const CA_EXT: &[u8] = b"[v3_ca]
@@ -370,5 +373,31 @@ async fn ocsp_ignores_forged_and_copied_certificates_linked_to_the_ca() -> KResu
         ocsp_status(&kms, &ca, &active_leaf).await?,
         OcspCertStatus::GOOD
     );
+    Ok(())
+}
+
+/// With a server key encryption key configured, the key pair Certify generates is stored
+/// wrapped, and the wrapped CA key still signs.
+#[tokio::test]
+async fn certify_generated_key_pair_is_wrapped_by_the_server_kek() -> KResult<()> {
+    let alice = user("alice@example.com");
+    let (kms, kek_id) = test_kms_with_kek(alice.as_str(), https_clap_config).await?;
+    let (ca_id, ca_sk_id) = make_ca(&kms, &alice).await?;
+    assert_stored_wrapped_by_kek(&kms, &ca_sk_id, &kek_id).await;
+    let ca_pk_id = kms
+        .get_attributes(GetAttributes::from(ca_id.clone()), &alice)
+        .await?
+        .attributes
+        .get_link(LinkType::PublicKeyLink)
+        .expect("CA certificate has a PublicKeyLink")
+        .to_string();
+    assert_stored_wrapped_by_kek(&kms, &ca_pk_id, &kek_id).await;
+    certify(
+        &kms,
+        &alice,
+        "C=FR, O=KMS Test, CN=Leaf",
+        Some((&ca_id, &ca_sk_id)),
+    )
+    .await?;
     Ok(())
 }

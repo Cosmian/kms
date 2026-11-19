@@ -32,7 +32,7 @@ use self::{
 use crate::{
     core::{KMS, operations::check_role_permission},
     error::KmsError,
-    middlewares::{AuthMethod, UserId, reject_reserved_service_identity},
+    middlewares::{UserId, reject_reserved_service_identity},
     result::KResult,
     routes::parse_duration_secs,
 };
@@ -271,30 +271,9 @@ pub(crate) async fn generate_password(
 /// The caller's identity; never anonymous while authentication is configured, never a
 /// reserved service identity.
 fn authenticated_user(kms: &KMS, request: &HttpRequest) -> KResult<UserId> {
-    require_authenticated_caller(kms, request)?;
     let user = kms.get_user(request);
     reject_reserved_service_identity(&user)?;
     Ok(user)
-}
-
-/// Reject a request that carries no real identity while authentication is configured.
-///
-/// The default scope only enforces native authentication (JWT, mTLS, API token, Auth Verifier):
-/// when `X-Vault-Token` is the sole configured method its extractor is optional, so a request
-/// without a token would otherwise run as `default_username`.
-fn require_authenticated_caller(kms: &KMS, request: &HttpRequest) -> KResult<()> {
-    let vault_token_auth =
-        kms.params.vault.api_enabled && kms.params.vault.auth_verifier_url.is_some();
-    let anonymous = matches!(
-        kms.get_auth_method(request),
-        None | Some(AuthMethod::DefaultUser)
-    );
-    if vault_token_auth && anonymous && !kms.params.force_default_username {
-        return Err(KmsError::Unauthorized(
-            "authentication is required for this endpoint".to_owned(),
-        ));
-    }
-    Ok(())
 }
 
 /// A role can be used by the users it lists and by active Crypto Officers, which manage roles.
@@ -412,7 +391,7 @@ mod tests {
     use ssh_key::Certificate;
 
     use super::*;
-    use crate::middlewares::AuthenticatedUser;
+    use crate::middlewares::{AuthMethod, AuthenticatedUser};
 
     const TEST_USER_HEADER: &str = "x-test-user";
 
@@ -989,75 +968,6 @@ mod tests {
         assert_eq!(
             stored.allowed_users,
             vec!["alice".to_owned(), "bob".to_owned()]
-        );
-        Ok(())
-    }
-
-    async fn vault_token_kms() -> KResult<Arc<KMS>> {
-        let mut config = crate::tests::test_utils::https_clap_config();
-        config.vault.api_enabled = true;
-        config.vault.auth_verifier_url = Some("http://127.0.0.1:9".to_owned());
-        crate::tests::test_utils::test_kms_with_config(config).await
-    }
-
-    #[actix_web::test]
-    async fn vault_token_deployment_rejects_anonymous_callers() -> KResult<()> {
-        let kms = vault_token_kms().await?;
-        let anonymous = actix_test::TestRequest::default().to_http_request();
-        assert!(matches!(
-            require_authenticated_caller(&kms, &anonymous),
-            Err(KmsError::Unauthorized(_))
-        ));
-        let default_user = actix_test::TestRequest::default().to_http_request();
-        default_user.extensions_mut().insert(AuthenticatedUser {
-            username: UserId::from(kms.params.default_username.as_str()),
-            auth_method: AuthMethod::DefaultUser,
-        });
-        assert!(matches!(
-            require_authenticated_caller(&kms, &default_user),
-            Err(KmsError::Unauthorized(_))
-        ));
-        let authenticated = actix_test::TestRequest::default().to_http_request();
-        authenticated.extensions_mut().insert(AuthenticatedUser {
-            username: UserId::from("rotator"),
-            auth_method: AuthMethod::SpireToken,
-        });
-        assert!(matches!(
-            require_authenticated_caller(&kms, &authenticated),
-            Ok(())
-        ));
-        Ok(())
-    }
-
-    #[actix_web::test]
-    async fn password_endpoint_requires_a_token_when_vault_auth_is_configured() -> KResult<()> {
-        let kms = vault_token_kms().await?;
-        let app = actix_test::init_service(
-            App::new()
-                .app_data(Data::new(kms))
-                .wrap(from_fn(inject_test_user))
-                .service(generate_password),
-        )
-        .await;
-        let anonymous = actix_test::TestRequest::post()
-            .uri("/v1/secrets/password")
-            .insert_header((actix_web::http::header::CONTENT_TYPE, "application/json"))
-            .set_payload("{}")
-            .to_request();
-        assert_eq!(
-            actix_test::call_service(&app, anonymous).await.status(),
-            StatusCode::UNAUTHORIZED
-        );
-        let authenticated = json_request(
-            actix_test::TestRequest::post(),
-            "/v1/secrets/password",
-            "rotator",
-            &serde_json::json!({}),
-        )
-        .to_request();
-        assert_eq!(
-            actix_test::call_service(&app, authenticated).await.status(),
-            StatusCode::OK
         );
         Ok(())
     }
