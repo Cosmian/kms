@@ -46,7 +46,7 @@ use openssl::{
     hash::{Hasher, MessageDigest},
     ssl::SslAcceptorBuilder,
 };
-use tokio::{runtime::Handle, task::JoinHandle, try_join};
+use tokio::{runtime::Handle, try_join};
 use url::Url;
 
 #[cfg(feature = "non-fips")]
@@ -573,14 +573,13 @@ pub async fn start_kms_server(
     }
 
     // Handle sockets
-    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+    let ss_command_tx = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
-        let socket_server_handle =
-            start_socket_server(kms_server.clone(), rx, pre_bound_socket_listener)?;
-        (Some(tx), Some(socket_server_handle))
+        start_socket_server(&kms_server, rx, pre_bound_socket_listener)?;
+        Some(tx)
     } else {
-        (None, None)
+        None
     };
 
     // Log the server configuration
@@ -631,18 +630,19 @@ pub async fn start_kms_server(
 /// - The server fails to run
 ///
 /// # Returns
-/// * a `JoinHandle<()>` that represents the socket server thread.
+/// * `Ok(())` once the socket server is listening. Its task is kept in `KMS::socket_server_task`
+///   so that `GET /health` can report when it ends.
 fn start_socket_server(
-    kms_server: Arc<KMS>,
+    kms_server: &Arc<KMS>,
     command_receiver: mpsc::Receiver<KResult<()>>,
     pre_bound_socket_listener: Option<std::net::TcpListener>,
-) -> KResult<JoinHandle<()>> {
+) -> KResult<()> {
     // Start the socket server
     let socket_server =
         SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
     let tokio_handle = Handle::current();
     let socket_server_handle = socket_server.start_threaded(
-        kms_server,
+        kms_server.clone(),
         move |username, request, kms_server| {
             trace!("request: {username} ({} bytes)", request.len());
             // Handle the TTLV bytes received from the socket server
@@ -655,7 +655,9 @@ fn start_socket_server(
         command_receiver,
         pre_bound_socket_listener,
     )?;
-    Ok(socket_server_handle)
+    // The socket server is started once per KMS: a second handle could only be a duplicate.
+    drop(kms_server.socket_server_task.set(socket_server_handle));
+    Ok(())
 }
 
 /// Start an HTTP(S) KMS server

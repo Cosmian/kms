@@ -307,6 +307,16 @@ pub(crate) async fn test_app(
             .expect("cannot instantiate KMS server"),
     );
 
+    // This in-process app starts no KMIP socket server: a stand-in task keeps `/health` from
+    // reporting the enabled socket server as stopped.
+    if server_params.start_socket_server {
+        drop(
+            kms_server
+                .socket_server_task
+                .set(tokio::spawn(std::future::pending::<()>())),
+        );
+    }
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)

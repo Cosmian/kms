@@ -5,7 +5,8 @@ When several KMS nodes share one PostgreSQL or MySQL/MariaDB database (see
 
 - each background job runs on **one node at a time**;
 - each node publishes a **heartbeat**, so the cluster can list its live nodes;
-- `GET /cluster/status` shows the live nodes and `GET /health` reports the state of the database and of each HSM.
+- `GET /cluster/status` shows the live nodes and `GET /health` reports the state of the database, of each HSM and of the
+  KMIP socket server.
 
 No configuration is needed: coordination starts as soon as two nodes use the same database.
 
@@ -145,25 +146,49 @@ status and the state and latency of each dependency:
 
 | Global status | HTTP code | Meaning |
 | ------------- | --------- | ------- |
-| `UP` | 200 | The database and every configured HSM answer. |
-| `DEGRADED` | 200 | The database answers, but at least one HSM does not. |
+| `UP` | 200 | The database, every configured HSM and the KMIP socket server (when enabled) are fine. |
+| `DEGRADED` | 200, or 503 with `?strict=true` | The database answers, but at least one HSM does not, or the KMIP socket server has stopped. |
 | `DOWN` | 503 | The database check fails, or does not answer within 2 seconds. |
 
-Example response from a node with one HSM:
+Example response from a node with one HSM and the KMIP socket server enabled:
 
 ```json
-{"status":"UP","latency_ms":3,"dependencies":{"database":{"name":"postgres","status":"UP","latency_ms":2},"hsm":[{"name":"hsm","status":"UP","latency_ms":0}]}}
+{"status":"UP","latency_ms":3,"dependencies":{"database":{"name":"postgres","status":"UP","latency_ms":2},"hsm":[{"name":"hsm","status":"UP","latency_ms":0}],"kmip":{"name":"kmip","status":"UP","latency_ms":0}}}
 ```
 
-With the HAProxy configuration of the [HAProxy and Keepalived](./haproxy_keepalived.md) page (`http-check expect
-status 200`), a `DEGRADED` node stays in the load-balancing pool, so it keeps serving the requests that do not use
-the failing HSM.
+By default a `DEGRADED` node answers `200`, so with the HAProxy configuration of the
+[HAProxy and Keepalived](./haproxy_keepalived.md) page (`http-check expect status 200`) it stays in the load-balancing
+pool and keeps serving the requests that do not use the failing HSM. To take such a node out of the pool, check
+`GET /health?strict=true` instead: it answers `503` for a `DEGRADED` node as well as for a `DOWN` one. The body is the
+same, so the failing dependency is still visible. In a test with HAProxy (`inter 1s fall 2 rise 2`), a node whose HSM
+returned an error answered `200` (`DEGRADED`) and stayed in the pool when HAProxy checked `GET /health`; when HAProxy
+checked `GET /health?strict=true`, the node was taken out of the pool about 2 seconds later, and the same happened to a
+node whose database stopped answering. A node came back in the pool about 2 seconds after its dependency answered
+again. During the database test, key creations through HAProxy kept succeeding.
+
+The `kmip` entry only appears when the KMIP socket server is enabled. It reports whether the socket server is still
+running: it does not open a connection to the KMIP port, so it does not detect a firewall or network problem in front
+of the port.
 
 Each HSM slot is probed with a bounded wait: a slot that does not answer within 2 seconds is reported `DOWN` (with the
 message `no answer within 2000 ms`), so `/health` never hangs and the node is `DEGRADED`. The answer of a slot is reused
 for 2 seconds, and at most one probe per slot runs at a time: while a probe is still waiting for the HSM, later
 `/health` calls report the slot `DOWN` without starting another one, so repeated health checks cannot exhaust the
 server's threads.
+
+The `message` of a `DOWN` dependency never carries the detail of the error (database driver text, host, user, PKCS#11
+return code): the public endpoint could otherwise show it to anyone who can reach the port, and the detail is written
+to the server log instead. The message is one of these fixed texts, and an HSM message is prefixed with `slot <id>:`:
+
+| Message | Meaning |
+| ------- | ------- |
+| `database check failed (details in the server log)` | the database check returned an error |
+| `the HSM returned an error (details in the server log)` | an HSM call returned an error |
+| `no answer within 2000 ms` | the database or the HSM slot did not answer in time |
+| `the previous probe is still waiting for the HSM` | an earlier probe of the slot has not ended yet |
+| `the KMIP socket server is not running (details in the server log)` | the socket server task has ended |
+
+Look for log lines containing `health check:` to see the detail.
 
 !!! note "HSM status depends on the PKCS#11 library"
     The HSM check asks each configured slot for its list of mechanisms. Some PKCS#11 libraries (for example

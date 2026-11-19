@@ -103,15 +103,18 @@ Because the KMS nodes are stateless, the **shared database is the source of trut
 (and periodically test restores) using your database engine's recommended procedures.
 In-memory object caches validate lifecycle state and security-sensitive attributes against the shared database using a short bounded revalidation interval (2 seconds by default). This preserves hot-path cache performance while bounding cross-node propagation lag when keys are revoked, deactivated, or destroyed on any node.
 
-### What `/health` tells a load balancer today
+### What `/health` tells a load balancer
 
 Every profile except the first uses `GET /health` on the HTTP(S) port (`9998` by default) to decide whether a node is usable:
 
-| Situation on the node | `/health` answers | Effect |
-| --------------------- | ----------------- | ------ |
-| The database is down, or silent for more than 2 seconds | `503` (`DOWN`) | the node leaves the pool |
-| An HSM does not answer | `200` (`DEGRADED`) | the node stays in the pool; requests that need the HSM fail on it |
-| The KMIP socket server is down, the HTTPS server answers | `200` (`UP`) | the node stays in the pool; KMIP clients fail on it |
+| Situation on the node | `GET /health` | `GET /health?strict=true` | Effect |
+| --------------------- | ------------- | ------------------------- | ------ |
+| The database is down, or silent for more than 2 seconds | `503` (`DOWN`) | `503` | the node leaves the pool |
+| An HSM does not answer | `200` (`DEGRADED`) | `503` | with `strict=true` the node leaves the pool; without, it stays and the requests that need the HSM fail on it |
+| The KMIP socket server has stopped, the HTTPS server answers | `200` (`DEGRADED`) | `503` | same as above, for KMIP clients |
+
+Use `?strict=true` when a node that cannot serve all its requests must not receive any. The body of the answer is the same
+in both cases. See [Cluster coordination](./cluster_coordination.md#get-health) for the details.
 
 ## Profile 1: single node
 
@@ -148,7 +151,7 @@ Use a managed load balancer of your cloud provider, in front of the nodes:
 
 - forward the KMIP port (`5696`) and the HTTPS port (`9998`) as plain TCP, so that TLS ends on the nodes and every node
   presents the same certificate;
-- check the nodes with `GET /health` and keep a node in the pool only on `200`.
+- check the nodes with `GET /health?strict=true` and keep a node in the pool only on `200`.
 
 Adding or removing a node does not change the address clients use.
 
@@ -189,8 +192,8 @@ flowchart TB
 The Keepalived instances of the nodes talk to each other with VRRP to agree on which node holds the VIP.
 
 Keepalived runs **on the KMS nodes themselves**, with no HAProxy. The nodes share a VIP: the MASTER node holds it and
-answers the clients, the other nodes wait. Each Keepalived checks the KMS of its own node with `GET /health`; when the
-check fails, that node gives up the VIP and another node takes it.
+answers the clients, the other nodes wait. Each Keepalived checks the KMS of its own node with
+`GET /health?strict=true`; when the check fails, that node gives up the VIP and another node takes it.
 
 Requirements:
 
@@ -209,7 +212,7 @@ global_defs {
 }
 
 vrrp_script chk_kms {
-    script "/usr/bin/curl -skf -m 2 -o /dev/null https://127.0.0.1:9998/health"
+    script "/usr/bin/curl -skf -m 2 -o /dev/null https://127.0.0.1:9998/health?strict=true"
     interval 2
     fall 2                              # 2 failed checks: the node leaves the VIP
     rise 2                              # 2 good checks: the node can hold the VIP again
@@ -247,8 +250,8 @@ Limits of this profile:
 - **Active/passive**: only the node holding the VIP serves clients; the others are spare. To spread the load, use
   profile 2 or 5.
 - An open KMIP connection is cut when the VIP moves: the client has to reconnect.
-- The check follows what [`/health` tells a load balancer today](#what-health-tells-a-load-balancer-today): a node whose
-  HSM fails, or whose KMIP socket server is down, keeps the VIP.
+- The check follows what [`/health` tells a load balancer](#what-health-tells-a-load-balancer): the script above uses
+  `?strict=true`, so a node whose HSM fails, or whose KMIP socket server has stopped, gives up the VIP.
 - It does not work on AWS: in a test, an address added to an instance's network interface was not reachable from the
   other instances of the same subnet. Use profile 2 there. Other public clouds were not tested.
 
@@ -261,7 +264,9 @@ HAProxy spreads the requests over all the nodes and stops sending requests to a 
 - **two or more HAProxy with Keepalived**: the same, with a VIP over the HAProxy nodes, so that no component is a single
   point of failure.
 
-The configuration of both is described in [HAProxy and Keepalived](./haproxy_keepalived.md).
+The configuration of both is described in [HAProxy and Keepalived](./haproxy_keepalived.md). Check the nodes with
+`GET /health?strict=true` to also take out the nodes that `/health` reports as `DEGRADED` (see
+[What `/health` tells a load balancer](#what-health-tells-a-load-balancer)).
 
 ## Database availability
 
