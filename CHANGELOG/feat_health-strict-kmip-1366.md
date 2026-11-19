@@ -17,5 +17,5 @@
 ## Documentation
 
 - The [Cluster coordination](documentation/docs/installation/cluster_coordination.md),
-  [Deployment profiles](documentation/docs/installation/deployment_profiles.md) and OpenAPI pages describe `strict` and
-  the `kmip` dependency. The Keepalived-only configuration uses `?strict=true`.
+  [High availability and deployment profiles](documentation/docs/installation/high_availability_mode.md) and OpenAPI
+  pages describe `strict` and the `kmip` dependency. The Keepalived-only configuration uses `?strict=true`.
