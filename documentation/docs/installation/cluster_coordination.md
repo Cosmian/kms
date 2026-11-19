@@ -147,7 +147,7 @@ status and the state and latency of each dependency:
 | ------------- | --------- | ------- |
 | `UP` | 200 | The database and every configured HSM answer. |
 | `DEGRADED` | 200 | The database answers, but at least one HSM does not. |
-| `DOWN` | 503 | The database does not answer, or does not answer within 2 seconds. |
+| `DOWN` | 503 | The database check fails, or does not answer within 2 seconds. |
 
 Example response from a node with one HSM:
 
@@ -195,4 +195,5 @@ Example response from a two-node cluster:
 
 ### Metric
 
-Each node exports the OpenTelemetry gauge `kms.cluster.nodes`: the number of live nodes, refreshed every 5 seconds.
+When OpenTelemetry metrics are enabled, each node exports the gauge `kms.cluster.nodes`: the number of live nodes,
+refreshed every 5 seconds. It is always 0 with Redis with Findex, which has no heartbeat.

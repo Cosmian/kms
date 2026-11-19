@@ -60,7 +60,7 @@ flowchart TD
 
 ### What `/health` tells a load balancer today
 
-Every profile except the first uses `GET /health` on the HTTPS port (`9998`) to decide whether a node is usable:
+Every profile except the first uses `GET /health` on the HTTP(S) port (`9998` by default) to decide whether a node is usable:
 
 | Situation on the node | `/health` answers | Effect |
 | --------------------- | ----------------- | ------ |
