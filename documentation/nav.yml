@@ -140,6 +140,7 @@ nav:
           - OpenSSH: integrations/openssh.md
           - SSH certificates and external secret rotation: integrations/ssh_certificates_and_secret_rotation.md
           - OpenBao (auto-unseal and KV store): integrations/openbao.md
+          - SOPS (Vault Transit and OpenPGP): integrations/sops.md
           - GnuPG:
               - OpenPGP keys: integrations/gnupg/openpgp.md
               - Smartcard (gnupg-pkcs11-scd): integrations/gnupg/smartcard.md
