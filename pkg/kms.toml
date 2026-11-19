@@ -294,7 +294,7 @@ rust_log = "info,cosmian_kms=info"
 # Do not log to stdout
 quiet = false
 
-# Log to syslog
+# Log to syslog (ignored on Windows, but accepted so that the shared `kms.toml` template loads)
 log_to_syslog = false
 
 # The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.

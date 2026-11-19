@@ -533,7 +533,7 @@ Options:
           [env: KMS_LOG_QUIET=]
 
       --log-to-syslog
-          Log to syslog
+          Log to syslog (ignored on Windows, but accepted so that the shared `kms.toml` template loads)
 
           [env: KMS_LOG_TO_SYSLOG=]
 
