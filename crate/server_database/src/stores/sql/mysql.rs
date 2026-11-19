@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -23,6 +24,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode, NoopClusterLockGuard},
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
@@ -95,11 +97,31 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
     Ok(ObjectWithMetadata::new(id, object, owner, state, attributes).with_version(version))
 }
 
+/// MySQL error codes meaning "this column / key already exists" (`ER_DUP_FIELDNAME`, `ER_DUP_KEYNAME`).
+const MYSQL_ALREADY_EXISTS_CODES: [u16; 2] = [1060, 1061];
+
+/// Set once the "`GET_LOCK` refused" warning has been logged, so a refusing server does not flood
+/// the log at every cron tick.
+static GET_LOCK_REFUSED_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Run a schema-changing statement that MySQL cannot make `IF NOT EXISTS`. Several nodes may
+/// bootstrap the same fresh database at once: another node creating the column or index between
+/// our existence check and this statement is a success, not a failure.
+async fn ddl_if_missing(conn: &mut mysql_async::Conn, sql: &str) -> DbResult<()> {
+    match conn.query_drop(sql).await {
+        Err(mysql_async::Error::Server(e)) if MYSQL_ALREADY_EXISTS_CODES.contains(&e.code) => {
+            Ok(())
+        }
+        other => other.map_err(DbError::from),
+    }
+}
+
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: <https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility>/
 #[derive(Clone)]
 pub(crate) struct MySqlPool {
     pool: Pool,
+    lock_pool: Pool,
 }
 
 impl MySqlPool {
@@ -234,12 +256,17 @@ impl MySqlPool {
             .and_then(|v| usize::try_from(v).ok())
             .unwrap_or(default_conns);
 
-        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts);
+        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts.clone());
         let pool_constraints = mysql_async::PoolConstraints::new(0, max_conns)
             .ok_or_else(|| DbError::DatabaseError("Invalid pool constraints".to_owned()))?;
         opts_builder = opts_builder
             .pool_opts(mysql_async::PoolOpts::default().with_constraints(pool_constraints));
 
+        let lock_pool_constraints = mysql_async::PoolConstraints::new(0, CRON_LOCK_CONNECTIONS)
+            .ok_or_else(|| DbError::DatabaseError("Invalid lock pool constraints".to_owned()))?;
+        let lock_opts = mysql_async::OptsBuilder::from_opts(opts)
+            .pool_opts(mysql_async::PoolOpts::default().with_constraints(lock_pool_constraints));
+        let lock_pool = Pool::new(lock_opts);
         let pool = Pool::new(opts_builder);
 
         let queries = mysql_queries()?;
@@ -253,6 +280,7 @@ impl MySqlPool {
             "create-table-crypto_officer_activations",
             "create-table-crls",
             "create-table-gcm_invocations",
+            "create-table-cluster-nodes",
         ] {
             let sql = queries
                 .get(name)
@@ -291,7 +319,7 @@ impl MySqlPool {
             let add_col = queries.get("add-column-wrapping-key-id").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: add-column-wrapping-key-id".to_owned())
             })?;
-            conn.query_drop(add_col).await.map_err(DbError::from)?;
+            ddl_if_missing(&mut conn, add_col).await?;
         }
 
         // Add the optimistic-locking `version` column if not present (same reason as above).
@@ -304,7 +332,7 @@ impl MySqlPool {
             let add_col = queries.get("add-column-version").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: add-column-version".to_owned())
             })?;
-            conn.query_drop(add_col).await.map_err(DbError::from)?;
+            ddl_if_missing(&mut conn, add_col).await?;
         }
 
         // Add activated_by column to crypto_officer_activations if not present.
@@ -318,7 +346,7 @@ impl MySqlPool {
             let add_co_col = queries.get("add-column-co-activated-by").ok_or_else(|| {
                 DbError::DatabaseError("Missing SQL query: add-column-co-activated-by".to_owned())
             })?;
-            conn.query_drop(add_co_col).await.map_err(DbError::from)?;
+            ddl_if_missing(&mut conn, add_co_col).await?;
         }
         // Note: MySQL does not support partial (filtered) unique indexes.
         // Uniqueness of active activations per user is enforced at the application
@@ -353,7 +381,7 @@ impl MySqlPool {
                 let create_sql = queries.get(create_name).ok_or_else(|| {
                     DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
                 })?;
-                conn.query_drop(create_sql).await.map_err(DbError::from)?;
+                ddl_if_missing(&mut conn, create_sql).await?;
             }
         }
 
@@ -450,7 +478,7 @@ impl MySqlPool {
             .map_err(DbError::from)?;
         }
 
-        let this = Self { pool };
+        let this = Self { pool, lock_pool };
 
         // On clear or first boot, update metadata (non-fips only)
         if clear_database {
@@ -469,6 +497,104 @@ impl MySqlPool {
             .map_err(DbError::from)
     }
 
+    pub(crate) async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
+        // NULL (a GET_LOCK internal error) must not panic the row conversion.
+        let acquired: Option<Option<i64>> = match conn
+            .exec_first(get_mysql_query!("try-cron-lock"), (lock_name,))
+            .await
+        {
+            Ok(acquired) => acquired,
+            // Percona XtraDB Cluster refuses GET_LOCK in its default strict mode: run the job on
+            // every node, as with Redis, rather than on none.
+            Err(mysql_async::Error::Server(e))
+                if e.code == 1105 && e.message.contains("GET_LOCK") =>
+            {
+                if !GET_LOCK_REFUSED_WARNED.swap(true, Ordering::Relaxed) {
+                    warn!(
+                        "The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node",
+                        e.message
+                    );
+                }
+                return Ok(Some(Box::new(NoopClusterLockGuard)));
+            }
+            Err(e) => return Err(DbError::from(e)),
+        };
+        match acquired.flatten() {
+            Some(1) => Ok(Some(Box::new(MySqlCronLock {
+                conn,
+                lock_name: lock_name.to_owned(),
+            }))),
+            Some(0) => Ok(None),
+            _ => Err(DbError::DatabaseError(
+                "MySQL GET_LOCK returned an unexpected result".to_owned(),
+            )),
+        }
+    }
+
+    pub(crate) async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let mut tx = conn
+            .start_transaction(mysql_async::TxOpts::default())
+            .await
+            .map_err(DbError::from)?;
+        if is_leader {
+            tx.query_drop(get_mysql_query!("clear-cluster-leader"))
+                .await
+                .map_err(DbError::from)?;
+        }
+        tx.exec_drop(
+            get_mysql_query!("upsert-cluster-node"),
+            (node_id, version, last_heartbeat, is_leader),
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)?;
+        // Outside the transaction: this full scan would otherwise wait on another node's row
+        // while holding ours, and two concurrent heartbeats would deadlock.
+        conn.exec_drop(
+            get_mysql_query!("delete-stale-cluster-nodes"),
+            (stale_before,),
+        )
+        .await
+        .map_err(DbError::from)
+    }
+
+    pub(crate) async fn list_cluster_nodes(
+        &self,
+        minimum_heartbeat: i64,
+    ) -> DbResult<Vec<ClusterNode>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let rows: Vec<(String, String, i64, i8)> = conn
+            .exec(
+                get_mysql_query!("select-live-cluster-nodes"),
+                (minimum_heartbeat,),
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(node_id, version, last_heartbeat, is_leader)| ClusterNode {
+                    node_id,
+                    version,
+                    last_heartbeat,
+                    is_leader: is_leader != 0,
+                },
+            )
+            .collect())
+    }
+
     // Helper to obtain a pooled connection and configure session settings consistently
     // - Isolation level: READ COMMITTED (reduces deadlocks vs REPEATABLE READ)
     // - Lock wait timeout: 10s (avoid long stalls under contention)
@@ -481,6 +607,30 @@ impl MySqlPool {
             .await
             .map_err(DbError::from)?;
         Ok(conn)
+    }
+}
+
+struct MySqlCronLock {
+    conn: mysql_async::Conn,
+    lock_name: String,
+}
+
+#[async_trait]
+impl ClusterLockGuard for MySqlCronLock {
+    async fn release(mut self: Box<Self>) -> DbResult<()> {
+        // NULL (lock not held) must reach the error branch, not panic the row conversion.
+        let released: Option<Option<i64>> = self
+            .conn
+            .exec_first(get_mysql_query!("release-cron-lock"), (&self.lock_name,))
+            .await
+            .map_err(DbError::from)?;
+        if released.flatten() == Some(1) {
+            Ok(())
+        } else {
+            Err(DbError::DatabaseError(
+                "MySQL cron named lock was not held during release".to_owned(),
+            ))
+        }
     }
 }
 
@@ -1882,3 +2032,49 @@ pub(super) async fn atomic_(
 }
 
 // impl_sql_migrate!(MySqlPool, get_mysql_query);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `RELEASE_LOCK` returns NULL when the named lock no longer exists. That used to panic in the
+    /// row conversion (killing the cron thread); it must be reported as an error.
+    // docker run --name mysql --env MYSQL_DATABASE=kms --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
+    #[ignore = "Requires a running MySQL or MariaDB instance"]
+    #[tokio::test]
+    async fn test_db_mysql_release_of_vanished_cron_lock_is_an_error() {
+        let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
+        let pool = MySqlPool::instantiate(url, false, None)
+            .await
+            .expect("instantiate MySQL pool");
+        let queries = mysql_queries().expect("MySQL queries");
+        let name = format!("vanished-{}", Uuid::new_v4());
+
+        let mut conn = pool.lock_pool.get_conn().await.expect("lock connection");
+        let held: Option<Option<i64>> = match conn
+            .exec_first(queries["try-cron-lock"].as_str(), (name.as_str(),))
+            .await
+        {
+            Ok(held) => held,
+            // Percona XtraDB Cluster refuses GET_LOCK: there is no lock to vanish.
+            Err(mysql_async::Error::Server(e)) if e.code == 1105 => return,
+            Err(e) => panic!("take lock: {e}"),
+        };
+        assert_eq!(held.flatten(), Some(1));
+        // Drop the lock behind the guard's back: the later RELEASE_LOCK then answers NULL.
+        let dropped: Option<Option<i64>> = conn
+            .exec_first(queries["release-cron-lock"].as_str(), (name.as_str(),))
+            .await
+            .expect("drop lock");
+        assert_eq!(dropped.flatten(), Some(1));
+
+        let guard: Box<dyn ClusterLockGuard> = Box::new(MySqlCronLock {
+            conn,
+            lock_name: name,
+        });
+        guard
+            .release()
+            .await
+            .expect_err("releasing a vanished lock must be an error, not a panic");
+    }
+}
