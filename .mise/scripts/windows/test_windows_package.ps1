@@ -242,3 +242,5 @@ try {
     Remove-KmsPackage -Dir $installedDir
 }
 Write-Host "`nWindows package smoke test ($Variant): all checks passed" -ForegroundColor Green
+# Test-ServiceAbsent leaves sc.exe's 1060 in $LASTEXITCODE, which a `pwsh` CI step would return as its exit code.
+$global:LASTEXITCODE = 0
