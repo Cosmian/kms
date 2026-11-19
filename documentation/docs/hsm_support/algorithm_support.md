@@ -8,6 +8,9 @@ come from (a) real PKCS#11 mechanism availability on the device/library, and (b)
 vendor-specific behavioral quirks captured in each model's `HsmCapabilities`
 (`crate/hsm/<model>/src/lib.rs`).
 
+The [Idemia SPHERE](idemia_sphere.md) model has no column: the Idemia HSM Simulator in `NON_FIPS` mode forwards
+every call to SoftHSM2, so it has the SoftHSM2 profile, and `test_hsm_idemia_sphere_all` runs the same shared steps.
+
 Legend:
 
 - ✅ **Proven** — exercised by the shared cross-backend test suite

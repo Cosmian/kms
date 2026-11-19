@@ -563,7 +563,9 @@ mod fips_tests {
                     .parent()
                     .map(|dir| dir.display().to_string())
             })
-            .unwrap_or_else(|| compiled_in.to_owned());
+            .unwrap_or_else(|| compiled_in.to_owned())
+            // OpenSSL reads backslashes in a `.include` path as escapes: use forward slashes.
+            .replace('\\', "/");
         let conf = format!(
             "openssl_conf = openssl_init\n.include {ssl_dir}/fipsmodule.cnf\n[openssl_init]\n\
              providers = provider_sect\n[provider_sect]\nfips = fips_sect\nbase = base_sect\n\

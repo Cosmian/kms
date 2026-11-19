@@ -60,9 +60,8 @@ pub struct LoggingConfig {
     #[clap(long, env("KMS_LOG_QUIET"), default_value = "false")]
     pub quiet: bool,
 
-    #[cfg(not(target_os = "windows"))]
     #[clap(long, env("KMS_LOG_TO_SYSLOG"), default_value = "false")]
-    /// Log to syslog
+    /// Log to syslog (ignored on Windows, but accepted so that the shared `kms.toml` template loads)
     pub log_to_syslog: bool,
 
     /// The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.

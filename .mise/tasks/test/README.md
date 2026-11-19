@@ -161,7 +161,7 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`
+**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`, `test:hsm:idemia-sphere-simulator`
 **Orchestrator:** `test:hsm`
 **Matrix:** `test:hsm:matrix` (cross-product HSM × DB × variant; Linux includes `crypt2pay-simulator`)
 
@@ -172,7 +172,8 @@ sequenceDiagram
 | `proteccio` | Proteccio | Linux only | passthrough |
 | `crypt2pay` | Crypt2Pay | Linux only | passthrough |
 | `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
-| `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All | — |
+| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: `test_windows.yml`) | — |
+| `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All (Windows: `.mise/scripts/windows/test_hsm_other.ps1`) | — |
 | `nix-helpers` | nix-shell re-entry secret-handling regression test (no HSM) | All | — |
 | `luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
 

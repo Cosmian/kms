@@ -873,6 +873,24 @@ mod tests {
 
     use super::ClapConfig;
 
+    /// The Windows installer ships `pkg/kms.toml` and the service loads it as is: it must
+    /// deserialize on every OS, without unknown keys (a Windows-only cfg gate on a config
+    /// field makes the service fail at startup).
+    #[test]
+    fn packaged_kms_toml_is_accepted() {
+        let value: toml::Value = toml::from_str(include_str!("../../../../../pkg/kms.toml"))
+            .expect("pkg/kms.toml is valid TOML");
+        let mut unknown_fields: Vec<String> = Vec::new();
+        serde_ignored::deserialize::<_, _, ClapConfig>(value, |path| {
+            unknown_fields.push(path.to_string());
+        })
+        .expect("pkg/kms.toml deserializes into ClapConfig");
+        assert!(
+            unknown_fields.is_empty(),
+            "unknown keys: {unknown_fields:?}"
+        );
+    }
+
     // Global mutex to serialize environment variable access across all tests
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 

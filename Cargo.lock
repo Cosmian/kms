@@ -1860,6 +1860,7 @@ dependencies = [
  "governor",
  "hex",
  "http 1.5.0",
+ "idemia_sphere_pkcs11_loader",
  "ipnet",
  "jsonwebtoken",
  "kryoptic_pkcs11_loader",
@@ -3779,6 +3780,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "075557004419d7f2031b8bb7f44bb43e55a83ca7b63076a8fb8fe75753836477"
 dependencies = [
  "cipher",
+]
+
+[[package]]
+name = "idemia_sphere_pkcs11_loader"
+version = "5.29.0"
+dependencies = [
+ "cosmian_kms_base_hsm",
 ]
 
 [[package]]

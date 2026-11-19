@@ -12,6 +12,18 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
+
+# Windows: SoftHSM2 and the shim are staged/built by the PowerShell counterpart.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN* | Windows_NT)
+    print_header "hsm_model=other KMS startup scenarios (${VARIANT_NAME}, Windows)"
+    FIPS_FLAG=()
+    [ "${VARIANT}" = fips ] && FIPS_FLAG=(-Fips)
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${MISE_CONFIG_ROOT}/.mise/scripts/windows/test_hsm_other.ps1" ${FIPS_FLAG[@]+"${FIPS_FLAG[@]}"}
+    print_success "hsm_model=other startup scenarios completed (${VARIANT_NAME})"
+    exit 0
+    ;;
+esac
 export WITH_HSM=1
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell

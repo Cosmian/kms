@@ -935,6 +935,21 @@ pub fn aes_key_wrap(slot: &Arc<SlotManager>, slot_id: usize) -> HResult<()> {
     Ok(())
 }
 
+/// [`aes_key_wrap`] for slots that may legitimately not offer AES key wrap at all (a
+/// FIPS-configured token that keeps only approved mechanisms): the step is skipped, with a
+/// log line, when neither AES-KW nor AES-KWP is advertised by the slot's mechanism list.
+pub fn aes_key_wrap_if_offered(slot: &Arc<SlotManager>, slot_id: usize) -> HResult<()> {
+    log_init(None);
+    let offered = [CryptoAlgorithm::AesKeyWrap, CryptoAlgorithm::AesKeyWrapPad]
+        .iter()
+        .any(|alg| crate::base_hsm::aes_key_wrap_mechanism(slot, slot_id, alg, false).is_ok());
+    if !offered {
+        info!("Skipping AES key wrap: neither AES-KW nor AES-KWP is offered by slot {slot_id}");
+        return Ok(());
+    }
+    aes_key_wrap(slot, slot_id)
+}
+
 pub fn aes_cbc_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
@@ -1180,6 +1195,20 @@ pub fn aes_cbc_multi_part(slot: &Arc<SlotManager>) -> HResult<()> {
 
     info!("Successfully multi-part encrypted/decrypted with AES CBC");
     Ok(())
+}
+
+/// Outcome of a test step run against a token that may refuse a mechanism it still advertises
+/// (a `SECURITY_LEVEL=FIPS` simulator lists every mechanism of its backend but rejects the
+/// non-approved ones at use with `CKR_MECHANISM_INVALID`): that refusal turns the step into a
+/// logged skip, any other error is returned.
+pub fn skip_when_mechanism_refused(step: &str, result: HResult<()>) -> HResult<()> {
+    match result {
+        Err(e) if e.to_string().contains("does not support mechanism") => {
+            info!("Skipping {step}: the token refuses the mechanism ({e})");
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 pub fn rsa_pkcs_v15_sign(slot: &Arc<SlotManager>) -> HResult<()> {
