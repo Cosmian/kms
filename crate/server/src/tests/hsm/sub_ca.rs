@@ -327,6 +327,9 @@ async fn non_admin_grants(kms: &KMS, owner: &UserId, sub_id: &str, sub_sk_id: &s
     );
     kms.grant_access(&access(sub_sk_id, KmipOperation::Certify), owner)
         .await?;
+    // Issuing also fetches the CA certificate with `Certify`; `Get` on it is no wildcard.
+    kms.grant_access(&access(sub_id, KmipOperation::Certify), owner)
+        .await?;
     let crl = Box::pin(generate_crl(
         kms,
         sub_id,
