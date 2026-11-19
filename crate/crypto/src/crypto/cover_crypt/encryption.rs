@@ -143,7 +143,10 @@ impl EncryptionSystem for CoverCryptEncryption {
             .as_deref()
             .map(Vec::as_slice);
 
-        trace!("authenticated_encryption_additional_data: {ad:?}",);
+        trace!(
+            "authenticated_encryption_additional_data: {} bytes",
+            ad.map_or(0, <[u8]>::len)
+        );
 
         let encrypted_data =
             request

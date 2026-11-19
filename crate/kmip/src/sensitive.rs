@@ -34,7 +34,7 @@ impl SensitiveSize for String {
 ///
 /// Use [`SensitiveBytes`] / [`SensitiveString`] for the common cases, or any
 /// `T: Zeroize + SensitiveSize` for other secret structs.
-#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Sensitive<T: Zeroize>(Zeroizing<T>);
 
@@ -98,10 +98,23 @@ impl AsRef<[u8]> for SensitiveBytes {
     }
 }
 
-/// Comparison with the plain value, for tests and call sites holding the unwrapped secret.
-impl<T: Zeroize + PartialEq> PartialEq<T> for Sensitive<T> {
+/// Constant-time comparison (length is not secret); XOR-folds every byte.
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0_u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+impl<T: Zeroize + AsRef<[u8]>> PartialEq for Sensitive<T> {
+    fn eq(&self, other: &Self) -> bool {
+        ct_eq(self.0.as_ref(), other.0.as_ref())
+    }
+}
+
+impl<T: Zeroize + AsRef<[u8]>> Eq for Sensitive<T> {}
+
+/// Constant-time comparison with the plain value.
+impl<T: Zeroize + AsRef<[u8]>> PartialEq<T> for Sensitive<T> {
     fn eq(&self, other: &T) -> bool {
-        **self == *other
+        ct_eq(self.0.as_ref(), other.as_ref())
     }
 }
 
@@ -156,6 +169,15 @@ mod tests {
             assert!(!out.contains("U0VDUkVULU1BUktFUg"));
             assert_eq!(out, "<13 bytes>");
         }
+    }
+
+    #[test]
+    fn equality_handles_equal_unequal_and_different_lengths() {
+        let a = SensitiveBytes::from(vec![1, 2, 3]);
+        assert_eq!(a, SensitiveBytes::from(vec![1, 2, 3]));
+        assert_ne!(a, SensitiveBytes::from(vec![1, 2, 4]));
+        assert_ne!(a, SensitiveBytes::from(vec![1, 2]));
+        assert_eq!(a, vec![1_u8, 2, 3]);
     }
 
     #[test]
