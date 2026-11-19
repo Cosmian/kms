@@ -32,7 +32,7 @@ flowchart TB
         clientN["Client n"]:::client
     end
 
-    subgraph lb_cluster["🔀 Load balancers (HAProxy + Keepalived)"]
+    subgraph lb_cluster["🔀 Load balancers"]
         direction LR
         vip["🌐 Virtual IP (VIP)"]:::vip
         lb1["HAProxy + Keepalived<br/>LB 1 (MASTER)"]:::lb
@@ -45,7 +45,7 @@ flowchart TB
         nodeN["Eviden KMS<br/>Node n"]:::kms
     end
 
-    db[("🗄️ Shared database<br/>(PostgreSQL / MySQL / MariaDB)")]:::db
+    db[("🗄️ Shared database<br/>PostgreSQL,<br/>MySQL, MariaDB")]:::db
 
     client1 -->|single endpoint| vip
     client2 --> vip

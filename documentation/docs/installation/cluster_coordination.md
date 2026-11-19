@@ -26,7 +26,7 @@ flowchart TB
         nodeN["Node n<br/>heartbeat every 5 s<br/>scheduled jobs"]:::kms
     end
 
-    subgraph db["🗄️ Shared database (PostgreSQL / MySQL / MariaDB)"]
+    subgraph db["🗄️ Shared database"]
         table[("cluster_nodes table<br/>one row per live node")]:::db
         locks["Database locks<br/>one lock per job"]:::db
     end
@@ -57,7 +57,7 @@ sequenceDiagram
     participant DB as Shared database
     participant B as Node 2
 
-    Note over A,B: The job timers of both nodes fire at about the same time
+    Note over A,B: The job timers of both nodes<br/>fire at about the same time
     A->>DB: try lock "auto-rotation"
     DB-->>A: granted
     B->>DB: try lock "auto-rotation"
@@ -65,7 +65,7 @@ sequenceDiagram
     Note over B: skips this run, does not wait
     A->>A: run the job
     A->>DB: release lock
-    Note over A,B: On the next run, either node may take the lock
+    Note over A,B: On the next run,<br/>either node may take the lock
 ```
 
 The lock prevents **overlapping** runs, not repeated ones: each node keeps its own timer, so over time every node
@@ -99,12 +99,12 @@ sequenceDiagram
 
     loop every 5 seconds
         N->>DB: list live nodes (heartbeat in the last 15 s)
-        N->>DB: write own heartbeat, delete rows older than 15 s
+        N->>DB: write own heartbeat,<br/>delete rows older than 15 s
         alt no live leader
             N->>DB: try lock "cluster-heartbeat-leader"
             DB-->>N: granted
             N->>DB: list live nodes again
-            N->>DB: mark itself as leader (only if there is still no leader)
+            N->>DB: mark itself as leader<br/>(only if there is still no leader)
             N->>DB: release lock
         else a live leader exists
             Note over N: nothing to do

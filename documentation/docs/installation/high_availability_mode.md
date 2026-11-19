@@ -14,7 +14,7 @@ flowchart LR
     classDef db fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
 
     clients["💻 Clients<br/>(KMIP / HTTPS)"]:::client
-    entry["🔀 Single entry point<br/>(load balancer, VIP or DNS name)"]:::entry
+    entry["🔀 Single entry point<br/>(load balancer,<br/>VIP or DNS name)"]:::entry
 
     subgraph kms_cluster["🛡️ KMS nodes (stateless)"]
         node1["Eviden KMS<br/>Node 1"]:::kms
@@ -22,7 +22,7 @@ flowchart LR
         nodeN["Eviden KMS<br/>Node n"]:::kms
     end
 
-    db[("🗄️ Shared database<br/>PostgreSQL, MySQL or MariaDB")]:::db
+    db[("🗄️ Shared database<br/>PostgreSQL,<br/>MySQL or MariaDB")]:::db
 
     clients --> entry
     entry --> node1 & node2 & nodeN
@@ -55,7 +55,7 @@ flowchart TD
     classDef question fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
     classDef profile fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#000
 
-    vm{"Run the KMS in a Cosmian<br/>confidential VM?"}:::question
+    vm{"Run the KMS in a<br/>Cosmian<br/>confidential VM?"}:::question
     start{"More than one<br/>KMS node?"}:::question
     where{"Where do the<br/>nodes run?"}:::question
     spread{"Spread the load<br/>over all nodes?"}:::question
@@ -70,8 +70,8 @@ flowchart TD
     vm -->|no| start
     start -->|no| p1
     start -->|yes| where
-    where -->|cloud with a managed load balancer| p2
-    where -->|no load balancer available,<br/>no failover needed| p3
+    where -->|cloud, managed<br/>load balancer| p2
+    where -->|no load balancer,<br/>no failover needed| p3
     where -->|on premises| spread
     spread -->|no, failover is enough| p4
     spread -->|yes| p5
@@ -133,7 +133,7 @@ flowchart TB
     classDef db fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
 
     clients["💻 Clients (KMIP / HTTPS)"]:::client
-    lb["🔀 Managed load balancer<br/>one address, health check on /health"]:::lb
+    lb["🔀 Cloud load balancer<br/>one address<br/>health check: /health"]:::lb
     node1["KMS node 1"]:::kms
     node2["KMS node 2"]:::kms
     nodeN["KMS node n"]:::kms
@@ -181,7 +181,7 @@ flowchart TB
 
     clients --> vip
     vip -.->|held by the MASTER| node1
-    vip -.->|taken over if node 1 fails| node2
+    vip -.->|taken over<br/>if node 1 fails| node2
     node1 --> db
     node2 --> db
 ```
