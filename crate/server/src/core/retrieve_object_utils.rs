@@ -246,8 +246,8 @@ fn due_lifecycle_transition(owm: &ObjectWithMetadata, state: State) -> KResult<O
 
 /// Check if a user has permission to perform an operation on an object.
 ///  If the user is the owner of the object, it will always return true.
-///  Otherwise each operation must be explicitly granted; `Get` and `Export` are equivalent
-///  (both read key material) but `Get` implies no other operation.
+///  For non-HSM objects, having the `Get` permission implies all other operations.
+///  For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
 ///  # Arguments
 ///  * `user` - The user to check the permission for.
 ///  * `owm` - The object to check the permission on.
@@ -302,12 +302,22 @@ pub(crate) async fn user_has_permission(
         return Ok(true);
     }
 
-    // Each operation must be explicitly granted: `Get` is no wildcard. The only exception is
-    // that Get and Export are semantically equivalent (both read key material), so holding
-    // either permission grants access for both operations.
-    Ok(permissions.contains(operation_type)
-        || (*operation_type == KmipOperation::Export && permissions.contains(&KmipOperation::Get))
-        || (*operation_type == KmipOperation::Get && permissions.contains(&KmipOperation::Export)))
+    // HSM keys: each operation must be explicitly granted — no generic Get wildcard.
+    // Exception: Get and Export are semantically equivalent (both read key material),
+    // so holding either permission grants access for both operations.
+    if ObjectHandle::from(id).is_hsm() {
+        if permissions.contains(operation_type) {
+            return Ok(true);
+        }
+        // Get ↔ Export equivalence for HSM keys
+        let get_export_equiv = (*operation_type == KmipOperation::Export
+            && permissions.contains(&KmipOperation::Get))
+            || (*operation_type == KmipOperation::Get
+                && permissions.contains(&KmipOperation::Export));
+        return Ok(get_export_equiv);
+    }
+
+    Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
 }
 
 #[cfg(test)]

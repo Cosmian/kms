@@ -296,8 +296,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
     let response = kms.create(request, &alice).await?;
     let uid = response.unique_identifier.to_string();
 
-    // Alice grants Bob only Get permission: Get is no wildcard, so every attribute edit is
-    // refused as if the object did not exist.
+    // Alice grants Bob only Get permission.
     kms.database
         .grant_operations(&uid, &bob, HashSet::from([KmipOperation::Get]))
         .await?;
@@ -360,7 +359,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
         .await;
     assert!(matches!(
         set_res,
-        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
     ));
 
     // Bob attempts to ModifyAttribute(Sensitive(false)) -> denied.
@@ -376,7 +375,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
         .await;
     assert!(matches!(
         mod_res,
-        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
     ));
 
     // Bob attempts to AddAttribute(Sensitive(false)) -> denied.
@@ -391,7 +390,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
         .await;
     assert!(matches!(
         add_res,
-        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
     ));
 
     // Bob attempts to SetAttribute(Extractable(false)) -> denied.
@@ -406,7 +405,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
         .await;
     assert!(matches!(
         set_ext_res,
-        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
     ));
 
     // Bob attempts to ModifyAttribute(Extractable(false)) -> denied.
@@ -422,7 +421,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
         .await;
     assert!(matches!(
         mod_ext_res,
-        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
     ));
 
     // Bob attempts to AddAttribute(Extractable(false)) -> denied.
@@ -437,7 +436,7 @@ async fn test_sensitive_cannot_be_stripped_with_only_get_grant() -> KResult<()> 
         .await;
     assert!(matches!(
         add_ext_res,
-        Err(KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _))
+        Err(KmsError::Kmip21Error(ErrorReason::Permission_Denied, _))
     ));
 
     // Now Alice grants Bob explicit SetAttribute and ModifyAttribute rights.

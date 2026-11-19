@@ -137,11 +137,10 @@ pub(crate) trait KeySelectionSpec {
     /// Key states accepted by this operation.
     fn accepted_states() -> &'static [State];
 
-    /// Whether an active Crypto Officer is authorized in addition to the owner and the
-    /// grantees of [`Self::KMIP_OP`].
+    /// Whether permission checks require an exact operation grant.
     ///
-    /// - `false` (default): ownership or an explicit grant of [`Self::KMIP_OP`] authorizes.
-    /// - `true`: additionally, an active Crypto Officer is authorized (rekey, destructive ops).
+    /// - `false` (default): a `Get` grant also authorizes the operation (crypto ops).
+    /// - `true`: only an explicit grant of [`Self::KMIP_OP`] authorizes (rekey, destructive ops).
     fn strict_permission_check() -> bool {
         false
     }
@@ -332,7 +331,7 @@ impl KMS {
     ///
     /// Applies the following filters in order:
     /// 1. **State** — `Spec::accepted_states()`
-    /// 2. **Permission** — ownership or explicit grant
+    /// 2. **Permission** — ownership or explicit grant, optionally with `Get` wildcard
     /// 3. **Eligibility** — `Spec::is_key_eligible()`
     /// 4. **Extra validation** — caller-supplied closure for operation-specific checks
     ///    (e.g. keyset-latest guard, crypto-param change rejection)
@@ -407,14 +406,15 @@ impl KMS {
             //    "not found", like a missing key, so neither their existence nor their
             //    state leaks to unauthorized callers.
             let authorized = if Spec::strict_permission_check() {
-                // Strict: exact operation grant, or an active Crypto Officer
+                // Strict: only exact operation grant (no Get wildcard)
                 self.user_can_perform_operation(owm, user, &Spec::KMIP_OP)
                     .await?
             } else {
-                // Lenient: ownership or an exact grant (standard for crypto ops).
+                // Lenient: Get grant also authorizes (standard for crypto ops).
                 // `owm` is already loaded (object-cache hit on the hot path), so
                 // use the owner-aware check to skip a redundant ownership query.
-                self.is_owm_authorized(owm, user, Spec::KMIP_OP).await?
+                self.is_owm_authorized_with_get_wildcard(owm, user, Spec::KMIP_OP)
+                    .await?
             };
             if !authorized {
                 // A caller that already holds an explicit grant on the key learns nothing
@@ -636,7 +636,10 @@ impl KMS {
 
             // Permission check — `owm` was just retrieved above, so use the
             // owner-aware check to avoid a redundant `is_object_owned_by` query.
-            if !self.is_owm_authorized(&owm, user, Op::KMIP_OP).await? {
+            if !self
+                .is_owm_authorized_with_get_wildcard(&owm, user, Op::KMIP_OP)
+                .await?
+            {
                 continue;
             }
 
@@ -693,17 +696,18 @@ impl KMS {
     }
 
     /// Check whether a user is authorized to perform `operation` on the object
-    /// identified by `uid`.
+    /// identified by `uid`, with `Get` wildcard for non-HSM keys.
     ///
-    /// The user is authorized if they own the object or have been granted the
-    /// specific `operation`. `Get` implies no other operation.
+    /// The user is authorized if they own the object, or have been granted the
+    /// specific `operation` **or** `Get` (which implies read-level access).
+    /// For HSM keys (prefix-based UIDs), the `Get` wildcard is **not** applied.
     ///
     /// When the caller already holds the [`ObjectWithMetadata`] — the common case
     /// on the crypto hot-path, where it is served from the object cache — prefer
-    /// [`Self::is_owm_authorized`]: it reads the owner from the
+    /// [`Self::is_owm_authorized_with_get_wildcard`]: it reads the owner from the
     /// in-memory object and avoids the extra `is_object_owned_by` database
     /// round-trip performed here.
-    pub(crate) async fn is_user_authorized(
+    pub(crate) async fn is_user_authorized_with_get_wildcard(
         &self,
         uid: &str,
         user: &UserId,
@@ -715,13 +719,13 @@ impl KMS {
         self.user_has_granted_operation(uid, user, operation).await
     }
 
-    /// Owner-aware variant of [`Self::is_user_authorized`].
+    /// Owner-aware variant of [`Self::is_user_authorized_with_get_wildcard`].
     ///
     /// The object owner is read directly from `owm` (already loaded, typically
     /// from the object cache), so the ownership check costs no database query.
     /// Non-owners fall back to the granted-operation lookup. This removes one
     /// database round-trip per cryptographic operation on the owner hot-path.
-    pub(crate) async fn is_owm_authorized(
+    pub(crate) async fn is_owm_authorized_with_get_wildcard(
         &self,
         owm: &ObjectWithMetadata,
         user: &UserId,
@@ -734,10 +738,13 @@ impl KMS {
             .await
     }
 
-    /// Shared authorization tail: does `user` hold an explicit grant for `operation` on the
-    /// object `uid`? `Get` implies no other operation, for HSM and non-HSM keys alike.
+    /// Shared authorization tail: does `user` hold an explicit grant for
+    /// `operation` on the object `uid` (honoring the `Get` wildcard for non-HSM
+    /// keys)?
     ///
-    /// Ownership is **not** checked here — callers must handle the owner case first.
+    /// Ownership is **not** checked here — callers must handle the owner case
+    /// first. HSM keys (prefix-based UIDs) require an explicit per-operation
+    /// grant and never honor the `Get` wildcard.
     async fn user_has_granted_operation(
         &self,
         uid: &str,
@@ -748,7 +755,15 @@ impl KMS {
             .database
             .list_user_operations_on_object(uid, user, false)
             .await?;
-        Ok(ops.iter().any(|p| *p == operation))
+
+        // HSM keys: each operation must be explicitly granted — no Get wildcard
+        if ObjectHandle::from(uid).is_hsm() {
+            return Ok(ops.iter().any(|p| *p == operation));
+        }
+
+        Ok(ops
+            .iter()
+            .any(|p| *p == operation || *p == KmipOperation::Get))
     }
 
     /// Consume `data_len` from the key's Usage Limits before the operation runs. The update is
@@ -823,7 +838,10 @@ impl KMS {
         let mut eligible: Vec<(String, String)> = Vec::new();
         for uid in candidate_uids {
             if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(uid) {
-                if !self.is_user_authorized(uid, user, operation).await? {
+                if !self
+                    .is_user_authorized_with_get_wildcard(uid, user, operation)
+                    .await?
+                {
                     continue;
                 }
                 eligible.push((uid.clone(), prefix.to_owned()));
@@ -866,7 +884,11 @@ impl KMS {
             .await?
             .ok_or_else(not_found)?;
         // HSM ownership is HSM-admin membership, which `owm.owner()` alone does not capture
-        if owm.owner() != user && !self.is_user_authorized(uid, user, Op::KMIP_OP).await? {
+        if owm.owner() != user
+            && !self
+                .is_user_authorized_with_get_wildcard(uid, user, Op::KMIP_OP)
+                .await?
+        {
             let has_grant = !self
                 .database
                 .list_user_operations_on_object(uid, user, true)
@@ -924,7 +946,10 @@ impl KMS {
             && uid_str.contains('@')
         {
             // Explicit generation handle: skip keyset resolution, go direct to oracle
-            if self.is_user_authorized(uid_str, user, Op::KMIP_OP).await? {
+            if self
+                .is_user_authorized_with_get_wildcard(uid_str, user, Op::KMIP_OP)
+                .await?
+            {
                 return Ok(ResolvedKey::Oracle {
                     uid: uid_str.to_owned(),
                     prefix: prefix.to_string(),

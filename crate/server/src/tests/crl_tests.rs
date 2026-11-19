@@ -810,7 +810,7 @@ async fn grant_revoke_access(kms: &Arc<KMS>, object_id: &str, user: &UserId) -> 
     Ok(())
 }
 
-/// Grant `user` `Get` + `Certify` on `cert_id` AND `Get` + `Certify` on `sk_id`.
+/// Grant `user` `Get` + `Certify` on `cert_id` AND `Get` on `sk_id`.
 ///
 /// This allows a non-owner to use the CA cert/key as an issuer in a `Certify`
 /// request, producing a new certificate object owned by `user`.
@@ -833,12 +833,12 @@ async fn grant_certify_access(
             std::collections::HashSet::from([KmipOperation::Get, KmipOperation::Certify]),
         )
         .await?;
-    // Grant Get + Certify on the CA private key (needed to sign the new cert).
+    // Grant Get on the CA private key (needed to sign the new cert).
     kms.database
         .grant_operations(
             ca_sk_id,
             user,
-            std::collections::HashSet::from([KmipOperation::Get, KmipOperation::Certify]),
+            std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
     // Grant global Create on "*" so enforce_create_permission succeeds for this user

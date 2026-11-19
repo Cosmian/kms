@@ -271,11 +271,7 @@ async fn crl_lists_only_revocations_of_certificates_the_ca_issued() -> KResult<(
         .grant_operations(&ca_id, &bob, HashSet::from([KmipOperation::Certify]))
         .await?;
     kms.database
-        .grant_operations(
-            &ca_sk_id,
-            &bob,
-            HashSet::from([KmipOperation::Get, KmipOperation::Certify]),
-        )
+        .grant_operations(&ca_sk_id, &bob, HashSet::from([KmipOperation::Get]))
         .await?;
     let bob_leaf_id = certify(
         &kms,
@@ -295,11 +291,7 @@ async fn crl_lists_only_revocations_of_certificates_the_ca_issued() -> KResult<(
     );
     revoke(&kms, &bob, &bob_leaf_id).await?;
     kms.database
-        .remove_operations(
-            &ca_sk_id,
-            &bob,
-            HashSet::from([KmipOperation::Get, KmipOperation::Certify]),
-        )
+        .remove_operations(&ca_sk_id, &bob, HashSet::from([KmipOperation::Get]))
         .await?;
     let mut serials = crl_serials(&kms, &alice, &ca_id).await?;
     serials.sort();

@@ -74,10 +74,10 @@ HSM keys follow a stricter permission model than regular KMS keys. The key princ
 - **HSM admins** are the only users who can **create** and **destroy** HSM keys.
 - **All HSM admins share ownership** of all HSM keys (any admin can grant, revoke, or destroy any HSM key).
 - **Non-admin users** can only use HSM keys they have been **explicitly granted** operations on.
-- The `Get` permission does **not** imply other operations — each operation must be granted individually (as for every key).
+- The `Get` permission does **not** act as a wildcard for HSM keys — each operation must be granted individually.
 - **Locate** only returns HSM keys the user is authorized to see (all keys for admins, granted keys for non-admins).
 - The server **KEK** (Key Encryption Key) is a shared wrapping resource: it wraps and unwraps every user's keys at rest. Using it to unwrap a caller-supplied key (`Import` with `key_wrap_type = NotWrapped`) or for direct cryptographic operations requires an explicit grant.
-- Keys **already wrapped by the server KEK** (its uid, its `_pk` alias, or any public key or certificate whose `PrivateKeyLink` points at the KEK) can only be imported or registered as-is by users allowed to decrypt with the KEK (HSM admins, or users with an explicit `decrypt` grant on it; for a database KEK, its owner or users with a `decrypt` grant): storing such a key block amounts to having the server decrypt it. Other users get `Invalid_Request` and must import the key unwrapped, or wrapped by another key. Newly imported plain keys are still wrapped by the KEK at rest.
+- Keys **already wrapped by the server KEK** (its uid, its `_pk` alias, or any public key or certificate whose `PrivateKeyLink` points at the KEK) can only be imported or registered as-is by users allowed to decrypt with the KEK (HSM admins, or users with an explicit `decrypt` grant on it; for a database KEK, its owner or users with a `decrypt`/`get` grant): storing such a key block amounts to having the server decrypt it. Other users get `Invalid_Request` and must import the key unwrapped, or wrapped by another key. Newly imported plain keys are still wrapped by the KEK at rest.
 - At rest, the KEK unwraps a stored key for any user only when the key block names the KEK itself (uid or `_pk` alias). A key wrapped by a public key or certificate is unwrapped with the private key that its `PrivateKeyLink` points to, which must be a private key on which the user holds the usual rights (owner, or a `decrypt`/`get` grant), even when that private key is the KEK.
 - **Unwrapping** with an HSM key (`Import` with `key_wrap_type = NotWrapped`, or any use of a stored key wrapped by an HSM key, whether or not it is served from the unwrapped cache) is a decryption: it requires HSM admin rights or an explicit `decrypt` grant on that HSM key.
 - **Wrapping** with an HSM key (creating, importing or exporting a key wrapped by it) is an encryption: it requires HSM admin rights or an explicit `encrypt` grant on that HSM key (`get` is not enough). To later use a key wrapped by an HSM key, also hold `decrypt` on the HSM key.
@@ -122,8 +122,8 @@ HSM keys follow a stricter permission model than regular KMS keys. The key princ
 | `revoke`           | ❌               | HSM keys do not support KMIP lifecycle state changes     |
 | `create`           | ❌               | Admin-only — not a per-key grant                         |
 
-!!! warning Get is not a wildcard
-    Granting `Get` on a key (HSM or not) does **not** implicitly grant other operations.
+!!! warning Get is not a wildcard for HSM keys
+    Unlike regular KMS keys, granting `Get` on an HSM key does **not** implicitly grant all other operations.
     Each operation (`Encrypt`, `Decrypt`, `Sign`, etc.) must be granted individually.
 
 ## Creating a KMS key wrapped by an HSM key

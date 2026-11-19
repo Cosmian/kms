@@ -229,7 +229,7 @@ impl fmt::Display for Access {
 ///   promotion to active CO does not reduce those rights. Note: the ownership bypass
 ///   (`user_can_perform_operation`) applies to **KMIP key-lifecycle operations** only.
 ///   Crypto operations (Encrypt/Decrypt/Sign/…) use a separate authorization path
-///   (`is_owm_authorized`) that checks ownership or explicit per-object
+///   (`is_owm_authorized_with_get_wildcard`) that checks ownership or explicit per-object
 ///   grants and does **not** include a CO bypass — an active CO can only encrypt/sign with
 ///   keys they own or have been explicitly granted access to.
 ///
