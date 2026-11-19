@@ -48,6 +48,7 @@ use crate::{
     result::KResult,
     tests::test_utils::{
         assert_stored_wrapped_by_kek, https_clap_config, test_kms, test_kms_with_kek,
+        unwrapped_key_bytes,
     },
 };
 
@@ -1030,24 +1031,28 @@ async fn secret_bytes(kms: &Arc<KMS>, uid: &str) -> KResult<Zeroizing<Vec<u8>>> 
     }
 }
 
+/// RFC 7748 §6.1 shared secret of Alice's private and Bob's public key.
 #[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
-    let kms = test_kms().await?;
-    let owner = UserId::from("x25519-owner");
+const RFC7748_SHARED_SECRET: &str =
+    "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742";
+
+/// Import the RFC 7748 §6.1 key pair as `alice-private` / `bob-public` for `owner` and derive
+/// their shared secret as `derived_uid`. Returns the UID of the derived key.
+#[cfg(feature = "non-fips")]
+async fn derive_rfc7748_secret(
+    kms: &Arc<KMS>,
+    owner: &UserId,
+    derived_uid: &str,
+) -> KResult<String> {
     let alice_private =
         hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
             .expect("alice private");
     let bob_public =
         hex::decode("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
             .expect("bob public");
-    let expected_shared_secret =
-        hex::decode("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742")
-            .expect("shared secret");
-
     import_private_x25519_key(
-        &kms,
-        &owner,
+        kms,
+        owner,
         "alice-private",
         "bob-public",
         &alice_private,
@@ -1056,8 +1061,8 @@ async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
     )
     .await?;
     import_public_x25519_key(
-        &kms,
-        &owner,
+        kms,
+        owner,
         "bob-public",
         "alice-private",
         &bob_public,
@@ -1065,21 +1070,29 @@ async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
         CryptographicUsageMask::KeyAgreement,
     )
     .await?;
-
-    let derived_uid = "derived-rfc7748-secret";
-    let response = kms
+    Ok(kms
         .derive_key(
             build_x25519_derive_request("alice-private", "bob-public", derived_uid),
-            &owner,
+            owner,
         )
-        .await?;
+        .await?
+        .unique_identifier
+        .to_string())
+}
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("x25519-owner");
+    let derived_uid = "derived-rfc7748-secret";
     assert_eq!(
-        response.unique_identifier.to_string(),
-        derived_uid.to_owned()
+        derive_rfc7748_secret(&kms, &owner, derived_uid).await?,
+        derived_uid
     );
     assert_eq!(
         secret_bytes(&kms, derived_uid).await?.as_slice(),
-        expected_shared_secret
+        hex::decode(RFC7748_SHARED_SECRET).expect("shared secret")
     );
 
     let private = kms
@@ -1761,24 +1774,6 @@ async fn test_derive_key_asymmetric_not_supported_in_fips() -> KResult<()> {
     Ok(())
 }
 
-/// Key material of `uid` as the server unwraps it from its stored (possibly KEK-wrapped) form.
-async fn stored_key_bytes(
-    kms: &crate::core::KMS,
-    uid: &str,
-    owner: &UserId,
-) -> KResult<Zeroizing<Vec<u8>>> {
-    let stored = kms
-        .database
-        .retrieve_object(uid)
-        .await?
-        .expect("object must exist");
-    kms.get_unwrapped(uid, stored.object(), owner)
-        .await?
-        .key_block()
-        .and_then(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock::key_bytes)
-        .map_err(|e| KmsError::InvalidRequest(e.to_string()))
-}
-
 /// With a server key encryption key configured, a PBKDF2-derived key is stored wrapped and
 /// still holds the PBKDF2 output of the unwrapped base key.
 #[tokio::test]
@@ -1827,7 +1822,7 @@ async fn test_derive_key_pbkdf2_is_wrapped_by_server_kek() -> KResult<()> {
         .to_string();
     assert_stored_wrapped_by_kek(&kms, &derived_uid, &kek_id).await;
 
-    let base_bytes = stored_key_bytes(&kms, &base_uid, &owner).await?;
+    let base_bytes = unwrapped_key_bytes(&kms, &base_uid, &owner).await?;
     let mut expected = [0_u8; 16];
     openssl::pkcs5::pbkdf2_hmac(
         &base_bytes,
@@ -1838,7 +1833,7 @@ async fn test_derive_key_pbkdf2_is_wrapped_by_server_kek() -> KResult<()> {
     )
     .map_err(|e| KmsError::CryptographicError(e.to_string()))?;
     assert_eq!(
-        stored_key_bytes(&kms, &derived_uid, &owner)
+        unwrapped_key_bytes(&kms, &derived_uid, &owner)
             .await?
             .as_slice(),
         expected
@@ -1853,45 +1848,14 @@ async fn test_derive_key_pbkdf2_is_wrapped_by_server_kek() -> KResult<()> {
 async fn test_derive_key_x25519_is_wrapped_by_server_kek() -> KResult<()> {
     let (kms, kek_id) = test_kms_with_kek("kek-owner", https_clap_config).await?;
     let owner = UserId::from("x25519-kek-owner");
-    let alice_private =
-        hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-            .expect("alice private");
-    let bob_public =
-        hex::decode("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
-            .expect("bob public");
-    import_private_x25519_key(
-        &kms,
-        &owner,
-        "alice-private",
-        "bob-public",
-        &alice_private,
-        Some(RecommendedCurve::CURVE25519),
-        CryptographicUsageMask::DeriveKey | CryptographicUsageMask::KeyAgreement,
-    )
-    .await?;
-    import_public_x25519_key(
-        &kms,
-        &owner,
-        "bob-public",
-        "alice-private",
-        &bob_public,
-        Some(RecommendedCurve::CURVE25519),
-        CryptographicUsageMask::KeyAgreement,
-    )
-    .await?;
     let derived_uid = "derived-kek-secret";
-    kms.derive_key(
-        build_x25519_derive_request("alice-private", "bob-public", derived_uid),
-        &owner,
-    )
-    .await?;
+    derive_rfc7748_secret(&kms, &owner, derived_uid).await?;
     assert_stored_wrapped_by_kek(&kms, derived_uid, &kek_id).await;
     assert_eq!(
-        stored_key_bytes(&kms, derived_uid, &owner)
+        unwrapped_key_bytes(&kms, derived_uid, &owner)
             .await?
             .as_slice(),
-        hex::decode("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742")
-            .expect("shared secret")
+        hex::decode(RFC7748_SHARED_SECRET).expect("shared secret")
     );
     Ok(())
 }

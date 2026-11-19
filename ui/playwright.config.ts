@@ -16,9 +16,6 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
 // mTLS certificate paths (set by test_ui.sh via PLAYWRIGHT_CERT_DIR).
 const certDir = env.PLAYWRIGHT_CERT_DIR ?? path.resolve(__dirname, "../test_data/certificates/client_server");
 const kmsUrl = env.PLAYWRIGHT_KMS_URL ?? "https://127.0.0.1:9998";
-// Set to "1" to authenticate with a bearer token only: a KMS verifying client certificates
-// rejects the default owner certificate when its CA is not the one configured on the server.
-const presentClientCert = env.PLAYWRIGHT_NO_CLIENT_CERT !== "1";
 
 /**
  * Playwright configuration for KMS UI E2E tests.
@@ -59,15 +56,13 @@ export default defineConfig({
         // Accept self-signed server certificate for mTLS KMS.
         ignoreHTTPSErrors: true,
         // Present the owner client certificate for mTLS connections to KMS.
-        clientCertificates: presentClientCert
-            ? [
-                  {
-                      origin: kmsUrl,
-                      certPath: path.join(certDir, "owner/owner.client.acme.com.crt"),
-                      keyPath: path.join(certDir, "owner/owner.client.acme.com.key"),
-                  },
-              ]
-            : [],
+        clientCertificates: [
+            {
+                origin: kmsUrl,
+                certPath: path.join(certDir, "owner/owner.client.acme.com.crt"),
+                keyPath: path.join(certDir, "owner/owner.client.acme.com.key"),
+            },
+        ],
     },
     projects: [
         {

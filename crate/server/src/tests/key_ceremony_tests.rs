@@ -41,6 +41,7 @@ use crate::{
     result::KResult,
     tests::test_utils::{
         assert_stored_wrapped_by_kek, get_tmp_sqlite_path, test_kms_with_config, test_kms_with_kek,
+        unwrapped_key_bytes,
     },
 };
 
@@ -2325,21 +2326,9 @@ async fn test_split_and_join_store_keys_wrapped_by_server_kek() -> KResult<()> {
     for uid in share_uids.iter().chain([&source_uid, &reconstructed_uid]) {
         assert_stored_wrapped_by_kek(&kms, uid, &kek_id).await;
     }
-    let unwrapped_bytes = |uid: String| {
-        let kms = Arc::clone(&kms);
-        let owner = owner.clone();
-        async move {
-            let stored = kms.database.retrieve_object(&uid).await?.expect("stored");
-            kms.get_unwrapped(&uid, stored.object(), &owner)
-                .await?
-                .key_block()
-                .and_then(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock::key_bytes)
-                .map_err(|e| KmsError::InvalidRequest(e.to_string()))
-        }
-    };
     assert_eq!(
-        unwrapped_bytes(reconstructed_uid).await?,
-        unwrapped_bytes(source_uid).await?
+        unwrapped_key_bytes(&kms, &reconstructed_uid, &owner).await?,
+        unwrapped_key_bytes(&kms, &source_uid, &owner).await?
     );
 
     // Once its owner clears `Sensitive`, a Get of a share with `NotWrapped` returns it unwrapped.

@@ -428,13 +428,17 @@ pub(crate) async fn create_split_key(
         // `source_uid` is the actual stored UID (from owm.id()), not the request
         // identifier — ensures correct naming even when the caller passed a tag.
         let share_id = format!("{source_uid}#{part_identifier}");
-        Box::pin(wrap_and_cache(
+        if let Err(e) = Box::pin(wrap_and_cache(
             kms,
             &share_owner,
             &UniqueIdentifier::TextString(share_id.clone()),
             &mut split_key_obj,
         ))
-        .await?;
+        .await
+        {
+            warn_orphaned_shares(&share_uids, &uid_str);
+            return Err(e);
+        }
         split_key_obj.copy_wrapping_key_link_to(&mut share_attrs);
         let share_uid = match kms
             .database
@@ -449,28 +453,7 @@ pub(crate) async fn create_split_key(
         {
             Ok(uid) => uid,
             Err(e) => {
-                // Log orphaned shares for manual cleanup — the database trait does not
-                // expose a direct delete method. The shares are tagged with
-                // `split-key-of:<uid>` for discoverability.
-                if !share_uids.is_empty() {
-                    let orphan_uids: Vec<String> = share_uids
-                        .iter()
-                        .filter_map(|u| {
-                            if let UniqueIdentifier::TextString(s) = u {
-                                Some(s.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    warn!(
-                        orphans = ?orphan_uids,
-                        source = %uid_str,
-                        "CreateSplitKey: partial failure — {} share(s) already stored \
-                         but remaining shares could not be created. Manual cleanup required.",
-                        orphan_uids.len(),
-                    );
-                }
+                warn_orphaned_shares(&share_uids, &uid_str);
                 return Err(KmsError::from(e));
             }
         };
@@ -575,6 +558,28 @@ pub(crate) async fn create_split_key(
     Ok(CreateSplitKeyResponse {
         unique_identifier: share_uids,
     })
+}
+
+/// Log the shares already stored when a later share fails (wrapping or storage) for manual
+/// cleanup: the database trait does not expose a direct delete method. The shares are tagged
+/// with `split-key-of:<uid>` for discoverability.
+fn warn_orphaned_shares(share_uids: &[UniqueIdentifier], source: &str) {
+    let orphans: Vec<&str> = share_uids
+        .iter()
+        .filter_map(|u| match u {
+            UniqueIdentifier::TextString(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    if !orphans.is_empty() {
+        warn!(
+            orphans = ?orphans,
+            source = %source,
+            "CreateSplitKey: partial failure — {} share(s) already stored \
+             but remaining shares could not be created. Manual cleanup required.",
+            orphans.len(),
+        );
+    }
 }
 
 /// Extract raw key bytes from any supported KMIP object type.

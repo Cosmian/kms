@@ -113,6 +113,24 @@ pub(crate) async fn assert_stored_wrapped_by_kek(kms: &KMS, uid: &str, kek_id: &
     );
 }
 
+/// Key material of `uid` as the server unwraps it from its stored (possibly KEK-wrapped) form.
+pub(crate) async fn unwrapped_key_bytes(
+    kms: &KMS,
+    uid: &str,
+    user: &crate::middlewares::UserId,
+) -> KResult<zeroize::Zeroizing<Vec<u8>>> {
+    let stored = kms
+        .database
+        .retrieve_object(uid)
+        .await?
+        .unwrap_or_else(|| panic!("{uid} must exist"));
+    kms.get_unwrapped(uid, stored.object(), user)
+        .await?
+        .key_block()
+        .and_then(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock::key_bytes)
+        .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))
+}
+
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
     // Ensure local test traffic bypasses any corporate proxy
     ensure_no_proxy_for_localhost();

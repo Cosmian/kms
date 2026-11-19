@@ -145,12 +145,18 @@ wait_kms_ready() {
 }
 
 # Write a KMS TOML config: base test config + UI folder + [idp_auth].
-# Usage: write_kms_config <out_file> <provider_spec> <jwt_svid_auth: true|false>
+# Usage: write_kms_config <out_file> <provider_spec> <jwt_svid_auth: true|false> [mtls]
 # A generated file is required because --config takes precedence and ignores CLI args.
-# The base config already verifies client certificates (mTLS) against the SPIRE CA.
+# The base config trusts the SPIRE CA for client certificates (`clients_ca_cert_file`, needed
+# by the mTLS admin provisioning): it is dropped unless `mtls` is given, so the JWT-SVID-only
+# servers run without a client CA.
 write_kms_config() {
-  local out="$1" spec="$2" svid="$3"
-  cat "${KMS_CONFIG_FILE}" >"${out}"
+  local out="$1" spec="$2" svid="$3" mtls="${4:-}"
+  if [[ -n "${mtls}" ]]; then
+    cat "${KMS_CONFIG_FILE}" >"${out}"
+  else
+    sed '/^clients_ca_cert_file/d' "${KMS_CONFIG_FILE}" >"${out}"
+  fi
   cat >>"${out}" <<EOF
 
 [ui_config]
@@ -607,8 +613,6 @@ fi
 print_status "Step 10: Running Playwright E2E tests with JWT-SVID..."
 export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
 export TEST_JWT_SVID_TOKEN="${JWT_TOKEN}"
-# The server verifies client certificates against the SPIRE CA: send only the bearer token.
-export PLAYWRIGHT_NO_CLIENT_CERT=1
 export TEST_SPIFFE_ID="${WORKLOAD_SPIFFE_ID}"
 if [[ "${STRICT}" -eq 1 ]]; then
   export TEST_JWT_STRICT=1
@@ -677,7 +681,7 @@ stop_kms
 
 KMS_MTLS_JWT_LOG="/tmp/kms-spire-mtls-jwt-svid.log"
 KMS_DUAL_CONFIG_FILE="${WORK_DIR}/kms-dual.toml"
-write_kms_config "${KMS_DUAL_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" true
+write_kms_config "${KMS_DUAL_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" true mtls
 start_kms "${KMS_DUAL_CONFIG_FILE}" "${KMS_MTLS_JWT_LOG}"
 wait_kms_ready "${KMS_MTLS_JWT_LOG}" "mTLS + --jwt-svid-auth"
 print_success "KMS server ready with both mTLS and --jwt-svid-auth."
