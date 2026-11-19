@@ -14,7 +14,7 @@
 #     - Writes and reads back an encrypted row
 #
 # Usage:
-#   EDB_SUBSCRIPTION_TOKEN=<token> bash .mise/scripts/nix.sh --variant non-fips test edb_tde
+#   EDB_SUBSCRIPTION_TOKEN=<token> mise run test:interop:edb-tde --variant non-fips
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -41,7 +41,7 @@ FEATURES_FLAG=(--features non-fips)
 export COSMIAN_KMS_CONF
 
 # Ensure Python is available
-require_cmd python3 "Python 3 is required. Re-run via 'bash .mise/scripts/nix.sh test edb_tde' so nix-shell can provide it."
+require_cmd python3 "Python 3 is required. Re-run via 'mise run test:interop:edb-tde' so nix-shell can provide it."
 
 # Prefer Nix-provided Python (3.11)
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"

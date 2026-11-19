@@ -11,7 +11,6 @@
 #   KMS server → audit middleware → JSONL file → ckms audit export → CEF → jc parser
 #
 # Usage:
-#   bash .mise/scripts/nix.sh test cef
 #   bash .mise/scripts/test/test_cef.sh [--variant fips|non-fips]
 set -euo pipefail
 
