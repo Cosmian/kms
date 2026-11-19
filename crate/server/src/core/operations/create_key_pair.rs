@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{cosmian_kms_crypto::crypto::{
 use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
     cover_crypt::master_keys::create_master_keypair
 }};
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::{KmsRng, is_fips_build};
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
@@ -121,10 +121,14 @@ pub(crate) async fn create_key_pair(
     // The server SHALL create the AlwaysSensitive attribute (KMIP 2.1 §4.3):
     // True iff the private key is created Sensitive.
     private_key_attributes.initialize_always_sensitive();
+    private_key_attributes.reset_usage_limits_count();
     private_key_attributes.initialize_never_extractable();
     if let Ok(object_attributes) = private_key.attributes_mut() {
         object_attributes.always_sensitive = private_key_attributes.always_sensitive;
         object_attributes.never_extractable = private_key_attributes.never_extractable;
+        object_attributes
+            .usage_limits
+            .clone_from(&private_key_attributes.usage_limits);
     }
     // Initialise keyset metadata for gen-0 on SQL key pairs only.
     if sk_rotate_name.is_some() && !ObjectHandle::from(&sk_uid).is_hsm() {
@@ -151,8 +155,12 @@ pub(crate) async fn create_key_pair(
     // Public keys are never Sensitive; AlwaysSensitive SHALL always have a value
     // (KMIP 2.1 §4.3, Table 34: applies to all objects).
     public_key_attributes.initialize_always_sensitive();
+    public_key_attributes.reset_usage_limits_count();
     if let Ok(object_attributes) = public_key.attributes_mut() {
         object_attributes.always_sensitive = public_key_attributes.always_sensitive;
+        object_attributes
+            .usage_limits
+            .clone_from(&public_key_attributes.usage_limits);
     }
     trace!("Public key lifecycle attributes initialized");
     let public_key_tags = public_key_attributes.get_tags(kms.vendor_id());
@@ -203,6 +211,27 @@ pub(crate) async fn create_key_pair(
         private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid.to_owned()),
         public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid.to_owned()),
     })
+}
+
+/// The `OpenSSL` FIPS provider is the only provider a FIPS build uses, and it has no `EdDSA`: refuse
+/// the request with a clear reason instead of an `OpenSSL` "unsupported" error.
+fn reject_eddsa_key_pair(algorithm: CryptographicAlgorithm) -> KResult<()> {
+    if is_fips_build()
+        && matches!(
+            algorithm,
+            CryptographicAlgorithm::Ed25519 | CryptographicAlgorithm::Ed448
+        )
+    {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Field,
+            format!(
+                "CreateKeyPair: {algorithm:?} is not available in a FIPS build (the OpenSSL FIPS \
+                 provider has no EdDSA); a FIPS build can only create RSA and elliptic-curve \
+                 (EC/ECDSA/ECDH) key pairs"
+            )
+        ))
+    }
+    Ok(())
 }
 
 /// Resolve an attribute that must hold the same value on the private and the public key.
@@ -306,6 +335,7 @@ pub(super) fn generate_key_pair(
         ))
     };
     trace!("cryptographic_algorithm: {cryptographic_algorithm}");
+    reject_eddsa_key_pair(cryptographic_algorithm)?;
 
     // Generate the key pair based on the cryptographic algorithm.
     let key_pair = match cryptographic_algorithm {
@@ -622,16 +652,27 @@ pub(super) fn generate_key_pair(
 
 #[cfg(test)]
 mod tests {
-    use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
-        kmip_2_1::{
-            kmip_attributes::Attributes,
-            kmip_types::{CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve},
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::ErrorReason,
+            kmip_2_1::{
+                extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+                kmip_attributes::Attributes,
+                kmip_operations::GetAttributes,
+                kmip_types::{
+                    CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve,
+                    UniqueIdentifier, UsageLimits, UsageLimitsUnit,
+                },
+                requests::create_ec_key_pair_request,
+            },
         },
+        cosmian_kms_crypto::crypto::is_fips_build,
     };
 
-    use super::resolve_shared_attribute;
-    use crate::error::KmsError;
+    use super::{reject_eddsa_key_pair, resolve_shared_attribute};
+    use crate::{
+        error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
+    };
 
     fn curve(recommended_curve: RecommendedCurve) -> Attributes {
         Attributes {
@@ -699,5 +740,71 @@ mod tests {
             err,
             Some(KmsError::Kmip21Error(ErrorReason::Invalid_Attribute, _))
         ));
+    }
+
+    #[test]
+    fn eddsa_key_pair_is_refused_only_in_a_fips_build() {
+        for algorithm in [
+            CryptographicAlgorithm::Ed25519,
+            CryptographicAlgorithm::Ed448,
+        ] {
+            assert_eq!(reject_eddsa_key_pair(algorithm).is_err(), is_fips_build());
+        }
+        assert!(matches!(
+            reject_eddsa_key_pair(CryptographicAlgorithm::ECDSA),
+            Ok(())
+        ));
+    }
+
+    /// The server owns the Usage Limits Count: a client Count is ignored on both keys, and
+    /// `GetAttributes` (which prefers the key-block copy) reports the Total.
+    #[tokio::test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "tests: a panic is the failure signal"
+    )]
+    async fn key_pair_usage_limits_count_is_reset_to_total() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let mut request = create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            EMPTY_TAGS,
+            RecommendedCurve::P256,
+            false,
+            None,
+        )?;
+        request
+            .common_attributes
+            .get_or_insert_with(Attributes::default)
+            .usage_limits = Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(999),
+            usage_limits_total: 4,
+        });
+        let pair = kms.create_key_pair(request, &user).await?;
+        for uid in [
+            pair.private_key_unique_identifier,
+            pair.public_key_unique_identifier,
+        ] {
+            let reported = kms
+                .get_attributes(
+                    GetAttributes {
+                        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+                        attribute_reference: None,
+                    },
+                    &user,
+                )
+                .await?;
+            assert_eq!(
+                reported
+                    .attributes
+                    .usage_limits
+                    .map(|l| l.usage_limits_count),
+                Some(Some(4)),
+                "{uid}"
+            );
+        }
+        Ok(())
     }
 }

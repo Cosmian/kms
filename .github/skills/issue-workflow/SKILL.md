@@ -77,7 +77,7 @@ This extends `AGENTS.md` §5 step 1. Run all lines that apply:
 - The step 2 regression test and every step 3 test: green.
 - Code gated by `non-fips`, or code shared by both variants: run the targeted test with and without `--features non-fips`. Test modules gated by `#[cfg(feature = "non-fips")]` (for example `tests::ttlv_tests`) match 0 tests without that flag; check the `N passed` count is above 0.
 - Database code: `docker compose up -d <service>`, then the backend test (`AGENTS.md` §2 "Database test environment").
-- CLI: `cargo test -p ckms <test-name>`.
+- CLI: `cargo test -p ckms --features non-fips <test-name>`; without the flag the integration tests are not compiled and 0 tests run.
 - UI: the three layers in `AGENTS.md` §8.1 "UI test layers"; E2E via `mise run test:ui --variant non-fips`.
 - PKCS#11: changes under `crate/clients/pkcs11/` or PKCS#11 MISE scripts → `/pkcs11-check` (`mise run test:pkcs11:tool`); record the report summary for the PR body.
 - Server-facing change: start `cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data` and exercise the changed path with `ckms` or `curl`. Record the command and the observed output for the PR body.

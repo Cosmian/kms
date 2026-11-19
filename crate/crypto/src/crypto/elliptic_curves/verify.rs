@@ -228,3 +228,123 @@ mod test {
         }
     }
 }
+
+#[cfg(test)]
+mod official_vectors {
+    use openssl::{
+        bn::BigNumContext,
+        ec::{EcGroup, EcKey, EcPoint},
+        error::ErrorStack,
+        nid::Nid,
+        pkey::Id,
+    };
+
+    use super::{
+        CryptoResult, CryptographicParameters, PKey, Public, ValidityIndicator, ecdsa_verify,
+        ed_verify,
+    };
+    use crate::kat_vectors::{EcdsaVerifyGroup, EddsaGroup};
+
+    fn curve_nid(curve: &str) -> Nid {
+        match curve {
+            "P-256" => Nid::X9_62_PRIME256V1,
+            "P-384" => Nid::SECP384R1,
+            "P-521" => Nid::SECP521R1,
+            "secp256k1" => Nid::SECP256K1,
+            other => panic!("unknown curve {other}"),
+        }
+    }
+
+    /// Build an uncompressed-point EC public key; `Err` if the point is not on the curve.
+    fn ec_public(curve: &str, point: &[u8]) -> Result<PKey<Public>, ErrorStack> {
+        let group = EcGroup::from_curve_name(curve_nid(curve))?;
+        let mut ctx = BigNumContext::new()?;
+        let point = EcPoint::from_bytes(&group, point, &mut ctx)?;
+        PKey::from_ec_key(EcKey::from_public_key(&group, &point)?)
+    }
+
+    /// A valid record must verify; an invalid one must be `Invalid` or an error.
+    fn assert_verdict(
+        verdict: CryptoResult<ValidityIndicator>,
+        valid: bool,
+        id: &str,
+        source: &str,
+    ) {
+        if valid {
+            assert_eq!(
+                verdict.unwrap_or_else(|e| panic!("{id} ({source}): {e}")),
+                ValidityIndicator::Valid,
+                "{id} ({source})"
+            );
+        } else {
+            assert!(
+                !matches!(verdict, Ok(ValidityIndicator::Valid)),
+                "{id} ({source}): invalid record verified"
+            );
+        }
+    }
+
+    fn check_ecdsa_groups(groups: &[EcdsaVerifyGroup]) {
+        for g in groups {
+            let pk = ec_public(&g.curve, &g.public);
+            let params = CryptographicParameters {
+                hashing_algorithm: Some(g.hash),
+                ..Default::default()
+            };
+            for t in &g.tests {
+                // An unbuildable public key (point off the curve) counts as a rejection.
+                let Ok(pk) = &pk else {
+                    assert!(!t.valid, "{} ({}): valid record, bad key", t.id, g.source);
+                    continue;
+                };
+                assert_verdict(
+                    ecdsa_verify(pk, &t.msg, &t.sig, &params, false),
+                    t.valid,
+                    &t.id,
+                    &g.source,
+                );
+            }
+        }
+    }
+
+    fn check_eddsa_groups(groups: &[EddsaGroup], id: Id) {
+        for g in groups {
+            let pk = PKey::public_key_from_raw_bytes(&g.public, id);
+            for t in &g.tests {
+                let Ok(pk) = &pk else {
+                    assert!(!t.valid, "{} ({}): valid record, bad key", t.id, g.source);
+                    continue;
+                };
+                assert_verdict(ed_verify(pk, &t.msg, &t.sig), t.valid, &t.id, &g.source);
+            }
+        }
+    }
+
+    #[test]
+    fn test_ecdsa_verify_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        check_ecdsa_groups(&crate::kat_vectors::ecdsa_verify_groups().unwrap());
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_ecdsa_secp256k1_verify_official_vectors() {
+        check_ecdsa_groups(&crate::kat_vectors::ecdsa_secp256k1_verify_groups().unwrap());
+    }
+
+    #[test]
+    fn test_ed25519_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        check_eddsa_groups(&crate::kat_vectors::ed25519_groups().unwrap(), Id::ED25519);
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn test_ed448_official_vectors() {
+        check_eddsa_groups(&crate::kat_vectors::ed448_groups().unwrap(), Id::ED448);
+    }
+}

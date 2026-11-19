@@ -1,14 +1,22 @@
-use std::cmp::PartialEq;
+use std::{
+    cmp::PartialEq,
+    ffi::{c_int, c_void},
+};
 
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, PaddingMethod},
     kmip_2_1::kmip_types::CryptographicAlgorithm,
 };
 use cosmian_logger::{info, trace};
-use openssl::symm::{
-    Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
-    decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
-    encrypt_aead as openssl_encrypt_aead,
+use foreign_types::ForeignTypeRef;
+use openssl::{
+    cipher::Cipher as EvpCipher,
+    cipher_ctx::{CipherCtx, CipherCtxRef},
+    symm::{
+        Cipher, Crypter, Mode as OpenSslMode, decrypt as openssl_decrypt,
+        decrypt_aead as openssl_decrypt_aead, encrypt as openssl_encrypt,
+        encrypt_aead as openssl_encrypt_aead,
+    },
 };
 use zeroize::Zeroizing;
 
@@ -69,16 +77,22 @@ pub const AES_256_GCM_IV_LENGTH: usize = 12;
 pub const AES_256_GCM_MAC_LENGTH: usize = 16;
 
 /// AES 128 XTS key length in bytes.
+#[cfg(feature = "non-fips")]
 pub const AES_128_XTS_KEY_LENGTH: usize = 32;
 /// AES 128 XTS nonce, actually called a tweak, length in bytes.
+#[cfg(feature = "non-fips")]
 pub const AES_128_XTS_TWEAK_LENGTH: usize = 16;
 /// AES 128 XTS has no authentication.
+#[cfg(feature = "non-fips")]
 pub const AES_128_XTS_MAC_LENGTH: usize = 0;
 /// AES 256 XTS key length in bytes.
+#[cfg(feature = "non-fips")]
 pub const AES_256_XTS_KEY_LENGTH: usize = 64;
 /// AES 256 XTS nonce actually called a tweak,length in bytes.
+#[cfg(feature = "non-fips")]
 pub const AES_256_XTS_TWEAK_LENGTH: usize = 16;
 /// AES 256 XTS has no authentication.
+#[cfg(feature = "non-fips")]
 pub const AES_256_XTS_MAC_LENGTH: usize = 0;
 /// AES 128 `GCM_SIV` key length in bytes.
 #[cfg(feature = "non-fips")]
@@ -168,7 +182,10 @@ pub enum SymCipher {
     Aes256Gcm,
     Aes192Gcm,
     Aes128Gcm,
+    // XTS is approved for storage devices only (SP 800-38E), not for general KMIP encryption.
+    #[cfg(feature = "non-fips")]
     Aes128Xts,
+    #[cfg(feature = "non-fips")]
     Aes256Xts,
     Rfc3394_16,
     Rfc3394_24,
@@ -199,7 +216,9 @@ impl SymCipher {
             Self::Aes128Gcm => Ok(Cipher::aes_128_gcm()),
             Self::Aes192Gcm => Ok(Cipher::aes_192_gcm()),
             Self::Aes256Gcm => Ok(Cipher::aes_256_gcm()),
+            #[cfg(feature = "non-fips")]
             Self::Aes128Xts => Ok(Cipher::aes_128_xts()),
+            #[cfg(feature = "non-fips")]
             Self::Aes256Xts => Ok(Cipher::aes_256_xts()),
             Self::Rfc3394_16 | Self::Rfc3394_24 | Self::Rfc3394_32 => {
                 crypto_bail!(CryptoError::NotSupported(
@@ -238,7 +257,9 @@ impl SymCipher {
             Self::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
             Self::Aes192Gcm => AES_192_GCM_MAC_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
+            #[cfg(feature = "non-fips")]
             Self::Aes128Xts => AES_128_XTS_MAC_LENGTH,
+            #[cfg(feature = "non-fips")]
             Self::Aes256Xts => AES_256_XTS_MAC_LENGTH,
             Self::Rfc3394_16 | Self::Rfc3394_24 | Self::Rfc3394_32 => RFC3394_MAC_LENGTH,
             Self::Rfc5649_16 | Self::Rfc5649_24 | Self::Rfc5649_32 => RFC5649_MAC_LENGTH,
@@ -266,6 +287,20 @@ impl SymCipher {
             #[cfg(feature = "non-fips")]
             Self::Chacha20Poly1305 => 12,
             _ => self.tag_size(),
+        }
+    }
+
+    /// Smallest tag length in bytes a new encryption may request.
+    ///
+    /// A FIPS build encrypts with AES-GCM under one fixed tag length, the full 16 bytes (NIST
+    /// SP 800-38D §5.2.1.2: one tag length per key); [`Self::min_tag_size`] still bounds the
+    /// tags it verifies, so existing ciphertexts stay decryptable.
+    #[must_use]
+    pub const fn min_encrypt_tag_size(&self) -> usize {
+        if self.iv_generated_by_module() {
+            self.tag_size()
+        } else {
+            self.min_tag_size()
         }
     }
 
@@ -297,7 +332,9 @@ impl SymCipher {
             Self::Aes128Gcm => AES_128_GCM_IV_LENGTH,
             Self::Aes192Gcm => AES_192_GCM_IV_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_IV_LENGTH,
+            #[cfg(feature = "non-fips")]
             Self::Aes128Xts => AES_128_XTS_TWEAK_LENGTH,
+            #[cfg(feature = "non-fips")]
             Self::Aes256Xts => AES_256_XTS_TWEAK_LENGTH,
             Self::Rfc3394_16 | Self::Rfc3394_24 | Self::Rfc3394_32 => RFC3394_IV_LENGTH,
             Self::Rfc5649_16 | Self::Rfc5649_24 | Self::Rfc5649_32 => RFC5649_IV_LENGTH,
@@ -312,11 +349,69 @@ impl SymCipher {
         }
     }
 
+    /// Whether this cipher is AES-GCM (any key size).
+    #[must_use]
+    pub const fn is_aes_gcm(&self) -> bool {
+        matches!(self, Self::Aes128Gcm | Self::Aes192Gcm | Self::Aes256Gcm)
+    }
+
+    /// Whether this cipher is AES-XTS (any key size); never in a FIPS build.
+    #[cfg(feature = "non-fips")]
+    #[must_use]
+    pub const fn is_xts(&self) -> bool {
+        matches!(self, Self::Aes128Xts | Self::Aes256Xts)
+    }
+
+    /// Whether this cipher is AES-XTS (any key size); never in a FIPS build.
+    #[cfg(not(feature = "non-fips"))]
+    #[must_use]
+    pub const fn is_xts(&self) -> bool {
+        false
+    }
+
+    /// Block size a stream of this cipher is processed with.
+    #[cfg(feature = "non-fips")]
+    fn stream_block_size(self, cipher: Cipher) -> usize {
+        match self {
+            // This seems to be a bug in the openssl crate. The block size for AES is 16 bytes.
+            Self::Aes128Xts => 16,
+            Self::Aes256Xts => 32,
+            _ => cipher.block_size(),
+        }
+    }
+
+    /// Block size a stream of this cipher is processed with.
+    #[cfg(not(feature = "non-fips"))]
+    fn stream_block_size(self, cipher: Cipher) -> usize {
+        debug_assert!(!self.is_xts(), "AES-XTS does not exist in a FIPS build");
+        cipher.block_size()
+    }
+
+    /// Whether the IV of an encryption with this cipher must be generated inside the FIPS module:
+    /// AES-GCM in a FIPS build (see [`caller_gcm_iv_allowed`]).
+    #[must_use]
+    pub const fn iv_generated_by_module(&self) -> bool {
+        self.is_aes_gcm() && !caller_gcm_iv_allowed()
+    }
+
     /// Whether this cipher supports variable-length nonces.
-    /// GCM supports arbitrary IV lengths per NIST SP 800-38D §5.2.1.1.
+    /// GCM supports arbitrary IV lengths per NIST SP 800-38D §5.2.1.1; a FIPS build only supports
+    /// the 96-bit IV the module generates (§5.2.2).
     #[must_use]
     pub const fn allows_variable_nonce(&self) -> bool {
-        matches!(self, Self::Aes128Gcm | Self::Aes192Gcm | Self::Aes256Gcm)
+        self.is_aes_gcm() && caller_gcm_iv_allowed()
+    }
+
+    /// The EVP cipher of an AES-GCM variant, for the `EVP_CIPHER_CTX` based paths.
+    fn evp_gcm_cipher(self) -> Result<&'static openssl::cipher::CipherRef, CryptoError> {
+        match self {
+            Self::Aes128Gcm => Ok(EvpCipher::aes_128_gcm()),
+            Self::Aes192Gcm => Ok(EvpCipher::aes_192_gcm()),
+            Self::Aes256Gcm => Ok(EvpCipher::aes_256_gcm()),
+            other => crypto_bail!(CryptoError::NotSupported(format!(
+                "{other:?} is not an AES-GCM cipher"
+            ))),
+        }
     }
 
     /// Get the key size in bytes.
@@ -332,7 +427,9 @@ impl SymCipher {
             Self::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
             Self::Aes192Gcm => AES_192_GCM_KEY_LENGTH,
             Self::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
+            #[cfg(feature = "non-fips")]
             Self::Aes128Xts => AES_128_XTS_KEY_LENGTH,
+            #[cfg(feature = "non-fips")]
             Self::Aes256Xts => AES_256_XTS_KEY_LENGTH,
             Self::Rfc3394_16 => RFC3394_16_KEY_LENGTH,
             Self::Rfc3394_24 => RFC3394_24_KEY_LENGTH,
@@ -390,6 +487,7 @@ impl SymCipher {
                              bytes",
                         ))),
                     },
+                    #[cfg(feature = "non-fips")]
                     BlockCipherMode::XTS => match key_size {
                         AES_128_XTS_KEY_LENGTH => Ok(Self::Aes128Xts),
                         AES_256_XTS_KEY_LENGTH => Ok(Self::Aes256Xts),
@@ -460,6 +558,18 @@ impl SymCipher {
     ) -> Result<StreamCipher, CryptoError> {
         StreamCipher::new(*self, mode, key, nonce, aad)
     }
+
+    /// Stream cipher for an AES-GCM encryption whose IV is generated by the OpenSSL provider.
+    ///
+    /// # Errors
+    /// Fails if this is not an AES-GCM cipher or the key length does not match.
+    pub fn gcm_stream_cipher_generated_iv(
+        &self,
+        key: &[u8],
+        aad: &[u8],
+    ) -> Result<StreamCipher, CryptoError> {
+        StreamCipher::new_gcm_generated_iv(*self, key, aad)
+    }
 }
 
 /// Generate a random nonce for the given symmetric cipher.
@@ -476,6 +586,57 @@ pub fn random_key(rng: &KmsRng, sym_cipher: SymCipher) -> Result<Zeroizing<Vec<u
     Ok(key)
 }
 
+/// Whether a caller-supplied IV may be used to encrypt with AES-GCM.
+///
+/// FIPS build: never. The IV of a GCM encryption must be generated inside the validated module
+/// (NIST SP 800-38D §9.1; FIPS 140-3 IG C.H, Scenario 2); use
+/// [`aes_gcm_encrypt_generated_iv`] or [`SymCipher::gcm_stream_cipher_generated_iv`].
+#[cfg(not(feature = "non-fips"))]
+#[must_use]
+pub const fn caller_gcm_iv_allowed() -> bool {
+    false
+}
+
+/// Whether a caller-supplied IV may be used to encrypt with AES-GCM (non-FIPS build: always).
+#[cfg(feature = "non-fips")]
+#[must_use]
+pub const fn caller_gcm_iv_allowed() -> bool {
+    true
+}
+
+/// Error for an AES-GCM encryption that would use a caller-supplied IV in the FIPS build.
+fn caller_gcm_iv_refused() -> CryptoError {
+    CryptoError::NotSupported(
+        "AES-GCM encryption with a caller-supplied IV is not allowed in FIPS mode: the IV must be \
+         generated inside the FIPS module (NIST SP 800-38D §9.1, FIPS 140-3 IG C.H)"
+            .to_owned(),
+    )
+}
+
+/// `(iv, ciphertext, tag)` of an AES-GCM encryption.
+pub type GcmEncryption = (Vec<u8>, Vec<u8>, Vec<u8>);
+
+/// Encrypt with AES-GCM; the 96-bit IV is generated by the OpenSSL provider (an approved DRBG
+/// inside the FIPS module, NIST SP 800-38D §8.2.2) and returned with the result.
+///
+/// The tag is the full 16 bytes.
+pub fn aes_gcm_encrypt_generated_iv(
+    sym_cipher: SymCipher,
+    key: &[u8],
+    aad: &[u8],
+    plaintext: &[u8],
+) -> Result<GcmEncryption, CryptoError> {
+    let mut stream = sym_cipher.gcm_stream_cipher_generated_iv(key, aad)?;
+    let mut ciphertext = stream.update(plaintext)?;
+    let (tail, tag) = stream.finalize_encryption()?;
+    ciphertext.extend_from_slice(&tail);
+    let iv = stream
+        .generated_iv()
+        .ok_or_else(|| CryptoError::OpenSSL("the AES-GCM IV was not generated".to_owned()))?
+        .to_vec();
+    Ok((iv, ciphertext, tag))
+}
+
 /// Encrypt the plaintext using the given symmetric cipher.
 /// Return the ciphertext and the tag.
 /// For XTS mode, the nonce is the tweak, the aad is ignored, and the tag is empty.
@@ -487,6 +648,9 @@ pub fn encrypt(
     plaintext: &[u8],
     padding_method: Option<PaddingMethod>,
 ) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
+    if sym_cipher.iv_generated_by_module() {
+        return Err(caller_gcm_iv_refused());
+    }
     trace!(
         "encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {}, \
          plaintext length: {}, padding_method: {padding_method:?}",
@@ -531,11 +695,10 @@ pub fn encrypt(
             };
             Ok((ciphertext, vec![]))
         }
+        #[cfg(feature = "non-fips")]
         SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
             //  XTS mode does not require a tag.
-            if plaintext.len() < 16
-                && matches!(sym_cipher, SymCipher::Aes128Xts | SymCipher::Aes256Xts)
-            {
+            if plaintext.len() < 16 {
                 return Err(CryptoError::InvalidSize(
                     "Plaintext is too short for XTS block encryption".to_owned(),
                 ));
@@ -684,6 +847,7 @@ pub fn decrypt(
                 }
             }
         }
+        #[cfg(feature = "non-fips")]
         SymCipher::Aes128Xts | SymCipher::Aes256Xts => {
             // XTS mode does not require a tag.
             Zeroizing::from(openssl_decrypt(
@@ -782,7 +946,45 @@ pub fn decrypt(
 
 pub enum UnderlyingCipher {
     Openssl(Crypter),
+    /// AES-GCM encryption whose IV is generated by the provider; `iv` is filled once drawn.
+    GcmGeneratedIv {
+        ctx: CipherCtx,
+        iv: Option<Vec<u8>>,
+    },
     AesGcmSiv,
+}
+
+/// Copy the IV the provider generated into `iv`, if it has not been drawn yet or already read.
+fn capture_generated_iv(ctx: &CipherCtx, iv: &mut Option<Vec<u8>>) {
+    if iv.is_none() {
+        *iv = read_generated_iv(ctx);
+    }
+}
+
+// `EVP_CIPHER_CTX_get_original_iv` (OpenSSL >= 3.0) is not exposed by `openssl-sys`.
+#[expect(
+    unsafe_code,
+    reason = "FFI declaration of an EVP API missing from openssl-sys"
+)]
+unsafe extern "C" {
+    fn EVP_CIPHER_CTX_get_original_iv(
+        ctx: *mut openssl_sys::EVP_CIPHER_CTX,
+        buf: *mut c_void,
+        len: usize,
+    ) -> c_int;
+}
+
+/// Read the IV of an AES-GCM encryption from the provider. `None` while the provider has not
+/// generated it yet.
+#[expect(unsafe_code, reason = "calls EVP_CIPHER_CTX_get_original_iv")]
+fn read_generated_iv(ctx: &CipherCtxRef) -> Option<Vec<u8>> {
+    let mut iv = vec![0_u8; ctx.iv_length()];
+    // SAFETY: `ctx.as_ptr()` is a live `EVP_CIPHER_CTX` borrowed for the call, and `iv` is a
+    // writable buffer of exactly `iv.len()` bytes.
+    let ok = unsafe {
+        EVP_CIPHER_CTX_get_original_iv(ctx.as_ptr(), iv.as_mut_ptr().cast::<c_void>(), iv.len())
+    };
+    (ok == 1).then_some(iv)
 }
 
 /// A stream cipher for encryption or decryption.
@@ -871,6 +1073,9 @@ impl StreamCipher {
         nonce: &[u8],
         aad: &[u8],
     ) -> Result<Self, CryptoError> {
+        if mode == Mode::Encrypt && sym_cipher.iv_generated_by_module() {
+            return Err(caller_gcm_iv_refused());
+        }
         match sym_cipher {
             #[cfg(feature = "non-fips")]
             SymCipher::Aes128GcmSiv | SymCipher::Aes256GcmSiv => {
@@ -881,12 +1086,7 @@ impl StreamCipher {
             }
             _ => {
                 let cipher = sym_cipher.to_openssl_cipher()?;
-                let block_size = match sym_cipher {
-                    // This seems to be a bug in the openssl crate. The block size for AES is 16 bytes.
-                    SymCipher::Aes128Xts => 16,
-                    SymCipher::Aes256Xts => 32,
-                    _ => cipher.block_size(),
-                };
+                let block_size = sym_cipher.stream_block_size(cipher);
                 let mut crypter = Crypter::new(cipher, mode.into(), key, Some(nonce))?;
                 if !aad.is_empty() {
                     crypter.aad_update(aad)?;
@@ -897,14 +1097,63 @@ impl StreamCipher {
                     block_size,
                     tag_size: sym_cipher.tag_size(),
                     sym_cipher,
-                    park_last_block: matches!(
-                        sym_cipher,
-                        SymCipher::Aes128Xts | SymCipher::Aes256Xts
-                    ),
+                    park_last_block: sym_cipher.is_xts(),
                     buffer: vec![],
                 })
             }
         }
+    }
+
+    /// The IV generated inside the OpenSSL provider for an AES-GCM encryption.
+    ///
+    /// The provider draws it on the first non-empty update (AAD or data) or on finalization:
+    /// `None` until then, and always `None` for a stream cipher built with a caller IV.
+    #[must_use]
+    pub fn generated_iv(&self) -> Option<&[u8]> {
+        match &self.underlying_cipher {
+            UnderlyingCipher::GcmGeneratedIv { iv, .. } => iv.as_deref(),
+            UnderlyingCipher::Openssl(_) | UnderlyingCipher::AesGcmSiv => None,
+        }
+    }
+
+    /// AES-GCM encryption whose 96-bit IV is generated by the OpenSSL provider (see
+    /// [`aes_gcm_encrypt_generated_iv`]); read it with [`Self::generated_iv`].
+    fn new_gcm_generated_iv(
+        sym_cipher: SymCipher,
+        key: &[u8],
+        aad: &[u8],
+    ) -> Result<Self, CryptoError> {
+        let evp_cipher = sym_cipher.evp_gcm_cipher()?;
+        if key.len() != sym_cipher.key_size() {
+            crypto_bail!(CryptoError::InvalidSize(format!(
+                "{sym_cipher:?} key must be {} bytes. Got {}",
+                sym_cipher.key_size(),
+                key.len()
+            )));
+        }
+        let mut ctx = CipherCtx::new()?;
+        // No IV is given to the init call: the provider generates it (SP 800-38D §8.2.2).
+        ctx.encrypt_init(Some(evp_cipher), Some(key), None)?;
+        if ctx.iv_length() != sym_cipher.nonce_size() {
+            crypto_bail!(CryptoError::OpenSSL(format!(
+                "unexpected AES-GCM IV length: {}",
+                ctx.iv_length()
+            )));
+        }
+        let mut iv = None;
+        if !aad.is_empty() {
+            ctx.cipher_update(aad, None)?;
+            capture_generated_iv(&ctx, &mut iv);
+        }
+        Ok(Self {
+            underlying_cipher: UnderlyingCipher::GcmGeneratedIv { ctx, iv },
+            mode: Mode::Encrypt,
+            block_size: 1,
+            tag_size: sym_cipher.tag_size(),
+            sym_cipher,
+            park_last_block: false,
+            buffer: vec![],
+        })
     }
 
     /// Enable or disable PKCS#5 padding (only meaningful for ECB and CBC).
@@ -955,6 +1204,12 @@ impl StreamCipher {
                     .to_vec();
                 Ok(buffer)
             }
+            UnderlyingCipher::GcmGeneratedIv { ctx, iv } => {
+                let mut output = Vec::with_capacity(bytes.len());
+                ctx.cipher_update_vec(bytes, &mut output)?;
+                capture_generated_iv(ctx, iv);
+                Ok(output)
+            }
             UnderlyingCipher::AesGcmSiv => Err(CryptoError::NotSupported(
                 "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
             )),
@@ -996,6 +1251,18 @@ impl StreamCipher {
                 };
                 Ok((final_bytes, tag))
             }
+            UnderlyingCipher::GcmGeneratedIv {
+                ref mut ctx,
+                ref mut iv,
+            } => {
+                // GCM produces no trailing ciphertext bytes; the tag is read after finalization.
+                let mut tail = vec![];
+                ctx.cipher_final_vec(&mut tail)?;
+                let mut tag = vec![0; self.tag_size];
+                ctx.tag(&mut tag)?;
+                capture_generated_iv(ctx, iv);
+                Ok((tail, tag))
+            }
             UnderlyingCipher::AesGcmSiv => Err(CryptoError::NotSupported(
                 "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
             )),
@@ -1031,6 +1298,9 @@ impl StreamCipher {
                 final_bytes.extend(buffer);
                 Ok(final_bytes)
             }
+            UnderlyingCipher::GcmGeneratedIv { .. } => crypto_bail!(CryptoError::Default(
+                "an AES-GCM stream cipher with a generated IV only encrypts".to_owned()
+            )),
             UnderlyingCipher::AesGcmSiv => Err(CryptoError::NotSupported(
                 "AES GCM SIV is not supported as a stream cipher for now".to_owned(),
             )),

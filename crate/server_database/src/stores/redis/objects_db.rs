@@ -161,7 +161,7 @@ impl ObjectsDB {
         }
     }
 
-    fn object_key(uid: &str) -> String {
+    pub(crate) fn object_key(uid: &str) -> String {
         format!("do::{uid}")
     }
 
@@ -501,7 +501,7 @@ pub(crate) const ACTIVE_KEY_COUNT_KEY: &str = "kms::metrics::active_key_count";
 
 /// SCAN batch hint passed to Redis.  Redis may return more or fewer keys per
 /// batch; `200` is a pragmatic balance between round-trips and command latency.
-const SCAN_BATCH_HINT: u64 = 200;
+pub(crate) const SCAN_BATCH_HINT: u64 = 200;
 
 impl ObjectsDB {
     /// Atomically adjust the live-object counter by `delta`.

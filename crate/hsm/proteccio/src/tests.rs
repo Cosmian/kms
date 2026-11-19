@@ -5,10 +5,10 @@
 //! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features proteccio -- tests::test_hsm_proteccio_all
 //! ```
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest, SlotManager,
+    HResult, RsaOaepDigest,
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -26,20 +26,6 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         slot_id_for_tests: slot,
         threads: 4,
     })
-}
-
-#[cfg(not(feature = "non-fips"))]
-fn proteccio_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
-    match shared::aes_gcm_encrypt(slot) {
-        Ok(()) => Ok(()),
-        Err(error) if error.to_string().contains("did not generate an AES-GCM IV") => Ok(()),
-        Err(error) => Err(error),
-    }
-}
-
-#[cfg(feature = "non-fips")]
-fn proteccio_aes_gcm_encrypt(slot: &Arc<SlotManager>) -> HResult<()> {
-    shared::aes_gcm_encrypt(slot)
 }
 
 #[test]
@@ -62,7 +48,7 @@ fn test_hsm_proteccio_all() -> HResult<()> {
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
-    proteccio_aes_gcm_encrypt(&slot)?;
+    shared::aes_gcm_encrypt_if_hsm_generates_iv(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;

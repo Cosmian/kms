@@ -13,7 +13,8 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
     HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm, SigningKeyMetadata,
+    MacAlgorithm, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
+    SigningKeyMetadata,
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
@@ -26,14 +27,16 @@ use pkcs11_sys::{
     CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL,
     CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC,
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED,
-    CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
-    CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
-    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL, CKR_MECHANISM_INVALID,
-    CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
-    CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
+    CKM_AES_CBC, CKM_AES_CMAC, CKM_AES_GCM, CKM_AES_GMAC, CKM_ECDSA, CKM_ECDSA_SHA256,
+    CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA_1_HMAC,
+    CKM_SHA1_RSA_PKCS, CKM_SHA3_224_HMAC, CKM_SHA3_256_HMAC, CKM_SHA3_384_HMAC, CKM_SHA3_512_HMAC,
+    CKM_SHA224_HMAC, CKM_SHA256, CKM_SHA256_HMAC, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
+    CKM_SHA384, CKM_SHA384_HMAC, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
+    CKM_SHA512_HMAC, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
+    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL,
+    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -54,6 +57,8 @@ const AES_BLOCK_SIZE: usize = 16;
 const AES_CBC_IV_LENGTH: usize = 16;
 const AES_GCM_IV_LENGTH: usize = 12;
 const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
+/// Length in bytes of the IV that prefixes an AES-GMAC `MAC Data` (96-bit IV, NIST SP 800-38D).
+pub(crate) const AES_GMAC_IV_LENGTH: usize = AES_GCM_IV_LENGTH;
 
 /// Initial output capacity covers RSA-4096, ECDSA P-521, and Ed448 signatures.
 const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
@@ -84,6 +89,48 @@ pub(super) fn checked_output_length(length: CK_ULONG, capacity: usize) -> HResul
         )));
     }
     Ok(length)
+}
+
+/// `CKM_AES_GMAC` parameter (PKCS#11 v3.0 §2.13.4): a `CK_GCM_PARAMS` with the 12-byte IV, no AAD
+/// (the message is the `pData` of `C_Sign`/`C_Verify`) and a 128-bit tag. It points into `iv`,
+/// which must outlive the returned value.
+fn gmac_params(iv: &mut [u8; AES_GMAC_IV_LENGTH]) -> HResult<CK_AES_GCM_PARAMS> {
+    Ok(CK_AES_GCM_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: CK_ULONG::try_from(AES_GMAC_IV_LENGTH)?,
+        ulIvBits: CK_ULONG::try_from(AES_GMAC_IV_LENGTH * 8)?,
+        pAAD: ptr::null_mut(),
+        ulAADLen: 0,
+        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+    })
+}
+
+/// `CKM_AES_GMAC` mechanism over `params`, which must outlive the returned value.
+fn gmac_mechanism(params: &mut CK_AES_GCM_PARAMS) -> HResult<CK_MECHANISM> {
+    Ok(CK_MECHANISM {
+        mechanism: CKM_AES_GMAC,
+        pParameter: ptr::from_mut(params).cast::<std::ffi::c_void>(),
+        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+    })
+}
+
+/// PKCS#11 mechanism used to compute or verify a MAC with `algorithm`.
+///
+/// For `CKM_AES_GMAC` the IV is passed in the mechanism parameter, see [`gmac_params`].
+const fn mac_mechanism(algorithm: MacAlgorithm) -> CK_MECHANISM_TYPE {
+    match algorithm {
+        MacAlgorithm::HmacSha1 => CKM_SHA_1_HMAC,
+        MacAlgorithm::HmacSha224 => CKM_SHA224_HMAC,
+        MacAlgorithm::HmacSha256 => CKM_SHA256_HMAC,
+        MacAlgorithm::HmacSha384 => CKM_SHA384_HMAC,
+        MacAlgorithm::HmacSha512 => CKM_SHA512_HMAC,
+        MacAlgorithm::HmacSha3224 => CKM_SHA3_224_HMAC,
+        MacAlgorithm::HmacSha3256 => CKM_SHA3_256_HMAC,
+        MacAlgorithm::HmacSha3384 => CKM_SHA3_384_HMAC,
+        MacAlgorithm::HmacSha3512 => CKM_SHA3_512_HMAC,
+        MacAlgorithm::AesCmac => CKM_AES_CMAC,
+        MacAlgorithm::AesGmac => CKM_AES_GMAC,
+    }
 }
 
 /// Encryption algorithm supported by the HSM
@@ -191,9 +238,14 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
     }
 }
 
+/// A FIPS build refuses the RSA encryption schemes that are not approved (SHA-1 OAEP and
+/// PKCS#1 v1.5), like the server's own RSA code.
 #[cfg(not(feature = "non-fips"))]
 const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) -> bool {
-    !matches!(algorithm, HsmEncryptionAlgorithm::RsaOaepSha1)
+    !matches!(
+        algorithm,
+        HsmEncryptionAlgorithm::RsaOaepSha1 | HsmEncryptionAlgorithm::RsaPkcsV15
+    )
 }
 
 #[cfg(feature = "non-fips")]
@@ -201,10 +253,11 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
 }
 
-/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
+/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module, so a FIPS
+/// build never sends a caller-chosen IV.
 #[cfg(not(feature = "non-fips"))]
-const fn caller_gcm_iv_allowed(c: &AesGcmCapabilities) -> bool {
-    c.supports_caller_iv && c.allows_caller_iv_in_fips
+const fn caller_gcm_iv_allowed(_: &AesGcmCapabilities) -> bool {
+    false
 }
 
 #[cfg(feature = "non-fips")]
@@ -1189,9 +1242,9 @@ impl Session {
         iv_counter_nonce: Option<&[u8]>,
     ) -> HResult<EncryptedContent> {
         if !is_encryption_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "{algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
@@ -1289,9 +1342,9 @@ impl Session {
         ciphertext: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
         if !is_encryption_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "{algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => self.decrypt_aes_gcm(key_handle, ciphertext),
@@ -2161,6 +2214,19 @@ impl Session {
         if let Some(signature) = self.try_sign_message(key_handle, mechanism, data)? {
             return Ok(signature);
         }
+        self.sign_with_classic_mechanism(key_handle, mechanism, data)
+    }
+
+    /// Signs with `C_SignInit`/`C_Sign` only, never through a persistent message context.
+    ///
+    /// Required for mechanisms whose parameter must change per operation (AES-GMAC's IV): a
+    /// message context binds its mechanism parameter at init and would replay it.
+    fn sign_with_classic_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
         self.end_message_operations();
         let mut data = data.to_vec();
         #[expect(
@@ -2303,6 +2369,77 @@ impl Session {
                 self.verify_with_simple_mechanism(key_handle, CKM_EDDSA, data, signature)
             }
         }
+    }
+
+    /// Compute a MAC over `data` with the symmetric key `key_handle` (`C_SignInit`/`C_Sign`).
+    ///
+    /// HMAC and AES-CMAC return the raw MAC. AES-GMAC returns `IV (12 bytes) || tag (16 bytes)`:
+    /// the IV is drawn from the KMS random source for every call, because the MAC request
+    /// carries no IV and a GMAC nonce must never repeat under one key.
+    ///
+    /// # Errors
+    /// Returns an error if the IV cannot be generated, the mechanism is not supported by the
+    /// token, or the HSM operation fails.
+    pub fn mac(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: MacAlgorithm,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        if algorithm != MacAlgorithm::AesGmac {
+            return self.sign_with_simple_mechanism(key_handle, mac_mechanism(algorithm), data);
+        }
+        let mut iv = generate_random_nonce::<AES_GMAC_IV_LENGTH>()?;
+        let mut params = gmac_params(&mut iv)?;
+        let mut mechanism = gmac_mechanism(&mut params)?;
+        let tag = self.sign_with_classic_mechanism(key_handle, &mut mechanism, data)?;
+        if tag.len() != AES_GCM_AUTH_TAG_LENGTH {
+            return Err(HError::Default(format!(
+                "AES-GMAC: unexpected tag length: {}",
+                tag.len()
+            )));
+        }
+        let mut mac = Vec::with_capacity(iv.len() + tag.len());
+        mac.extend_from_slice(&iv);
+        mac.extend_from_slice(&tag);
+        Ok(mac)
+    }
+
+    /// Verify a MAC produced by [`Self::mac`] (`C_VerifyInit`/`C_Verify`); the comparison is
+    /// done by the HSM, not in software.
+    ///
+    /// For AES-GMAC `mac` is `IV (12 bytes) || tag (16 bytes)`. Returns `Ok(false)` for a MAC
+    /// that does not match (`CKR_SIGNATURE_INVALID` / `CKR_SIGNATURE_LEN_RANGE`).
+    ///
+    /// # Errors
+    /// Returns an error if an AES-GMAC `mac` is shorter than the IV, the mechanism is not
+    /// supported by the token, or the HSM operation fails.
+    pub fn verify_mac(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: MacAlgorithm,
+        data: &[u8],
+        mac: &[u8],
+    ) -> HResult<bool> {
+        if algorithm != MacAlgorithm::AesGmac {
+            return self.verify_with_simple_mechanism(
+                key_handle,
+                mac_mechanism(algorithm),
+                data,
+                mac,
+            );
+        }
+        let (iv, tag) = mac.split_at_checked(AES_GMAC_IV_LENGTH).ok_or_else(|| {
+            HError::Default(format!(
+                "AES-GMAC MAC data must start with a {AES_GMAC_IV_LENGTH}-byte IV, got {} bytes",
+                mac.len()
+            ))
+        })?;
+        let mut iv = <[u8; AES_GMAC_IV_LENGTH]>::try_from(iv)
+            .map_err(|_invalid_length| HError::Default("Invalid AES-GMAC IV".to_owned()))?;
+        let mut params = gmac_params(&mut iv)?;
+        let mut mechanism = gmac_mechanism(&mut params)?;
+        self.verify_with_classic_mechanism(key_handle, &mut mechanism, data, tag)
     }
 
     /// Read `CKA_EC_PARAMS` for `key_handle` and decode it to the corresponding `EcCurve`
@@ -2484,6 +2621,18 @@ impl Session {
         if let Some(valid) = self.try_verify_message(key_handle, mechanism, data, signature)? {
             return Ok(valid);
         }
+        self.verify_with_classic_mechanism(key_handle, mechanism, data, signature)
+    }
+
+    /// Verifies with `C_VerifyInit`/`C_Verify` only, never through a persistent message
+    /// context (see [`Self::sign_with_classic_mechanism`]).
+    fn verify_with_classic_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+        signature: &[u8],
+    ) -> HResult<bool> {
         self.end_message_operations();
         let mut data = data.to_vec();
         let mut signature = signature.to_vec();
@@ -4123,13 +4272,63 @@ mod tests {
     use super::*;
 
     #[test]
-    fn caller_gcm_iv_policy_development_token() {
-        let development_token = AesGcmCapabilities {
-            supports_caller_iv: true,
-            allows_caller_iv_in_fips: true,
-            ..Default::default()
-        };
-        assert!(caller_gcm_iv_allowed(&development_token));
+    fn mac_mechanism_maps_every_algorithm() {
+        for (algorithm, mechanism) in [
+            (MacAlgorithm::HmacSha1, CKM_SHA_1_HMAC),
+            (MacAlgorithm::HmacSha224, CKM_SHA224_HMAC),
+            (MacAlgorithm::HmacSha256, CKM_SHA256_HMAC),
+            (MacAlgorithm::HmacSha384, CKM_SHA384_HMAC),
+            (MacAlgorithm::HmacSha512, CKM_SHA512_HMAC),
+            (MacAlgorithm::HmacSha3224, CKM_SHA3_224_HMAC),
+            (MacAlgorithm::HmacSha3256, CKM_SHA3_256_HMAC),
+            (MacAlgorithm::HmacSha3384, CKM_SHA3_384_HMAC),
+            (MacAlgorithm::HmacSha3512, CKM_SHA3_512_HMAC),
+            (MacAlgorithm::AesCmac, CKM_AES_CMAC),
+            (MacAlgorithm::AesGmac, CKM_AES_GMAC),
+        ] {
+            assert_eq!(mac_mechanism(algorithm), mechanism, "{algorithm:?}");
+        }
+    }
+
+    /// `CKM_AES_GMAC` takes a `CK_GCM_PARAMS` (PKCS#11 v3.0 section 2.13.4), not a raw IV.
+    #[test]
+    fn gmac_mechanism_carries_gcm_params() {
+        let mut iv = [0x11_u8; AES_GMAC_IV_LENGTH];
+        let iv_ptr = iv.as_mut_ptr();
+        let mut params = gmac_params(&mut iv).unwrap();
+        let mechanism = gmac_mechanism(&mut params).unwrap();
+
+        // Copy the fields first: `CK_MECHANISM` and `CK_GCM_PARAMS` are packed on Windows and
+        // `assert_eq!` would take unaligned references to them.
+        let (mechanism_type, parameter_len, parameter_ptr) = (
+            mechanism.mechanism,
+            mechanism.ulParameterLen,
+            mechanism.pParameter,
+        );
+        let (p_iv, iv_len, iv_bits, tag_bits, p_aad, aad_len) = (
+            params.pIv,
+            params.ulIvLen,
+            params.ulIvBits,
+            params.ulTagBits,
+            params.pAAD,
+            params.ulAADLen,
+        );
+
+        assert_eq!(mechanism_type, CKM_AES_GMAC);
+        assert_eq!(
+            usize::try_from(parameter_len).unwrap(),
+            size_of::<CK_AES_GCM_PARAMS>()
+        );
+        assert_eq!(
+            parameter_ptr,
+            ptr::from_mut(&mut params).cast::<std::ffi::c_void>()
+        );
+        assert_eq!(p_iv, iv_ptr);
+        assert_eq!(iv_len, 12);
+        assert_eq!(iv_bits, 96);
+        assert_eq!(tag_bits, 128);
+        assert!(p_aad.is_null());
+        assert_eq!(aad_len, 0);
     }
 
     #[cfg(feature = "non-fips")]
@@ -4137,7 +4336,6 @@ mod tests {
     fn caller_gcm_iv_policy_production_non_fips() {
         let production = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(caller_gcm_iv_allowed(&production));
@@ -4148,7 +4346,6 @@ mod tests {
     fn caller_gcm_iv_policy_production_fips() {
         let production = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(!caller_gcm_iv_allowed(&production));
@@ -4209,8 +4406,8 @@ mod tests {
         assert_ne!(content.iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
     }
 
-    fn check_classic_gcm_policy(rows: &[(bool, bool, bool)]) -> HResult<()> {
-        for &(supports_caller_iv, allows_caller_iv_in_fips, expect_caller_iv) in rows {
+    fn check_classic_gcm_policy(rows: &[(bool, bool)]) -> HResult<()> {
+        for &(supports_caller_iv, expect_caller_iv) in rows {
             for supports_message in [false, true] {
                 let mut args = Vec::new();
                 if expect_caller_iv {
@@ -4222,7 +4419,6 @@ mod tests {
                 let content = fips_hsm_gcm_encrypt(
                     AesGcmCapabilities {
                         supports_caller_iv,
-                        allows_caller_iv_in_fips,
                         supports_message,
                     },
                     &args,
@@ -4239,40 +4435,27 @@ mod tests {
     #[cfg(not(feature = "non-fips"))]
     #[test]
     fn classic_gcm_policy_fips() -> HResult<()> {
-        check_classic_gcm_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, false),
-            (true, true, true),
-        ])
+        check_classic_gcm_policy(&[(false, false), (true, false)])
     }
 
     #[cfg(feature = "non-fips")]
     #[test]
     fn classic_gcm_policy_non_fips() -> HResult<()> {
-        check_classic_gcm_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, true),
-            (true, true, true),
-        ])
+        check_classic_gcm_policy(&[(false, false), (true, true)])
     }
 
     #[test]
     fn message_gcm_precedes_classic_iv_policy() -> HResult<()> {
         for supports_caller_iv in [false, true] {
-            for allows_caller_iv_in_fips in [false, true] {
-                let content = fips_hsm_gcm_encrypt(
-                    AesGcmCapabilities {
-                        supports_caller_iv,
-                        allows_caller_iv_in_fips,
-                        supports_message: true,
-                    },
-                    &["-DMESSAGE_SUCCESS"],
-                )?;
-                assert_fixture_encryption(&content);
-                assert_eq!(content.iv, Some((0xB0_u8..=0xBB).collect()));
-            }
+            let content = fips_hsm_gcm_encrypt(
+                AesGcmCapabilities {
+                    supports_caller_iv,
+                    supports_message: true,
+                },
+                &["-DMESSAGE_SUCCESS"],
+            )?;
+            assert_fixture_encryption(&content);
+            assert_eq!(content.iv, Some((0xB0_u8..=0xBB).collect()));
         }
         Ok(())
     }
@@ -4287,7 +4470,6 @@ mod tests {
             let content = fips_hsm_gcm_encrypt(
                 AesGcmCapabilities {
                     supports_caller_iv: false,
-                    allows_caller_iv_in_fips: false,
                     supports_message,
                 },
                 &args,
@@ -4298,11 +4480,10 @@ mod tests {
         Ok(())
     }
 
-    fn check_caller_iv_policy(rows: &[(bool, bool, bool)]) -> HResult<()> {
-        for &(supports_caller_iv, allows_caller_iv_in_fips, accepted) in rows {
+    fn check_caller_iv_policy(rows: &[(bool, bool)]) -> HResult<()> {
+        for &(supports_caller_iv, accepted) in rows {
             let gcm = AesGcmCapabilities {
                 supports_caller_iv,
-                allows_caller_iv_in_fips,
                 supports_message: true,
             };
             let rejecting = gcm_fixture_session(gcm.clone(), &["-DREJECT_DRIVER_OPERATIONS"])?;
@@ -4342,32 +4523,22 @@ mod tests {
     #[cfg(not(feature = "non-fips"))]
     #[test]
     fn caller_gcm_iv_policy_fips() -> HResult<()> {
-        check_caller_iv_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, false),
-            (true, true, true),
-        ])
+        check_caller_iv_policy(&[(false, false), (true, false)])
     }
 
     #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_policy_non_fips() -> HResult<()> {
-        check_caller_iv_policy(&[
-            (false, false, false),
-            (false, true, false),
-            (true, false, true),
-            (true, true, true),
-        ])
+        check_caller_iv_policy(&[(false, false), (true, true)])
     }
 
+    #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_driver_refusal_is_reported() -> HResult<()> {
         // Without EXPECT_CALLER_IV the fixture models an HSM that refuses a nonzero IV.
         let session = gcm_fixture_session(
             AesGcmCapabilities {
                 supports_caller_iv: true,
-                allows_caller_iv_in_fips: true,
                 supports_message: false,
             },
             &[],
@@ -4384,7 +4555,6 @@ mod tests {
         let session = gcm_fixture_session(
             AesGcmCapabilities {
                 supports_caller_iv: false,
-                allows_caller_iv_in_fips: false,
                 supports_message: false,
             },
             &["-DIGNORE_IV_BUFFER"],
@@ -4411,7 +4581,6 @@ mod tests {
         gcm_fixture_session(
             AesGcmCapabilities {
                 supports_caller_iv: false,
-                allows_caller_iv_in_fips: false,
                 supports_message,
             },
             args,
@@ -4472,11 +4641,11 @@ mod tests {
     }
 
     /// A driver that replaces the accepted caller IV must not have its output trusted.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn caller_gcm_iv_replaced_by_the_driver_is_rejected() -> HResult<()> {
         let gcm = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: true,
             supports_message: false,
         };
         let session = gcm_fixture_session(gcm, &["-DEXPECT_CALLER_IV", "-DOVERWRITE_CALLER_IV"])?;
@@ -4678,19 +4847,24 @@ mod tests {
 
     #[cfg(not(feature = "non-fips"))]
     #[test]
-    fn sha1_oaep_dispatchers_reject_before_driver_operation() -> HResult<()> {
+    fn unapproved_rsa_encryption_dispatchers_reject_before_driver_operation() -> HResult<()> {
         let session = decrypt_fixture_session(false, &["-DREJECT_DRIVER_OPERATIONS"])?;
-        let encrypt = session
-            .encrypt(1, HsmEncryptionAlgorithm::RsaOaepSha1, b"hello", None)
-            .expect_err("SHA1 OAEP is unavailable in FIPS");
-        let decrypt = session
-            .decrypt(1, HsmEncryptionAlgorithm::RsaOaepSha1, b"hello")
-            .expect_err("SHA1 OAEP is unavailable in FIPS");
-        for error in [encrypt, decrypt] {
-            assert_eq!(
-                error.to_string(),
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode"
-            );
+        for algorithm in [
+            HsmEncryptionAlgorithm::RsaOaepSha1,
+            HsmEncryptionAlgorithm::RsaPkcsV15,
+        ] {
+            let encrypt = session
+                .encrypt(1, algorithm, b"hello", None)
+                .expect_err("unapproved RSA encryption is unavailable in FIPS");
+            let decrypt = session
+                .decrypt(1, algorithm, b"hello")
+                .expect_err("unapproved RSA decryption is unavailable in FIPS");
+            for error in [encrypt, decrypt] {
+                assert_eq!(
+                    error.to_string(),
+                    format!("{algorithm:?} is unavailable in FIPS mode")
+                );
+            }
         }
         Ok(())
     }

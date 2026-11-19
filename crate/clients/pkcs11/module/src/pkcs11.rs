@@ -43,9 +43,9 @@ use pkcs11_sys::{
     CKF_MESSAGE_SIGN, CKF_PROTECTED_AUTHENTICATION_PATH, CKF_RNG, CKF_RW_SESSION,
     CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT,
     CKF_USER_PIN_INITIALIZED, CKF_VERIFY, CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKM_AES_CBC,
-    CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK, CKS_RO_USER_FUNCTIONS,
-    CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER, CRYPTOKI_VERSION_MAJOR,
-    CRYPTOKI_VERSION_MINOR,
+    CKM_AES_CBC_PAD, CKM_AES_CMAC, CKM_AES_GCM, CKM_AES_GMAC, CKM_AES_KEY_GEN, CKM_EDDSA, CKR_OK,
+    CKS_RO_USER_FUNCTIONS, CKS_RW_USER_FUNCTIONS, CKU_CONTEXT_SPECIFIC, CKU_SO, CKU_USER,
+    CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR,
 };
 use zeroize::Zeroizing;
 
@@ -53,14 +53,17 @@ use crate::{
     MResultHelper, ModuleError, ModuleResult,
     core::{
         attribute::{AttributeType, Attributes},
-        mechanism::{Mechanism, SUPPORTED_SIGNATURE_MECHANISMS, parse_mechanism},
+        mechanism::{
+            AES_MAC_KEY_SIZE_RANGE, Mechanism, SUPPORTED_SIGNATURE_MECHANISMS, parse_mechanism,
+        },
         object::Object,
     },
     objects_store::OBJECTS_STORE,
     sessions::{self, Session},
     traits::{
-        DecryptContext, EncryptContext, EncryptionAlgorithm, SignContext, SignOperation,
-        VerifyContext, backend, clear_backend, invoke_login_fn, use_pin_as_access_token,
+        DecryptContext, EncryptContext, EncryptionAlgorithm, MacContext, SignContext,
+        SignOperation, VerifyContext, backend, clear_backend, invoke_login_fn,
+        use_pin_as_access_token,
     },
 };
 
@@ -679,9 +682,16 @@ cryptoki_fn!(
             CKM_EDDSA => CKF_SIGN | CKF_VERIFY | CKF_MESSAGE_SIGN,
             _ => CKF_SIGN | CKF_VERIFY,
         };
+        // PKCS#11 reports the AES MAC key sizes in bytes.
+        let (min_key_size, max_key_size) = if matches!(mechType, CKM_AES_CMAC | CKM_AES_GMAC) {
+            AES_MAC_KEY_SIZE_RANGE
+        } else {
+            (0, 0)
+        };
         let info = CK_MECHANISM_INFO {
             flags,
-            ..Default::default()
+            ulMinKeySize: min_key_size,
+            ulMaxKeySize: max_key_size,
         };
         unsafe {
             *pInfo = info;
@@ -1437,23 +1447,39 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pMechanism, "C_SignInit: pMechanism");
         sessions::session(hSession, |session| -> ModuleResult<()> {
-            if session.sign_ctx.is_some() {
+            if session.sign_ctx.is_some() || session.mac_sign_ctx.is_some() {
                 return Err(ModuleError::OperationActive);
             }
             let find_ctx = OBJECTS_STORE.read()?;
             // .map_err(|_| ModuleError::OperationNotInitialized(hSession))?;
             let object = find_ctx.get_using_handle(hKey);
-            let Some(Object::PrivateKey(private_key)) = object.as_deref() else {
-                return Err(ModuleError::KeyHandleInvalid(hKey));
-            };
-            let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
-            session.sign_ctx = Some(SignContext {
-                algorithm: mechanism.try_into()?,
-                private_key: private_key.clone(),
-                operation: SignOperation::Classic,
-                payload: None,
-                pending_signature: None,
-            });
+            match object.as_deref() {
+                Some(Object::PrivateKey(private_key)) => {
+                    // SAFETY: `pMechanism` is non-null (checked above) and points to a
+                    // caller-owned `CK_MECHANISM`; `parse_mechanism` validates
+                    // `pParameter`/`ulParameterLen`.
+                    let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
+                    session.sign_ctx = Some(SignContext {
+                        algorithm: mechanism.try_into()?,
+                        private_key: private_key.clone(),
+                        operation: SignOperation::Classic,
+                        payload: None,
+                        pending_signature: None,
+                    });
+                }
+                Some(Object::SymmetricKey(key)) => {
+                    // SAFETY: `pMechanism` is non-null (checked above) and points to a
+                    // caller-owned `CK_MECHANISM`; `parse_mechanism` validates
+                    // `pParameter`/`ulParameterLen`.
+                    let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
+                    session.mac_sign_ctx = Some(MacContext {
+                        remote_object_id: key.remote_id().to_owned(),
+                        algorithm: mechanism.try_into()?,
+                        payload: None,
+                    });
+                }
+                _ => return Err(ModuleError::KeyHandleInvalid(hKey)),
+            }
             Ok(())
         })
     }
@@ -1490,6 +1516,16 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pPart, "C_SignUpdate: pPart");
         sessions::session(hSession, |session| -> ModuleResult<()> {
+            // SAFETY: `pPart` is non-null (checked above) and the caller guarantees
+            // `ulPartLen` readable bytes for the duration of the call.
+            let part = unsafe { slice::from_raw_parts(pPart, usize::try_from(ulPartLen)?) };
+            if let Some(mac_ctx) = session.mac_sign_ctx.as_mut() {
+                mac_ctx
+                    .payload
+                    .get_or_insert(vec![])
+                    .extend_from_slice(part);
+                return Ok(());
+            }
             let Some(sign_ctx) = session.sign_ctx.as_mut() else {
                 return Err(ModuleError::OperationNotInitialized(hSession));
             };
@@ -1499,11 +1535,7 @@ cryptoki_fn!(
             sign_ctx
                 .payload
                 .get_or_insert(vec![])
-                // SAFETY: `pPart` is non-null (checked above) and the caller guarantees
-                // `ulPartLen` readable bytes for the duration of the call.
-                .extend_from_slice(unsafe {
-                    slice::from_raw_parts(pPart, usize::try_from(ulPartLen)?)
-                });
+                .extend_from_slice(part);
             Ok(())
         })
     }
@@ -1558,17 +1590,31 @@ cryptoki_fn!(
         sessions::session(hSession, |session| -> ModuleResult<()> {
             let find_ctx = OBJECTS_STORE.read()?;
             let object = find_ctx.get_using_handle(hKey);
-            let Some(Object::PublicKey(public_key)) = object.as_deref() else {
-                return Err(ModuleError::KeyHandleInvalid(hKey));
-            };
-            // SAFETY: `pMechanism` is non-null (checked above) and points to a caller-owned
-            // `CK_MECHANISM`; `parse_mechanism` validates `pParameter`/`ulParameterLen`.
-            let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
-            session.verify_ctx = Some(VerifyContext {
-                algorithm: mechanism.try_into()?,
-                public_key: public_key.clone(),
-                payload: None,
-            });
+            match object.as_deref() {
+                Some(Object::PublicKey(public_key)) => {
+                    // SAFETY: `pMechanism` is non-null (checked above) and points to a
+                    // caller-owned `CK_MECHANISM`; `parse_mechanism` validates
+                    // `pParameter`/`ulParameterLen`.
+                    let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
+                    session.mac_verify_ctx = None;
+                    session.verify_ctx = Some(VerifyContext {
+                        algorithm: mechanism.try_into()?,
+                        public_key: public_key.clone(),
+                        payload: None,
+                    });
+                }
+                Some(Object::SymmetricKey(key)) => {
+                    // SAFETY: as above.
+                    let mechanism = unsafe { parse_mechanism(pMechanism.read()) }?;
+                    session.verify_ctx = None;
+                    session.mac_verify_ctx = Some(MacContext {
+                        remote_object_id: key.remote_id().to_owned(),
+                        algorithm: mechanism.try_into()?,
+                        payload: None,
+                    });
+                }
+                _ => return Err(ModuleError::KeyHandleInvalid(hKey)),
+            }
             Ok(())
         })
     }
@@ -1603,11 +1649,14 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pPart, "C_VerifyUpdate: pPart");
         sessions::session(hSession, |session| -> ModuleResult<()> {
-            let Some(verify_ctx) = session.verify_ctx.as_mut() else {
+            let payload = if let Some(mac_ctx) = session.mac_verify_ctx.as_mut() {
+                &mut mac_ctx.payload
+            } else if let Some(verify_ctx) = session.verify_ctx.as_mut() {
+                &mut verify_ctx.payload
+            } else {
                 return Err(ModuleError::OperationNotInitialized(hSession));
             };
-            verify_ctx
-                .payload
+            payload
                 .get_or_insert(vec![])
                 // SAFETY: `pPart` is non-null (checked above) and the caller guarantees
                 // `ulPartLen` readable bytes for the duration of the call.
@@ -2152,7 +2201,7 @@ cryptoki_fn!(
         valid_session!(hSession);
         not_null!(pMechanism, "C_MessageSignInit: pMechanism");
         sessions::session(hSession, |session| -> ModuleResult<()> {
-            if session.sign_ctx.is_some() {
+            if session.sign_ctx.is_some() || session.mac_sign_ctx.is_some() {
                 return Err(ModuleError::OperationActive);
             }
             let object_store = OBJECTS_STORE.read()?;

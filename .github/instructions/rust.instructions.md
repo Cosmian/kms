@@ -244,7 +244,7 @@ Every match must be test code using `expect` with a `reason`, a non-clippy rustc
 - Never suppress those lints (nor `clippy::style` / `clippy::all`), never override their level, and never add another `clippy.toml`; review must reject any of these.
 - A dependency adds a new entropy API: add it to `clippy.toml` with `allow-invalid = true`.
 - The lint cannot see the following, so review must reject them: FFI declarations of OpenSSL `RAND_*` / `BN_*rand*` outside `crypto/src/crypto/rng/mod.rs`, reads of `/dev/urandom`, and shelling out to `openssl rand`.
-- Accepted exceptions: OpenSSL key generation (RSA / EC / EdDSA / SLH-DSA / hybrid KEM) and Covercrypt, which have no injection point; `uuid::Uuid::new_v4` identifiers; the `oauth2` PKCE/CSRF helpers in `cosmian_kms_client`, which does not depend on `cosmian_kms_crypto`.
+- Accepted exceptions: OpenSSL key generation (RSA / EC / EdDSA / SLH-DSA / hybrid KEM) and Covercrypt, which have no injection point; `uuid::Uuid::new_v4` identifiers.
 
 ## Style
 

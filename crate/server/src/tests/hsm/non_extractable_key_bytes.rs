@@ -19,6 +19,7 @@ use crate::{
             export_key_bytes::create_hsm_aes_key,
             export_object, hsm_clap_config,
             symmetric_dek::{symmetric_decrypt, symmetric_encrypt},
+            test_helpers::{assert_gcm_encrypt_refused, hsm_cannot_generate_gcm_iv},
         },
         test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
@@ -75,12 +76,17 @@ pub(super) async fn test_hsm_non_extractable_key_bytes() -> KResult<()> {
 
     // the key is still usable inside the HSM
     let data = b"use the HSM key without extracting it";
-    let ciphertext = symmetric_encrypt(&uid, &owner, &kms, data).await?;
-    assert_eq!(ciphertext.len(), 12 + 16 + data.len());
-    assert_eq!(
-        symmetric_decrypt(&uid, &owner, &kms, &ciphertext).await?,
-        data
-    );
+    let encrypted = symmetric_encrypt(&uid, &owner, &kms, data).await;
+    if hsm_cannot_generate_gcm_iv() {
+        assert_gcm_encrypt_refused(encrypted);
+    } else {
+        let ciphertext = encrypted?;
+        assert_eq!(ciphertext.len(), 12 + 16 + data.len());
+        assert_eq!(
+            symmetric_decrypt(&uid, &owner, &kms, &ciphertext).await?,
+            data
+        );
+    }
 
     // wrapping the key with another HSM key must not get it out either
     let wrapping_uid = as_hsm_uid!(slot, Uuid::new_v4());

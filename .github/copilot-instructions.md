@@ -50,6 +50,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `rust-security.instructions.md` | `crate/**/*.rs` |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` |
+| `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` |
 
 ---
 
@@ -96,6 +97,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Minimal, focused commits — never refactor unrelated code alongside a bug fix.
 - Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
 - Regression test: every bug fix ships a test that fails before the fix (or the commit message says why not).
+- CLI tests: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
 - SQL: every SQL statement lives as a named entry in the backend's `.sql` file (`crate/server_database/src/stores/sql/query*.sql`, `stores/audit/audit.sql`), never as a string literal in non-test Rust — see `.github/instructions/rust-database.instructions.md` § SQL statements live in SQL files.
 - Secrets: compare in constant time, keep in `Zeroizing`, never log — see `.github/instructions/rust-security.instructions.md`.
 - Commit subjects: conventional-commit type + descriptive subject; never `fix: PR review`, `fix: commit`.
@@ -125,6 +127,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/issue-workflow` | Entry point for resolving a GitHub issue — scope, plan, **user plan approval**, then automated implement, test, document, §5 workflow, PR, one-shot CI status, review feedback |
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse/create complete fixtures in `test_data` |
+| `/kms-db-compat` | When a change touches crate/server_database/, *.sql or persisted KMIP types — upgrade/downgrade (N-1) verdict per change |
 | `/kms-docs-verify` | After writing/editing documentation — verify ckms commands, flags, env vars, config keys, versions, links against the code |
 | `/rust-review-all` | **Full Rust quality gate** — KMS Caveman first, then applicable reviews and reports in `./review-YYYY-MM-DD/` (report schema: `.github/skills/shared/orchestrator-contract.md` §4) |
 | `/kms-caveman [path]` | One read-only mechanical Rust triage pass before deeper Rust reviews; also the dedicated panic/brutal-exit scan. Not a substitute for semantic or security review |
@@ -137,7 +140,7 @@ branch again; never rewrite shared history. Applies to every branch.
 | `/rust-refactor` | Rust duplication and structural-complexity review, behavior-preserving |
 | `/rust-error-propagation` | Audit `Result` propagation chains |
 | `/react-ant-patterns` | UI coding conventions |
-| `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** — write + run integration tests |
+| `/ckms-subcommand-test` | **After adding a `ckms` subcommand or flag** (mandatory: no clap action without `ckms` binary tests) — write + run integration tests |
 | `/kms-pr-review` | Mandatory self-review — two-pass diff review that auto-applies confirmed fixes (≤ 2 cycles) |
 | `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `consolidate <version>` merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry and deletes them |
@@ -163,6 +166,8 @@ When a prompt matches a trigger below, read `.github/skills/<skill>/SKILL.md` an
 | `/threat-model` | `\bthreat[- ]model` |
 | `/kms-test-vector` | `\b(create\|add\|new)\b.*\btest vectors?\b` |
 | `/kms-adversarial-test` | `\badversarial test` |
+| `/kms-db-compat` | `\b(downgrad\w*\|rollback\|roll back\|backward[- ]compat\w*\|mixed[- ]version\|rolling upgrade)\b.*\b(database\|db\|schema\|sql\w*\|postgres\w*\|mysql\|mariadb\|redis)\b` |
+| `/kms-db-compat` | `\b(database\|db\|schema)\s+(upgrade\|migration)\b` |
 | `/adr` | `\barchitectural decision record\b` |
 
 ## Credit-Saving Strategies

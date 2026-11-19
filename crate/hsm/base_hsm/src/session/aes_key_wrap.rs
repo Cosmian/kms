@@ -5,8 +5,9 @@ use std::ptr;
 
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_MECHANISM, CK_OBJECT_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS,
-    CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_PRIVATE, CKA_SENSITIVE, CKA_TOKEN, CKA_UNWRAP, CKA_VALUE,
-    CKA_WRAP, CKK_GENERIC_SECRET, CKO_SECRET_KEY,
+    CKA_DECRYPT, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_PRIVATE, CKA_SENSITIVE, CKA_SIGN,
+    CKA_TOKEN, CKA_UNWRAP, CKA_VALUE, CKA_VERIFY, CKA_WRAP, CKK_AES, CKK_GENERIC_SECRET,
+    CKO_SECRET_KEY,
 };
 use zeroize::Zeroizing;
 
@@ -46,6 +47,39 @@ fn ephemeral_secret_template() -> HResult<Vec<CK_ATTRIBUTE>> {
 }
 
 impl Session {
+    /// Create a session AES key of known `value`, for the known-answer tests of `tests_shared`.
+    /// The caller destroys it with [`Session::destroy_object`].
+    pub(crate) fn create_session_aes_key(&self, value: &[u8]) -> HResult<CK_OBJECT_HANDLE> {
+        let mut template = vec![
+            ulong_attribute(CKA_CLASS, &CKO_SECRET_KEY)?,
+            ulong_attribute(CKA_KEY_TYPE, &CKK_AES)?,
+            bool_attribute(CKA_TOKEN, &CK_FALSE)?,
+            bool_attribute(CKA_PRIVATE, &CK_TRUE)?,
+            bool_attribute(CKA_SENSITIVE, &CK_FALSE)?,
+            bool_attribute(CKA_EXTRACTABLE, &CK_TRUE)?,
+            bool_attribute(CKA_ENCRYPT, &CK_TRUE)?,
+            bool_attribute(CKA_DECRYPT, &CK_TRUE)?,
+            bool_attribute(CKA_SIGN, &CK_TRUE)?,
+            bool_attribute(CKA_VERIFY, &CK_TRUE)?,
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE,
+                pValue: value.as_ptr().cast::<std::ffi::c_void>().cast_mut(),
+                ulValueLen: CK_ULONG::try_from(value.len())?,
+            },
+        ];
+        let mut handle: CK_OBJECT_HANDLE = 0;
+        hsm_call!(
+            self.hsm(),
+            "Failed to create the session AES key",
+            C_CreateObject,
+            self.session_handle(),
+            template.as_mut_ptr(),
+            CK_ULONG::try_from(template.len())?,
+            &raw mut handle
+        );
+        Ok(handle)
+    }
+
     /// Set `CKA_WRAP` and `CKA_UNWRAP` on `key_handle`, so AES-KW/KWP can use `C_WrapKey`.
     pub fn set_wrap_attributes(&self, key_handle: CK_OBJECT_HANDLE, enabled: bool) -> HResult<()> {
         let value = if enabled { CK_TRUE } else { CK_FALSE };

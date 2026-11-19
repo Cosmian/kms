@@ -238,6 +238,7 @@ mod rsa;
 mod session_impl;
 pub(crate) use ec::{curve_byte_size, curve_from_der_oid};
 pub use rsa::RsaOaepDigest;
+pub(crate) use session_impl::AES_GMAC_IV_LENGTH;
 pub use session_impl::{
     AesKeySize, DerivedKeySpec, HkdfParams, HsmEncryptionAlgorithm, HsmSigningAlgorithm,
     RsaKeySize, Session,

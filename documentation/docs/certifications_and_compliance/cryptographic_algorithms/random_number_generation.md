@@ -18,7 +18,7 @@ This page covers every random byte the server produces, then post-quantum (PQC) 
 
 | Question | Answer |
 |----------|--------|
-| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (OpenSSL-internal keygen, the SCEP CMS content key/IV drawn inside OpenSSL, Covercrypt, `uuid::Uuid::new_v4` identifiers, the `oauth2` PKCE/CSRF helpers of `cosmian_kms_client`) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans every other entropy source |
+| Is there a single RNG abstraction in the server? | **Yes** for key material, nonces/IVs and secret tokens: `KmsRng`. `KmsRng::new()` is free (zero-sized), so the server shares one instance while the CLI, database layer and PKCS#11 module construct it locally. Documented exceptions (OpenSSL-internal keygen, the SCEP CMS content key/IV drawn inside OpenSSL, Covercrypt, `uuid::Uuid::new_v4` identifiers) are listed in [Random generators outside `KmsRng`](#random-generators-outside-kmsrng); a workspace `clippy.toml` bans every other entropy source |
 | What does `KmsRng` use underneath? | OpenSSL's DRBG hierarchy through `RAND_priv_bytes_ex` (values that stay secret) and `RAND_bytes_ex` (values that leave the server in clear), each requesting 256-bit security strength; no lock, no state of its own |
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
@@ -131,8 +131,6 @@ Documented exceptions:
   `CMS_encrypt` exposes no way to supply the key or IV.
 - **`uuid::Uuid::new_v4` identifiers** (object unique identifiers, enrollment request IDs): `uuid` draws from
   the operating system through `getrandom`, bypassing OpenSSL. They are identifiers, not secrets.
-- **`oauth2` PKCE verifier and CSRF state** in `cosmian_kms_client`, which does not depend on
-  `cosmian_kms_crypto`.
 - **PKCS#11 `C_GenerateRandom` on the server** (KMIP `PKCS11` operation passthrough) is not implemented and
   returns `CKR_FUNCTION_NOT_SUPPORTED`: it fails closed.
 

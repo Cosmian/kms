@@ -5,11 +5,9 @@
 
 use std::collections::HashSet;
 
-use chrono::{DateTime, Datelike, Timelike};
-
 use super::{
     AnoError, DateAggregator, HashMethod, Hasher, NoiseGenerator, NumberAggregator, NumberScaler,
-    TimeUnit, WordMasker, WordPatternMasker, WordTokenizer,
+    TimeUnit, WordMasker, WordPatternMasker, WordTokenizer, date_helper::parse_rfc3339,
 };
 
 #[test]
@@ -143,16 +141,13 @@ fn test_noise_gaussian_date() -> Result<(), AnoError> {
         NoiseGenerator::new_with_parameters("Gaussian", 0.0, 2.0 * 3600.0)?;
     let input_datestr = "2023-04-07T12:34:56Z";
     let output_datestr = gaussian_noise_generator.apply_on_date(input_datestr)?;
-    let output_date = DateTime::parse_from_rfc3339(&output_datestr)?;
+    let output_date = parse_rfc3339(&output_datestr)?;
 
     assert_eq!(output_date.day(), 7);
-    assert_eq!(output_date.month(), 4);
+    assert_eq!(output_date.month(), time::Month::April);
     assert_eq!(output_date.year(), 2023);
     // Check that the output date has the same timezone as the input
-    assert_eq!(
-        output_date.timezone(),
-        DateTime::parse_from_rfc3339(input_datestr)?.timezone()
-    );
+    assert_eq!(output_date.offset(), parse_rfc3339(input_datestr)?.offset());
 
     let res = gaussian_noise_generator.apply_on_date("AAAA");
     drop(res.unwrap_err());
@@ -165,16 +160,13 @@ fn test_noise_laplace_date() -> Result<(), AnoError> {
         NoiseGenerator::new_with_parameters("Laplace", 0.0, 2.0 * 3600.0)?;
     let input_datestr = "2023-04-07T12:34:56+05:00";
     let output_datestr = laplace_noise_generator.apply_on_date(input_datestr)?;
-    let output_date = DateTime::parse_from_rfc3339(&output_datestr)?;
+    let output_date = parse_rfc3339(&output_datestr)?;
 
     assert_eq!(output_date.day(), 7);
-    assert_eq!(output_date.month(), 4);
+    assert_eq!(output_date.month(), time::Month::April);
     assert_eq!(output_date.year(), 2023);
     // Check that the output date has the same timezone as the input
-    assert_eq!(
-        output_date.timezone(),
-        DateTime::parse_from_rfc3339(input_datestr)?.timezone()
-    );
+    assert_eq!(output_date.offset(), parse_rfc3339(input_datestr)?.offset());
     Ok(())
 }
 
@@ -185,16 +177,13 @@ fn test_noise_uniform_date() -> Result<(), AnoError> {
         NoiseGenerator::new_with_bounds("Uniform", -10.0 * 3600.0, 10.0 * 3600.0)?;
     let input_datestr = "2023-04-07T12:34:56-03:00";
     let output_datestr = uniform_noise_generator.apply_on_date(input_datestr)?;
-    let output_date = DateTime::parse_from_rfc3339(&output_datestr)?;
+    let output_date = parse_rfc3339(&output_datestr)?;
 
     assert_eq!(output_date.day(), 7);
-    assert_eq!(output_date.month(), 4);
+    assert_eq!(output_date.month(), time::Month::April);
     assert_eq!(output_date.year(), 2023);
     // Check that the output date has the same timezone as the input
-    assert_eq!(
-        output_date.timezone(),
-        DateTime::parse_from_rfc3339(input_datestr)?.timezone()
-    );
+    assert_eq!(output_date.offset(), parse_rfc3339(input_datestr)?.offset());
     Ok(())
 }
 
@@ -281,14 +270,29 @@ fn test_int_aggregation() -> Result<(), AnoError> {
 }
 
 #[test]
+fn test_date_aggregation_output_keeps_numeric_offset() -> Result<(), AnoError> {
+    let aggregator = DateAggregator::new(TimeUnit::Hour);
+    // UTC input stays `+00:00` (never `Z`) and sub-seconds are never printed.
+    assert_eq!(
+        aggregator.apply_on_date("2023-04-07T12:34:56Z")?,
+        "2023-04-07T12:00:00+00:00"
+    );
+    assert_eq!(
+        aggregator.apply_on_date("2023-04-07T12:34:56.789-03:30")?,
+        "2023-04-07T12:00:00-03:30"
+    );
+    Ok(())
+}
+
+#[test]
 fn test_time_aggregation() -> Result<(), AnoError> {
     let time_aggregator = DateAggregator::new(TimeUnit::Hour);
     let input_datestr = "2023-04-07T12:34:56+02:00";
     let output_datestr = time_aggregator.apply_on_date(input_datestr)?;
-    let output_date = DateTime::parse_from_rfc3339(&output_datestr)?;
+    let output_date = parse_rfc3339(&output_datestr)?;
 
     assert_eq!(output_date.day(), 7);
-    assert_eq!(output_date.month(), 4);
+    assert_eq!(output_date.month(), time::Month::April);
     assert_eq!(output_date.year(), 2023);
 
     assert_eq!(output_date.hour(), 12);
@@ -296,10 +300,7 @@ fn test_time_aggregation() -> Result<(), AnoError> {
     assert_eq!(output_date.second(), 0);
 
     // Check that the output date has the same timezone as the input
-    assert_eq!(
-        output_date.timezone(),
-        DateTime::parse_from_rfc3339(input_datestr)?.timezone()
-    );
+    assert_eq!(output_date.offset(), parse_rfc3339(input_datestr)?.offset());
 
     let res = time_aggregator.apply_on_date("AAAA");
     drop(res.unwrap_err());
@@ -312,10 +313,10 @@ fn test_date_aggregation() -> Result<(), AnoError> {
     let date_aggregator = DateAggregator::new(TimeUnit::Month);
     let input_datestr = "2023-04-07T12:34:56-05:00";
     let output_datestr = date_aggregator.apply_on_date(input_datestr)?;
-    let output_date = DateTime::parse_from_rfc3339(&output_datestr)?;
+    let output_date = parse_rfc3339(&output_datestr)?;
 
     assert_eq!(output_date.day(), 1);
-    assert_eq!(output_date.month(), 4);
+    assert_eq!(output_date.month(), time::Month::April);
     assert_eq!(output_date.year(), 2023);
 
     assert_eq!(output_date.hour(), 0);
@@ -323,10 +324,7 @@ fn test_date_aggregation() -> Result<(), AnoError> {
     assert_eq!(output_date.second(), 0);
 
     // Check that the output date has the same timezone as the input
-    assert_eq!(
-        output_date.timezone(),
-        DateTime::parse_from_rfc3339(input_datestr)?.timezone()
-    );
+    assert_eq!(output_date.offset(), parse_rfc3339(input_datestr)?.offset());
 
     Ok(())
 }

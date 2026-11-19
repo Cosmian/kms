@@ -57,8 +57,7 @@ used for consistency.
    requested strength 0, so they do not fail closed on a weaker DRBG); Covercrypt
    (`Covercrypt::setup()` locks an internal `rng` field and has no constructor parameter or setter that accepts
    an external RNG). These have no injection point and are served by the same OpenSSL DRBG hierarchy but not
-   through `KmsRng`. `uuid::Uuid::new_v4` identifiers (not secrets) draw from the OS through `getrandom`,
-   and the `oauth2` PKCE/CSRF helpers of `cosmian_kms_client` use their own generator.
+   through `KmsRng`. `uuid::Uuid::new_v4` identifiers (not secrets) draw from the OS through `getrandom`.
 5. **Enforcement is mechanical.** The root `clippy.toml` (the only one) bans every ambient entropy source that
    workspace code calls directly (not the draws dependencies make internally, i.e. the exceptions above):
    `openssl::rand::{rand_bytes, rand_priv_bytes}`, OpenSSL `BigNum` random generation and raw `RAND_*` /

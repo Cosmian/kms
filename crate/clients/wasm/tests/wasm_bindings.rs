@@ -800,6 +800,104 @@ fn test_hash_requests() {
     assert!(r.is_ok() || r.is_err());
 }
 
+fn to_json(value: Result<JsValue, JsValue>) -> serde_json::Value {
+    serde_wasm_bindgen::from_value(value.unwrap()).unwrap()
+}
+
+fn options(value: Result<JsValue, JsValue>) -> Vec<(String, String)> {
+    to_json(value)
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| {
+            (
+                o["value"].as_str().unwrap().to_owned(),
+                o["label"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[wasm_bindgen_test]
+fn test_mac_option_lists() {
+    let types = options(w::get_mac_types());
+    assert_eq!(
+        types.iter().map(|(v, _)| v.as_str()).collect::<Vec<_>>(),
+        ["HMAC", "AES-CMAC", "AES-GMAC"]
+    );
+    let hashes = options(w::get_mac_hashing_algorithms());
+    assert_eq!(hashes.len(), 9);
+    assert!(hashes.contains(&("SHA1".to_owned(), "SHA-1".to_owned())));
+    assert!(hashes.contains(&("SHA3512".to_owned(), "SHA3-512".to_owned())));
+    // every listed hash must be accepted by the request builder
+    for (value, _) in &hashes {
+        assert!(
+            w::mac_ttlv_request("k", &[1], "HMAC", Some(value.clone())).is_ok(),
+            "{value}"
+        );
+    }
+}
+
+#[wasm_bindgen_test]
+fn test_mac_requests_ttlv() {
+    let uid = serde_json::json!({"tag": "UniqueIdentifier", "type": "TextString", "value": "k1"});
+    let data = serde_json::json!({"tag": "Data", "type": "ByteString", "value": "010203"});
+    // Structure is the TTLV default type, so it is not serialized
+    let params = |inner: serde_json::Value| serde_json::json!({"tag": "CryptographicParameters", "value": inner});
+    let enumeration = |tag: &str, value: &str| serde_json::json!({"tag": tag, "type": "Enumeration", "value": value});
+
+    assert_eq!(
+        to_json(w::mac_ttlv_request(
+            "k1",
+            &[1, 2, 3],
+            "HMAC",
+            Some("SHA3256".to_owned())
+        )),
+        serde_json::json!({"tag": "MAC", "value": [
+            uid,
+            params(serde_json::json!([enumeration("HashingAlgorithm", "SHA3256")])),
+            data,
+        ]})
+    );
+    // CMAC / GMAC select the block cipher mode and take no hash (JS passes `undefined`)
+    for (mac_type, mode) in [("AES-CMAC", "CMAC"), ("AES-GMAC", "GCM")] {
+        assert_eq!(
+            to_json(w::mac_ttlv_request("k1", &[1, 2, 3], mac_type, None)),
+            serde_json::json!({"tag": "MAC", "value": [
+                uid,
+                params(serde_json::json!([
+                    enumeration("BlockCipherMode", mode),
+                    enumeration("CryptographicAlgorithm", "AES"),
+                ])),
+                data,
+            ]})
+        );
+    }
+    assert_eq!(
+        to_json(w::mac_verify_ttlv_request(
+            "k1",
+            &[1, 2, 3],
+            &[0xaa, 0xbb],
+            "HMAC",
+            Some("SHA1".to_owned())
+        )),
+        serde_json::json!({"tag": "MACVerify", "value": [
+            uid,
+            params(serde_json::json!([enumeration("HashingAlgorithm", "SHA1")])),
+            data,
+            {"tag": "MACData", "type": "ByteString", "value": "AABB"},
+        ]})
+    );
+}
+
+#[wasm_bindgen_test]
+fn test_mac_requests_reject_unknown_parameters() {
+    assert!(w::mac_ttlv_request("k1", &[1], "HMAC", Some("MD5".to_owned())).is_err());
+    assert!(w::mac_ttlv_request("k1", &[1], "AES-XMAC", Some("SHA256".to_owned())).is_err());
+    assert!(w::mac_ttlv_request("k1", &[1], "HMAC", None).is_err());
+    assert!(w::mac_verify_ttlv_request("k1", &[1], &[2], "HMAC", None).is_err());
+}
+
 #[wasm_bindgen_test]
 fn test_derive_key_requests() {
     let r = w::derive_key_ttlv_request(

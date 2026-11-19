@@ -23,15 +23,18 @@ use cosmian_logger::{debug, error};
 use pkcs11_sys::{
     CK_GCM_PARAMS, CK_MECHANISM, CK_MECHANISM_TYPE, CK_RSA_PKCS_OAEP_PARAMS,
     CK_RSA_PKCS_PSS_PARAMS, CKG_MGF1_SHA1, CKG_MGF1_SHA224, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
-    CKG_MGF1_SHA512, CKM_AES_CBC, CKM_AES_CBC_PAD, CKM_AES_GCM, CKM_AES_KEY_GEN, CKM_ECDSA,
-    CKM_EDDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS,
-    CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA512,
-    CKM_SHA512_RSA_PKCS, CKZ_DATA_SPECIFIED,
+    CKG_MGF1_SHA512, CKM_AES_CBC, CKM_AES_CBC_PAD, CKM_AES_CMAC, CKM_AES_GCM, CKM_AES_GMAC,
+    CKM_AES_KEY_GEN, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS,
+    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA224, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384,
+    CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKZ_DATA_SPECIFIED,
 };
 
 use crate::{
     ModuleError, ModuleResult, not_null,
-    traits::{DigestType, EncryptionAlgorithm, KeyAlgorithm, SignatureAlgorithm},
+    traits::{
+        AES_GMAC_IV_SIZE, DigestType, EncryptionAlgorithm, KeyAlgorithm, MacAlgorithm,
+        SignatureAlgorithm,
+    },
 };
 
 pub const AES_IV_SIZE: usize = 16;
@@ -63,6 +66,9 @@ const fn ck_ulong_to_u64(value: pkcs11_sys::CK_ULONG) -> u64 {
     value
 }
 
+/// Minimum / maximum AES key size, in bytes, reported for `CKM_AES_CMAC` and `CKM_AES_GMAC`.
+pub const AES_MAC_KEY_SIZE_RANGE: (pkcs11_sys::CK_ULONG, pkcs11_sys::CK_ULONG) = (16, 32);
+
 pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_RSA_PKCS,
     CKM_SHA1_RSA_PKCS,
@@ -76,6 +82,8 @@ pub const SUPPORTED_SIGNATURE_MECHANISMS: &[CK_MECHANISM_TYPE] = &[
     CKM_AES_CBC,
     CKM_AES_CBC_PAD,
     CKM_AES_GCM,
+    CKM_AES_CMAC,
+    CKM_AES_GMAC,
 ];
 
 #[derive(Debug)]
@@ -94,6 +102,14 @@ pub enum Mechanism {
     AesGcm {
         iv: Vec<u8>,
         aad: Vec<u8>,
+    },
+    /// `CKM_AES_CMAC` (NIST SP 800-38B, no parameter): 16-byte tag computed by the KMS.
+    AesCmac,
+    /// `CKM_AES_GMAC` (PKCS#11 v3.0 §2.13.4, NIST SP 800-38D). The parameter is a `CK_GCM_PARAMS`
+    /// whose 12-byte IV is `iv`; the message is the `pData` of `C_Sign` / `C_Verify` and the
+    /// signature is the 16-byte tag.
+    AesGmac {
+        iv: [u8; AES_GMAC_IV_SIZE],
     },
     Ecdsa,
     EdDsa,
@@ -218,6 +234,66 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             Ok(Mechanism::AesGcm { iv, aad })
         }
 
+        CKM_AES_CMAC => {
+            // Bind to a local to avoid a reference to a packed struct field.
+            let parameter_len = mechanism.ulParameterLen;
+            if parameter_len != 0 {
+                error!("CKM_AES_CMAC takes no parameter but ulParameterLen is {parameter_len}");
+                return Err(ModuleError::MechanismInvalid(mechanism.mechanism));
+            }
+            Ok(Mechanism::AesCmac)
+        }
+
+        CKM_AES_GMAC => {
+            let mechanism_type = mechanism.mechanism;
+            let parameter_ptr = mechanism.pParameter;
+            let parameter_len = mechanism.ulParameterLen;
+            not_null!(parameter_ptr, "parse_mechanism: CKM_AES_GMAC pParameter");
+            if (usize::try_from(parameter_len)?) != std::mem::size_of::<CK_GCM_PARAMS>() {
+                error!(
+                    "CKM_AES_GMAC pParameter incorrect size: {} != {}",
+                    parameter_len,
+                    std::mem::size_of::<CK_GCM_PARAMS>()
+                );
+                return Err(ModuleError::MechanismInvalid(mechanism_type));
+            }
+            // SAFETY: `parameter_ptr` was just checked non-null and the pointed-to buffer was
+            // checked above to be exactly `size_of::<CK_GCM_PARAMS>()` bytes, as required by the
+            // PKCS#11 v3.0 spec for `CKM_AES_GMAC`; `read_unaligned` because PKCS#11 callers are C
+            // code that may pass an unaligned pointer.
+            let params: CK_GCM_PARAMS =
+                unsafe { parameter_ptr.cast::<CK_GCM_PARAMS>().read_unaligned() };
+            // Bind to locals to avoid references to packed struct fields.
+            let tag_bits = params.ulTagBits;
+            let iv_len = usize::try_from(params.ulIvLen)?;
+            let aad_len = params.ulAADLen;
+            if tag_bits != AES_GCM_TAG_BITS {
+                error!(
+                    "CKM_AES_GMAC: unsupported ulTagBits {tag_bits} (only {AES_GCM_TAG_BITS} is supported)"
+                );
+                return Err(ModuleError::MechanismInvalid(mechanism_type));
+            }
+            if iv_len != AES_GMAC_IV_SIZE {
+                return Err(ModuleError::BadArguments(format!(
+                    "CKM_AES_GMAC: invalid ulIvLen {iv_len} (must be {AES_GMAC_IV_SIZE})"
+                )));
+            }
+            // GMAC authenticates the C_Sign / C_Verify data: the parameter carries no AAD.
+            if aad_len != 0 {
+                return Err(ModuleError::BadArguments(format!(
+                    "CKM_AES_GMAC: ulAADLen is {aad_len}, the message is the C_Sign data (must be 0)"
+                )));
+            }
+            not_null!(params.pIv, "parse_mechanism: CKM_AES_GMAC pIv");
+            let mut iv = [0_u8; AES_GMAC_IV_SIZE];
+            // SAFETY: `pIv` was just checked non-null and `iv_len` was validated above to be
+            // exactly `AES_GMAC_IV_SIZE`, matching the caller-supplied `ulIvLen`; `u8` has no
+            // alignment requirement.
+            iv.copy_from_slice(unsafe {
+                slice::from_raw_parts(params.pIv.cast::<u8>(), AES_GMAC_IV_SIZE)
+            });
+            Ok(Mechanism::AesGmac { iv })
+        }
         CKM_ECDSA => Ok(Mechanism::Ecdsa),
         CKM_EDDSA => Ok(Mechanism::EdDsa),
         CKM_RSA_PKCS => Ok(Mechanism::RsaPkcs),
@@ -338,6 +414,8 @@ impl From<&Mechanism> for CK_MECHANISM_TYPE {
             Mechanism::AesCbcPad { .. } => CKM_AES_CBC_PAD,
             Mechanism::AesCbc { .. } => CKM_AES_CBC,
             Mechanism::AesGcm { .. } => CKM_AES_GCM,
+            Mechanism::AesCmac => CKM_AES_CMAC,
+            Mechanism::AesGmac { .. } => CKM_AES_GMAC,
             Mechanism::Ecdsa => CKM_ECDSA,
             Mechanism::EdDsa => CKM_EDDSA,
             Mechanism::RsaPkcs => CKM_RSA_PKCS,
@@ -392,6 +470,18 @@ impl TryFrom<Mechanism> for EncryptionAlgorithm {
     }
 }
 
+impl TryFrom<Mechanism> for MacAlgorithm {
+    type Error = ModuleError;
+
+    fn try_from(mechanism: Mechanism) -> ModuleResult<Self> {
+        match mechanism {
+            Mechanism::AesCmac => Ok(Self::AesCmac),
+            Mechanism::AesGmac { iv } => Ok(Self::AesGmac { iv }),
+            x => Err(ModuleError::AlgorithmNotSupported(format!("{x:?}"))),
+        }
+    }
+}
+
 impl TryFrom<Mechanism> for KeyAlgorithm {
     type Error = ModuleError;
 
@@ -410,7 +500,7 @@ impl TryFrom<Mechanism> for KeyAlgorithm {
     reason = "tests call the unsafe `parse_mechanism` with in-scope buffers"
 )]
 mod tests {
-    use pkcs11_sys::CK_MECHANISM;
+    use pkcs11_sys::{CK_MECHANISM, CKM_AES_CMAC, CKM_AES_GMAC};
 
     use super::{
         AES_GCM_MAX_AAD_SIZE, AES_GCM_MAX_IV_SIZE, CK_GCM_PARAMS, CKM_AES_GCM, Mechanism,
@@ -549,5 +639,90 @@ mod tests {
             ulParameterLen: 4,
         };
         unsafe { parse_mechanism(mechanism) }.unwrap_err();
+    }
+
+    #[test]
+    fn ckm_aes_cmac_without_parameter_is_parsed() {
+        let mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CMAC,
+            pParameter: std::ptr::null_mut(),
+            ulParameterLen: 0,
+        };
+        assert!(matches!(
+            unsafe { parse_mechanism(mechanism) },
+            Ok(Mechanism::AesCmac)
+        ));
+    }
+
+    #[test]
+    fn ckm_aes_cmac_rejects_a_parameter() {
+        let mut byte = 0_u8;
+        let mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CMAC,
+            pParameter: std::ptr::from_mut(&mut byte).cast::<std::ffi::c_void>(),
+            ulParameterLen: 1,
+        };
+        unsafe { parse_mechanism(mechanism) }.unwrap_err();
+    }
+
+    /// `CK_MECHANISM` for `CKM_AES_GMAC` over `params`, which must outlive it.
+    fn gmac_mechanism(params: &CK_GCM_PARAMS) -> ModuleResult<CK_MECHANISM> {
+        Ok(CK_MECHANISM {
+            mechanism: CKM_AES_GMAC,
+            pParameter: std::ptr::from_ref(params)
+                .cast::<std::ffi::c_void>()
+                .cast_mut(),
+            ulParameterLen: pkcs11_sys::CK_ULONG::try_from(std::mem::size_of::<CK_GCM_PARAMS>())?,
+        })
+    }
+
+    #[test]
+    fn ckm_aes_gmac_valid_gcm_params_are_parsed() {
+        let mut iv = [0x42_u8; 12];
+        let params = build_gcm_params(&mut iv, &mut [], 128).unwrap();
+        let parsed = unsafe { parse_mechanism(gmac_mechanism(&params).unwrap()) }.unwrap();
+        assert!(matches!(parsed, Mechanism::AesGmac { iv: parsed_iv } if parsed_iv == iv));
+    }
+
+    #[test]
+    fn ckm_aes_gmac_rejects_invalid_gcm_params() -> ModuleResult<()> {
+        // IV length other than 12
+        for iv_len in [0_usize, 1, 11, 13, 16] {
+            let mut iv = vec![0x42_u8; iv_len];
+            let params = build_gcm_params(&mut iv, &mut [], 128)?;
+            unsafe { parse_mechanism(gmac_mechanism(&params)?) }.unwrap_err();
+        }
+        // tag length other than 128 bits
+        for tag_bits in [0, 32, 96, 120, 127, 129] {
+            let mut iv = [0x42_u8; 12];
+            let params = build_gcm_params(&mut iv, &mut [], tag_bits)?;
+            unsafe { parse_mechanism(gmac_mechanism(&params)?) }.unwrap_err();
+        }
+        // the message is the C_Sign data: the parameter must carry no AAD
+        let mut iv = [0x42_u8; 12];
+        let mut aad = [0x24_u8; 8];
+        let params = build_gcm_params(&mut iv, &mut aad, 128)?;
+        unsafe { parse_mechanism(gmac_mechanism(&params)?) }.unwrap_err();
+        Ok(())
+    }
+
+    #[test]
+    fn ckm_aes_gmac_rejects_bad_parameter_buffer() {
+        // a raw IV is not a CK_GCM_PARAMS
+        let mut iv = [0x42_u8; 12];
+        let raw_iv = CK_MECHANISM {
+            mechanism: CKM_AES_GMAC,
+            pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: 12,
+        };
+        unsafe { parse_mechanism(raw_iv) }.unwrap_err();
+        for length in [0, 12] {
+            let null = CK_MECHANISM {
+                mechanism: CKM_AES_GMAC,
+                pParameter: std::ptr::null_mut(),
+                ulParameterLen: length,
+            };
+            unsafe { parse_mechanism(null) }.unwrap_err();
+        }
     }
 }

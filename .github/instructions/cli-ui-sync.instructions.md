@@ -17,7 +17,7 @@ reflected in `ui/src/actions/`.
 - [ ] `ui/src/App.tsx` — `<Route>` entry added
 - [ ] `ui/src/menuItems.tsx` — menu item added
 - [ ] `crate/server/src/start_kms_server.rs` — SPA route added if a new top-level path
-- [ ] `crate/clients/ckms/src/tests/<module>/` — tests added and registered in `crate/clients/ckms/src/tests/mod.rs`
+- [ ] `crate/clients/ckms/src/tests/<module>/` — **mandatory**: Rust tests that run the `ckms` binary (`run_ckms` / `run_ckms_expect_error`) for every new subcommand and flag, registered in `crate/clients/ckms/src/tests/mod.rs`; no clap action ships without them (`rust-cli.instructions.md` § Mandatory)
 - [ ] Regenerate CLI docs: `cargo run --bin ckms -- markdown documentation/docs/kms_clients/cli/main_commands.md` and commit the result (manual edits are overwritten)
 
 > Rules 4.4 + 4.15 of `/kms-sync-rules`. For clap/WASM conventions, see `rust-cli.instructions.md`.

@@ -18,7 +18,7 @@
 // limitations under the License.
 
 pub use backend::{
-    Backend, DecryptContext, EncryptContext, MessageEncryptionOutput, PendingSignature,
+    Backend, DecryptContext, EncryptContext, MacContext, MessageEncryptionOutput, PendingSignature,
     SignContext, SignOperation, VerifyContext, backend, clear_backend, invoke_login_fn,
     register_backend, register_backend_if_absent, register_login_fn, register_pin_mode,
     use_pin_as_access_token,
@@ -27,6 +27,9 @@ pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
 pub use key_algorithm::KeyAlgorithm;
+pub use mac_algorithm::{
+    AES_CMAC_TAG_SIZE, AES_GMAC_IV_SIZE, AES_GMAC_TAG_SIZE, MacAlgorithm, MacUsage,
+};
 pub use private_key::PrivateKey;
 pub use public_key::PublicKey;
 pub use signature_algorithm::SignatureAlgorithm;
@@ -42,6 +45,7 @@ mod certificate;
 mod data_object;
 mod encryption_algorithms;
 mod key_algorithm;
+mod mac_algorithm;
 mod private_key;
 mod public_key;
 mod signature_algorithm;

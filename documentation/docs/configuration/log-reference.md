@@ -783,6 +783,7 @@ Crate path: `crate/server`
 | `warn` | `[kv-ttl-cron] sweep failed: {e}` | `src/cron.rs` | `e` | - |
 | `warn` | `Session: refusing a cookie-authenticated {} without a JSON Content-Type` | `src/middlewares/session_auth.rs` | - | - |
 | `debug` | `KMIP request [{}] protocol_version={major}.{minor} unique_identifier={} cryptographic_algorithm={} block_cipher_mode={}` | `src/routes/kmip/audit.rs` | `major`, `minor` | - |
+| `trace` | `Mac: AES {mode:?}` | `src/core/operations/mac.rs` | `mode` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1264,7 +1265,6 @@ Crate path: `crate/clients/pkcs11/provider`
 | `trace` | `find_private_key: {:?}`                                                                                                                                                                                                                                                   | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `find_public_key: {:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
 | `trace` | `find_symmetric_key: {:?}`                                                                                                                                                                                                                                                 | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
-| `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}`                                                                                                                                                                                                                      | `src/backend.rs`            | `algorithm` — …<br>`key_length` — …<br>`label` — …                                                    | —                                                                                               |
 | `trace` | `get_kms_certificate_objects_async: found {} Certificate objects`                                                                                                                                                                                                          | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}`                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
 | `trace` | `get_kms_secret_data_objects_async: found {} SecretData objects`                                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
@@ -1293,6 +1293,9 @@ Crate path: `crate/clients/pkcs11/provider`
 | `debug` | `kms_encrypt_async: ciphertext_len: {}` | `src/kms_object.rs` | - | - |
 | `warn` | `batch export denied ({batch_error}); retrying object by object` | `src/kms_object.rs` | `batch_error` | - |
 | `warn` | `skipping object {id}: {error}` | `src/kms_object.rs` | `id`, `error` | - |
+| `debug` | `mac: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `debug` | `mac_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
+| `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}, {mac_usage:?}` | `src/backend.rs` | `algorithm`, `key_length`, `label`, `mac_usage` | - |
 
 ### `cosmian_pkcs11_module`
 
@@ -1375,6 +1378,9 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `C_Decrypt: session: {:?}, encrypted_data_len: {:?}, cleartext_len: {:?}` | `src/pkcs11.rs` | - | - |
 | `debug` | `C_Encrypt: session: {:?}, plain_data_len: {:?}, ciphertext_len: {:?}` | `src/pkcs11.rs` | - | - |
 | `debug` | `destroy_object: revoke skipped: {e}` | `src/sessions.rs` | `e` | - |
+| `error` | `CKM_AES_GMAC pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | - | - |
+| `error` | `CKM_AES_GMAC: unsupported ulTagBits {tag_bits} (only {AES_GCM_TAG_BITS} is supported)` | `src/core/mechanism.rs` | `tag_bits`, `AES_GCM_TAG_BITS` | - |
+| `error` | `CKM_AES_CMAC takes no parameter but ulParameterLen is {parameter_len}` | `src/core/mechanism.rs` | `parameter_len` | - |
 
 ---
 
@@ -1485,6 +1491,7 @@ Crate path: `ui/src/`
 | `error` | `Error fetching Get for ${row.object_id}:` | `components/common/Locate.tsx` | `row.object_id`: UID whose attributes could not be retrieved | The Locate row remains un-enriched and shows unavailable attributes. Check the browser network request and KMS response for this UID. |
 | `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
 | `error` | `Error loading EC algorithms from WASM:` | `actions/Secrets/SshCa.tsx` | - | - |
+| `error` | `Error loading MAC options from WASM:` | `actions/MAC/macParams.ts` | - | - |
 
 ---
 

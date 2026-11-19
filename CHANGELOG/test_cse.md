@@ -6,3 +6,4 @@
 
 ### CI
 - Add read-only remote tests against `cse.cosmian.com` and `cse.test.cosmian.com` (`mise run test:cloud:google-cse-remote`, secret `CSE_CKMS_CONF_TOML`): KMS login by refresh token, Gmail CSE identities and key pairs
+- Disable `test:cloud:google-cse-remote` (removed from `test:cloud`, task skips) until the Google OAuth credentials are refreshed (#1435)

@@ -14,7 +14,7 @@ applyTo: 'crate/server_database/**/*.rs'
 
 ## Object storage contract
 
-- Objects are stored as TTLV-serialized bytes with associated metadata (state, owner, permissions).
+- Objects and attributes are stored as serde_json JSON (SQL columns objects.object / objects.attributes; Redis: AES-256-GCM-encrypted JSON of RedisDbObject) with associated metadata (state, owner, permissions). Changing that serde form is a compatibility change: see database-compatibility.instructions.md.
 - Object UIDs are server-generated UUIDs unless the client provides one.
 - Permissions are stored separately from objects.
 
@@ -64,6 +64,6 @@ When adding or removing a page, also update the navigation in `documentation/doc
     - `query_mysql.sql` — MySQL/MariaDB (standalone, no fallback to `query.sql`).
     - `stores/audit/audit.sql` — the audit store (PostgreSQL).
 - Fetch them by name with `get_pgsql_query!`, `get_sqlite_query!`, `get_mysql_query!` or `SqlDatabase::get_query`. Resolve the name before entering a `call(|c| …)` closure and move the `&'static str` in.
-- Adding a schema change means adding the statement to every backend file that needs it, plus the idempotent migration step that runs it at startup (`ADD COLUMN IF NOT EXISTS`; on SQLite/MySQL check `PRAGMA table_info` / `SHOW COLUMNS` first).
+- Adding a schema change means adding the statement to every backend file that needs it, plus the idempotent migration step that runs it at startup (`ADD COLUMN IF NOT EXISTS`; on SQLite/MySQL check `PRAGMA table_info` / `SHOW COLUMNS` first). Classify it and document its downgrade behaviour per database-compatibility.instructions.md.
 - The `rawsql` loader has parsing pitfalls (a query ends at the first line ending in `;`, so multi-statement entries go on one line; no `name` in comments) — see `database-tables.instructions.md` § `rawsql` loader gotcha.
 - Exceptions: (1) SQL assembled at runtime from user-supplied filters (`locate_query.rs`, `format!` with bind placeholders); (2) `#[cfg(test)]` code and test fixtures (tamper/trigger tests, legacy-schema fixtures in `tests/`). Any other inline SQL in non-test code is a review finding.

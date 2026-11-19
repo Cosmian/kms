@@ -20,12 +20,12 @@ use super::{
 };
 use crate::actions::bench::types::{BenchFilter, BenchMode};
 
-/// Whether this binary is a non-FIPS build; Ed25519 and secp256k1 benchmark modes
-/// are only ever selected when it is `true`.
+/// Whether this binary is a non-FIPS build; the benchmark modes listed in
+/// [`ConcreteMode::requires_non_fips`] are only ever selected when it is `true`.
 #[cfg(feature = "non-fips")]
 pub(crate) const NON_FIPS_BUILD: bool = true;
-/// Whether this binary is a non-FIPS build; Ed25519 and secp256k1 benchmark modes
-/// are only ever selected when it is `true`.
+/// Whether this binary is a non-FIPS build; the benchmark modes listed in
+/// [`ConcreteMode::requires_non_fips`] are only ever selected when it is `true`.
 #[cfg(not(feature = "non-fips"))]
 pub(crate) const NON_FIPS_BUILD: bool = false;
 
@@ -86,12 +86,18 @@ impl ConcreteMode {
         }
     }
 
-    /// Whether this mode exercises a key type (Ed25519, secp256k1) that only
+    /// Whether this mode exercises a key type (Ed25519, secp256k1) or an algorithm
+    /// (RSAES-PKCS1-v1_5, which the HSM session refuses in FIPS builds) that only
     /// non-FIPS builds may use; FIPS builds never select such modes.
     pub(crate) const fn requires_non_fips(self) -> bool {
         matches!(
             self,
-            Self::SignSecp256k1 | Self::VerifySecp256k1 | Self::SignEdDsa | Self::VerifyEdDsa
+            Self::EncryptRsaPkcs
+                | Self::DecryptRsaPkcs
+                | Self::SignSecp256k1
+                | Self::VerifySecp256k1
+                | Self::SignEdDsa
+                | Self::VerifyEdDsa
         )
     }
 }
@@ -1251,6 +1257,22 @@ mod tests {
         // Modes that are not tied to a mode family never include them.
         let encrypt = labels(&expand_bench_mode(BenchMode::Encrypt, None));
         assert!(!encrypt.iter().any(ed_or_k1));
+    }
+
+    #[test]
+    fn rsa_pkcs_v15_encryption_modes_exist_only_in_non_fips_builds() {
+        let is_rsa_pkcs = |m: &ConcreteMode| {
+            matches!(
+                m,
+                ConcreteMode::EncryptRsaPkcs | ConcreteMode::DecryptRsaPkcs
+            )
+        };
+        for mode in [BenchMode::All, BenchMode::Encrypt] {
+            let modes = expand_bench_mode(mode, None);
+            // FIPS builds refuse RSAES-PKCS1-v1_5 before reaching the HSM: selecting these
+            // modes there would abort `prepare_ops` instead of benchmarking.
+            assert_eq!(modes.iter().any(is_rsa_pkcs), NON_FIPS_BUILD, "{modes:?}");
+        }
     }
 
     #[test]

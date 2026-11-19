@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:43bddcc1-bbe6-434a-bc79-aac7f80c4da5",
+  "serialNumber": "urn:uuid:10bcbb54-1146-43de-a153-d979fa6d6823",
   "metadata": {
-    "timestamp": "2026-11-17T07:05:47.808130+00:00",
+    "timestamp": "2026-11-19T02:58:43.472007+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/fcj2rqlc6i6r0m3q0kcf84vhj6l8wq3w-cosmian-kms-cli-5.29.0.drv",
+      "bom-ref": "/nix/store/j0y4nmrz2jxhgcdc1kd7mnh350jmxn11-cosmian-kms-cli-5.29.0.drv",
       "name": "cosmian-kms-cli",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-cli@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/fqh30l8f1cwcb9200n84d5xrr3m0p5nz-cosmian-kms-cli-5.29.0"
+          "value": "/nix/store/bvn0z4zamgflijf150sd6bxi7zwb0ys8-cosmian-kms-cli-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/fcj2rqlc6i6r0m3q0kcf84vhj6l8wq3w-cosmian-kms-cli-5.29.0.drv"
+          "value": "/nix/store/j0y4nmrz2jxhgcdc1kd7mnh350jmxn11-cosmian-kms-cli-5.29.0.drv"
         }
       ]
     }
@@ -131,10 +131,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-http@3.20.3",
+      "bom-ref": "pkg:cargo/actix-http@3.21.3",
       "name": "actix-http",
-      "version": "3.20.3",
-      "purl": "pkg:cargo/actix-http@3.20.3",
+      "version": "3.21.3",
+      "purl": "pkg:cargo/actix-http@3.21.3",
       "description": "HTTP types and services for the Actix ecosystem",
       "licenses": [
         {
@@ -156,7 +156,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:actix:actix-http:3.20.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:actix:actix-http:3.21.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -706,35 +706,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:allocator-api2:allocator-api2:0.2.21:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/android_system_properties@0.1.5",
-      "name": "android_system_properties",
-      "version": "0.1.5",
-      "purl": "pkg:cargo/android_system_properties@0.1.5",
-      "description": "Minimal Android system properties wrapper",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Nicolas Silva"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/nical/android_system_properties"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:android_system_properties:android_system_properties:0.1.5:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -2801,32 +2772,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:chacha20poly1305:chacha20poly1305:0.10.1:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/chrono@0.4.45",
-      "name": "chrono",
-      "version": "0.4.45",
-      "purl": "pkg:cargo/chrono@0.4.45",
-      "description": "Date and time library for Rust",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/chronotope/chrono"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:chrono:chrono:0.4.45:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -7821,32 +7766,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/humantime@2.4.0",
-      "name": "humantime",
-      "version": "2.4.0",
-      "purl": "pkg:cargo/humantime@2.4.0",
-      "description": "A parser and formatter for std::time::{Duration, SystemTime}",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/chronotope/humantime"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:humantime:humantime:2.4.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/hybrid-array@0.2.3",
       "name": "hybrid-array",
       "version": "0.2.3",
@@ -8071,64 +7990,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:hyper-util:hyper-util:0.1.21:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/iana-time-zone@0.1.65",
-      "name": "iana-time-zone",
-      "version": "0.1.65",
-      "purl": "pkg:cargo/iana-time-zone@0.1.65",
-      "description": "get the IANA time zone for the current system",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Andrew Straw, René Kijewski, Ryan Lopopolo"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/strawlab/iana-time-zone"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:iana-time-zone:iana-time-zone:0.1.65:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/iana-time-zone-haiku@0.1.2",
-      "name": "iana-time-zone-haiku",
-      "version": "0.1.2",
-      "purl": "pkg:cargo/iana-time-zone-haiku@0.1.2",
-      "description": "iana-time-zone support crate for Haiku OS",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "René Kijewski"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/strawlab/iana-time-zone"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:iana-time-zone-haiku:iana-time-zone-haiku:0.1.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -9647,10 +9508,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/libz-sys@1.1.31",
+      "bom-ref": "pkg:cargo/libz-sys@1.1.33",
       "name": "libz-sys",
-      "version": "1.1.31",
-      "purl": "pkg:cargo/libz-sys@1.1.31",
+      "version": "1.1.33",
+      "purl": "pkg:cargo/libz-sys@1.1.33",
       "description": "Low-level bindings to the system libz library (also known as zlib).",
       "licenses": [
         {
@@ -9672,7 +9533,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:libz-sys:libz-sys:1.1.31:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:libz-sys:libz-sys:1.1.33:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -10990,35 +10851,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:num_threads:num_threads:0.1.7:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/oauth2@5.0.0",
-      "name": "oauth2",
-      "version": "5.0.0",
-      "purl": "pkg:cargo/oauth2@5.0.0",
-      "description": "An extensible, strongly-typed implementation of OAuth2",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Alex Crichton, Florin Lipan, David A. Ramos"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/ramosbugs/oauth2-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "verified-vendor-product"
-        }
-      ],
-      "cpe": "cpe:2.3:a:owncloud:oauth2:5.0.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13056,35 +12888,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/qualifier_attr@0.2.2",
-      "name": "qualifier_attr",
-      "version": "0.2.2",
-      "purl": "pkg:cargo/qualifier_attr@0.2.2",
-      "description": "Procedural macro attributes for adding \\",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Dmitrii Demenev"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/JohnScience/qualifier_attr"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:qualifier_attr:qualifier_attr:0.2.2:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/quanta@0.12.6",
       "name": "quanta",
       "version": "0.12.6",
@@ -14897,122 +14700,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:scopeguard:scopeguard:1.2.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/scratchstack-arn@0.4.9",
-      "name": "scratchstack-arn",
-      "version": "0.4.9",
-      "purl": "pkg:cargo/scratchstack-arn@0.4.9",
-      "description": "Basic Amazon Resource Name (ARN) type",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "supplier": {
-        "name": "David Cuthbert <dacut@kanga.org"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/dacut/scratchstack-core"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:scratchstack-arn:scratchstack-arn:0.4.9:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/scratchstack-aws-principal@0.4.9",
-      "name": "scratchstack-aws-principal",
-      "version": "0.4.9",
-      "purl": "pkg:cargo/scratchstack-aws-principal@0.4.9",
-      "description": "Principal types for AWS/AWS-like services",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "supplier": {
-        "name": "David Cuthbert <dacut@kanga.org"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/dacut/scratchstack-core"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:scratchstack-aws-principal:scratchstack-aws-principal:0.4.9:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/scratchstack-aws-signature@0.11.4",
-      "name": "scratchstack-aws-signature",
-      "version": "0.11.4",
-      "purl": "pkg:cargo/scratchstack-aws-signature@0.11.4",
-      "description": "AWS SigV4 signature verification",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "supplier": {
-        "name": "David Cuthbert"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/dacut/scratchstack-aws-signature"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:scratchstack-aws-signature:scratchstack-aws-signature:0.11.4:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/scratchstack-errors@0.4.9",
-      "name": "scratchstack-errors",
-      "version": "0.4.9",
-      "purl": "pkg:cargo/scratchstack-errors@0.4.9",
-      "description": "Error trait for AWS/AWS-like services",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "supplier": {
-        "name": "David Cuthbert <dacut@kanga.org"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/dacut/scratchstack-core"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:scratchstack-errors:scratchstack-errors:0.4.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20000,84 +19687,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/windows-core@0.62.2",
-      "name": "windows-core",
-      "version": "0.62.2",
-      "purl": "pkg:cargo/windows-core@0.62.2",
-      "description": "Core type support for COM and Windows",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-core:windows-core:0.62.2:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows-implement@0.60.2",
-      "name": "windows-implement",
-      "version": "0.60.2",
-      "purl": "pkg:cargo/windows-implement@0.60.2",
-      "description": "The implement macro for the Windows crates",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-implement:windows-implement:0.60.2:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows-interface@0.59.3",
-      "name": "windows-interface",
-      "version": "0.59.3",
-      "purl": "pkg:cargo/windows-interface@0.59.3",
-      "description": "The interface macro for the Windows crates",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-interface:windows-interface:0.59.3:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/windows-link@0.2.1",
       "name": "windows-link",
       "version": "0.2.1",
@@ -20101,32 +19710,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:windows-link:windows-link:0.2.1:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows-result@0.4.1",
-      "name": "windows-result",
-      "version": "0.4.1",
-      "purl": "pkg:cargo/windows-result@0.4.1",
-      "description": "Windows error handling",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-result:windows-result:0.4.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20156,32 +19739,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:windows-service:windows-service:0.8.1:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/windows-strings@0.5.1",
-      "name": "windows-strings",
-      "version": "0.5.1",
-      "purl": "pkg:cargo/windows-strings@0.5.1",
-      "description": "Windows string types",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/microsoft/windows-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:windows-strings:windows-strings:0.5.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -22783,17 +22340,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/knip@6.44.2",
+      "bom-ref": "pkg:npm/knip@6.45.0",
       "name": "knip",
-      "version": "6.44.2",
-      "purl": "pkg:npm/knip@6.44.2",
+      "version": "6.45.0",
+      "purl": "pkg:npm/knip@6.45.0",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:knip:knip:6.44.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:knip:knip:6.45.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23077,6 +22634,20 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/minimatch@11.0.5",
+      "name": "minimatch",
+      "version": "11.0.5",
+      "purl": "pkg:npm/minimatch@11.0.5",
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-vendor-product"
+        }
+      ],
+      "cpe": "cpe:2.3:a:minimatch_project:minimatch:11.0.5:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/moment@2.31.0",
       "name": "moment",
       "version": "2.31.0",
@@ -23357,17 +22928,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/postcss@8.5.31",
+      "bom-ref": "pkg:npm/postcss@8.5.32",
       "name": "postcss",
-      "version": "8.5.31",
-      "purl": "pkg:npm/postcss@8.5.31",
+      "version": "8.5.32",
+      "purl": "pkg:npm/postcss@8.5.32",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:postcss:postcss:8.5.31:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:postcss:postcss:8.5.32:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24603,17 +24174,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/rollup@4.64.12",
+      "bom-ref": "pkg:npm/rollup@4.68.2",
       "name": "rollup",
-      "version": "4.64.12",
-      "purl": "pkg:npm/rollup@4.64.12",
+      "version": "4.68.2",
+      "purl": "pkg:npm/rollup@4.68.2",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:rollupjs:rollup:4.64.12:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rollupjs:rollup:4.68.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24687,17 +24258,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/semver@7.8.5",
+      "bom-ref": "pkg:npm/semver@7.8.6",
       "name": "semver",
-      "version": "7.8.5",
-      "purl": "pkg:npm/semver@7.8.5",
+      "version": "7.8.6",
+      "purl": "pkg:npm/semver@7.8.6",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:npmjs:semver:7.8.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:npmjs:semver:7.8.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25107,31 +24678,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typescript-eslint@8.72.1",
+      "bom-ref": "pkg:npm/typescript-eslint@8.72.2",
       "name": "typescript-eslint",
-      "version": "8.72.1",
-      "purl": "pkg:npm/typescript-eslint@8.72.1",
+      "version": "8.72.2",
+      "purl": "pkg:npm/typescript-eslint@8.72.2",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.2:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typescript-eslint@8.72.1(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "bom-ref": "pkg:npm/typescript-eslint@8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
       "name": "typescript-eslint",
-      "version": "8.72.1(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
-      "purl": "pkg:npm/typescript-eslint@8.72.1(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "version": "8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "purl": "pkg:npm/typescript-eslint@8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.1_eslint_9.39.3_jiti_2.7.0___typescript_5.9.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.2_eslint_9.39.3_jiti_2.7.0___typescript_5.9.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25205,31 +24776,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vite@7.3.7",
+      "bom-ref": "pkg:npm/vite@7.3.8",
       "name": "vite",
-      "version": "7.3.7",
-      "purl": "pkg:npm/vite@7.3.7",
+      "version": "7.3.8",
+      "purl": "pkg:npm/vite@7.3.8",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitejs:vite:7.3.7:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitejs:vite:7.3.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vite@7.3.7(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
+      "bom-ref": "pkg:npm/vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
       "name": "vite",
-      "version": "7.3.7(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
-      "purl": "pkg:npm/vite@7.3.7(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
+      "version": "7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
+      "purl": "pkg:npm/vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitejs:vite:7.3.7__types_node_25.9.9__jiti_2.7.0__lightningcss_1.33.0__yaml_2.9.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitejs:vite:7.3.8__types_node_25.9.9__jiti_2.7.0__lightningcss_1.33.0__yaml_2.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25247,17 +24818,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.7(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "bom-ref": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
       "name": "vitest",
-      "version": "5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.7(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
-      "purl": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.7(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "version": "5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "purl": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.1.0__types_node_25.9.9__jsdom_26.1.0__vite_7.3.7__types_node_25.9.9__jiti_2.7.0__lightningcss_1.33.0__yaml_2.9.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.1.0__types_node_25.9.9__jsdom_26.1.0__vite_7.3.8__types_node_25.9.9__jiti_2.7.0__lightningcss_1.33.0__yaml_2.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25454,25 +25025,11 @@
         }
       ],
       "cpe": "cpe:2.3:a:yocto-queue:yocto-queue:0.1.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/zod@4.6.7",
-      "name": "zod",
-      "version": "4.6.7",
-      "purl": "pkg:npm/zod@4.6.7",
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "verified-vendor-product"
-        }
-      ],
-      "cpe": "cpe:2.3:a:zod:zod:4.6.7:*:*:*:*:*:*:*"
     }
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/fcj2rqlc6i6r0m3q0kcf84vhj6l8wq3w-cosmian-kms-cli-5.29.0.drv"
+      "ref": "/nix/store/j0y4nmrz2jxhgcdc1kd7mnh350jmxn11-cosmian-kms-cli-5.29.0.drv"
     }
   ],
   "vulnerabilities": []

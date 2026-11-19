@@ -69,6 +69,7 @@ and any backend-specific differences (e.g. MySQL AUTO_INCREMENT`id` column).
 - [ ] Is the Mermaid diagram still accurate?
 - [ ] Is the table count in the overview sentence correct?
 - [ ] Is the "Links between tables" section still accurate?
+- [ ] Downgrade behaviour of the change documented (`**Downgrade.**` paragraph) per `database-compatibility.instructions.md`?
 
 ## `rawsql` loader gotcha
 

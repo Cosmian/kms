@@ -17,6 +17,18 @@ use crate::{
     openssl::hashing_algorithm_to_openssl_ref,
 };
 
+/// Whether an RSA signature may use SHA-1: never in a FIPS build (the provider forbids it).
+#[cfg(not(feature = "non-fips"))]
+const fn sha1_signatures_allowed() -> bool {
+    false
+}
+
+/// Whether an RSA signature may use SHA-1 (non-FIPS build: yes).
+#[cfg(feature = "non-fips")]
+const fn sha1_signatures_allowed() -> bool {
+    true
+}
+
 /// Attempt to sign a digest using an RSA private key and the provided algorithm name.
 ///
 /// Supported algorithms:
@@ -148,8 +160,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
     }
 
     // OpenSSL FIPS provider forbids SHA-1 for RSA signing.
-    #[cfg(not(feature = "non-fips"))]
-    if effective_hash == KmipHash::SHA1 {
+    if !sha1_signatures_allowed() && effective_hash == KmipHash::SHA1 {
         return Err(CryptoError::Default(
             "RSA signing with SHA-1 is not supported in FIPS mode".to_owned(),
         ));
@@ -173,8 +184,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             .and_then(|cp| cp.mask_generator_hashing_algorithm)
             .unwrap_or(effective_hash);
 
-        #[cfg(not(feature = "non-fips"))]
-        let mgf1_hash = if mgf1_hash == KmipHash::SHA1 {
+        let mgf1_hash = if !sha1_signatures_allowed() && mgf1_hash == KmipHash::SHA1 {
             effective_hash
         } else {
             mgf1_hash
@@ -268,8 +278,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
             if let Some(h) = cp.mask_generator_hashing_algorithm {
                 let mgf1_hash = h;
 
-                #[cfg(not(feature = "non-fips"))]
-                let mgf1_hash = if mgf1_hash == KmipHash::SHA1 {
+                let mgf1_hash = if !sha1_signatures_allowed() && mgf1_hash == KmipHash::SHA1 {
                     effective_hash
                 } else {
                     mgf1_hash
@@ -304,6 +313,7 @@ pub fn sign_rsa_with_pkey(request: &Sign, private_key: &PKey<Private>) -> Crypto
 fn map_kmip_hash_to_openssl(kmip_hash: KmipHash) -> MessageDigest {
     match kmip_hash {
         KmipHash::SHA1 => MessageDigest::sha1(),
+        KmipHash::SHA224 => MessageDigest::sha224(),
         KmipHash::SHA384 => MessageDigest::sha384(),
         KmipHash::SHA512 => MessageDigest::sha512(),
         KmipHash::SHA3256 => MessageDigest::sha3_256(),
@@ -528,5 +538,50 @@ mod tests {
             cosmian_kmip::kmip_2_1::kmip_types::ValidityIndicator::Valid,
             "Signature raw, digest data verify for prehashed RSASSA-PSS"
         );
+    }
+
+    /// RSA PKCS#1 v1.5 signing against NIST CAVP `SigGen15_186-3` known answers.
+    #[test]
+    fn test_rsa_pkcs1_sign_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        for v in crate::kat_vectors::rsa_pkcs1_sign_vectors().unwrap() {
+            let pk = PKey::from_rsa(
+                openssl::rsa::RsaPrivateKeyBuilder::new(
+                    openssl::bn::BigNum::from_slice(&v.n).unwrap(),
+                    openssl::bn::BigNum::from_slice(&v.e).unwrap(),
+                    openssl::bn::BigNum::from_slice(&v.d).unwrap(),
+                )
+                .unwrap()
+                .build(),
+            )
+            .unwrap();
+            // `sign_rsa_with_pkey` selects PKCS#1 v1.5 vs PSS from the signature algorithm
+            // (default RSASSA-PSS), not from `padding_method`.
+            let algorithm = match v.hash {
+                KmipHash::SHA224 => DigitalSignatureAlgorithm::SHA224WithRSAEncryption,
+                KmipHash::SHA256 => DigitalSignatureAlgorithm::SHA256WithRSAEncryption,
+                KmipHash::SHA384 => DigitalSignatureAlgorithm::SHA384WithRSAEncryption,
+                KmipHash::SHA512 => DigitalSignatureAlgorithm::SHA512WithRSAEncryption,
+                other => panic!("{}: unexpected CAVP hash {other:?}", v.id),
+            };
+            let request = Sign {
+                data: Some(v.msg.clone().into()),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    hashing_algorithm: Some(v.hash),
+                    digital_signature_algorithm: Some(algorithm),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            assert_eq!(
+                sign_rsa_with_pkey(&request, &pk).unwrap(),
+                v.sig,
+                "{} ({})",
+                v.id,
+                v.source
+            );
+        }
     }
 }

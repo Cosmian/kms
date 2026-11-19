@@ -39,6 +39,13 @@ IV and tag rules:
   at most 1024, and equal to the cipher's nonce size except for GCM; otherwise the request fails with
   `Bad Cryptographic Parameters`. A length in bytes equal to the nonce size (for example `12`) is also accepted. A
   server-generated GCM IV is at least 96 bits long.
+- A FIPS build always generates the AES-GCM IV inside the OpenSSL FIPS provider (NIST SP 800-38D §9.1, FIPS 140-3
+  IG C.H) and returns it in `IV/Counter/Nonce`: a request that carries an IV for an AES-GCM encryption is refused,
+  and `Tag Length` must be 16 bytes. Decryption accepts the 96-bit IV the server generated. A non-FIPS build still
+  accepts an IV chosen by the client, which must then be unique under one key.
+- The server counts the server-generated AES-GCM IVs of each key (one per single-part request, per multi-part
+  stream and per bulk item) and fails `Encrypt` with `Permission Denied` once a key has made 2^32 of them
+  (SP 800-38D §8.3); decryption is not affected. See the [`gcm_invocations` table](../configuration/database/tables.md#gcm_invocations).
 - `Random IV` set to false with no IV in the request fails with `Missing Initialization Vector`.
 - `Fixed Field Length`, `Invocation Field Length`, `Counter Length` and `Initial Counter Value` fail with
   `Unsupported Cryptographic Parameters`.

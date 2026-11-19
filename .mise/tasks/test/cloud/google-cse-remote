@@ -12,6 +12,9 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
 
+# Disabled: the logins trigger Google "suspicious login" alerts for the CSE test account.
+skip_test "disabled: Google flags the remote CSE logins as suspicious"
+
 [ "${VARIANT}" = non-fips ] || skip_test "remote tests do not depend on the client variant: run with --variant non-fips"
 
 # Skipped when already set: this block runs again after the nix-shell re-exec.
