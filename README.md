@@ -653,7 +653,7 @@ directory.
 
 Two paths are supported:
 
-- For production use, use Nix build: use the unified script `.mise/scripts/nix.sh` (via `mise run`) for a pinned toolchain,
+- For production use, use Nix build: use the `mise run` tasks for a pinned toolchain,
   reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 

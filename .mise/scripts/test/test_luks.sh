@@ -22,8 +22,8 @@
 #     can retrieve the objects and the library initialises without errors.
 #
 # Usage:
-#   bash .mise/scripts/nix.sh test luks
-#   bash .mise/scripts/nix.sh --variant non-fips test luks
+#   mise run test:pkcs11:luks
+#   mise run test:pkcs11:luks --variant non-fips
 #   bash .mise/scripts/test/test_luks.sh
 set -euo pipefail
 set -x

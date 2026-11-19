@@ -155,7 +155,7 @@ setup_edb_container() {
   # 2. Verify the container is running.
   if ! docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
     print_error "  Container '$CONTAINER_NAME' is not running."
-    print_error "  Run via: bash .mise/scripts/nix.sh --variant non-fips test edb_tde"
+    print_error "  Run via: mise run test:interop:edb-tde --variant non-fips"
     return 1
   fi
   print_status "  Container: $CONTAINER_NAME"

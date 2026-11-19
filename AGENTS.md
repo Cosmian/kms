@@ -520,7 +520,7 @@ All CI runs go through **MISE** via:
 mise run [task] --variant [fips|non-fips] [args]
 ```
 
-#### Test types (`nix.sh test <type>`)
+#### Test types (`mise run test:<group>:<name>`)
 
 | Type            | FIPS?  | Notes                                |
 | --------------- | ------ | ------------------------------------ |
