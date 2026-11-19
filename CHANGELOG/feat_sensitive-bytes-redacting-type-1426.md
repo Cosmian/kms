@@ -9,3 +9,4 @@
 - Hand-written redacting `Debug` also for `KmipBigInt`, `KmipBigIntDeserializer`, `DataToEncrypt` and `BulkData`
 - Trace and debug logs no longer print secrets: the TTLV deserializer ByteString trace, the TTLV serializer `#[instrument]` span fields of byte, string and integer values, the symmetric decrypt trace (ciphertext, nonce, AAD, tag), the Covercrypt AAD logs, the `ckms sym encrypt` client-side DEK trace and the PKCS#11 `parse_mechanism` IV
 - `ttlv_parser` output (`{:#?}` of a TTLV) now shows byte strings and big integers as sizes only
+- `TTLV` `Debug` (traced as `{:?}` for the whole incoming request) hides the value of credential password tags (`Password`, `OneTimePassword`, `HashedPassword`, `TicketValue`)
