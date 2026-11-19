@@ -60,7 +60,7 @@ async fn test_encrypt_no_plaintext_in_traces() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(sensitive_plaintext.to_vec())),
+        data: Some(Zeroizing::new(sensitive_plaintext.to_vec()).into()),
         ..Default::default()
     };
 
@@ -101,7 +101,7 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(plaintext.to_vec())),
+                data: Some(Zeroizing::new(plaintext.to_vec()).into()),
                 ..Default::default()
             },
             &UserId::from("test_user"),
@@ -318,7 +318,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(plaintext.to_vec())),
+                data: Some(Zeroizing::new(plaintext.to_vec()).into()),
                 ..Default::default()
             },
             &owner,
@@ -443,9 +443,11 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
             Sign {
                 unique_identifier: Some(private_key_id.clone()),
                 cryptographic_parameters: None,
-                data: Some(Zeroizing::new(
-                    b"Regression test: KEK wrapping must survive sign".to_vec(),
-                )),
+                data: Some(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::SensitiveBytes::from(
+                        b"Regression test: KEK wrapping must survive sign".to_vec(),
+                    ),
+                ),
                 digested_data: None,
                 correlation_value: None,
                 init_indicator: None,
@@ -699,7 +701,7 @@ async fn test_crypto_op_does_not_reveal_foreign_keys() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"probe".to_vec())),
+        data: Some(Zeroizing::new(b"probe".to_vec()).into()),
         ..Default::default()
     };
 
@@ -880,7 +882,7 @@ async fn test_request_work_limits() -> KResult<()> {
             base_key.clone(),
             DerivationMethod::PBKDF2,
             DerivationParameters {
-                salt: Some(b"limits salt".to_vec()),
+                salt: Some(b"limits salt".to_vec().into()),
                 iteration_count: Some(iteration_count),
                 ..DerivationParameters::default()
             },

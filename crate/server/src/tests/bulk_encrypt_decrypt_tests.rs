@@ -178,8 +178,10 @@ fn encrypt_request(
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..CryptographicParameters::default()
         }),
-        data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC).then(|| vec![0; 16]),
+        data: Some(Zeroizing::new(data).into()),
+        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC)
+            .then(|| vec![0; 16])
+            .map(Into::into),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -201,7 +203,9 @@ fn decrypt_request(
             ..CryptographicParameters::default()
         }),
         data: Some(data),
-        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC).then(|| vec![0; 16]),
+        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC)
+            .then(|| vec![0; 16])
+            .map(Into::into),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

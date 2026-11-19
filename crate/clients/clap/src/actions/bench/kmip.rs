@@ -139,7 +139,7 @@ pub(super) fn bench_encrypt_aes_gcm(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
             ..Default::default()
         };
 
@@ -207,7 +207,7 @@ pub(super) fn bench_encrypt_chacha20(
     let enc_req = Encrypt {
         unique_identifier: Some(key_id.clone()),
         cryptographic_parameters: Some(params.clone()),
-        data: Some(Zeroizing::new(vec![1_u8; 64])),
+        data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
         ..Default::default()
     };
     bench_op(
@@ -341,8 +341,8 @@ pub(super) fn bench_encrypt_aes_xts(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
-            i_v_counter_nonce: Some(vec![0_u8; 16]),
+            data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
+            i_v_counter_nonce: Some(vec![0_u8; 16].into()),
             ..Default::default()
         };
 
@@ -410,7 +410,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
             ..Default::default()
         };
 
@@ -1298,7 +1298,7 @@ fn bench_ec_sign(
     let sign_req = Sign {
         unique_identifier: Some(priv_id),
         cryptographic_parameters: sign_params.clone(),
-        data: Some(message.clone()),
+        data: Some(message.clone().into()),
         ..Default::default()
     };
     let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
@@ -1357,7 +1357,7 @@ fn bench_rsa_pss_sign(
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
             cryptographic_parameters: sign_params.clone(),
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
@@ -1423,7 +1423,7 @@ fn bench_pqc_sign(
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
             cryptographic_parameters: None,
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
@@ -1539,7 +1539,7 @@ pub(super) fn bench_hsm_encrypt(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
             ..Default::default()
         };
         bench_op(
@@ -1570,8 +1570,8 @@ pub(super) fn bench_hsm_encrypt(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_cbc_params()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
-            i_v_counter_nonce: Some(vec![0_u8; 16]),
+            data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
+            i_v_counter_nonce: Some(vec![0_u8; 16].into()),
             ..Default::default()
         };
         bench_op(
@@ -1602,7 +1602,7 @@ pub(super) fn bench_hsm_encrypt(
             let enc_req = Encrypt {
                 unique_identifier: Some(pub_id.clone()),
                 cryptographic_parameters: Some(params),
-                data: Some(Zeroizing::new(vec![1_u8; 64])),
+                data: Some(Zeroizing::new(vec![1_u8; 64]).into()),
                 ..Default::default()
             };
             bench_op(
@@ -1678,7 +1678,7 @@ pub(super) fn bench_hsm_sign_verify(
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
                 ..Default::default()
             }),
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         bench_op(
@@ -1728,7 +1728,7 @@ pub(super) fn bench_hsm_sign_verify(
             let sign_req = Sign {
                 unique_identifier: Some(priv_id.clone()),
                 cryptographic_parameters: Some(hsm_rsa_pkcs1v15_sign_params(dsa)),
-                data: Some(message.clone()),
+                data: Some(message.clone().into()),
                 ..Default::default()
             };
             bench_op(
@@ -1813,7 +1813,7 @@ pub(super) fn bench_hsm_sign_verify(
                 cryptographic_algorithm: Some(algorithm),
                 ..Default::default()
             }),
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-{label}"));

@@ -16,7 +16,7 @@ Rules for **new or modified** code. Legacy violations exist: when you touch one,
 
 ## 2. Secret memory
 
-- A field or local holding a password, PIN, token, secret, seed or key bytes is `Zeroizing<_>` (the workspace convention) or a wrapper with a redacting `Debug`.
+- A struct field holding secret bytes or a secret string (IV, nonce, AAD, salt, PIN, password, plaintext, key bytes) is `cosmian_kmip::SensitiveBytes` / `SensitiveString` (alias of the generic `Sensitive<T>`): zeroized on drop, and `Debug`/`Display` print only `<N bytes>`, so no derived `Debug`/`Display` of the containing struct can leak it. Use `Sensitive<T>` (with `SensitiveSize`) for other secret types. A local holding a secret is `Zeroizing<_>`. Big integers and fixed-size secrets (`SafeBigInt`, `Secret<N>`) have a hand-written redacting `Debug`.
 - Never `#[derive(Debug)]` / implement `Display` on a type holding such a field unless the impl prints a placeholder.
 - Config structs read from TOML/clap follow the same rule (existing plain-`String` secret fields in `est_config.rs`, `scep_config.rs`, `roles_config.rs`, `secret_backends/mod.rs` are legacy).
 - Never commit a live provider credential (AWS access key id, GitHub, Slack or Vault token). Gate: `no-committed-credentials` pre-commit hook; use `test_data/` fixtures or environment variables.

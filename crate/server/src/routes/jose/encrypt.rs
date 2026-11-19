@@ -107,9 +107,9 @@ async fn encrypt_dir(
     let encrypt_req = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(kid)),
         cryptographic_parameters: Some(kmip_params),
-        data: Some(Zeroizing::new(plaintext)),
+        data: Some(Zeroizing::new(plaintext).into()),
         i_v_counter_nonce: None,
-        authenticated_encryption_additional_data: Some(aad_bytes),
+        authenticated_encryption_additional_data: Some(aad_bytes.into()),
         ..Default::default()
     };
 

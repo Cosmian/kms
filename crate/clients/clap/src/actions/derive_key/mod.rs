@@ -302,9 +302,9 @@ impl DeriveKeyAction {
                 hashing_algorithm: Some(self.digest_algorithm.clone().into()),
                 ..Default::default()
             }),
-            initialization_vector,
-            derivation_data,
-            salt: Some(salt),
+            initialization_vector: initialization_vector.map(Into::into),
+            derivation_data: derivation_data.map(Into::into),
+            salt: Some(salt.into()),
             iteration_count: Some(self.iteration_count),
         })
     }

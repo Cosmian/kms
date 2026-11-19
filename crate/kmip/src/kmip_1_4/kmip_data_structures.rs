@@ -16,7 +16,7 @@ use super::{
     },
 };
 use crate::{
-    KmipError, SafeBigInt,
+    KmipError, SafeBigInt, SensitiveBytes,
     kmip_0::kmip_types::{
         BlockCipherMode, DRBGAlgorithm, DestroyAction, FIPS186Variation, HashingAlgorithm,
         KeyRoleType, MaskGenerator, PaddingMethod, RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
@@ -235,7 +235,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyBlock> for KeyBlock {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyValue {
     /// The key value is a byte string when key wrapped
-    ByteString(Zeroizing<Vec<u8>>),
+    ByteString(SensitiveBytes),
     /// The key value is a structure when the key is not wrapped
     Structure {
         key_material: KeyMaterial,
@@ -320,7 +320,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                 while let Some(byte) = seq.next_element()? {
                     bytestring.push(byte);
                 }
-                Ok(KeyValue::ByteString(Zeroizing::new(bytestring)))
+                Ok(KeyValue::ByteString(bytestring.into()))
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
@@ -427,9 +427,9 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyValue> for KeyValue {
 /// bytes, or `SafeBigInt` type.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyMaterial {
-    ByteString(Zeroizing<Vec<u8>>),
+    ByteString(SensitiveBytes),
     TransparentSymmetricKey {
-        key: Zeroizing<Vec<u8>>,
+        key: SensitiveBytes,
     },
     TransparentDSAPrivateKey {
         p: Box<BigInt>,
@@ -748,7 +748,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::ConfigurableKEMPublicKey
                     | KeyFormatType::CoverCryptPublicKey
                     | KeyFormatType::CoverCryptSecretKey => {
-                        Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
+                        Ok(KeyMaterial::ByteString(bytestring.into()))
                     }
                     _ => Err(de::Error::custom(format!(
                         "KeyMaterialVisitor: {:?} key format type is not expected to have a byte \
@@ -891,7 +891,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
 
                 if let Some(key) = key {
-                    Ok(KeyMaterial::TransparentSymmetricKey { key })
+                    Ok(KeyMaterial::TransparentSymmetricKey { key: key.into() })
                 } else {
                     Ok(match &self.key_format_type {
                         KeyFormatType::TransparentDHPublicKey
@@ -1939,13 +1939,13 @@ pub struct DerivationParameters {
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The initialization vector or nonce if required by the derivation algorithm
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initialization_vector: Option<Vec<u8>>,
+    pub initialization_vector: Option<SensitiveBytes>,
     /// A value that identifies the derivation process
     #[serde(skip_serializing_if = "Option::is_none")]
     pub derivation_data: Option<Vec<u8>>,
     /// The length in bits of the derived data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub salt: Option<Vec<u8>>,
+    pub salt: Option<SensitiveBytes>,
     /// Optional iteration count used by the derivation method
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iteration_count: Option<i32>,
@@ -1956,7 +1956,7 @@ impl From<DerivationParameters> for kmip_2_1::kmip_data_structures::DerivationPa
         Self {
             cryptographic_parameters: params.cryptographic_parameters.map(Into::into),
             initialization_vector: params.initialization_vector,
-            derivation_data: params.derivation_data.map(Zeroizing::new),
+            derivation_data: params.derivation_data.map(Into::into),
             salt: params.salt,
             iteration_count: params.iteration_count,
         }

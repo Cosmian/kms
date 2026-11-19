@@ -138,7 +138,10 @@ impl CoverCryptEncryption {
 
 impl EncryptionSystem for CoverCryptEncryption {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
-        let ad = request.authenticated_encryption_additional_data.as_deref();
+        let ad = request
+            .authenticated_encryption_additional_data
+            .as_deref()
+            .map(Vec::as_slice);
 
         trace!("authenticated_encryption_additional_data: {ad:?}",);
 
@@ -176,7 +179,7 @@ impl EncryptionSystem for CoverCryptEncryption {
             data: encrypted_data,
             i_v_counter_nonce: None,
             correlation_value: None,
-            authenticated_encryption_tag: ad.map(<[u8]>::to_vec),
+            authenticated_encryption_tag: ad.map(|a| a.to_vec().into()),
         })
     }
 }

@@ -108,7 +108,7 @@ fn create_secret_data(secret_id: &str, data: Vec<u8>) -> Object {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(data)),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(data).into()),
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::SecretData),
                     unique_identifier: Some(UniqueIdentifier::TextString(secret_id.to_owned())),

@@ -240,7 +240,9 @@ mod tests {
                             key_format_type: KeyFormatType::Raw,
                             key_compression_type: None,
                             key_value: Some(KeyValue::Structure {
-                                key_material: KeyMaterial::ByteString(Zeroizing::new(key.clone())),
+                                key_material: KeyMaterial::ByteString(
+                                    Zeroizing::new(key.clone()).into(),
+                                ),
                                 attributes: None,
                             }),
                             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -347,7 +349,7 @@ mod tests {
             .encrypt(
                 Encrypt {
                     unique_identifier: Some(uid.clone()),
-                    data: Some(Zeroizing::new(b"secret".to_vec())),
+                    data: Some(Zeroizing::new(b"secret".to_vec()).into()),
                     ..Encrypt::default()
                 },
                 &owner,

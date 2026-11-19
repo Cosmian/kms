@@ -427,7 +427,7 @@ async fn update_as_destroyed(
             // Empty the Key Material
             key_block.key_format_type = KeyFormatType::Raw;
             key_block.key_value = Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
                 attributes: Some(Box::new(attributes.clone())),
             });
             attributes

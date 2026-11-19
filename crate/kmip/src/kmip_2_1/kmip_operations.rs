@@ -25,7 +25,7 @@ use super::{
     },
 };
 use crate::{
-    Deserializer, Serializer,
+    Deserializer, SensitiveBytes, Serializer,
     error::KmipError,
     kmip_0::{
         kmip_data_structures::ValidationInformation,
@@ -449,7 +449,7 @@ pub struct PKCS11 {
         alias = "PKCS_11InputParameters",
         alias = "Pkcs_11InputParameters"
     )]
-    pub pkcs11_input_parameters: Option<Vec<u8>>,
+    pub pkcs11_input_parameters: Option<SensitiveBytes>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         rename = "CorrelationValue",
@@ -469,7 +469,9 @@ impl Display for PKCS11 {
         write!(
             f,
             "  PKCS11InputParameters: {}",
-            self.pkcs11_input_parameters.len_display()
+            self.pkcs11_input_parameters
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )?;
         write!(
             f,
@@ -506,7 +508,7 @@ pub struct PKCS11Response {
         alias = "PKCS_11OutputParameters",
         alias = "Pkcs_11OutputParameters"
     )]
-    pub pkcs11_output_parameters: Option<Vec<u8>>,
+    pub pkcs11_output_parameters: Option<SensitiveBytes>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         rename = "PKCS11ReturnCode",
@@ -534,7 +536,9 @@ impl Display for PKCS11Response {
         write!(
             f,
             "  PKCS11OutputParameters: {}",
-            self.pkcs11_output_parameters.len_display()
+            self.pkcs11_output_parameters
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )?;
         if let Some(code) = &self.pkcs11_return_code {
             write!(f, "  PKCS11ReturnCode: {code:?}")?;
@@ -1485,7 +1489,7 @@ pub struct Decrypt {
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1508,7 +1512,7 @@ pub struct Decrypt {
     /// data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<SensitiveBytes>,
 
     /// Specifies the tag that will be needed to
     /// authenticate the decrypted data and
@@ -1517,19 +1521,19 @@ pub struct Decrypt {
     /// data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<SensitiveBytes>,
 }
 
 impl_display!(Decrypt, "Decrypt", {
     opt unique_identifier,
     opt cryptographic_parameters,
     opt_len data,
-    opt_len i_v_counter_nonce,
+    opt i_v_counter_nonce,
     opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
-    opt_len authenticated_encryption_additional_data,
-    opt_len authenticated_encryption_tag,
+    opt authenticated_encryption_additional_data,
+    opt authenticated_encryption_tag,
 });
 
 /// When decrypting data with Cover Crypt we can have some
@@ -1546,7 +1550,7 @@ impl_display!(Decrypt, "Decrypt", {
 /// 3. data decrypted
 pub struct DecryptedData {
     pub metadata: Vec<u8>,
-    pub plaintext: Zeroizing<Vec<u8>>,
+    pub plaintext: SensitiveBytes,
 }
 
 impl TryInto<Vec<u8>> for DecryptedData {
@@ -1572,7 +1576,7 @@ impl TryFrom<&[u8]> for DecryptedData {
         let metadata = de.read_vec()?;
 
         // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize());
+        let plaintext = Zeroizing::from(de.finalize()).into();
 
         Ok(Self {
             metadata,
@@ -1590,7 +1594,7 @@ pub struct DecryptResponse {
     pub unique_identifier: UniqueIdentifier,
     /// The decrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing
@@ -1601,7 +1605,7 @@ pub struct DecryptResponse {
 
 impl_display!(DecryptResponse, "DecryptResponse", {
     req unique_identifier,
-    opt_len data,
+    opt data,
     opt_len correlation_value,
 });
 
@@ -1832,12 +1836,12 @@ pub struct Encrypt {
 
     /// The data to be encrypted
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1858,18 +1862,18 @@ pub struct Encrypt {
     /// Tag. If supplied in multi-part encryption,
     /// this data MUST be supplied on the initial Encrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<SensitiveBytes>,
 }
 
 impl_display!(Encrypt, "Encrypt", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_len data,
-    opt_len i_v_counter_nonce,
+    opt data,
+    opt i_v_counter_nonce,
     opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
-    opt_len authenticated_encryption_additional_data,
+    opt authenticated_encryption_additional_data,
 });
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -1889,7 +1893,7 @@ pub struct EncryptResponse {
     /// algorithm requires the provision of an
     /// IV/Counter/Nonce.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing
@@ -1903,15 +1907,15 @@ pub struct EncryptResponse {
     /// of the plaintext by an authenticated
     /// encryption cipher.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<SensitiveBytes>,
 }
 
 impl_display!(EncryptResponse, "EncryptResponse", {
     req unique_identifier,
     opt_len data,
-    opt_len i_v_counter_nonce,
+    opt i_v_counter_nonce,
     opt_len correlation_value,
-    opt_len authenticated_encryption_tag,
+    opt authenticated_encryption_tag,
 });
 
 /// Export
@@ -2615,7 +2619,7 @@ pub struct MAC {
     /// Vendor extension (also a field of `Encrypt`): the initialization vector of an AES-GMAC.
     /// KMIP 2.1 `MAC` has no IV field; when absent the server draws a random IV.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
     /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
@@ -2631,7 +2635,7 @@ impl_display!(MAC, "Mac", {
     opt unique_identifier,
     opt cryptographic_parameters,
     opt_len data,
-    opt_len i_v_counter_nonce,
+    opt i_v_counter_nonce,
     opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
@@ -3249,7 +3253,7 @@ pub struct Sign {
 
     /// The data to be signed
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The digest of the data to be signed.
     /// Provided when the data has been pre-hashed.
@@ -3275,7 +3279,7 @@ pub struct Sign {
 impl_display!(Sign, "Sign", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_len data,
+    opt data,
     opt_len digested_data,
     opt_len correlation_value,
     opt init_indicator,
@@ -3373,21 +3377,22 @@ impl_display!(SignatureVerifyResponse, "SignatureVerifyResponse", {
 
 #[cfg(test)]
 mod tests {
-    use zeroize::Zeroizing;
-
     use super::{Activate, Encrypt, PKCS11Function};
-    use crate::kmip_2_1::{
-        kmip_data_structures::DerivationParameters,
-        kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration},
+    use crate::{
+        SensitiveBytes,
+        kmip_2_1::{
+            kmip_data_structures::DerivationParameters,
+            kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration},
+        },
     };
 
     /// Logging `{request}` must never write plaintext, IV, nonce or AAD: only their lengths.
     #[test]
     fn encrypt_display_shows_byte_lengths_not_content() {
         let encrypt = Encrypt {
-            data: Some(Zeroizing::new(b"top-secret-plaintext".to_vec())),
-            i_v_counter_nonce: Some(b"secret-iv-12".to_vec()),
-            authenticated_encryption_additional_data: Some(b"secret-aad".to_vec()),
+            data: Some(SensitiveBytes::from(b"top-secret-plaintext".to_vec())),
+            i_v_counter_nonce: Some(b"secret-iv-12".to_vec().into()),
+            authenticated_encryption_additional_data: Some(b"secret-aad".to_vec().into()),
             ..Encrypt::default()
         };
         let shown = encrypt.to_string();
@@ -3406,9 +3411,9 @@ mod tests {
     #[test]
     fn derivation_parameters_display_hides_bytes() {
         let shown = DerivationParameters {
-            initialization_vector: Some(b"SECRET-IV".to_vec()),
-            derivation_data: Some(Zeroizing::new(b"SECRET-DATA".to_vec())),
-            salt: Some(b"SECRET-SALT".to_vec()),
+            initialization_vector: Some(b"SECRET-IV".to_vec().into()),
+            derivation_data: Some(SensitiveBytes::from(b"SECRET-DATA".to_vec())),
+            salt: Some(b"SECRET-SALT".to_vec().into()),
             ..DerivationParameters::default()
         }
         .to_string();
@@ -3420,6 +3425,133 @@ mod tests {
             assert!(shown.contains(field), "{shown}");
         }
         assert!(!shown.contains("SECRET"), "{shown}");
+    }
+
+    /// No secret-bearing request may leak a secret through `Display` or `Debug`.
+    #[test]
+    fn secret_bearing_requests_never_leak_through_display_or_debug() {
+        use std::fmt::{Debug, Display};
+
+        use num_bigint_dig::BigInt;
+
+        use super::{Decrypt, DeriveKey, Import, PKCS11, PKCS11Response};
+        use crate::{
+            SafeBigInt,
+            kmip_0::kmip_types::{Authentication, Credential, CredentialType, CredentialValue},
+            kmip_2_1::{
+                kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, ObjectType, PrivateKey},
+                kmip_types::{DerivationMethod, KeyFormatType},
+            },
+        };
+
+        const MARKER: &[u8] = b"SECRET-MARKER";
+        let marker = || SensitiveBytes::from(MARKER.to_vec());
+        // `SECRET-MARKER` as decimal (private exponent) is checked through its byte list
+        let byte_list = format!("{MARKER:?}");
+        let check = |what: &str, op: &dyn Debug, display: Option<&dyn Display>| {
+            let mut outputs = vec![format!("{op:?}")];
+            outputs.extend(display.map(ToString::to_string));
+            for out in outputs {
+                for leaked in [
+                    "SECRET-MARKER",
+                    &byte_list[1..byte_list.len() - 1],
+                    "U0VDUkVULU1BUktFUg",
+                ] {
+                    assert!(!out.contains(leaked), "{what} leaks {leaked}: {out}");
+                }
+            }
+        };
+
+        let encrypt = Encrypt {
+            data: Some(marker()),
+            i_v_counter_nonce: Some(marker()),
+            authenticated_encryption_additional_data: Some(marker()),
+            ..Encrypt::default()
+        };
+        check("Encrypt", &encrypt, Some(&encrypt));
+
+        let decrypt = Decrypt {
+            i_v_counter_nonce: Some(marker()),
+            authenticated_encryption_additional_data: Some(marker()),
+            authenticated_encryption_tag: Some(marker()),
+            ..Decrypt::default()
+        };
+        check("Decrypt", &decrypt, Some(&decrypt));
+
+        let pkcs11 = PKCS11 {
+            pkcs11_interface: None,
+            pkcs11_function: Some(PKCS11Function::C_Login),
+            pkcs11_input_parameters: Some(marker()),
+            correlation_value: None,
+        };
+        check("PKCS11", &pkcs11, Some(&pkcs11));
+        let pkcs11_response = PKCS11Response {
+            pkcs11_function: Some(PKCS11Function::C_Login),
+            pkcs11_output_parameters: Some(marker()),
+            pkcs11_return_code: None,
+            pkcs11_interface: None,
+            correlation_value: None,
+        };
+        check("PKCS11Response", &pkcs11_response, Some(&pkcs11_response));
+
+        let derive_key = DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            UniqueIdentifier::TextString("base".to_owned()),
+            DerivationMethod::PBKDF2,
+            DerivationParameters {
+                initialization_vector: Some(marker()),
+                derivation_data: Some(marker()),
+                salt: Some(marker()),
+                ..DerivationParameters::default()
+            },
+            Attributes::default(),
+        );
+        check("DeriveKey", &derive_key, Some(&derive_key));
+
+        let private_key = Object::PrivateKey(PrivateKey {
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::TransparentRSAPrivateKey,
+                key_compression_type: None,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::TransparentRSAPrivateKey {
+                        modulus: Box::new(BigInt::from(3)),
+                        private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(MARKER))),
+                        public_exponent: None,
+                        p: None,
+                        q: None,
+                        prime_exponent_p: None,
+                        prime_exponent_q: None,
+                        c_r_t_coefficient: None,
+                    },
+                    attributes: None,
+                }),
+                cryptographic_algorithm: None,
+                cryptographic_length: None,
+                key_wrapping_data: None,
+            },
+        });
+        let import = Import {
+            unique_identifier: UniqueIdentifier::TextString("k".to_owned()),
+            object_type: ObjectType::PrivateKey,
+            replace_existing: None,
+            key_wrap_type: None,
+            attributes: Attributes::default(),
+            object: private_key,
+        };
+        check("Import", &import, Some(&import));
+
+        let login = Authentication {
+            credential: vec![Credential {
+                credential_type: CredentialType::UsernameAndPassword,
+                credential_value: CredentialValue::UsernameAndPassword {
+                    username: "alice".to_owned(),
+                    password: Some("SECRET-MARKER".to_owned()),
+                },
+            }],
+        };
+        check("Authentication", &login, None);
     }
 
     /// KMIP 2.1 §11.38: codes are the 1-based offsets in `CK_FUNCTION_LIST_3_0`

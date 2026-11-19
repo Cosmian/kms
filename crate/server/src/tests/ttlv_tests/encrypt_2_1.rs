@@ -67,7 +67,7 @@ fn test_encrypt_2_1_iv_length_is_in_bits() {
                             iv_length: Some(iv_length),
                             ..Default::default()
                         }),
-                        data: Some(Zeroizing::new(b"Hello, world!".to_vec())),
+                        data: Some(Zeroizing::new(b"Hello, world!".to_vec()).into()),
                         ..Default::default()
                     })),
                     message_extension: None,
@@ -97,7 +97,10 @@ fn test_encrypt_2_1_iv_length_is_in_bits() {
     let Some(Operation::EncryptResponse(encrypted)) = &item.response_payload else {
         panic!("Expected EncryptResponse");
     };
-    assert_eq!(encrypted.i_v_counter_nonce.as_ref().map(Vec::len), Some(12));
+    assert_eq!(
+        encrypted.i_v_counter_nonce.as_ref().map(|n| n.len()),
+        Some(12)
+    );
 }
 
 pub(super) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Option<&[u8]>) {
@@ -129,12 +132,12 @@ pub(super) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         ..Default::default()
                     }),
-                    data: Some(Zeroizing::new(data.to_vec())),
+                    data: Some(Zeroizing::new(data.to_vec()).into()),
                     i_v_counter_nonce: None,
                     correlation_value: None,
                     init_indicator: None,
                     final_indicator: None,
-                    authenticated_encryption_additional_data: aad.map(Vec::from),
+                    authenticated_encryption_additional_data: aad.map(Vec::from).map(Into::into),
                 })),
                 message_extension: None,
             },

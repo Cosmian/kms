@@ -92,7 +92,7 @@ async fn e2e_default_policy_allows_aes_gcm_encrypt_params() {
             block_cipher_mode: Some(BlockCipherMode::GCM),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"hello".to_vec())),
+        data: Some(Zeroizing::new(b"hello".to_vec()).into()),
         ..Default::default()
     }));
 
@@ -289,7 +289,7 @@ async fn e2e_default_policy_denies_disallowed_block_cipher_mode_ecb() {
             block_cipher_mode: Some(BlockCipherMode::ECB),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"hello".to_vec())),
+        data: Some(Zeroizing::new(b"hello".to_vec()).into()),
         ..Default::default()
     }));
 
@@ -327,7 +327,7 @@ async fn e2e_message_policy_denies_disallowed_block_cipher_mode_ecb() {
                     block_cipher_mode: Some(BlockCipherMode::ECB),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(b"hello".to_vec())),
+                data: Some(Zeroizing::new(b"hello".to_vec()).into()),
                 ..Default::default()
             }))),
         ))],
@@ -428,7 +428,7 @@ fn default_policy_denies_padding_method_none_allowed_list() {
             padding_method: Some(PaddingMethod::OAEP),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"hello".to_vec())),
+        data: Some(Zeroizing::new(b"hello".to_vec()).into()),
         i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
@@ -458,7 +458,7 @@ async fn e2e_default_policy_denies_padding_method_none_allowed_list() {
             padding_method: Some(PaddingMethod::OAEP),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"hello".to_vec())),
+        data: Some(Zeroizing::new(b"hello".to_vec()).into()),
         ..Default::default()
     }));
 

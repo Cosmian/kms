@@ -329,7 +329,7 @@ pub fn import_rsa_private_key(
                     key_format_type: KeyFormatType::PKCS8,
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
-                        key_material: KeyMaterial::ByteString(Zeroizing::new(pkcs8_der.to_vec())),
+                        key_material: KeyMaterial::ByteString(Zeroizing::new(pkcs8_der.to_vec()).into()),
                         attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -515,8 +515,8 @@ pub fn decrypt_data(
             .decrypt(decrypt_op)
             .await
             .map_err(|e| KspError::Backend(e.to_string()))?;
-        // DecryptResponse.data is already Option<Zeroizing<Vec<u8>>>
         resp.data
+            .map(Into::into)
             .ok_or_else(|| KspError::Backend("KMS decrypt returned no data".to_owned()))
     })
 }
@@ -540,7 +540,7 @@ pub fn encrypt_data(
         let encrypt_op = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             cryptographic_parameters: Some(params),
-            data: Some(Zeroizing::new(plaintext.to_vec())),
+            data: Some(Zeroizing::new(plaintext.to_vec()).into()),
             ..Default::default()
         };
         let resp = client

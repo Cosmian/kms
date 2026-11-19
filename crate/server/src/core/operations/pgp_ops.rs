@@ -112,7 +112,7 @@ mod imp {
                 key_format_type: KeyFormatType::OpenPgpSecretKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(armored_secret),
+                    key_material: KeyMaterial::ByteString(armored_secret.into()),
                     attributes: Some(Box::new(attributes)),
                 }),
                 cryptographic_algorithm: alg,
@@ -179,7 +179,9 @@ mod imp {
                 }
                 key_block.key_format_type = KeyFormatType::OpenPgpPublicKey;
                 key_block.key_value = Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(pub_armored)),
+                    key_material: KeyMaterial::ByteString(
+                        zeroize::Zeroizing::new(pub_armored).into(),
+                    ),
                     attributes: nested_attrs,
                 });
             }
@@ -247,7 +249,7 @@ mod imp {
         }
 
         key_block.key_value = Some(KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(armored),
+            key_material: KeyMaterial::ByteString(armored.into()),
             attributes: Some(Box::new(attributes.clone())),
         });
 
@@ -316,7 +318,7 @@ mod imp {
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(plaintext),
+            data: Some(plaintext.into()),
             correlation_value: None,
         })
     }

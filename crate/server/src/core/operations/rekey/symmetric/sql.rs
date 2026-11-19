@@ -289,7 +289,7 @@ mod tests {
                             unique_identifier: Some(UniqueIdentifier::TextString(
                                 candidate.uid.clone(),
                             )),
-                            data: Some(Zeroizing::new(b"rotation race".to_vec())),
+                            data: Some(Zeroizing::new(b"rotation race".to_vec()).into()),
                             ..Encrypt::default()
                         },
                         user,
@@ -541,7 +541,7 @@ mod tests {
         kms.encrypt(
             Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-                data: Some(Zeroizing::new(data.to_vec())),
+                data: Some(Zeroizing::new(data.to_vec()).into()),
                 ..Encrypt::default()
             },
             user,

@@ -312,7 +312,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
             ..Default::default()
         }),
         data: Some(vec![0_u8; 32].into()),
-        i_v_counter_nonce: Some(vec![0_u8; 16]),
+        i_v_counter_nonce: Some(vec![0_u8; 16].into()),
         ..Default::default()
     };
 

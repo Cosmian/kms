@@ -1218,19 +1218,19 @@ async fn cse_wrapped_key_decrypt(
             ..Default::default()
         }),
         data: Some(ciphertext),
-        i_v_counter_nonce: Some(iv_counter_nonce),
+        i_v_counter_nonce: Some(iv_counter_nonce.into()),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
-        authenticated_encryption_tag: Some(authenticated_tag),
+        authenticated_encryption_additional_data: resource_name.map(Into::into),
+        authenticated_encryption_tag: Some(authenticated_tag.into()),
     };
     let key = decrypt(kms, decryption_request, &UserId::from(user.as_str())).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
-    Ok(data)
+    Ok(data.to_zeroizing())
 }
 
 /// Encrypt a key
@@ -1261,7 +1261,7 @@ async fn cse_key_encrypt(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
+        authenticated_encryption_additional_data: resource_name.map(Into::into),
     };
     let dek = encrypt(kms, encryption_request, &UserId::from(user.as_str())).await?;
 

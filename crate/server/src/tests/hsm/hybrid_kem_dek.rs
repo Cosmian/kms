@@ -639,17 +639,22 @@ pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
             };
             // the same layout as the server wrapping: IV || ciphertext || tag
             let wrapped = [
-                response.i_v_counter_nonce.clone().unwrap_or_default(),
+                response
+                    .i_v_counter_nonce
+                    .clone()
+                    .unwrap_or_default()
+                    .to_vec(),
                 response.data.clone().unwrap_or_default(),
                 response
                     .authenticated_encryption_tag
                     .clone()
-                    .unwrap_or_default(),
+                    .unwrap_or_default()
+                    .to_vec(),
             ]
             .concat();
             let mut wrapped_object = object.clone();
             let wrapped_block = wrapped_object.key_block_mut()?;
-            wrapped_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped)));
+            wrapped_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped).into()));
             wrapped_block.key_wrapping_data = Some(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 encryption_key_information: Some(EncryptionKeyInformation {

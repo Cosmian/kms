@@ -159,20 +159,26 @@ impl DecryptionSystem for CovercryptDecryption {
         {
             self.bulk_decrypt(
                 ctx.as_slice(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
                 &usk,
             )?
         } else {
             self.single_decrypt(
                 ctx.as_slice(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
                 &usk,
             )?
         };
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.usk_uid.clone()),
-            data: Some(ptx),
+            data: Some(ptx.into()),
             correlation_value: None,
         })
     }

@@ -471,7 +471,7 @@ pub(crate) fn destroy_version_operations(
         .map_err(|e| KvApiError::InternalError(format!("KV object has no key block: {e}")))?;
     key_block.key_format_type = KeyFormatType::Raw;
     key_block.key_value = Some(KeyValue::Structure {
-        key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+        key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
         attributes: Some(Box::new(attributes.clone())),
     });
     Ok([

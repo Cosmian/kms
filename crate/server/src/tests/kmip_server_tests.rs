@@ -25,7 +25,6 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::trace;
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use crate::{
     error::KmsError,
@@ -212,9 +211,11 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::from(
-                wrapped_symmetric_key.to_vec(),
-            ))),
+            key_value: Some(KeyValue::ByteString(
+                cosmian_kms_server_database::reexport::cosmian_kmip::SensitiveBytes::from(
+                    wrapped_symmetric_key.to_vec(),
+                ),
+            )),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(i32::try_from(wrapped_symmetric_key.len())? * 8),
             key_wrapping_data: Some(KeyWrappingData {

@@ -75,8 +75,9 @@ impl EncryptCertificateAction {
 
         let encrypt_request = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
-            data: Some(data),
-            authenticated_encryption_additional_data,
+            data: Some(data.into()),
+            authenticated_encryption_additional_data: authenticated_encryption_additional_data
+                .map(Into::into),
             cryptographic_parameters,
             ..Encrypt::default()
         };

@@ -165,7 +165,7 @@ where
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::from(key_bytes),
+                    key: Zeroizing::from(key_bytes).into(),
                 },
                 attributes: Some(Box::new(attributes.clone())),
             }),

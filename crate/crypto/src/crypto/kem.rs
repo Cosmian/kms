@@ -240,7 +240,7 @@ fn create_dk_object(
             key_format_type: KeyFormatType::ConfigurableKEMSecretKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(dk_bytes),
+                key_material: KeyMaterial::ByteString(dk_bytes.into()),
                 attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
@@ -280,7 +280,7 @@ fn create_ek_object(
             key_format_type: KeyFormatType::ConfigurableKEMPublicKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(ek_bytes),
+                key_material: KeyMaterial::ByteString(ek_bytes.into()),
                 attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,

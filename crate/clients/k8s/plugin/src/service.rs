@@ -9,7 +9,6 @@ use cosmian_kms_client::{
 };
 use tonic::{Request, Response, Status};
 use tracing::{debug, info};
-use zeroize::Zeroizing;
 
 use crate::{
     error::PluginError,
@@ -86,7 +85,7 @@ impl KeyManagementService for KmsPluginService {
 
         let kmip_request = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(self.wrapping_key_uid.clone())),
-            data: Some(Zeroizing::new(req.plaintext)),
+            data: Some(req.plaintext.into()),
             ..Default::default()
         };
 
@@ -102,10 +101,10 @@ impl KeyManagementService for KmsPluginService {
         // the exact Decrypt call later.  Both fields are binary-safe bytes.
         let mut annotations: HashMap<String, Vec<u8>> = HashMap::new();
         if let Some(iv) = kmip_resp.i_v_counter_nonce {
-            annotations.insert(ANNOTATION_IV.to_owned(), iv);
+            annotations.insert(ANNOTATION_IV.to_owned(), iv.to_vec());
         }
         if let Some(tag) = kmip_resp.authenticated_encryption_tag {
-            annotations.insert(ANNOTATION_AEAD_TAG.to_owned(), tag);
+            annotations.insert(ANNOTATION_AEAD_TAG.to_owned(), tag.to_vec());
         }
 
         info!(uid = %req.uid, key_id = %self.wrapping_key_uid, "DEK wrapped successfully");
@@ -139,8 +138,8 @@ impl KeyManagementService for KmsPluginService {
         let kmip_request = Decrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(req.key_id.clone())),
             data: Some(req.ciphertext),
-            i_v_counter_nonce: iv,
-            authenticated_encryption_tag: tag,
+            i_v_counter_nonce: iv.map(Into::into),
+            authenticated_encryption_tag: tag.map(Into::into),
             ..Default::default()
         };
 

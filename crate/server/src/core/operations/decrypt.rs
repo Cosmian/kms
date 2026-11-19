@@ -180,7 +180,7 @@ impl CryptoOpSpec for DecryptOp {
         )?;
         let mut data = request
             .i_v_counter_nonce
-            .as_ref()
+            .as_deref()
             .map_or(vec![], Clone::clone);
         data.extend(
             request
@@ -216,12 +216,15 @@ impl CryptoOpSpec for DecryptOp {
                     .as_ref()
                     .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
                     .transpose()?,
-                request.authenticated_encryption_additional_data.as_deref(),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
             )
             .await?;
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            data: Some(cleartext),
+            data: Some(cleartext.into()),
             correlation_value: request.correlation_value.clone(),
         })
     }
@@ -262,7 +265,7 @@ fn decrypt_bulk(
             for mut ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(std::mem::take(&mut *ciphertext));
                 let response = decrypt_with_covercrypt(owm, &request)?;
-                plaintexts.push(response.data.unwrap_or_default());
+                plaintexts.push(response.data.unwrap_or_default().into_zeroizing());
             }
         }
 
@@ -276,7 +279,7 @@ fn decrypt_bulk(
             for mut ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(std::mem::take(&mut *ciphertext));
                 let response = decrypt_with_private_key(owm, &request, server_params)?;
-                plaintexts.push(response.data.unwrap_or_default());
+                plaintexts.push(response.data.unwrap_or_default().into_zeroizing());
             }
         }
 
@@ -343,7 +346,7 @@ fn decrypt_bulk(
     );
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(BulkData::new(plaintexts).serialize()?),
+        data: Some(BulkData::new(plaintexts).serialize()?.into()),
         correlation_value: request.correlation_value.clone(),
     })
 }
@@ -381,7 +384,7 @@ fn decrypt_single(
             let key = kem_decaps(&dk_bytes, enc)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                data: Some(key),
+                data: Some(key.into()),
                 correlation_value: None,
             })
         }
@@ -420,7 +423,7 @@ fn decrypt_single(
                     let shared_secret = ml_kem_decapsulate(&priv_bytes, ciphertext)?;
                     return Ok(DecryptResponse {
                         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(Zeroizing::from(shared_secret)),
+                        data: Some(Zeroizing::from(shared_secret).into()),
                         correlation_value: request.correlation_value.clone(),
                     });
                 }
@@ -440,7 +443,7 @@ fn decrypt_single(
                     let shared_secret = hybrid_kem_decapsulate(algo, &priv_bytes, ciphertext)?;
                     return Ok(DecryptResponse {
                         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(Zeroizing::from(shared_secret)),
+                        data: Some(Zeroizing::from(shared_secret).into()),
                         correlation_value: request.correlation_value.clone(),
                     });
                 }
@@ -506,13 +509,16 @@ fn decrypt_single_with_symmetric_key(
         let plaintext = decrypt_fpe(
             key_block.key_bytes_ref()?,
             ciphertext,
-            request.authenticated_encryption_additional_data.as_deref(),
-            request.i_v_counter_nonce.as_deref(),
+            request
+                .authenticated_encryption_additional_data
+                .as_deref()
+                .map(Vec::as_slice),
+            request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
         )
         .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
         return Ok(Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(Zeroizing::from(plaintext)),
+            data: Some(Zeroizing::from(plaintext).into()),
             correlation_value: request.correlation_value.clone(),
         }));
     }
@@ -528,19 +534,22 @@ fn decrypt_single_with_symmetric_key(
         key_bytes.len(),
         aead
     );
-    let nonce_storage = decryption_nonce(request.i_v_counter_nonce.as_deref(), aead)?;
+    let nonce_storage = decryption_nonce(
+        request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+        aead,
+    )?;
     let nonce: &[u8] = nonce_storage.as_ref();
     let aad = request
         .authenticated_encryption_additional_data
         .as_deref()
-        .unwrap_or(EMPTY_SLICE);
+        .map_or(EMPTY_SLICE, Vec::as_slice);
     let tag = if aead.tag_size() == 0 {
         EMPTY_SLICE
     } else {
         let tag = request
             .authenticated_encryption_tag
             .as_deref()
-            .unwrap_or(EMPTY_SLICE);
+            .map_or(EMPTY_SLICE, Vec::as_slice);
         check_decryption_tag(request.cryptographic_parameters.as_ref(), aead, tag)?;
         tag
     };
@@ -567,7 +576,7 @@ fn decrypt_single_with_symmetric_key(
     trace!("plaintext length: {} bytes", plaintext.len());
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(plaintext),
+        data: Some(plaintext.into()),
         correlation_value: request.correlation_value.clone(),
     }))
 }
@@ -674,7 +683,10 @@ fn decrypt_multi_part(
             }
             let (key_bytes, cipher) = get_aead_and_key(owm, request)?;
             ensure_multi_part_cipher(DecryptOp::OP_NAME, cipher)?;
-            let nonce = decryption_nonce(request.i_v_counter_nonce.as_deref(), cipher)?;
+            let nonce = decryption_nonce(
+                request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+                cipher,
+            )?;
             let padding = openssl_padding(padding_method(
                 request.cryptographic_parameters.as_ref(),
                 cipher,
@@ -682,7 +694,7 @@ fn decrypt_multi_part(
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_deref()
-                .unwrap_or(EMPTY_SLICE);
+                .map_or(EMPTY_SLICE, Vec::as_slice);
             let mut stream = cipher.stream_cipher(Mode::Decrypt, key_bytes, &nonce, aad)?;
             stream.set_padding(padding);
             Ok(DecryptState {
@@ -696,8 +708,11 @@ fn decrypt_multi_part(
             state.fixed.check(
                 DecryptOp::OP_NAME,
                 request.cryptographic_parameters.as_ref(),
-                request.i_v_counter_nonce.as_deref(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
             )?;
             if let Some(tag) = &request.authenticated_encryption_tag {
                 if state.cipher.tag_size() > 0 {
@@ -707,7 +722,7 @@ fn decrypt_multi_part(
                         tag,
                     )?;
                 }
-                state.tag = Some(tag.clone());
+                state.tag = Some(tag.clone().to_vec());
             }
             let mut output = Zeroizing::new(
                 state
@@ -733,7 +748,7 @@ fn decrypt_multi_part(
     )?;
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: (!data.is_empty()).then_some(data),
+        data: (!data.is_empty()).then_some(data.into()),
         correlation_value,
     })
 }
@@ -837,7 +852,7 @@ fn decrypt_with_private_key(
     };
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(plaintext),
+        data: Some(plaintext.into()),
         correlation_value: request.correlation_value.clone(),
     })
 }
@@ -979,8 +994,8 @@ mod tests {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(tag_length, None)),
             data: Some(data.to_vec()),
-            i_v_counter_nonce: Some(iv.to_vec()),
-            authenticated_encryption_tag: tag.map(<[u8]>::to_vec),
+            i_v_counter_nonce: Some(iv.to_vec().into()),
+            authenticated_encryption_tag: tag.map(<[u8]>::to_vec).map(Into::into),
             ..Decrypt::default()
         }
     }
@@ -1002,8 +1017,8 @@ mod tests {
         let encrypt = |data: Vec<u8>, iv: Option<Vec<u8>>, iv_length: Option<i32>| Encrypt {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(None, iv_length)),
-            data: Some(Zeroizing::new(data)),
-            i_v_counter_nonce: iv,
+            data: Some(Zeroizing::new(data).into()),
+            i_v_counter_nonce: iv.map(Into::into),
             ..Encrypt::default()
         };
 
@@ -1052,7 +1067,7 @@ mod tests {
         let next = |aad: Option<Vec<u8>>| Decrypt {
             unique_identifier: Some(uid.clone()),
             correlation_value: Some(cv.clone()),
-            authenticated_encryption_additional_data: aad,
+            authenticated_encryption_additional_data: aad.map(Into::into),
             final_indicator: Some(true),
             ..Decrypt::default()
         };
@@ -1113,8 +1128,8 @@ mod tests {
         let encrypt = |data: &[u8], iv: Option<Vec<u8>>| Encrypt {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(None, None)),
-            data: Some(Zeroizing::new(data.to_vec())),
-            i_v_counter_nonce: iv,
+            data: Some(Zeroizing::new(data.to_vec()).into()),
+            i_v_counter_nonce: iv.map(Into::into),
             ..Encrypt::default()
         };
 
@@ -1249,7 +1264,7 @@ mod tests {
         Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             cryptographic_parameters: Some(gcm(None, None)),
-            data: Some(Zeroizing::new(data.to_vec())),
+            data: Some(Zeroizing::new(data.to_vec()).into()),
             ..Encrypt::default()
         }
     }
@@ -1369,7 +1384,10 @@ mod tests {
                     &id,
                     &sealed.data.unwrap(),
                     &sealed.i_v_counter_nonce.unwrap(),
-                    sealed.authenticated_encryption_tag.as_deref(),
+                    sealed
+                        .authenticated_encryption_tag
+                        .as_deref()
+                        .map(Vec::as_slice),
                     None,
                 ),
                 &user,

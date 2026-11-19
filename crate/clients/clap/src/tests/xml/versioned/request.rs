@@ -24,13 +24,14 @@ macro_rules! update_artifacts_from_payload {
                     let tag: Vec<u8> = enc_resp
                         .authenticated_encryption_tag
                         .clone()
-                        .unwrap_or_default();
+                        .unwrap_or_default()
+                        .to_vec();
                     $state.last_encrypt_artifacts =
-                        Some((data.clone(), iv.clone(), tag.clone()));
+                        Some((data.clone(), iv.clone().to_vec(), tag.clone()));
                     if let Some(aad) = $pending_aad.take() {
                         $state
                             .encrypt_artifacts_by_aad
-                            .insert(aad, (data.clone(), iv.clone(), tag.clone()));
+                            .insert(aad, (data.clone(), iv.clone().to_vec(), tag.clone()));
                     }
                 }
                 _ => $state.last_encrypt_artifacts = None,

@@ -49,7 +49,7 @@ async fn e2e_signature_algorithm_allowlist_is_enforced_on_sign() {
                 ),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(b"hello".to_vec())),
+            data: Some(Zeroizing::new(b"hello".to_vec()).into()),
             ..Default::default()
         },
     );

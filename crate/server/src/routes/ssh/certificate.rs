@@ -271,7 +271,7 @@ pub(crate) async fn sign_certificate_payload(
                         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier::TextString(key_uid.to_owned()),
                     ),
                     cryptographic_parameters: Some(algorithm.kmip_parameters()),
-                    data: Some(Zeroizing::new(payload.to_vec())),
+                    data: Some(Zeroizing::new(payload.to_vec()).into()),
                     ..Default::default()
                 },
                 user,

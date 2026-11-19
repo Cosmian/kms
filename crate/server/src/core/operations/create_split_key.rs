@@ -315,7 +315,7 @@ pub(crate) async fn create_split_key(
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(stored_share_bytes),
+                key_material: KeyMaterial::ByteString(stored_share_bytes.into()),
                 attributes: None,
             }),
             cryptographic_algorithm: owm
@@ -620,7 +620,7 @@ mod tests {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(raw)),
+                key_material: KeyMaterial::ByteString(Zeroizing::new(raw).into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

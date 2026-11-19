@@ -1048,7 +1048,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3, 4])),
+                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3, 4]).into()),
                     attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,

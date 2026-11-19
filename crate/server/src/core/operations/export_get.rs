@@ -265,7 +265,7 @@ pub(crate) async fn export_get(
             {
                 let key_block = owm.object_mut().key_block_mut()?;
                 key_block.key_value = Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
                     attributes: None,
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
@@ -288,7 +288,7 @@ pub(crate) async fn export_get(
             {
                 let key_block = owm.object_mut().key_block_mut()?;
                 key_block.key_value = Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
                     attributes: None,
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
@@ -404,7 +404,7 @@ pub(crate) async fn export_get(
             {
                 let key_block = owm.object_mut().key_block_mut()?;
                 key_block.key_value = Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
                     attributes: None,
                 });
                 key_block.key_format_type = KeyFormatType::Opaque;
@@ -501,7 +501,7 @@ async fn post_process_private_key(
         let key_block = owm.object_mut().key_block_mut()?;
         let attributes = key_block.attributes().ok().cloned();
         key_block.key_value = Some(KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+            key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
             attributes: attributes.map(Box::new),
         });
         key_block.key_format_type = KeyFormatType::Opaque;
@@ -621,7 +621,7 @@ async fn post_process_active_private_key(
                     ..
                 }) = key_block.key_value
                 {
-                    *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes));
+                    *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes).into());
                 }
             } else if *requested != stored_fmt {
                 kms_bail!(
@@ -765,7 +765,7 @@ async fn post_process_active_private_key(
             None => {
                 // No key value present: create an empty structure with attributes
                 key_block.key_value = Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
                     attributes: Some(Box::new(attributes.clone())),
                 });
             }
@@ -814,7 +814,7 @@ async fn post_process_active_private_key(
         }
         None => {
             key_block.key_value = Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(vec![]).into()),
                 attributes: Some(Box::new(attributes.clone())),
             });
         }
@@ -893,7 +893,7 @@ async fn process_public_key(
                         ..
                     }) = key_block_mut.key_value
                     {
-                        *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes));
+                        *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes).into());
                     }
                 } else if *requested != stored_fmt {
                     kms_bail!(
@@ -1447,7 +1447,7 @@ async fn build_pkcs12_for_private_key(
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs12.to_der()?)),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs12.to_der()?).into()),
                 // attributes are added later
                 attributes: None,
             }),
@@ -1919,7 +1919,6 @@ mod tests {
                 kmip_types::KeyFormatType,
             },
         };
-        use zeroize::Zeroizing;
 
         use super::resolve_pkcs12_password;
 
@@ -1944,7 +1943,7 @@ mod tests {
                             key_format_type: KeyFormatType::Raw,
                             key_compression_type: None,
                             key_value: Some(KeyValue::Structure {
-                                key_material: KeyMaterial::ByteString(Zeroizing::from(
+                                key_material: KeyMaterial::ByteString(cosmian_kms_server_database::reexport::cosmian_kmip::SensitiveBytes::from(
                                     b"s3cret".to_vec(),
                                 )),
                                 attributes: None,

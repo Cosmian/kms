@@ -138,7 +138,7 @@ impl TTLV {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq)]
 pub enum TTLValue {
     Structure(Vec<TTLV>),
     Integer(i32),
@@ -151,6 +151,26 @@ pub enum TTLValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(i128),
+}
+
+/// `Debug` never prints `ByteString` / `BigInteger` content: it is whatever the client sent
+/// (keys, plaintext, passwords).
+impl std::fmt::Debug for TTLValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Structure(v) => f.debug_tuple("Structure").field(v).finish(),
+            Self::Integer(v) => f.debug_tuple("Integer").field(v).finish(),
+            Self::LongInteger(v) => f.debug_tuple("LongInteger").field(v).finish(),
+            Self::BigInteger(_) => f.write_str("BigInteger(<redacted>)"),
+            Self::Enumeration(v) => f.debug_tuple("Enumeration").field(v).finish(),
+            Self::Boolean(v) => f.debug_tuple("Boolean").field(v).finish(),
+            Self::TextString(v) => f.debug_tuple("TextString").field(v).finish(),
+            Self::ByteString(v) => write!(f, "ByteString(<{} bytes>)", v.len()),
+            Self::DateTime(v) => f.debug_tuple("DateTime").field(v).finish(),
+            Self::Interval(v) => f.debug_tuple("Interval").field(v).finish(),
+            Self::DateTimeExtended(v) => f.debug_tuple("DateTimeExtended").field(v).finish(),
+        }
+    }
 }
 
 impl Default for TTLValue {

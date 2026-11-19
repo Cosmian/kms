@@ -8,8 +8,15 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// Holds secret information of `LENGTH` bytes.
 ///
 /// This secret is stored on the heap and is guaranteed to be zeroized on drop.
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub struct Secret<const LENGTH: usize>(Pin<Box<[u8]>>);
+
+/// Never prints the secret bytes: only the length.
+impl<const LENGTH: usize> std::fmt::Debug for Secret<LENGTH> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Secret(<{LENGTH} bytes>)")
+    }
+}
 
 impl<const LENGTH: usize> Secret<LENGTH> {
     /// Creates a new secret and returns it.

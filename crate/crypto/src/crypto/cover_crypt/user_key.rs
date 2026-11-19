@@ -55,7 +55,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "The CoverCrypt Master private key should have attributes: {e}"
         ))
     })?;
-    Ok((bytes, attributes.clone()))
+    Ok((bytes.to_zeroizing(), attributes.clone()))
 }
 
 /// Handles operations on user keys, caching the engine
@@ -135,7 +135,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.into()),
                     attributes: Some(Box::new(attributes)),
                 }),
                 cryptographic_length,
@@ -178,7 +178,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.into()),
                     attributes: Some(Box::new(usk_attributes)),
                 }),
                 cryptographic_length,

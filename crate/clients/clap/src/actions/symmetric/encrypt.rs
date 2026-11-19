@@ -261,7 +261,11 @@ impl EncryptAction {
         // Note: For server_side_encrypt, the algorithm used is determined by the cryptographic_parameters
         // which may be different from self.data_encryption_algorithm (e.g., for key wrapping)
         let authentication_tag = encrypt_response.authenticated_encryption_tag; // Some encryption modes don't use authentication tags
-        Ok((nonce, data, authentication_tag))
+        Ok((
+            nonce.map(|n| n.to_vec()),
+            data,
+            authentication_tag.map(|t| t.to_vec()),
+        ))
     }
 
     /// Encrypt a file using a symmetric stream cipher

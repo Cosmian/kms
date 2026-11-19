@@ -512,7 +512,7 @@ where
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(SIGN_DATA.to_vec())),
+            data: Some(Zeroizing::new(SIGN_DATA.to_vec()).into()),
             ..Default::default()
         },
     )
@@ -541,7 +541,7 @@ async fn test_sign_deactivated_key_rejected() -> KResult<()> {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(SIGN_DATA.to_vec())),
+            data: Some(Zeroizing::new(SIGN_DATA.to_vec()).into()),
             ..Default::default()
         },
     )
@@ -570,7 +570,7 @@ async fn test_sign_compromised_key_rejected() -> KResult<()> {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(SIGN_DATA.to_vec())),
+            data: Some(Zeroizing::new(SIGN_DATA.to_vec()).into()),
             ..Default::default()
         },
     )

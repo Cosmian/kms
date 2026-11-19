@@ -84,7 +84,7 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..CryptographicParameters::default()
             }),
-            data: Some(Zeroizing::new(b"hello audit".to_vec())),
+            data: Some(Zeroizing::new(b"hello audit".to_vec()).into()),
             ..Default::default()
         };
         let _enc_resp: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::EncryptResponse =
@@ -400,7 +400,7 @@ async fn audit_records_binary_create_encrypt_failure_and_batch() -> KResult<()> 
                 block_cipher_mode: Some(BlockCipherMode::GCM),
                 ..CryptographicParameters::default()
             }),
-            data: Some(Zeroizing::new(b"hello audit binary".to_vec())),
+            data: Some(Zeroizing::new(b"hello audit binary".to_vec()).into()),
             ..Default::default()
         };
         let _encrypt_response = post_kmip_binary(

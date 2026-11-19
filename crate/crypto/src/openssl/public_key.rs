@@ -247,7 +247,7 @@ pub fn openssl_public_key_to_kmip(
             KeyBlock {
                 key_format_type,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(
+                    key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
                         rsa_public_key.public_key_to_der_pkcs1()?,
                     )),
                     attributes: Some(Box::new(Attributes {
@@ -277,7 +277,7 @@ pub fn openssl_public_key_to_kmip(
             KeyBlock {
                 key_format_type,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(spki_der),
+                    key_material: KeyMaterial::ByteString(spki_der.into()),
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
                         cryptographic_length,

@@ -301,7 +301,7 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der).into()),
                 attributes: Some(Box::new(rsa_attributes.clone())),
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

@@ -541,7 +541,7 @@ fn test_byte_string() {
     let ttlv = to_ttlv(&test).unwrap();
     assert_eq!(
         format!("{ttlv:?}"),
-        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "ByteString", value: ByteString([1, 2, 3, 239]) }]) }"#
+        r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "ByteString", value: ByteString(<4 bytes>) }]) }"#
     );
 
     // Serialize

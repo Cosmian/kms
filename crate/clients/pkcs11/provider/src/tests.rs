@@ -171,7 +171,9 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(p12_bytes.to_vec())),
+                key_material: KeyMaterial::ByteString(
+                    zeroize::Zeroizing::new(p12_bytes.to_vec()).into(),
+                ),
                 attributes: None,
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required

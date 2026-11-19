@@ -240,7 +240,7 @@ async fn kms_import_pgp(client: &KmsClient, armored: &[u8]) -> Result<String, Km
             key_format_type: KeyFormatType::OpenPgpSecretKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(armored.to_vec())),
+                key_material: KeyMaterial::ByteString(Zeroizing::new(armored.to_vec()).into()),
                 attributes: None,
             }),
             cryptographic_algorithm: None,
@@ -478,7 +478,7 @@ async fn test_gpg_imported_kms_signs_gpg_verifies() {
     let sign_resp = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(kms_uid.clone())),
-            data: Some(zeroize::Zeroizing::new(data.to_vec())),
+            data: Some(zeroize::Zeroizing::new(data.to_vec()).into()),
             ..Sign::default()
         })
         .await
@@ -531,7 +531,7 @@ async fn test_gpg_public_only_import_then_kms_encrypts() {
     let enc_resp = client
         .encrypt(Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(kms_uid.clone())),
-            data: Some(zeroize::Zeroizing::new(plaintext.to_vec())),
+            data: Some(zeroize::Zeroizing::new(plaintext.to_vec()).into()),
             ..Encrypt::default()
         })
         .await
@@ -557,7 +557,7 @@ async fn test_gpg_public_only_import_then_kms_encrypts() {
     let sign_res = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(kms_uid.clone())),
-            data: Some(zeroize::Zeroizing::new(b"hello".to_vec())),
+            data: Some(zeroize::Zeroizing::new(b"hello".to_vec()).into()),
             ..Sign::default()
         })
         .await;
@@ -595,7 +595,7 @@ async fn test_gpg_protected_key_import_cannot_sign() {
     let sign_res = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(kms_uid.clone())),
-            data: Some(zeroize::Zeroizing::new(b"cannot sign".to_vec())),
+            data: Some(zeroize::Zeroizing::new(b"cannot sign".to_vec()).into()),
             ..Sign::default()
         })
         .await;
@@ -875,7 +875,7 @@ async fn test_kms_ed25519_gpg_round_trip() {
     let enc_resp = client
         .encrypt(Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            data: Some(zeroize::Zeroizing::new(plaintext.to_vec())),
+            data: Some(zeroize::Zeroizing::new(plaintext.to_vec()).into()),
             ..Encrypt::default()
         })
         .await
@@ -969,7 +969,7 @@ async fn test_kms_rsa_sizes_gpg_round_trip() {
         let enc_resp = client
             .encrypt(Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-                data: Some(zeroize::Zeroizing::new(plaintext.clone())),
+                data: Some(zeroize::Zeroizing::new(plaintext.clone()).into()),
                 ..Encrypt::default()
             })
             .await
@@ -1087,7 +1087,7 @@ async fn test_kms_signature_verified_by_gpg_after_public_only_import() {
     let sign_resp = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            data: Some(zeroize::Zeroizing::new(data.to_vec())),
+            data: Some(zeroize::Zeroizing::new(data.to_vec()).into()),
             ..Sign::default()
         })
         .await
@@ -1162,7 +1162,7 @@ async fn test_gpg_cannot_decrypt_with_wrong_key() {
     let enc_resp = client
         .encrypt(Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid_a.clone())),
-            data: Some(zeroize::Zeroizing::new(plaintext.to_vec())),
+            data: Some(zeroize::Zeroizing::new(plaintext.to_vec()).into()),
             ..Encrypt::default()
         })
         .await
@@ -1369,7 +1369,7 @@ async fn test_pgp_sign_rejects_streaming() {
     let sign_res = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            data: Some(zeroize::Zeroizing::new(b"chunk".to_vec())),
+            data: Some(zeroize::Zeroizing::new(b"chunk".to_vec()).into()),
             init_indicator: Some(true),
             ..Sign::default()
         })
@@ -1520,7 +1520,7 @@ async fn test_tampered_detached_signature_is_invalid() {
     let sign_resp = client
         .sign(Sign {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            data: Some(zeroize::Zeroizing::new(data.to_vec())),
+            data: Some(zeroize::Zeroizing::new(data.to_vec()).into()),
             ..Sign::default()
         })
         .await
@@ -1772,7 +1772,7 @@ async fn test_pgp_mime_kms_ciphertext_is_binary() {
     let enc_resp = client
         .encrypt(Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-            data: Some(zeroize::Zeroizing::new(mime_part.to_vec())),
+            data: Some(zeroize::Zeroizing::new(mime_part.to_vec()).into()),
             ..Encrypt::default()
         })
         .await

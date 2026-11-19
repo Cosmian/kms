@@ -240,7 +240,7 @@ async fn issue_and_check(kms: &Arc<KMS>, slot: usize, kind: CaKind) -> KResult<(
         .sign(
             Sign {
                 unique_identifier: Some(UniqueIdentifier::TextString(ca_uid)),
-                data: Some(Zeroizing::new(b"forged certificate".to_vec())),
+                data: Some(Zeroizing::new(b"forged certificate".to_vec()).into()),
                 ..Default::default()
             },
             &UserId::from(ROLE_USER),

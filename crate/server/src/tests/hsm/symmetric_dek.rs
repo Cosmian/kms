@@ -162,9 +162,12 @@ pub(super) async fn symmetric_encrypt(
         UniqueIdentifier::TextString(dek_uid.to_owned())
     );
     Ok([
-        response.i_v_counter_nonce.unwrap_or_default(),
+        response.i_v_counter_nonce.unwrap_or_default().to_vec(),
         response.data.unwrap_or_default(),
-        response.authenticated_encryption_tag.unwrap_or_default(),
+        response
+            .authenticated_encryption_tag
+            .unwrap_or_default()
+            .to_vec(),
     ]
     .concat())
 }

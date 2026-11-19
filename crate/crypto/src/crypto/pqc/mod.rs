@@ -614,7 +614,7 @@ fn create_pqc_key_pair(
         key_block: KeyBlock {
             key_format_type,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(private_key_der.clone()),
+                key_material: KeyMaterial::ByteString(private_key_der.clone().into()),
                 attributes: Some(Box::new(priv_attrs)),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -647,7 +647,9 @@ fn create_pqc_key_pair(
         key_block: KeyBlock {
             key_format_type,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(public_key_der.to_vec())),
+                key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
+                    public_key_der.to_vec(),
+                )),
                 attributes: Some(Box::new(pub_attrs)),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),

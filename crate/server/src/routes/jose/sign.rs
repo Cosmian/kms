@@ -70,7 +70,7 @@ pub(crate) async fn sign(
     let sign_req = KmipSign {
         unique_identifier: Some(UniqueIdentifier::TextString(body.kid.clone())),
         cryptographic_parameters: Some(kmip_params),
-        data: Some(Zeroizing::new(signing_input_bytes)),
+        data: Some(Zeroizing::new(signing_input_bytes).into()),
         ..Default::default()
     };
 

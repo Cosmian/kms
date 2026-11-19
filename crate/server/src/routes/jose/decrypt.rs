@@ -202,9 +202,9 @@ async fn decrypt_dir(
         unique_identifier: Some(UniqueIdentifier::TextString(kid.clone())),
         cryptographic_parameters: Some(kmip_params),
         data: Some(ciphertext_bytes),
-        i_v_counter_nonce: Some(iv_bytes),
-        authenticated_encryption_additional_data: Some(aad_bytes),
-        authenticated_encryption_tag: Some(tag_bytes),
+        i_v_counter_nonce: Some(iv_bytes.into()),
+        authenticated_encryption_additional_data: Some(aad_bytes.into()),
+        authenticated_encryption_tag: Some(tag_bytes.into()),
         ..Default::default()
     };
 

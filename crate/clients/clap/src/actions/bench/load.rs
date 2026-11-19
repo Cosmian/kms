@@ -366,7 +366,7 @@ fn prepare_load_ops(
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+            data: Some(Zeroizing::new(vec![1_u8; plaintext_size]).into()),
             ..Default::default()
         };
         ops.push(preserialized_op(
@@ -396,7 +396,7 @@ fn prepare_load_ops(
                     digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
                 ..Default::default()
             };
             ops.push(preserialized_op(
@@ -451,7 +451,7 @@ fn prepare_load_ops(
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+            data: Some(Zeroizing::new(vec![1_u8; plaintext_size]).into()),
             ..Default::default()
         };
         ops.push(preserialized_wire_op(
@@ -474,7 +474,7 @@ fn prepare_load_ops(
                     digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
                 ..Default::default()
             };
             ops.push(preserialized_wire_op(
@@ -552,7 +552,7 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
         // EdDSA based on the key's own cryptographic algorithm (Ed25519).
         let req = Sign {
             unique_identifier: Some(priv_id),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
             ..Default::default()
         };
         push_op(
@@ -579,7 +579,7 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
             ..Default::default()
         };
         push_op(
@@ -615,7 +615,7 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
     ) {
         let req = Sign {
             unique_identifier: Some(priv_id),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
             ..Default::default()
         };
         push_op(
@@ -640,7 +640,7 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
             ..Default::default()
         };
         push_op(
@@ -825,7 +825,7 @@ fn prepare_hsm_load_ops(
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_gcm_params()),
-                data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+                data: Some(Zeroizing::new(vec![1_u8; plaintext_size]).into()),
                 ..Default::default()
             };
             if run_json {
@@ -852,7 +852,7 @@ fn prepare_hsm_load_ops(
                 let req = Encrypt {
                     unique_identifier: Some(pub_id.clone()),
                     cryptographic_parameters: Some(params),
-                    data: Some(Zeroizing::new(vec![1_u8; plaintext_size.min(190)])),
+                    data: Some(Zeroizing::new(vec![1_u8; plaintext_size.min(190)]).into()),
                     ..Default::default()
                 };
                 if run_json {
@@ -880,8 +880,8 @@ fn prepare_hsm_load_ops(
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_cbc_params()),
-                data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
-                i_v_counter_nonce: Some(vec![0_u8; 16]),
+                data: Some(Zeroizing::new(vec![1_u8; plaintext_size]).into()),
+                i_v_counter_nonce: Some(vec![0_u8; 16].into()),
                 ..Default::default()
             };
             if run_json {
@@ -912,7 +912,7 @@ fn prepare_hsm_load_ops(
                     digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
                 ..Default::default()
             };
             if run_json {
@@ -957,7 +957,7 @@ fn prepare_hsm_load_ops(
                 let req = Sign {
                     unique_identifier: Some(priv_id.clone()),
                     cryptographic_parameters: Some(hsm_rsa_pkcs1v15_sign_params(dsa)),
-                    data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                    data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
                     ..Default::default()
                 };
                 if run_json {
@@ -1052,7 +1052,7 @@ fn push_hsm_eddsa_sign_ops(
                     cryptographic_algorithm: Some(algorithm),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(Zeroizing::new(vec![0x42_u8; 32]).into()),
                 ..Default::default()
             };
             if run_json {

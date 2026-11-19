@@ -1,7 +1,7 @@
 use cosmian_logger::{info, log_init};
-use zeroize::Zeroizing;
 
 use crate::{
+    SensitiveBytes,
     kmip_2_1::{
         kmip_data_structures::{KeyMaterial, KeyMaterialSerializer},
         kmip_types::KeyFormatType,
@@ -17,7 +17,7 @@ fn test_covercrypt_digest() {
     // log_init(Some("info"));
 
     let key_material =
-        KeyMaterial::ByteString(Zeroizing::new(hex::decode(CC_KEY_MATERIAL).unwrap()));
+        KeyMaterial::ByteString(SensitiveBytes::from(hex::decode(CC_KEY_MATERIAL).unwrap()));
     let serializer = KeyMaterialSerializer {
         key_format_type: KeyFormatType::CoverCryptSecretKey,
         key_material,

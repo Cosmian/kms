@@ -189,9 +189,9 @@ async fn test_db_softhsm2_impl() -> Result<(), KmsClientError> {
     let dec_resp = client
         .decrypt(decrypt_request(
             &uid_v1,
-            nonce_v1.clone(),
+            nonce_v1.clone().map(|n| n.to_vec()),
             ciphertext_v1.clone(),
-            tag_v1.clone(),
+            tag_v1.clone().map(|t| t.to_vec()),
             None,
             None,
         ))
@@ -271,9 +271,9 @@ async fn test_db_softhsm2_impl() -> Result<(), KmsClientError> {
     let dec_v1_after_rekey = client
         .decrypt(decrypt_request(
             &uid_v1,
-            nonce_v1,
+            nonce_v1.map(|n| n.to_vec()),
             ciphertext_v1,
-            tag_v1,
+            tag_v1.map(|t| t.to_vec()),
             None,
             None,
         ))
@@ -304,9 +304,9 @@ async fn test_db_softhsm2_impl() -> Result<(), KmsClientError> {
     let dec_resp2 = client
         .decrypt(decrypt_request(
             &uid_v2,
-            nonce_v2,
+            nonce_v2.map(|n| n.to_vec()),
             ciphertext_v2,
-            tag_v2,
+            tag_v2.map(|t| t.to_vec()),
             None,
             None,
         ))
