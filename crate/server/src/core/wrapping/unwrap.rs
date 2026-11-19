@@ -184,7 +184,7 @@ fn is_exempt_server_kek(kms: &KMS, allow_server_kek: bool, uid: &str) -> bool {
 
 /// Fetch the database key `unwrapping_key_uid` (the private key for a public key or
 /// certificate) and check `user` may unwrap with it: active, `UnwrapKey` usage, and owner,
-/// default user, or `Decrypt`/`Get` grant — except for the server KEK on stored objects.
+/// default user, or `Decrypt` grant — except for the server KEK on stored objects.
 async fn authorized_kms_unwrapping_key(
     kms: &KMS,
     user: &UserId,
@@ -267,10 +267,7 @@ async fn authorized_kms_unwrapping_key(
             .database
             .list_user_operations_on_object(unwrapping_key.id(), user, false)
             .await?;
-        if !ops
-            .iter()
-            .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-        {
+        if !ops.iter().any(|p| *p == KmipOperation::Decrypt) {
             return Err(KmsError::NotSupported(format!(
                 "The user {user} does not have the permission to unwrap with the key \
                  {unwrapping_key_uid}"
@@ -330,7 +327,7 @@ async fn authorize_oracle_unwrap(
         .unwrap_or(unwrapping_key_uid);
     if !is_exempt_server_kek(kms, allow_server_kek, unwrapping_key_uid)
         && !kms
-            .is_user_authorized_with_get_wildcard(oracle_key_uid, user, KmipOperation::Decrypt)
+            .is_user_authorized(oracle_key_uid, user, KmipOperation::Decrypt)
             .await?
     {
         return Err(KmsError::Unauthorized(format!(

@@ -15,7 +15,7 @@ The authorization system in the Eviden Key Management Service (KMS) operates bas
 ## Table of Contents
 
 - [Delegable KMIP operations](#delegable-kmip-operations)
-- [The Get super-privilege](#the-get-super-privilege)
+- [Each operation needs its own grant](#each-operation-needs-its-own-grant)
     - [Practical example](#practical-example)
 - [Special handling of the Create permission](#special-handling-of-the-create-permission)
 - [Privileged users](#privileged-users)
@@ -50,7 +50,7 @@ Owners can delegate the following KMIP operations to other users via the `grant`
 | `destroy`          | Permanently destroy an object                                   |
 | `encrypt`          | Encrypt plaintext using a managed key                           |
 | `export`           | Export an object (key material + metadata) from the KMS         |
-| `get`              | Retrieve an object — **this is a super-privilege** (see below)  |
+| `get`              | Retrieve an object (key material); equivalent to `export`        |
 | `get_attributes`   | Read the KMIP attributes of an object                           |
 | `hash`             | Compute a cryptographic hash                                    |
 | `import`           | Import an external object into the KMS                          |
@@ -76,43 +76,31 @@ ckms access-rights grant alice -i <object-uid> encrypt decrypt
 ckms access-rights revoke bob -i <object-uid> get
 ```
 
-## The `Get` super-privilege
+## Each operation needs its own grant
 
-The `Get` operation has a special role in the permission model: **it acts as a super-privilege that implies every other
-object-level operation**.
-
-When checking whether a user is authorized to perform a given operation on an object, the KMS evaluates the following
-rules in order:
+Authorization is per operation: **`Get` does not imply any other operation**. When checking whether a user may perform
+an operation on an object, the KMS evaluates the following rules in order:
 
 1. **Owner check** — if the requesting user is the owner of the object, access is always granted.
-2. **Explicit permission** — if the user has been explicitly granted the requested operation (e.g. `encrypt`), access is
-   granted.
-3. **`Get` fallback** — if the user holds the `Get` permission on the object, access is granted **regardless of the
-   specific operation requested**.
+2. **Explicit permission** — the user must have been explicitly granted the requested operation (e.g. `encrypt`).
 
-In other words, granting `Get` to a user on an object is equivalent to granting that user `encrypt`, `decrypt`,
-`export`, `sign`, `derive_key`, and every other object-level operation — except lifecycle operations (`revoke`,
-`destroy`) which still require their own explicit grant.
+`Get` and `Export` are the only equivalent pair: both read the key material, so holding either one grants both.
+Any grant on an object also allows `get_attributes` on it, and listing a KV path accepts `locate` or `get`.
+Wrapping a key with a key requires `encrypt` on the wrapping key, and unwrapping requires `decrypt`.
 
-This design allows owners to share full read/use access to an object with a single permission, without individually
-enumerating every operation.
-
-!!! warning Security implication
-    Because `Get` implies all other operation-level permissions, it should be granted with care.
-    If you only need a user to encrypt data with a key, grant `encrypt` — not `get`.
+!!! note
+    Grant exactly what is needed. A user who only has to encrypt data with a key needs `encrypt` — not `get`.
+    Granting `get` lets the user read the key material, but not use the key for `encrypt`, `decrypt`, `sign`,
+    `derive_key`, ... which must be granted separately.
 
 ### Practical example
 
 | Granted permissions  | Can the user `encrypt`? | Can the user `export`? | Can the user `destroy`? |
 | -------------------- | :---------------------: | :--------------------: | :---------------------: |
 | `encrypt`            |           Yes           |           No           |           No            |
-| `get`                |           Yes           |          Yes           |           No            |
+| `get`                |           No            |          Yes           |           No            |
 | `encrypt`, `destroy` |           Yes           |           No           |           Yes           |
-| `get`, `destroy`     |           Yes           |          Yes           |           Yes           |
-
-!!! note
-    The `destroy` and `revoke` operations are **never** implied by `get`. They must always be granted explicitly
-    because they are irreversible lifecycle transitions.
+| `get`, `encrypt`     |           Yes           |          Yes           |           No            |
 
 ## Special handling of the `Create` permission
 
@@ -172,8 +160,8 @@ important differences apply.
 | Aspect                         | KMS keys                                     | HSM keys                                           |
 | ------------------------------ | -------------------------------------------- | -------------------------------------------------- |
 | Key material stored in         | KMS database (encrypted)                     | HSM hardware                                       |
-| `Get` is a super-privilege     | Yes — implies all operations                 | **No** — each operation must be granted explicitly |
-| `Get` ↔ `Export` equivalence   | No                                           | **Yes** — holding either grants both               |
+| `Get` implies other operations | **No** — each operation must be granted      | **No** — each operation must be granted explicitly |
+| `Get` ↔ `Export` equivalence   | **Yes** — holding either grants both         | **Yes** — holding either grants both               |
 | `Destroy` / `Revoke` delegable | Yes                                          | **No** — blocked; admin-only                       |
 | `Create`                       | Any user (or privileged users if configured) | HSM admin only                                     |
 | `Locate` visibility            | All owned / granted objects                  | Non-admins see only keys with ≥ 1 explicit grant   |
@@ -213,7 +201,7 @@ Request arrives for operation OP on key hsm::<model>::<slot>::<id>
 | `revoke`                                                                 |            **No**            | Blocked — HSM objects do not use KMIP lifecycle states   |
 
 !!! warning
-    Unlike regular KMS keys, **granting `Get` on an HSM key does not imply `encrypt`,
+    As for regular KMS keys, **granting `Get` on an HSM key does not imply `encrypt`,
     `decrypt`, `sign`, or any other operation**. Each operation must be granted
     individually.
 
@@ -280,8 +268,8 @@ ckms access-rights revoke alice@example.com -i a]b2c3d4-... encrypt decrypt
 ```
 
 !!! note
-    Do **not** grant `get` if you only want to allow encrypt/decrypt — `get` is a super-privilege that implies all
-    object-level operations (see above).
+    Do **not** grant `get` if you only want to allow encrypt/decrypt — `get` reads the key material and does not
+    authorize `encrypt` or `decrypt` (see above).
 
 ## Access management endpoints
 

@@ -247,9 +247,9 @@ replays the steps sequentially.
 | Access Control | `operator_role_blocked_lifecycle` | Operator role cannot perform lifecycle operations (Create, CreateKeyPair) without explicit Create grant. | 2 |
 | Access Control | `owner_full_permissions` | Owner performs Get/Encrypt/Decrypt/Revoke/Destroy without grants | 6 |
 | Access Control | `privilege_escalation_activate_without_permission` | Owner creates a PreActive AES key, grants user only Encrypt. User's Activate attempt is denied because Encrypt grant does not imply Activate permission. | 6 |
-| Access Control | `privilege_escalation_destroy_without_permission` | Owner creates AES key, grants user only Get. Get acts as wildcard for crypto ops but NOT for Destroy — user's Destroy attempt is denied. | 7 |
+| Access Control | `privilege_escalation_destroy_without_permission` | Owner creates AES key, grants user only Get. `Get` implies no other operation — user's Destroy attempt is denied. | 7 |
 | Access Control | `privilege_escalation_non_owner_grant` | Owner creates AES key, user (non-owner) attempts to grant themselves access — must be denied because user does not own the key | 5 |
-| Access Control | `privilege_escalation_rekey_without_permission` | Owner creates AES key, grants user only Get. User's ReKey attempt is denied because Get wildcard does NOT apply to lifecycle-mutating operations like ReKey. | 7 |
+| Access Control | `privilege_escalation_rekey_without_permission` | Owner creates AES key, grants user only Get. User's ReKey attempt is denied because `Get` implies no other operation, lifecycle-mutating ones like ReKey included. | 7 |
 | Access Control | `privilege_escalation_self_grant` | Owner creates AES key, then attempts to grant themselves additional permissions — which must be denied | 4 |
 | Access Control | `revoke_access` | Owner grants user Get, revokes it, user can no longer Get | 7 |
 | Access Control | `revoke_key_lifecycle` | Creates a symmetric key, revokes it, then verifies it cannot be used for encryption | 3 |

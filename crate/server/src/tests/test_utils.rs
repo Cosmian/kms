@@ -52,6 +52,67 @@ pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
     test_kms_with_config(https_clap_config()).await
 }
 
+/// Create a test KMS whose `key_encryption_key` is an AES-256 key created beforehand, by
+/// `kek_owner`, on the same database. `make_config` is called twice and must return a fresh
+/// config each time. Returns the KMS and the UID of the KEK.
+pub(crate) async fn test_kms_with_kek(
+    kek_owner: &str,
+    make_config: impl Fn() -> ClapConfig,
+) -> KResult<(Arc<KMS>, String)> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_types::CryptographicAlgorithm,
+        requests::symmetric_key_create_request,
+    };
+
+    let first = make_config();
+    let sqlite_path = first.db.sqlite_path.clone();
+    let kms = test_kms_with_config(first).await?;
+    let request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms
+        .create(request, &crate::middlewares::UserId::from(kek_owner))
+        .await?
+        .unique_identifier
+        .to_string();
+    drop(kms);
+
+    let mut second = make_config();
+    second.db.sqlite_path = sqlite_path;
+    second.key_encryption_key = Some(kek_id.clone());
+    Ok((test_kms_with_config(second).await?, kek_id))
+}
+
+/// Assert that `uid` is stored wrapped by `kek_id`: the object is wrapped and its stored
+/// attributes carry the Wrapping Key Link.
+pub(crate) async fn assert_stored_wrapped_by_kek(kms: &KMS, uid: &str, kek_id: &str) {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::LinkType;
+
+    let owm = kms
+        .database
+        .retrieve_object(uid)
+        .await
+        .expect("retrieve stored object")
+        .unwrap_or_else(|| panic!("{uid} must exist"));
+    assert!(owm.object().is_wrapped(), "{uid} must be stored wrapped");
+    assert_eq!(
+        owm.attributes()
+            .get_link(LinkType::WrappingKeyLink)
+            .map(|link| link.to_string())
+            .as_deref(),
+        Some(kek_id),
+        "{uid} must point at the KEK"
+    );
+}
+
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
     // Ensure local test traffic bypasses any corporate proxy
     ensure_no_proxy_for_localhost();

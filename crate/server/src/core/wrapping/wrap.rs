@@ -441,10 +441,7 @@ async fn wrap_using_kms(
             .database
             .list_user_operations_on_object(wrapping_key.id(), user, false)
             .await?;
-        if !ops
-            .iter()
-            .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
-        {
+        if !ops.iter().any(|p| *p == KmipOperation::Encrypt) {
             return Err(KmsError::Unauthorized(format!(
                 "The user {user} does not have the permission to wrap with the key \
                  {wrapping_key_uid}"
@@ -563,11 +560,11 @@ async fn wrap_using_crypto_oracle(
         .key_wrapping_key
         .as_deref()
         .is_some_and(|kek| kek == wrapping_key_uid);
-    // Wrapping encrypts with the HSM key: require the same explicit `Encrypt` grant (or HSM
-    // ownership) as a direct KMIP Encrypt — `Get` is no wildcard for HSM keys.
+    // Wrapping encrypts with the key: require the same explicit `Encrypt` grant (or ownership)
+    // as a direct KMIP Encrypt.
     if !is_server_kek
         && !kms
-            .is_user_authorized_with_get_wildcard(wrapping_key_uid, user, KmipOperation::Encrypt)
+            .is_user_authorized(wrapping_key_uid, user, KmipOperation::Encrypt)
             .await?
     {
         return Err(KmsError::Unauthorized(format!(

@@ -20,7 +20,10 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
+    core::{
+        KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+        wrapping::wrap_and_cache,
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -125,8 +128,10 @@ pub(crate) async fn create_split_key(
         ));
     }
 
-    // Extract raw key bytes from the master object's key block
-    let key_bytes: &[u8] = extract_key_bytes_ref(owm.object())?;
+    // Extract raw key bytes from the master object's key block (unwrapped when the server
+    // key encryption key protects it at rest)
+    let source_object = kms.get_unwrapped(owm.id(), owm.object(), user).await?;
+    let key_bytes: &[u8] = extract_key_bytes_ref(&source_object)?;
 
     // Determine whether this is a Crypto Officer ceremony split.
     //
@@ -270,9 +275,13 @@ pub(crate) async fn create_split_key(
     } else {
         None
     };
-    let wrapping_key_bytes: Option<&[u8]> = wrap_owm
+    let wrap_object = match &wrap_owm {
+        Some(owm) => Some(kms.get_unwrapped(owm.id(), owm.object(), user).await?),
+        None => None,
+    };
+    let wrapping_key_bytes: Option<&[u8]> = wrap_object
         .as_ref()
-        .map(|o| extract_key_bytes_ref(o.object()))
+        .map(extract_key_bytes_ref)
         .transpose()?;
 
     for (idx, share_bytes) in raw_shares.into_iter().enumerate() {
@@ -331,7 +340,7 @@ pub(crate) async fn create_split_key(
             key_wrapping_data: None,
         };
 
-        let split_key_obj = Object::SplitKey(SplitKey {
+        let mut split_key_obj = Object::SplitKey(SplitKey {
             split_key_parts: total_parts,
             key_part_identifier: part_identifier,
             split_key_threshold: threshold,
@@ -411,15 +420,26 @@ pub(crate) async fn create_split_key(
 
         // Shares share their constraint-relevant attributes: the first share decides.
         kms.constraints.check(ObjectType::SplitKey, &share_attrs)?;
+        // Apply the server key encryption key before storage. Independent of the optional
+        // ceremony AES-KW layer above, which stays inside the key material.
+        // Share UID naming convention: "<source-key-uid>#<part>" (e.g. "my-key#1").
+        // The `#` separator is not a valid UUID character and is not used in
+        // standard KMIP UIDs, making it unambiguous as a positional delimiter.
+        // `source_uid` is the actual stored UID (from owm.id()), not the request
+        // identifier — ensures correct naming even when the caller passed a tag.
+        let share_id = format!("{source_uid}#{part_identifier}");
+        Box::pin(wrap_and_cache(
+            kms,
+            &share_owner,
+            &UniqueIdentifier::TextString(share_id.clone()),
+            &mut split_key_obj,
+        ))
+        .await?;
+        split_key_obj.copy_wrapping_key_link_to(&mut share_attrs);
         let share_uid = match kms
             .database
             .create(
-                // Share UID naming convention: "<source-key-uid>#<part>" (e.g. "my-key#1").
-                // The `#` separator is not a valid UUID character and is not used in
-                // standard KMIP UIDs, making it unambiguous as a positional delimiter.
-                // `source_uid` is the actual stored UID (from owm.id()), not the request
-                // identifier — ensures correct naming even when the caller passed a tag.
-                Some(format!("{source_uid}#{part_identifier}")),
+                Some(share_id),
                 &share_owner,
                 &split_key_obj,
                 &share_attrs,

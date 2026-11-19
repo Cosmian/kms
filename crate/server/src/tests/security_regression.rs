@@ -1224,10 +1224,7 @@ async fn test_get_grant_cannot_edit_usage_attributes() -> KResult<()> {
 
     let denied = |err: KmsError| {
         assert!(
-            matches!(
-                err,
-                KmsError::Kmip21Error(ErrorReason::Permission_Denied, _)
-            ),
+            matches!(err, KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)),
             "{err:?}"
         );
     };
@@ -1426,5 +1423,153 @@ async fn test_rekey_ignores_client_usage_limits_count() -> KResult<()> {
             usage_limits_total: 4,
         })
     );
+    Ok(())
+}
+
+/// Regression test (#1437): `Get` on a database key is not a wildcard. A `Get`-only grantee can
+/// read the key (`Get`/`Export`) but can neither encrypt, decrypt nor MAC with it; each
+/// operation needs its own grant.
+#[tokio::test]
+async fn test_get_grant_does_not_imply_crypto_operations() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        KmipOperation, kmip_operations::Get,
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("crypto_owner@example.com");
+    let bob = UserId::from("crypto_bob@example.com");
+    let key = create_aes_key(&kms, owner.as_str()).await?;
+    let uid = key.to_string();
+    let params = || {
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        })
+    };
+    let encrypt = |data: &[u8]| Encrypt {
+        unique_identifier: Some(key.clone()),
+        cryptographic_parameters: params(),
+        data: Some(Zeroizing::new(data.to_vec())),
+        ..Default::default()
+    };
+    let owner_ciphertext = kms.encrypt(encrypt(b"secret"), &owner).await?;
+    let decrypt = || Decrypt {
+        unique_identifier: Some(key.clone()),
+        cryptographic_parameters: params(),
+        data: owner_ciphertext.data.clone(),
+        i_v_counter_nonce: owner_ciphertext.i_v_counter_nonce.clone(),
+        authenticated_encryption_tag: owner_ciphertext.authenticated_encryption_tag.clone(),
+        ..Default::default()
+    };
+
+    kms.database
+        .grant_operations(&uid, &bob, HashSet::from([KmipOperation::Get]))
+        .await?;
+
+    // Get still works
+    kms.get(
+        Get {
+            unique_identifier: Some(key.clone()),
+            key_wrapping_specification: None,
+            key_compression_type: None,
+            key_format_type: None,
+            key_wrap_type: None,
+        },
+        &bob,
+    )
+    .await?;
+    // ... but nothing else does
+    kms.encrypt(encrypt(b"x"), &bob)
+        .await
+        .expect_err("Get must not allow Encrypt");
+    kms.decrypt(decrypt(), &bob)
+        .await
+        .expect_err("Get must not allow Decrypt");
+    kms.mac(
+        MAC {
+            unique_identifier: Some(key.clone()),
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..Default::default()
+            }),
+            data: Some(b"x".to_vec()),
+            ..Default::default()
+        },
+        &bob,
+    )
+    .await
+    .expect_err("Get must not allow MAC");
+
+    // An explicit Encrypt grant allows Encrypt only
+    kms.database
+        .grant_operations(&uid, &bob, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+    kms.encrypt(encrypt(b"x"), &bob).await?;
+    kms.decrypt(decrypt(), &bob)
+        .await
+        .expect_err("Encrypt must not allow Decrypt");
+    Ok(())
+}
+
+/// Regression test (#1437): wrapping a key with a database key needs `Encrypt` on the wrapping
+/// key and reading it back unwrapped needs `Decrypt`; `Get` on the wrapping key is not enough.
+#[tokio::test]
+async fn test_get_grant_does_not_allow_wrapping_with_the_key() -> KResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        KmipOperation, kmip_operations::Get,
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("wrap_owner@example.com");
+    let bob = UserId::from("wrap_bob@example.com");
+    let wrapping_key = create_aes_key(&kms, owner.as_str()).await?.to_string();
+    let wrapped_request = || {
+        symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            Some(&wrapping_key),
+        )
+        .map_err(|e| KmsError::InvalidRequest(e.to_string()))
+    };
+    kms.database
+        .grant_operations(&wrapping_key, &bob, HashSet::from([KmipOperation::Get]))
+        .await?;
+    kms.create(wrapped_request()?, &bob)
+        .await
+        .expect_err("Get on the wrapping key must not allow wrapping with it");
+
+    kms.database
+        .grant_operations(&wrapping_key, &bob, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+    let wrapped = kms
+        .create(wrapped_request()?, &bob)
+        .await?
+        .unique_identifier;
+
+    // Bob owns the wrapped key but cannot unwrap it without `Decrypt` on the wrapping key
+    let get_unwrapped = || {
+        Get {
+        unique_identifier: Some(wrapped.clone()),
+        key_wrapping_specification: None,
+        key_compression_type: None,
+        key_format_type: None,
+        key_wrap_type: Some(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::KeyWrapType::NotWrapped),
+    }
+    };
+    kms.get(get_unwrapped(), &bob)
+        .await
+        .expect_err("unwrapping needs Decrypt on the wrapping key");
+    kms.database
+        .grant_operations(&wrapping_key, &bob, HashSet::from([KmipOperation::Decrypt]))
+        .await?;
+    kms.get(get_unwrapped(), &bob).await?;
     Ok(())
 }

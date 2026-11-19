@@ -39,7 +39,9 @@ use crate::{
     error::KmsError,
     middlewares::UserId,
     result::KResult,
-    tests::test_utils::{get_tmp_sqlite_path, test_kms_with_config},
+    tests::test_utils::{
+        assert_stored_wrapped_by_kek, get_tmp_sqlite_path, test_kms_with_config, test_kms_with_kek,
+    },
 };
 
 // A fixed 32-byte secret used for all ceremony tests.
@@ -2301,5 +2303,43 @@ async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
             "share {share} must be kept"
         );
     }
+    Ok(())
+}
+
+/// With a server key encryption key configured, split-key shares and the reconstructed key
+/// are stored wrapped, and the join still rebuilds the source key.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_split_and_join_store_keys_wrapped_by_server_kek() -> KResult<()> {
+    let alice = "alice@example.com";
+    let (kms, kek_id) = test_kms_with_kek(alice, || {
+        base_ceremony_conf(vec![alice.to_owned()], false, None)
+    })
+    .await?;
+    let owner = UserId::from(alice);
+
+    let source_uid = create_key(&kms, alice).await?;
+    let share_uids = split_key(&kms, alice, &source_uid, 2).await?;
+    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+
+    for uid in share_uids.iter().chain([&source_uid, &reconstructed_uid]) {
+        assert_stored_wrapped_by_kek(&kms, uid, &kek_id).await;
+    }
+    let unwrapped_bytes = |uid: String| {
+        let kms = Arc::clone(&kms);
+        let owner = owner.clone();
+        async move {
+            let stored = kms.database.retrieve_object(&uid).await?.expect("stored");
+            kms.get_unwrapped(&uid, stored.object(), &owner)
+                .await?
+                .key_block()
+                .and_then(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock::key_bytes)
+                .map_err(|e| KmsError::InvalidRequest(e.to_string()))
+        }
+    };
+    assert_eq!(
+        unwrapped_bytes(reconstructed_uid).await?,
+        unwrapped_bytes(source_uid).await?
+    );
     Ok(())
 }
