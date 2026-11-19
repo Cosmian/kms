@@ -8,3 +8,5 @@
 
 ### Web UI
 - Add SSH certificate signing and password generation pages.
+- Add an `SSH CA & Roles` page to create the SSH CA (new or existing EC key), show its public key and save roles.
+- Generate the SSH key pair in the browser on the certificate page.

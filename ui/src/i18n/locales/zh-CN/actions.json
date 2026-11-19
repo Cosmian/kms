@@ -924,10 +924,14 @@
         "role": "签名角色",
         "publicKey": "OpenSSH 公钥",
         "principals": "有效主体",
-        "principalsHelp": "用逗号分隔登录名。",
+        "principalsHelp": "以逗号分隔的登录名（principals），写入证书；每个都必须被角色允许。",
         "ttl": "TTL（可选）",
         "submit": "签发证书",
-        "responseTitle": "已签名 SSH 证书"
+        "responseTitle": "已签名 SSH 证书",
+        "publicKeyHelp": "粘贴现有的 OpenSSH 公钥，或在下方生成新的密钥对。私钥保留在浏览器中。",
+        "generateKey": "在浏览器中生成密钥对",
+        "keyGenerated": "已在浏览器中生成密钥对。私钥已下载为 id_ecdsa，不会发送到 KMS；公钥已填入上方。",
+        "ttlPlaceholder": "例如 15m"
     },
     "generatePassword": {
         "title": "生成密码",
@@ -2111,5 +2115,32 @@
         "submit": "验证签名",
         "success": "签名验证完成",
         "responseTitle": "OpenPGP 签名验证响应"
+    },
+    "sshCa": {
+        "caTitle": "SSH 证书颁发机构",
+        "caIntro": "选择用于签发 SSH 证书的 KMS 私钥。密钥 ID 留空则创建新的 EC 密钥对作为 CA。需要 Crypto Officer 角色。",
+        "caKeyId": "CA 私钥 ID（可选）",
+        "caKeyIdHelp": "用作 CA 的现有 KMS 私钥。留空则创建新的密钥对。",
+        "curve": "新 CA 密钥的曲线",
+        "curveHelp": "仅在未提供密钥 ID 时使用。",
+        "configureCa": "配置 CA",
+        "showPublicKey": "显示 CA 公钥",
+        "caConfigured": "SSH CA 已配置，私钥 ID：{{keyId}}\\n{{publicKey}}",
+        "caResponseTitle": "SSH CA",
+        "roleTitle": "签名角色",
+        "roleIntro": "角色定义证书中允许出现的登录名（principals）、谁可以申请证书以及证书有效期。需要 Crypto Officer 角色。",
+        "roleName": "角色名称",
+        "roleNameHelp": "字母、数字、下划线、点和连字符（1 至 64 个字符）。",
+        "roleNameInvalid": "请使用 1 至 64 个字母、数字、_、. 或 -",
+        "allowedPrincipals": "允许的 principals",
+        "allowedPrincipalsHelp": "此角色证书可包含的登录名，以逗号分隔（sshd 接受该证书的账户名）。",
+        "allowedUsers": "允许的用户",
+        "allowedUsersHelp": "允许使用此角色签名的 KMS 用户名，以逗号分隔。留空表示仅限 Crypto Officer。",
+        "defaultTtl": "默认 TTL",
+        "maxTtl": "最大 TTL",
+        "maxTtlPlaceholder": "例如 1h",
+        "saveRole": "保存角色",
+        "roleSaved": "角色 {{name}} 已保存",
+        "roleResponseTitle": "签名角色"
     }
 }

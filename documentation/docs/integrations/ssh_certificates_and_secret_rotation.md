@@ -106,6 +106,14 @@ flowchart TD
     SetRole --> Ready
 ```
 
+### From the Web UI
+
+The **SSH CA & Roles** page (`/ui/ssh-ca`) does the same as `ckms ssh ca` and `ckms ssh role put`:
+leave the key ID empty to create a new EC key and use it as the CA, show the CA public key, and
+save roles. The **SSH Certificate** page can generate the key pair in the browser (ECDSA P-256);
+the private key is downloaded and never sent to the server. Both pages need an active Crypto
+Officer for the CA and role calls.
+
 ## Issue a short-lived user certificate
 
 Generate a user key pair locally. Use an algorithm permitted by your deployment policy; Ed25519 user keys require a non-FIPS build.

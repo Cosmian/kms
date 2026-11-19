@@ -49,7 +49,7 @@ graph LR
 
 ### ssh-password-flow
 
-Covers Web UI password generation and validates the returned 32-character alphanumeric value.
+Covers Web UI password generation (32-character alphanumeric value), SSH CA creation from the UI, signing-role creation, in-browser SSH key pair generation followed by certificate signing, and client-side role name validation.
 
 ### sym-key-flow
 

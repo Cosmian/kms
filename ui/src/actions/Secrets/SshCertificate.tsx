@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useAuth } from "../../contexts/useAuth";
 import { useActionState } from "../../hooks/useActionState";
-import { postNoTTLVRequest } from "../../utils/utils";
+import { generateSshKeyPair } from "../../utils/sshKey";
+import { downloadFile, postNoTTLVRequest } from "../../utils/utils";
 
 interface SshCertificateForm {
     role: string;
@@ -25,6 +26,15 @@ const SshCertificate: React.FC = () => {
     const { serverUrl } = useAuth();
     const { res, isLoading, responseRef, execute } = useActionState();
     const { t } = useTranslation("actions");
+
+    const onGenerateKey = async () => {
+        await execute(async () => {
+            const { publicKey, privateKeyPem } = await generateSshKeyPair();
+            form.setFieldsValue({ publicKey });
+            downloadFile(privateKeyPem, "id_ecdsa", "application/x-pem-file");
+            return t("sshCertificate.keyGenerated");
+        });
+    };
 
     const onFinish = async (values: SshCertificateForm) => {
         await execute(async () => {
@@ -51,9 +61,17 @@ const SshCertificate: React.FC = () => {
                 <Form.Item name="role" label={t("sshCertificate.role")} rules={[{ required: true }]}>
                     <Input data-testid="ssh-role" />
                 </Form.Item>
-                <Form.Item name="publicKey" label={t("sshCertificate.publicKey")} rules={[{ required: true }]}>
+                <Form.Item
+                    name="publicKey"
+                    label={t("sshCertificate.publicKey")}
+                    extra={t("sshCertificate.publicKeyHelp")}
+                    rules={[{ required: true }]}
+                >
                     <Input.TextArea rows={3} data-testid="ssh-public-key" />
                 </Form.Item>
+                <Button className="mb-4" onClick={onGenerateKey} data-testid="ssh-generate-key">
+                    {t("sshCertificate.generateKey")}
+                </Button>
                 <Form.Item
                     name="principals"
                     label={t("sshCertificate.principals")}
@@ -63,7 +81,7 @@ const SshCertificate: React.FC = () => {
                     <Input data-testid="ssh-principals" />
                 </Form.Item>
                 <Form.Item name="ttl" label={t("sshCertificate.ttl")}>
-                    <Input placeholder="15m" data-testid="ssh-ttl" />
+                    <Input placeholder={t("sshCertificate.ttlPlaceholder")} data-testid="ssh-ttl" />
                 </Form.Item>
                 <Button type="primary" htmlType="submit" loading={isLoading} data-testid="submit-ssh-certificate">
                     {t("sshCertificate.submit")}

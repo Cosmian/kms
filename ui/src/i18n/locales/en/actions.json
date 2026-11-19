@@ -924,10 +924,14 @@
         "role": "Signing role",
         "publicKey": "OpenSSH public key",
         "principals": "Valid principals",
-        "principalsHelp": "Comma-separated login names.",
+        "principalsHelp": "Comma-separated login names (principals) written into the certificate; each must be allowed by the role.",
         "ttl": "TTL (optional)",
         "submit": "Sign certificate",
-        "responseTitle": "Signed SSH certificate"
+        "responseTitle": "Signed SSH certificate",
+        "publicKeyHelp": "Paste an existing OpenSSH public key, or generate a new key pair below. The private key stays in your browser.",
+        "generateKey": "Generate a key pair in the browser",
+        "keyGenerated": "Key pair generated in your browser. The private key was downloaded as id_ecdsa and never sent to the KMS; the public key is filled in above.",
+        "ttlPlaceholder": "e.g. 15m"
     },
     "generatePassword": {
         "title": "Generate Password",
@@ -2111,5 +2115,32 @@
         "submit": "Verify Signature",
         "success": "Signature verification completed",
         "responseTitle": "OpenPGP Signature Verification Response"
+    },
+    "sshCa": {
+        "caTitle": "SSH certificate authority",
+        "caIntro": "Choose the KMS private key that signs SSH certificates. Leave the key ID empty to create a new EC key pair as the CA. Requires the Crypto Officer role.",
+        "caKeyId": "CA private key ID (optional)",
+        "caKeyIdHelp": "Existing KMS private key to use as the CA. If empty, a new key pair is created.",
+        "curve": "Curve for a new CA key",
+        "curveHelp": "Used only when no key ID is given.",
+        "configureCa": "Configure CA",
+        "showPublicKey": "Show CA public key",
+        "caConfigured": "SSH CA configured with private key id: {{keyId}}\\n{{publicKey}}",
+        "caResponseTitle": "SSH CA",
+        "roleTitle": "Signing role",
+        "roleIntro": "A role defines which login names (principals) may appear in certificates, who may request them, and their lifetime. Requires the Crypto Officer role.",
+        "roleName": "Role name",
+        "roleNameHelp": "Letters, digits, underscore, dot and dash (1 to 64 characters).",
+        "roleNameInvalid": "Use 1 to 64 letters, digits, _, . or -",
+        "allowedPrincipals": "Allowed principals",
+        "allowedPrincipalsHelp": "Comma-separated login names that certificates of this role may carry (the account names sshd accepts the certificate for).",
+        "allowedUsers": "Allowed users",
+        "allowedUsersHelp": "Comma-separated KMS user names allowed to sign with this role. Empty means Crypto Officers only.",
+        "defaultTtl": "Default TTL",
+        "maxTtl": "Maximum TTL",
+        "maxTtlPlaceholder": "e.g. 1h",
+        "saveRole": "Save role",
+        "roleSaved": "Role {{name}} saved",
+        "roleResponseTitle": "Signing role"
     }
 }

@@ -105,6 +105,7 @@
     "secret-data/revoke": "撤销",
     "secret-data/destroy": "销毁",
     "ssh-certificate": "SSH 证书",
+    "ssh-ca": "SSH CA 与角色",
     "generate-password": "生成密码",
     "opaque-object": "不透明对象",
     "opaque-object/create": "创建",

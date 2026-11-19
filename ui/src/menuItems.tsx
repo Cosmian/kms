@@ -347,6 +347,12 @@ const baseMenu: MenuItem[] = [
         collapsedlabel: "SSH",
     },
     {
+        key: "ssh-ca",
+        label: "SSH CA & Roles",
+        icon: <SafetyCertificateOutlined />,
+        collapsedlabel: "CA",
+    },
+    {
         key: "generate-password",
         label: "Generate Password",
         icon: <LockOutlined />,
