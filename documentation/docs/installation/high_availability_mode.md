@@ -192,8 +192,8 @@ flowchart TB
 The Keepalived instances of the nodes talk to each other with VRRP to agree on which node holds the VIP.
 
 Keepalived runs **on the KMS nodes themselves**, with no HAProxy. The nodes share a VIP: the MASTER node holds it and
-answers the clients, the other nodes wait. Each Keepalived checks the KMS of its own node with `GET /health`; when the
-check fails, that node gives up the VIP and another node takes it.
+answers the clients, the other nodes wait. Each Keepalived checks the KMS of its own node with
+`GET /health?strict=true`; when the check fails, that node gives up the VIP and another node takes it.
 
 Requirements:
 
@@ -250,7 +250,7 @@ Limits of this profile:
 - **Active/passive**: only the node holding the VIP serves clients; the others are spare. To spread the load, use
   profile 2 or 5.
 - An open KMIP connection is cut when the VIP moves: the client has to reconnect.
-- The check follows what [`/health` tells a load balancer](#what-health-tells-a-load-balancer): the script below uses
+- The check follows what [`/health` tells a load balancer](#what-health-tells-a-load-balancer): the script above uses
   `?strict=true`, so a node whose HSM fails, or whose KMIP socket server has stopped, gives up the VIP.
 - It does not work on AWS: in a test, an address added to an instance's network interface was not reachable from the
   other instances of the same subnet. Use profile 2 there. Other public clouds were not tested.
@@ -264,7 +264,9 @@ HAProxy spreads the requests over all the nodes and stops sending requests to a 
 - **two or more HAProxy with Keepalived**: the same, with a VIP over the HAProxy nodes, so that no component is a single
   point of failure.
 
-The configuration of both is described in [HAProxy and Keepalived](./haproxy_keepalived.md).
+The configuration of both is described in [HAProxy and Keepalived](./haproxy_keepalived.md). Check the nodes with
+`GET /health?strict=true` to also take out the nodes that `/health` reports as `DEGRADED` (see
+[What `/health` tells a load balancer](#what-health-tells-a-load-balancer)).
 
 ## Database availability
 

@@ -5,7 +5,8 @@ When several KMS nodes share one PostgreSQL or MySQL/MariaDB database (see
 
 - each background job runs on **one node at a time**;
 - each node publishes a **heartbeat**, so the cluster can list its live nodes;
-- `GET /cluster/status` shows the live nodes and `GET /health` reports the state of the database and of each HSM.
+- `GET /cluster/status` shows the live nodes and `GET /health` reports the state of the database, of each HSM and of the
+  KMIP socket server.
 
 No configuration is needed: coordination starts as soon as two nodes use the same database.
 
@@ -187,7 +188,7 @@ to the server log instead. The message is one of these fixed texts, and an HSM m
 | `the previous probe is still waiting for the HSM` | an earlier probe of the slot has not ended yet |
 | `the KMIP socket server is not running (details in the server log)` | the socket server task has ended |
 
-Look for lines starting with `health check:` in the server log to see the detail.
+Look for log lines containing `health check:` to see the detail.
 
 !!! note "HSM status depends on the PKCS#11 library"
     The HSM check asks each configured slot for its list of mechanisms. Some PKCS#11 libraries (for example
