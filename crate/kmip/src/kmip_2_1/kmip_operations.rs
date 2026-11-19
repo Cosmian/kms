@@ -3448,7 +3448,18 @@ mod tests {
 
         const MARKER: &[u8] = b"SECRET-MARKER";
         let marker = || SensitiveBytes::from(MARKER.to_vec());
-        // `SECRET-MARKER` as decimal (private exponent) is checked through its byte list
+        // A derived `BigInt` `Debug` prints decimal digits/limbs, never the marker text.
+        let decimal = BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, MARKER).to_string();
+        // Limb values as printed by a derived `Debug` of the same `BigInt`.
+        let limbs: Vec<String> = format!(
+            "{:?}",
+            BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, MARKER)
+        )
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|t| t.len() > 6)
+        .map(ToOwned::to_owned)
+        .collect();
+        assert!(!limbs.is_empty());
         let byte_list = format!("{MARKER:?}");
         let check = |what: &str, op: &dyn Debug, display: Option<&dyn Display>| {
             let mut outputs = vec![format!("{op:?}")];
@@ -3458,7 +3469,11 @@ mod tests {
                     "SECRET-MARKER",
                     &byte_list[1..byte_list.len() - 1],
                     "U0VDUkVULU1BUktFUg",
-                ] {
+                    decimal.as_str(),
+                ]
+                .into_iter()
+                .chain(limbs.iter().map(String::as_str))
+                {
                     assert!(!out.contains(leaked), "{what} leaks {leaked}: {out}");
                 }
             }
@@ -3550,6 +3565,28 @@ mod tests {
                     password: Some("SECRET-MARKER".to_owned()),
                 },
             }],
+        };
+        let login = Authentication {
+            credential: vec![
+                login.credential[0].clone(),
+                Credential {
+                    credential_type: CredentialType::OneTimePassword,
+                    credential_value: CredentialValue::OneTimePassword {
+                        username: "alice".to_owned(),
+                        password: Some("SECRET-MARKER".to_owned()),
+                        one_time_password: "SECRET-MARKER".to_owned(),
+                    },
+                },
+                Credential {
+                    credential_type: CredentialType::HashedPassword,
+                    credential_value: CredentialValue::HashedPassword {
+                        username: "alice".to_owned(),
+                        timestamp: 0,
+                        hashing_algorithm: None,
+                        hashed_password: MARKER.to_vec(),
+                    },
+                },
+            ],
         };
         check("Authentication", &login, None);
     }
