@@ -16,6 +16,10 @@ use tracing::{
 use crate::{
     SafeBigInt, SensitiveBytes,
     kmip_0::kmip_types::{Authentication, Credential, CredentialType, CredentialValue},
+    kmip_1_4::{
+        kmip_attributes::Attribute as Attribute14,
+        kmip_types::{Link as Link14, LinkType as LinkType14},
+    },
     kmip_2_1::{
         extra::BulkData,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -318,4 +322,32 @@ fn bulk_data_and_requests_print_lengths_only() {
         ..Decrypt::default()
     };
     assert_no_marker("Decrypt Display", &decrypt.to_string());
+}
+
+#[test]
+fn kmip_1_4_pkcs12_password_link_is_redacted() {
+    let link = Link14 {
+        link_type: LinkType14::PKCS12PasswordLink,
+        linked_object_identifier: MARKER.to_owned(),
+    };
+    assert_no_marker("1.4 Link Debug", &format!("{link:?} {link:#?}"));
+    // the `{operation:?}` batch item trace reaches links through the attributes
+    let attribute = Attribute14::Link(link.clone());
+    assert_no_marker(
+        "1.4 Attribute Debug",
+        &format!("{attribute:?} {attribute:#?}"),
+    );
+
+    let parent = Link14 {
+        link_type: LinkType14::ParentLink,
+        linked_object_identifier: "parent-id".to_owned(),
+    };
+    assert!(format!("{parent:?}").contains("parent-id"));
+
+    let mut ttlv = None;
+    let logs = captured_logs(|| ttlv = Some(to_ttlv(&link).unwrap()));
+    assert!(!logs.is_empty(), "no trace captured");
+    assert_no_marker("1.4 serializer traces", &logs);
+    let ttlv = ttlv.unwrap();
+    assert_no_marker("1.4 TTLV Debug", &format!("{ttlv:?} {ttlv:#?}"));
 }
