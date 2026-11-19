@@ -35,7 +35,6 @@ use openssl::{
 };
 use ssh_key::{Certificate, PublicKey};
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,
@@ -240,7 +239,7 @@ async fn issue_and_check(kms: &Arc<KMS>, slot: usize, kind: CaKind) -> KResult<(
         .sign(
             Sign {
                 unique_identifier: Some(UniqueIdentifier::TextString(ca_uid)),
-                data: Some(Zeroizing::new(b"forged certificate".to_vec()).into()),
+                data: Some(b"forged certificate".to_vec().into()),
                 ..Default::default()
             },
             &UserId::from(ROLE_USER),

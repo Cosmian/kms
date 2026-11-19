@@ -16,7 +16,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     ttlv::KmipFlavor,
 };
 use cosmian_logger::{info, log_init};
-use zeroize::Zeroizing;
 
 use super::{create_1_4::create_symmetric_key, socket_client::SocketClient};
 use crate::tests::ttlv_tests::get_client;
@@ -67,7 +66,7 @@ fn test_encrypt_2_1_iv_length_is_in_bits() {
                             iv_length: Some(iv_length),
                             ..Default::default()
                         }),
-                        data: Some(Zeroizing::new(b"Hello, world!".to_vec()).into()),
+                        data: Some(b"Hello, world!".to_vec().into()),
                         ..Default::default()
                     })),
                     message_extension: None,

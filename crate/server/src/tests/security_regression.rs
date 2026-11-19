@@ -12,7 +12,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
-use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,
@@ -701,7 +700,7 @@ async fn test_crypto_op_does_not_reveal_foreign_keys() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"probe".to_vec()).into()),
+        data: Some(b"probe".to_vec().into()),
         ..Default::default()
     };
 
