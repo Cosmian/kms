@@ -46,7 +46,7 @@ use openssl::{
     hash::{Hasher, MessageDigest},
     ssl::SslAcceptorBuilder,
 };
-use tokio::{runtime::Handle, task::JoinHandle, try_join};
+use tokio::{runtime::Handle, try_join};
 use url::Url;
 
 #[cfg(feature = "non-fips")]
@@ -70,8 +70,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, csr, est, get_hsm_status,
-        get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, cluster, crl, csr, est,
+        get_hsm_status, get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
@@ -527,6 +527,8 @@ pub async fn start_kms_server(
         .await
         .context("start KMS server: key_encryption_key wrapping check")?;
 
+    let cluster_heartbeat_shutdown_tx = cron::spawn_cluster_heartbeat_cron(kms_server.clone());
+
     // Spawn background metrics cron thread and retain shutdown signal
     let metrics_shutdown_tx = if kms_server.metrics.is_some() {
         Some(cron::spawn_metrics_cron(kms_server.clone()))
@@ -571,14 +573,13 @@ pub async fn start_kms_server(
     }
 
     // Handle sockets
-    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+    let ss_command_tx = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
-        let socket_server_handle =
-            start_socket_server(kms_server.clone(), rx, pre_bound_socket_listener)?;
-        (Some(tx), Some(socket_server_handle))
+        start_socket_server(&kms_server, rx, pre_bound_socket_listener)?;
+        Some(tx)
     } else {
-        (None, None)
+        None
     };
 
     // Log the server configuration
@@ -589,6 +590,7 @@ pub async fn start_kms_server(
         pre_bound_http_listener,
     )
     .await;
+    let _ = cluster_heartbeat_shutdown_tx.send(());
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
         let _ = tx.send(());
@@ -628,18 +630,19 @@ pub async fn start_kms_server(
 /// - The server fails to run
 ///
 /// # Returns
-/// * a `JoinHandle<()>` that represents the socket server thread.
+/// * `Ok(())` once the socket server is listening. Its task is kept in `KMS::socket_server_task`
+///   so that `GET /health` can report when it ends.
 fn start_socket_server(
-    kms_server: Arc<KMS>,
+    kms_server: &Arc<KMS>,
     command_receiver: mpsc::Receiver<KResult<()>>,
     pre_bound_socket_listener: Option<std::net::TcpListener>,
-) -> KResult<JoinHandle<()>> {
+) -> KResult<()> {
     // Start the socket server
     let socket_server =
         SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
     let tokio_handle = Handle::current();
     let socket_server_handle = socket_server.start_threaded(
-        kms_server,
+        kms_server.clone(),
         move |username, request, kms_server| {
             trace!("request: {username} ({} bytes)", request.len());
             // Handle the TTLV bytes received from the socket server
@@ -652,7 +655,9 @@ fn start_socket_server(
         command_receiver,
         pre_bound_socket_listener,
     )?;
-    Ok(socket_server_handle)
+    // The socket server is started once per KMS: a second handle could only be a duplicate.
+    drop(kms_server.socket_server_task.set(socket_server_handle));
+    Ok(())
 }
 
 /// Start an HTTP(S) KMS server
@@ -1123,8 +1128,17 @@ pub async fn prepare_kms_server(
         .and_then(AuthVerifierConfig::saml_session_realm)
         .map(Arc::from);
 
+    // `X-Vault-Token` counts as configured authentication on every scope: a request without
+    // any credential is rejected instead of running as `default_username`.
+    let use_vault_token_auth =
+        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
+    let use_any_auth = use_vault_token_auth
+        || use_jwt_auth
+        || use_cert_auth
+        || use_api_token_auth
+        || use_auth_verifier;
     // Insecure defaults remain supported for development; make them visible in production logs.
-    if !(use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier) {
+    if !use_any_auth {
         cosmian_logger::warn!(
             "SECURITY: no authentication method is configured: every request is served as the \
              default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for \
@@ -1348,8 +1362,6 @@ pub async fn prepare_kms_server(
     //
     // When `vault_api_enabled = false` or `vault_auth_verifier_url` is absent, a dummy
     // context is created but never invoked: `Condition::new(false, …)` is a no-op.
-    let use_vault_token_auth =
-        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
     let spire_cache = SpireTokenCache::new(kms_server.params.vault.token_cache_ttl_secs);
     let spire_auth_verifier_url: Url = match &kms_server.params.vault.auth_verifier_url {
         Some(url) => url.clone(),
@@ -1465,11 +1477,6 @@ pub async fn prepare_kms_server(
             // `data/`/`metadata/` routes (`kv::mount_guard`), so they cannot shadow another scope.
             // They are registered before every unguarded scope (`/google_cse`, `/ms_dke`, ...),
             // which would otherwise swallow a mount of the same name.
-            let use_any_auth = use_vault_token_auth
-                || use_jwt_auth
-                || use_cert_auth
-                || use_api_token_auth
-                || use_auth_verifier;
             let kv_mount = &kms_server_for_http.params.kv.mount;
             let native_path = format!("/{kv_mount}");
             let v1_path = format!("/v1/{kv_mount}");
@@ -1526,7 +1533,7 @@ pub async fn prepare_kms_server(
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                    use_any_auth,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -1618,18 +1625,9 @@ pub async fn prepare_kms_server(
             // Cors must run first to handle OPTIONS preflight before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
-            //
-            // vault_token_optional_middleware is intentionally *optional*: it enriches the
-            // request identity when `X-Vault-Token` is present but does NOT mandate that a
-            // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
-            // the endpoint actually require authentication.
-            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
             let tokenize_scope = wrap_native_auth(
                 web::scope("/tokenize").app_data(web::JsonConfig::default().limit(65_536)),
-                Condition::new(
-                    use_any_auth,
-                    ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
-                ),
+                ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
                 &native_auth,
             )
                 .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
@@ -1912,7 +1910,7 @@ pub async fn prepare_kms_server(
             ),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                use_any_auth,
             ),
             &native_auth,
         )
@@ -1941,7 +1939,7 @@ pub async fn prepare_kms_server(
             web::scope(""),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                use_any_auth,
             ),
             &native_auth,
         )
@@ -1960,6 +1958,7 @@ pub async fn prepare_kms_server(
             .service(kmip::kmip)
             .service(get_server_info)
             .service(get_hsm_status)
+            .service(cluster::get_cluster_status)
             .service(access::get_current_user)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
@@ -2655,6 +2654,57 @@ mod tests {
             test::call_service(&app, tokenless).await.status(),
             StatusCode::OK
         );
+    }
+
+    /// Native-auth POST endpoints that exist only in non-FIPS builds.
+    #[cfg(feature = "non-fips")]
+    const TOKENIZE: &[&str] = &["/tokenize/hash"];
+    #[cfg(not(feature = "non-fips"))]
+    const TOKENIZE: &[&str] = &[];
+
+    /// With the Vault token as the only configured method, a request without credentials must
+    /// be rejected on every authenticated scope instead of running as `default_username`.
+    #[actix_web::test]
+    async fn vault_token_only_auth_rejects_requests_without_credentials() {
+        use reqwest::{StatusCode, header::CONTENT_TYPE};
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.socket_server.start = false;
+        config.vault.api_enabled = true;
+        config.vault.auth_verifier_url = Some("http://127.0.0.1:9".to_owned());
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let status = |response: reqwest::Result<reqwest::Response>| response.unwrap().status();
+        assert_eq!(
+            status(client.get(format!("{base}/version")).send().await),
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(client.get(format!("{base}/me")).send().await),
+            StatusCode::UNAUTHORIZED
+        );
+        let posts = ["/kmip/2_1", "/v1/crypto/keys", "/v1/secrets/password"];
+        for path in posts.iter().chain(TOKENIZE) {
+            let response = client
+                .post(format!("{base}{path}"))
+                .header(CONTENT_TYPE, "application/json")
+                .body("{}")
+                .send()
+                .await;
+            assert_eq!(status(response), StatusCode::UNAUTHORIZED, "{path}");
+        }
+        handle.stop(false).await;
     }
 }
 

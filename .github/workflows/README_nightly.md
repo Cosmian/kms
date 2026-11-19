@@ -26,12 +26,13 @@ flowchart TB
         PubSbom["publish-sbom"]
         PkgTests["tests<br/>packaging-tests.yml"]
         WinPkg["windows-package<br/>build_windows.yml: build · sign · test · publish"]
+        WinPkgFips["windows-package-fips<br/>build_windows.yml (variant fips): build · sign · install test · publish"]
         Docker["docker<br/>packaging-docker.yml: images then manifests"]
         K8s["kubernetes<br/>packaging-kubernetes.yml: e2e · helm chart E2E · plugin packages · chart publish"]
         Apk["apk<br/>packaging-apk.yml: apk then publish-apk"]
         Mon["build-monitoring-archive then publish-monitoring"]
     end
-    Pkg --> Packages & WinPkg & Docker & K8s & Apk & Mon
+    Pkg --> Packages & WinPkg & WinPkgFips & Docker & K8s & Apk & Mon
     Packages --> PubRel & PubSbom & PkgTests
 ```
 

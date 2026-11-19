@@ -17,7 +17,7 @@ fi
 VARIANT="non-fips"
 FEATURES_FLAG=(--features non-fips)
 
-# Default KMS config (can be overridden by env before invoking nix.sh)
+# Default KMS config (can be overridden by env before invoking the task)
 : "${COSMIAN_KMS_CONF:=$REPO_ROOT/.mise/scripts/pykmip/kms.toml}"
 export COSMIAN_KMS_CONF
 
@@ -28,8 +28,8 @@ export COSMIAN_KMS_CONF
 # All Python invocations below already use `env -u OPENSSL_CONF -u OPENSSL_MODULES`
 # to isolate Python's ssl module from the Rust/KMS OpenSSL configuration.
 
-# Ensure Python is available (nix.sh sets WITH_PYTHON=1 which adds python311 + virtualenv)
-require_cmd python3 "Python 3 is required. Re-run via 'bash .mise/scripts/nix.sh test pykmip' so nix-shell can provide it."
+# Ensure Python is available (the task sets WITH_PYTHON=1 which adds python311 + virtualenv)
+require_cmd python3 "Python 3 is required. Re-run via 'mise run test:interop:pykmip' so nix-shell can provide it."
 
 # Prefer Nix-provided Python (3.11) which is compatible with PyKMIP
 # The system Python may be too new (3.12+) which lacks ssl.wrap_socket

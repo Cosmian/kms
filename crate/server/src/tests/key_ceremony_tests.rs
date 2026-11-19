@@ -24,9 +24,9 @@ use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation,
     extra::tagging::VENDOR_ID_COSMIAN,
-    kmip_attributes::Attributes,
+    kmip_attributes::{Attribute, Attributes},
     kmip_objects::ObjectType,
-    kmip_operations::{CreateSplitKey, Get, JoinSplitKey},
+    kmip_operations::{CreateSplitKey, Get, JoinSplitKey, SetAttribute},
     kmip_types::{
         CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, UsageLimits, UsageLimitsUnit,
     },
@@ -39,7 +39,10 @@ use crate::{
     error::KmsError,
     middlewares::UserId,
     result::KResult,
-    tests::test_utils::{get_tmp_sqlite_path, test_kms_with_config},
+    tests::test_utils::{
+        assert_stored_wrapped_by_kek, get_tmp_sqlite_path, test_kms_with_config, test_kms_with_kek,
+        unwrapped_key_bytes,
+    },
 };
 
 // A fixed 32-byte secret used for all ceremony tests.
@@ -2301,5 +2304,54 @@ async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
             "share {share} must be kept"
         );
     }
+    Ok(())
+}
+
+/// With a server key encryption key configured, split-key shares and the reconstructed key
+/// are stored wrapped, and the join still rebuilds the source key.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_split_and_join_store_keys_wrapped_by_server_kek() -> KResult<()> {
+    let alice = "alice@example.com";
+    let (kms, kek_id) = test_kms_with_kek(alice, || {
+        base_ceremony_conf(vec![alice.to_owned()], false, None)
+    })
+    .await?;
+    let owner = UserId::from(alice);
+
+    let source_uid = create_key(&kms, alice).await?;
+    let share_uids = split_key(&kms, alice, &source_uid, 2).await?;
+    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+
+    for uid in share_uids.iter().chain([&source_uid, &reconstructed_uid]) {
+        assert_stored_wrapped_by_kek(&kms, uid, &kek_id).await;
+    }
+    assert_eq!(
+        unwrapped_key_bytes(&kms, &reconstructed_uid, &owner).await?,
+        unwrapped_key_bytes(&kms, &source_uid, &owner).await?
+    );
+
+    // Once its owner clears `Sensitive`, a Get of a share with `NotWrapped` returns it unwrapped.
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+            new_attribute: Attribute::Sensitive(false),
+        },
+        &owner,
+    )
+    .await?;
+    let share = kms
+        .get(
+            Get {
+                unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+                key_wrap_type: Some(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::KeyWrapType::NotWrapped,
+                ),
+                ..Default::default()
+            },
+            &owner,
+        )
+        .await?;
+    assert!(!share.object.is_wrapped(), "share must come back unwrapped");
     Ok(())
 }

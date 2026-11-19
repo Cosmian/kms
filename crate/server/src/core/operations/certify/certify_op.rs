@@ -28,6 +28,7 @@ use crate::{
             },
             key_ops::ObjectLifecycleExt,
         },
+        wrapping::wrap_and_cache,
     },
     middlewares::UserId,
     result::KResult,
@@ -252,8 +253,30 @@ pub(crate) async fn certify_for_owner(
             } else {
                 trace!("Certificate attributes links: None");
             }
-            let private_key_attrs = keypair_data.private_key_object.attributes()?.clone();
-            let public_key_attrs = keypair_data.public_key_object.attributes()?.clone();
+            let mut private_key_attrs = keypair_data.private_key_object.attributes()?.clone();
+            let mut public_key_attrs = keypair_data.public_key_object.attributes()?.clone();
+            // Apply the server key encryption key, as `CreateKeyPair` does, and record the
+            // resulting WrappingKeyLink in the stored attributes.
+            Box::pin(wrap_and_cache(
+                kms,
+                owner,
+                &keypair_data.private_key_id,
+                &mut keypair_data.private_key_object,
+            ))
+            .await?;
+            keypair_data
+                .private_key_object
+                .copy_wrapping_key_link_to(&mut private_key_attrs);
+            Box::pin(wrap_and_cache(
+                kms,
+                owner,
+                &keypair_data.public_key_id,
+                &mut keypair_data.public_key_object,
+            ))
+            .await?;
+            keypair_data
+                .public_key_object
+                .copy_wrapping_key_link_to(&mut public_key_attrs);
             (
                 vec![
                     // upsert the private key

@@ -18,8 +18,8 @@ use ckms::{
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
-                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, MAC,
-                    MACVerify, Query, RNGRetrieve, Revoke, Sign, SignatureVerify,
+                    Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, MAC, MACVerify,
+                    Query, RNGRetrieve, Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -598,6 +598,9 @@ pub(crate) async fn kms_import_symmetric_key_async(
         cryptographic_length,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(usage_mask),
+        // Back-dated: the server activates an import only if its date is not in the future, so
+        // tolerate a client clock ahead of the KMS.
+        activation_date: Some(cosmian_kmip::time_normalize()? - std::time::Duration::from_secs(60)),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: label.map(|l| UniqueIdentifier::TextString(l.to_owned())),
@@ -630,7 +633,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         )?;
         kms_rest_client.create(request).await?.unique_identifier
     } else {
-        let response = kms_rest_client
+        kms_rest_client
             .import(Import {
                 unique_identifier: label
                     .map(|l| UniqueIdentifier::TextString(l.to_owned()))
@@ -641,15 +644,8 @@ pub(crate) async fn kms_import_symmetric_key_async(
                 attributes: attributes.clone(),
                 object: object.clone(),
             })
-            .await?;
-
-        // Imported software keys start PreActive and must be activated before use.
-        kms_rest_client
-            .activate(Activate {
-                unique_identifier: response.unique_identifier.clone(),
-            })
-            .await?;
-        response.unique_identifier
+            .await?
+            .unique_identifier
     };
 
     let res = KmsObject {
@@ -692,7 +688,11 @@ pub(crate) async fn kms_import_object_async(
 
     let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
 
-    let mut attributes = Attributes::default();
+    let mut attributes = Attributes {
+        // Back-dated, see `kms_import_symmetric_key_async`.
+        activation_date: Some(cosmian_kmip::time_normalize()? - std::time::Duration::from_secs(60)),
+        ..Attributes::default()
+    };
     attributes.set_tags(vendor_id, tags)?;
 
     let object = Object::SecretData(SecretData {

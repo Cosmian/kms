@@ -29,7 +29,9 @@ use crate::{
     tests::{
         hsm::{
             create_kek, create_sym_key, export_object, hsm_clap_config,
-            test_helpers::hsm_cannot_generate_gcm_iv,
+            test_helpers::{
+                hsm_cannot_generate_gcm_iv, hsm_lacks_aes_key_wrap, hsm_lacks_aes_key_wrap_pad,
+            },
         },
         test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
@@ -53,6 +55,11 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
     // A FIPS build cannot seal AES-GCM in a token that generates no IV: that mode is then
     // refused (checked below) instead of being part of the round trips.
     let no_gcm = hsm_cannot_generate_gcm_iv();
+    // A slot without CKM_AES_KEY_WRAP_PAD refuses AES-KWP ("AesKeyWrapPad is not supported by HSM
+    // slot"): the AES-KWP legs of this suite are skipped there.
+    let no_kwp = hsm_lacks_aes_key_wrap_pad();
+    // Same for CKM_AES_KEY_WRAP (AES-KW): the FIPS profile of the Idemia simulator lacks it.
+    let no_kw = hsm_lacks_aes_key_wrap();
     let mut gcm_export = None;
     for (requested, expected) in [
         (None, BlockCipherMode::GCM),
@@ -67,8 +74,11 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
         (Some(BlockCipherMode::GCM), BlockCipherMode::GCM),
     ]
     .into_iter()
-    .filter(|(_, expected)| !(no_gcm && *expected == BlockCipherMode::GCM))
-    {
+    .filter(|(_, expected)| {
+        !(no_gcm && *expected == BlockCipherMode::GCM
+            || no_kw && *expected == BlockCipherMode::NISTKeyWrap
+            || no_kwp && *expected == BlockCipherMode::AESKeyWrapPadding)
+    }) {
         let wrapped = export_wrapped(&kms, &owner, &dek_uid, &kek_uid, requested).await?;
         let params = wrapping_params(&wrapped)?;
         assert_eq!(params.block_cipher_mode, Some(expected), "{requested:?}");
@@ -107,7 +117,7 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
                 .contains("needs an IV generated inside the HSM"),
             "{error}"
         );
-    } else {
+    } else if !no_kwp {
         // Objects wrapped before HSM wrapping honoured the requested mode claim AES-KWP but
         // hold AES-GCM bytes: unwrapping falls back to the HSM default.
         let mut legacy = gcm_export.ok_or_else(|| KmsError::Default("no GCM export".to_owned()))?;
@@ -144,6 +154,10 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
         );
         assert_eq!(params.block_cipher_mode, Some(BlockCipherMode::GCM));
         drop(kms);
+    }
+
+    if no_kwp {
+        return Ok(());
     }
 
     // At rest with an operator-selected AES-KWP: the stored bytes are RFC 5649 under the KEK.

@@ -161,7 +161,7 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`
+**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`, `test:hsm:idemia-sphere-simulator`
 **Orchestrator:** `test:hsm`
 **Matrix:** `test:hsm:matrix` (cross-product HSM × DB × variant; Linux includes `crypt2pay-simulator`)
 
@@ -172,7 +172,8 @@ sequenceDiagram
 | `proteccio` | Proteccio | Linux only | passthrough |
 | `crypt2pay` | Crypt2Pay | Linux only | passthrough |
 | `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
-| `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All | — |
+| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: `test_windows.yml`) | — |
+| `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All (Windows: `.mise/scripts/windows/test_hsm_other.ps1`) | — |
 | `nix-helpers` | nix-shell re-entry secret-handling regression test (no HSM) | All | — |
 | `luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
 
@@ -344,6 +345,8 @@ sequenceDiagram
 
 After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
 
+Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin` = `default_username`, signed by the test CA; trusted via `[tls] clients_ca_cert_file` in `test_data/spire/config/kms.toml`), passed to `kms_write_ckms_conf`. With the Vault token verifier as the only auth method the KMS answers 401 to token-less requests, so the default-user fallback no longer applies.
+
 #### Architecture Overview
 
 ```mermaid
@@ -369,7 +372,7 @@ graph TB
     SSA --> |X.509-SVID + JWT-SVID| Mistral
     SBA --> |X.509-SVID + JWT-SVID| Mistral
     Mistral --> |mTLS + JWT-SVID| KMS3
-    CKMS --> |certify, provision| KMS3
+    CKMS -- "certify, provision<br/>mTLS admin" --> KMS3
 ```
 
 #### Sequence Diagram
@@ -459,7 +462,7 @@ sequenceDiagram
     CKMS->>CKMS: build KMS (no insecure feature), ckms, auth-verifier
     CKMS->>Auth: start auth-verifier on :8443
     CKMS->>K0: start KMS bootstrap
-    CKMS->>K0: certify vault_pki_ca_cert
+    CKMS->>K0: certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>Auth: provision AppRoles
     Auth-->>CKMS: ROLE_ID_A, SECRET_ID_A
     CKMS->>SP: docker compose up spire-server-a
@@ -595,7 +598,7 @@ graph TB
     end
 
     AuthVrf3 --> |AppRole provisioning| KMS6
-    CKMS4 --> |certify, keys create| KMS6
+    CKMS4 -- "certify, keys create<br/>mTLS admin" --> KMS6
     TestScript --> CKMS4
     TestScript --> AuthVrf3
 ```
@@ -616,7 +619,7 @@ sequenceDiagram
     Test->>Cargo: build ckms CLI
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -658,7 +661,7 @@ graph TB
     SP_Agt2 --> |SDS delivery| Envoy_D2
     Envoy_D2 --> |mTLS| Envoy_U2
     AuthVrf4 --> |AppRole provisioning| KMS7
-    CKMS5 --> |certify, provision| KMS7
+    CKMS5 -- "certify, provision<br/>mTLS admin" --> KMS7
     TestSDS2 --> |orchestrates| DockerCompose
 ```
 
@@ -680,7 +683,7 @@ sequenceDiagram
     Test->>Cargo: build KMS server, auth-verifier, ckms
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A

@@ -1907,9 +1907,23 @@ paths:
       tags: [Public]
       summary: Health check
       description: >
-        Returns the global UP/DOWN status and per-dependency (database) status.
+        Returns global UP/DEGRADED/DOWN status and per-dependency status and latency.
+        A failed database reports DOWN; a failed HSM, or a KMIP socket server that has stopped,
+        reports DEGRADED. The HSM check reflects the
+        PKCS#11 library's answer, and some libraries (e.g. Crypt2pay) do not report an unreachable device.
+        Each HSM slot is probed with a 2 second limit; a slot that does not answer in time is reported
+        DOWN, and at most one probe per slot runs at a time. The database check has the same 2 second limit.
+        A DEGRADED node answers HTTP 200, or HTTP 503 with `strict=true`.
         Used by load balancers and service dependency checks.
       operationId: getHealth
+      parameters:
+        - name: strict
+          in: query
+          required: false
+          description: Answer HTTP 503 for a DEGRADED node too, so that a load balancer removes it from its pool.
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Server and all dependencies are healthy
@@ -1920,7 +1934,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [UP, DOWN]
+                    enum: [UP, DEGRADED, DOWN]
                   latency_ms:
                     type: integer
                   dependencies:
@@ -1934,15 +1948,59 @@ paths:
                           status:
                             type: string
                             enum: [UP, DOWN]
+                          latency_ms:
+                            type: integer
                           message:
                             type: string
+                            description: >
+                              Only when DOWN. A fixed text, never the detail of the error, which is written
+                              to the server log: `database check failed (details in the server log)` or
+                              `no answer within 2000 ms`.
+                      hsm:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            status:
+                              type: string
+                              enum: [UP, DOWN]
+                            latency_ms:
+                              type: integer
+                            message:
+                              type: string
+                              description: >
+                                Only when DOWN. A fixed text prefixed with `slot <id>: `, never the detail of
+                                the error, which is written to the server log:
+                                `the HSM returned an error (details in the server log)`,
+                                `no answer within 2000 ms` or
+                                `the previous probe is still waiting for the HSM`.
+                      kmip:
+                        type: object
+                        description: Only present when the KMIP socket server is enabled.
+                        properties:
+                          name:
+                            type: string
+                          status:
+                            type: string
+                            enum: [UP, DOWN]
+                          latency_ms:
+                            type: integer
+                          message:
+                            type: string
+                            description: >
+                              Only when DOWN: `the KMIP socket server is not running (details in the server log)`.
               example:
                 status: UP
                 latency_ms: 3
                 dependencies:
-                  database: {name: sqlite, status: UP}
+                  database: {name: sqlite, status: UP, latency_ms: 1}
+                  hsm:
+                    - {name: hsm::utimaco, status: UP, latency_ms: 2}
+                  kmip: {name: kmip, status: UP, latency_ms: 0}
         '503':
-          description: One or more dependencies are DOWN
+          description: Database is DOWN, or the node is DEGRADED and `strict=true` was requested
 
   /version:
     get:
@@ -2432,6 +2490,42 @@ paths:
                 type: array
                 items:
                   type: object
+
+  /cluster/status:
+    get:
+      tags: [Server]
+      summary: Cluster status
+      description: Returns live nodes, their last heartbeat and version, and the elected leader.
+      operationId: getClusterStatus
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Cluster status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nodes, leader]
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      required: [node_id, version, last_heartbeat, leader]
+                      properties:
+                        node_id:
+                          type: string
+                        version:
+                          type: string
+                        last_heartbeat:
+                          type: integer
+                          format: int64
+                        leader:
+                          type: boolean
+                  leader:
+                    type: [string, 'null']
 
   # ── Certificates ─────────────────────────────────────────────────────────────
 

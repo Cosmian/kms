@@ -209,6 +209,9 @@ pub fn key_data_to_wrap(
             Object::SecretData(SecretData { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover secret data bytes ")?,
+            Object::SplitKey(SplitKey { key_block, .. }) => key_block
+                .key_bytes()
+                .context("cannot recover split key bytes ")?,
             Object::PrivateKey(PrivateKey { key_block })
             | Object::PublicKey(PublicKey { key_block })
                 if matches!(

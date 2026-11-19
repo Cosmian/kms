@@ -1,6 +1,9 @@
+use actix_web::{App, http::StatusCode, test, web::Data};
 use cosmian_logger::log_init;
 
-use crate::tests::test_utils;
+use crate::{
+    cron::update_cluster_heartbeat, middlewares::ensure_auth_middleware, routes, tests::test_utils,
+};
 
 #[tokio::test]
 async fn test_health_endpoint_ok() {
@@ -18,6 +21,84 @@ async fn test_health_endpoint_ok() {
     assert!(response.get("dependencies").is_some());
     assert!(response["dependencies"].get("database").is_some());
     assert_eq!(response["dependencies"]["database"]["status"], "UP");
+    assert!(response["dependencies"]["database"]["latency_ms"].is_u64());
+    assert!(response["dependencies"].get("hsm").is_none());
+    // The test server enables the KMIP socket server: it is reported as a dependency.
+    assert_eq!(response["dependencies"]["kmip"]["status"], "UP");
+
+    // Strict mode only changes the HTTP code of a DEGRADED node: an UP node still answers 200.
+    let strict: serde_json::Value = test_utils::get_json_with_uri(&app, "/health?strict=true")
+        .await
+        .expect("strict health endpoint should return 200 OK on a healthy node");
+    assert_eq!(strict["status"], "UP");
+}
+
+#[tokio::test]
+async fn test_degraded_node_answers_503_only_in_strict_mode() {
+    log_init(option_env!("RUST_LOG"));
+
+    // The test config enables the KMIP socket server and this KMS never starts it: the node is
+    // `DEGRADED` (the database answers, the KMIP socket server is not running).
+    let kms = test_utils::test_kms().await.expect("instantiate KMS");
+    let app = test_utils::test_app_with_kms(kms, None).await;
+
+    let degraded: serde_json::Value = test_utils::get_json_with_uri(&app, "/health")
+        .await
+        .expect("a DEGRADED node answers 200 OK");
+    assert_eq!(degraded["status"], "DEGRADED");
+    assert_eq!(degraded["dependencies"]["database"]["status"], "UP");
+    assert_eq!(degraded["dependencies"]["kmip"]["status"], "DOWN");
+
+    let strict = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/health?strict=true")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(strict.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let strict_body: serde_json::Value = test::read_body_json(strict).await;
+    assert_eq!(strict_body["status"], "DEGRADED");
+}
+
+#[tokio::test]
+async fn test_cluster_status_lists_heartbeating_node_as_leader() {
+    log_init(option_env!("RUST_LOG"));
+
+    let kms = test_utils::test_kms().await.expect("instantiate KMS");
+    // The first heartbeat registers the node; with no live leader, the node elects itself.
+    update_cluster_heartbeat(&kms).await;
+    update_cluster_heartbeat(&kms).await;
+
+    let app = test_utils::test_app_with_kms(kms.clone(), None).await;
+    let response: serde_json::Value = test_utils::get_json_with_uri(&app, "/cluster/status")
+        .await
+        .expect("cluster status endpoint should return 200 OK");
+
+    assert_eq!(response["leader"], kms.node_id.as_str());
+    let nodes = response["nodes"].as_array().expect("nodes array");
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0]["node_id"], kms.node_id.as_str());
+    assert_eq!(nodes[0]["leader"], true);
+    assert_eq!(nodes[0]["version"], env!("CARGO_PKG_VERSION"));
+    assert!(nodes[0]["last_heartbeat"].is_i64());
+}
+
+#[tokio::test]
+async fn test_cluster_status_requires_authentication() {
+    log_init(option_env!("RUST_LOG"));
+
+    let kms = test_utils::test_kms().await.expect("instantiate KMS");
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(kms.clone()))
+            .service(routes::cluster::get_cluster_status)
+            .wrap(ensure_auth_middleware(kms.clone(), true)),
+    )
+    .await;
+
+    let (status, _body) = test_utils::get_json_raw(&app, "/cluster/status").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -50,4 +131,5 @@ async fn test_root_redirects_to_ui() {
     assert!(response.get("dependencies").is_some());
     assert!(response["dependencies"].get("database").is_some());
     assert_eq!(response["dependencies"]["database"]["status"], "UP");
+    assert!(response["dependencies"]["database"]["latency_ms"].is_u64());
 }

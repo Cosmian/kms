@@ -10,7 +10,7 @@
 #
 # Prerequisites (on the CI runner):
 #   • Docker must be available — the nix-shell includes pkgs.docker when
-#     WITH_DOCKER=1 (set automatically by nix.sh for the iris test type).
+#     WITH_DOCKER=1 (set by the test:interop:iris task).
 #   • The IRIS image is pulled via `docker compose up -d iris`, which uses
 #     pull_policy: always to guarantee a valid embedded license.
 #

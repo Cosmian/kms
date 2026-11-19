@@ -52,6 +52,7 @@ use crate::{
         },
         retrieve_object_utils::user_has_permission,
         uid_utils::ObjectHandle,
+        wrapping::wrap_and_cache,
     },
     error::KmsError,
     kms_bail,
@@ -596,6 +597,15 @@ async fn derive_key_asymmetric(
         peer_identifier.clone().into(),
     );
 
+    Box::pin(wrap_and_cache(
+        kms,
+        user,
+        &UniqueIdentifier::TextString(uid.clone()),
+        &mut derived_object,
+    ))
+    .await?;
+    derived_object.copy_wrapping_key_link_to(&mut attributes);
+
     let operations = vec![
         AtomicOperation::Create((
             uid.clone(),
@@ -674,6 +684,14 @@ async fn persist_single_base_derived_object(
 
     kms.constraints
         .check(derived_object.object_type(), attributes)?;
+    Box::pin(wrap_and_cache(
+        kms,
+        user,
+        &UniqueIdentifier::TextString(uid.to_owned()),
+        &mut derived_object,
+    ))
+    .await?;
+    derived_object.copy_wrapping_key_link_to(attributes);
     let tags = HashSet::new();
     let uid = kms
         .database

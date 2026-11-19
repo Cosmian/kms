@@ -784,6 +784,18 @@ Crate path: `crate/server`
 | `warn` | `Session: refusing a cookie-authenticated {} without a JSON Content-Type` | `src/middlewares/session_auth.rs` | - | - |
 | `debug` | `KMIP request [{}] protocol_version={major}.{minor} unique_identifier={} cryptographic_algorithm={} block_cipher_mode={}` | `src/routes/kmip/audit.rs` | `major`, `minor` | - |
 | `trace` | `Mac: AES {mode:?}` | `src/core/operations/mac.rs` | `mode` | - |
+| `warn` | `[cluster-heartbeat] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[cluster-heartbeat] Failed to list live nodes: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[cluster-heartbeat] Failed to list nodes before heartbeat: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[cluster-heartbeat] Failed to list nodes during election: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[cluster-heartbeat] Failed to persist node heartbeat: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[cluster-heartbeat] Failed to publish leader status: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[cluster-heartbeat] Leader election failed: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[{lock_name}] Failed to acquire or release cluster lock: {e}` | `src/cron.rs` | `lock_name`, `e` | - |
+| `warn` | `health check: {what}: {detail}` | `src/routes/health.rs` | `what`, `detail` | - |
+| `info` | `GET /cluster/status {}` | `src/routes/cluster.rs` | - | - |
+| `debug` | `[cluster-heartbeat] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
+| `debug` | `[{lock_name}] Skipping scheduled work; another node holds the lock` | `src/cron.rs` | `lock_name` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -840,6 +852,7 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
+| `warn` | `The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node` | `src/stores/sql/mysql.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 

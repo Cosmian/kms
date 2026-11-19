@@ -2052,6 +2052,7 @@ mod tests {
         #[async_trait]
         impl HSM for Hsm {
             async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>>;
+            async fn check_slot(&self, slot_id: usize) -> InterfaceResult<()>;
             async fn find(
                 &self,
                 slot_id: usize,

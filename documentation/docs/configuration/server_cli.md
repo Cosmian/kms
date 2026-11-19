@@ -49,12 +49,13 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, `Kryoptic`,
+          and `Idemia SPHERE`
           are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, gcp_cloud_hsm, kryoptic, other]
+          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, gcp_cloud_hsm, kryoptic, idemia_sphere, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
@@ -532,7 +533,7 @@ Options:
           [env: KMS_LOG_QUIET=]
 
       --log-to-syslog
-          Log to syslog
+          Log to syslog (ignored on Windows, but accepted so that the shared `kms.toml` template loads)
 
           [env: KMS_LOG_TO_SYSLOG=]
 

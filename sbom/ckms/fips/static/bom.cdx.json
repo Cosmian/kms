@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:10bcbb54-1146-43de-a153-d979fa6d6823",
+  "serialNumber": "urn:uuid:9b76f82b-6705-4f13-bab6-6ba3e15ed6cf",
   "metadata": {
-    "timestamp": "2026-11-19T02:58:43.472007+00:00",
+    "timestamp": "2026-11-19T17:04:13.438188+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/j0y4nmrz2jxhgcdc1kd7mnh350jmxn11-cosmian-kms-cli-5.29.0.drv",
+      "bom-ref": "/nix/store/la8biicnmnbihq6dakg61mdpkk9vpvj3-cosmian-kms-cli-5.29.0.drv",
       "name": "cosmian-kms-cli",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-cli@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/bvn0z4zamgflijf150sd6bxi7zwb0ys8-cosmian-kms-cli-5.29.0"
+          "value": "/nix/store/wwq6v236sz40zfad413b4n9x9vjsvg2a-cosmian-kms-cli-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/j0y4nmrz2jxhgcdc1kd7mnh350jmxn11-cosmian-kms-cli-5.29.0.drv"
+          "value": "/nix/store/la8biicnmnbihq6dakg61mdpkk9vpvj3-cosmian-kms-cli-5.29.0.drv"
         }
       ]
     }
@@ -22340,17 +22340,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/knip@6.45.0",
+      "bom-ref": "pkg:npm/knip@6.45.1",
       "name": "knip",
-      "version": "6.45.0",
-      "purl": "pkg:npm/knip@6.45.0",
+      "version": "6.45.1",
+      "purl": "pkg:npm/knip@6.45.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:knip:knip:6.45.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:knip:knip:6.45.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -22956,17 +22956,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/prettier@3.9.10",
+      "bom-ref": "pkg:npm/prettier@3.10.0",
       "name": "prettier",
-      "version": "3.9.10",
-      "purl": "pkg:npm/prettier@3.9.10",
+      "version": "3.10.0",
+      "purl": "pkg:npm/prettier@3.10.0",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:prettier:prettier:3.9.10:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:prettier:prettier:3.10.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25029,7 +25029,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/j0y4nmrz2jxhgcdc1kd7mnh350jmxn11-cosmian-kms-cli-5.29.0.drv"
+      "ref": "/nix/store/la8biicnmnbihq6dakg61mdpkk9vpvj3-cosmian-kms-cli-5.29.0.drv"
     }
   ],
   "vulnerabilities": []

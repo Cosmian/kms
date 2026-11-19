@@ -254,6 +254,7 @@ icu_normalizer_data@2.2.0 (1): Unicode-3.0
 icu_properties@2.2.0 (1): Unicode-3.0
 icu_properties_data@2.2.0 (1): Unicode-3.0
 icu_provider@2.2.0 (1): Unicode-3.0
+idemia_sphere_pkcs11_loader@5.29.0 (1): BUSL-1.1
 ident_case@1.0.1 (2): MIT, Apache-2.0
 idna@1.1.0 (2): MIT, Apache-2.0
 idna_adapter@1.2.2 (2): Apache-2.0, MIT
