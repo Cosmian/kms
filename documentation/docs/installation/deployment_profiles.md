@@ -54,7 +54,7 @@ flowchart TD
   Linux and macOS). The KMIP socket server listens on `127.0.0.1` by default: set `socket_server_hostname` to
   `0.0.0.0` if clients use KMIP on port 5696.
 - If audit logging to a file is enabled, each node writes its own file (see the warning in
-  [High-availability](./high_availability_mode.md#deployment-options)).
+  [High-availability](./high_availability_mode.md#file-based-audit-logging)).
 - The nodes share their scheduled jobs and report their state through the database: see
   [Cluster coordination](./cluster_coordination.md).
 
@@ -212,7 +212,7 @@ HAProxy spreads the requests over all the nodes and stops sending requests to a 
 - **two or more HAProxy with Keepalived**: the same, with a VIP over the HAProxy nodes, so that no component is a single
   point of failure.
 
-The configuration of both is described in [High-availability](./high_availability_mode.md).
+The configuration of both is described in [HAProxy and Keepalived](./haproxy_keepalived.md).
 
 ## Database availability
 

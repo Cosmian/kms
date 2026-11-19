@@ -113,6 +113,7 @@
   - [Deploying in a Cosmian Confidential VM](installation/marketplace_guide.md)
   - [High-availability](installation/high_availability_mode.md)
   - [Deployment profiles](installation/deployment_profiles.md)
+  - [HAProxy and Keepalived](installation/haproxy_keepalived.md)
   - [Cluster coordination](installation/cluster_coordination.md)
   - [Upgrading from 5.x to 6.0](installation/upgrade_5_to_6.md)
 - [Configuration]()

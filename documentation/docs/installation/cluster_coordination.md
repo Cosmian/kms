@@ -155,7 +155,7 @@ Example response from a node with one HSM:
 {"status":"UP","latency_ms":3,"dependencies":{"database":{"name":"postgres","status":"UP","latency_ms":2},"hsm":[{"name":"hsm","status":"UP","latency_ms":0}]}}
 ```
 
-With the HAProxy configuration of the [High-availability](./high_availability_mode.md) page (`http-check expect
+With the HAProxy configuration of the [HAProxy and Keepalived](./haproxy_keepalived.md) page (`http-check expect
 status 200`), a `DEGRADED` node stays in the load-balancing pool, so it keeps serving the requests that do not use
 the failing HSM.
 
