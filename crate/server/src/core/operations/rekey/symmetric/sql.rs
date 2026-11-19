@@ -541,7 +541,7 @@ mod tests {
         kms.encrypt(
             Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-                data: Some(Zeroizing::new(data.to_vec()).into()),
+                data: Some(data.to_vec().into()),
                 ..Encrypt::default()
             },
             user,

@@ -38,10 +38,16 @@ use crate::ttlv::{KmipBigInt, TtlvError};
 type Result<T> = std::result::Result<T, TtlvError>;
 
 /// Serde `Deserializer` for a KMIP `BigInt` value.
-#[derive(Debug)]
 pub struct KmipBigIntDeserializer {
     sign: i8,
     u32_be: VecDeque<u32>,
+}
+
+/// Never prints the limbs (they may be a private key component).
+impl std::fmt::Debug for KmipBigIntDeserializer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KmipBigIntDeserializer(<{} limbs>)", self.u32_be.len())
+    }
 }
 
 impl KmipBigIntDeserializer {

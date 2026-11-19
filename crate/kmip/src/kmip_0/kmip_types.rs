@@ -264,7 +264,7 @@ impl fmt::Debug for CredentialValue {
                 .field("hashing_algorithm", hashing_algorithm)
                 .field("hashed_password", &R)
                 .finish(),
-            Self::Ticket { .. } => f.write_str("Ticket { ticket: <redacted> }"),
+            Self::Ticket { ticket } => f.debug_struct("Ticket").field("ticket", ticket).finish(),
         }
     }
 }

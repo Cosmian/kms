@@ -729,12 +729,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
         );
         let element = self.fetch_element()?;
         if let TTLValue::BigInteger(bi) = &element.value {
-            trace!("   ... assuming deserialization of BigInteger: {:?}", bi);
+            trace!("   ... assuming deserialization of BigInteger: {bi:?}");
             let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
             return visitor.visit_seq(seq_access);
         }
         if let TTLValue::ByteString(bs) = &element.value {
-            trace!("   ... assuming deserialization of ByteString: {:?}", bs);
+            trace!(
+                "   ... assuming deserialization of ByteString: <{} bytes>",
+                bs.len()
+            );
             let deserializer = ByteStringDeserializer::new(bs);
             return visitor.visit_seq(deserializer);
         }

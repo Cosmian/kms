@@ -1924,7 +1924,7 @@ impl From<Sign> for kmip_2_1::kmip_operations::Sign {
                 .unique_identifier
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
-            data: value.data.map(|d| d.to_vec().into()),
+            data: value.data,
             digested_data: value.digested_data,
             correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,

@@ -356,9 +356,7 @@ fn key_wrapped_by(wrapping_key_uid: &str, ciphertext: &[u8]) -> Object {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(
-                Zeroizing::new(ciphertext.to_vec()).into(),
-            )),
+            key_value: Some(KeyValue::ByteString(ciphertext.to_vec().into())),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
             key_wrapping_data: Some(key_wrapping_data),

@@ -32,7 +32,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::log_init;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
-use zeroize::Zeroizing;
 
 use crate::{result::KResult, tests::test_utils};
 
@@ -512,7 +511,7 @@ where
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(SIGN_DATA.to_vec()).into()),
+            data: Some(SIGN_DATA.to_vec().into()),
             ..Default::default()
         },
     )
@@ -541,7 +540,7 @@ async fn test_sign_deactivated_key_rejected() -> KResult<()> {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(SIGN_DATA.to_vec()).into()),
+            data: Some(SIGN_DATA.to_vec().into()),
             ..Default::default()
         },
     )
@@ -570,7 +569,7 @@ async fn test_sign_compromised_key_rejected() -> KResult<()> {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(SIGN_DATA.to_vec()).into()),
+            data: Some(SIGN_DATA.to_vec().into()),
             ..Default::default()
         },
     )

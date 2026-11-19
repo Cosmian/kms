@@ -402,7 +402,7 @@ impl EncryptAction {
         // Generate the ephemeral key (DEK)
         let rng = KmsRng::new();
         let dek = generate_dek(&rng, data_encryption_algorithm)?;
-        trace!("dek (len={}): {dek:?}", dek.len());
+        trace!("dek (len={})", dek.len());
 
         // First export the KEK locally
         let wrapping_key = export_object(

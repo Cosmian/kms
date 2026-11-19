@@ -15,10 +15,23 @@ use crate::{error::KmipError, kmip_0::kmip_types::ErrorReason};
 /// policy string in UTF8 encoded bytes 2. encryption policy string in UTF8
 /// encoded bytes 3. LEB128 unsigned length of additional metadata 4. additional
 /// metadata encrypted in the header by the DEM 5. plaintext data to encrypt
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(PartialEq, Eq, Default)]
 pub struct DataToEncrypt {
     pub encryption_policy: Option<String>,
     pub plaintext: Vec<u8>,
+}
+
+/// Never prints the plaintext: only its length.
+impl std::fmt::Debug for DataToEncrypt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataToEncrypt")
+            .field("encryption_policy", &self.encryption_policy)
+            .field(
+                "plaintext",
+                &format_args!("<{} bytes>", self.plaintext.len()),
+            )
+            .finish()
+    }
 }
 
 impl DataToEncrypt {

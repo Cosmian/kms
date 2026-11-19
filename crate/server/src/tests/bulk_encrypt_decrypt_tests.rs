@@ -19,9 +19,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 #[cfg(feature = "non-fips")]
 use uuid::Uuid;
-#[cfg(feature = "non-fips")]
-use zeroize::Zeroizing;
 
+#[cfg(feature = "non-fips")]
 #[cfg(feature = "non-fips")]
 use crate::{error::KmsError, result::KResult, tests::test_utils};
 
@@ -178,7 +177,7 @@ fn encrypt_request(
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..CryptographicParameters::default()
         }),
-        data: Some(Zeroizing::new(data).into()),
+        data: Some(data.into()),
         i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC)
             .then(|| vec![0; 16])
             .map(Into::into),

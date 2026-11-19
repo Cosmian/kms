@@ -19,7 +19,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use serde_json::{Value, json};
-use zeroize::Zeroizing;
 
 use crate::{result::KResult, tests::test_utils};
 
@@ -165,7 +164,7 @@ where
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::from(key_bytes).into(),
+                    key: key_bytes.into(),
                 },
                 attributes: Some(Box::new(attributes.clone())),
             }),

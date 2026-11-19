@@ -43,7 +43,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
         ));
     };
     let bytes = match key_material {
-        KeyMaterial::ByteString(b) => b.clone(),
+        KeyMaterial::ByteString(b) => b.to_zeroizing(),
         x => {
             return Err(CryptoError::Kmip(format!(
                 "Invalid Key Material for the Covercrypt User Decryption Key: {x}"
@@ -55,7 +55,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "The CoverCrypt Master private key should have attributes: {e}"
         ))
     })?;
-    Ok((bytes.to_zeroizing(), attributes.clone()))
+    Ok((bytes, attributes.clone()))
 }
 
 /// Handles operations on user keys, caching the engine

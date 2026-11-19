@@ -137,7 +137,6 @@ mod tests {
             kmip_types::{CryptographicAlgorithm, CryptographicParameters, Digest, KeyFormatType},
         },
     };
-    use zeroize::Zeroizing;
 
     use crate::{
         error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
@@ -240,9 +239,7 @@ mod tests {
                             key_format_type: KeyFormatType::Raw,
                             key_compression_type: None,
                             key_value: Some(KeyValue::Structure {
-                                key_material: KeyMaterial::ByteString(
-                                    Zeroizing::new(key.clone()).into(),
-                                ),
+                                key_material: KeyMaterial::ByteString(key.clone().into()),
                                 attributes: None,
                             }),
                             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

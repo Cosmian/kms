@@ -154,7 +154,7 @@ pub enum TTLValue {
 }
 
 /// `Debug` never prints `ByteString` / `BigInteger` content: it is whatever the client sent
-/// (keys, plaintext, passwords).
+/// (keys, plaintext, IVs). `TextString` is printed as is.
 impl std::fmt::Debug for TTLValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -621,7 +621,7 @@ async fn post_process_active_private_key(
                     ..
                 }) = key_block.key_value
                 {
-                    *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes).into());
+                    *key_material = KeyMaterial::ByteString(raw_bytes.into());
                 }
             } else if *requested != stored_fmt {
                 kms_bail!(
@@ -893,7 +893,7 @@ async fn process_public_key(
                         ..
                     }) = key_block_mut.key_value
                     {
-                        *key_material = KeyMaterial::ByteString(Zeroizing::from(raw_bytes).into());
+                        *key_material = KeyMaterial::ByteString(raw_bytes.into());
                     }
                 } else if *requested != stored_fmt {
                     kms_bail!(

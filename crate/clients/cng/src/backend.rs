@@ -329,7 +329,7 @@ pub fn import_rsa_private_key(
                     key_format_type: KeyFormatType::PKCS8,
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
-                        key_material: KeyMaterial::ByteString(Zeroizing::new(pkcs8_der.to_vec()).into()),
+                        key_material: KeyMaterial::ByteString(pkcs8_der.to_vec().into()),
                         attributes: Some(Box::new(attributes.clone())),
                     }),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -540,7 +540,7 @@ pub fn encrypt_data(
         let encrypt_op = Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             cryptographic_parameters: Some(params),
-            data: Some(Zeroizing::new(plaintext.to_vec()).into()),
+            data: Some(plaintext.to_vec().into()),
             ..Default::default()
         };
         let resp = client

@@ -640,7 +640,7 @@ mod tests {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(raw).into()),
+                key_material: KeyMaterial::ByteString(raw.into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

@@ -378,7 +378,7 @@ impl DecryptAction {
             },
         )?;
         let dek_key_block = dek_object.key_block_mut()?;
-        dek_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(encapsulation).into()));
+        dek_key_block.key_value = Some(KeyValue::ByteString(encapsulation.into()));
         dek_key_block.key_wrapping_data = Some(KeyWrappingData {
             encoding_option: Some(EncodingOption::NoEncoding),
             ..Default::default()

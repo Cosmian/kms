@@ -179,9 +179,7 @@ mod imp {
                 }
                 key_block.key_format_type = KeyFormatType::OpenPgpPublicKey;
                 key_block.key_value = Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(
-                        zeroize::Zeroizing::new(pub_armored).into(),
-                    ),
+                    key_material: KeyMaterial::ByteString(pub_armored.into()),
                     attributes: nested_attrs,
                 });
             }

@@ -701,7 +701,7 @@ pub(crate) async fn kms_import_object_async(
             cryptographic_length,
             key_format_type: KeyFormatType::Raw,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(secret_data_value).into()),
+                key_material: KeyMaterial::ByteString(secret_data_value.into()),
                 attributes: Some(Box::new(attributes.clone())),
             }),
             key_compression_type: None,
@@ -842,7 +842,7 @@ async fn kms_encrypt_async(
             encrypt_ctx.remote_object_id.clone(),
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
-        data: Some(Zeroizing::new(data).into()),
+        data: Some(data.into()),
         i_v_counter_nonce: encrypt_ctx.iv.clone().map(Into::into),
         authenticated_encryption_additional_data: encrypt_ctx.aad.clone().map(Into::into),
         ..Default::default()

@@ -654,7 +654,7 @@ pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
             .concat();
             let mut wrapped_object = object.clone();
             let wrapped_block = wrapped_object.key_block_mut()?;
-            wrapped_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped).into()));
+            wrapped_block.key_value = Some(KeyValue::ByteString(wrapped.into()));
             wrapped_block.key_wrapping_data = Some(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 encryption_key_information: Some(EncryptionKeyInformation {

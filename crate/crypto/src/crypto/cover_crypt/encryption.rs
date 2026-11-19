@@ -127,8 +127,8 @@ impl CoverCryptEncryption {
         let ctx = Aes256Gcm::new(key).encrypt(&nonce, ptx, ad)?;
         let res = [&nonce.0, &*ctx].concat();
         debug!(
-            "Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}",
-            ad,
+            "Encrypted data with auth data of {} bytes, len (Plain/Enc): {}/{}",
+            ad.map_or(0, <[u8]>::len),
             ptx.len(),
             res.len(),
         );

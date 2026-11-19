@@ -8,7 +8,6 @@ use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use time::OffsetDateTime;
-use zeroize::Zeroizing;
 
 use super::{
     kmip_attributes::{Attribute, Attributes},
@@ -1576,7 +1575,7 @@ impl TryFrom<&[u8]> for DecryptedData {
         let metadata = de.read_vec()?;
 
         // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize()).into();
+        let plaintext = de.finalize().into();
 
         Ok(Self {
             metadata,
@@ -3459,7 +3458,7 @@ mod tests {
         .filter(|t| t.len() > 6)
         .map(ToOwned::to_owned)
         .collect();
-        assert!(!limbs.is_empty());
+        assert_ne!(limbs.len(), 0);
         let byte_list = format!("{MARKER:?}");
         let check = |what: &str, op: &dyn Debug, display: Option<&dyn Display>| {
             let mut outputs = vec![format!("{op:?}")];

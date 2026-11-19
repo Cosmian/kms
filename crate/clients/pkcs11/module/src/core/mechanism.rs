@@ -158,7 +158,7 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
             }
             let mut iv = [0_u8; AES_IV_SIZE];
             iv.copy_from_slice(iv_slice);
-            debug!("parse_mechanism: iv: {iv:?}");
+            debug!("parse_mechanism: iv: {} bytes", iv.len());
             match mechanism.mechanism {
                 CKM_AES_CBC_PAD => Ok(Mechanism::AesCbcPad { iv }),
                 _ => Ok(Mechanism::AesCbc { iv }),

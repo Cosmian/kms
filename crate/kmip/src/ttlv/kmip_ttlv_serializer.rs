@@ -158,17 +158,17 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i8(self, v: i8) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i16(self, v: i16) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
         if let Some(ref mut acc) = self.byte_accumulator {
             let byte = u8::try_from(v).map_err(|e| {
@@ -189,17 +189,17 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u8(self, v: u8) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u16(self, v: u16) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
         match i32::try_from(v) {
             Ok(v32) => self.serialize_i32(v32),
@@ -240,19 +240,19 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         ))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_char(self, v: char) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::TextString(format!("{v}"));
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_str(self, v: &str) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::TextString(v.to_owned());
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
         if let Ok(current) = self.current_mut() {
             current.value = TTLValue::ByteString(v.to_owned());

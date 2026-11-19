@@ -48,9 +48,7 @@ impl<T: Zeroize> Sensitive<T> {
     pub fn new(value: T) -> Self {
         Self(Zeroizing::new(value))
     }
-}
 
-impl<T: Zeroize> Sensitive<T> {
     /// Moves the secret out as a plain `Zeroizing`, without copying.
     #[must_use]
     pub fn into_zeroizing(self) -> Zeroizing<T> {
@@ -100,7 +98,8 @@ impl AsRef<[u8]> for SensitiveBytes {
 
 /// Constant-time comparison (length is not secret); XOR-folds every byte.
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).fold(0_u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.len() == b.len()
+        && std::hint::black_box(a.iter().zip(b).fold(0_u8, |acc, (x, y)| acc | (x ^ y))) == 0
 }
 
 impl<T: Zeroize + AsRef<[u8]>> PartialEq for Sensitive<T> {

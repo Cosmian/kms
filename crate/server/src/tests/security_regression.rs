@@ -60,7 +60,7 @@ async fn test_encrypt_no_plaintext_in_traces() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(sensitive_plaintext.to_vec()).into()),
+        data: Some(sensitive_plaintext.to_vec().into()),
         ..Default::default()
     };
 
@@ -101,7 +101,7 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(plaintext.to_vec()).into()),
+                data: Some(plaintext.to_vec().into()),
                 ..Default::default()
             },
             &UserId::from("test_user"),
@@ -318,7 +318,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(plaintext.to_vec()).into()),
+                data: Some(plaintext.to_vec().into()),
                 ..Default::default()
             },
             &owner,

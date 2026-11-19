@@ -132,7 +132,7 @@ pub(super) fn encrypt(client: &SocketClient, key_id: &str, data: &[u8], aad: Opt
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         ..Default::default()
                     }),
-                    data: Some(Zeroizing::new(data.to_vec()).into()),
+                    data: Some(data.to_vec().into()),
                     i_v_counter_nonce: None,
                     correlation_value: None,
                     init_indicator: None,

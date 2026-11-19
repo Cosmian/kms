@@ -423,7 +423,7 @@ fn decrypt_single(
                     let shared_secret = ml_kem_decapsulate(&priv_bytes, ciphertext)?;
                     return Ok(DecryptResponse {
                         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(Zeroizing::from(shared_secret).into()),
+                        data: Some(shared_secret.into()),
                         correlation_value: request.correlation_value.clone(),
                     });
                 }
@@ -443,7 +443,7 @@ fn decrypt_single(
                     let shared_secret = hybrid_kem_decapsulate(algo, &priv_bytes, ciphertext)?;
                     return Ok(DecryptResponse {
                         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(Zeroizing::from(shared_secret).into()),
+                        data: Some(shared_secret.into()),
                         correlation_value: request.correlation_value.clone(),
                     });
                 }
@@ -518,7 +518,7 @@ fn decrypt_single_with_symmetric_key(
         .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
         return Ok(Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(Zeroizing::from(plaintext).into()),
+            data: Some(plaintext.into()),
             correlation_value: request.correlation_value.clone(),
         }));
     }
@@ -556,12 +556,18 @@ fn decrypt_single_with_symmetric_key(
     let padding_method = padding_method(request.cryptographic_parameters.as_ref(), aead);
     if aead.nonce_size() == 0 {
         trace!(
-            "ciphertext (ECB): {ciphertext:?}, aad: {aad:?}, padding_method: {padding_method:?}"
+            "ciphertext (ECB): {} bytes, aad: {} bytes, padding_method: {padding_method:?}",
+            ciphertext.len(),
+            aad.len()
         );
     } else {
         trace!(
-            "ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?}, \
-             padding_method: {padding_method:?}"
+            "ciphertext: {} bytes, nonce: {} bytes, aad: {} bytes, tag: {} bytes, \
+             padding_method: {padding_method:?}",
+            ciphertext.len(),
+            nonce.len(),
+            aad.len(),
+            tag.len()
         );
     }
     let plaintext = sym_decrypt(
@@ -722,7 +728,7 @@ fn decrypt_multi_part(
                         tag,
                     )?;
                 }
-                state.tag = Some(tag.clone().to_vec());
+                state.tag = Some(tag.to_vec());
             }
             let mut output = Zeroizing::new(
                 state
@@ -959,7 +965,6 @@ mod tests {
         cosmian_kms_interfaces::GCM_MAX_INVOCATIONS,
     };
     use futures::future::join_all;
-    use zeroize::Zeroizing;
 
     use crate::{
         core::KMS, error::KmsError, middlewares::UserId, result::KResult,
@@ -1017,7 +1022,7 @@ mod tests {
         let encrypt = |data: Vec<u8>, iv: Option<Vec<u8>>, iv_length: Option<i32>| Encrypt {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(None, iv_length)),
-            data: Some(Zeroizing::new(data).into()),
+            data: Some(data.into()),
             i_v_counter_nonce: iv.map(Into::into),
             ..Encrypt::default()
         };
@@ -1128,7 +1133,7 @@ mod tests {
         let encrypt = |data: &[u8], iv: Option<Vec<u8>>| Encrypt {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(None, None)),
-            data: Some(Zeroizing::new(data.to_vec()).into()),
+            data: Some(data.to_vec().into()),
             i_v_counter_nonce: iv.map(Into::into),
             ..Encrypt::default()
         };
@@ -1264,7 +1269,7 @@ mod tests {
         Encrypt {
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             cryptographic_parameters: Some(gcm(None, None)),
-            data: Some(Zeroizing::new(data.to_vec()).into()),
+            data: Some(data.to_vec().into()),
             ..Encrypt::default()
         }
     }

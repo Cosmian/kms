@@ -54,7 +54,7 @@ impl CovercryptDecryption {
         ad: Option<&[u8]>,
         usk: &UserSecretKey,
     ) -> CryptoResult<Zeroizing<Vec<u8>>> {
-        trace!("decrypt: ad: {ad:?}");
+        trace!("decrypt: ad: {} bytes", ad.map_or(0, <[u8]>::len));
 
         let mut de = Deserializer::new(encrypted_bytes);
 

@@ -1230,7 +1230,7 @@ async fn cse_wrapped_key_decrypt(
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
-    Ok(data.to_zeroizing())
+    Ok(data.into_zeroizing())
 }
 
 /// Encrypt a key

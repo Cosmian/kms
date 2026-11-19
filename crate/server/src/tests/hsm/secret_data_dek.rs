@@ -9,7 +9,6 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use crate::{
     error::KmsError,
@@ -108,7 +107,7 @@ fn create_secret_data(secret_id: &str, data: Vec<u8>) -> Object {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(data).into()),
+                key_material: KeyMaterial::ByteString(data.into()),
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::SecretData),
                     unique_identifier: Some(UniqueIdentifier::TextString(secret_id.to_owned())),
