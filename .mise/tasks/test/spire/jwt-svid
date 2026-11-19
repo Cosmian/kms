@@ -612,6 +612,8 @@ fi
 print_status "Step 10: Running Playwright E2E tests with JWT-SVID..."
 export PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
 export TEST_JWT_SVID_TOKEN="${JWT_TOKEN}"
+# The server verifies client certificates against the SPIRE CA: send only the bearer token.
+export PLAYWRIGHT_NO_CLIENT_CERT=1
 export TEST_SPIFFE_ID="${WORKLOAD_SPIFFE_ID}"
 if [[ "${STRICT}" -eq 1 ]]; then
   export TEST_JWT_STRICT=1
