@@ -104,7 +104,7 @@ print_success "KMS ready (PID=${KMS_PID})."
 
 # ── Step 6: PKI CA key + AppRoles ─────────────────────────────────────────────
 print_header "Step 6: PKI CA key + AppRoles"
-CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key")"
 
 _VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
 cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'

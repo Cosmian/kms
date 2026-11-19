@@ -281,7 +281,7 @@ wait_kms_ready "${KMS_LOG_FILE}" "bootstrap"
 
 # Not in a command substitution: kms_write_ckms_conf records its temp dir in a global that
 # kms_stop (called from cleanup) removes.
-kms_write_ckms_conf "${KMS_URL_LOCAL}" >/dev/null
+kms_write_ckms_conf "${KMS_URL_LOCAL}" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key" >/dev/null
 CKMS_CONF="${KMS_CKMS_CONF}"
 _VAULT_EXT_FILE="${WORK_DIR}/vault_pki_ca_ext"
 cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'

@@ -344,6 +344,8 @@ sequenceDiagram
 
 After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
 
+Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin` = `default_username`, signed by the test CA; trusted via `[tls] clients_ca_cert_file` in `test_data/spire/config/kms.toml`), passed to `kms_write_ckms_conf`. With the Vault token verifier as the only auth method the KMS answers 401 to token-less requests, so the default-user fallback no longer applies.
+
 #### Architecture Overview
 
 ```mermaid
@@ -369,7 +371,7 @@ graph TB
     SSA --> |X.509-SVID + JWT-SVID| Mistral
     SBA --> |X.509-SVID + JWT-SVID| Mistral
     Mistral --> |mTLS + JWT-SVID| KMS3
-    CKMS --> |certify, provision| KMS3
+    CKMS --> |certify, provision (mTLS admin)| KMS3
 ```
 
 #### Sequence Diagram
@@ -459,7 +461,7 @@ sequenceDiagram
     CKMS->>CKMS: build KMS (no insecure feature), ckms, auth-verifier
     CKMS->>Auth: start auth-verifier on :8443
     CKMS->>K0: start KMS bootstrap
-    CKMS->>K0: certify vault_pki_ca_cert
+    CKMS->>K0: certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>Auth: provision AppRoles
     Auth-->>CKMS: ROLE_ID_A, SECRET_ID_A
     CKMS->>SP: docker compose up spire-server-a
@@ -595,7 +597,7 @@ graph TB
     end
 
     AuthVrf3 --> |AppRole provisioning| KMS6
-    CKMS4 --> |certify, keys create| KMS6
+    CKMS4 --> |certify, keys create (mTLS admin)| KMS6
     TestScript --> CKMS4
     TestScript --> AuthVrf3
 ```
@@ -616,7 +618,7 @@ sequenceDiagram
     Test->>Cargo: build ckms CLI
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -658,7 +660,7 @@ graph TB
     SP_Agt2 --> |SDS delivery| Envoy_D2
     Envoy_D2 --> |mTLS| Envoy_U2
     AuthVrf4 --> |AppRole provisioning| KMS7
-    CKMS5 --> |certify, provision| KMS7
+    CKMS5 --> |certify, provision (mTLS admin)| KMS7
     TestSDS2 --> |orchestrates| DockerCompose
 ```
 
@@ -680,7 +682,7 @@ sequenceDiagram
     Test->>Cargo: build KMS server, auth-verifier, ckms
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A

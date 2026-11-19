@@ -12,7 +12,7 @@
 #   kms_start [port] [sqlite_path] [extra_cargo_args...]
 #   kms_start_from_bin <binary> [--config <path>] [extra_bin_args...]
 #   kms_stop
-#   kms_write_ckms_conf [url]
+#   kms_write_ckms_conf [url] [client_cert_pem] [client_key_pem]
 #
 # Globals set:
 #   KMS_PID, KMS_CONFIG_FILE, KMS_LOG_FILE, KMS_PORT, KMS_URL, KMS_CKMS_CONF
@@ -149,7 +149,8 @@ kms_start_from_bin() {
 }
 
 # Write a ckms.toml config file pointing to the running server.
-# Usage: kms_write_ckms_conf [url]
+# Usage: kms_write_ckms_conf [url] [client_cert_pem] [client_key_pem]
+#   When both PEM paths are given, ckms authenticates with that mTLS client cert.
 # Sets: KMS_CKMS_CONF
 # Returns the path to the written file.
 kms_write_ckms_conf() {
@@ -160,6 +161,12 @@ kms_write_ckms_conf() {
 [http_config]
 server_url = "${url}"
 EOF
+  if [ -n "${2:-}" ] && [ -n "${3:-}" ]; then
+    cat >>"${KMS_CKMS_CONF}" <<EOF
+tls_client_pem_cert_path = "${2}"
+tls_client_pem_key_path = "${3}"
+EOF
+  fi
   echo "${KMS_CKMS_CONF}"
 }
 
