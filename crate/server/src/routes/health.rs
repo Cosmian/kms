@@ -12,7 +12,7 @@ use actix_web::{
 };
 use cosmian_kms_interfaces::InterfaceResult;
 use cosmian_kms_server_database::MainDbKind;
-use cosmian_logger::info;
+use cosmian_logger::{info, warn};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
@@ -131,6 +131,20 @@ const DB_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// Longest time `/health` waits for one HSM slot to answer.
 const HSM_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// What the public `/health` says when the database check fails: the error itself (driver, host,
+/// user, SQL state, file paths...) goes to the server log only.
+const DB_ERROR_PUBLIC: &str = "database check failed (details in the server log)";
+
+/// What the public `/health` says when an HSM call fails: the PKCS#11 error goes to the server
+/// log only.
+const HSM_ERROR_PUBLIC: &str = "the HSM returned an error (details in the server log)";
+
+/// Log the detail of a failed check and return the fixed text that `/health` may show.
+fn log_and_redact(what: &str, detail: impl std::fmt::Display, public: &'static str) -> String {
+    warn!("health check: {what}: {detail}");
+    public.to_owned()
+}
+
 async fn probe_database(
     timeout: Duration,
     check: impl Future<Output = Result<(), String>>,
@@ -175,8 +189,8 @@ impl HsmProbes {
 
 fn probe_result(joined: Result<InterfaceResult<()>, tokio::task::JoinError>) -> Result<(), String> {
     joined
-        .map_err(|e| format!("probe task failed: {e}"))?
-        .map_err(|e| e.to_string())
+        .map_err(|e| log_and_redact("HSM probe task", e, HSM_ERROR_PUBLIC))?
+        .map_err(|e| log_and_redact("HSM", e, HSM_ERROR_PUBLIC))
 }
 
 /// Run `check` for one slot with a bounded wait, at most one probe in flight, and a short cache.
@@ -257,7 +271,13 @@ async fn health_dependencies(kms: &Arc<KMS>) -> (DependencyHealth, Vec<Dependenc
     // Both probes run concurrently so a silent database and a silent HSM cost 2 s, not 4 s.
     let database = async {
         let start = Instant::now();
-        let check = probe_database(DB_PROBE_TIMEOUT, kms.database.health_check()).await;
+        let check = probe_database(DB_PROBE_TIMEOUT, async {
+            kms.database
+                .health_check()
+                .await
+                .map_err(|e| log_and_redact(db_name, e, DB_ERROR_PUBLIC))
+        })
+        .await;
         dependency(db_name, start, check)
     };
 
@@ -320,10 +340,33 @@ fn kmip_socket_dependency(kms: &KMS) -> Option<DependencyHealth> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use cosmian_kms_interfaces::InterfaceError;
+
     use super::*;
 
     const TIMEOUT: Duration = Duration::from_millis(50);
     const TTL: Duration = Duration::from_millis(100);
+
+    #[tokio::test]
+    async fn error_details_are_logged_not_returned() {
+        let detail =
+            "password authentication failed for user \"kms\" at 10.0.0.5:5432, slot 1 rc=0x30";
+
+        let hsm_error = probe_result(Ok(Err(InterfaceError::Default(detail.to_owned()))));
+        assert_eq!(hsm_error, Err(HSM_ERROR_PUBLIC.to_owned()));
+
+        let aborted = tokio::spawn(std::future::pending::<InterfaceResult<()>>());
+        aborted.abort();
+        assert_eq!(
+            probe_result(aborted.await),
+            Err(HSM_ERROR_PUBLIC.to_owned())
+        );
+
+        assert_eq!(
+            log_and_redact("postgres", detail, DB_ERROR_PUBLIC),
+            DB_ERROR_PUBLIC
+        );
+    }
 
     #[tokio::test]
     async fn hung_hsm_times_out_and_is_never_probed_twice() {

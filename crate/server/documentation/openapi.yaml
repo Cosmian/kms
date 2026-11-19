@@ -1952,6 +1952,10 @@ paths:
                             type: integer
                           message:
                             type: string
+                            description: >
+                              Only when DOWN. A fixed text, never the detail of the error, which is written
+                              to the server log: `database check failed (details in the server log)` or
+                              `no answer within 2000 ms`.
                       hsm:
                         type: array
                         items:
@@ -1966,6 +1970,12 @@ paths:
                               type: integer
                             message:
                               type: string
+                              description: >
+                                Only when DOWN. A fixed text prefixed with `slot <id>: `, never the detail of
+                                the error, which is written to the server log:
+                                `the HSM returned an error (details in the server log)`,
+                                `no answer within 2000 ms` or
+                                `the previous probe is still waiting for the HSM`.
                       kmip:
                         type: object
                         description: Only present when the KMIP socket server is enabled.
@@ -1979,6 +1989,8 @@ paths:
                             type: integer
                           message:
                             type: string
+                            description: >
+                              Only when DOWN: `the KMIP socket server is not running (details in the server log)`.
               example:
                 status: UP
                 latency_ms: 3

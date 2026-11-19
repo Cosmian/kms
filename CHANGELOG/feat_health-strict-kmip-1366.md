@@ -8,6 +8,12 @@
 - When the KMIP socket server is enabled, `/health` reports it as a `kmip` dependency, and a node whose socket server
   has stopped is `DEGRADED`. The check looks at the socket server task: it does not open a connection to the KMIP port.
 
+## Security
+
+- The `message` of a `DOWN` dependency in the public `GET /health` is now a fixed text. The detail of the error (database
+  driver text with host, user or file paths, PKCS#11 return code) is written to the server log as `health check: ...`
+  instead of being returned to any caller.
+
 ## Documentation
 
 - The [Cluster coordination](documentation/docs/installation/cluster_coordination.md),

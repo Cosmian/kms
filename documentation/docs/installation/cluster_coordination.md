@@ -175,6 +175,20 @@ for 2 seconds, and at most one probe per slot runs at a time: while a probe is s
 `/health` calls report the slot `DOWN` without starting another one, so repeated health checks cannot exhaust the
 server's threads.
 
+The `message` of a `DOWN` dependency never carries the detail of the error (database driver text, host, user, PKCS#11
+return code): the public endpoint could otherwise show it to anyone who can reach the port, and the detail is written
+to the server log instead. The message is one of these fixed texts, and an HSM message is prefixed with `slot <id>:`:
+
+| Message | Meaning |
+| ------- | ------- |
+| `database check failed (details in the server log)` | the database check returned an error |
+| `the HSM returned an error (details in the server log)` | an HSM call returned an error |
+| `no answer within 2000 ms` | the database or the HSM slot did not answer in time |
+| `the previous probe is still waiting for the HSM` | an earlier probe of the slot has not ended yet |
+| `the KMIP socket server is not running (details in the server log)` | the socket server task has ended |
+
+Look for lines starting with `health check:` in the server log to see the detail.
+
 !!! note "HSM status depends on the PKCS#11 library"
     The HSM check asks each configured slot for its list of mechanisms. Some PKCS#11 libraries (for example
     Crypt2pay) answer from local data and do not report an HSM that has become unreachable: such a failure then only
