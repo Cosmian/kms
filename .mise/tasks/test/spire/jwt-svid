@@ -145,17 +145,12 @@ wait_kms_ready() {
 }
 
 # Write a KMS TOML config: base test config + UI folder + [idp_auth].
-# Usage: write_kms_config <out_file> <provider_spec> <jwt_svid_auth: true|false> [mtls]
+# Usage: write_kms_config <out_file> <provider_spec> <jwt_svid_auth: true|false>
 # A generated file is required because --config takes precedence and ignores CLI args.
+# The base config already verifies client certificates (mTLS) against the SPIRE CA.
 write_kms_config() {
-  local out="$1" spec="$2" svid="$3" mtls="${4:-}"
-  if [[ -n "${mtls}" ]]; then
-    sed "/\[tls\]/a\\
-clients_ca_cert_file = \"${TEST_DATA}/certs/ca.crt\"
-" "${KMS_CONFIG_FILE}" >"${out}"
-  else
-    cat "${KMS_CONFIG_FILE}" >"${out}"
-  fi
+  local out="$1" spec="$2" svid="$3"
+  cat "${KMS_CONFIG_FILE}" >"${out}"
   cat >>"${out}" <<EOF
 
 [ui_config]
@@ -682,7 +677,7 @@ stop_kms
 
 KMS_MTLS_JWT_LOG="/tmp/kms-spire-mtls-jwt-svid.log"
 KMS_DUAL_CONFIG_FILE="${WORK_DIR}/kms-dual.toml"
-write_kms_config "${KMS_DUAL_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" true mtls
+write_kms_config "${KMS_DUAL_CONFIG_FILE}" "${JWT_PROVIDER_SPEC}" true
 start_kms "${KMS_DUAL_CONFIG_FILE}" "${KMS_MTLS_JWT_LOG}"
 wait_kms_ready "${KMS_MTLS_JWT_LOG}" "mTLS + --jwt-svid-auth"
 print_success "KMS server ready with both mTLS and --jwt-svid-auth."
