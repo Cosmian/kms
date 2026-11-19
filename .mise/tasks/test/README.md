@@ -371,7 +371,7 @@ graph TB
     SSA --> |X.509-SVID + JWT-SVID| Mistral
     SBA --> |X.509-SVID + JWT-SVID| Mistral
     Mistral --> |mTLS + JWT-SVID| KMS3
-    CKMS --> |certify, provision (mTLS admin)| KMS3
+    CKMS -- "certify, provision<br/>mTLS admin" --> KMS3
 ```
 
 #### Sequence Diagram
@@ -597,7 +597,7 @@ graph TB
     end
 
     AuthVrf3 --> |AppRole provisioning| KMS6
-    CKMS4 --> |certify, keys create (mTLS admin)| KMS6
+    CKMS4 -- "certify, keys create<br/>mTLS admin" --> KMS6
     TestScript --> CKMS4
     TestScript --> AuthVrf3
 ```
@@ -660,7 +660,7 @@ graph TB
     SP_Agt2 --> |SDS delivery| Envoy_D2
     Envoy_D2 --> |mTLS| Envoy_U2
     AuthVrf4 --> |AppRole provisioning| KMS7
-    CKMS5 --> |certify, provision (mTLS admin)| KMS7
+    CKMS5 -- "certify, provision<br/>mTLS admin" --> KMS7
     TestSDS2 --> |orchestrates| DockerCompose
 ```
 

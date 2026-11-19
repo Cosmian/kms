@@ -161,6 +161,10 @@ kms_write_ckms_conf() {
 [http_config]
 server_url = "${url}"
 EOF
+  if [ -n "${2:-}${3:-}" ] && { [ -z "${2:-}" ] || [ -z "${3:-}" ]; }; then
+    echo "kms_write_ckms_conf: client cert and key must be given together" >&2
+    return 1
+  fi
   if [ -n "${2:-}" ] && [ -n "${3:-}" ]; then
     cat >>"${KMS_CKMS_CONF}" <<EOF
 tls_client_pem_cert_path = "${2}"

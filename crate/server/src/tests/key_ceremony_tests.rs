@@ -24,9 +24,9 @@ use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation,
     extra::tagging::VENDOR_ID_COSMIAN,
-    kmip_attributes::Attributes,
+    kmip_attributes::{Attribute, Attributes},
     kmip_objects::ObjectType,
-    kmip_operations::{CreateSplitKey, Get, JoinSplitKey},
+    kmip_operations::{CreateSplitKey, Get, JoinSplitKey, SetAttribute},
     kmip_types::{
         CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, UsageLimits, UsageLimitsUnit,
     },
@@ -2341,5 +2341,28 @@ async fn test_split_and_join_store_keys_wrapped_by_server_kek() -> KResult<()> {
         unwrapped_bytes(reconstructed_uid).await?,
         unwrapped_bytes(source_uid).await?
     );
+
+    // Once its owner clears `Sensitive`, a Get of a share with `NotWrapped` returns it unwrapped.
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+            new_attribute: Attribute::Sensitive(false),
+        },
+        &owner,
+    )
+    .await?;
+    let share = kms
+        .get(
+            Get {
+                unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+                key_wrap_type: Some(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::KeyWrapType::NotWrapped,
+                ),
+                ..Default::default()
+            },
+            &owner,
+        )
+        .await?;
+    assert!(!share.object.is_wrapped(), "share must come back unwrapped");
     Ok(())
 }
