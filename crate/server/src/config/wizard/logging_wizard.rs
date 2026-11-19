@@ -127,6 +127,8 @@ pub(crate) fn configure_logging() -> KResult<LoggingConfig> {
         quiet,
         #[cfg(not(target_os = "windows"))]
         log_to_syslog,
+        #[cfg(target_os = "windows")]
+        log_to_syslog: false,
         rolling_log_dir,
         rolling_log_name,
         enable_metering,
