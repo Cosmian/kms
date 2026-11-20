@@ -396,7 +396,6 @@ fn data_object_attribute(data: &dyn DataObject, type_: AttributeType) -> Option<
     match type_ {
         AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
         AttributeType::Id => Some(Attribute::Id(data.remote_id().as_bytes().to_vec())),
-        // TODO(BGR) should we hold zeroizable values here?
         AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
         AttributeType::Application => Some(Attribute::Application(data.application())),
         AttributeType::Private => Some(Attribute::Private(true)),

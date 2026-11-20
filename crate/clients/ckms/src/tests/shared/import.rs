@@ -29,7 +29,6 @@ use crate::{
 
 #[derive(Default, Debug)]
 pub(crate) struct ImportKeyParams {
-    // TODO: should be replaced by ImportKeyAction
     pub(crate) cli_conf_path: String,
     pub(crate) sub_command: String,
     pub(crate) key_file: String,

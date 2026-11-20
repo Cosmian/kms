@@ -557,7 +557,6 @@ cryptoki_fn!(
                 if *pulCount < 1 {
                     return Err(ModuleError::BufferTooSmall);
                 }
-                // TODO: this should be an array.
                 *pSlotList = SLOT_ID;
             }
             *pulCount = 1;
@@ -623,7 +622,6 @@ cryptoki_fn!(
             ulFreePublicMemory: CK_UNAVAILABLE_INFORMATION,
             ulTotalPrivateMemory: CK_UNAVAILABLE_INFORMATION,
             ulFreePrivateMemory: CK_UNAVAILABLE_INFORMATION,
-            // TODO: populate all fields.
             ..Default::default()
         };
         unsafe {

@@ -48,7 +48,6 @@ use crate::{
 /// from a client until the object is destroyed. After an object is destroyed,
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
-// TODO: there are 56 attributes in the specs. Only a handful are implemented here
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {

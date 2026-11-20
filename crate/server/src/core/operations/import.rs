@@ -450,8 +450,6 @@ pub(super) async fn process_public_key(
     // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
     // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
     // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
-    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
-    // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
@@ -587,8 +585,6 @@ pub(super) async fn process_private_key(
     // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
     // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
     // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
-    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
-    // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()

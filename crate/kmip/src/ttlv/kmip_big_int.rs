@@ -47,16 +47,12 @@ impl From<KmipBigInt> for num_bigint_dig::BigInt {
     }
 }
 
-// FIXME: This is a temporary solution to avoid breaking changes in the API.
-// The BigUints must go
 impl From<num_bigint_dig::BigUint> for KmipBigInt {
     fn from(big_int: num_bigint_dig::BigUint) -> Self {
         Self(big_int.into())
     }
 }
 
-// FIXME: This is a temporary solution to avoid breaking changes in the API.
-// The BigUints must go
 impl From<KmipBigInt> for num_bigint_dig::BigUint {
     fn from(val: KmipBigInt) -> Self {
         val.0.to_biguint().unwrap_or_default()

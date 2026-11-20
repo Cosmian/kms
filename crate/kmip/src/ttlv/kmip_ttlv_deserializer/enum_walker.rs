@@ -92,7 +92,7 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_, '_> {
             "tuple_variant of len: {len}, child index: {}, current: {:?}",
             self.de.child_index, self.de.current
         );
-        unimplemented!("tuple_variant");
+        Err(TtlvError::from("tuple variants are not supported in KMIP"))
     }
 
     // Struct variants are represented in JSON as `{ NAME: { K: V, ... } }` so
@@ -106,6 +106,6 @@ impl<'de> VariantAccess<'de> for EnumWalker<'_, '_> {
             "struct_variant with fields: {fields:?}: state:  {:?}",
             self.de.current
         );
-        unimplemented!("struct_variant");
+        Err(TtlvError::from("struct variants are not supported in KMIP"))
     }
 }

@@ -331,8 +331,7 @@ pub trait ObjectsStore {
     /// Adding a required method to this trait would force every backend
     /// (SQL, Redis, HSM stubs) to implement it in the same commit. The default
     /// lets backends compile immediately; each one should replace it with a
-    /// real implementation when ready. A `TODO` comment is added at each
-    /// call site that still uses the default.
+    /// real implementation when ready.
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
         warn!(
             "count_all_non_destroyed not implemented for this ObjectsStore backend — \

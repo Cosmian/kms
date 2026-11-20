@@ -154,8 +154,6 @@ fn build_mask_from_curve(
 /// For more information see documents
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
-///
-/// TODO - Discriminate between EC, ECDH and ECDSA.
 const fn build_algorithm_from_curve(curve: RecommendedCurve) -> CryptographicAlgorithm {
     match curve {
         RecommendedCurve::CURVEED25519 => CryptographicAlgorithm::Ed25519,
