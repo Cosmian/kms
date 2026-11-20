@@ -6,38 +6,10 @@ PWD=$(pwd)
 
 export KMS_CLI_FORMAT=json
 
-### Content of ~/.cosmian/kms.toml.cse
-###
-CKMS_CONF="
-[http_config]
-server_url = \"https://cse.cosmian.com/\"
-access_token = \"eyJhbGciOiJSUzI1NiIsImtpZ...-cf6ZDnK8ns1FynmAU2qA\"
+# Local ckms config (KMS OAuth client + gmail_api_conf); never commit credentials (#1435).
+export CKMS_CONF="${CKMS_CSE_CONF:-${HOME}/.cosmian/cse.cosmian.com.toml}"
 
-[http_config.oauth2_conf]
-client_id = \"996739510374-au9fdbgp72dacrsag267ckg32jf3d3e2.apps.googleusercontent.com\"
-client_secret = \"XXX\"
-authorize_url = \"https://accounts.google.com/o/oauth2/v2/auth\"
-token_url = \"https://oauth2.googleapis.com/token\"
-scopes = [\"openid\", \"email\"]
-
-[gmail_api_conf]
-type = \"service_account\"
-project_id = \"bright-arc-384008\"
-private_key_id = \"XXX\"
-private_key = \"-----BEGIN PRIVATE KEY-----\nXXX\n-----END PRIVATE KEY-----\n\"
-client_email = \"cse-for-gmail@bright-arc-384008.iam.gserviceaccount.com\"
-client_id = \"XXX\"
-auth_uri = \"https://accounts.google.com/o/oauth2/auth\"
-token_uri = \"https://oauth2.googleapis.com/token\"
-auth_provider_x509_cert_url = \"https://www.googleapis.com/oauth2/v1/certs\"
-client_x509_cert_url = \"https://www.googleapis.com/robot/v1/metadata/x509/cse-for-gmail%40bright-arc-384008.iam.gserviceaccount.com\"
-universe_domain = \"googleapis.com\"
-"
-
-cp ~/.cosmian/kms.toml ~/.cosmian/kms.toml.old
-echo "$CKMS_CONF" >~/.cosmian/kms.toml
-
-cargo run --bin ckms login
+cargo run --bin ckms login oauth
 # cargo run --bin ckms sym keys revoke -k google_cse "revoke google_cse key"
 # cargo run --bin ckms sym keys destroy -t google_cse
 #
