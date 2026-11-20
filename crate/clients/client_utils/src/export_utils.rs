@@ -60,7 +60,6 @@ pub enum WrappingAlgorithm {
 /// Return the KMIP tag for a given object
 /// This is required to match the Java library behavior which expects
 /// the first tag to describe the type of object and not simply equal 'Object'
-// TODO: check what is specified by the KMIP norm if any
 pub const fn tag_from_object(object: &Object) -> &'static str {
     match object {
         Object::PublicKey { .. } => "PublicKey",

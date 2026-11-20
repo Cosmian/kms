@@ -265,7 +265,7 @@ fn check_set_delete_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResu
 /// an AES key and a self-signed certificate.
 ///
 /// Ported from `clap/tests/attributes/test_set_attribute.rs`.
-#[ignore = "Too much verbosity"]
+#[ignore = "fails: see #1463"]
 #[tokio::test]
 async fn test_set_attribute() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;

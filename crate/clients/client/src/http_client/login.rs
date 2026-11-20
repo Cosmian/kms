@@ -537,7 +537,6 @@ pub async fn auth_verifier_login(
     config: &AuthVerifierLoginConfig,
     username: &str,
     password: &str,
-    // TODO: remove accept_invalid_certs
     accept_invalid_certs: bool,
     totp_code: Option<&str>,
 ) -> HttpClientResult<AuthVerifierLoginStep> {
@@ -563,7 +562,6 @@ pub async fn auth_verifier_login(
 
     let client = super::HttpClient::instantiate(&super::HttpClientConfig {
         server_url: config.server_url.clone(),
-        // TODO: remove accept_invalid_certs
         accept_invalid_certs,
         custom_headers: Some(vec![format!(
             "Authorization: Basic {}",
