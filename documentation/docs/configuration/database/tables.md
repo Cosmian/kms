@@ -7,9 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema is small and consists of seven tables. The optional
-[PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and
-`kms_audit_control`, in its own, separate database.
+The KMS object-store schema has eight tables shared by all SQL backends, plus `kms_migration_lock` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -21,6 +19,7 @@ The KMS object-store schema is small and consists of seven tables. The optional
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
 | `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
 | `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
+| `kms_migration_lock` | Startup migration coordination row (MySQL, MariaDB, and Percona XtraDB Cluster only) |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -130,7 +129,7 @@ Stores the operations that a given user is allowed to perform on a given object.
 | `permissions` | `json` | The operations granted to the user, serialized as JSON. |
 
 The pair (`id`, `userid`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, userid)`.
+In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, userid)`.
 
 A secondary index `idx_read_access_userid` is created on `userid`.
 
@@ -144,7 +143,7 @@ Stores the tags attached to objects. Tags are used to locate objects by tag.
 | `tag` | `VARCHAR(255)` | A single tag. |
 
 The pair (`id`, `tag`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, tag)`.
+In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, tag)`.
 
 A secondary index `idx_tags_tag_id` on (`tag`, `id`) supports Locate-by-tags lookups.
 
@@ -161,11 +160,20 @@ Known parameters:
 
 | `name` | Meaning |
 | ------ | ------- |
-| `db_state` | The database migration state: `ready` or `upgrading`. |
-| `db_version` | The version of the KMS software that last ran against this database. |
-| `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
-| `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
+| `db_state` | Database migration state (`"ready"` or `"upgrading"`). |
+| `db_version` | KMS version the database was last migrated to. |
+| `attributes_jsonb_converted` | PostgreSQL-only marker recording that `objects.attributes` was converted to `jsonb`. |
+| `wrapping_key_id_backfilled` | One-time marker recording that the `objects.wrapping_key_id` backfill completed. |
+| `certificate_serial_tag_backfilled` | One-time marker recording that the `_serial=<HEX>` tag backfill for existing certificates completed. |
 | `kv_metadata_uid_key` | Hex-encoded 32-byte key, created on first use by the [KV secret store](../secret_backends.md#internal-record-identifiers) or the SSH CA/role API, from which the identifier of each KV path's metadata object (and of the SSH CA/role records) is derived. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
+
+## `kms_migration_lock`
+
+Used on MySQL, MariaDB, and Percona XtraDB Cluster to serialize startup migrations across concurrently starting KMS instances.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `id` | `TINYINT` | Primary key (contains a single coordination row `id = 1`). |
 
 ## crypto_officer_activations
 
