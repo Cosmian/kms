@@ -102,7 +102,7 @@ if [[ "$(uname -s)" == "Linux" ]]; then
 else
   export BAO_ADDR="http://host.docker.internal:${KMS_PORT}"
 fi
-BAO_CACERT_HOST=""
+export BAO_CACERT_HOST=""
 BAO_IMAGE="${BAO_IMAGE:-$(compose_image openbao)}"
 source "${REPO_ROOT}/.mise/scripts/test/openbao/bao_cli.sh"
 
@@ -112,7 +112,7 @@ TOKEN_OTHER="$(BAO_TOKEN='' bao login -method=userpass -token-only username=bob 
 if BAO_TOKEN='' bao login -method=userpass -token-only username=alice password=wrong >/dev/null 2>&1; then
   print_error "userpass login with a wrong password must fail"
 fi
-# Token method: exercises /v1/auth/token/lookup-self through the proxy.
+# Token method: exercises /v1/auth/token/lookup-self through the KMS.
 BAO_TOKEN='' bao login -no-store "${TOKEN_OWNER}" >/dev/null
 APP_TOKEN="$(BAO_TOKEN='' bao write -field=token auth/approle/login role_id="${ROLE_ID}" secret_id="${SECRET_ID}")"
 print_status "userpass and AppRole logins succeeded through the KMS"
