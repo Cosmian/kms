@@ -409,59 +409,9 @@ The KMS server can be configured to clear the database on restart automatically.
 
 ## Database migration
 
-Depending on the KMS database evolution, a migration can happen between 2 versions of the KMS server. It will be clearly
-written in the CHANGELOG.md. In that case, a generic database upgrade mechanism is run on startup.
+When the KMS server starts against an existing database, it checks the recorded database version and runs any pending schema or data updates before opening its HTTP and KMIP ports.
 
-At first, the table `parameters` is responsible for storing the software run's version and the database's state.
-The state can be one of the following:
-
-- `ready`: the database is ready to be used
-- `upgrading`: the database is being upgraded
-
-On startup, the server checks if the software version is greater than the last version run:
-
-- if no, it simply starts;
-- If yes:
-
-    - it looks for all upgrades to apply in order from the last version run to this version;
-    - if there is any to run, it sets an upgrading flag on the db state field in the `parameters` table;
-    - it runs all the upgrades in order.
-    - it sets the flag from upgrading to ready;
-
-On every call to the database, a check is performed on the db state field to check if the database is upgrading. If yes,
-calls fail.
-
-Upgrades resist being interrupted in the middle and resumed from the start if that happens.
-
-### MySQL schema update (5.13.0)
-
-As of version 5.13.0, the MySQL schema was updated to include PRIMARY KEY constraints on the `tags` and `read_access` tables to ensure compatibility with MySQL clustering solutions (e.g., Percona XtraDB Cluster with `pxc_strict_mode=ENFORCING`, MariaDB Galera).
-
-New installations of 5.13.0+ automatically create the corrected tables.
-
-Existing installations upgrading to 5.13.0 will keep the old table definitions if those tables already exist. If you rely on clustering/replication that requires PRIMARY KEYs, apply the following manual migration before starting the KMS:
-
-        -- Fix tags table
-        ALTER TABLE tags
-            DROP INDEX id,
-            MODIFY id VARCHAR(128) NOT NULL,
-            MODIFY tag VARCHAR(255) NOT NULL,
-            ADD PRIMARY KEY (id, tag);
-
-        -- Fix read_access table
-        ALTER TABLE read_access
-            DROP INDEX id,
-            MODIFY id VARCHAR(128) NOT NULL,
-            MODIFY userid VARCHAR(255) NOT NULL,
-            ADD PRIMARY KEY (id, userid);
-
-Notes:
-
-- Run these statements using a privileged MySQL user (e.g., `root`).
-- Ensure application access is paused during the migration.
-- No data loss occurs; this operation converts UNIQUE constraints to PRIMARY KEYs and enforces NOT NULL.
-
-For the operator procedure to follow when moving from 5.x to 6.0 (backup, client changes, verification), see [Upgrading from 5.x to 6.0](../../installation/upgrade_5_to_6.md).
+For supported source versions, multi-instance startup behavior, and recovery steps, see [Database Migrations](../../installation/upgrading/database_migrations.md) and [Upgrading from 5.x to 6.0](../../installation/upgrading/upgrade_5_to_6.md).
 
 ## The Unwrapped Objects Cache
 

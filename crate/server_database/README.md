@@ -85,6 +85,39 @@ KMS_SQLITE_PATH=/path/to/database.db
 KMS_REDIS_URL=redis://host:6379
 ```
 
+## Schema Changes and Migrations
+
+Startup migrations are driven by `Migrate::bootstrap` in [`src/stores/migrate.rs`][migrate-rs].
+
+### Adding a SQL Table, Nullable Column, or Index
+
+Additive schema DDL with no existing-row conversion belongs in `Migrate::ensure_schema`, not in `Migrate::apply_step`:
+
+1. Add named `CREATE TABLE IF NOT EXISTS` and `clean-table-*` queries in [`query.sql`][query-sql] and [`query_mysql.sql`][query-mysql] (plus [`query_sqlite.sql`][query-sqlite] if SQLite syntax differs).
+2. Run the DDL in `Migrate::ensure_schema` across [`sqlite.rs`][sqlite-rs], [`pgsql.rs`][pgsql-rs], and [`mysql.rs`][mysql-rs], and include `clean-table-*` in the `clear_database` path.
+3. If rows reference `objects.id`, reconcile orphans idempotently on every boot in `ensure_schema` rather than behind a one-time marker, because an N-1 downgrade leaves markers set.
+4. Document the table in [`tables.md`][tables-md] (table count, overview row, columns, ER diagram, and `**Downgrade.**` note).
+
+### Adding a Versioned Data Migration (`apply_step`)
+
+One-time backfills or format conversions across releases are registered in [`src/stores/migrate.rs`][migrate-rs]:
+
+1. Add a `MigrationStep` variant with its target `version()` and completion `marker()`, then append it to `MIGRATION_STEPS` in strictly ascending version order.
+2. Implement the match arm in `Migrate::apply_step` in all four backends ([`sqlite.rs`][sqlite-rs], [`pgsql.rs`][pgsql-rs], [`mysql.rs`][mysql-rs], [`redis/migrations/mod.rs`][redis-mig]), returning `Ok(())` where inapplicable.
+3. Keep `apply_step` idempotent and limited to the data change: the runner owns startup locks, `db_state`, completion markers, and `db_version` checkpoints.
+4. Extend the migration scenario tests under `src/tests/` and the released fixtures documented in [`test_data/db_migration/README.md`][fixtures-readme].
+
+[migrate-rs]: ./src/stores/migrate.rs
+[query-sql]: ./src/stores/sql/query.sql
+[query-mysql]: ./src/stores/sql/query_mysql.sql
+[query-sqlite]: ./src/stores/sql/query_sqlite.sql
+[sqlite-rs]: ./src/stores/sql/sqlite.rs
+[pgsql-rs]: ./src/stores/sql/pgsql.rs
+[mysql-rs]: ./src/stores/sql/mysql.rs
+[redis-mig]: ./src/stores/redis/migrations/mod.rs
+[tables-md]: ../../documentation/docs/configuration/database/tables.md
+[fixtures-readme]: ../../test_data/db_migration/README.md
+
 ## Security
 
 - **Encryption**: All sensitive data is encrypted before storage
