@@ -1562,59 +1562,6 @@ pub async fn prepare_kms_server(
             app = app.service(ms_dke_scope);
         }
 
-        let native_auth = NativeAuthStack {
-            kms_server: &kms_server_for_http,
-            use_api_token_auth,
-            use_cert_auth,
-            use_vault_token_auth,
-            auth_verifier: &auth_verifier,
-            auth_verifier_session_realm: &auth_verifier_session_realm,
-            jwt_configurations: &jwt_configurations,
-            spire_cache: &spire_cache,
-            spire_auth_verifier_url: &spire_auth_verifier_url,
-            vault_http_client: &vault_http_client,
-            spire_default_username: &spire_default_username,
-        };
-
-        if enable_kv {
-            // The Vault KV v2-compatible secret store. Accepts native KMS auth and, when
-            // `vault_api_enabled = true`, an `X-Vault-Token` header so that Vault/`bao`
-            // clients (OpenBao) authenticate once.
-            //
-            // The same routes are mounted on `/<kv_mount>` (native clients, kept for backward
-            // compatibility) and on `/v1/<kv_mount>` (what `vault`/`bao` always send), plus the
-            // KV v2 detection the CLI performs first on `/v1/sys/internal/ui/mounts`. The mount
-            // name is validated against the other scopes in `ServerParams::try_from`.
-            let use_any_auth = use_vault_token_auth
-                || use_jwt_auth
-                || use_cert_auth
-                || use_api_token_auth
-                || use_auth_verifier;
-            let kv_mount = &kms_server_for_http.params.kv.mount;
-            let native_path = format!("/{kv_mount}");
-            let v1_path = format!("/v1/{kv_mount}");
-            app = app
-                .service(
-                    kv_scope(
-                        &native_path,
-                        kv::configure_routes,
-                        use_any_auth,
-                        &native_auth,
-                    )
-                    .guard(kv::mount_guard(&native_path)),
-                )
-                .service(
-                    kv_scope(&v1_path, kv::configure_routes, use_any_auth, &native_auth)
-                        .guard(kv::mount_guard(&v1_path)),
-                )
-                .service(kv_scope(
-                    "/v1/sys/internal/ui/mounts",
-                    kv::configure_mount_routes,
-                    use_any_auth,
-                    &native_auth,
-                ));
-        }
-
         if enable_aws_xks {
             // The scope for the AWS XKS (External Key Store) endpoints served from /aws
             let aws_xks_scope = web::scope("/aws")
