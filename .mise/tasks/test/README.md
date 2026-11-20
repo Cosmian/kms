@@ -228,12 +228,13 @@ sequenceDiagram
 
 ## 4. Cloud Provider Integrations
 
-**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
+**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:google-cse-remote`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
 
 | Task | Cloud | FIPS? | Credential requirement |
 |------|-------|-------|------------------------|
 | `azure-ekm` | Azure EKM | no | Nix shell; runs the plain + mTLS scripts against a local KMS |
 | `google-cse` | Google CSE | yes | OAuth client + service account key |
+| `google-cse-remote` | Google CSE (cse.cosmian.com, cse.test.cosmian.com) | no | Local only, skipped in CI: `~/.cosmian/cse.cosmian.com.toml` or `CKMS_CSE_CONF` (KMS OAuth `refresh_token` + `gmail_api_conf`) |
 | `gcp-cmek` | GCP CMEK wrapping | yes | Nix shell; `cargo test tests::gcp_cmek --ignored` against a local KMS |
 | `xks` | AWS XKS (local) | no | KMS build + SigV4 test script |
 | `xks-remote` | AWS XKS (remote) | no | Nix shell (`WITH_XKS=1`), `KMS_XKS_SIGV4_ACCESS_KEY_ID` / `KMS_XKS_SIGV4_SECRET_ACCESS_KEY`, no build |
