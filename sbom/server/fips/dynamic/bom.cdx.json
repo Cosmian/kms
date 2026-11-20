@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:989388a3-bc1e-47eb-85e6-e005fff3dc63",
+  "serialNumber": "urn:uuid:fca58e6c-3d89-44d1-9774-c699d16b9f2a",
   "metadata": {
-    "timestamp": "2026-11-20T02:39:30.797428+00:00",
+    "timestamp": "2026-11-20T09:14:32.645487+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/8i7sn4qbx90bi281wh0qvd9mvf3nyzb8-cosmian-kms-server-dynamic-5.29.0.drv",
+      "bom-ref": "/nix/store/k33vya07mx9h8kjhpsq3djcvyiagr4rq-cosmian-kms-server-dynamic-5.29.0.drv",
       "name": "cosmian-kms-server-dynamic",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server-dynamic@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/xxjqr343rcmn4gwjkxr5mrh2irrnfaak-cosmian-kms-server-dynamic-5.29.0"
+          "value": "/nix/store/a3cpbwhz68adi5g73chn31gqnjsrxpvh-cosmian-kms-server-dynamic-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/8i7sn4qbx90bi281wh0qvd9mvf3nyzb8-cosmian-kms-server-dynamic-5.29.0.drv"
+          "value": "/nix/store/k33vya07mx9h8kjhpsq3djcvyiagr4rq-cosmian-kms-server-dynamic-5.29.0.drv"
         }
       ]
     }
@@ -23100,17 +23100,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/prettier@3.10.0",
+      "bom-ref": "pkg:npm/prettier@3.10.1",
       "name": "prettier",
-      "version": "3.10.0",
-      "purl": "pkg:npm/prettier@3.10.0",
+      "version": "3.10.1",
+      "purl": "pkg:npm/prettier@3.10.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:prettier:prettier:3.10.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:prettier:prettier:3.10.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25173,7 +25173,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/8i7sn4qbx90bi281wh0qvd9mvf3nyzb8-cosmian-kms-server-dynamic-5.29.0.drv",
+      "ref": "/nix/store/k33vya07mx9h8kjhpsq3djcvyiagr4rq-cosmian-kms-server-dynamic-5.29.0.drv",
       "dependsOn": [
         "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv"
       ]

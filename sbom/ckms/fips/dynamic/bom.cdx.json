@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:04a206e0-8610-42b9-babc-fb2d96c67370",
+  "serialNumber": "urn:uuid:c149eb74-6456-45af-9637-7bcb1bdaf1b8",
   "metadata": {
-    "timestamp": "2026-11-20T02:40:27.627354+00:00",
+    "timestamp": "2026-11-20T09:15:22.587458+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -22956,17 +22956,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/prettier@3.10.0",
+      "bom-ref": "pkg:npm/prettier@3.10.1",
       "name": "prettier",
-      "version": "3.10.0",
-      "purl": "pkg:npm/prettier@3.10.0",
+      "version": "3.10.1",
+      "purl": "pkg:npm/prettier@3.10.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:prettier:prettier:3.10.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:prettier:prettier:3.10.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",

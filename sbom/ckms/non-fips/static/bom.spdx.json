@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SPDXRef-nix-store-44c0av1c50rm0bz6dsnbjzyf5cah0r65-cosmian-kms-cli-5.29.0.drv",
-  "documentNamespace": "sbomnix://314c1e37-3030-4b18-bc0d-4b397f95e82f",
+  "documentNamespace": "sbomnix://6f5c50e2-91dd-438f-bad0-4d7290f14e95",
   "creationInfo": {
-    "created": "2026-11-20T02:44:50.882296+00:00",
+    "created": "2026-11-20T09:23:45.756750+00:00",
     "creators": [
       "Tool: sbomnix-1.8.0+g30c95eb"
     ]
@@ -16006,8 +16006,8 @@
     },
     {
       "name": "prettier",
-      "SPDXID": "SPDXRef-npm-prettier-3-10-0-887",
-      "versionInfo": "3.10.0",
+      "SPDXID": "SPDXRef-npm-prettier-3-10-1-887",
+      "versionInfo": "3.10.1",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -16016,7 +16016,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:npm/prettier@3.10.0"
+          "referenceLocator": "pkg:npm/prettier@3.10.1"
         }
       ]
     },
@@ -22812,7 +22812,7 @@
     {
       "spdxElementId": "SPDXRef-nix-store-44c0av1c50rm0bz6dsnbjzyf5cah0r65-cosmian-kms-cli-5.29.0.drv",
       "relationshipType": "DYNAMIC_LINK",
-      "relatedSpdxElement": "SPDXRef-npm-prettier-3-10-0-887"
+      "relatedSpdxElement": "SPDXRef-npm-prettier-3-10-1-887"
     },
     {
       "spdxElementId": "SPDXRef-nix-store-44c0av1c50rm0bz6dsnbjzyf5cah0r65-cosmian-kms-cli-5.29.0.drv",
