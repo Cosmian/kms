@@ -1037,7 +1037,7 @@ mod tests {
     /// and forgetting the key drops the lease.
     #[tokio::test]
     async fn test_gcm_invocations_are_leased_by_block() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let uid = "gcm-lease-key";
         for _ in 0..100 {
             db.reserve_gcm_invocations(uid, 1)
