@@ -13,7 +13,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_attributes::{Attribute, CryptographicAlgorithm, Name, ObjectType, State},
         kmip_data_structures::TemplateAttribute,
         kmip_messages::RequestMessageBatchItem,
-        kmip_operations::{Activate, CreateKeyPair, Destroy, GetAttributes, Operation, Revoke},
+        kmip_operations::{
+            Activate, CreateKeyPair, Destroy, GetAttributes, ModifyAttribute, Operation, Revoke,
+        },
         kmip_types::{NameType, OperationEnumeration},
     },
     ttlv::KmipFlavor,
@@ -53,8 +55,8 @@ fn test_aklc_m_3_14() {
     // Step 4: Get state and activation date attributes
     get_activation_attributes(&client, &private_key_id);
 
-    // FIXME: Not Yet Supported
-    // // Step 5: Try to modify activation date (expected to fail)
+    // Step 5: Try to modify activation date (expected to fail)
+    modify_activation_date_fails(&client, &private_key_id);
 
     // Step 6: Revoke the private key
     revoke_key(&client, &private_key_id);
@@ -63,7 +65,6 @@ fn test_aklc_m_3_14() {
     check_key_compromised(&client, &private_key_id);
 
     // Step 8: Check public key state
-    // FIXME: Cosmian makes them compromised by default when the private key is compromised
     check_public_key_state(&client, &public_key_id);
 
     // Step 9: Destroy the private key
@@ -350,6 +351,48 @@ fn activate_key(client: &SocketClient, key_id: &str) {
     info!("Successfully activated the key");
 }
 
+/// Modify the activation date of an Active key: the server must refuse
+fn modify_activation_date_fails(client: &SocketClient, key_id: &str) {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(Box::new(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::ModifyAttribute,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::ModifyAttribute(ModifyAttribute {
+                    unique_identifier: Some(key_id.to_owned()),
+                    attribute: Attribute::ActivationDate(OffsetDateTime::now_utc()),
+                }),
+                message_extension: None,
+            },
+        ))],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("Failed to send ModifyAttribute request");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Expected V14 response message");
+    };
+
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+
+    info!("ModifyAttribute of the activation date was refused as expected");
+}
+
 /// Get activation-related attributes
 fn get_activation_attributes(client: &SocketClient, key_id: &str) {
     let request_message = RequestMessage {
@@ -531,7 +574,6 @@ fn check_key_compromised(client: &SocketClient, key_id: &str) {
     info!("Successfully verified key is in Compromised state");
 }
 
-// FIXME: Cosmian makes them compromised by default when the private key is compromised
 /// Check public key state
 fn check_public_key_state(client: &SocketClient, key_id: &str) {
     let request_message = RequestMessage {

@@ -273,8 +273,6 @@ async fn rearm_rotation_policy(kms: &KMS, handle: ObjectHandle<'_>, interval: i6
 /// old UID is deactivated and disappears from future query results, so stale
 /// entries never cause problems.  On server restart the map is empty; at most one
 /// extra warning fires per key per restart, which is harmless.
-///
-/// Full notification delivery (SMTP, webhook) is wired in a follow-up PR.
 pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<String, i64>) {
     let now = time::OffsetDateTime::now_utc();
     let max_horizon = WARNING_THRESHOLDS_DAYS.iter().copied().max().unwrap_or(30);

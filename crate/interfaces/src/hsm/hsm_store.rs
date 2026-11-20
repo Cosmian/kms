@@ -1721,7 +1721,6 @@ fn to_object_with_metadata(
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 cryptographic_length: Some(length),
                 object_type: Some(ObjectType::SymmetricKey),
-                // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
                     CryptographicUsageMask::Encrypt
                         | CryptographicUsageMask::Decrypt
@@ -1771,7 +1770,6 @@ fn to_object_with_metadata(
                     })?,
                 ),
                 object_type: Some(ObjectType::PrivateKey),
-                // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
                     CryptographicUsageMask::Decrypt
                         | CryptographicUsageMask::UnwrapKey
@@ -1839,7 +1837,6 @@ fn to_object_with_metadata(
                     })? * 8,
                 ),
                 object_type: Some(ObjectType::PublicKey),
-                // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
                     CryptographicUsageMask::Encrypt
                         | CryptographicUsageMask::WrapKey

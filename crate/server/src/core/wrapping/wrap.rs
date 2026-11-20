@@ -508,7 +508,6 @@ pub(crate) async fn wrap_with_local_key(
 
     // Check usage mask for non Certificate objects (after potential unwrap)
     trace!("Checking usage mask for wrapping key {wrapping_key_uid}");
-    // TODO: certs attributes should be checked instead
     if wrapping_key_object.object_type() != ObjectType::Certificate {
         if !wrapping_attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey)? {
             return Err(KmsError::NotSupported(format!(

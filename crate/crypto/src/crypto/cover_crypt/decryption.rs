@@ -126,12 +126,6 @@ impl CovercryptDecryption {
 
         for _ in 0..nb_chunks {
             let ctx = de.read_vec_as_ref()?;
-            // TODO: the encapsulation is opened each time here while its
-            // bulk-encrypt counterpart associates the same encapsulation to
-            // each DEM ciphertext. This incurs a significant performance
-            // penalty and must be addressed. However, since the Covercrypt bulk
-            // data system must be replaced by the generic one, I propose to
-            // deal with both issues at once in a later time.
             let ptx = self.single_decrypt(ctx, ad, usk)?;
             ser.write_vec(&ptx)?;
         }

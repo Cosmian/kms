@@ -1181,7 +1181,6 @@ impl ObjectsStore for RedisWithFindex {
             .map(|tag| Keyword::from(tag.as_bytes()))
             .collect::<HashSet<Keyword>>();
         // find the indexed values that match at least one of the tags
-        // TODO: upon release of `batch_findex`, use `batch_search` instead of `search`
         let mut uids_per_keyword = HashMap::with_capacity(tag_keywords.len());
         for keyword in &tag_keywords {
             let search_result = self
