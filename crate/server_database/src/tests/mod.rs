@@ -40,6 +40,7 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
+mod sqlite_migration_tests;
 mod tagging_tests;
 
 #[cfg(feature = "non-fips")]
@@ -186,109 +187,8 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Ok(())
 }
 
-/// Faithful migration test: build a **legacy** `SQLite` database whose `objects`
-/// table predates the `wrapping_key_id` column, insert a wrapped object row by
-/// hand, then open it with the current [`SqlitePool`]. Opening must add the
-/// column, create its index and backfill the wrapping-key link so the object
-/// becomes discoverable through `find_wrapped_by`.
-#[tokio::test]
-async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
-    use std::collections::HashSet;
-
-    use cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
-        },
-    };
-    use cosmian_kms_interfaces::{ObjectsStore, UserId};
-    use uuid::Uuid;
-
-    log_init(Some("info"));
-    let dir = TempDir::new()?;
-    let db_file = dir.path().join("legacy_sqlite.db");
-
-    let owner = "legacy_owner";
-    let wrapping_key_uid = "legacy_wrapping_key";
-    let wrapped_uid = Uuid::new_v4().to_string();
-
-    // Serialize a wrapped object exactly as the database stores it.
-    let wrapped_obj: Object = serde_json::from_value(serde_json::json!({
-        "SymmetricKey": {
-            "KeyBlock": {
-                "KeyFormatType": "TransparentSymmetricKey",
-                "CryptographicAlgorithm": "AES",
-                "CryptographicLength": 256,
-                "KeyWrappingData": {
-                    "WrappingMethod": "Encrypt",
-                    "EncryptionKeyInformation": { "UniqueIdentifier": wrapping_key_uid },
-                    "EncodingOption": "TTLVEncoding"
-                }
-            }
-        }
-    }))
-    .map_err(|e| DbError::ServerError(format!("failed to build wrapped object: {e}")))?;
-    let object_json =
-        serde_json::to_string(&wrapped_obj).map_err(|e| DbError::ServerError(e.to_string()))?;
-    let attributes_json = serde_json::to_string(&Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        state: Some(State::Active),
-        ..Default::default()
-    })
-    .map_err(|e| DbError::ServerError(e.to_string()))?;
-
-    // ── Create a legacy-schema database (objects table WITHOUT wrapping_key_id) ──
-    {
-        let conn = rusqlite::Connection::open(&db_file)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-        conn.execute_batch(
-            "CREATE TABLE objects (
-                 id VARCHAR(128) PRIMARY KEY,
-                 object VARCHAR NOT NULL,
-                 attributes jsonb NOT NULL,
-                 state VARCHAR(32),
-                 owner VARCHAR(255)
-             );",
-        )
-        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-        conn.execute(
-            "INSERT INTO objects (id, object, attributes, state, owner) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![wrapped_uid, object_json, attributes_json, "Active", owner],
-        )
-        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    } // raw connection is dropped/closed here
-
-    // ── Open with the current backend → triggers the column add + backfill ──
-    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
-
-    // The pre-existing wrapped object must now be discoverable by its wrapping key.
-    let found = pool
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    let found_uids: HashSet<&str> = found.iter().map(|(uid, _, _)| uid.as_str()).collect();
-    if !found_uids.contains(wrapped_uid.as_str()) {
-        return Err(DbError::ServerError(format!(
-            "backfill migration: wrapped object '{wrapped_uid}' should be discoverable via \
-             find_wrapped_by after migration, got: {found_uids:?}"
-        )));
-    }
-
-    // Re-opening must be a no-op (marker set): the object stays discoverable.
-    let pool2 = SqlitePool::instantiate(&db_file, false, None).await?;
-    let found2 = pool2
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    if found2.iter().all(|(uid, _, _)| uid != &wrapped_uid) {
-        return Err(DbError::ServerError(
-            "backfill migration: wrapped object lost after re-opening the database".to_owned(),
-        ));
-    }
-
-    Ok(())
-}
-
 /// A certificate object with serial `0ABBCC` (hex).
+#[cfg(feature = "non-fips")]
 pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_objects::Object {
     use cosmian_kmip::{
         kmip_0::kmip_types::CertificateType,
@@ -319,76 +219,6 @@ pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_object
         certificate_type: CertificateType::X509,
         certificate_value: builder.build().to_der().unwrap(),
     })
-}
-
-/// A certificate stored before the `_serial=<HEX>` tag existed (it only carries `_cert`) gets
-/// the tag when the database is re-opened; the marker is recorded.
-#[tokio::test]
-async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
-    use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
-    use cosmian_kms_interfaces::ObjectsStore;
-
-    const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
-
-    log_init(Some("info"));
-    let dir = TempDir::new()?;
-    let db_file = dir.path().join("serial_tag_sqlite.db");
-    let db_err = |e: rusqlite::Error| DbError::DatabaseError(e.to_string());
-
-    let object = legacy_certificate_object();
-    let object_json =
-        serde_json::to_string(&object).map_err(|e| DbError::ServerError(e.to_string()))?;
-    let attributes_json = serde_json::to_string(&Attributes::default())
-        .map_err(|e| DbError::ServerError(e.to_string()))?;
-
-    // Create the schema, then drop the pool
-    drop(SqlitePool::instantiate(&db_file, true, None).await?);
-    // Seed a legacy certificate (`_cert` tag only) and clear the completion marker
-    {
-        let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
-        conn.execute(
-            "INSERT INTO objects (id, object, attributes, state, owner) \
-             VALUES ('legacy_cert', ?1, ?2, 'Active', 'legacy_owner')",
-            rusqlite::params![object_json, attributes_json],
-        )
-        .map_err(db_err)?;
-        conn.execute(
-            "INSERT INTO tags (id, tag) VALUES ('legacy_cert', '_cert')",
-            [],
-        )
-        .map_err(db_err)?;
-        conn.execute(
-            "DELETE FROM parameters WHERE name = ?1",
-            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-        )
-        .map_err(db_err)?;
-    }
-
-    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
-    let tags = pool.retrieve_tags("legacy_cert").await?;
-    let expected: std::collections::HashSet<String> =
-        ["_cert".to_owned(), "_serial=0ABBCC".to_owned()].into();
-    if tags != expected {
-        return Err(DbError::ServerError(format!(
-            "the backfill must add the serial tag, keeping the existing tags; got {tags:?}"
-        )));
-    }
-    drop(pool);
-
-    let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
-    let marker: String = conn
-        .query_row(
-            "SELECT value FROM parameters WHERE name = ?1",
-            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-            |row| row.get(0),
-        )
-        .map_err(db_err)?;
-    if marker != "true" {
-        return Err(DbError::ServerError(format!(
-            "serial tag backfill marker should be 'true', got '{marker}'"
-        )));
-    }
-    Ok(())
 }
 
 #[ignore = "Requires a running PostgreSQL instance"]
