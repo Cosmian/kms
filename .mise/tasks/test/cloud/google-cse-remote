@@ -24,6 +24,10 @@ if [ -z "${CKMS_CSE_CONF:-}" ]; then
   export CKMS_CSE_CONF
 fi
 
+# The login tests exchange a saved refresh_token; only a browser login (`ckms login oauth`) creates one.
+grep -q '^refresh_token[[:space:]]*=' "${CKMS_CSE_CONF}" ||
+  skip_test "no refresh_token in ${CKMS_CSE_CONF}: add \"offline_access\" to oauth2_conf.scopes, run 'CKMS_CONF=${CKMS_CSE_CONF} ckms login oauth' once"
+
 has_cmd nix-shell || skip_test "nix-shell not found"
 
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
