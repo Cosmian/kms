@@ -838,6 +838,8 @@ cargo run --bin cosmian_kms --features non-fips -- \
 --redis-master-password secret --redis-findex-label label
 ```
 
+For database schema changes and startup migrations (`ensure_schema` vs `apply_step`), see [`crate/server_database/README.md`](./crate/server_database/README.md#schema-changes-and-migrations).
+
 ### 🔧 Server parameters
 
 If a configuration file is provided, parameters are set following this order:
