@@ -2131,7 +2131,7 @@
         "curveHelp": "Used only when no key ID is given.",
         "configureCa": "Configure CA",
         "showPublicKey": "Show CA public key",
-        "caConfigured": "SSH CA configured with private key id: {{keyId}}\\n{{publicKey}}",
+        "caConfigured": "SSH CA configured with private key id: {{keyId}}\n{{publicKey}}",
         "caResponseTitle": "SSH CA",
         "roleTitle": "Signing role",
         "roleIntro": "A role defines which login names (principals) may appear in certificates, who may request them, and their lifetime. Requires the Crypto Officer role.",

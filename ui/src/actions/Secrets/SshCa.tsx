@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Form, Input, Select, Space } from "antd";
+import { Alert, Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
@@ -9,14 +9,15 @@ import * as wasm from "../../wasm/pkg";
 interface CaForm {
     caKeyId?: string;
     curve?: string;
+    sensitive?: boolean;
 }
 
 interface RoleForm {
     name: string;
     allowedPrincipals: string;
     allowedUsers?: string;
-    defaultTtl?: string;
-    maxTtl?: string;
+    defaultTtl: string;
+    maxTtl: string;
 }
 
 type CreateKeyPairResponse = {
@@ -24,6 +25,9 @@ type CreateKeyPairResponse = {
 };
 
 const ROLE_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
+
+// The curves the server accepts for an SSH CA (Ed25519 only exists in non-FIPS builds).
+const SSH_CA_CURVES = ["nist-p256", "nist-p384", "nist-p521", "ed25519"];
 
 const splitList = (value?: string): string[] =>
     (value ?? "")
@@ -43,10 +47,10 @@ const SshCa: React.FC = () => {
     useEffect(() => {
         try {
             const w = wasm as unknown as { get_ec_algorithms?: () => { value: string; label: string }[] };
-            const options = (w.get_ec_algorithms?.() ?? []).filter((o) => /(p-?(256|384|521))|ed25519/i.test(`${o.value} ${o.label}`));
+            const options = (w.get_ec_algorithms?.() ?? []).filter((o) => SSH_CA_CURVES.includes(o.value));
             setCurveOptions(options);
             if (options.length > 0 && !caForm.getFieldValue("curve")) {
-                const preferred = options.find((o) => /p-?256/i.test(`${o.value} ${o.label}`)) ?? options[0];
+                const preferred = options.find((o) => o.value === "nist-p256") ?? options[0];
                 caForm.setFieldsValue({ curve: preferred.value });
             }
         } catch (e) {
@@ -58,7 +62,13 @@ const SshCa: React.FC = () => {
         await ca.execute(async () => {
             let keyId = values.caKeyId?.trim();
             if (!keyId) {
-                const request = wasm.create_ec_key_pair_ttlv_request(undefined, ["ssh-ca"], values.curve ?? "", false, undefined);
+                const request = wasm.create_ec_key_pair_ttlv_request(
+                    undefined,
+                    ["ssh-ca"],
+                    values.curve ?? "",
+                    values.sensitive ?? false,
+                    undefined,
+                );
                 const result = await sendKmipRequest(request, ca.serverUrl);
                 const parsed: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result);
                 keyId = parsed.PrivateKeyUniqueIdentifier;
@@ -78,8 +88,8 @@ const SshCa: React.FC = () => {
             const body = {
                 allowed_principals: splitList(values.allowedPrincipals),
                 allowed_users: splitList(values.allowedUsers),
-                ...(values.defaultTtl?.trim() ? { default_ttl: values.defaultTtl.trim() } : {}),
-                ...(values.maxTtl?.trim() ? { max_ttl: values.maxTtl.trim() } : {}),
+                default_ttl: values.defaultTtl.trim(),
+                max_ttl: values.maxTtl.trim(),
             };
             await putNoContentRequest(`/v1/ssh/roles/${encodeURIComponent(values.name.trim())}`, body, role.serverUrl);
             return t("sshCa.roleSaved", { name: values.name.trim() });
@@ -97,6 +107,9 @@ const SshCa: React.FC = () => {
                     <Form.Item name="curve" label={t("sshCa.curve")} extra={t("sshCa.curveHelp")}>
                         <Select options={curveOptions} data-testid="ssh-ca-curve" />
                     </Form.Item>
+                    <Form.Item name="sensitive" valuePropName="checked" help={t("ecKeysCreate.sensitiveHelp")}>
+                        <Checkbox data-testid="ssh-ca-sensitive">{t("ecKeysCreate.sensitive")}</Checkbox>
+                    </Form.Item>
                     <Space>
                         <Button type="primary" htmlType="submit" loading={ca.isLoading} data-testid="submit-ssh-ca">
                             {t("sshCa.configureCa")}
@@ -106,13 +119,13 @@ const SshCa: React.FC = () => {
                         </Button>
                     </Space>
                 </Form>
-                <div data-testid="ssh-ca-result">
+                <div data-testid="ssh-ca-result" className="whitespace-pre-wrap">
                     <ActionResponse title={t("sshCa.caResponseTitle")} res={ca.res} responseRef={ca.responseRef} />
                 </div>
             </Card>
             <Card title={t("sshCa.roleTitle")}>
                 <Alert type="info" showIcon className="mb-4" message={t("sshCa.roleIntro")} />
-                <Form form={roleForm} layout="vertical" onFinish={putRole}>
+                <Form form={roleForm} layout="vertical" onFinish={putRole} initialValues={{ defaultTtl: "15m", maxTtl: "1h" }}>
                     <Form.Item
                         name="name"
                         label={t("sshCa.roleName")}
@@ -132,10 +145,10 @@ const SshCa: React.FC = () => {
                     <Form.Item name="allowedUsers" label={t("sshCa.allowedUsers")} extra={t("sshCa.allowedUsersHelp")}>
                         <Input data-testid="ssh-role-users" />
                     </Form.Item>
-                    <Form.Item name="defaultTtl" label={t("sshCa.defaultTtl")}>
+                    <Form.Item name="defaultTtl" label={t("sshCa.defaultTtl")} rules={[{ required: true }]}>
                         <Input placeholder={t("sshCertificate.ttlPlaceholder")} data-testid="ssh-role-default-ttl" />
                     </Form.Item>
-                    <Form.Item name="maxTtl" label={t("sshCa.maxTtl")}>
+                    <Form.Item name="maxTtl" label={t("sshCa.maxTtl")} rules={[{ required: true }]}>
                         <Input placeholder={t("sshCa.maxTtlPlaceholder")} data-testid="ssh-role-max-ttl" />
                     </Form.Item>
                     <Button type="primary" htmlType="submit" loading={role.isLoading} data-testid="submit-ssh-role">

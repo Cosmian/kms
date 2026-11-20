@@ -34,7 +34,8 @@ test.describe("SSH CA, roles and certificates", () => {
         await expect(page.getByTestId("ssh-ca-result")).toContainText(/ecdsa-sha2-nistp\d+ AAAA/);
 
         await page.getByTestId("ssh-ca-public-key").click();
-        await expect(page.getByTestId("ssh-ca-result")).toContainText(/^[\s\S]*ecdsa-sha2-nistp\d+ AAAA/);
+        await expect(page.getByTestId("ssh-ca-result")).not.toContainText(/private key id/i);
+        await expect(page.getByTestId("ssh-ca-result")).toContainText(/ecdsa-sha2-nistp\d+ AAAA/);
 
         await page.getByTestId("ssh-role-name").fill("e2e-role");
         await page.getByTestId("ssh-role-principals").fill("alice, bob");

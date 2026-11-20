@@ -2131,7 +2131,7 @@
         "curveHelp": "Utilisée uniquement si aucun identifiant de clé n'est fourni.",
         "configureCa": "Configurer la CA",
         "showPublicKey": "Afficher la clé publique de la CA",
-        "caConfigured": "CA SSH configurée avec la clé privée d'identifiant : {{keyId}}\\n{{publicKey}}",
+        "caConfigured": "CA SSH configurée avec la clé privée d'identifiant : {{keyId}}\n{{publicKey}}",
         "caResponseTitle": "CA SSH",
         "roleTitle": "Rôle de signature",
         "roleIntro": "Un rôle définit les noms de connexion (principals) autorisés dans les certificats, qui peut les demander et leur durée de vie. Nécessite le rôle Crypto Officer.",

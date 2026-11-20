@@ -2131,7 +2131,7 @@
         "curveHelp": "仅在未提供密钥 ID 时使用。",
         "configureCa": "配置 CA",
         "showPublicKey": "显示 CA 公钥",
-        "caConfigured": "SSH CA 已配置，私钥 ID：{{keyId}}\\n{{publicKey}}",
+        "caConfigured": "SSH CA 已配置，私钥 ID：{{keyId}}\n{{publicKey}}",
         "caResponseTitle": "SSH CA",
         "roleTitle": "签名角色",
         "roleIntro": "角色定义证书中允许出现的登录名（principals）、谁可以申请证书以及证书有效期。需要 Crypto Officer 角色。",
