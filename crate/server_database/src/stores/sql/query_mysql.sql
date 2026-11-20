@@ -396,8 +396,11 @@ CREATE TABLE IF NOT EXISTS gcm_invocations
 -- name: clean-table-gcm_invocations
 DELETE FROM gcm_invocations;
 
+-- Explicit binary collation avoids ERROR 1267 when objects predates a server collation change.
 -- name: purge-orphan-gcm-invocations
-DELETE FROM gcm_invocations WHERE object_id NOT IN (SELECT id FROM objects);
+DELETE FROM gcm_invocations
+WHERE CONVERT(object_id USING utf8mb4) COLLATE utf8mb4_bin
+    NOT IN (SELECT CONVERT(id USING utf8mb4) COLLATE utf8mb4_bin FROM objects);
 
 -- name: init-gcm-invocations
 INSERT IGNORE INTO gcm_invocations (object_id, `count`) VALUES (?, 0);
