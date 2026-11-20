@@ -8,6 +8,41 @@ test.describe("Password generation", () => {
         await page.getByTestId("generate-password").click();
         await expect(page.getByTestId("generated-password")).toHaveValue(/^[A-Za-z0-9]{32}$/);
     });
+
+    test("shows a failed request as an error, not as a password", async ({ page }) => {
+        await page.route("**/v1/secrets/password", (route) => route.fulfill({ status: 403, body: "Create permission denied" }));
+        await gotoAndWait(page, "/ui/generate-password");
+        await expect(page.getByTestId("generate-password")).toBeVisible({ timeout: UI_READY_TIMEOUT });
+        await page.getByTestId("generate-password").click();
+        await expect(page.getByTestId("response-output")).toContainText("403");
+        await expect(page.getByTestId("generated-password")).toHaveCount(0);
+    });
+});
+
+test.describe("SSH CA and role forms", () => {
+    test("sends the default role lifetimes when left unchanged", async ({ page }) => {
+        let body: unknown;
+        await page.route("**/v1/ssh/roles/**", async (route) => {
+            body = route.request().postDataJSON();
+            await route.fulfill({ status: 204 });
+        });
+        await gotoAndWait(page, "/ui/ssh-ca");
+        await expect(page.getByTestId("submit-ssh-role")).toBeVisible({ timeout: UI_READY_TIMEOUT });
+        await page.getByTestId("ssh-role-name").fill("defaults");
+        await page.getByTestId("ssh-role-principals").fill("alice");
+        await page.getByTestId("submit-ssh-role").click();
+        await expect(page.getByTestId("ssh-role-result")).toContainText("defaults");
+        expect(body).toEqual({ allowed_principals: ["alice"], allowed_users: [], default_ttl: "15m", max_ttl: "1h" });
+    });
+
+    test("offers only the curves an SSH CA accepts", async ({ page }) => {
+        await gotoAndWait(page, "/ui/ssh-ca");
+        await expect(page.getByTestId("submit-ssh-ca")).toBeVisible({ timeout: UI_READY_TIMEOUT });
+        await page.getByTestId("ssh-ca-curve").click();
+        await expect(page.getByTitle("NIST P-384")).toBeVisible();
+        // secp256k1 contains "p256" but the server refuses it for a CA.
+        await expect(page.getByTitle("SECP256k1")).toHaveCount(0);
+    });
 });
 
 test.describe("SSH CA, roles and certificates", () => {
