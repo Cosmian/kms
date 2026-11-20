@@ -1814,6 +1814,9 @@ pub async fn prepare_kms_server(
                 "/tokenize{_:.*}",
                 "/rotation-policy{_:.*}",
                 "/kv-secrets{_:.*}",
+                "/ssh-certificate{_:.*}",
+                "/ssh-ca{_:.*}",
+                "/generate-password{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_runtime_config))

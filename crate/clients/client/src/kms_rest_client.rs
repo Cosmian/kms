@@ -955,6 +955,23 @@ impl KmsClient {
         Err(process_error_response(endpoint, status_code, &response))
     }
 
+    /// PUT `data` as JSON; the success response carries no body (e.g. `204 No Content`).
+    /// The request body is never logged.
+    pub async fn put_no_content<O>(&self, endpoint: &str, data: &O) -> Result<(), KmsClientError>
+    where
+        O: Serialize + Sync,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        let response = self.client.put_json(&server_url, data).await?;
+
+        let status_code = response.status;
+        if status_code.is_success() {
+            return Ok(());
+        }
+
+        Err(process_error_response(endpoint, status_code, &response))
+    }
+
     /// POST `data` as JSON. Request and response bodies may carry secrets (e.g. KV values),
     /// so they are never logged.
     pub async fn post_no_ttlv<O, R>(

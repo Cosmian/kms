@@ -973,16 +973,18 @@ pub async fn start_default_test_kms_server_with_hsm_kek_uncreated_for_vectors()
     let slot = get_hsm_slot_id()?;
     let model = get_hsm_model();
     let password = get_hsm_password();
-    let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_hsm_kek_bootstrap_{}_{}_{}",
+    let run_nonce = format!(
+        "{}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos(),
         TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    let kek_id = format!("hsm::{slot}::kek_bootstrap_{}", std::process::id());
+    );
+    let workspace_dir =
+        std::env::temp_dir().join(format!("kms_test_hsm_kek_bootstrap_{run_nonce}"));
+    let kek_id = format!("hsm::{slot}::kek_bootstrap_{run_nonce}");
     // Export for {{$HSM_BOOTSTRAP_KEK_ID}} substitution in vector steps.
     // Called once inside OnceCell initialisation before any vector steps run.
     crate::test_env::set("HSM_BOOTSTRAP_KEK_ID", &kek_id);
