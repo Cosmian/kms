@@ -70,7 +70,9 @@ trait MigrationFixture {
              DROP TABLE IF EXISTS objects; \
              DROP TABLE IF EXISTS parameters; \
              DROP TABLE IF EXISTS crypto_officer_activations; \
-             DROP TABLE IF EXISTS crls;",
+             DROP TABLE IF EXISTS crls; \
+             DROP TABLE IF EXISTS gcm_invocations; \
+             DROP TABLE IF EXISTS cluster_nodes;",
         )
         .await
     }
