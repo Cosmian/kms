@@ -1,0 +1,253 @@
+# ===========================================================================
+# Cosmian KMS — RBAC + Keycloak IDP + TLS stack
+#
+# Services:
+#   - step-ca      (ACME certificate authority — auto-initialized on first boot)
+#   - step-ca-init (one-shot: issues TLS certs for Keycloak, KMS, OPA)
+#   - Keycloak     (OIDC identity provider — HTTPS, realm "kms" auto-imported)
+#   - OPA          (Open Policy Agent — HTTPS policy server)
+#   - KMS          (Cosmian KMS — HTTPS, JWT auth via Keycloak, Regorus RBAC)
+#
+# Quick start:
+#   docker compose up -d
+#   docker compose logs -f step-ca-init   # watch cert issuance
+#
+#   # Trust the CA on the host (once):
+#   step certificate install ./certs/ca.crt
+#
+#   # Get a token:
+#   TOKEN=$(curl -s --cacert ./certs/ca.crt \
+#     -X POST https://localhost:8180/realms/kms/protocol/openid-connect/token \
+#     -d "client_id=cosmian-kms&grant_type=password" \
+#     -d "username=admin@cosmian.com&password=Admin1234!" \
+#     | jq -r .access_token)
+#
+#   # Call the KMS:
+#   curl --cacert ./certs/ca.crt -H "Authorization: Bearer $TOKEN" https://localhost:9998/health
+#
+# TLS notes:
+#   - Root CA cert: ./certs/ca.crt  (written after first startup)
+#   - Service certs: ./certs/{keycloak,kms,opa}.{crt,key}  (valid 24h)
+#   - certs/ is auto-created; add it to .gitignore
+#
+# Pre-configured users (realm: kms):
+#   admin@cosmian.com    / Admin1234!    → role: admin    (full access)
+#   operator@cosmian.com / Operator1234! → role: operator (key management)
+#   auditor@cosmian.com  / Auditor1234!  → role: auditor  (read-only audit)
+#   readonly@cosmian.com / Readonly1234! → role: readonly  (metadata only)
+#
+# RBAC notes:
+#   - JWT roles are read from Keycloak's realm_access.roles claim
+#   - Rego policy: ./opa/policy/default_rbac.rego
+#   - OPA data:    ./opa/policy/data.json
+# ===========================================================================
+name: cosmian-kms-rbac-keycloak
+
+networks:
+  kms-net:
+    driver: bridge
+
+volumes:
+  kms-data:
+  step-ca-data:
+
+services:
+  # ===========================================================================
+  # step-ca (ACME Certificate Authority — auto-initialized on first boot)
+  # ===========================================================================
+  step-ca:
+    image: ${STEPCA_IMAGE:-smallstep/step-ca:0.27.2}
+    hostname: step-ca
+    networks:
+      - kms-net
+    ports:
+      - "${STEPCA_PORT:-9000}:9000"
+    environment:
+      - DOCKER_STEPCA_INIT_NAME=${STEPCA_INIT_NAME:-Cosmian KMS CA}
+      - DOCKER_STEPCA_INIT_DNS_NAMES=${STEPCA_INIT_DNS_NAMES:-step-ca,localhost}
+      - DOCKER_STEPCA_INIT_PROVISIONER_NAME=${STEPCA_INIT_PROVISIONER_NAME:-admin}
+      - DOCKER_STEPCA_INIT_PASSWORD=${STEPCA_INIT_PASSWORD:-changeme}
+      - DOCKER_STEPCA_INIT_ACME=true
+    volumes:
+      - step-ca-data:/home/step
+    healthcheck:
+      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:9000", "--root", "/home/step/certs/root_ca.crt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  # step-ca-init (one-shot: export root CA cert + issue TLS certs for all services)
+  # ===========================================================================
+  step-ca-init:
+    image: ${STEPCA_IMAGE:-smallstep/step-ca:0.27.2}
+    user: "0:0"
+    networks:
+      - kms-net
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    environment:
+      - STEPCA_INIT_PASSWORD=${STEPCA_INIT_PASSWORD:-changeme}
+    volumes:
+      - step-ca-data:/home/step:ro
+      - ./certs:/certs
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        echo "=== step-ca-init: issuing TLS certificates ==="
+
+        cp /home/step/certs/root_ca.crt /certs/ca.crt
+        step certificate fingerprint /home/step/certs/root_ca.crt > /certs/ca-fingerprint.txt
+        echo "CA fingerprint: $$(cat /certs/ca-fingerprint.txt)"
+
+        echo "$${STEPCA_INIT_PASSWORD}" > /tmp/pass.txt
+
+        step ca certificate "keycloak" /certs/keycloak.crt /certs/keycloak.key \
+          --ca-url https://step-ca:9000 --root /certs/ca.crt \
+          --provisioner admin --provisioner-password-file /tmp/pass.txt \
+          --san keycloak --san localhost --san 127.0.0.1 \
+          --not-after 24h --kty EC --curve P-256 --force
+
+        step ca certificate "kms" /certs/kms.crt /certs/kms.key \
+          --ca-url https://step-ca:9000 --root /certs/ca.crt \
+          --provisioner admin --provisioner-password-file /tmp/pass.txt \
+          --san kms --san localhost --san 127.0.0.1 \
+          --not-after 24h --kty EC --curve P-256 --force
+
+        step ca certificate "opa" /certs/opa.crt /certs/opa.key \
+          --ca-url https://step-ca:9000 --root /certs/ca.crt \
+          --provisioner admin --provisioner-password-file /tmp/pass.txt \
+          --san opa --san localhost --san 127.0.0.1 \
+          --not-after 24h --kty EC --curve P-256 --force
+
+        rm -f /tmp/pass.txt
+        chmod 644 /certs/*.crt /certs/*.txt /certs/*.key
+        echo "=== step-ca-init: done ==="
+    restart: "no"
+
+  # ===========================================================================
+  # Keycloak (OIDC identity provider — HTTPS, realm "kms" auto-imported)
+  # ===========================================================================
+  keycloak:
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:25.0}
+    hostname: keycloak
+    networks:
+      - kms-net
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8443"
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_HEALTH_ENABLED=true
+      - KC_HTTPS_CERTIFICATE_FILE=/certs/keycloak.crt
+      - KC_HTTPS_CERTIFICATE_KEY_FILE=/certs/keycloak.key
+      # Fix issuer hostname so iss=https://localhost:8180/realms/kms in tokens
+      # while the KMS fetches JWKS internally via https://keycloak:8443
+      - KC_HOSTNAME=localhost
+      - KC_HOSTNAME_PORT=${KEYCLOAK_PORT:-8180}
+      - KC_HOSTNAME_STRICT=false
+    command:
+      - start-dev
+      - --import-realm
+      - --https-port=8443
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+      - ./certs:/certs:ro
+    depends_on:
+      step-ca-init:
+        condition: service_completed_successfully
+    healthcheck:
+      # Keycloak 25 image has no curl/wget/openssl. The management port 9000
+      # only starts listening after full initialization, so a TCP check is
+      # sufficient as a readiness signal.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9000'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ===========================================================================
+  # OPA (Open Policy Agent — HTTPS policy server)
+  # ===========================================================================
+  opa:
+    image: ${OPA_IMAGE:-openpolicyagent/opa:0.68.0}
+    hostname: opa
+    networks:
+      - kms-net
+    ports:
+      - "${OPA_PORT:-8181}:8181"
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --log-level=info
+      - --disable-telemetry
+      - --tls-cert-file=/certs/opa.crt
+      - --tls-private-key-file=/certs/opa.key
+      - /policies/default_rbac.rego
+      - /policies/data.json
+    volumes:
+      - ./opa/policy/default_rbac.rego:/policies/default_rbac.rego:ro
+      - ./opa/policy/data.json:/policies/data.json:ro
+      - ./certs:/certs:ro
+    depends_on:
+      step-ca-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ===========================================================================
+  # Cosmian KMS Server (HTTPS, JWT auth via Keycloak, embedded Regorus RBAC)
+  # ===========================================================================
+  kms:
+    image: ${KMS_IMAGE:-ghcr.io/cosmian/kms:latest}
+    hostname: kms
+    networks:
+      - kms-net
+    ports:
+      - "${KMS_PORT:-9998}:9998"
+    environment:
+      # SQLite backend — no external database required
+      - KMS_DATABASE_TYPE=sqlite
+      - KMS_SQLITE_PATH=/tmp/kms-data
+      # TLS — PEM cert + key issued by step-ca
+      - KMS_TLS_CERT_FILE=/certs/kms.crt
+      - KMS_TLS_KEY_FILE=/certs/kms.key
+      # Trust the internal CA so JWKS fetch from Keycloak succeeds
+      - SSL_CERT_FILE=/certs/ca.crt
+      # JWT authentication — validate tokens issued by Keycloak.
+      # Issuer matches the iss claim seen by external clients (localhost:8180).
+      # JWKS is fetched over the internal Docker network (keycloak:8443).
+      # No audience required — Keycloak public clients do not emit aud by default.
+      - KMS_JWT_AUTH_PROVIDER=https://localhost:${KEYCLOAK_PORT:-8180}/realms/kms,https://keycloak:8443/realms/kms/protocol/openid-connect/certs,
+      # RBAC — embedded Regorus engine with the shared Rego bundle
+      - KMS_RBAC_ENABLED=true
+      - KMS_RBAC_BUNDLE_PATH=/policies
+      # Keycloak realm roles are nested under realm_access.roles in the JWT
+      - KMS_RBAC_ROLE_CLAIM=realm_access.roles
+      - RUST_LOG=${KMS_LOG_LEVEL:-info,cosmian_kms=debug}
+    volumes:
+      - ./opa/policy:/policies:ro
+      - ./certs:/certs:ro
+      - kms-data:/tmp/kms-data
+    depends_on:
+      step-ca-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/9998"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

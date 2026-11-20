@@ -1,0 +1,14 @@
+{
+  "cosmian": {
+    "kms": {
+      "rbac": {
+        "role_assignments": {
+          "admin@cosmian.com": ["admin"],
+          "operator@cosmian.com": ["operator"],
+          "auditor@cosmian.com": ["auditor"],
+          "readonly@cosmian.com": ["readonly"]
+        }
+      }
+    }
+  }
+}
