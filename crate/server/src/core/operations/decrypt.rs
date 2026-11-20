@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     async fn assert_gcm_invocations_counted(kms: &KMS, user: &UserId, uid: &str) -> KResult<()> {
-        let total = || kms.database.reserve_gcm_invocations(uid, 0);
+        let total = || kms.database.gcm_invocations(uid);
         assert_eq!(total().await?, 0);
 
         let parallel = 16_u64;
@@ -1359,7 +1359,7 @@ mod tests {
             Some(ErrorReason::Permission_Denied)
         );
         assert_eq!(
-            kms.database.reserve_gcm_invocations(&uid, 0).await?,
+            kms.database.gcm_invocations(&uid).await?,
             GCM_MAX_INVOCATIONS
         );
         let id = UniqueIdentifier::TextString(uid.clone());
