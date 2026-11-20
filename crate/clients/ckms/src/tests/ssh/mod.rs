@@ -3,7 +3,9 @@
 //! `owner.client@acme.com` is the Crypto Officer (manages the CA and roles);
 //! `user.client@acme.com` is an Operator that may request certificates only through a role.
 
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_types::Tag;
 use serial_test::serial;
+use tempfile::NamedTempFile;
 use test_kms_server::{
     TestClientOptions, TestsContext, start_test_server_with_patch, test_config_path,
 };
@@ -266,6 +268,78 @@ async fn test_ssh_management_is_reserved_to_crypto_officers() -> CosmianResult<(
     let id = format!("ssh-ca-{}", uuid::Uuid::new_v4());
     let created = run_ckms(&owner, &["ssh", "ca", "create", &id])?;
     assert_eq!(key_id_of(&created), id);
+
+    ctx.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn test_ssh_ca_create_options() -> CosmianResult<()> {
+    let (ctx, owner, _user) = start_ssh_server().await?;
+
+    // The curve, tag and sensitivity reach the CA key pair.
+    let tag = format!("ssh-ca-{}", uuid::Uuid::new_v4());
+    let created = run_ckms(
+        &owner,
+        &[
+            "ssh",
+            "ca",
+            "create",
+            "--curve",
+            "nist-p384",
+            "--tag",
+            &tag,
+            "--sensitive",
+        ],
+    )?;
+    assert!(created.contains("ecdsa-sha2-nistp384 "), "{created}");
+    let key_id = key_id_of(&created);
+    let located = run_ckms(&owner, &["locate", "--tag", &tag])?;
+    assert!(located.contains(key_id), "{located}");
+    let attributes_file = NamedTempFile::new()?;
+    let attributes_path = attributes_file.path().to_string_lossy().to_string();
+    let sensitive = Tag::Sensitive.to_string();
+    run_ckms(
+        &owner,
+        &[
+            "attributes",
+            "get",
+            "--id",
+            key_id,
+            "--attribute",
+            &sensitive,
+            "--output-file",
+            &attributes_path,
+        ],
+    )?;
+    let attributes: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(attributes_file.path())?)?;
+    assert_eq!(
+        attributes
+            .get(&sensitive)
+            .and_then(serde_json::Value::as_bool),
+        Some(true),
+        "{attributes}"
+    );
+
+    // A curve the SSH CA rejects fails before any key pair is created.
+    let rejected = format!("ssh-ca-{}", uuid::Uuid::new_v4());
+    let err = run_ckms_expect_error(
+        &owner,
+        &[
+            "ssh",
+            "ca",
+            "create",
+            "--curve",
+            "secp256k1",
+            "--tag",
+            &rejected,
+        ],
+    )?;
+    assert!(err.contains("an SSH CA key must use"), "{err}");
+    let located = run_ckms(&owner, &["locate", "--tag", &rejected])?;
+    assert!(located.contains("No object found."), "{located}");
 
     ctx.stop_server().await?;
     Ok(())

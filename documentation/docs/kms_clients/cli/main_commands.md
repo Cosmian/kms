@@ -3912,13 +3912,17 @@ Create a new CA key pair in the KMS and make it the SSH CA
 `ckms ssh ca create [options] [PRIVATE_KEY_ID]
 `
 ### Arguments
-`--curve [-c] <CURVE>` The elliptic curve of the CA key
+`--curve [-c] <CURVE>` The elliptic curve of the CA key: an SSH CA accepts NIST P-256, P-384 and P-521, and Ed25519 in non-FIPS mode
 
 Possible values:  `"nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448", "secp256k1", "secp192k1", "secp224k1"` [default: `"nist-p256"`]
 
 `--tag [-t] <TAG>` Tag to associate with the CA key pair; repeat the option for several tags
 
 ` <PRIVATE_KEY_ID>` Unique id of the CA private key; a random uuid is generated if not specified
+
+`--sensitive <SENSITIVE>` Sensitive: if set, the private key will not be exportable. Required for an HSM key (`hsm::` id)
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 

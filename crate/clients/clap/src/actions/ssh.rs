@@ -124,7 +124,8 @@ async fn fetch_ca_public_key(kms_rest_client: &KmsClient) -> KmsCliResult<String
 /// new public key.
 #[derive(Args, Debug)]
 pub struct CaCreateAction {
-    /// The elliptic curve of the CA key.
+    /// The elliptic curve of the CA key: an SSH CA accepts NIST P-256, P-384 and P-521, and
+    /// Ed25519 in non-FIPS mode.
     #[clap(long = "curve", short = 'c', default_value = "nist-p256")]
     pub curve: Curve,
 
@@ -134,10 +135,30 @@ pub struct CaCreateAction {
 
     /// Unique id of the CA private key; a random uuid is generated if not specified.
     pub private_key_id: Option<String>,
+
+    /// Sensitive: if set, the private key will not be exportable. Required for an HSM key
+    /// (`hsm::` id).
+    #[clap(long = "sensitive", default_value = "false")]
+    pub sensitive: bool,
 }
 
 impl CaCreateAction {
     async fn run(&self, kms_rest_client: &KmsClient) -> KmsCliResult<()> {
+        // Refuse curves the SSH CA rejects before creating a key pair that would be left unused.
+        match self.curve {
+            Curve::NistP256 | Curve::NistP384 | Curve::NistP521 => {}
+            #[cfg(feature = "non-fips")]
+            Curve::Ed25519 => {}
+            #[cfg(feature = "non-fips")]
+            Curve::X25519
+            | Curve::X448
+            | Curve::Ed448
+            | Curve::Secp256k1
+            | Curve::Secp192k1
+            | Curve::Secp224k1 => {
+                cli_bail!("an SSH CA key must use NIST P-256, P-384, P-521 or Ed25519")
+            }
+        }
         let private_key_id = self.private_key_id.as_ref().map(|id| {
             cosmian_kms_client::kmip_2_1::kmip_types::UniqueIdentifier::TextString(id.clone())
         });
@@ -146,7 +167,7 @@ impl CaCreateAction {
             private_key_id,
             &self.tags,
             self.curve.into(),
-            false,
+            self.sensitive,
             None,
         )?;
         let response = kms_rest_client
@@ -158,7 +179,11 @@ impl CaCreateAction {
             .as_str()
             .context("the server did not return a private key id as a string")?
             .to_owned();
-        configure_ca(kms_rest_client, &key_uid).await?;
+        configure_ca(kms_rest_client, &key_uid)
+            .await
+            .with_context(|| {
+                format!("the key pair {key_uid} was created but not set as the SSH CA")
+            })?;
         let public_key = fetch_ca_public_key(kms_rest_client).await?;
         Stdout::new(&format!(
             "SSH CA key pair created and configured; private key id: {key_uid}\n{}",
