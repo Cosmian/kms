@@ -25,6 +25,33 @@ DELETE
 FROM parameters
 WHERE name = ?;
 
+-- name: has-table-parameters
+SELECT 1
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'parameters';
+
+-- Startup migrations hold row 1 FOR UPDATE NOWAIT in a transaction on a dedicated connection.
+-- name: create-table-migration-lock
+CREATE TABLE IF NOT EXISTS kms_migration_lock
+(
+    id TINYINT NOT NULL PRIMARY KEY
+);
+
+-- name: has-migration-lock-row
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1;
+
+-- name: insert-migration-lock-row
+INSERT IGNORE INTO kms_migration_lock (id)
+VALUES (1);
+
+-- name: select-migration-lock
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1 FOR UPDATE NOWAIT;
+
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
@@ -245,6 +272,9 @@ LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
 WHERE (objects.owner = ? OR read_access.userid = ?)
   AND objects.wrapping_key_id = ?;
 
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
+
 -- name: select-objects-null-wrapping-key
 SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 
@@ -366,8 +396,11 @@ CREATE TABLE IF NOT EXISTS gcm_invocations
 -- name: clean-table-gcm_invocations
 DELETE FROM gcm_invocations;
 
+-- Explicit binary collation avoids ERROR 1267 when objects predates a server collation change.
 -- name: purge-orphan-gcm-invocations
-DELETE FROM gcm_invocations WHERE object_id NOT IN (SELECT id FROM objects);
+DELETE FROM gcm_invocations
+WHERE CONVERT(object_id USING utf8mb4) COLLATE utf8mb4_bin
+    NOT IN (SELECT CONVERT(id USING utf8mb4) COLLATE utf8mb4_bin FROM objects);
 
 -- name: init-gcm-invocations
 INSERT IGNORE INTO gcm_invocations (object_id, `count`) VALUES (?, 0);

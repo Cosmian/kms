@@ -20,7 +20,7 @@ use crate::{
     stores::{
         SqlitePool,
         migrate::{
-            DbParameters, DbState, Migrate,
+            DbParameters, DbState, MIGRATION_STEPS, Migrate,
             MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
         },
     },
@@ -96,7 +96,7 @@ fn seed_parameters(path: &Path, parameters: &[(&str, &str)]) -> DbResult<()> {
     Ok(())
 }
 
-async fn assert_ready(pool: &SqlitePool, target: &str) -> DbResult<()> {
+pub(super) async fn assert_ready<P: DbParameters>(pool: &P, target: &str) -> DbResult<()> {
     let version = pool.get_db_version().await?;
     db_ensure!(
         version.as_deref() == Some(target),
@@ -110,7 +110,7 @@ async fn assert_ready(pool: &SqlitePool, target: &str) -> DbResult<()> {
     Ok(())
 }
 
-fn expect_steps(actual: &[MigrationStep], expected: &[MigrationStep]) -> DbResult<()> {
+pub(super) fn expect_steps(actual: &[MigrationStep], expected: &[MigrationStep]) -> DbResult<()> {
     db_ensure!(
         actual == expected,
         "Expected applied steps {expected:?}, got {actual:?}"
@@ -118,8 +118,11 @@ fn expect_steps(actual: &[MigrationStep], expected: &[MigrationStep]) -> DbResul
     Ok(())
 }
 
-async fn assert_markers(pool: &SqlitePool, completed: &[MigrationStep]) -> DbResult<()> {
-    for step in BOTH_STEPS {
+pub(super) async fn assert_markers<P: DbParameters>(
+    pool: &P,
+    completed: &[MigrationStep],
+) -> DbResult<()> {
+    for step in MIGRATION_STEPS {
         let actual = pool.get_parameter(step.marker()).await?;
         let expected = completed.contains(&step).then_some("true");
         db_ensure!(
@@ -149,45 +152,36 @@ fn expected_state(id: &str) -> State {
     }
 }
 
-async fn assert_fixture_preserved(
-    pool: &SqlitePool,
-    path: &Path,
-    original: &[TableRows; 3],
+pub(super) async fn assert_store_objects_and_grants<P: ObjectsStore + PermissionsStore>(
+    pool: &P,
+    objects: &[(String, String)],
+    tags_in_object_blob: bool,
 ) -> DbResult<()> {
-    assert_lock_released(path)?;
-    db_ensure!(
-        &preserved_data(path)? == original,
-        "Object payloads, states, original tags, or permissions changed"
-    );
-    let objects: Vec<(String, String)> = {
-        let connection = Connection::open(path)?;
-        let mut statement = connection.prepare("SELECT id, state FROM objects ORDER BY id")?;
-        statement
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<_, _>>()?
-    };
     db_ensure!(
         objects.len() == 32,
         "Expected 32 fixture objects, got {}",
         objects.len()
     );
     for (id, state) in objects {
-        let want_state = expected_state(&id);
+        let want_state = expected_state(id);
         db_ensure!(
-            state == want_state.to_string(),
+            *state == want_state.to_string(),
             "Unexpected stored state for {id}: {state}"
         );
-        let tags = pool.retrieve_tags(&id).await?;
         if id == "junk_bad_json" || id == "junk_wrong_shape_json" {
             db_ensure!(
-                pool.retrieve(&id).await.is_err(),
+                pool.retrieve(id).await.is_err(),
                 "Corrupt fixture object {id} unexpectedly deserialized"
             );
-            db_ensure!(tags.contains("junk"), "Junk object {id} lost its junk tag");
+            if !tags_in_object_blob {
+                let tags = pool.retrieve_tags(id).await?;
+                db_ensure!(tags.contains("junk"), "Junk object {id} lost its junk tag");
+            }
             continue;
         }
+        let tags = pool.retrieve_tags(id).await?;
         let object = pool
-            .retrieve(&id)
+            .retrieve(id)
             .await?
             .ok_or_else(|| db_error!("Fixture object {id} could not be retrieved"))?;
         db_ensure!(
@@ -222,6 +216,18 @@ async fn assert_fixture_preserved(
             "bulk_aes_256 lost tag {tag}: {aes_256_tags:?}"
         );
     }
+    let orphan_tags = pool.retrieve_tags("junk_orphan_object").await?;
+    if tags_in_object_blob {
+        db_ensure!(
+            orphan_tags.is_empty(),
+            "Deleted Redis object junk_orphan_object returned tags: {orphan_tags:?}"
+        );
+    } else {
+        db_ensure!(
+            orphan_tags.contains("junk_orphan_tag"),
+            "Orphan tag row for junk_orphan_object was lost"
+        );
+    }
     let expected = HashSet::from([
         KmipOperation::Get,
         KmipOperation::Encrypt,
@@ -246,10 +252,37 @@ async fn assert_fixture_preserved(
             == Some(&HashSet::from([KmipOperation::Get, KmipOperation::Locate])),
         "The bulk_auditor grant on bulk_aes_256 changed"
     );
+    let orphan_grants = pool
+        .list_object_operations_granted("junk_orphan_object")
+        .await?;
+    db_ensure!(
+        orphan_grants.get("mig_user") == Some(&HashSet::from([KmipOperation::Get])),
+        "The orphan grant on junk_orphan_object changed"
+    );
     Ok(())
 }
 
-async fn assert_wrapped_key_found(pool: &SqlitePool) -> DbResult<()> {
+async fn assert_fixture_preserved(
+    pool: &SqlitePool,
+    path: &Path,
+    original: &[TableRows; 3],
+) -> DbResult<()> {
+    assert_lock_released(path)?;
+    db_ensure!(
+        &preserved_data(path)? == original,
+        "Object payloads, states, original tags, or permissions changed"
+    );
+    let objects: Vec<(String, String)> = {
+        let connection = Connection::open(path)?;
+        let mut statement = connection.prepare("SELECT id, state FROM objects ORDER BY id")?;
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<_, _>>()?
+    };
+    assert_store_objects_and_grants(pool, &objects, false).await
+}
+
+pub(super) async fn assert_wrapped_key_found<P: ObjectsStore>(pool: &P) -> DbResult<()> {
     for (kek, expected) in [
         ("mig_kek", &["bulk_sym_wrapped", "mig_wrapped"][..]),
         ("bulk_aes_256", &["bulk_wrapped_2"][..]),
@@ -266,7 +299,11 @@ async fn assert_wrapped_key_found(pool: &SqlitePool) -> DbResult<()> {
     Ok(())
 }
 
-async fn assert_serial_tag(pool: &SqlitePool, present: bool) -> DbResult<()> {
+pub(super) async fn assert_serial_tag<P: ObjectsStore>(
+    pool: &P,
+    present: bool,
+    tags_in_object_blob: bool,
+) -> DbResult<()> {
     let mut seen_serials = HashSet::new();
     for cert_id in ["mig_cert", "bulk_cert_2"] {
         let cert = pool
@@ -311,6 +348,9 @@ async fn assert_serial_tag(pool: &SqlitePool, present: bool) -> DbResult<()> {
         "junk_bad_cert_der",
         "junk_non_cert_tagged_cert",
     ] {
+        if tags_in_object_blob && junk_cert == "junk_bad_json" {
+            continue;
+        }
         let tags = pool.retrieve_tags(junk_cert).await?;
         db_ensure!(
             !tags.iter().any(|tag| tag.starts_with("_serial=")),
@@ -368,7 +408,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
             .is_empty(),
         "The wrapping-key backfill must not run before 5.25.0"
     );
-    assert_serial_tag(&step, false).await?;
+    assert_serial_tag(&step, false, false).await?;
     assert_fixture_preserved(&step, &step_path, &original).await?;
 
     expect_steps(
@@ -378,7 +418,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
     assert_ready(&step, "5.25.0").await?;
     assert_markers(&step, &[WrappingKeyIdBackfill]).await?;
     assert_wrapped_key_found(&step).await?;
-    assert_serial_tag(&step, false).await?;
+    assert_serial_tag(&step, false, false).await?;
     assert_fixture_preserved(&step, &step_path, &original).await?;
 
     expect_steps(
@@ -387,7 +427,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
     )?;
     assert_ready(&step, TARGET).await?;
     assert_markers(&step, &BOTH_STEPS).await?;
-    assert_serial_tag(&step, true).await?;
+    assert_serial_tag(&step, true, false).await?;
     assert_fixture_preserved(&step, &step_path, &original).await?;
 
     let (direct, applied) =
@@ -396,7 +436,7 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
     assert_ready(&direct, TARGET).await?;
     assert_markers(&direct, &BOTH_STEPS).await?;
     assert_wrapped_key_found(&direct).await?;
-    assert_serial_tag(&direct, true).await?;
+    assert_serial_tag(&direct, true, false).await?;
     assert_fixture_preserved(&direct, &direct_path, &original).await?;
     let migrated = complete_data(&direct_path)?;
     db_ensure!(
@@ -421,13 +461,23 @@ async fn test_sqlite_migration_5_20_step_by_step_matches_direct_and_reopens_clea
 async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
     const MIGRATION_PARAMETERS: &str = "SELECT name, value FROM parameters \
          WHERE name NOT IN ('db_version', 'db_state') ORDER BY name";
-    let fixtures: [(&str, &[MigrationStep]); 3] = [
-        ("5.24.0", &BOTH_STEPS),
-        ("5.28.0", &[CertificateSerialTagBackfill]),
-        ("5.29.0", &[]),
+    // A 5.0–5.14 database recorded its creation version, so 5.14.0 offers every step and
+    // `AttributesJsonb` completes as a no-op on SQLite.
+    let fixtures: [(&str, Option<&str>, &[MigrationStep]); 4] = [
+        ("5.24.0", None, &BOTH_STEPS),
+        ("5.28.0", None, &[CertificateSerialTagBackfill]),
+        ("5.29.0", None, &[]),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
     ];
-    for (version, expected) in fixtures {
-        let (_directory, path) = copy_fixture(version)?;
+    for (fixture, recorded, expected) in fixtures {
+        let version = recorded.map_or_else(
+            || fixture.to_owned(),
+            |recorded| format!("{fixture} recorded as {recorded}"),
+        );
+        let (_directory, path) = copy_fixture(fixture)?;
+        if let Some(recorded) = recorded {
+            seed_parameters(&path, &[("db_version", recorded)])?;
+        }
         let original = preserved_data(&path)?;
         // Only a database already at the target has the final schema to snapshot before opening.
         let before = if expected.is_empty() {
@@ -443,9 +493,14 @@ async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
         expect_steps(&applied, expected)
             .map_err(|error| db_error!("Fixture {version}: {error}"))?;
         assert_ready(&pool, TARGET).await?;
-        assert_markers(&pool, &BOTH_STEPS).await?;
+        let markers: &[MigrationStep] = if recorded.is_some() {
+            &MIGRATION_STEPS
+        } else {
+            &BOTH_STEPS
+        };
+        assert_markers(&pool, markers).await?;
         assert_wrapped_key_found(&pool).await?;
-        assert_serial_tag(&pool, true).await?;
+        assert_serial_tag(&pool, true, false).await?;
         assert_fixture_preserved(&pool, &path, &original).await?;
         if let Some((rows, parameters)) = before {
             let [objects, tags, access, _] = rows;
@@ -567,7 +622,7 @@ async fn test_sqlite_migration_lock_serializes_instances() -> DbResult<()> {
         assert_markers(pool, &BOTH_STEPS).await?;
     }
     assert_wrapped_key_found(&first).await?;
-    assert_serial_tag(&second, true).await?;
+    assert_serial_tag(&second, true, false).await?;
     assert_fixture_preserved(&first, &path, &original).await?;
     assert_fixture_preserved(&second, &path, &original).await
 }

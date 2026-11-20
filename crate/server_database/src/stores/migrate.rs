@@ -13,6 +13,9 @@ use crate::{
     error::{DbError, DbResult},
 };
 
+/// Completion marker for the `PostgreSQL` `objects.attributes` conversion from `json` to `jsonb`.
+pub(crate) const ATTRIBUTES_JSONB_PARAM: &str = "attributes_jsonb_converted";
+
 /// Completion marker for the one-time scan deriving wrapping-key IDs from stored objects.
 pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled";
 
@@ -26,6 +29,9 @@ const MIGRATION_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// Data transformations whose markers and version checkpoints are owned by the runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MigrationStep {
+    /// `PostgreSQL` converts `objects.attributes` from `json` to `jsonb`; other backends have
+    /// nothing to convert.
+    AttributesJsonb,
     /// Make pre-existing wrapped objects discoverable through `find_wrapped_by`.
     WrappingKeyIdBackfill,
     /// Add serial lookup tags to certificates created before that tag existed.
@@ -33,14 +39,17 @@ pub(crate) enum MigrationStep {
 }
 
 /// Strictly ascending release boundaries; adding a step also requires backend and scenario tests.
-pub(crate) const MIGRATION_STEPS: [MigrationStep; 2] = [
+pub(crate) const MIGRATION_STEPS: [MigrationStep; 3] = [
+    MigrationStep::AttributesJsonb,
     MigrationStep::WrappingKeyIdBackfill,
     MigrationStep::CertificateSerialTagBackfill,
+    // Adding a new migration step starts here.
 ];
 
 impl MigrationStep {
     pub(crate) const fn version(self) -> &'static str {
         match self {
+            Self::AttributesJsonb => "5.15.0",
             Self::WrappingKeyIdBackfill => "5.25.0",
             Self::CertificateSerialTagBackfill => "5.29.0",
         }
@@ -48,6 +57,7 @@ impl MigrationStep {
 
     pub(crate) const fn marker(self) -> &'static str {
         match self {
+            Self::AttributesJsonb => ATTRIBUTES_JSONB_PARAM,
             Self::WrappingKeyIdBackfill => WRAPPING_KEY_BACKFILL_PARAM,
             Self::CertificateSerialTagBackfill => CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,
         }
@@ -183,6 +193,11 @@ pub(crate) trait Migrate: DbParameters {
     /// Wait for a cross-instance lock and retain its dedicated resource until guard drop.
     async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock>;
 
+    /// Deterministically release a migration lock that needs an async command before returning.
+    async fn release_migration_lock(&self, _lock: Self::MigrationLock) -> DbResult<()> {
+        Ok(())
+    }
+
     /// Idempotent schema DDL and the optional wipe, without data backfills.
     async fn ensure_schema(&self, clear_database: bool) -> DbResult<()>;
 
@@ -206,8 +221,8 @@ pub(crate) trait Migrate: DbParameters {
             None => {
                 let baseline = Self::UNVERSIONED_BASELINE.ok_or_else(|| {
                     db_error!(
-                        "Unversioned populated Redis/Findex database: pre-5.12.0 data is unsupported; \
-                         export and re-import."
+                        "Legacy database: it holds data but no recorded KMS version \
+                         (pre-5.12.0 Redis/Findex data is unsupported; export and re-import)."
                     )
                 })?;
                 tracing::info!(
@@ -239,28 +254,35 @@ pub(crate) trait Migrate: DbParameters {
 
     /// Validate the recorded version before DDL, then keep the lock through the final ready stamp.
     async fn bootstrap(&self, clear_database: bool, target: &str) -> DbResult<Vec<MigrationStep>> {
-        let _lock = self.acquire_migration_lock().await?;
-        let target_version = target.parse::<Version>()?;
-        if let Some(recorded) = self.get_db_version().await? {
-            let recorded_version = recorded.parse::<Version>()?;
-            if !clear_database {
-                if recorded_version > target_version {
-                    return Err(newer_database_error(&recorded, target));
-                }
-                if let Some(minimum) = Self::MIN_RECORDED_VERSION
-                    && recorded_version < minimum.parse::<Version>()?
-                {
-                    return Err(older_database_error(&recorded, minimum));
+        let lock = self.acquire_migration_lock().await?;
+        let result = async {
+            let target_version = target.parse::<Version>()?;
+            if let Some(recorded) = self.get_db_version().await? {
+                let recorded_version = recorded.parse::<Version>()?;
+                if !clear_database {
+                    if recorded_version > target_version {
+                        return Err(newer_database_error(&recorded, target));
+                    }
+                    if let Some(minimum) = Self::MIN_RECORDED_VERSION
+                        && recorded_version < minimum.parse::<Version>()?
+                    {
+                        return Err(older_database_error(&recorded, minimum));
+                    }
                 }
             }
+            self.ensure_schema(clear_database).await?;
+            if clear_database {
+                self.set_db_version(target).await?;
+                self.set_db_state(DbState::Ready).await?;
+                return Ok(Vec::new());
+            }
+            self.upgrade_to(target).await
         }
-        self.ensure_schema(clear_database).await?;
-        if clear_database {
-            self.set_db_version(target).await?;
-            self.set_db_state(DbState::Ready).await?;
-            return Ok(Vec::new());
+        .await;
+        if let Err(error) = self.release_migration_lock(lock).await {
+            tracing::warn!(%error, "Failed to release database migration lock");
         }
-        self.upgrade_to(target).await
+        result
     }
 }
 
@@ -601,7 +623,9 @@ mod tests {
             MigrationStep::CertificateSerialTagBackfill,
         ];
         type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [MigrationStep]);
-        let cases: [Case<'_>; 3] = [
+        let cases: [Case<'_>; 4] = [
+            // Recorded before the 5.15.0 step: every registered step is offered.
+            ("pre-5.15", &[("db_version", "5.14.0")], &MIGRATION_STEPS),
             // A crash after a checkpoint leaves `upgrading`; the run resumes from the checkpoint.
             (
                 "interrupted run",
