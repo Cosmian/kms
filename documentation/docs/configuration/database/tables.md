@@ -20,6 +20,7 @@ The KMS object-store schema is small and consists of seven tables. The optional
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
 | `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
+| `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -68,6 +69,12 @@ erDiagram
         text sealed_record
         timestamp revoked_at
         varchar revoked_by
+    }
+    CLUSTER_NODES {
+        string node_id PK
+        string version
+        int last_heartbeat
+        boolean is_leader
     }
 ```
 
@@ -227,6 +234,20 @@ deleting their counters; the upgraded server removes counters whose object no lo
 every startup. To remove the counters manually, run `DROP TABLE gcm_invocations;` (SQL) or
 `redis-cli --scan --pattern 'gcm_invocations::*' | xargs -r redis-cli DEL` (Redis).
 
+## `cluster_nodes`
+
+Stores one heartbeat per running KMS process. Each node refreshes its row every five seconds;
+rows older than fifteen seconds are pruned. One node is marked as leader for display; no work
+depends on it. Node IDs are regenerated on process restart, and stale rows are removed by the
+next heartbeat.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `node_id` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | Process-specific UUID and primary key. |
+| `version` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | KMS package version reported by the process. |
+| `last_heartbeat` | `BIGINT` (PG/MySQL) / `INTEGER` (SQLite) | Last heartbeat as Unix seconds. |
+| `is_leader` | `BOOLEAN` (PG/MySQL) / `INTEGER` (SQLite, 0 or 1) | Whether this node is the displayed cluster leader. |
+
 ## Links between tables
 
 - `objects.id` is referenced by `read_access.id` and `tags.id`: one object can have many access rows and many tags.
@@ -236,6 +257,7 @@ every startup. To remove the counters manually, run `DROP TABLE gcm_invocations;
 - `objects.owner` and `read_access.userid` hold user identifiers.
   Users are authenticated identities and are **not** stored in a dedicated table.
 - `parameters` and `crypto_officer_activations` are standalone and do not reference `objects`.
+- `cluster_nodes` is a standalone, ephemeral registry; it does not reference `objects`.
 
 These relationships are managed by the application layer (`crate/server_database/`) rather than database foreign-key constraints.
 

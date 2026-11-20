@@ -7,7 +7,7 @@ pub(crate) mod permissions;
 use std::{
     collections::HashMap,
     num::NonZeroUsize,
-    sync::{Arc, atomic::AtomicU64},
+    sync::{Arc, OnceLock, atomic::AtomicU64},
 };
 
 // AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
@@ -45,7 +45,10 @@ use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
-use tokio::sync::{OnceCell, RwLock};
+use tokio::{
+    sync::{OnceCell, RwLock},
+    task::JoinHandle,
+};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 use zeroize::Zeroizing;
@@ -82,7 +85,7 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
-    routes::enrollment_guard::EnrollmentGuard,
+    routes::{enrollment_guard::EnrollmentGuard, health::HsmProbes},
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
@@ -114,6 +117,16 @@ macro_rules! instantiate_hsm_with_env {
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 /// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
 pub struct KMS {
+    /// Process-specific identifier used by the cluster heartbeat.
+    pub(crate) node_id: String,
+
+    /// Probe state of the HSM slots checked by `GET /health`.
+    pub(crate) hsm_probes: HsmProbes,
+
+    /// Task running the KMIP socket server, set once it started (only when it is enabled).
+    /// `GET /health` reports the node `DEGRADED` when this task has ended.
+    pub(crate) socket_server_task: OnceLock<JoinHandle<()>>,
+
     /// The server parameters are built from the configuration file or command line arguments.
     pub(crate) params: Arc<ServerParams>,
 
@@ -139,6 +152,9 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// All configured HSM instances, in the same order as `params.hsm_instances`.
+    pub(crate) hsm_instances: Vec<Arc<dyn HSM + Send + Sync>>,
 
     /// Monotonically increasing CRL sequence counter (RFC 5280 §5.2.3).
     ///
@@ -391,11 +407,15 @@ impl KMS {
         let rng = Arc::new(KmsRng::new());
 
         Ok(Self {
+            node_id: uuid::Uuid::new_v4().to_string(),
+            hsm_probes: HsmProbes::default(),
+            socket_server_task: OnceLock::new(),
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
-            hsm: hsm_instances.into_iter().next(),
+            hsm: hsm_instances.first().cloned(),
+            hsm_instances,
             metrics,
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,

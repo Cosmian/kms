@@ -30,7 +30,10 @@ use super::{
 };
 use crate::{
     middlewares::{AuthMethod, AuthenticatedUser},
-    tests::test_utils::{https_clap_config, test_kms, test_kms_with_config},
+    tests::test_utils::{
+        assert_stored_wrapped_by_kek, https_clap_config, test_kms, test_kms_with_config,
+        test_kms_with_kek,
+    },
 };
 
 const TEST_USER_HEADER: &str = "x-test-user";
@@ -813,7 +816,7 @@ async fn hard_delete_wipes_versions_and_recreation_starts_fresh() {
             .expect("retrieve")
             .expect("version row is kept");
         assert_eq!(version.state(), State::Destroyed);
-        assert_eq!(secret_bytes(&version).expect("secret bytes"), b"");
+        assert_eq!(secret_bytes(version.object()).expect("secret bytes"), b"");
     }
     let ttl_tag = ttl_active_tag(kms.internal_uid_key().await.expect("key")).expect("tag");
     assert!(
@@ -925,7 +928,7 @@ async fn ttl_sweep_destroys_only_expired_versions() {
         .expect("retrieve")
         .expect("version row is kept");
     assert_eq!(version.state(), State::Destroyed);
-    assert_eq!(secret_bytes(&version).expect("secret bytes"), b"");
+    assert_eq!(secret_bytes(version.object()).expect("secret bytes"), b"");
     let (status, _) = send(
         &app,
         TestRequest::get().uri(&format!("/kv/data/{path}?version=1")),
@@ -1203,7 +1206,10 @@ async fn metadata_pointing_at_a_foreign_object_fails_closed() {
         ),
         "the foreign object must not be destroyed"
     );
-    assert_eq!(secret_bytes(&foreign).expect("bytes"), br#"{"k":"theirs"}"#);
+    assert_eq!(
+        secret_bytes(foreign.object()).expect("bytes"),
+        br#"{"k":"theirs"}"#
+    );
 }
 
 #[tokio::test]
@@ -1311,4 +1317,25 @@ async fn mount_named_like_another_scope_does_not_shadow_it() {
             "{uri}"
         );
     }
+}
+
+/// With a server key encryption key configured, KV secret versions are stored wrapped (the
+/// path metadata holds no secret) and a read still returns the secret.
+#[tokio::test]
+async fn secret_versions_are_wrapped_by_the_server_kek() {
+    let (kms, kek_id) = test_kms_with_kek("kek-owner", https_clap_config)
+        .await
+        .expect("KEK-protected KMS starts");
+    let app = kv_app(kms.clone()).await;
+    let secret = json!({"password": "hunter2"});
+
+    let (status, body) = send(&app, put_request("kek/db", &secret, &json!({})), "alice").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (_, metadata) = path_metadata(&kms, "kek/db").await;
+    assert_stored_wrapped_by_kek(&kms, &metadata.versions[&1].object_uid, &kek_id).await;
+
+    let (status, body) = send(&app, get_request("kek/db"), "alice").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["data"], secret);
 }

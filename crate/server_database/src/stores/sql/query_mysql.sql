@@ -380,3 +380,37 @@ UPDATE gcm_invocations SET `count` = `count` + ? WHERE object_id = ?;
 
 -- name: delete-gcm-invocations
 DELETE FROM gcm_invocations WHERE object_id = ?;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64) NOT NULL PRIMARY KEY,
+    version         VARCHAR(64) NOT NULL,
+    last_heartbeat  BIGINT      NOT NULL,
+    is_leader       BOOLEAN     NOT NULL DEFAULT FALSE
+);
+
+-- name: clear-cluster-leader
+UPDATE cluster_nodes SET is_leader = FALSE;
+
+-- name: upsert-cluster-node
+INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader)
+VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+    version = VALUES(version),
+    last_heartbeat = VALUES(last_heartbeat),
+    is_leader = VALUES(is_leader);
+
+-- name: delete-stale-cluster-nodes
+DELETE FROM cluster_nodes WHERE last_heartbeat < ?;
+
+-- name: select-live-cluster-nodes
+SELECT node_id, version, last_heartbeat, is_leader
+FROM cluster_nodes WHERE last_heartbeat >= ? ORDER BY node_id;
+
+-- Named lock scoped to the current database (SHA2 hex = 64 chars, the GET_LOCK name limit).
+-- Returns 1 when acquired, 0 when held elsewhere, NULL on error.
+-- name: try-cron-lock
+SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256), 0);
+
+-- name: release-cron-lock
+SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256));

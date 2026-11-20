@@ -9,7 +9,8 @@ set -euo pipefail
 #
 # Required environment:
 #   CKMS_BIN   — path to the ckms binary
-#   CKMS_CONF  — ckms configuration (authenticated as the CA key owner)
+#   CKMS_CONF  — ckms configuration (authenticated as the CA key owner: an mTLS
+#                client cert whose CN is the KMS default_username, see kms_write_ckms_conf)
 # Optional:
 #   PKI_CA_TAG      — CA key tag (default: vault_pki_ca)
 #   SPIRE_ENTITIES  — space-separated AppRole names (default: spire-server-a spire-server-b)

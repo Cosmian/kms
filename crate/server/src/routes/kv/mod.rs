@@ -50,9 +50,10 @@ use self::{
     error::{CONCURRENT_UPDATE, KvApiError, KvResult},
     metadata::{
         MAX_KV_GENERATIONS, MAX_KV_LIST_CANDIDATES, MAX_KV_VERSIONS, PathLookup, PathMetadata,
-        VersionEntry, authorize, create_object_operation, destroy_version_operations,
-        find_metadata, lookup_path, meta_tag, metadata_tags, metadata_update_operation, now,
-        save_metadata, secret_bytes, ttl_active_tag, validate_path_length, version_tag,
+        VersionEntry, authorize, create_object_operation, create_version_operation,
+        destroy_version_operations, find_metadata, lookup_path, meta_tag, metadata_tags,
+        metadata_update_operation, now, save_metadata, secret_bytes, ttl_active_tag,
+        validate_path_length, version_tag,
     },
     types::{
         DataWrapper, GetSecretData, KvSecretMap, ListData, MountInfo, MountOptions, PutSecretData,
@@ -344,7 +345,7 @@ async fn put_secret(
         }
     };
     let version_operation =
-        create_object_operation(kms, &version_uid, &owner, &secret, &version_tags)?;
+        create_version_operation(kms, &version_uid, &owner, &secret, &version_tags).await?;
     if let Err(error) = kms
         .database
         .atomic(&owner, &[metadata_operation, version_operation])
@@ -453,7 +454,10 @@ async fn get_secret(
         )));
     }
     // The serde message could quote the secret: only its category is kept.
-    let data: KvSecretMap = serde_json::from_slice(secret_bytes(&version_owm)?).map_err(|e| {
+    let secret_object = kms
+        .get_unwrapped(version_owm.id(), version_owm.object(), &user)
+        .await?;
+    let data: KvSecretMap = serde_json::from_slice(secret_bytes(&secret_object)?).map_err(|e| {
         KvApiError::InternalError(format!("corrupt KV secret data ({:?})", e.classify()))
     })?;
 

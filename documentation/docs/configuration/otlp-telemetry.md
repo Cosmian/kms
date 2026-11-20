@@ -121,6 +121,12 @@ object identifiers.
 
 Both metrics are refreshed every 30 s by the metrics cron task and seeded at server startup.
 
+### Cluster
+
+| Metric | Type | Description | Labels |
+|--------|------|-------------|--------|
+| `kms.cluster.nodes` | gauge | Number of KMS nodes with a heartbeat in the last 15 s (see [Cluster coordination](../installation/cluster_coordination.md)); refreshed every 5 s | — |
+
 ### Cache
 
 | Metric | Type | Description | Labels |
