@@ -1451,7 +1451,7 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
     );
 
     let iv = enc_resp.i_v_counter_nonce;
-    let ciphertext = enc_resp.data.unwrap_or_default();
+    let ciphertext = enc_resp.data.unwrap_or_default().to_vec();
     let tag = enc_resp.authenticated_encryption_tag;
 
     assert!(
@@ -2374,7 +2374,7 @@ async fn test_ceremony_verification_fails_secure_on_ceremony_keys_mismatch() -> 
     // "Leader": activates alice's ceremony with the default TEST_CEREMONY_SECRET.
     let mut conf_a = base_ceremony_conf(co_users.clone(), true, None);
     conf_a.db.sqlite_path = shared_db_path.clone();
-    let kms_a = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf_a)?)).await?);
+    let kms_a = test_kms_with_config(conf_a).await?;
     kms_a
         .database
         .activate_crypto_officer_ceremony(alice, &["p1".to_owned(), "p2".to_owned()], "somehash")
@@ -2389,7 +2389,7 @@ async fn test_ceremony_verification_fails_secure_on_ceremony_keys_mismatch() -> 
     let mut conf_b = base_ceremony_conf(co_users, true, None);
     conf_b.db.sqlite_path = shared_db_path;
     conf_b.roles.ceremony_secret = Some("0".repeat(64));
-    let kms_b = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(conf_b)?)).await?);
+    let kms_b = test_kms_with_config(conf_b).await?;
 
     // Must fail secure: Ok(false), never Err.
     assert!(

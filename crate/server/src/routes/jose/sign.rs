@@ -10,7 +10,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::{LinkType, UniqueIdentifier},
 };
 use cosmian_logger::trace;
-use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse, b64_decode,
@@ -70,7 +69,7 @@ pub(crate) async fn sign(
     let sign_req = KmipSign {
         unique_identifier: Some(UniqueIdentifier::TextString(body.kid.clone())),
         cryptographic_parameters: Some(kmip_params),
-        data: Some(Zeroizing::new(signing_input_bytes)),
+        data: Some(signing_input_bytes.into()),
         ..Default::default()
     };
 

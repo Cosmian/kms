@@ -15,7 +15,6 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
 pub struct SignContext {
     pub algorithm: SignatureAlgorithm,
     pub private_key: Arc<dyn PrivateKey>,
@@ -33,15 +32,37 @@ pub struct SignContext {
     pub pending_signature: Option<PendingSignature>,
 }
 
+/// Prints only the lengths of the byte buffers, never their content.
+impl std::fmt::Debug for SignContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SignContext")
+            .field("algorithm", &self.algorithm)
+            .field("private_key", &self.private_key)
+            .field("operation", &self.operation)
+            .field("payload_len", &self.payload.as_ref().map(Vec::len))
+            .field("pending_signature", &self.pending_signature)
+            .finish()
+    }
+}
+
 /// A signature cached between the two calls of the PKCS#11 length-query convention,
 /// bound to the exact data it was computed over.
-#[derive(Debug)]
 pub struct PendingSignature {
     /// The data that was signed. The cached signature is only reused for a follow-up
     /// call over identical data; a caller that changes the data between the length
     /// query and the real call gets a fresh signature, never one over the old data.
     pub data: Vec<u8>,
     pub signature: Vec<u8>,
+}
+
+/// Prints only the lengths of the byte buffers, never their content.
+impl std::fmt::Debug for PendingSignature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingSignature")
+            .field("data_len", &self.data.len())
+            .field("signature_len", &self.signature.len())
+            .finish()
+    }
 }
 
 /// PKCS#11 signing API family an active sign context was initialized for.
@@ -54,7 +75,6 @@ pub enum SignOperation {
 }
 
 /// State of an active verification operation started by `C_VerifyInit`.
-#[derive(Debug)]
 pub struct VerifyContext {
     /// Signature algorithm selected by the verification mechanism.
     pub algorithm: SignatureAlgorithm,
@@ -64,7 +84,17 @@ pub struct VerifyContext {
     pub payload: Option<Vec<u8>>,
 }
 
-#[derive(Debug)]
+/// Prints only the lengths of the byte buffers, never their content.
+impl std::fmt::Debug for VerifyContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VerifyContext")
+            .field("algorithm", &self.algorithm)
+            .field("public_key", &self.public_key)
+            .field("payload_len", &self.payload.as_ref().map(Vec::len))
+            .finish()
+    }
+}
+
 pub struct DecryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
@@ -74,7 +104,18 @@ pub struct DecryptContext {
     pub aad: Option<Vec<u8>>,
 }
 
-#[derive(Debug)]
+/// Prints only the lengths of `iv` and `aad`, never their bytes.
+impl std::fmt::Debug for DecryptContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DecryptContext")
+            .field("remote_object_id", &self.remote_object_id)
+            .field("algorithm", &self.algorithm)
+            .field("iv_len", &self.iv.as_ref().map(Vec::len))
+            .field("aad_len", &self.aad.as_ref().map(Vec::len))
+            .finish()
+    }
+}
+
 pub struct EncryptContext {
     pub remote_object_id: String,
     pub algorithm: EncryptionAlgorithm,
@@ -84,8 +125,19 @@ pub struct EncryptContext {
     pub aad: Option<Vec<u8>>,
 }
 
+/// Prints only the lengths of `iv` and `aad`, never their bytes.
+impl std::fmt::Debug for EncryptContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EncryptContext")
+            .field("remote_object_id", &self.remote_object_id)
+            .field("algorithm", &self.algorithm)
+            .field("iv_len", &self.iv.as_ref().map(Vec::len))
+            .field("aad_len", &self.aad.as_ref().map(Vec::len))
+            .finish()
+    }
+}
+
 /// State of an active AES-CMAC / AES-GMAC `C_SignInit` / `C_VerifyInit` operation on a secret key.
-#[derive(Debug)]
 pub struct MacContext {
     /// KMS unique identifier of the secret key.
     pub remote_object_id: String,
@@ -95,8 +147,18 @@ pub struct MacContext {
     pub payload: Option<Vec<u8>>,
 }
 
+/// Prints only the lengths of the byte buffers, never their content.
+impl std::fmt::Debug for MacContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MacContext")
+            .field("remote_object_id", &self.remote_object_id)
+            .field("algorithm", &self.algorithm)
+            .field("payload_len", &self.payload.as_ref().map(Vec::len))
+            .finish()
+    }
+}
+
 /// Detached AES-GCM artifacts returned by a PKCS#11 v3 message-encryption call.
-#[derive(Debug)]
 pub struct MessageEncryptionOutput {
     /// Ciphertext without the authentication tag.
     pub ciphertext: Vec<u8>,
@@ -104,6 +166,17 @@ pub struct MessageEncryptionOutput {
     pub iv: Vec<u8>,
     /// Detached AES-GCM authentication tag.
     pub tag: Vec<u8>,
+}
+
+/// Prints only the lengths of the byte buffers, never their content.
+impl std::fmt::Debug for MessageEncryptionOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MessageEncryptionOutput")
+            .field("ciphertext_len", &self.ciphertext.len())
+            .field("iv_len", &self.iv.len())
+            .field("tag_len", &self.tag.len())
+            .finish()
+    }
 }
 
 static BACKEND: LazyLock<RwLock<Option<Arc<dyn Backend>>>> = LazyLock::new(|| RwLock::new(None));

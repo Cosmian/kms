@@ -343,7 +343,7 @@ pub(crate) async fn oracle_sign(kms: &KMS, key: &OracleSigningKey, tbs: &[u8]) -
     let request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(key.uid.clone())),
         cryptographic_parameters: Some(key.algorithm.sign_parameters()),
-        data,
+        data: data.map(Into::into),
         digested_data,
         ..Sign::default()
     };

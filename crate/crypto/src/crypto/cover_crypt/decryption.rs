@@ -3,10 +3,13 @@ use cosmian_crypto_core::{
     Aes256Gcm, Dem, FixedSizeCBytes, Instantiable, Nonce, SymmetricKey,
     bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
-use cosmian_kmip::kmip_2_1::{
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, DecryptResponse},
-    kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+use cosmian_kmip::{
+    LenDisplay,
+    kmip_2_1::{
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptResponse},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
+    },
 };
 use cosmian_logger::{debug, trace};
 use zeroize::Zeroizing;
@@ -54,7 +57,7 @@ impl CovercryptDecryption {
         ad: Option<&[u8]>,
         usk: &UserSecretKey,
     ) -> CryptoResult<Zeroizing<Vec<u8>>> {
-        trace!("decrypt: ad: {ad:?}");
+        trace!("decrypt: ad: {}", ad.len_display());
 
         let mut de = Deserializer::new(encrypted_bytes);
 
@@ -153,20 +156,26 @@ impl DecryptionSystem for CovercryptDecryption {
         {
             self.bulk_decrypt(
                 ctx.as_slice(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
                 &usk,
             )?
         } else {
             self.single_decrypt(
                 ctx.as_slice(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
                 &usk,
             )?
         };
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.usk_uid.clone()),
-            data: Some(ptx),
+            data: Some(ptx.into()),
             correlation_value: None,
         })
     }

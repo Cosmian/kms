@@ -334,12 +334,13 @@ async fn kmip_encrypt_dek(
     let encrypt_request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
         cryptographic_parameters: Some(crypto_params),
-        data: Some(dek_bytes),
+        data: Some(dek_bytes.into()),
         ..Default::default()
     };
     let response = kms.encrypt(encrypt_request, user).await?;
     response
         .data
+        .map(|data| data.to_vec())
         .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))
 }
 
@@ -472,6 +473,7 @@ async fn kmip_decrypt_dek(
     let response = kms.decrypt(decrypt_request, user).await?;
     response
         .data
+        .map(Into::into)
         .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data."))
 }
 

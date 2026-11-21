@@ -609,7 +609,7 @@ fn build_reconstructed_object(
         key_format_type: KeyFormatType::Opaque,
         key_compression_type: None,
         key_value: Some(KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(secret),
+            key_material: KeyMaterial::ByteString(secret.into()),
             attributes: None,
         }),
         cryptographic_algorithm: effective_algo,
@@ -650,7 +650,6 @@ mod tests {
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     };
-    use zeroize::Zeroizing;
 
     use super::*;
 
@@ -659,7 +658,7 @@ mod tests {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(raw)),
+                key_material: KeyMaterial::ByteString(raw.into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -695,7 +694,7 @@ mod tests {
         let kb = KeyBlock {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0_u8; 8]))),
+            key_value: Some(KeyValue::ByteString(vec![0_u8; 8].into())),
             cryptographic_algorithm: None,
             cryptographic_length: None,
             key_wrapping_data: None,

@@ -21,7 +21,31 @@ use crate::ttlv::{
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
-#[derive(Debug)]
+/// Value-free summary of a TTLV node for trace logs: tag and child count only. While a value is
+/// being serialized, a big integer (a private key component) is a run of plain `Integer` /
+/// `LongInteger` nodes until `normalize_ttlv` runs, so tracing the nodes with `{:?}` would log it.
+struct Brief<'a>(&'a TTLV);
+
+impl Debug for Brief<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0.value {
+            TTLValue::Structure(children) => {
+                write!(f, "{}[{} children]", self.0.tag, children.len())
+            }
+            _ => write!(f, "{}", self.0.tag),
+        }
+    }
+}
+
+/// Value-free summary of a list of TTLV nodes (see [`Brief`]).
+struct BriefList<'a>(&'a [TTLV]);
+
+impl Debug for BriefList<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.0.iter().map(Brief)).finish()
+    }
+}
+
 struct Stack<T>
 where
     T: Debug,
@@ -57,7 +81,13 @@ where
     }
 }
 
-#[derive(Debug)]
+impl Stack<TTLV> {
+    /// Value-free summary of the stack for trace logs.
+    fn brief(&self) -> BriefList<'_> {
+        BriefList(&self.elements)
+    }
+}
+
 pub struct TtlvSerializer {
     stack: Stack<TTLV>,
     /// When serializing a sequence under a byte-like KMIP tag (e.g. `Data`,
@@ -152,23 +182,23 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         false
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::Boolean(v);
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i8(self, v: i8) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i16(self, v: i16) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
         if let Some(ref mut acc) = self.byte_accumulator {
             let byte = u8::try_from(v).map_err(|e| {
@@ -183,23 +213,23 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i64(self, v: i64) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::LongInteger(v);
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u8(self, v: u8) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u16(self, v: u16) -> Result<Self::Ok> {
         self.serialize_i32(i32::from(v))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
         match i32::try_from(v) {
             Ok(v32) => self.serialize_i32(v32),
@@ -207,7 +237,7 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         }
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_u64(self, v: u64) -> Result<Self::Ok> {
         self.serialize_i64(v.try_into().map_err(|_e| {
             TtlvError::custom(format!(
@@ -218,7 +248,7 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
 
     /// `i128` is only used for Date Time Extended values (the deserializer reads `i128` from
     /// `DateTimeExtended` nodes only); the binary encoding holds 64 bits.
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_i128(self, v: i128) -> Result<Self::Ok> {
         let v = i64::try_from(v)
             .map_err(|_e| TtlvError::custom(format!("DateTimeExtended {v} exceeds 64 bits")))?;
@@ -240,19 +270,19 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
         ))
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_char(self, v: char) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::TextString(format!("{v}"));
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_str(self, v: &str) -> Result<Self::Ok> {
         self.current_mut()?.value = TTLValue::TextString(v.to_owned());
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self))]
+    #[instrument(level = "trace", skip(self, v))]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
         if let Ok(current) = self.current_mut() {
             current.value = TTLValue::ByteString(v.to_owned());
@@ -455,14 +485,17 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
                 self.byte_accumulator = Some(Vec::with_capacity(len.unwrap_or(0)));
                 trace!(
                     "serialize_seq of len: {len:?} in receiver: {:?} (byte accumulation mode)",
-                    receiver
+                    Brief(receiver)
                 );
             } else {
                 // Cap initial capacity to prevent allocation overflow for very large
                 // sequences of non-byte-like elements.
                 let cap = len.unwrap_or(0).min(1024);
                 receiver.value = TTLValue::Structure(Vec::with_capacity(cap));
-                trace!("serialize_seq of len: {len:?} in receiver: {:?}", receiver);
+                trace!(
+                    "serialize_seq of len: {len:?} in receiver: {:?}",
+                    Brief(receiver)
+                );
             }
         } else {
             trace!(
@@ -529,7 +562,10 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     #[instrument(level = "trace", skip(self))]
     fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct> {
         if let Some(parent) = self.stack.peek_mut() {
-            trace!("serialize_struct named: {name} in parent: {:?}", parent);
+            trace!(
+                "serialize_struct named: {name} in parent: {:?}",
+                Brief(parent)
+            );
             parent.value = TTLValue::Structure(Vec::with_capacity(len));
             if parent.tag == "Object" {
                 trace!("... replacing  \"Object\" with: {name}");
@@ -588,7 +624,8 @@ impl SerializeSeq for &mut TtlvSerializer {
             .map_or_else(|| "".into(), |parent| parent.tag.clone());
         trace!(
             "Seq Element: serializing a seq element with tag {}, stack is: {:?}",
-            tag, self.stack
+            tag,
+            self.stack.brief()
         );
         self.stack.push(TTLV {
             tag,
@@ -604,8 +641,8 @@ impl SerializeSeq for &mut TtlvSerializer {
         })?;
         receiving_parent_vec.push(current_element);
         trace!(
-            "... Seq element added, the current parent value is: {:?}",
-            receiving_parent_vec,
+            "... Seq element added, the current parent now has {} children",
+            receiving_parent_vec.len(),
         );
         Ok(())
     }
@@ -619,12 +656,12 @@ impl SerializeSeq for &mut TtlvSerializer {
             }
             trace!(
                 "Finished serializing byte sequence as ByteString, parent: {:?}",
-                self.stack.peek()
+                self.stack.peek().map(Brief)
             );
         } else {
             trace!(
                 "Finished serializing the sequence, the parent is: {:?}",
-                self.stack.peek()
+                self.stack.peek().map(Brief)
             );
         }
         Ok(())
@@ -730,7 +767,7 @@ impl SerializeStruct for &mut TtlvSerializer {
     {
         trace!(
             "serializing a struct field with name: {key}, stack: {:?}",
-            &self.stack
+            self.stack.brief()
         );
         let mut current_element = {
             self.stack.push(TTLV {
@@ -769,8 +806,8 @@ impl SerializeStruct for &mut TtlvSerializer {
             struct_elements.push(current_element);
         }
         trace!(
-            "... added a struct field: {key}, the parent struct is now: {:?}",
-            &struct_elements,
+            "... added a struct field: {key}, the parent struct now has {} children",
+            struct_elements.len(),
         );
         Ok(())
     }
@@ -778,7 +815,7 @@ impl SerializeStruct for &mut TtlvSerializer {
     #[instrument(level = "trace", skip(self))]
     fn end(self) -> Result<Self::Ok> {
         collapse_adjacently_tagged_structure(self.current_mut()?);
-        trace!("Structure finalized, stack: {:?} ", self.stack);
+        trace!("Structure finalized, stack: {:?} ", self.stack.brief());
         Ok(())
     }
 }

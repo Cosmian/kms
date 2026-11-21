@@ -163,7 +163,12 @@ pub(crate) async fn wrap_key(
         "POST /ekm/{}/wrapkey alg={:?} api-version={} user={}",
         key_name, body.alg, query.api_version, user
     );
-    trace!("Request: {:?}", body.0);
+    trace!(
+        "Request: request_context={:?} alg={:?} value_len={}",
+        body.request_context,
+        body.alg,
+        body.value.len()
+    );
 
     if let Err(e) = validate_key_request(&query.api_version, &key_name) {
         return e.into();
@@ -190,7 +195,12 @@ pub(crate) async fn unwrap_key(
         "POST /ekm/{}/unwrapkey alg={:?} api-version={} user={}",
         key_name, body.alg, query.api_version, user
     );
-    trace!("Request: {:?}", body.0);
+    trace!(
+        "Request: request_context={:?} alg={:?} value_len={}",
+        body.request_context,
+        body.alg,
+        body.value.len()
+    );
 
     if let Err(e) = validate_key_request(&query.api_version, &key_name) {
         return e.into();

@@ -213,7 +213,6 @@ mod tests {
         },
         cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
     };
-    use zeroize::Zeroizing;
 
     use super::{RekeyOperation, ReplacementObject, RotationCandidate, SqlSymmetricRekeyer};
     use crate::{
@@ -289,7 +288,7 @@ mod tests {
                             unique_identifier: Some(UniqueIdentifier::TextString(
                                 candidate.uid.clone(),
                             )),
-                            data: Some(Zeroizing::new(b"rotation race".to_vec())),
+                            data: Some(b"rotation race".to_vec().into()),
                             ..Encrypt::default()
                         },
                         user,
@@ -470,7 +469,7 @@ mod tests {
             .decrypt(
                 Decrypt {
                     unique_identifier: Some(encrypted.unique_identifier.clone()),
-                    data: encrypted.data,
+                    data: encrypted.data.map(|d| d.to_vec()),
                     i_v_counter_nonce: encrypted.i_v_counter_nonce,
                     authenticated_encryption_tag: encrypted.authenticated_encryption_tag,
                     cryptographic_parameters: Some(CryptographicParameters::default()),
@@ -541,7 +540,7 @@ mod tests {
         kms.encrypt(
             Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-                data: Some(Zeroizing::new(data.to_vec())),
+                data: Some(data.to_vec().into()),
                 ..Encrypt::default()
             },
             user,
@@ -558,7 +557,7 @@ mod tests {
             .decrypt(
                 Decrypt {
                     unique_identifier: Some(encrypted.unique_identifier),
-                    data: encrypted.data,
+                    data: encrypted.data.map(|d| d.to_vec()),
                     i_v_counter_nonce: encrypted.i_v_counter_nonce,
                     authenticated_encryption_tag: encrypted.authenticated_encryption_tag,
                     cryptographic_parameters: Some(CryptographicParameters::default()),

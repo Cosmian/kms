@@ -297,7 +297,7 @@ fn zeroized_copy(
         .map_err(|e| DbError::DatabaseError(e.to_string()))?;
     key_block.key_format_type = KeyFormatType::Raw;
     key_block.key_value = Some(KeyValue::Structure {
-        key_material: KeyMaterial::ByteString(zeroize::Zeroizing::from(vec![])),
+        key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::default()),
         attributes: None,
     });
     Ok(zeroized)

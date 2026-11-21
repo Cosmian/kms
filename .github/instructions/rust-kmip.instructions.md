@@ -23,7 +23,7 @@ applyTo: 'crate/kmip/**/*.rs'
 - KMIP enumerations → Rust `enum` with `#[derive(KmipEnum)]`.
 - KMIP structures → Rust `struct` with `#[derive(KmipStruct)]`.
 - Optional fields → `Option<T>`.
-- KMIP `TextString` → `String`, `ByteString` → `Vec<u8>` or `Zeroizing<Vec<u8>>` for secrets.
+- KMIP `TextString` → `String`, `ByteString` → `Vec<u8>`, or `cosmian_kmip::SensitiveBytes` for secrets (see `rust-security.instructions.md` § Secret memory).
 
 ## Backward compatibility
 

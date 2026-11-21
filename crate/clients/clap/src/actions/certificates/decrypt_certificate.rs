@@ -62,7 +62,7 @@ impl DecryptCertificateAction {
             authenticated_encryption_additional_data: self
                 .authentication_data
                 .clone()
-                .map(|s| s.as_bytes().to_vec()),
+                .map(|s| s.as_bytes().to_vec().into()),
             cryptographic_parameters: self
                 .encryption_algorithm
                 .map(|alg| alg.to_cryptographic_parameters(HashFn::Sha256)),

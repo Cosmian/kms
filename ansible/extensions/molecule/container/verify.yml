@@ -1,0 +1,18 @@
+---
+- name: Verify the KMS container state
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - name: Check that the key exists and is unchanged
+      cosmian.kms.kms_key:
+        name: molecule-key
+      check_mode: true
+      register: molecule_key
+
+    - name: Assert the key was found
+      ansible.builtin.assert:
+        that: molecule_key is not changed

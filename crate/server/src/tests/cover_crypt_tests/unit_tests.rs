@@ -274,7 +274,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             .as_str()
             .context("There should be a unique identifier in the response")?
     );
-    let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
+    let confidential_mkg_encrypted_data =
+        er.data.context("There should be encrypted data")?.to_vec();
 
     // check if it doesn't work with an invalid tenant
     let er = kms
@@ -315,7 +316,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             .as_str()
             .context("There should be a unique identifier in the response")?
     );
-    let secret_fin_encrypted_data = er.data.context("There should be encrypted data")?;
+    let secret_fin_encrypted_data = er.data.context("There should be encrypted data")?.to_vec();
 
     // check if it doesn't work with an invalid tenant
     let er = kms
@@ -558,7 +559,8 @@ async fn test_import_decrypt() -> KResult<()> {
             .as_str()
             .context("There should be a unique identifier in the response")?
     );
-    let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
+    let confidential_mkg_encrypted_data =
+        er.data.context("There should be encrypted data")?.to_vec();
 
     // Create a user decryption key MKG | FIN + Top Secret
     let secret_mkg_fin_access_policy =

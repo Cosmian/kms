@@ -232,7 +232,7 @@ pub fn decode_unwrapped_key(
                 | KeyFormatType::OpenPgpSecretKey
                 | KeyFormatType::OpenPgpPublicKey => {
                     // For no encoding, create a structure with the plaintext as bytes
-                    let key_material = KeyMaterial::ByteString(plaintext);
+                    let key_material = KeyMaterial::ByteString(plaintext.into());
                     Ok(KeyValue::Structure {
                         key_material,
                         attributes: None,
@@ -241,7 +241,7 @@ pub fn decode_unwrapped_key(
                 #[cfg(feature = "non-fips")]
                 KeyFormatType::Pkcs12Legacy => {
                     // For no encoding, create a structure with the plaintext as bytes
-                    let key_material = KeyMaterial::ByteString(plaintext);
+                    let key_material = KeyMaterial::ByteString(plaintext.into());
                     Ok(KeyValue::Structure {
                         key_material,
                         attributes: None,
@@ -249,7 +249,9 @@ pub fn decode_unwrapped_key(
                 }
                 KeyFormatType::TransparentSymmetricKey => {
                     // For no encoding, create a structure with the plaintext as bytes
-                    let key_material = KeyMaterial::TransparentSymmetricKey { key: plaintext };
+                    let key_material = KeyMaterial::TransparentSymmetricKey {
+                        key: plaintext.into(),
+                    };
                     Ok(KeyValue::Structure {
                         key_material,
                         attributes: None,

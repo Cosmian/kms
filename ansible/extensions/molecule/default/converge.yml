@@ -1,0 +1,21 @@
+---
+- name: Configure KMS files
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    molecule_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+    kms_config_path: "{{ molecule_dir }}/kms.toml"
+    kms_config_owner: "{{ ansible_facts.user_id }}"
+    kms_config_group: "{{ ansible_facts.user_gid }}"
+    kms_config_toml: |
+      default_username = "admin"
+      [db]
+      database_type = "sqlite"
+      sqlite_path = "/tmp/kms-data"
+    kms_config_tls_certificate: test-certificate
+    kms_config_tls_private_key: test-private-key
+    kms_config_tls_certificate_path: "{{ molecule_dir }}/tls/server.crt"
+    kms_config_tls_private_key_path: "{{ molecule_dir }}/tls/server.key"
+  roles:
+    - cosmian.kms.kms_config

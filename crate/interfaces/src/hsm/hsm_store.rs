@@ -1259,7 +1259,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: KmipKeyMaterial::TransparentSymmetricKey {
-                            key: zeroize::Zeroizing::new(vec![]),
+                            key: cosmian_kmip::SensitiveBytes::default(),
                         },
                         attributes: Some(Box::new(attributes)),
                     }),
@@ -1293,7 +1293,7 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
                         key_material: KmipKeyMaterial::TransparentSymmetricKey {
-                            key: zeroize::Zeroizing::new(vec![]),
+                            key: cosmian_kmip::SensitiveBytes::default(),
                         },
                         attributes: Some(Box::new(attributes)),
                     }),
@@ -1735,7 +1735,9 @@ fn to_object_with_metadata(
             attributes
                 .set_tags(vendor_id, tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
-            let kmip_key_material = KmipKeyMaterial::TransparentSymmetricKey { key: bytes.clone() };
+            let kmip_key_material = KmipKeyMaterial::TransparentSymmetricKey {
+                key: bytes.clone().into(),
+            };
             let object = Object::SymmetricKey(SymmetricKey {
                 key_block: KeyBlock {
                     key_format_type: KeyFormatType::TransparentSymmetricKey,

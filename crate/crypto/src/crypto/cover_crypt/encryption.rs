@@ -5,7 +5,7 @@ use cosmian_crypto_core::{
     reexport::zeroize::Zeroizing,
 };
 use cosmian_kmip::{
-    DataToEncrypt,
+    DataToEncrypt, LenDisplay,
     kmip_2_1::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse},
@@ -127,8 +127,8 @@ impl CoverCryptEncryption {
         let ctx = Aes256Gcm::new(key).encrypt(&nonce, ptx, ad)?;
         let res = [&nonce.0, &*ctx].concat();
         debug!(
-            "Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}",
-            ad,
+            "Encrypted data with auth data {}, len (Plain/Enc): {}/{}",
+            ad.len_display(),
             ptx.len(),
             res.len(),
         );
@@ -138,9 +138,15 @@ impl CoverCryptEncryption {
 
 impl EncryptionSystem for CoverCryptEncryption {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
-        let ad = request.authenticated_encryption_additional_data.as_deref();
+        let ad = request
+            .authenticated_encryption_additional_data
+            .as_deref()
+            .map(Vec::as_slice);
 
-        trace!("authenticated_encryption_additional_data: {ad:?}",);
+        trace!(
+            "authenticated_encryption_additional_data: {}",
+            ad.len_display()
+        );
 
         let encrypted_data =
             request
@@ -173,10 +179,10 @@ impl EncryptionSystem for CoverCryptEncryption {
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
-            data: encrypted_data,
+            data: encrypted_data.map(Into::into),
             i_v_counter_nonce: None,
             correlation_value: None,
-            authenticated_encryption_tag: ad.map(<[u8]>::to_vec),
+            authenticated_encryption_tag: ad.map(|a| a.to_vec().into()),
         })
     }
 }

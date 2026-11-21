@@ -15,11 +15,42 @@ pub enum KmipFlavor {
 }
 
 use std::borrow::Cow;
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct TTLV {
     pub tag: Cow<'static, str>,
     pub value: TTLValue,
 }
+
+/// Leaf tags whose value is a secret even when it is a `TextString`. `LinkedObjectIdentifier` is
+/// there because the target of a `PKCS12PasswordLink` is the PKCS#12 password (or the id of the
+/// secret holding it) and a leaf does not know the type of the link it belongs to. Likewise
+/// `UniqueIdentifier`: a PKCS#12 export carries the PKCS#12 password in that of its
+/// `EncryptionKeyInformation`, and the deserializer traces children on their own.
+const SECRET_LEAF_TAGS: [&str; 6] = [
+    "Password",
+    "OneTimePassword",
+    "HashedPassword",
+    "TicketValue",
+    "LinkedObjectIdentifier",
+    "UniqueIdentifier",
+];
+
+/// `Debug` never prints the value of a secret leaf tag, on top of the `ByteString`/`BigInteger`
+/// redaction of [`TTLValue`]. A whole incoming request is traced with `{:?}` by the deserializer,
+/// so this keeps credentials out of trace logs.
+impl std::fmt::Debug for TTLV {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut d = f.debug_struct("TTLV");
+        d.field("tag", &self.tag);
+        if SECRET_LEAF_TAGS.contains(&&*self.tag) && !matches!(self.value, TTLValue::Structure(_)) {
+            d.field("value", &format_args!("<redacted>"));
+        } else {
+            d.field("value", &self.value);
+        }
+        d.finish()
+    }
+}
+
 impl TTLV {
     /// Constructs a TTLV node with a borrowed static tag.
     #[must_use]
@@ -138,7 +169,7 @@ impl TTLV {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq)]
 pub enum TTLValue {
     Structure(Vec<TTLV>),
     Integer(i32),
@@ -151,6 +182,26 @@ pub enum TTLValue {
     DateTime(OffsetDateTime),
     Interval(u32),
     DateTimeExtended(i128),
+}
+
+/// `Debug` never prints `ByteString` / `BigInteger` content: it is whatever the client sent
+/// (keys, plaintext, IVs). `TextString` is printed as is.
+impl std::fmt::Debug for TTLValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Structure(v) => f.debug_tuple("Structure").field(v).finish(),
+            Self::Integer(v) => f.debug_tuple("Integer").field(v).finish(),
+            Self::LongInteger(v) => f.debug_tuple("LongInteger").field(v).finish(),
+            Self::BigInteger(_) => f.write_str("BigInteger(<redacted>)"),
+            Self::Enumeration(v) => f.debug_tuple("Enumeration").field(v).finish(),
+            Self::Boolean(v) => f.debug_tuple("Boolean").field(v).finish(),
+            Self::TextString(v) => f.debug_tuple("TextString").field(v).finish(),
+            Self::ByteString(v) => write!(f, "ByteString(<{} bytes>)", v.len()),
+            Self::DateTime(v) => f.debug_tuple("DateTime").field(v).finish(),
+            Self::Interval(v) => f.debug_tuple("Interval").field(v).finish(),
+            Self::DateTimeExtended(v) => f.debug_tuple("DateTimeExtended").field(v).finish(),
+        }
+    }
 }
 
 impl Default for TTLValue {
@@ -264,6 +315,43 @@ impl TryFrom<u8> for TtlvType {
             0x0A => Ok(Self::Interval),
             0x0B => Ok(Self::DateTimeExtended),
             _ => Err(TtlvError::from(format!("Invalid type byte: {value}"))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod debug_redaction_tests {
+    use super::{TTLV, TTLValue};
+
+    /// A credential traced with `{:?}` (the deserializer traces the whole request) must not show
+    /// any of its secrets.
+    #[test]
+    fn debug_hides_credential_secrets() {
+        let ttlv = TTLV {
+            tag: "Credential".into(),
+            value: TTLValue::Structure(vec![
+                TTLV {
+                    tag: "Username".into(),
+                    value: TTLValue::TextString("alice".to_owned()),
+                },
+                TTLV {
+                    tag: "Password".into(),
+                    value: TTLValue::TextString("SECRET-MARKER".to_owned()),
+                },
+                TTLV {
+                    tag: "OneTimePassword".into(),
+                    value: TTLValue::TextString("SECRET-MARKER".to_owned()),
+                },
+                TTLV {
+                    tag: "HashedPassword".into(),
+                    value: TTLValue::ByteString(b"SECRET-MARKER".to_vec()),
+                },
+            ]),
+        };
+        for shown in [format!("{ttlv:?}"), format!("{ttlv:#?}")] {
+            assert!(!shown.contains("SECRET-MARKER"), "{shown}");
+            assert!(!shown.contains("83, 69, 67, 82"), "{shown}");
+            assert!(shown.contains("alice"), "{shown}");
         }
     }
 }

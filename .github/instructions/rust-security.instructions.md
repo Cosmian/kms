@@ -16,7 +16,7 @@ Rules for **new or modified** code. Legacy violations exist: when you touch one,
 
 ## 2. Secret memory
 
-- A field or local holding a password, PIN, token, secret, seed or key bytes is `Zeroizing<_>` (the workspace convention) or a wrapper with a redacting `Debug`.
+- A struct field holding secret bytes or a secret string (IV, nonce, AAD, salt, PIN, password, plaintext, key bytes) is `cosmian_kmip::SensitiveBytes` / `SensitiveString` (alias of the generic `Sensitive<T>`): zeroized on drop, and `Debug`/`Display` print only `<N bytes>`, so no derived `Debug`/`Display` of the containing struct can leak it. Use `Sensitive<T>` (with `SensitiveSize`) for other secret types. A local holding a secret is `Zeroizing<_>`. Big integers and fixed-size secrets (`SafeBigInt`, `Secret<N>`) have a hand-written redacting `Debug`.
 - Never `#[derive(Debug)]` / implement `Display` on a type holding such a field unless the impl prints a placeholder.
 - Config structs read from TOML/clap follow the same rule (existing plain-`String` secret fields in `est_config.rs`, `scep_config.rs`, `roles_config.rs`, `secret_backends/mod.rs` are legacy).
 - Never commit a live provider credential (AWS access key id, GitHub, Slack or Vault token). Gate: `no-committed-credentials` pre-commit hook; use `test_data/` fixtures or environment variables.
@@ -24,7 +24,7 @@ Rules for **new or modified** code. Legacy violations exist: when you touch one,
 ## 3. Logging
 
 - Never log, at any level (including `trace!`): key material, plaintext, ciphertext, MAC/signature bytes, passwords, tokens, raw TTLV/KMIP/HTTP bodies.
-- KMIP request/response `Display` impls base64-encode payload fields (`req_b64`/`opt_b64` in `crate/kmip/src/kmip_2_1/kmip_operations.rs`): never format a whole request/response (`{request}`, `{response}`, `{:?}`) into a log line. Log operation name, unique identifier, lengths, outcome.
+- KMIP request/response `Display` impls print byte-string fields as `<N bytes>` (`req_len`/`opt_len` for byte-string fields still typed `Vec<u8>`, such as ciphertext, signatures, MACs and the `Hash`/`MAC`/`MACVerify`/`SignatureVerify`/`RNGRetrieveResponse` data; `Sensitive<T>` fields redact themselves) in `crate/kmip/src/kmip_2_1/kmip_operations.rs`: never format a whole request/response (`{request}`, `{response}`, `{:?}`) into a log line. Log operation name, unique identifier, lengths, outcome.
 - Use `cosmian_logger` macros. `dbg!`, `println!` and `eprintln!` are for `crate/clients/*` user output only, never libraries or the server.
 
 ## 4. No test-only behaviour in production paths

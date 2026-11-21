@@ -1,0 +1,28 @@
+---
+- name: Verify configured KMS files
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_dir: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+  tasks:
+    - name: Read generated KMS configuration
+      ansible.builtin.slurp:
+        src: "{{ molecule_dir }}/kms.toml"
+      register: kms_toml_file
+
+    - name: Read generated TLS files
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop:
+        - path: "{{ molecule_dir }}/tls/server.crt"
+          content: test-certificate
+        - path: "{{ molecule_dir }}/tls/server.key"
+          content: test-private-key
+      register: kms_tls_files
+
+    - name: Assert generated file contents
+      ansible.builtin.assert:
+        that:
+          - "'database_type = \"sqlite\"' in (kms_toml_file.content | b64decode)"
+          - (kms_tls_files.results | map(attribute='content') | map('b64decode') | list) == ['test-certificate', 'test-private-key']

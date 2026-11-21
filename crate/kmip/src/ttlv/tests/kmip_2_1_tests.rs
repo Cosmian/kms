@@ -2,10 +2,9 @@ use cosmian_logger::{debug, info, log_init, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use time::OffsetDateTime;
-use zeroize::Zeroizing;
 
 use crate::{
-    SafeBigInt,
+    SafeBigInt, SensitiveBytes,
     error::{KmipError, result::KmipResult},
     kmip_0::{
         kmip_messages::{
@@ -38,7 +37,7 @@ use crate::{
 
 fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
     KeyMaterial::TransparentSymmetricKey {
-        key: Zeroizing::from(key_value.to_vec()),
+        key: SensitiveBytes::from(key_value.to_vec()),
     }
 }
 
@@ -470,7 +469,7 @@ fn test_object_public_key() {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(b"1231456".to_vec())),
+                key_material: KeyMaterial::ByteString(SensitiveBytes::from(b"1231456".to_vec())),
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -516,7 +515,7 @@ fn test_import_public_key() {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
+                key_material: KeyMaterial::ByteString(SensitiveBytes::from(key_bytes.to_vec())),
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -797,8 +796,8 @@ fn test_derive_key_single_identifier_round_trip() {
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             }),
-            derivation_data: Some(Zeroizing::new(b"context".to_vec())),
-            salt: Some(b"salt".to_vec()),
+            derivation_data: Some(SensitiveBytes::from(b"context".to_vec())),
+            salt: Some(b"salt".to_vec().into()),
             ..DerivationParameters::default()
         },
         Attributes {
@@ -872,7 +871,7 @@ fn get_key_block() -> KeyBlock {
         key_compression_type: None,
         key_value: Some(KeyValue::Structure {
             key_material: KeyMaterial::TransparentSymmetricKey {
-                key: Zeroizing::from(
+                key: SensitiveBytes::from(
                     hex::decode(
                         b"EC189A82797F0AED1E5AEF9EB0D232E6079A1D3E5C00526DDEE59BCA16242604",
                     )
@@ -956,7 +955,7 @@ pub(super) fn test_message_enforce_enum() {
                 // mismatch operation regarding the enum
                 request_payload: Operation::DecryptResponse(DecryptResponse {
                     unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
-                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
+                    data: Some(SensitiveBytes::from(b"decrypted_data".to_vec())),
                     correlation_value: None,
                 }),
                 message_extension: None,
@@ -1574,7 +1573,7 @@ pub(super) fn test_message_request() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::Encrypt(Box::new(Encrypt {
-                    data: Some(Zeroizing::from(b"to be enc".to_vec())),
+                    data: Some(SensitiveBytes::from(b"to be enc".to_vec())),
                     ..Default::default()
                 })),
                 message_extension: Some(vec![MessageExtension {
@@ -1595,7 +1594,10 @@ pub(super) fn test_message_request() {
     let Operation::Encrypt(encrypt) = &batch_item.request_payload else {
         panic!("not an encrypt operation's request payload: {batch_item}");
     };
-    assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
+    assert_eq!(
+        encrypt.data,
+        Some(SensitiveBytes::from(b"to be enc".to_vec()))
+    );
     assert_eq!(req, req_);
 }
 
@@ -1645,7 +1647,7 @@ pub(super) fn test_message_response() {
                 unique_batch_item_id: Some(b"1235".to_vec()),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
                     unique_identifier: UniqueIdentifier::TextString("id_12345".to_owned()),
-                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
+                    data: Some(SensitiveBytes::from(b"decrypted_data".to_vec())),
                     correlation_value: Some(vec![9_u8, 13]),
                 })),
                 message_extension: Some(MessageExtension {
@@ -1685,7 +1687,7 @@ pub(super) fn test_message_response() {
     };
     assert_eq!(
         decrypt.data,
-        Some(Zeroizing::from(b"decrypted_data".to_vec()))
+        Some(SensitiveBytes::from(b"decrypted_data".to_vec()))
     );
     assert_eq!(
         decrypt.unique_identifier,
@@ -1702,7 +1704,7 @@ fn test_object_raw() {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0x01, 0x02, 0x03])),
+                key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![0x01, 0x02, 0x03])),
                 attributes: None,
             }),
             cryptographic_algorithm: None,
@@ -1743,7 +1745,7 @@ fn test_object_structured_sym() {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::new(vec![0x01, 0x02, 0x03]),
+                    key: SensitiveBytes::from(vec![0x01, 0x02, 0x03]),
                 },
                 attributes: None,
             }),
@@ -1830,7 +1832,7 @@ fn test_object_structured_rsa() {
 fn test_key_value_ttlv() {
     let key_format_type = KeyFormatType::Raw;
     let kv = KeyValue::Structure {
-        key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3])),
+        key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![1, 2, 3])),
         attributes: Some(Box::new(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             vendor_attributes: Some(vec![VendorAttribute {
@@ -1880,7 +1882,7 @@ fn test_key_value_ttlv_round_trip_configurable_kem() {
         KeyFormatType::ConfigurableKEMPublicKey,
     ] {
         let kv = KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(Zeroizing::new(vec![3, 1, 2, 193, 9])),
+            key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![3, 1, 2, 193, 9])),
             attributes: Some(Box::new(Attributes {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ConfigurableKEM),
                 ..Default::default()
