@@ -6,8 +6,10 @@
 //!   rotation metadata, and privileged-user enforcement.
 //! - [`symmetric`] — `ReKey` for symmetric keys (plain, wrapped, wrapping keys).
 //! - [`keypair`] — `ReKeyKeyPair` for asymmetric key pairs (RSA, EC, PQC, Covercrypt).
+//! - [`hsm`] — `ReKey` / `ReKeyKeyPair` for HSM-resident AES keys and key pairs (PKCS#11).
 
 mod common;
+mod hsm;
 mod keypair;
 mod symmetric;
 

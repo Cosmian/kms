@@ -2,7 +2,9 @@ use cosmian_kms_interfaces::ObjectWithMetadata;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
-        KmipOperation, attribute_policy::AttributeEditPolicy, kmip_attributes::Attribute,
+        KmipOperation,
+        attribute_policy::AttributeEditPolicy,
+        kmip_attributes::{Attribute, Attributes},
         kmip_types::Tag,
     },
 };
@@ -30,6 +32,31 @@ pub(crate) fn read_only_error(operation: KmipOperation) -> KmsError {
         reason,
         format!("DENIED: this attribute is server-managed and cannot be {verb} by the user"),
     )
+}
+
+/// Reject rotation attributes in an HSM `Create` / `CreateKeyPair` request.
+///
+/// HSM keys get keyset membership and a rotation schedule only through `SetAttribute`
+/// after creation (`CKA_LABEL`, `CKA_START_DATE`/`CKA_END_DATE`); a creation request
+/// carrying them would otherwise be accepted and silently ignored.
+pub(crate) fn reject_hsm_rotation_attributes(
+    operation: &str,
+    attributes: &Attributes,
+) -> KResult<()> {
+    if attributes.rotate_name.is_some()
+        || attributes.rotate_interval.is_some()
+        || attributes.rotate_offset.is_some()
+        || attributes.rotate_automatic.is_some()
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            format!(
+                "{operation}: rotation attributes are not supported when creating an HSM key; \
+                 set the rotation policy with SetAttribute after creation"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Error for adding a second instance of a single-valued attribute (KMIP 2.1 §6.1.2).

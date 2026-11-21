@@ -1,6 +1,7 @@
 # HSM Key Rotation
 
-Eviden KMS supports manual `Re-Key` for keys that reside on a
+Eviden KMS supports manual `Re-Key` / `Re-Key Key Pair` and scheduled
+[auto-rotation](#auto-rotation) for keys that reside on a
 PKCS#11-capable Hardware Security Module (SoftHSM2, Utimaco, Proteccio, …).
 The flow mirrors SQL-backed rotation but all keyset metadata lives in PKCS#11
 attributes rather than the KMS database.
@@ -9,10 +10,11 @@ attributes rather than the KMS database.
 
 | Capability                     | Supported | Notes                                                            |
 | ------------------------------ | :-------: | ---------------------------------------------------------------- |
-| Manual `Re-Key` via KMIP       | ✅        | Calls `C_GenerateKey` on the same HSM slot. `Offset`, `Attributes` or Protection Storage Masks return `Feature_Not_Supported`. |
+| Manual `Re-Key` via KMIP       | ✅        | Calls `C_GenerateKey` on the same HSM slot (AES keys). `Offset`, `Attributes` or Protection Storage Masks return `Feature_Not_Supported`. |
+| Manual `Re-Key Key Pair` via KMIP | ✅     | Calls `C_GenerateKeyPair` on the same HSM slot (RSA, EC); the new public key UID is the new private key UID + `_pk`. `Offset`, `Attributes` or Protection Storage Masks return `Feature_Not_Supported`. |
 | Keyset membership (`x-rotate-name`) | ✅   | Stored in `CKA_LABEL`; keyset name **must be the full base UID** (`hsm::model::slot::key_id`). Supports `@latest`, `@first`, `@N` generation addressing. |
 | `x-rotate-interval` attribute  | ✅        | Writes `CKA_START_DATE` / `CKA_END_DATE` for validity tracking. Rejected with an error on HSMs that cannot store these dates on keys (SoftHSM2, Crypt2pay, AWS CloudHSM, Azure Cloud HSM). |
-| Auto-rotation scheduler        | ❌        | `find_due_for_rotation` never returns HSM UIDs; scheduler skips them. |
+| Auto-rotation scheduler        | ✅        | Rotates the keyset head once `CKA_END_DATE` is reached; needs an HSM that stores key dates; the scheduler acts as the first non-`*` `hsm_admin` (or `admin`). See [Auto-rotation](#auto-rotation). |
 | `x-rotate-offset`              | ❌        | Not applicable to PKCS#11 scheduling; rejected with `NotSupported`. |
 
 ---
@@ -137,6 +139,36 @@ Invalid Request: SetAttribute: for HSM keys, rotate_name must be the key's base 
 
 ---
 
+## Auto-rotation
+
+The scheduler that rotates SQL keys also rotates HSM keys: AES keys through
+`C_GenerateKey`, RSA / EC key pairs through `C_GenerateKeyPair`. Arm it with
+`ckms … set-rotation-policy` (`SetAttribute RotateInterval`), which writes
+`CKA_START_DATE` and `CKA_END_DATE`.
+
+- A key is **due** when `today >= CKA_END_DATE`. Only the keyset head is rotated:
+  retired generations keep their past `CKA_END_DATE` but are never rotated again,
+  so a repeated tick does not rotate twice.
+- The new key gets `CKA_START_DATE` = rotation day and `CKA_END_DATE` = rotation
+  day + the previous interval, so rotation continues without operator action.
+  The old key is retired in `CKA_LABEL`.
+- For a key pair, set the interval on the **private key** only; `SetAttribute
+  RotateInterval > 0` on the public key is rejected. The public keys form their
+  own keyset, labelled `{base_uid}_pk::{generation}::{key_id}_pk[@latest]`.
+- A key that never joined a keyset is **enrolled** at its first re-key (manual or
+  automatic): its keyset name is its full base UID, the old label is retired and
+  the new key is labelled `@latest`.
+- Renewal warnings (`info!` at 30, 7 and 1 days before the deadline) apply to HSM keys.
+- If the new key is created but the labels cannot be written, the following ticks
+  fail with `Object_Already_Exists` until the orphan generation is removed or relabelled.
+- A key whose HSM cannot generate it (for example no `C_GenerateKeyPair` support for the
+  algorithm) fails before any label or date change; other keys are still rotated.
+- Rotation attributes (`x-rotate-*`) in an HSM `Create` / `CreateKeyPair` are rejected with
+  `Feature_Not_Supported`; set the rotation policy with `ckms … set-rotation-policy`
+  after creation.
+
+---
+
 ## Keyset resolution
 
 When a base UID (e.g. `hsm::softhsm2::0::my-hsm-key`) or generation-scoped syntax
@@ -152,8 +184,11 @@ descending:
 - **Decrypt / Verify** → tries each generation newest-to-oldest until one
   succeeds, allowing old ciphertexts to continue to decrypt after rotation.
 
-Using a **direct generation UID** with an explicit `@N` suffix
-(e.g. `hsm::softhsm2::0::my-hsm-key@0`) bypasses keyset resolution entirely:
+Operations on a keyset address always run on the HSM: the key material never
+leaves the token. `@latest`, `@first`, `@0` and `@N` are accepted.
+
+Using a **direct generation UID** with an explicit `@N` suffix, N ≥ 1
+(e.g. `hsm::softhsm2::0::my-hsm-key@1`) bypasses keyset resolution entirely:
 only that specific generation is used, with no chain walk.
 
 Using the **base UID without `@N`** (e.g. `hsm::softhsm2::0::my-hsm-key`)
@@ -284,7 +319,7 @@ ckms sym keys rekey --key-id "hsm::softhsm2::0::my-hsm-key@0"   # explicit @0 �
 | ----------------------- | ------------------------------------------------ | -------------------------------------------------- |
 | Keyset metadata storage | KMIP vendor attributes (`x-rotate-*`) in SQL DB  | `CKA_LABEL` on PKCS#11 objects                     |
 | UID scheme              | Plain identifier (keyset name is a `rotate_name` attribute, not in the UID) | `hsm::<model>::<slot>::<base_key_id>[@N]` (generation suffix appended) |
-| Auto-rotation scheduler | ✅ Supported                                      | ❌ Not supported                                   |
+| Auto-rotation scheduler | ✅ Supported                                      | ✅ Supported (HSMs that store key dates)           |
 | `x-rotate-offset`       | ✅ Supported                                      | ❌ Not supported                                   |
 | KMIP link back-pointers | ✅ `ReplacedObjectLink` / `ReplacementObjectLink` | ❌ Not used; chain lives in `CKA_LABEL`            |
 | Chain discovery         | SQL query on `x-rotate-name` + `x-rotate-generation` | PKCS#11 `C_FindObjects` on `CKA_LABEL` prefix  |

@@ -423,7 +423,7 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate-cron] Running scheduled key auto-rotation check` | `src/cron.rs` | - | - |
 | `debug` | `[auto-rotate-cron] Shutdown signal received; stopping cron thread` | `src/cron.rs` | - | - |
 | `trace` | `execute_keyset_try_each: key {} failed for {}: {}` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
-| `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
+| `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | Emitted at session-key derivation time when `ui_session_salt` is absent. The ephemeral key means all browser sessions are lost on restart. Set `ui_session_salt` (or env `KMS_UI_SESSION_SALT`) to a stable 32-byte+ secret for production. |
@@ -446,7 +446,6 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Failed to query keys for renewal warnings: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
 | `debug` | `[auto-rotate] No keys due for rotation at {now}` | `src/core/operations/auto_rotate.rs` | `now` | - |
 | `debug` | `[auto-rotate] rotate_one_key returned: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
-| `debug` | `[auto-rotate] Skipping HSM key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `debug` | `[auto-rotate] Skipping {uid}: object type {other:?} has no auto-rotation support` | `src/core/operations/auto_rotate.rs` | `uid`, `other` | - |
 | `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `warn` | `Azure EKM JSON deserialization error: {err}` | `src/routes/azure_ekm/mod.rs` | `err` | - |

@@ -1,6 +1,7 @@
 //! KMIP `ReKeyKeyPair` for asymmetric key pairs — dispatcher.
 //!
-//! Routes the request to either:
+//! Routes the request to one of:
+//! - The HSM PKCS#11 rotation path (UID starts with `hsm::`, [`super::hsm`] module).
 //! - The Covercrypt in-place attribute rekey (non-FIPS only, [`covercrypt`] module).
 //! - The SQL-backed key pair rotation pipeline ([`sql::SqlKeypairRekeyer`]).
 
@@ -44,6 +45,9 @@ use crate::{
 /// - If `offset` is provided, date computation per Table 176 is applied.
 /// - Rotation metadata is set on both old and new keys.
 ///
+/// For HSM-resident key pairs (private key UID starts with `hsm::`), generates a new pair
+/// with `C_GenerateKeyPair` on the same slot and retires the old one in `CKA_LABEL`.
+///
 /// For Covercrypt keys (non-FIPS only), delegates to the existing in-place
 /// attribute-level rekey which mutates the key material without creating new UIDs.
 pub(crate) async fn rekey_keypair(
@@ -52,6 +56,15 @@ pub(crate) async fn rekey_keypair(
     user: &UserId,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("ReKeyKeyPair request");
+
+    if let Some(uid) = request
+        .private_key_unique_identifier
+        .as_ref()
+        .and_then(|u| u.as_str())
+        && ObjectHandle::from(uid).is_hsm()
+    {
+        return Box::pin(route_hsm_keypair(kms, &request, uid, user)).await;
+    }
 
     // Covercrypt early-return: uses a completely different code path (in-place attribute rekey)
     // that doesn't fit the rotation trait pattern.
@@ -102,6 +115,35 @@ pub(crate) async fn rekey_keypair(
             .or_else(|| request.public_key_attributes.clone()),
     };
     Box::pin(execute_rekey(&rekeyer, kms, &request, user)).await
+}
+
+/// `ReKeyKeyPair` on an HSM-resident private key. Re-key attributes and storage masks have
+/// nowhere to go on a PKCS#11 token, so they are refused instead of silently dropped.
+async fn route_hsm_keypair(
+    kms: &KMS,
+    request: &ReKeyKeyPair,
+    uid: &str,
+    user: &UserId,
+) -> KResult<ReKeyKeyPairResponse> {
+    if request.offset.is_some()
+        || request.common_attributes.is_some()
+        || request.private_key_attributes.is_some()
+        || request.public_key_attributes.is_some()
+        || request.common_protection_storage_masks.is_some()
+        || request.private_protection_storage_masks.is_some()
+        || request.public_protection_storage_masks.is_some()
+    {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            "ReKeyKeyPair: Offset, Attributes and Protection Storage Masks are not supported \
+             for HSM-resident keys"
+                .to_owned(),
+        ));
+    }
+    let uid = resolve_uid_or_keyset(ObjectHandle::from(uid), "ReKeyKeyPair", kms, user)
+        .await?
+        .unwrap_or_else(|| uid.to_owned());
+    Box::pin(kms.rekey_hsm_keypair(&uid, user)).await
 }
 
 impl KMS {
