@@ -5,11 +5,10 @@ name: Test db
 on:
   workflow_call:
     inputs:
-      skip-units:
-        description: JSON list of skipped CI units, passed to test-group.yml
-        required: false
+      matrix:
+        description: JSON include list [{leaf, variant}] of the legs to run, built by ci_changes.py from the ci-paths.toml `variants`
+        required: true
         type: string
-        default: '[]'
     secrets:
       DOCKERHUB_USERNAME: {required: false}
       DOCKERHUB_TOKEN: {required: false}
@@ -20,27 +19,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {leaf: sqlite, variant: fips}
-          - {leaf: sqlite, variant: non-fips}
-          - {leaf: psql, variant: fips}
-          - {leaf: psql, variant: non-fips}
-          - {leaf: mysql, variant: fips}
-          - {leaf: mysql, variant: non-fips}
-          - {leaf: mariadb, variant: fips}
-          - {leaf: mariadb, variant: non-fips}
-          - {leaf: percona, variant: fips}
-          - {leaf: percona, variant: non-fips}
-          # the OpenBao KV scenario replayed on PostgreSQL and MySQL
-          - {leaf: openbao, variant: fips}
-          - {leaf: openbao, variant: non-fips}
-          # redis (Findex) is non-FIPS only
-          - {leaf: redis, variant: non-fips}
+        include: ${{ fromJSON(inputs.matrix) }}
     uses: ./.github/workflows/test-group.yml
     with:
       suite: db:${{ matrix.leaf }}
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
       extra-env: |
         POSTGRES_USER=kms
         PGUSER=kms

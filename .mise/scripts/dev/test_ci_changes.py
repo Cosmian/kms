@@ -12,6 +12,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,37 @@ KMIP_INTEROP = {
     'interop:openbao-kmip',
     'interop:pykmip',
 }
+
+
+def leaves(leaf: str, *variants: str) -> list[dict[str, str]]:
+    return [{'leaf': leaf, 'variant': v} for v in variants]
+
+
+BOTH = ('fips', 'non-fips')
+# Every leg, in ci-paths.toml unit order (what `ci_changes.py --all` emits).
+FULL_DB = [
+    *leaves('sqlite', *BOTH),
+    *leaves('psql', *BOTH),
+    *leaves('mysql', *BOTH),
+    *leaves('mariadb', *BOTH),
+    *leaves('percona', *BOTH),
+    *leaves('redis', 'non-fips'),
+    *leaves('openbao', *BOTH),
+]
+FULL_INTEROP = [
+    *leaves('ase', 'non-fips'),
+    *leaves('db2', 'non-fips'),
+    *leaves('edb-tde', 'non-fips'),
+    *leaves('iris', 'non-fips'),
+    *leaves('jose', 'non-fips'),
+    *leaves('kmip-go', *BOTH),
+    *leaves('kmipkit', 'non-fips'),
+    *leaves('openbao', *BOTH),
+    *leaves('openbao-auth-verifier', *BOTH),
+    *leaves('openbao-kmip', *BOTH),
+    *leaves('pykmip', 'non-fips'),
+    *leaves('ssh-secrets', *BOTH),
+]
 
 
 def run(*files: str) -> set[str]:
@@ -305,6 +337,85 @@ class CiWorkflows(unittest.TestCase):
         )
 
 
+class Matrices(unittest.TestCase):
+    """outputs(): the legs and caller flags main.yml feeds to test_all.yml."""
+
+    def out(self, *files: str) -> dict[str, str]:
+        skipped, _ = ci_changes.classify(CFG, list(files))
+        return ci_changes.outputs(CFG, skipped)
+
+    def test_everything_runs_every_leg_in_toml_order(self) -> None:
+        for out in (self.out(), ci_changes.outputs(CFG, [])):
+            self.assertEqual(json.loads(out['db-matrix']), FULL_DB)
+            self.assertEqual(json.loads(out['interop-matrix']), FULL_INTEROP)
+            self.assertEqual((len(FULL_DB), len(FULL_INTEROP)), (13, 17))
+            self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+
+    def test_workflow_only_pr(self) -> None:
+        out = self.out(
+            '.github/ci-paths.toml',
+            '.github/workflows/main.yml',
+            '.github/workflows/test_all.yml',
+            '.github/workflows/test-group.yml',
+            '.github/workflows/test-db.yml',
+            '.github/workflows/test-interop.yml',
+            '.github/workflows/test_windows.yml',
+            '.mise/scripts/dev/ci_changes.py',
+        )
+        self.assertEqual(json.loads(out['db-matrix']), [])
+        self.assertEqual(
+            json.loads(out['interop-matrix']), leaves('pykmip', 'non-fips')
+        )
+        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'false'))
+
+    def test_pg_store_change_keeps_only_the_legs_it_triggers(self) -> None:
+        out = self.out('crate/server_database/src/stores/sql/pgsql.rs')
+        self.assertEqual(
+            json.loads(out['db-matrix']),
+            [
+                *leaves('sqlite', *BOTH),
+                *leaves('psql', *BOTH),
+                *leaves('openbao', *BOTH),
+            ],
+        )
+        self.assertEqual(
+            json.loads(out['interop-matrix']), leaves('ssh-secrets', *BOTH)
+        )
+        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+
+    def test_ui_change_has_no_legs_but_still_runs_the_callers(self) -> None:
+        out = self.out('ui/src/App.tsx')
+        self.assertEqual(out['db-matrix'], '[]')
+        self.assertEqual(out['interop-matrix'], '[]')
+        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+
+    def test_change_that_triggers_no_unit_skips_both_callers(self) -> None:
+        out = self.out('clippy.toml')
+        self.assertEqual((out['run-test'], out['run-windows']), ('false', 'false'))
+
+
+class Wiring(unittest.TestCase):
+    """Every unit is gated where the workflows test it, and its caller group lists it (else it would never run)."""
+
+    GATE = re.compile(
+        r"contains\(fromJSON\((?:needs\.changes\.outputs\.skip|inputs\.skip-units \|\| '\[\]')\), '([a-z0-9:-]+)'\)"
+    )
+
+    def gated(self, name: str) -> set[str]:
+        text = (ci_changes.REPO / '.github' / 'workflows' / name).read_text()
+        return set(self.GATE.findall(text))
+
+    def test_units_callers_and_workflows_agree(self) -> None:
+        m, t, w = (
+            self.gated(n) for n in ('main.yml', 'test_all.yml', 'test_windows.yml')
+        )
+        v = set(CFG.variants)
+        self.assertEqual(m | t | w | v, EVERYTHING)
+        self.assertEqual(len(m) + len(t) + len(w) + len(v), len(EVERYTHING))
+        self.assertEqual(set(CFG.callers['test']), t | v)
+        self.assertEqual(set(CFG.callers['windows']), w)
+
+
 class FailSafe(unittest.TestCase):
     def test_empty_diff_runs_everything(self) -> None:
         self.assertEqual(run(), EVERYTHING)
@@ -519,6 +630,35 @@ class LoadConfig(unittest.TestCase):
         self.assertEqual(len(cfg.units['b']), 1)  # files only
         self.assertEqual(len(cfg.units['c']), 2)  # set + files
 
+    def test_variants_are_required_on_matrix_units_and_only_there(self) -> None:
+        self.rejects(
+            "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\nvariants = ['fips']\n"
+        )
+        self.rejects("full = 'x'\nignore = 'y'\n[units.'db:x']\nfiles = 'x'\n")
+
+    def test_invalid_variants_are_rejected(self) -> None:
+        for bad in ("['fips', 'fips']", '[]', "['x']"):
+            with self.subTest(variants=bad):
+                self.rejects(
+                    f"full = 'x'\nignore = 'y'\n[units.'db:x']\nfiles = 'x'\nvariants = {bad}\n"
+                )
+
+    def test_unit_with_only_variants_is_rejected(self) -> None:
+        self.rejects("full = 'x'\nignore = 'y'\n[units.'db:x']\nvariants = ['fips']\n")
+
+    def test_bad_callers_are_rejected(self) -> None:
+        head = "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\n[callers]\n"
+        self.rejects(head + "t = ['nope*']\n")
+        self.rejects(head + "t = 'a'\n")
+
+    def test_callers_expand_patterns_in_unit_order(self) -> None:
+        cfg = load(
+            "full = 'x'\nignore = 'y'\n[units.'db:b']\nfiles = 'x'\nvariants = ['fips']\n"
+            "[units.a]\nfiles = 'x'\n[units.'db:c']\nfiles = 'x'\nvariants = ['fips']\n"
+            "[callers]\nt = ['db:*', 'a']\n"
+        )
+        self.assertEqual(cfg.callers['t'], ['db:b', 'a', 'db:c'])
+
 
 # Temp repos must not see the runner's or the developer's git config (signing, hooks, identity) nor write the
 # `changes` step's real $GITHUB_OUTPUT.
@@ -637,21 +777,23 @@ class Main(unittest.TestCase):
         self.assertEqual(lines[0], 'Changed files (1):')
         self.assertEqual(lines[1], '  ui/src/App.tsx')
         self.assertEqual(lines[2], f'2 of {len(EVERYTHING)} units triggered')
-        marks = {line[5:]: line[:4] for line in lines[3:-1]}
+        marks = {line[5:]: line[:4] for line in lines[3:-5]}
         self.assertEqual(set(marks), EVERYTHING)
         self.assertEqual(
             {u for u, m in marks.items() if m == 'RUN '}, {'ui', 'windows-ui'}
         )
         self.assertTrue(all(m in ('RUN ', 'SKIP') for m in marks.values()))
 
-    def test_skip_line_is_compact_sorted_json_and_appended_to_github_output(
+    def test_output_lines_are_compact_json_in_order_and_appended_to_github_output(
         self,
     ) -> None:
         text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
         written = self.output.read_text().splitlines()
-        self.assertEqual(len(written), 1)
-        self.assertEqual(written[0], text.splitlines()[-1])
-        self.assertTrue(written[0].startswith('skip=['))
+        self.assertEqual(written, text.splitlines()[-5:])
+        self.assertEqual(
+            [line.split('=', 1)[0] for line in written],
+            ['skip', 'db-matrix', 'interop-matrix', 'run-test', 'run-windows'],
+        )
         self.assertNotIn(' ', written[0])
         skipped = json.loads(written[0].removeprefix('skip='))
         self.assertEqual(skipped, sorted(EVERYTHING - {'ui', 'windows-ui'}))
@@ -665,32 +807,55 @@ class Main(unittest.TestCase):
 
     def test_without_github_output_only_prints(self) -> None:
         text, _ = self.run_main(['ui/src/App.tsx'], output=None)
-        self.assertTrue(text.splitlines()[-1].startswith('skip=['))
+        self.assertTrue(text.splitlines()[-5].startswith('skip=['))
         self.assertFalse(self.output.exists())
+
+    def assert_runs_everything(self, lines: list[str]) -> None:
+        got = dict(line.split('=', 1) for line in lines)
+        self.assertEqual(got['skip'], '[]')
+        self.assertEqual(json.loads(got['db-matrix']), FULL_DB)
+        self.assertEqual(json.loads(got['interop-matrix']), FULL_INTEROP)
+        self.assertEqual((got['run-test'], got['run-windows']), ('true', 'true'))
 
     def test_empty_diff_reports_run_everything(self) -> None:
         text, _ = self.run_main([], output=self.output)
         self.assertIn('Changed files (0):', text)
         self.assertIn('empty diff: run everything', text)
-        self.assertEqual(self.output.read_text(), 'skip=[]\n')
+        self.assert_runs_everything(self.output.read_text().splitlines())
         self.assertNotIn('SKIP', text)
 
     def test_full_match_reports_run_everything(self) -> None:
         text, _ = self.run_main(['Cargo.lock', 'README.md'], output=self.output)
         self.assertIn('Cargo.lock matches full: run everything', text)
-        self.assertEqual(self.output.read_text(), 'skip=[]\n')
+        self.assert_runs_everything(self.output.read_text().splitlines())
 
     def test_orphan_reports_run_everything(self) -> None:
         text, _ = self.run_main(['brand/new.txt'], output=self.output)
         self.assertIn('brand/new.txt matches no unit and is not ignored', text)
-        self.assertEqual(self.output.read_text(), 'skip=[]\n')
+        self.assert_runs_everything(self.output.read_text().splitlines())
+
+    def test_all_flag_runs_everything_without_git(self) -> None:
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                ci_changes,
+                'changed_files',
+                side_effect=AssertionError('git was called'),
+            ),
+            mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(self.output)}),
+            mock.patch.object(sys, 'argv', ['ci_changes.py', '--all']),
+            contextlib.redirect_stdout(out),
+        ):
+            ci_changes.main()
+        self.assertIn('not a pull request: run everything', out.getvalue())
+        self.assert_runs_everything(self.output.read_text().splitlines())
 
     def test_docs_only_skips_every_unit(self) -> None:
         text, _ = self.run_main(['README.md'], output=self.output)
-        self.assertEqual(
-            json.loads(self.output.read_text().removeprefix('skip=')),
-            sorted(EVERYTHING),
-        )
+        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(json.loads(got['skip']), sorted(EVERYTHING))
+        self.assertEqual((got['db-matrix'], got['interop-matrix']), ('[]', '[]'))
+        self.assertEqual((got['run-test'], got['run-windows']), ('false', 'false'))
         self.assertNotIn('RUN ', text)
 
     def test_default_refs_are_the_pr_merge_commit_parent_and_head(self) -> None:
@@ -721,7 +886,7 @@ class CommandLine(unittest.TestCase):
             check=True,
         )
         self.assertIn('empty diff: run everything', done.stdout)
-        self.assertEqual(done.stdout.splitlines()[-1], 'skip=[]')
+        self.assertIn('skip=[]', done.stdout.splitlines())
 
     def test_unknown_flag_is_rejected(self) -> None:
         script = Path(ci_changes.__file__)

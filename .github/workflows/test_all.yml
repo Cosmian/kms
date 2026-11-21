@@ -9,7 +9,14 @@ on:
         required: false
         type: string
         default: '[]'
-  workflow_dispatch:
+      db-matrix:
+        description: JSON include list [{leaf, variant}] of the test-db.yml legs to run (ci_changes.py)
+        required: true
+        type: string
+      interop-matrix:
+        description: JSON include list [{leaf, variant}] of the test-interop.yml legs to run (ci_changes.py)
+        required: true
+        type: string
 
 jobs:
   # Builds the source-built Nix inputs of shell.nix (OpenSSL 3.1.2 / 3.6.5, FIPS bootstrap, SoftHSM2,
@@ -82,6 +89,7 @@ jobs:
   # One job per group of .mise/tasks/test (`mise run test:<group>`, i.e. its `_default`), each cell run by
   # test-group.yml. `skip` lists `<group>:<leaf>` ids a job must not run. `k8s` and `pkg` run in
   # packaging-docker.yml; a leaf no group lists runs locally only.
+  # A job whose suite is skipped (ci-paths.toml) shows one skipped row; db and interop legs come from ci_changes.py matrices.
   # Upstream only (not on forks or fork pull requests): the Google, AWS and Azure secrets are withheld there.
   test-cloud:
     name: Test cloud (${{ matrix.variant }})
@@ -90,7 +98,8 @@ jobs:
     if: >-
       github.repository == 'Cosmian/kms' &&
       (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      !contains(fromJSON(inputs.skip-units || '[]'), 'cloud')
     strategy:
       fail-fast: false
       matrix:
@@ -99,7 +108,6 @@ jobs:
     with:
       suite: cloud
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
     secrets:
       TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
       TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
@@ -117,8 +125,9 @@ jobs:
     name: Test db
     needs:
       - nix-dev-shell-cache
+    if: inputs.db-matrix != '[]'
     with:
-      skip-units: ${{ inputs.skip-units }}
+      matrix: ${{ inputs.db-matrix }}
     uses: ./.github/workflows/test-db.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -128,6 +137,7 @@ jobs:
     name: Test hsm (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'hsm') }}
     strategy:
       fail-fast: false
       matrix:
@@ -141,7 +151,6 @@ jobs:
       # real HSMs: test-hsm-hardware
       skip: hsm:crypt2pay hsm:proteccio
       bench: ${{ matrix.bench }}
-      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -150,8 +159,9 @@ jobs:
     name: Test interop
     needs:
       - nix-dev-shell-cache
+    if: inputs.interop-matrix != '[]'
     with:
-      skip-units: ${{ inputs.skip-units }}
+      matrix: ${{ inputs.interop-matrix }}
     uses: ./.github/workflows/test-interop.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -163,6 +173,7 @@ jobs:
     name: Test obs (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'obs') }}
     strategy:
       fail-fast: false
       matrix:
@@ -171,7 +182,6 @@ jobs:
     with:
       suite: obs
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -182,6 +192,7 @@ jobs:
     name: Test pkcs11 (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'pkcs11') }}
     strategy:
       fail-fast: false
       matrix:
@@ -190,7 +201,6 @@ jobs:
     with:
       suite: pkcs11
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -199,6 +209,7 @@ jobs:
     name: Test pki (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'pki') }}
     strategy:
       fail-fast: false
       matrix:
@@ -207,7 +218,6 @@ jobs:
     with:
       suite: pki
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -217,6 +227,7 @@ jobs:
     name: Test spire (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'spire') }}
     strategy:
       fail-fast: false
       matrix:
@@ -225,7 +236,6 @@ jobs:
     with:
       suite: spire
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -236,6 +246,7 @@ jobs:
     name: Test ui (${{ matrix.variant }})
     needs:
       - nix-dev-shell-cache
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'ui') }}
     permissions:
       contents: read
     strategy:
@@ -246,7 +257,6 @@ jobs:
     with:
       suite: ui
       variant: ${{ matrix.variant }}
-      skip-units: ${{ inputs.skip-units }}
 
   # The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
   # dispatch runs only; pull requests cover the HSM code with the software simulators of `test-hsm`. Upstream

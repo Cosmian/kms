@@ -7,6 +7,8 @@
 # - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
 # - Unit keys: test-group.yml `suite` ids (cloud, db:psql, interop:ase, ...) or the job keys tested in
 #   main.yml, test_all.yml and test_windows.yml. A job whose key is not listed here always runs.
+# - `variants` (db:* and interop:* units only, required there): the legs of the test-db.yml / test-interop.yml matrix that ci_changes.py builds; only running units get legs.
+# - [callers]: main.yml jobs skipped as a whole (one row) when none of their units runs.
 # Tags, schedule and workflow_dispatch ignore this file and run everything.
 
 full = '''
@@ -90,6 +92,12 @@ windows = '''
 | ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
 '''
 
+# main.yml jobs that call a reusable workflow holding several units: main.yml skips the whole job (one row)
+# when none of its units runs. Values are fnmatch patterns over unit keys.
+[callers]
+test = ["cargo-publish-dry-run", "xks-remote", "db:*", "interop:*", "cloud", "hsm", "pkcs11", "obs", "pki", "spire", "ui"]
+windows = ["windows-*"]
+
 # ── main.yml ────────────────────────────────────────────────────────────────────────────────
 [units.cargo-clippy]
 sets = ["rust"]
@@ -119,26 +127,33 @@ files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ 
 [units."db:sqlite"]
 sets = ["rust", "db_shared"]
 files = '^\.mise/tasks/test/db/sqlite$'
+variants = ["fips", "non-fips"]
 
 [units."db:psql"]
 sets = ["db_core", "db_shared", "pg_store"]
 files = '^\.mise/tasks/test/db/psql$'
+variants = ["fips", "non-fips"]
 
 [units."db:mysql"]
 sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/mysql$'
+variants = ["fips", "non-fips"]
 
 [units."db:mariadb"]
 sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/mariadb$'
+variants = ["fips", "non-fips"]
 
 [units."db:percona"]
 sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/percona$'
+variants = ["fips", "non-fips"]
 
 [units."db:redis"]
 sets = ["db_core", "db_shared"]
 files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$'
+# redis (Findex) is non-FIPS only
+variants = ["non-fips"]
 
 [units."db:openbao"]
 sets = ["db_core", "pg_store", "mysql_store"]
@@ -148,6 +163,8 @@ files = '''
 | ^\.mise/scripts/test/openbao/
 | ^crate/server/src/routes/kv/
 '''
+# the OpenBao KV scenario replayed on PostgreSQL and MySQL
+variants = ["fips", "non-fips"]
 
 [units.cloud]
 files = '''
@@ -235,18 +252,22 @@ files = '''
 [units."interop:ase"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
+variants = ["non-fips"]
 
 [units."interop:db2"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/test_db2_tde\.sh$'
+variants = ["non-fips"]
 
 [units."interop:edb-tde"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
+variants = ["non-fips"]
 
 [units."interop:iris"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/test_iris\.sh$'
+variants = ["non-fips"]
 
 [units."interop:jose"]
 sets = ["interop_shared"]
@@ -257,6 +278,7 @@ files = '''
 | ^\.mise/lib/kryoptic\.sh$
 | ^\.mise/scripts/test/(test_jose\.sh|jose_interop_helper\.py|requirements-jose\.(in|txt))$
 '''
+variants = ["non-fips"]
 
 [units."interop:kmip-go"]
 sets = ["kmip_wire", "interop_shared"]
@@ -267,26 +289,32 @@ files = '''
 | ^\.mise/scripts/kmip-go/
 | ^\.mise/scripts/pykmip/kms\.toml$
 '''
+variants = ["fips", "non-fips"]
 
 [units."interop:kmipkit"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/kmipkit$ | ^\.mise/scripts/kmipkit-fixes\.patch$'
+variants = ["non-fips"]
 
 [units."interop:openbao"]
 sets = ["interop_shared"]
 files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/routes/kv/'
+variants = ["fips", "non-fips"]
 
 [units."interop:openbao-auth-verifier"]
 sets = ["interop_shared"]
 files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
+variants = ["fips", "non-fips"]
 
 [units."interop:openbao-kmip"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao/'
+variants = ["fips", "non-fips"]
 
 [units."interop:pykmip"]
 sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test-interop\.yml$'
+variants = ["non-fips"]
 
 [units."interop:ssh-secrets"]
 sets = ["interop_shared", "pg_store", "mysql_store"]
@@ -296,6 +324,7 @@ files = '''
 | ^\.mise/scripts/test/openbao/bao_verifier\.sh$
 | ^crate/server/src/routes/(ssh|kv)/
 '''
+variants = ["fips", "non-fips"]
 
 # ── test_windows.yml ────────────────────────────────────────────────────────────────────────
 [units.windows-cargo-test]
