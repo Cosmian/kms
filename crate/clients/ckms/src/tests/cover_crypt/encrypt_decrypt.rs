@@ -352,27 +352,6 @@ async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
     let recovered_content = read_bytes_from_file(&recovered_file)?;
     assert_eq!(original_content, recovered_content);
 
-    // TODO Left here but this has become undefined behavior in the new version:
-    // TODO if the first key found is the correct one, decryption will work, else it will fail
-
-    // // decrypt fails because two keys with same tag exist
-    // let _user_ko_key_id = create_user_decryption_key(
-    //     &owner_client_conf_path,
-    //     "[\"tag\"]",
-    //     "Department::FIN && Security Level::Top Secret",
-    //     &["tag"], false
-    // )?;
-    // assert!(
-    //     decrypt(
-    //         &owner_client_conf_path,
-    //         &[output_file.to_str().unwrap()],
-    //         "[\"tag\"]",
-    //         Some(recovered_file.to_str().unwrap()),
-    //         Some("myid"),
-    //     )
-    //     .is_err()
-    // );
-
     // this user key should not be able to decrypt the file
     let _user_ko_key_id = create_user_decryption_key(
         &owner_client_conf_path,
@@ -500,27 +479,6 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> CosmianResult<()> {
     let original_content = read_bytes_from_file(&input_file3)?;
     let recovered_content = read_bytes_from_file(&recovered_file3)?;
     assert_eq!(original_content, recovered_content);
-
-    // TODO Left here but this has become undefined behavior in the new version:
-    // TODO if the first key found is the correct one, decryption will work, else it will fail
-
-    // // decrypt fails because two keys with same tag exist
-    // let _user_ko_key_id = create_user_decryption_key(
-    //     &owner_client_conf_path,
-    //     "[\"tag_bulk\"]",
-    //     "Department::FIN && Security Level::Top Secret",
-    //     &["tag_bulk"],
-    // )?;
-    // assert!(
-    //     decrypt(
-    //         &owner_client_conf_path,
-    //         &[output_file1.to_str().unwrap()],
-    //         "[\"tag_bulk\"]",
-    //         Some(recovered_file1.to_str().unwrap()),
-    //         Some("myid"),
-    //     )
-    //     .is_err()
-    // );
 
     // Test encrypted files have their own encrypted header
     // along the data and can be decrypted alone

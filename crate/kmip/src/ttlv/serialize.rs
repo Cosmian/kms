@@ -68,17 +68,7 @@ impl Serialize for TTLV {
                 "LongInteger",
                 &("0x".to_owned() + &hex::encode_upper(v.to_be_bytes())),
             ),
-            TTLValue::BigInteger(v) => {
-                // TODO Note that Big Integers must be sign extended to
-                // TODO  contain a multiple of 8 bytes, and as per LongInteger, JS numbers only
-                // support a limited range of values.
-                serialize_struct_(
-                    serializer,
-                    &self.tag,
-                    "BigInteger",
-                    v, //&("0x".to_owned() + &hex::encode_upper(v.to_bytes_be())),
-                )
-            }
+            TTLValue::BigInteger(v) => serialize_struct_(serializer, &self.tag, "BigInteger", v),
             TTLValue::Enumeration(v) => serialize_struct_(serializer, &self.tag, "Enumeration", v),
             TTLValue::Boolean(v) => serialize_struct_(serializer, &self.tag, "Boolean", v),
             TTLValue::TextString(v) => serialize_struct_(serializer, &self.tag, "TextString", v),

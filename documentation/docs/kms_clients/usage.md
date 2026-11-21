@@ -27,6 +27,8 @@ Commands:
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
   google         Manage google elements. Handle key pairs and identities from Gmail API
   kv             Read and write secrets in the Vault KV v2-compatible store
+  ssh            Sign OpenSSH user certificates with a KMS-managed SSH CA
+  password       Generate a random password using the KMS
   locate         Locate cryptographic objects inside the KMS
   login          Login to the KMS server identity provider.
   logout         Logout from the Identity Provider

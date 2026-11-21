@@ -1,7 +1,8 @@
 mod audit;
-mod migrate;
+/// Shared startup migration contracts, including the scenario-test target versions.
+pub(crate) mod migrate;
 #[cfg(feature = "non-fips")]
-mod redis;
+pub(crate) mod redis;
 mod sql;
 
 use std::sync::OnceLock;

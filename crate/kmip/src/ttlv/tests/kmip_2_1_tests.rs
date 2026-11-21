@@ -878,7 +878,6 @@ fn get_key_block() -> KeyBlock {
                     .unwrap(),
                 ),
             },
-            // TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
             attributes: Some(Box::new(Attributes::default())),
         }),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

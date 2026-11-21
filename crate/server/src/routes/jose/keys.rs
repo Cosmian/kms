@@ -295,7 +295,7 @@ async fn generate_ec_key_pair(
         alg: alg.map(ToOwned::to_owned),
         crv: Some(crv.to_owned()),
         key_ops,
-        x: None, // TODO: retrieve from public key material in a follow-up
+        x: None,
         y: None,
         n: None,
         e: None,
@@ -387,7 +387,7 @@ async fn generate_rsa_key_pair(
         key_ops,
         x: None,
         y: None,
-        n: None, // TODO: retrieve from public key material in a follow-up
+        n: None,
         e: None,
     })
 }
@@ -474,7 +474,7 @@ async fn generate_okp_key_pair(
         alg: alg.map(ToOwned::to_owned),
         crv: Some(crv.to_owned()),
         key_ops,
-        x: None, // TODO: retrieve from public key material
+        x: None,
         y: None,
         n: None,
         e: None,

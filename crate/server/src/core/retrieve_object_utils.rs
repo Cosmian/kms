@@ -18,9 +18,6 @@ use crate::{
     result::KResult,
 };
 
-// TODO This function should probably not be a free-standing function KMS side,
-// and should be refactored as part of the Database,
-
 /// Retrieve a single object for a given operation type
 /// or the Get operation if not found.
 ///

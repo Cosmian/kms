@@ -66,6 +66,9 @@ pub struct Database {
     /// full HSM-slot scans (or SQL round-trips) when the same keyset is resolved
     /// on every delegated Sign/Verify call (see `rotate_name_cache` module docs).
     rotate_name_cache: RotateNameCache,
+    /// AES-GCM invocations this node reserved in the store and has not handed out yet, per key
+    /// (see `Database::reserve_gcm_invocations`).
+    gcm_leases: std::sync::Mutex<HashMap<String, u64>>,
 
     /// The database kind for the default store (sqlite/postgres/mysql/redis-findex).
     kind: MainDbKind,
@@ -323,6 +326,7 @@ impl Database {
             ),
             object_cache: ObjectCache::new(cache.max_age, cache.max_size, cache.max_ttl),
             rotate_name_cache: RotateNameCache::new(),
+            gcm_leases: std::sync::Mutex::new(HashMap::new()),
             kind,
             health,
             recorder: None,

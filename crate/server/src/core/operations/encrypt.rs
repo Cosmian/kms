@@ -280,7 +280,6 @@ fn encrypt_single(
 /// * `bulk_data` - the bulk data to encrypt
 /// # Returns
 /// * the encrypt response
-// TODO: Covercrypt already has a bulk encryption method; maybe this should be merged here
 pub(super) fn encrypt_bulk(
     owm: &ObjectWithMetadata,
     server_params: &ServerParams,

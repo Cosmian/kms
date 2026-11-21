@@ -597,7 +597,6 @@ impl KeyBlock {
             .map_or(Ok(None), |link| match &link.linked_object_identifier {
                 // If the linked object identifier is a text string, return it
                 LinkedObjectIdentifier::TextString(s) => Ok(Some(s.clone())),
-                // Enumeration and index identifiers are not yet supported
                 LinkedObjectIdentifier::Enumeration(_) => Err(KmipError::NotSupported(
                     "Link Enumeration not yet supported".to_owned(),
                 )),

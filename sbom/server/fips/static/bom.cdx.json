@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:11ce73e6-5784-4702-bcca-539d4a832fc9",
+  "serialNumber": "urn:uuid:335d7d58-330a-45ae-a610-83ef80ff41ae",
   "metadata": {
-    "timestamp": "2026-11-19T17:03:37.174107+00:00",
+    "timestamp": "2026-11-21T10:42:17.840861+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/mqc4z5lgy1j24jyscgmx0rqcwrxszkij-cosmian-kms-server-5.29.0.drv",
+      "bom-ref": "/nix/store/04iwkzry54z9amvx8qq72wx6k0jncv67-cosmian-kms-server-5.29.0.drv",
       "name": "cosmian-kms-server",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/1kmzlbwwadmrw7gvj65frxjlhp8n14an-cosmian-kms-server-5.29.0"
+          "value": "/nix/store/mlxzgigiyj45m74wrymjww9zhkq0wm5x-cosmian-kms-server-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/mqc4z5lgy1j24jyscgmx0rqcwrxszkij-cosmian-kms-server-5.29.0.drv"
+          "value": "/nix/store/04iwkzry54z9amvx8qq72wx6k0jncv67-cosmian-kms-server-5.29.0.drv"
         }
       ]
     }
@@ -23100,17 +23100,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/prettier@3.10.0",
+      "bom-ref": "pkg:npm/prettier@3.10.1",
       "name": "prettier",
-      "version": "3.10.0",
-      "purl": "pkg:npm/prettier@3.10.0",
+      "version": "3.10.1",
+      "purl": "pkg:npm/prettier@3.10.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:prettier:prettier:3.10.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:prettier:prettier:3.10.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25173,7 +25173,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/mqc4z5lgy1j24jyscgmx0rqcwrxszkij-cosmian-kms-server-5.29.0.drv",
+      "ref": "/nix/store/04iwkzry54z9amvx8qq72wx6k0jncv67-cosmian-kms-server-5.29.0.drv",
       "dependsOn": [
         "/nix/store/3drp9bbs91jnc7rwavclv30v5q4wjyq7-openssl-3.6.5.drv"
       ]

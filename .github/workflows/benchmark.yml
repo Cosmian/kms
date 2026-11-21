@@ -313,8 +313,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software'
-            }}
+          # Artifact names are scoped to the run and cannot contain `/` (branch names do).
+          name: benchmark-report-${{ inputs.server_version || 'src' }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software' }}
           path: ${{ runner.temp }}/benchmark-reports
           if-no-files-found: error
           retention-days: 30
@@ -335,8 +335,7 @@ jobs:
       - name: Download benchmark artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software'
-            }}
+          name: benchmark-report-${{ inputs.server_version || 'src' }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software' }}
           path: report
 
       - name: Push benchmark report to package.cosmian.com
@@ -422,7 +421,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: benchmark-compare-${{ github.ref_name }}
+          name: benchmark-compare
           path: target/bench_compare/report.md
           if-no-files-found: ignore
           retention-days: 30

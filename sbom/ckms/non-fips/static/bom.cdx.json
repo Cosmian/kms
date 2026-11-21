@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:baf999e1-2909-4fec-8a73-5f9de109859b",
+  "serialNumber": "urn:uuid:2765c734-8bd6-4f8a-9660-a475e65a67a0",
   "metadata": {
-    "timestamp": "2026-11-19T17:21:47.986855+00:00",
+    "timestamp": "2026-11-21T10:45:21.220923+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/44c0av1c50rm0bz6dsnbjzyf5cah0r65-cosmian-kms-cli-5.29.0.drv",
+      "bom-ref": "/nix/store/mw5w7mnzv8rs59qv8s6qb4xy588wxyq6-cosmian-kms-cli-5.29.0.drv",
       "name": "cosmian-kms-cli",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-cli@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/jzb53z5yqb36yqs5x28ddakzl61y6qhn-cosmian-kms-cli-5.29.0"
+          "value": "/nix/store/126z1ry4x5ljpi98939d0wqm10rpvwrw-cosmian-kms-cli-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/44c0av1c50rm0bz6dsnbjzyf5cah0r65-cosmian-kms-cli-5.29.0.drv"
+          "value": "/nix/store/mw5w7mnzv8rs59qv8s6qb4xy588wxyq6-cosmian-kms-cli-5.29.0.drv"
         }
       ]
     }
@@ -22956,17 +22956,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/prettier@3.10.0",
+      "bom-ref": "pkg:npm/prettier@3.10.1",
       "name": "prettier",
-      "version": "3.10.0",
-      "purl": "pkg:npm/prettier@3.10.0",
+      "version": "3.10.1",
+      "purl": "pkg:npm/prettier@3.10.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:prettier:prettier:3.10.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:prettier:prettier:3.10.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25029,7 +25029,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/44c0av1c50rm0bz6dsnbjzyf5cah0r65-cosmian-kms-cli-5.29.0.drv"
+      "ref": "/nix/store/mw5w7mnzv8rs59qv8s6qb4xy588wxyq6-cosmian-kms-cli-5.29.0.drv"
     }
   ],
   "vulnerabilities": []

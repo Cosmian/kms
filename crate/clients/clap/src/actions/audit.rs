@@ -417,9 +417,6 @@ pub struct VerifyAuditAction {
     /// Print a summary line for every event even when the chain is valid.
     #[clap(long, default_value = "false")]
     pub verbose: bool,
-    // TODO: add a `--prev-hash` option (hex string) so that rotated files
-    //       can be verified by supplying the row_hash of the last event in
-    //       the preceding file segment.
 }
 
 impl VerifyAuditAction {

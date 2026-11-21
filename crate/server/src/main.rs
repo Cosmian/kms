@@ -197,7 +197,6 @@ async fn run() -> KResult<()> {
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
-    // TODO: For an unknown reason, this span never goes to OTLP
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 

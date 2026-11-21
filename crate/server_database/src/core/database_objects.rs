@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
-    sync::Arc,
+    sync::{Arc, MutexGuard, PoisonError},
     time::Instant,
 };
 
@@ -26,6 +26,11 @@ use crate::{
 /// (see `KMS::grant_access`).
 const RESERVED_UIDS: &[&str] = &["*"];
 
+/// AES-GCM invocations a node reserves in the store at once: one store write per block instead of
+/// one per encryption. The unused rest of a block is lost when the node stops, which only ever
+/// over-counts (at most `GCM_LEASE_BLOCK - 1` per key and node run), never lets an IV be reused.
+const GCM_LEASE_BLOCK: u64 = 4096;
+
 /// Reject `uid` if it is a reserved identifier (see [`RESERVED_UIDS`]).
 fn reject_reserved_uid(uid: &str) -> DbResult<()> {
     if RESERVED_UIDS.contains(&uid) {
@@ -48,7 +53,6 @@ fn reject_reserved_uid(uid: &str) -> DbResult<()> {
 /// - `unregister_object_store`: Unregister the default objects store or a store for a given prefix.
 /// - `get_object_store`: Retrieves the appropriate object store based on the prefix of the `uid`.
 /// - `filename`: Returns the filename of the database or `None` if not supported.
-/// - `migrate`: Migrates all the databases to the latest version.
 /// - `create`: Creates a new object in the database.
 /// - `retrieve_objects`: Retrieves objects from the database based on `uid` or tags.
 /// - `retrieve_object`: Retrieves a single object from the database.
@@ -434,34 +438,87 @@ impl Database {
         Ok(())
     }
 
+    fn gcm_leases(&self) -> MutexGuard<'_, HashMap<String, u64>> {
+        self.gcm_leases
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Reserve `invocations` AES-GCM (or GMAC) invocations with a random IV under the key `uid`
-    /// against the cap of NIST SP 800-38D §8.3, and return the key's new total.
+    /// against the cap of NIST SP 800-38D §8.3.
     ///
     /// Call it before encrypting: a crash after the reservation wastes invocations, it never
-    /// lets one be used twice. An `invocations` of 0 returns the current total.
+    /// lets one be used twice. Invocations are served from a per-node block of
+    /// `GCM_LEASE_BLOCK` leased from the store, so the store is written once per block.
     ///
     /// # Errors
     /// `Permission_Denied` when the key would exceed [`GCM_MAX_INVOCATIONS`] invocations
-    pub async fn reserve_gcm_invocations(&self, uid: &str, invocations: u64) -> DbResult<u64> {
-        self.record("reserve_gcm_invocations", async move {
-            let db = self.get_object_store(uid).await?;
-            db.reserve_gcm_invocations(uid, invocations)
-                .await?
-                .ok_or_else(|| {
-                    DbError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        format!(
-                            "AES-GCM invocation limit ({GCM_MAX_INVOCATIONS}) reached for {uid}: \
+    pub async fn reserve_gcm_invocations(&self, uid: &str, invocations: u64) -> DbResult<()> {
+        let leased = {
+            let mut leases = self.gcm_leases();
+            let left = leases.get(uid).copied().unwrap_or(0);
+            if left >= invocations {
+                if let Some(entry) = leases.get_mut(uid) {
+                    *entry -= invocations;
+                }
+                return Ok(());
+            }
+            leases.remove(uid);
+            left
+        };
+        let missing = invocations - leased;
+        let reserved = self
+            .record("reserve_gcm_invocations", async move {
+                let db = self.get_object_store(uid).await?;
+                // Lease a whole block; near the cap, fall back to exactly what is missing.
+                if db
+                    .reserve_gcm_invocations(uid, missing.saturating_add(GCM_LEASE_BLOCK - 1))
+                    .await?
+                    .is_some()
+                {
+                    return Ok(Some(GCM_LEASE_BLOCK - 1));
+                }
+                Ok(db.reserve_gcm_invocations(uid, missing).await?.map(|_| 0))
+            })
+            .await;
+        let (extra, result) = match reserved {
+            Ok(Some(extra)) => (extra, Ok(())),
+            Ok(None) => (
+                leased,
+                Err(DbError::Kmip21Error(
+                    ErrorReason::Permission_Denied,
+                    format!(
+                        "AES-GCM invocation limit ({GCM_MAX_INVOCATIONS}) reached for {uid}: \
                          rekey required (SP 800-38D §8.3)"
-                        ),
-                    )
-                })
-        })
-        .await
+                    ),
+                )),
+            ),
+            Err(e) => (leased, Err(e)),
+        };
+        // Add, never overwrite: a concurrent top-up keeps its own extra.
+        if extra > 0 {
+            let mut leases = self.gcm_leases();
+            let entry = leases.entry(uid.to_owned()).or_default();
+            *entry = entry.saturating_add(extra);
+        }
+        result
+    }
+
+    /// AES-GCM invocations handed out under the key `uid`: the store count minus what this node
+    /// still holds in its lease (the leases of other nodes count as handed out).
+    pub async fn gcm_invocations(&self, uid: &str) -> DbResult<u64> {
+        let stored = self
+            .get_object_store(uid)
+            .await?
+            .reserve_gcm_invocations(uid, 0)
+            .await?
+            .unwrap_or(0);
+        Ok(stored.saturating_sub(self.gcm_leases().get(uid).copied().unwrap_or(0)))
     }
 
     /// Forget the AES-GCM invocation count of a destroyed key.
     async fn delete_gcm_invocations(&self, uid: &str) -> DbResult<()> {
+        self.gcm_leases().remove(uid);
         let db = self.get_object_store(uid).await?;
         Ok(db.delete_gcm_invocations(uid).await?)
     }
@@ -951,14 +1008,14 @@ mod tests {
     use tempfile::TempDir;
     use time::OffsetDateTime;
 
-    use super::{Database, Object, extract_serial_hex_from_object};
+    use super::{Database, GCM_LEASE_BLOCK, Object, extract_serial_hex_from_object};
     use crate::core::{
         DbMetricsRecorder, MainDbKind, MainDbParams, database_objects::reject_reserved_uid,
     };
 
-    async fn test_db() -> Database {
+    async fn test_db() -> (Database, TempDir) {
         let tmp = TempDir::new().expect("Failed to create temp dir");
-        Database::instantiate(
+        let db = Database::instantiate(
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
@@ -972,7 +1029,29 @@ mod tests {
             None,
         )
         .await
-        .expect("Failed to instantiate in-memory database")
+        .expect("Failed to instantiate test database");
+        (db, tmp)
+    }
+
+    /// AES-GCM invocations are leased from the store by block: 100 encryptions cost one store write,
+    /// and forgetting the key drops the lease.
+    #[tokio::test]
+    async fn test_gcm_invocations_are_leased_by_block() {
+        let (db, _tmp) = test_db().await;
+        let uid = "gcm-lease-key";
+        for _ in 0..100 {
+            db.reserve_gcm_invocations(uid, 1)
+                .await
+                .expect("reserve failed");
+        }
+        let store = db.get_object_store(uid).await.expect("no store");
+        assert_eq!(
+            store.reserve_gcm_invocations(uid, 0).await.expect("count"),
+            Some(GCM_LEASE_BLOCK)
+        );
+        assert_eq!(db.gcm_invocations(uid).await.expect("count"), 100);
+        db.delete_gcm_invocations(uid).await.expect("delete");
+        assert_eq!(db.gcm_invocations(uid).await.expect("count"), 0);
     }
 
     /// Direct unit coverage of the reserved-uid check (issue #909).
@@ -1001,7 +1080,7 @@ mod tests {
     /// internal sentinel used to store the global `Create` right.
     #[tokio::test]
     async fn test_create_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -1025,7 +1104,7 @@ mod tests {
     /// `Database::atomic` must refuse a `Create` operation targeting the reserved uid `"*"`.
     #[tokio::test]
     async fn test_atomic_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -1048,7 +1127,7 @@ mod tests {
     /// `Database::atomic` with `AtomicOperation::Upsert` must refuse the reserved uid `"*"` (GHSA-pvw2-jxwc-95xq).
     #[tokio::test]
     async fn test_atomic_upsert_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -1107,7 +1186,7 @@ mod tests {
     /// store (`None`) leaves no store for unprefixed UIDs.
     #[tokio::test]
     async fn test_unregister_object_store() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let default_store = db
             .get_object_store("plain-uid")
             .await
@@ -1341,7 +1420,7 @@ mod tests {
     async fn test_find_certificate_state_by_der_finds_known_certificate() {
         use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
 
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let der = cert_der_with_serial(&[0x11, 0x22, 0x33, 0x44]);
         let cert_object = Object::Certificate(Certificate {
@@ -1375,7 +1454,7 @@ mod tests {
     async fn test_find_certificate_state_by_der_returns_none_for_unknown_certificate() {
         use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
 
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let known_der = cert_der_with_serial(&[0x55, 0x66, 0x77, 0x88]);
         let cert_object = Object::Certificate(Certificate {

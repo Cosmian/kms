@@ -494,7 +494,6 @@ impl Session {
                                     self.add_to_find_objects_ctx(handle);
                                 }
                             }
-                            // TODO may be we should treat Public Keys the same as Certificates
                             o => {
                                 return Err(ModuleError::Todo(format!(
                                     "This should not happen, returning: {:?}",

@@ -1483,17 +1483,6 @@ fn bench_pqc_sign(
 //   `digested_data`, exactly mirroring `ckms ec sign`'s own request
 //   construction; omitting `cryptographic_parameters` entirely also works,
 //   since the server then falls back to the key's own stored curve).
-// - `Verify` is NOT implemented for HSM-resident keys at all yet (any
-//   algorithm), so it is intentionally omitted (unlike the software
-//   `sign-verify` benches, which cover both directions).
-// - P-521 key creation is NOT covered: `crate/crypto/src/crypto/
-//   elliptic_curves/operation.rs` derives `cryptographic_length` from the
-//   generated private scalar's serialized byte length rather than the
-//   curve's nominal bit length, which can under-count P-521 (66-byte keys
-//   occasionally serialize to 65 bytes) and makes `HSM::create_keypair`
-//   reject the resulting length ("valid values are 224, 256, 384, 521") —
-//   reproduced 3/3 attempts in this environment. Pre-existing bug unrelated
-//   to this benchmark; tracked as a follow-up rather than fixed here.
 // - The bare (un-hashed) `SigningAlgorithm::RsaPkcsV15` variant — a raw
 //   `CKM_RSA_PKCS` sign over a caller-supplied `DigestInfo` blob — is not
 //   reachable via ordinary `Sign` KMIP requests (`from_kmip` always infers a

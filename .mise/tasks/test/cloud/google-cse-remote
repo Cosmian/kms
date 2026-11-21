@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="ckms tests against cse.cosmian.com and cse.test.cosmian.com (login, Gmail CSE identities and key pairs)"
+#MISE description="Local only (never CI): ckms tests against cse.cosmian.com and cse.test.cosmian.com (login, Gmail CSE identities and key pairs)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -12,30 +12,26 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
 
-# Disabled: the logins trigger Google "suspicious login" alerts for the CSE test account.
-skip_test "disabled: Google flags the remote CSE logins as suspicious"
+# Local only (#1435): needs personal credentials, and Google flags logins from CI runners as suspicious.
+[ -z "${CI:-}" ] || skip_test "local only: never run in CI (#1435)"
 
 [ "${VARIANT}" = non-fips ] || skip_test "remote tests do not depend on the client variant: run with --variant non-fips"
 
 # Skipped when already set: this block runs again after the nix-shell re-exec.
 if [ -z "${CKMS_CSE_CONF:-}" ]; then
-  if [ -n "${CSE_CKMS_CONF_TOML:-}" ]; then
-    # shortcut: the temp file stays on the runner (ephemeral in CI); set CKMS_CSE_CONF locally instead
-    CKMS_CSE_CONF="$(mktemp)"
-    printf '%s\n' "${CSE_CKMS_CONF_TOML}" >"${CKMS_CSE_CONF}"
-  elif [ -f "${HOME}/.cosmian/cse.cosmian.com.toml" ]; then
-    CKMS_CSE_CONF="${HOME}/.cosmian/cse.cosmian.com.toml"
-  elif [ -n "${CI:-}" ]; then
-    print_error "CSE_CKMS_CONF_TOML secret missing in CI"
-  else
-    skip_test "set CKMS_CSE_CONF or create ~/.cosmian/cse.cosmian.com.toml"
-  fi
+  CKMS_CSE_CONF="${HOME}/.cosmian/cse.cosmian.com.toml"
+  [ -f "${CKMS_CSE_CONF}" ] || skip_test "set CKMS_CSE_CONF or create ~/.cosmian/cse.cosmian.com.toml"
   export CKMS_CSE_CONF
 fi
 
-if [ "${CI:-}" != true ]; then
-  has_cmd nix-shell || skip_test "nix-shell not found"
+# The two login tests exchange a saved refresh_token; only a browser `ckms login oauth` creates one.
+SKIP_ARGS=()
+if ! grep -q '^refresh_token[[:space:]]*=' "${CKMS_CSE_CONF}"; then
+  print_warning "no refresh_token in ${CKMS_CSE_CONF}: skipping the 2 login tests (add \"offline_access\" to oauth2_conf.scopes, then run 'CKMS_CONF=${CKMS_CSE_CONF} ckms login oauth' once)"
+  SKIP_ARGS=(--skip remote_cse_login_with_refresh_token --skip remote_cse_key_pair_create_dry_run)
 fi
+
+has_cmd nix-shell || skip_test "nix-shell not found"
 
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
@@ -46,6 +42,6 @@ require_cmd cargo
 
 # The tests drive the prebuilt binary; rebuild so a stale one is not reused.
 cargo build -p ckms --bin ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
-cargo test -p ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} google_cmd::remote_cse -- --ignored
+cargo test -p ckms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} google_cmd::remote_cse -- --ignored ${SKIP_ARGS[@]+"${SKIP_ARGS[@]}"}
 
 print_success "Remote Google CSE ckms tests completed"

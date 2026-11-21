@@ -68,7 +68,6 @@ Crate path: `crate/server`
 | `info` | `Created Object of type {:?}` | `src/core/operations/create.rs` | - | - |
 | `info` | `Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}` | `src/core/operations/certify/resolve_subject.rs` | `sk_uid`: private key UID<br>`pk_uid`: public key UID | - |
 | `info` | `Destroyed object` | `src/core/operations/destroy.rs` | - | - |
-| `info` | `Encrypted Data : {encrypted_data:?}` | `src/routes/ms_dke/mod.rs` | `encrypted_data`: encrypted data payload | - |
 | `info` | `Exported object of type: {}` | `src/core/operations/export_get.rs` | - | - |
 | `info` | `Extracted IDP Configs: {:#?}` | `src/config/command_line/idp_auth_config.rs` | - | - |
 | `info` | `Feature Test enabled` | `src/main.rs` | - | - |
@@ -246,7 +245,6 @@ Crate path: `crate/server`
 | `trace` | `Checking key with ID: {}` | `src/core/retrieve_object_utils.rs` | — | — |
 | `trace` | `Checking permissions to wrap with key {wrapping_key_uid}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid` — … | — |
 | `trace` | `Checking usage mask for wrapping key {wrapping_key_uid}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid` — … | — |
-| `trace` | `ciphertext (ECB): {ciphertext:?}, aad: {aad:?}, padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext` — …<br>`aad` — …<br>`padding_method` — … | — |
 | `trace` | `Client certificate common name: {}` | `src/middlewares/tls_auth.rs` | — | — |
 | `trace` | `configure_cipher_suites: Enable default cipher suites (mozilla_intermediate_v5)` | `src/tls_config.rs` | — | — |
 | `trace` | `configure_cipher_suites: Setting custom cipher string: {suites}` | `src/tls_config.rs` | `suites` — … | — |
@@ -326,7 +324,6 @@ Crate path: `crate/server`
 | `trace` | `POST /v1/crypto/mac kid={}` | `src/routes/jose/mac.rs` | — | — |
 | `trace` | `POST /v1/crypto/sign kid={}` | `src/routes/jose/sign.rs` | — | — |
 | `trace` | `POST /v1/crypto/verify` | `src/routes/jose/verify.rs` | — | — |
-| `trace` | `POST /{key_name}/{key_id}/Decrypt {encrypted_data:?}` | `src/routes/ms_dke/mod.rs` | `key_name` — …<br>`key_id` — …<br>`encrypted_data` — … | — |
 | `trace` | `post_process_private_key: operation type: {operation_type:?}` | `src/core/operations/export_get.rs` | `operation_type` — … | — |
 | `trace` | `Private key extracted from PKCS12` | `src/core/operations/import.rs` | — | — |
 | `trace` | `Private key linked to leaf certificate` | `src/core/operations/import.rs` | — | — |
@@ -336,7 +333,7 @@ Crate path: `crate/server`
 | `trace` | `Processing KMIP operation: {operation_name} with user: {user:?}` | `src/core/operations/message.rs` | `operation_name` — …<br>`user` — … | — |
 | `trace` | `Processing PKCS12 import` | `src/core/operations/import.rs` | — | — |
 | `trace` | `Public key extracted from PKCS12` | `src/core/operations/import.rs` | — | — |
-| `trace` | `Request: {:?}` | `src/routes/azure_ekm/mod.rs` | — | ×4 in this file |
+| `trace` | `Request: {:?}` | `src/routes/azure_ekm/mod.rs` | — | ×2 in this file |
 | `trace` | `Response sent to {}` | `src/socket_server.rs` | — | — |
 | `trace` | `Retrieved certificate: {} for private key: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Retrieving certificate for private key: {}` | `src/core/certificate/find.rs` | — | — |
@@ -404,7 +401,6 @@ Crate path: `crate/server`
 | `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/jwt/jwt_middleware.rs` | — | — |
 | `debug` | `The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?},          format: {}` | `src/core/wrapping/wrap.rs` | `user`, `wrapping_key_uid` | — |
 | `debug` | `This is a {major}.{minor} Decrypt message. Extracting                                      Authenticated Encryption Tag of length {len} from Data field` | `src/routes/kmip/handlers.rs` | `major`, `minor`, `len` | — |
-| `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `post-process symmetric key uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key exit uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
@@ -483,7 +479,6 @@ Crate path: `crate/server`
 | `trace` | `[destroy-core] certificate zeroization uid={handle}` | `src/core/operations/destroy.rs` | `handle` | - |
 | `trace` | `[destroy-core] opaque object zeroization uid={handle} len={}` | `src/core/operations/destroy.rs` | `handle` | - |
 | `trace` | `HSM get_key_type probe for '{handle}' failed: {e}; proceeding with destroy` | `src/core/operations/destroy.rs` | `handle`, `e` | - |
-| `trace` | `object_handle: {object_handle}, user: {user},          operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `object_handle`, `user`, `operation_type` | - |
 | `trace` | `Retrieving private key for certificate: certificate_handle: {:?}` | `src/core/certificate/find.rs` | - | - |
 | `error` | `SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature              validation is DISABLED. Any syntactically valid token is accepted without signature              verification. This binary MUST NOT be used in production.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `OIDC: discovery document at {discovery_url} is missing required fields` | `src/start_kms_server.rs` | `discovery_url` | - |
@@ -796,6 +791,12 @@ Crate path: `crate/server`
 | `info` | `GET /cluster/status {}` | `src/routes/cluster.rs` | - | - |
 | `debug` | `[cluster-heartbeat] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[{lock_name}] Skipping scheduled work; another node holds the lock` | `src/cron.rs` | `lock_name` | - |
+| `info` | `Encrypted Data: alg={:?} value_len={}` | `src/routes/ms_dke/mod.rs` | - | - |
+| `trace` | `ciphertext (ECB): {} bytes, aad: {} bytes, padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `padding_method` | - |
+| `trace` | `ciphertext: {} bytes, nonce: {} bytes, aad: {} bytes, tag: {} bytes, padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `padding_method` | - |
+| `trace` | `object_handle: <{} chars>, user: {user}, operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `user`, `operation_type` | - |
+| `trace` | `POST /{key_name}/{key_id}/Decrypt` | `src/routes/ms_dke/mod.rs` | `key_name`, `key_id` | - |
+| `trace` | `Request: request_context={:?} alg={:?} value_len={}` | `src/routes/azure_ekm/mod.rs` | - | ×2 in this file |
 
 ### `cosmian_kms_server_database`
 
@@ -804,8 +805,6 @@ Crate path: `crate/server_database`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `debug` | `Empty Redis database detected. Initializing a new database instance.` | `src/stores/redis/redis_with_findex.rs` | - | - |
-| `debug` | `Existing Redis database detected (version {version}). Using current database.` | `src/stores/redis/redis_with_findex.rs` | `version`: version | - |
 | `debug` | `Listed {} rows` | `src/stores/sql/mysql.rs` | - | ×2 in this file |
 | `debug` | `Owner = {}` | `src/stores/sql/mysql.rs` | - | - |
 | `debug` | `PG find query: {}` | `src/stores/sql/pgsql.rs` | - | - |
@@ -817,7 +816,6 @@ Crate path: `crate/server_database`
 | `trace` | `find: user must be owner` | `src/stores/redis/redis_with_findex.rs` | — | — |
 | `trace` | `Insert read access right in DB: {uid} / {userid}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`userid` — … | — |
 | `trace` | `Invalidating the cache for {}` | `src/core/unwrapped_cache.rs` | — | — |
-| `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
 | `trace` | `Updated in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | ×2 in this file |
 | `trace` | `Upserted in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | — |
 | `debug` | `[redis-bootstrap] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | ×2 in this file |
@@ -853,6 +851,14 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node` | `src/stores/sql/mysql.rs` | - | - |
+| `warn` | `Failed to release database migration lock` | `src/stores/migrate.rs` | - | - |
+| `warn` | `Failed to release Redis migration lock on drop` | `src/stores/redis/migrations/mod.rs` | - | - |
+| `warn` | `Interrupted database migration detected; resuming` | `src/stores/migrate.rs` | - | - |
+| `warn` | `Redis migration lock was already expired or replaced before release` | `src/stores/redis/migrations/mod.rs` | - | - |
+| `warn` | `serial tag backfill: skipping object with unparsable certificate DER or non-certificate payload` | `src/stores/migrate.rs` | - | - |
+| `info` | `Applying database migration step` | `src/stores/migrate.rs` | - | - |
+| `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
+| `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 
@@ -876,7 +882,6 @@ Crate path: `crate/crypto`
 | `debug` | `create_dk_object: key len: {}, attributes: {attributes}`                                                                                                                                                                              | `src/crypto/kem.rs`                                 | `attributes`: KMIP attribute (debug display)s                                     | -               |
 | `debug` | `create_msk_object: key len: {}, attributes: {attributes}`                                                                                                                                                                             | `src/crypto/cover_crypt/master_keys.rs`             | `attributes`: KMIP attribute (debug display)s                                     | -               |
 | `debug` | `Decrypted data with user key {} of len (Plain/Enc): {}/{}`                                                                                                                                                                            | `src/crypto/cover_crypt/decryption.rs`              | -                                                                                 | -               |
-| `debug` | `Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}`                                                                                                                                                                         | `src/crypto/cover_crypt/encryption.rs`              | -                                                                                 | -               |
 | `debug` | `RSA key pair generated: private key id: {private_key_uid}`                                                                                                                                                                            | `src/crypto/rsa/operation.rs`                       | `private_key_uid`: private key uid                                                | -               |
 | `debug` | `RSA key pair generation: size in bits: {key_size_in_bits}`                                                                                                                                                                            | `src/crypto/rsa/operation.rs`                       | `key_size_in_bits`: RSA key size in bits                                          | -               |
 | `debug` | `server: access_structure: {access_structure:?}`                                                                                                                                                                                       | `src/crypto/cover_crypt/master_keys.rs`             | `access_structure`: Covercrypt access structure                                   | -               |
@@ -885,11 +890,9 @@ Crate path: `crate/crypto`
 | `debug` | `wrapping with CKM_RSA_AES_KEY_WRAP and hashing function: {hashing_fn}`                                                                                                                                                                | `src/crypto/wrap/wrap_key.rs`                       | `hashing_fn`: hash function                                                       | -               |
 | `debug` | `wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}`                                                                                                                                                                        | `src/crypto/wrap/wrap_key.rs`                       | `hashing_fn`: hash function                                                       | -               |
 | `trace` | `Access Policy: {access_policy:?}`                                                                                                                                                                                                     | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
-| `trace` | `authenticated_encryption_additional_data: {ad:?}`                                                                                                                                                                                     | `src/crypto/cover_crypt/encryption.rs`              | `ad` — …                                                                          | —               |
 | `trace` | `bytes len: {}, bits: {}`                                                                                                                                                                                                              | `src/crypto/rsa/operation.rs`                       | —                                                                                 | ×2 in this file |
 | `trace` | `ChaCha20 (pure) encryption: key_len={}, nonce_len={}, pt_len={}`                                                                                                                                                                      | `src/crypto/symmetric/symmetric_ciphers.rs`         | —                                                                                 | —               |
 | `trace` | `Created user decryption key with access policy: {access_policy:?}`                                                                                                                                                                    | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
-| `trace` | `decrypt: ad: {ad:?}`                                                                                                                                                                                                                  | `src/crypto/cover_crypt/decryption.rs`              | `ad` — …                                                                          | —               |
 | `trace` | `Ed25519`                                                                                                                                                                                                                              | `src/crypto/elliptic_curves/ecies/salsa_sealbox.rs` | —                                                                                 | —               |
 | `trace` | `encrypted_bytes len: {}`                                                                                                                                                                                                              | `src/crypto/cover_crypt/decryption.rs`              | —                                                                                 | —               |
 | `trace` | `encrypted_header parsed`                                                                                                                                                                                                              | `src/crypto/cover_crypt/decryption.rs`              | —                                                                                 | —               |
@@ -904,7 +907,6 @@ Crate path: `crate/crypto`
 | `trace` | `output object: {output}`                                                                                                                                                                                                              | `src/crypto/rsa/operation.rs`                       | `output` — …                                                                      | —               |
 | `trace` | `private key converted OK`                                                                                                                                                                                                             | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | —               |
 | `trace` | `public key converted OK`                                                                                                                                                                                                              | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | —               |
-| `trace` | `Refreshed user decryption key {usk:?}`                                                                                                                                                                                                | `src/crypto/cover_crypt/user_key.rs`                | `usk` — …                                                                         | —               |
 | `trace` | `using RFC-3394 (AES Key Wrap, no padding)`                                                                                                                                                                                            | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
 | `trace` | `using RFC-5649 (AES Key Wrap with Padding)`                                                                                                                                                                                           | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
 | `trace` | `with object type: {:?}`                                                                                                                                                                                                               | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
@@ -921,6 +923,10 @@ Crate path: `crate/crypto`
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 | `warn` | `` Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck`              extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may              attempt to recursively check this certificate's own revocation status via CDP,              AIA, or local policy instead. `` | `src/openssl/ocsp.rs` | - | - |
 | `trace` | `bytes len: {}, bits: {}, curve_bits: {:?}` | `src/crypto/elliptic_curves/operation.rs` | - | ×2 in this file |
+| `debug` | `Encrypted data with auth data of {} bytes, len (Plain/Enc): {}/{}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
+| `trace` | `authenticated_encryption_additional_data: {} bytes` | `src/crypto/cover_crypt/encryption.rs` | - | - |
+| `trace` | `decrypt: ad: {} bytes` | `src/crypto/cover_crypt/decryption.rs` | - | - |
+| `trace` | `Refreshed user decryption key` | `src/crypto/cover_crypt/user_key.rs` | - | - |
 
 ### `cosmian_kmip`
 
@@ -936,9 +942,6 @@ Crate path: `crate/kmip`
 | `debug` | `[serialize] writing tag: {}`                                                                                             | `src/ttlv/wire/ttlv_bytes_serializer.rs`                           | -                                                  | -               |
 | `debug` | `Converting KMIP 2.1 QueryResponse to KMIP 1.4: {value}`                                                                  | `src/kmip_1_4/kmip_operations.rs`                                  | `value`: value                                     | -               |
 | `trace` | `... => This is an Object => identifier: key: Object`                                                                     | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
-| `trace` | `... added a struct field: {key}, the parent struct is now: {:?}`                                                         | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `key` — …                                          | —               |
-| `trace` | `... assuming deserialization of BigInteger: {:?}`                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
-| `trace` | `... assuming deserialization of ByteString: {:?}`                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... coerced ShortUniqueIdentifier ByteString -> hex string: {}`                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... coerced {} Enumeration(code={}) -> string`                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... coerced {} Enumeration(name={}) -> string`                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
@@ -951,14 +954,12 @@ Crate path: `crate/kmip`
 | `trace` | `... enum: index: {:#x}`                                                                                                  | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... enum: name: {}`                                                                                                      | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... identifier: key: {}`                                                                                                 | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
-| `trace` | `... Seq element added, the current parent value is: {:?}`                                                                | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
 | `trace` | `... str: key: {}`                                                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... structure recognized as byte-like; concatenated len={} for tag {}`                                                   | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... structure: 1.4 Object`                                                                                               | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... structure: 2.1 Object`                                                                                               | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... structure: tag: {}`                                                                                                  | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `... tag: {}`                                                                                                             | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
-| `trace` | `... text string: value: {}`                                                                                              | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
 | `trace` | `===> KeyMaterial: Deserializing Bytes String for key format type: {:?}`                                                  | `src/kmip_2_1/kmip_data_structures.rs`                             | —                                                  | ×2 in this file |
 | `trace` | `===> KeyMaterial: Deserializing key format type: {f:?} as struct`                                                        | `src/kmip_1_4/kmip_data_structures.rs`                             | `f` — …                                            | —               |
 | `trace` | `===> KeyMaterial: Deserializing Structure for key format type: {f:?}`                                                    | `src/kmip_2_1/kmip_data_structures.rs`                             | `f` — …                                            | —               |
@@ -1059,7 +1060,6 @@ Crate path: `crate/kmip`
 | `trace` | `visit_f64: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
 | `trace` | `visit_i64: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
 | `trace` | `visit_map: Enumeration`                                                                                                  | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
-| `trace` | `visit_str: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
 | `trace` | `visit_u64: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
 | `trace` | `... replacing  "Object" with: {name}`                                                                                    | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name`                                             |                 |
 | `trace` | `serialize_seq, no parent found. This is a direct vec![] serialization. Creating                  a new one with tag: {}` | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
@@ -1067,6 +1067,12 @@ Crate path: `crate/kmip`
 | `trace` | `serialize_tuple_variant {name}::{variant} (variant index: {variant_index}) of len              {len}. Current: {:?}`     | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name`, `variant`, `variant_index`, `len`          | —               |
 | `trace` | `Untagged Enum map: next_key_seed: completed?: {}, at root: {}, index: {}, current              tag: {:?}`                | `src/ttlv/kmip_ttlv_deserializer/untagged_enum_walker.rs`          | —                                                  | —               |
 | `warn` | `KMIP 2.1 does not support the KMIP 1 attribute Storage Status Mask {v:?}` | `src/kmip_1_4/kmip_attributes.rs` | `v` | - |
+| `trace` | `... assuming deserialization of BigInteger: {bi:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `bi` | - |
+| `trace` | `... assuming deserialization of ByteString: <{} bytes>` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | - | - |
+| `trace` | `... added a struct field: {key}, the parent struct now has {} children` | `src/ttlv/kmip_ttlv_serializer.rs` | `key` | - |
+| `trace` | `... Seq element added, the current parent now has {} children` | `src/ttlv/kmip_ttlv_serializer.rs` | - | - |
+| `trace` | `... text string: value of {} chars` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | - | - |
+| `trace` | `visit_str: {} chars` | `src/ttlv/deserialize.rs` | - | - |
 
 ### `cosmian_kms_interfaces`
 
@@ -1164,8 +1170,6 @@ Crate path: `crate/clients/clap`
 | `trace` | `{self}`                                                                       | `src/actions/attributes/get.rs`                   | `self` — full get-attributes action configuration (debug display)                                   | —               |
 | `trace` | `{self}`                                                                       | `src/actions/attributes/modify.rs`                | `self` — full modify action configuration (debug display)                                           | —               |
 | `trace` | `{self}`                                                                       | `src/actions/attributes/set.rs`                   | `self` — full set-attributes action configuration (debug display)                                   | —               |
-| `trace` | `{self}`                                                                       | `src/actions/certificates/export_certificate.rs`  | `self` — full export action configuration (debug display)                                           | —               |
-| `trace` | `{self}`                                                                       | `src/actions/certificates/import_certificate.rs`  | `self` — full import action configuration (debug display)                                           | —               |
 | `trace` | `{id}`                                                                         | `src/actions/shared/get_key_uid.rs`               | `id` — resolved KMIP object UID                                                                     | —               |
 | `trace` | `data_encryption_algorithm: {data_encryption_algorithm}`                       | `src/actions/symmetric/encrypt.rs`                | `data_encryption_algorithm` — selected symmetric encryption algorithm                               | —               |
 | `trace` | `Determine the certificate to use - either existing or newly created`          | `src/actions/google/key_pairs/create.rs`          | —                                                                                                   | —               |
@@ -1175,7 +1179,6 @@ Crate path: `crate/clients/clap`
 | `info`  | `[{email}] - Generating new leaf certificate with extensions file: {:?}`       | `src/actions/google/key_pairs/create.rs`          | `email`                                                                                             | —               |
 | `debug` | `GetAttributes response for {unique_identifier}: {}`                           | `src/actions/attributes/get.rs`                   | `unique_identifier`                                                                                 | —               |
 | `debug` | `MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.`  | `src/actions/cng.rs`                              | —                                                                                                   | —               |
-| `trace` | `dek (len={}): {dek:?}`                                                        | `src/actions/symmetric/encrypt.rs`                | `dek`                                                                                               | —               |
 | `trace` | `dek length {}`                                                                | `src/actions/symmetric/decrypt.rs`                | —                                                                                                   | ×2 in this file |
 | `trace` | `encapsulation length {}`                                                      | `src/actions/symmetric/decrypt.rs`                | —                                                                                                   | —               |
 | `trace` | `encryption algorithm {:?}, key id {:?}, ciphertext (len={}): {:?}`            | `src/actions/symmetric/decrypt.rs`                | —                                                                                                   | —               |
@@ -1183,6 +1186,9 @@ Crate path: `crate/clients/clap`
 | `trace` | `pkcs7_object: {:?}`                                                           | `src/actions/google/key_pairs/create.rs`          | —                                                                                                   | —               |
 | `trace` | `response for {unique_identifier}: {}`                                         | `src/actions/attributes/delete.rs`                | `unique_identifier`                                                                                 | —               |
 | `trace` | `wrapped_key_bytes: {:?}`                                                      | `src/actions/google/key_pairs/create.rs`          | —                                                                                                   | —               |
+| `trace` | `certificate_file: {:?}, certificate_id: {:?}, input_format: {:?}, private_key_id: {:?}, public_key_id: {:?}, issuer_certificate_id: {:?}, replace_existing: {}, tags: {:?}, key_usage: {:?}` | `src/actions/certificates/import_certificate.rs` | - | - |
+| `trace` | `certificate_file: {:?}, certificate_id: {:?}, tags: {:?}, output_format: {:?}, allow_revoked: {}` | `src/actions/certificates/export_certificate.rs` | - | - |
+| `trace` | `dek (len={})` | `src/actions/symmetric/encrypt.rs` | - | - |
 
 ---
 
@@ -1347,7 +1353,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `load_find_context_by_class: added {} objects with handles: {:?}` | `src/sessions.rs` | - | - |
 | `debug` | `map_oracle_tde_security_to_mk: processing label: {label}` | `src/sessions.rs` | `label`: label | - |
 | `debug` | `Object: {}, attribute: {:?} => {:?}` | `src/core/object.rs` | - | - |
-| `debug` | `parse_mechanism: iv: {iv:?}` | `src/core/mechanism.rs` | `iv`: iv | - |
 | `debug` | `parse_mechanism: {mechanism:?}` | `src/core/mechanism.rs` | `mechanism`: PKCS#11 mechanism | - |
 | `debug` | `session: {h} found` | `src/sessions.rs` | `h`: h | - |
 | `debug` | `STORE: inserting new object with remote id: {id} and handle: {handle}` | `src/objects_store.rs` | `id`: object ID<br>`handle`: PKCS#11 object handle | - |
@@ -1355,7 +1360,6 @@ Crate path: `crate/clients/pkcs11/module`
 | `trace` | `Attribute::try_from: attribute parsed: {:?} => {:?}` | `src/core/attribute.rs` | — | — |
 | `trace` | `Attribute::try_from: parsing attribute: {:?}` | `src/core/attribute.rs` | — | — |
 | `trace` | `Attribute::try_from: type: {attr_type:?}` | `src/core/attribute.rs` | `attr_type` — … | — |
-| `trace` | `Attribute::try_from: value: {val:?}` | `src/core/attribute.rs` | `val` — … | — |
 | `trace` | `Attributes::try_from: parsing single attribute: {attr:?}` | `src/core/attribute.rs` | `attr` — … | — |
 | `trace` | `C_FindObjects: session: {:?}, objects available: {:?}` | `src/pkcs11.rs` | — | — |
 | `trace` | `C_GetAttributeValue: session: {:?}, object: {:?}` | `src/pkcs11.rs` | — | — |
@@ -1394,6 +1398,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `CKM_AES_GMAC pParameter incorrect size: {} != {}` | `src/core/mechanism.rs` | - | - |
 | `error` | `CKM_AES_GMAC: unsupported ulTagBits {tag_bits} (only {AES_GCM_TAG_BITS} is supported)` | `src/core/mechanism.rs` | `tag_bits`, `AES_GCM_TAG_BITS` | - |
 | `error` | `CKM_AES_CMAC takes no parameter but ulParameterLen is {parameter_len}` | `src/core/mechanism.rs` | `parameter_len` | - |
+| `debug` | `parse_mechanism: iv: {} bytes` | `src/core/mechanism.rs` | - | - |
+| `trace` | `Attribute::try_from: value: <{} bytes>` | `src/core/attribute.rs` | - | - |
 
 ---
 
@@ -1503,6 +1509,7 @@ Crate path: `ui/src/`
 | `error` | `Error loading OpenPGP algorithms from WASM:` | `actions/Pgp/PgpKeysCreate.tsx` | - | - |
 | `error` | `Error fetching Get for ${row.object_id}:` | `components/common/Locate.tsx` | `row.object_id`: UID whose attributes could not be retrieved | The Locate row remains un-enriched and shows unavailable attributes. Check the browser network request and KMS response for this UID. |
 | `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
+| `error` | `Error loading EC algorithms from WASM:` | `actions/Secrets/SshCa.tsx` | - | - |
 | `error` | `Error loading MAC options from WASM:` | `actions/MAC/macParams.ts` | - | - |
 
 ---
