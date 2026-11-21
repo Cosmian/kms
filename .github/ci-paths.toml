@@ -40,6 +40,7 @@ ignore = '''
 | ^\.mise/lib/(k8s|package_build|package_smoke|bench_helpers)\.sh$
 | ^\.mise/scripts/(audit|bench|demo|dev|docs|git|package|pre-commit|release|sbom)/
 | ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
+| ^\.github/workflows/(test-db|test-group)\.yml$  # reusable wrappers: no suite leg stands for them, any run of another suite exercises them
 '''
 
 [sets]
@@ -116,9 +117,7 @@ files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ 
 # ── test-group.yml suites (key = `suite` input; `pki` also gates the macOS job interop-macos) ──
 [units."db:sqlite"]
 sets = ["rust", "db_shared"]
-# The reusable workflows are exercised by one representative leg: main -> test_all -> test-group, and test-db.
-# shortcut: a leg stands for its whole workflow; add the file to `full` if a wiring change must prove every suite.
-files = '^\.mise/tasks/test/db/sqlite$ | ^\.github/workflows/(main|test_all|test-group|test-db)\.yml$'
+files = '^\.mise/tasks/test/db/sqlite$'
 
 [units."db:psql"]
 sets = ["db_core", "db_shared", "pg_store"]

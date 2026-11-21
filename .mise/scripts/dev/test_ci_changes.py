@@ -229,7 +229,7 @@ class TestScripts(unittest.TestCase):
 
 
 class CiWorkflows(unittest.TestCase):
-    def test_workflow_only_pr_runs_one_leg_per_workflow(self) -> None:
+    def test_workflow_only_pr_runs_direct_units_and_never_db_sqlite(self) -> None:
         self.assertEqual(
             run(
                 '.github/ci-paths.toml',
@@ -248,7 +248,6 @@ class CiWorkflows(unittest.TestCase):
                 'forward-proxy',
                 'cargo-publish-dry-run',
                 'xks-remote',
-                'db:sqlite',
                 'interop:pykmip',
                 'windows-cargo-test',
             },
@@ -259,6 +258,12 @@ class CiWorkflows(unittest.TestCase):
 
     def test_forward_proxy_workflow(self) -> None:
         self.assertEqual(run('.github/workflows/forward_proxy.yml'), {'forward-proxy'})
+
+    def test_db_and_group_wrappers_run_nothing(self) -> None:
+        self.assertEqual(
+            run('.github/workflows/test-db.yml', '.github/workflows/test-group.yml'),
+            set(),
+        )
 
 
 class FailSafe(unittest.TestCase):
