@@ -171,7 +171,7 @@ class Database(unittest.TestCase):
     def test_shared_sql_runs_every_backend(self) -> None:
         self.assertEqual(
             run('crate/server_database/src/stores/sql/query.sql'),
-            SERVER_WIDE | DB_LEGS,
+            (SERVER_WIDE | DB_LEGS) - {'cargo-clippy'},  # SQL is not linted
         )
 
     def test_postgres_store_only(self) -> None:
@@ -287,7 +287,6 @@ class CiWorkflows(unittest.TestCase):
                 '.mise/scripts/dev/ci_changes.py',
             ),
             {
-                'cargo-clippy',
                 'cargo-machete',
                 'forward-proxy',
                 'build-documentation',
@@ -296,6 +295,23 @@ class CiWorkflows(unittest.TestCase):
                 'interop:pykmip',
             },
         )
+
+    def test_clippy_runs_only_on_rust_changes(self) -> None:
+        for path in (
+            'crate/server/src/core/mod.rs',
+            'crate/server/Cargo.toml',
+            'clippy.toml',
+        ):
+            with self.subTest(path=path):
+                self.assertIn('cargo-clippy', run(path))
+        for path in (
+            '.github/workflows/main.yml',
+            'crate/server/kms_template.toml',
+            'crate/server/README.md',
+            'ui/src/App.tsx',
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn('cargo-clippy', run(path))
 
     def test_classifier_config_change_runs_nothing(self) -> None:
         self.assertEqual(run('.github/ci-paths.toml'), set())
