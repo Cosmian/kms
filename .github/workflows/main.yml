@@ -117,6 +117,8 @@ jobs:
 
   build-documentation:
     name: Build documentation
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'build-documentation') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -135,22 +137,6 @@ jobs:
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           mise run docs:mdbook-build
-
-  linkcheck:
-    # Link checking hits external sites (flaky on PRs): nightly only.
-    if: github.event_name == 'schedule'
-    name: Check documentation links
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - name: Link check
-        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
-        with:
-          args: --config lychee.toml 'documentation/docs/**/*.md'
-          fail: false
 
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'

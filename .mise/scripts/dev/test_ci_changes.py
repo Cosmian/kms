@@ -89,16 +89,22 @@ def run(*files: str) -> set[str]:
 
 
 class DocsAndIgnored(unittest.TestCase):
-    def test_docs_only_runs_nothing(self) -> None:
-        self.assertEqual(
-            run(
-                'documentation/docs/index.md',
-                'CHANGELOG/x.md',
-                'README.md',
-                '.github/skills/foo/SKILL.md',
-            ),
-            set(),
-        )
+    def test_changelog_and_root_readme_run_nothing(self) -> None:
+        self.assertEqual(run('CHANGELOG/x.md', 'README.md'), set())
+
+    def test_documentation_and_ai_instruction_files_run_only_the_doc_build(
+        self,
+    ) -> None:
+        for path in (
+            'documentation/docs/index.md',
+            'documentation/book.toml',
+            'AGENTS.md',
+            '.github/skills/foo/SKILL.md',
+            '.github/instructions/rust.instructions.md',
+            '.mise/scripts/docs/check_ai_docs.py',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(run(path), {'build-documentation'})
 
     def test_packaging_and_release_files_run_nothing(self) -> None:
         self.assertEqual(
@@ -281,6 +287,7 @@ class CiWorkflows(unittest.TestCase):
                 'cargo-clippy',
                 'cargo-machete',
                 'forward-proxy',
+                'build-documentation',
                 'cargo-publish-dry-run',
                 'xks-remote',
                 'interop:pykmip',
@@ -447,7 +454,8 @@ class FailSafe(unittest.TestCase):
 class MixedChanges(unittest.TestCase):
     def test_ui_plus_docs(self) -> None:
         self.assertEqual(
-            run('ui/src/App.tsx', 'documentation/docs/index.md'), {'ui', 'windows-ui'}
+            run('ui/src/App.tsx', 'documentation/docs/index.md'),
+            {'ui', 'windows-ui', 'build-documentation'},
         )
 
     def test_union_of_independent_areas(self) -> None:
@@ -465,6 +473,7 @@ class MixedChanges(unittest.TestCase):
 
 # One file per unit that triggers it (and not by way of `full`).
 UNIT_SAMPLES = {
+    'build-documentation': 'documentation/docs/index.md',
     'cargo-clippy': 'clippy.toml',
     'cargo-machete': 'crate/server/src/lib.rs',
     'no-nix': 'crate/server/src/lib.rs',
