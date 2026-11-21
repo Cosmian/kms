@@ -1,15 +1,26 @@
-//! HSM-resident symmetric key rotation via PKCS#11.
+//! HSM-resident key rotation via PKCS#11.
 //!
-//! This module handles `ReKey` for keys whose UID starts with `hsm::` — non-extractable
-//! key material managed by a hardware token.  The rotation algorithm generates a new key
-//! on the same HSM slot (via `C_GenerateKey`), assigns a generation-suffixed UID, and
+//! This module handles `ReKey` (AES keys) and `ReKeyKeyPair` (RSA/EC key pairs) for keys
+//! whose UID starts with `hsm::` — non-extractable key material managed by a hardware
+//! token.  The rotation algorithm generates a new key (`C_GenerateKey`) or key pair
+//! (`C_GenerateKeyPair`) on the same HSM slot, assigns a generation-suffixed UID, and
 //! updates `CKA_LABEL` / `CKA_START_DATE` / `CKA_END_DATE` on both old and new keys.
+//!
+//! It deliberately does not implement `RekeyOperation`: that pipeline builds replacement
+//! objects in memory and commits them with a version-conditional SQL batch, none of which
+//! applies to PKCS#11 (generation happens on the token, there are no object versions and
+//! retirement lives in `CKA_LABEL`).
+
+use std::collections::HashSet;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::ErrorReason,
         kmip_2_1::{
-            KmipOperation, kmip_objects::ObjectType, kmip_operations::ReKeyResponse,
+            KmipOperation,
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_objects::ObjectType,
+            kmip_operations::{ReKeyKeyPairResponse, ReKeyResponse},
             kmip_types::UniqueIdentifier,
         },
     },
@@ -27,11 +38,7 @@ use crate::{
 
 impl KMS {
     /// Find the latest generation UID in a keyset identified by `rotate_name`.
-    pub(super) async fn latest_hsm_keyset_uid(
-        &self,
-        rotate_name: &str,
-        user: &UserId,
-    ) -> Option<String> {
+    async fn latest_hsm_keyset_uid(&self, rotate_name: &str, user: &UserId) -> Option<String> {
         self.database
             .find_by_rotate_name_uncached(rotate_name, None, user)
             .await
@@ -46,16 +53,17 @@ impl KMS {
     /// Resolve a missing HSM key by falling back to keyset-name resolution.
     ///
     /// Looks up the latest-generation key for `full_base_uid` as a keyset name and
-    /// delegates to [`Self::rekey_hsm_symmetric`]. Returns an `InvalidRequest` error
+    /// delegates to [`Self::rekey_hsm`]. Returns an `InvalidRequest` error
     /// if no keyset exists under that name.
     async fn hsm_keyset_fallback(
         &self,
         uid: &str,
         full_base_uid: &str,
         user: &UserId,
-    ) -> KResult<ReKeyResponse> {
+        object_type: ObjectType,
+    ) -> KResult<String> {
         if let Some(latest) = self.latest_hsm_keyset_uid(full_base_uid, user).await {
-            Box::pin(self.rekey_hsm_symmetric(&latest, user)).await
+            Box::pin(self.rekey_hsm(&latest, user, object_type)).await
         } else {
             Err(KmsError::InvalidRequest(format!(
                 "HSM key '{uid}' not found and no keyset named '{full_base_uid}' exists on \
@@ -64,7 +72,42 @@ impl KMS {
         }
     }
 
-    /// Rotate an HSM-resident AES symmetric key.
+    /// Write `CKA_LABEL` of an HSM key; `context` completes "Failed to …" in the error.
+    async fn set_hsm_label(&self, uid: &str, label: &str, context: &str) -> KResult<()> {
+        self.database
+            .set_key_label(uid, label)
+            .await
+            .map_err(|e| KmsError::InvalidRequest(format!("Failed to {context} '{uid}': {e}")))
+    }
+
+    /// Rotate an HSM-resident AES key and return the UID of the new key.
+    pub(super) async fn rekey_hsm_symmetric(
+        &self,
+        uid: &str,
+        user: &UserId,
+    ) -> KResult<ReKeyResponse> {
+        let new_uid = Box::pin(self.rekey_hsm(uid, user, ObjectType::SymmetricKey)).await?;
+        Ok(ReKeyResponse {
+            unique_identifier: UniqueIdentifier::TextString(new_uid),
+        })
+    }
+
+    /// Rotate an HSM-resident key pair, identified by its private key UID.
+    pub(super) async fn rekey_hsm_keypair(
+        &self,
+        uid: &str,
+        user: &UserId,
+    ) -> KResult<ReKeyKeyPairResponse> {
+        let new_uid = Box::pin(self.rekey_hsm(uid, user, ObjectType::PrivateKey)).await?;
+        let public_uid = format!("{new_uid}{SYSTEM_TAG_PUBLIC_KEY}");
+        Ok(ReKeyKeyPairResponse {
+            private_key_unique_identifier: UniqueIdentifier::TextString(new_uid),
+            public_key_unique_identifier: UniqueIdentifier::TextString(public_uid),
+        })
+    }
+
+    /// Rotate an HSM-resident AES key (`object_type == SymmetricKey`) or key pair
+    /// (`object_type == PrivateKey`) and return the UID of the new (private) key.
     ///
     /// ## Rotation algorithm
     ///
@@ -72,12 +115,15 @@ impl KMS {
     /// 2. Retrieve the old key's metadata from the HSM (algorithm, length, sensitivity,
     ///    keyset info from `CKA_LABEL`, rotation interval from `CKA_START_DATE`/`CKA_END_DATE`).
     /// 3. Compute the new generation number and new `key_id`/UID
-    ///    (`base_key_id::new_gen`, `prefix::slot::base_key_id::new_gen`).
-    /// 4. Generate the new key on the same HSM slot via `C_GenerateKey` (`create_key`).
+    ///    (`base_key_id@new_gen`, `prefix::slot::base_key_id@new_gen`). A key that never
+    ///    joined a keyset is enrolled under its full base UID.
+    /// 4. Generate the new key on the same HSM slot via `C_GenerateKey` (`create`) or, for a
+    ///    key pair, `C_GenerateKeyPair` (`atomic`; the public key UID is the private key UID
+    ///    plus `_pk`).
     /// 5. Infer the rotation interval from the old key's dates; stamp new `CKA_START_DATE` /
-    ///    `CKA_END_DATE` on the new key if an interval is known.
-    /// 6. Update `CKA_LABEL` on the old key (strip `@latest` suffix) and on the new key
-    ///    (append `@latest`).
+    ///    `CKA_END_DATE` on the new (private) key if an interval is known.
+    /// 6. Update `CKA_LABEL` on the old key (strip `@latest`) and on the new key
+    ///    (append `@latest`); for a key pair, on both public keys as well.
     ///
     /// ## Non-latest generation rejection
     ///
@@ -85,11 +131,12 @@ impl KMS {
     /// is rejected with an error.  Callers should use the bare keyset name (e.g.
     /// `re-key --key-id my-key`) or `my-key@latest` — the dispatcher resolves those to
     /// the latest UID before this function is called.
-    pub(super) async fn rekey_hsm_symmetric(
+    async fn rekey_hsm(
         &self,
         uid: &str,
         user: &UserId,
-    ) -> KResult<ReKeyResponse> {
+        object_type: ObjectType,
+    ) -> KResult<String> {
         self.enforce_create_permission(user).await?;
 
         // Parse the UID early — prefix, slot_id, and key_id are needed for the
@@ -111,21 +158,34 @@ impl KMS {
         let old_owm = match self.database.retrieve_object(uid).await {
             Ok(Some(owm)) => owm,
             Ok(None) => {
-                return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user)).await;
+                return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user, object_type))
+                    .await;
             }
             Err(e) => {
                 // PKCS#11 returns an error (not just empty results) for missing objects;
                 // treat any "not found" message as an absent key and try keyset resolution.
                 if e.to_string().to_lowercase().contains("not found") {
-                    return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user)).await;
+                    return Box::pin(self.hsm_keyset_fallback(
+                        uid,
+                        &full_base_uid,
+                        user,
+                        object_type,
+                    ))
+                    .await;
                 }
                 return Err(KmsError::Database(e));
             }
         };
 
-        if old_owm.object().object_type() != ObjectType::SymmetricKey {
+        if old_owm.object().object_type() != object_type {
             return Err(KmsError::NotSupported(
-                "HSM ReKey is currently supported for AES symmetric keys only".to_owned(),
+                if object_type == ObjectType::SymmetricKey {
+                    "HSM ReKey is supported for AES symmetric keys only; re-key an HSM key pair \
+                     with ReKeyKeyPair on its private key"
+                } else {
+                    "HSM ReKeyKeyPair requires the UID of an HSM private key"
+                }
+                .to_owned(),
             ));
         }
 
@@ -164,19 +224,19 @@ impl KMS {
             if let Some(latest_uid) = self.latest_hsm_keyset_uid(keyset_id, user).await
                 && latest_uid != uid
             {
-                return Box::pin(self.rekey_hsm_symmetric(&latest_uid, user)).await;
+                return Box::pin(self.rekey_hsm(&latest_uid, user, object_type)).await;
             }
         }
 
         let new_gen = old_gen + 1;
         let new_uid = format!("{prefix}::{slot_id}::{base_id}@{new_gen}");
 
-        // Retrieve old rotate metadata from the HSM (via stub attributes).
-        // Fall back gracefully if CKA_LABEL metadata is absent.
-        let (rotate_name, old_rotate_gen) = (
-            old_attrs.rotate_name.clone(),
-            old_attrs.rotate_generation.unwrap_or(old_gen),
-        );
+        // A key that never joined a keyset is enrolled under its full base UID.
+        let rotate_name = old_attrs
+            .rotate_name
+            .clone()
+            .unwrap_or_else(|| full_base_uid.clone());
+        let old_rotate_gen = old_attrs.rotate_generation.unwrap_or(old_gen);
 
         // Read rotation interval in days from the old key's attributes.
         // For HSM keys, rotate_interval is not stored in PKCS#11 as a KMIP attribute
@@ -188,26 +248,59 @@ impl KMS {
             secs / cosmian_kms_server_database::reexport::cosmian_kms_interfaces::SECS_PER_DAY
         });
 
+        // The HSM carries no `PublicKeyLink`: the pair is derived from the `_pk` UID rule
+        // of `HsmStore::atomic`. Retrieving it first (it checks `Rekey`) fails before any
+        // change on the token when the public key is missing.
+        let key_pair = if object_type == ObjectType::PrivateKey {
+            let old_pk_uid = format!("{uid}{SYSTEM_TAG_PUBLIC_KEY}");
+            let new_pk_uid = format!("{new_uid}{SYSTEM_TAG_PUBLIC_KEY}");
+            let old_pk_owm = self.retrieve_linked_public_key(&old_pk_uid, user).await?;
+            Some((old_pk_uid, new_pk_uid, old_pk_owm))
+        } else {
+            None
+        };
+
         self.constraints
             .check(old_owm.object().object_type(), old_attrs)?;
-        // Generate the new key on the same HSM slot.
-        if let Err(e) = self
-            .database
-            .create(
-                Some(new_uid.clone()),
-                user,
-                &old_owm.object().clone(),
-                old_attrs,
-                &std::collections::HashSet::new(),
-            )
-            .await
-        {
+        // Generate the new key (or key pair) on the same HSM slot.
+        let generated = if let Some((_, new_pk_uid, old_pk_owm)) = &key_pair {
+            self.database
+                .atomic(
+                    user,
+                    &[
+                        AtomicOperation::Create((
+                            new_uid.clone(),
+                            user.to_owned(),
+                            old_owm.object().clone(),
+                            old_attrs.clone(),
+                            HashSet::new(),
+                        )),
+                        AtomicOperation::Create((
+                            new_pk_uid.clone(),
+                            user.to_owned(),
+                            old_pk_owm.object().clone(),
+                            old_pk_owm.attributes().clone(),
+                            HashSet::new(),
+                        )),
+                    ],
+                )
+                .await
+                .map(|_| ())
+        } else {
+            self.database
+                .create(
+                    Some(new_uid.clone()),
+                    user,
+                    &old_owm.object().clone(),
+                    old_attrs,
+                    &HashSet::new(),
+                )
+                .await
+                .map(|_| ())
+        };
+        if let Err(e) = generated {
             if e.to_string().contains("already exists") {
-                let latest_uid = if let Some(ref name) = rotate_name {
-                    self.latest_hsm_keyset_uid(name, user).await
-                } else {
-                    None
-                };
+                let latest_uid = self.latest_hsm_keyset_uid(&rotate_name, user).await;
                 let retry_hint = latest_uid.map_or_else(
                     || {
                         format!(
@@ -237,7 +330,7 @@ impl KMS {
             )));
         }
 
-        // Stamp rotation dates on the new key.
+        // Stamp rotation dates on the new key (the private key for a key pair).
         if let Some(days) = interval_days {
             let today = OffsetDateTime::now_utc().date();
             let end = today + time::Duration::days(days);
@@ -255,42 +348,56 @@ impl KMS {
         // Use `base_id` (without generation suffix) in the label — the generation is
         // already in its own field, and including a generation-suffixed key_id would
         // introduce extra `::` delimiters that break `parse_label_metadata()`.
-        if let Some(ref name) = rotate_name {
-            let old_label_retired = format!("{name}::{old_rotate_gen}::{base_id}");
-            let new_label_latest = format!("{name}::{new_gen}::{base_id}@latest");
-
-            self.database
-                .set_key_label(uid, &old_label_retired)
-                .await
-                .map_err(|e| {
-                    KmsError::InvalidRequest(format!(
-                        "Failed to update CKA_LABEL on old HSM key '{uid}': {e}"
-                    ))
-                })?;
-            self.database
-                .set_key_label(&new_uid, &new_label_latest)
-                .await
-                .map_err(|e| {
-                    KmsError::InvalidRequest(format!(
-                        "Failed to set CKA_LABEL on new HSM key '{new_uid}': {e}"
-                    ))
-                })?;
-            // Make the new generation visible to Sign/Verify/Encrypt/Decrypt immediately
-            // instead of waiting out the cache's TTL (see `RotateNameCache` module docs) —
-            // this is the commit point: CKA_LABEL on both keys now reflects the rotation.
-            self.database.invalidate_rotate_name_cache(name);
+        self.set_hsm_label(
+            uid,
+            &format!("{rotate_name}::{old_rotate_gen}::{base_id}"),
+            "update CKA_LABEL on old HSM key",
+        )
+        .await?;
+        self.set_hsm_label(
+            &new_uid,
+            &format!("{rotate_name}::{new_gen}::{base_id}@latest"),
+            "set CKA_LABEL on new HSM key",
+        )
+        .await?;
+        // The public keys form their own keyset, named after the public key's full base UID
+        // (what `SetAttribute` requires as an HSM keyset name).
+        if let Some((old_pk_uid, new_pk_uid, _)) = &key_pair {
+            let pk_name = format!("{rotate_name}{SYSTEM_TAG_PUBLIC_KEY}");
+            let pk_id = format!("{base_id}{SYSTEM_TAG_PUBLIC_KEY}");
+            self.set_hsm_label(
+                old_pk_uid,
+                &format!("{pk_name}::{old_rotate_gen}::{pk_id}"),
+                "update CKA_LABEL on old HSM key",
+            )
+            .await?;
+            self.set_hsm_label(
+                new_pk_uid,
+                &format!("{pk_name}::{new_gen}::{pk_id}@latest"),
+                "set CKA_LABEL on new HSM key",
+            )
+            .await?;
+            self.database.invalidate_rotate_name_cache(&pk_name);
         }
+        // Make the new generation visible to Sign/Verify/Encrypt/Decrypt immediately
+        // instead of waiting out the cache's TTL (see `RotateNameCache` module docs) —
+        // this is the commit point: CKA_LABEL on both keys now reflects the rotation.
+        self.database.invalidate_rotate_name_cache(&rotate_name);
 
         trace!("HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}");
 
-        // Re-wrap any DB keys that were wrapped by the old HSM key, so that
-        // they remain accessible under the new generation without requiring
-        // the caller to keep the old HSM key alive.
+        // Re-wrap any DB keys that were wrapped by the old HSM key (the old public key for
+        // a key pair), so that they remain accessible under the new generation without
+        // requiring the caller to keep the old HSM key alive.
+        let (old_wrapper, new_wrapper) = match &key_pair {
+            Some((old_pk_uid, new_pk_uid, _)) => (old_pk_uid.as_str(), new_pk_uid.as_str()),
+            None => (uid, new_uid.as_str()),
+        };
         let mut operations: Vec<AtomicOperation> = Vec::new();
         Box::pin(self.rewrap_dependants(
             user,
-            ObjectHandle::from(uid),
-            ObjectHandle::from(&new_uid),
+            ObjectHandle::from(old_wrapper),
+            ObjectHandle::from(new_wrapper),
             None,
             &mut operations,
         ))
@@ -302,8 +409,6 @@ impl KMS {
                 .map_err(KmsError::Database)?;
         }
 
-        Ok(ReKeyResponse {
-            unique_identifier: UniqueIdentifier::TextString(new_uid),
-        })
+        Ok(new_uid)
     }
 }

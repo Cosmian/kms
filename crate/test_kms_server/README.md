@@ -292,7 +292,7 @@ replays the steps sequentially.
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_addressing` | Creates an HSM-resident key, assigns a keyset name (rotate_name = "ks-addr"), | 15 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_basic` | Creates an HSM-resident AES-256 key without a keyset (no rotate_name), encrypts | 9 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_consecutive` | Creates gen-0 key, rekeys twice (gen-1, gen-2), encrypts once per generation, | 17 |
-| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_duplicate_rekey` | Creates an HSM-resident key WITHOUT a keyset name (no rotate_name). Re-keys it | 10 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_duplicate_rekey` | Creates an HSM-resident key WITHOUT a keyset name (no rotate_name). The first | 9 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_encrypt_gen_select` | Encrypts with the keyset base UID before rotation (targets gen-0, the only/latest key) | 15 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_hsm_uid` | Verifies that an HSM-resident keyset can be rotated 3 consecutive times using the | 13 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_keyset_name` | Verifies that an HSM-resident keyset can be rotated 3 consecutive times using the | 13 |

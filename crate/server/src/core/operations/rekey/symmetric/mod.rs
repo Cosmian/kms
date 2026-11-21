@@ -1,9 +1,8 @@
 //! KMIP `ReKey` for symmetric keys — dispatcher.
 //!
 //! Routes the request to either the SQL-backed pipeline ([`sql::SqlSymmetricRekeyer`]) or
-//! the HSM PKCS#11 rotation path ([`hsm`] module) based on the UID prefix.
+//! the HSM PKCS#11 rotation path ([`super::hsm`] module) based on the UID prefix.
 
-mod hsm;
 mod sql;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{

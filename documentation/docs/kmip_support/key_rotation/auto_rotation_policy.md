@@ -5,8 +5,8 @@ symmetric keys and asymmetric key pairs.  A per-key *rotation policy* is
 attached to a key object; a background scheduler then rotates any key whose
 interval has elapsed — without any operator action.
 
-> **HSM keys** support manual rotation only; the auto-rotation scheduler never
-> picks up HSM UIDs.  See [HSM Key Rotation](hsm.md).
+> **HSM keys** are rotated by the same scheduler; see
+> [HSM Key Rotation](hsm.md#auto-rotation).
 >
 > For the rotation flows and sequence diagrams for each key type, see
 > [Key Rotation](index.md).
@@ -136,7 +136,7 @@ On each tick, the scheduler:
 4. Emits an OpenTelemetry counter `kms.key.auto_rotation` labelled with `uid`
    and `algorithm` for each successful rotation.
 
-The scheduler **never returns HSM UIDs** — auto-rotation is SQL-only.
+HSM keys are rotated too; see [HSM auto-rotation](hsm.md#auto-rotation).
 
 ### Attribute changes on auto-rotation
 

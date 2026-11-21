@@ -53,8 +53,8 @@ use crate::{
             rekey::versioned_update_op,
         },
         uid_utils::{
-            KeysetVersion, ObjectHandle, as_keyset_ref, resolve_keyset_to_single_uid, resolve_uids,
-            walk_keyset_chain,
+            KeysetVersion, ObjectHandle, as_keyset_ref, parse_keyset_identifier,
+            resolve_keyset_to_single_uid, resolve_uids, walk_keyset_chain,
         },
     },
     error::KmsError,
@@ -523,15 +523,8 @@ impl KMS {
             .await?
         {
             ResolvedKey::Oracle { uid, prefix } => {
-                let result = Op::execute_oracle(self, &request, &uid, &prefix).await?;
-                if let Some(ref metrics) = self.metrics {
-                    let model = crate::core::uid_utils::hsm_model_from_prefix(
-                        &self.params.hsm_instances,
-                        &prefix,
-                    );
-                    metrics.record_hsm_operation(Op::OP_NAME, model);
-                }
-                Ok(result)
+                self.execute_oracle_recorded::<Op>(&request, &uid, &prefix)
+                    .await
             }
             ResolvedKey::Local(owm) => {
                 self.execute_local_with_limits::<Op>(&owm, &request, user)
@@ -610,6 +603,23 @@ impl KMS {
         Op::execute_local(self, key, request, user)
     }
 
+    /// Run the operation on the HSM / crypto oracle owning `prefix` and count it in the
+    /// HSM metrics.
+    async fn execute_oracle_recorded<Op: CryptoOpSpec>(
+        &self,
+        request: &Op::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Op::Response> {
+        let result = Op::execute_oracle(self, request, uid, prefix).await?;
+        if let Some(metrics) = &self.metrics {
+            let model =
+                crate::core::uid_utils::hsm_model_from_prefix(&self.params.hsm_instances, prefix);
+            metrics.record_hsm_operation(Op::OP_NAME, model);
+        }
+        Ok(result)
+    }
+
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.
     ///
     /// The traversal is unbounded: `walk_keyset_chain` already guarantees termination
@@ -643,8 +653,10 @@ impl KMS {
                 continue;
             }
 
-            // Eligibility check
-            if !Op::is_key_eligible(&owm, self.vendor_id()) {
+            // Eligibility check. HSM members are metadata-only stubs without a usage mask:
+            // like on the standard oracle path, the HSM enforces key usage itself.
+            let hsm = ObjectHandle::from(uid.as_str());
+            if !hsm.is_hsm() && !Op::is_key_eligible(&owm, self.vendor_id()) {
                 continue;
             }
 
@@ -653,10 +665,24 @@ impl KMS {
                 continue;
             }
 
-            match self
-                .execute_local_with_limits::<Op>(&owm, request, user)
+            let result = if let ObjectHandle::Hsm { prefix, .. } = hsm {
+                // Same algorithm policy as for the local path (metadata only).
+                async {
+                    enforce_kmip_algorithm_policy_for_retrieved_key(
+                        &self.params,
+                        Op::OP_NAME,
+                        owm.id(),
+                        &owm,
+                    )?;
+                    self.execute_oracle_recorded::<Op>(request, uid, prefix)
+                        .await
+                }
                 .await
-            {
+            } else {
+                self.execute_local_with_limits::<Op>(&owm, request, user)
+                    .await
+            };
+            match result {
                 Ok(response) => {
                     let depth_u32 = u32::try_from(depth).unwrap_or(u32::MAX);
                     let warn_threshold = self.params.keyset_warn_depth;
@@ -940,10 +966,12 @@ impl KMS {
 
         // ── Fast-path for explicit HSM generation UIDs ───────────────────────────
         // Only skip keyset resolution for HSM UIDs with an explicit `@N` generation
-        // suffix (e.g., `hsm::5::my-key@1`). Bare HSM UIDs (without `@`) are keyset
-        // names that need rotation resolution: Encrypt/Sign→latest, Decrypt/Verify→chain-walk.
+        // suffix, N >= 1 (e.g., `hsm::5::my-key@1`). Bare HSM UIDs and `@latest`/`@first`/`@0`
+        // are keyset names that need rotation resolution: Encrypt/Sign→latest,
+        // Decrypt/Verify→chain-walk.
         if let ObjectHandle::Hsm { prefix, .. } = &object_handle
             && uid_str.contains('@')
+            && parse_keyset_identifier(uid_str).is_none()
         {
             // Explicit generation handle: skip keyset resolution, go direct to oracle
             if self
@@ -972,10 +1000,24 @@ impl KMS {
                 _ => resolve_keyset_to_single_uid(&keyset_ref, self, user).await?,
             };
             if let Some(uid) = single_uid {
-                return Ok(ResolvedKey::Local(
-                    self.load_keyset_member::<Op>(&uid, unique_identifier, user)
-                        .await?,
-                ));
+                let owm = self
+                    .load_keyset_member::<Op>(&uid, unique_identifier, user)
+                    .await?;
+                // The HSM key material never leaves the token: run on the HSM, under the
+                // same algorithm policy as the local path.
+                if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(uid.as_str()) {
+                    enforce_kmip_algorithm_policy_for_retrieved_key(
+                        &self.params,
+                        Op::OP_NAME,
+                        owm.id(),
+                        &owm,
+                    )?;
+                    return Ok(ResolvedKey::Oracle {
+                        uid: uid.clone(),
+                        prefix: prefix.to_owned(),
+                    });
+                }
+                return Ok(ResolvedKey::Local(owm));
             }
             // Not a keyset → fall through to normal UID resolution
         }

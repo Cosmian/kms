@@ -127,6 +127,15 @@ pub(crate) async fn set_attribute(
                 ));
             }
             Attribute::RotateName(n) => (Some(n.clone()), None::<i64>),
+            Attribute::RotateInterval(n)
+                if *n > 0 && owm.object().object_type() == ObjectType::PublicKey =>
+            {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: set RotateInterval on the private key of HSM key pair '{}', \
+                     not on its public key",
+                    owm.id()
+                )));
+            }
             Attribute::RotateInterval(n) => (None::<String>, Some(*n)),
             _ => (None, None),
         }
