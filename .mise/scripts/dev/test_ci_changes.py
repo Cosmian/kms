@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
+import os
+import subprocess
+import sys
 import tempfile
 import textwrap
-import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import ci_changes  # noqa: E402
@@ -490,6 +494,235 @@ class LoadConfig(unittest.TestCase):
 
     def test_invalid_regex_is_rejected(self) -> None:
         self.rejects("full = '('\nignore = 'y'\n[units.a]\nfiles = 'x'\n")
+
+    def test_non_string_pattern_is_rejected_with_its_key(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as ctx:
+            load("full = 1\nignore = 'y'\n[units.a]\nfiles = 'x'\n")
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn('full: expected a regex string', err.getvalue())
+
+    def test_invalid_regex_message_names_the_key(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            load("full = 'x'\nignore = 'y'\n[units.a]\nfiles = '('\n")
+        self.assertIn('units.a.files: invalid regex', err.getvalue())
+
+    def test_missing_ignore_and_units_are_rejected(self) -> None:
+        self.rejects("full = 'x'\n[units.a]\nfiles = 'x'\n")
+        self.rejects("full = 'x'\nignore = 'y'\n")
+
+    def test_set_may_be_used_by_several_units_and_units_keep_file_order(self) -> None:
+        cfg = load(MINI)
+        self.assertEqual(list(cfg.units), ['a', 'b', 'c'])
+        self.assertEqual(len(cfg.units['a']), 1)  # set only
+        self.assertEqual(len(cfg.units['b']), 1)  # files only
+        self.assertEqual(len(cfg.units['c']), 2)  # set + files
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        [
+            'git',
+            '-c',
+            'user.name=t',
+            '-c',
+            'user.email=t@t',
+            '-c',
+            'commit.gpgsign=false',
+            *args,
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def commit_files(repo: Path, message: str, **files: str | None) -> None:
+    """Write (or delete, when the content is None) `files` (keys use `__` for `/`) and commit."""
+    for name, content in files.items():
+        path = repo / name.replace('__', '/')
+        if content is None:
+            path.unlink()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', message)
+
+
+class ChangedFiles(unittest.TestCase):
+    """changed_files() lists what the PR branch changes since it forked from the base, as `git diff` sees it."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.repo = Path(tmp.name)
+        git(self.repo, 'init', '-q', '-b', 'main')
+        commit_files(self.repo, 'base', a_txt='1', b_txt='same content\n' * 20)
+        git(self.repo, 'switch', '-q', '-c', 'feature')
+        patcher = mock.patch.object(ci_changes, 'REPO', self.repo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_modified_added_and_deleted_files(self) -> None:
+        commit_files(self.repo, 'pr', a_txt='2', c__d_txt='new')
+        commit_files(self.repo, 'pr2', b_txt=None)
+        self.assertEqual(
+            ci_changes.changed_files('main', 'feature'), ['a_txt', 'b_txt', 'c/d_txt']
+        )
+
+    def test_rename_lists_old_and_new_path(self) -> None:
+        git(self.repo, 'mv', 'b_txt', 'moved_txt')
+        git(self.repo, 'commit', '-q', '-m', 'rename')
+        self.assertEqual(
+            ci_changes.changed_files('main', 'feature'), ['b_txt', 'moved_txt']
+        )
+
+    def test_changes_made_on_the_base_after_the_fork_are_ignored(self) -> None:
+        commit_files(self.repo, 'pr', a_txt='2')
+        git(self.repo, 'switch', '-q', 'main')
+        commit_files(self.repo, 'base moves on', base_only_txt='x')
+        git(self.repo, 'switch', '-q', 'feature')
+        self.assertEqual(ci_changes.changed_files('main', 'feature'), ['a_txt'])
+
+    def test_no_change_is_an_empty_list(self) -> None:
+        self.assertEqual(ci_changes.changed_files('main', 'feature'), [])
+
+    def test_head_caret_one_is_the_pr_merge_commit_base(self) -> None:
+        # In CI the checkout is the test merge commit: HEAD^1 is the base tip, HEAD the merge.
+        commit_files(self.repo, 'pr', a_txt='2')
+        git(self.repo, 'switch', '-q', 'main')
+        git(self.repo, 'merge', '-q', '--no-ff', '-m', 'merge', 'feature')
+        self.assertEqual(ci_changes.changed_files('HEAD^1', 'HEAD'), ['a_txt'])
+
+    def test_unknown_ref_raises(self) -> None:
+        with self.assertRaises(subprocess.CalledProcessError):
+            ci_changes.changed_files('does-not-exist', 'feature')
+
+
+class Main(unittest.TestCase):
+    """main(): console report, `skip=` line and the $GITHUB_OUTPUT file the workflows read."""
+
+    def run_main(
+        self, files: list[str], *argv: str, output: Path | None
+    ) -> tuple[str, mock.MagicMock]:
+        env = {} if output is None else {'GITHUB_OUTPUT': str(output)}
+        out = io.StringIO()
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch.object(sys, 'argv', ['ci_changes.py', *argv]),
+            mock.patch.object(ci_changes, 'changed_files', return_value=files) as cf,
+            contextlib.redirect_stdout(out),
+        ):
+            if output is None:
+                os.environ.pop('GITHUB_OUTPUT', None)
+            ci_changes.main()
+        return out.getvalue(), cf
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.output = Path(tmp.name) / 'github_output'
+
+    def test_report_lists_files_reason_and_every_unit(self) -> None:
+        text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
+        lines = text.splitlines()
+        self.assertEqual(lines[0], 'Changed files (1):')
+        self.assertEqual(lines[1], '  ui/src/App.tsx')
+        self.assertEqual(lines[2], f'2 of {len(EVERYTHING)} units triggered')
+        marks = {line[5:]: line[:4] for line in lines[3:-1]}
+        self.assertEqual(set(marks), EVERYTHING)
+        self.assertEqual(
+            {u for u, m in marks.items() if m == 'RUN '}, {'ui', 'windows-ui'}
+        )
+        self.assertTrue(all(m in ('RUN ', 'SKIP') for m in marks.values()))
+
+    def test_skip_line_is_compact_sorted_json_and_appended_to_github_output(
+        self,
+    ) -> None:
+        text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
+        written = self.output.read_text().splitlines()
+        self.assertEqual(len(written), 1)
+        self.assertEqual(written[0], text.splitlines()[-1])
+        self.assertTrue(written[0].startswith('skip=['))
+        self.assertNotIn(' ', written[0])
+        skipped = json.loads(written[0].removeprefix('skip='))
+        self.assertEqual(skipped, sorted(EVERYTHING - {'ui', 'windows-ui'}))
+
+    def test_github_output_is_appended_not_overwritten(self) -> None:
+        self.output.write_text('other=1\n')
+        self.run_main(['ui/src/App.tsx'], output=self.output)
+        lines = self.output.read_text().splitlines()
+        self.assertEqual(lines[0], 'other=1')
+        self.assertTrue(lines[1].startswith('skip='))
+
+    def test_without_github_output_only_prints(self) -> None:
+        text, _ = self.run_main(['ui/src/App.tsx'], output=None)
+        self.assertTrue(text.splitlines()[-1].startswith('skip=['))
+        self.assertFalse(self.output.exists())
+
+    def test_empty_diff_reports_run_everything(self) -> None:
+        text, _ = self.run_main([], output=self.output)
+        self.assertIn('Changed files (0):', text)
+        self.assertIn('empty diff: run everything', text)
+        self.assertEqual(self.output.read_text(), 'skip=[]\n')
+        self.assertNotIn('SKIP', text)
+
+    def test_full_match_reports_run_everything(self) -> None:
+        text, _ = self.run_main(['Cargo.lock', 'README.md'], output=self.output)
+        self.assertIn('Cargo.lock matches full: run everything', text)
+        self.assertEqual(self.output.read_text(), 'skip=[]\n')
+
+    def test_orphan_reports_run_everything(self) -> None:
+        text, _ = self.run_main(['brand/new.txt'], output=self.output)
+        self.assertIn('brand/new.txt matches no unit and is not ignored', text)
+        self.assertEqual(self.output.read_text(), 'skip=[]\n')
+
+    def test_docs_only_skips_every_unit(self) -> None:
+        text, _ = self.run_main(['README.md'], output=self.output)
+        self.assertEqual(
+            json.loads(self.output.read_text().removeprefix('skip=')),
+            sorted(EVERYTHING),
+        )
+        self.assertNotIn('RUN ', text)
+
+    def test_default_refs_are_the_pr_merge_commit_parent_and_head(self) -> None:
+        _, cf = self.run_main(['README.md'], output=self.output)
+        cf.assert_called_once_with('HEAD^1', 'HEAD')
+
+    def test_base_and_head_flags_are_forwarded(self) -> None:
+        _, cf = self.run_main(
+            ['README.md'],
+            '--base',
+            'origin/develop',
+            '--head',
+            'f00',
+            output=self.output,
+        )
+        cf.assert_called_once_with('origin/develop', 'f00')
+
+
+class CommandLine(unittest.TestCase):
+    def test_script_runs_as_a_program(self) -> None:
+        script = Path(ci_changes.__file__)
+        done = subprocess.run(
+            [sys.executable, str(script), '--base', 'HEAD', '--head', 'HEAD'],
+            cwd=ci_changes.REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn('empty diff: run everything', done.stdout)
+        self.assertEqual(done.stdout.splitlines()[-1], 'skip=[]')
+
+    def test_unknown_flag_is_rejected(self) -> None:
+        script = Path(ci_changes.__file__)
+        done = subprocess.run(
+            [sys.executable, str(script), '--nope'], capture_output=True, text=True
+        )
+        self.assertEqual(done.returncode, 2)
 
 
 if __name__ == '__main__':
