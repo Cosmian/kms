@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema has eight tables shared by all SQL backends, plus `kms_migration_lock` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
+The KMS object-store schema has eight tables shared by all SQL backends, plus `kms_migration_lock` and `kms_cron_locks` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -20,6 +20,7 @@ The KMS object-store schema has eight tables shared by all SQL backends, plus `k
 | `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
 | `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
 | `kms_migration_lock` | Startup migration coordination row (MySQL, MariaDB, and Percona XtraDB Cluster only) |
+| `kms_cron_locks` | Scheduled-job row locks (MySQL, MariaDB, and Percona XtraDB Cluster only, when `GET_LOCK` is refused) |
 
 PostgreSQL deployments used in multi-region active-active topologies additionally keep the lifecycle state of objects in two insert-only tables, `object_state_events` and `object_state_event_tombstones`, from which `ENABLE ALWAYS` triggers derive `objects.state` (see [Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr)).
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
@@ -177,6 +178,16 @@ Used on MySQL, MariaDB, and Percona XtraDB Cluster to serialize startup migratio
 | Column | Type | Description |
 | ------ | ---- | ----------- |
 | `id` | `TINYINT` | Primary key (contains a single coordination row `id = 1`). |
+
+## `kms_cron_locks`
+
+Used on MySQL, MariaDB, and Percona XtraDB Cluster when the server refuses `GET_LOCK` (Galera): a scheduled job holds its row `FOR UPDATE NOWAIT` in an open transaction. Created at startup (`CREATE TABLE IF NOT EXISTS`).
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `name` | `VARCHAR(128)` | Primary key: the job lock name. |
+
+**Downgrade.** An older KMS ignores this table; the only effect is that its scheduled jobs run on every node, as before this table existed.
 
 ## crypto_officer_activations
 

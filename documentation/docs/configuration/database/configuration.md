@@ -213,6 +213,9 @@ PostgreSQL connections.
 
 The KMS supports multi-region active-active deployments using PostgreSQL with a Spock-, pgEdge-, or BDR-class logical multi-master replication extension (validated against `ghcr.io/pgedge/pgedge-postgres`). In this topology, each region runs a local KMS instance group connected to a local PostgreSQL node, serving local reads and writes for minimum latency. State converges asynchronously across regions via bidirectional logical replication.
 
+!!! note
+    A region can run on a MySQL Galera cluster instead (Percona XtraDB Cluster): see [MySQL with Galera](./multi_region.md#mysql-with-galera). A `region_role = "follower"` on SQLite or Redis-with-Findex is rejected at startup.
+
 KMS server nodes do not communicate directly with each other over the network. All cross-region state coordination and replication are handled entirely at the database layer:
 
 ```mermaid

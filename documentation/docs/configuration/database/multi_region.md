@@ -4,7 +4,8 @@ This page explains how Eviden KMS runs **active-active** across regions on Postg
 multi-master replication: what the topology looks like, what is replicated, how conflicting
 writes converge, and what the limits are. Operator settings are summarized here;
 the full reference stays in
-[Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr).
+[Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr);
+the MySQL variant is [below](#mysql-with-galera).
 
 ## Why active-active
 
@@ -173,11 +174,36 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
   that reaches a node before its insert is discarded together with its whole transaction
   (Spock `transdiscard`), which can drop that transaction's lifecycle events on that node.
 - Lifecycle events are never compacted; compaction would need cross-region coordination.
-- SQLite, MySQL and Redis keep plain state writes: they are single-writer backends and are not
-  multi-region targets.
+- SQLite and Redis-with-Findex are not multi-region targets: a `region_role = "follower"` on them is rejected
+  at startup.
 - To check a deployment, run `mise run test:db:multi-region-guards`: it verifies the primary keys,
-  the `ENABLE ALWAYS` triggers, the Spock wiring and the operator configuration
-  (exactly one leader, PostgreSQL backend, identical ceremony secret).
+  the `ENABLE ALWAYS` triggers, the Spock wiring (PostgreSQL), the Galera wiring (MySQL) and the operator
+  configuration (exactly one leader, PostgreSQL or MySQL backend identical across regions, identical ceremony secret).
+
+## MySQL with Galera
+
+A region can instead run on a **MySQL Galera cluster** spanning the regions (Percona XtraDB Cluster is the validated
+flavor, tested with two nodes; MariaDB Galera and MySQL Group Replication in multi-primary mode are expected to work
+but are not validated). Galera certifies each transaction on every node and aborts a conflicting commit (error 1213),
+which the KMS already retries, so there is no last-update-wins merge to guard against:
+
+| Data | Convergence on Galera |
+| ---- | --------------------- |
+| Object payload, attributes, tags | Certification: a conflicting commit is retried |
+| Object lifecycle `State` | The KMS joins the stored state with the new one in the writing transaction (`Destroyed` and `Compromised` never regress); a batch Undo writes the state explicitly |
+| Key material of a `Destroyed` object | An update of the payload leaves the zeroized payload in place |
+| AES-GCM invocation counts | Exact: the counter row is locked, no delta-apply is needed |
+| Grants | Read-modify-write: a concurrent grant and revoke can drop one side, as on PostgreSQL |
+| Node heartbeats (`cluster_nodes`) | **Replicated**: Galera cannot exclude a table, so `GET /cluster/status` lists the nodes of every region |
+
+Operating notes:
+
+- Point all the KMS nodes of a region at the **same** database node, and run an arbitrator (`garbd`) in a third site.
+- Scheduled jobs: Percona XtraDB Cluster in strict mode (and MariaDB Galera) refuses `GET_LOCK`. The KMS then locks a
+  row of `kms_cron_locks`, which excludes only the KMS nodes connected to the same database node. Key auto-rotation
+  is leader-region only anyway.
+- `region_role = "follower"` is accepted on PostgreSQL and MySQL only.
+- A node still running the previous release keeps plain state writes until every region is upgraded.
 
 !!! warning
     Grants use whole-row last-write-wins. Re-check the effective permissions of an object after a

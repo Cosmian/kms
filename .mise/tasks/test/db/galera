@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Run Galera (Percona XtraDB Cluster) active-active replication tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/multi_region_guards.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+local_galera_1_port="${KMS_SLOT_GALERA_1_PORT:-3310}"
+local_galera_2_port="${KMS_SLOT_GALERA_2_PORT:-3311}"
+
+print_header "Running Galera active-active tests (${VARIANT_NAME})"
+
+trap mr_galera_down EXIT
+print_status "Starting the Galera cluster (galera1:${local_galera_1_port} / galera2:${local_galera_2_port})..."
+mr_galera_up || print_error "Galera cluster not ready"
+
+print_status "Running test_db_galera_active_active..."
+ret=0
+KMS_GALERA_1_URL="mysql://kms:kms@127.0.0.1:${local_galera_1_port}/kms" \
+  KMS_GALERA_2_URL="mysql://kms:kms@127.0.0.1:${local_galera_2_port}/kms" \
+  cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --nocapture test_db_galera_active_active || ret=$?
+
+if [ "${ret}" -ne 0 ]; then
+  print_error "Galera active-active replication test FAILED (exit code ${ret})"
+fi
+print_success "Galera active-active replication test passed"

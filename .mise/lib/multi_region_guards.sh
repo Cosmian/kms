@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .mise/lib/multi_region_guards.sh — guards validating the multi-region active-active
-# PostgreSQL deployment model (issue #1187).
+# PostgreSQL or MySQL (Galera) deployment model (issue #1187).
 #
 # The guard layers are:
 #   * static source guards  — the leader-gating wiring
@@ -16,7 +16,7 @@
 #   mr_run_guard                           — run one guard, recording (not aborting on) failure
 #   mr_guard_source_model                  — static source-level guards
 #   mr_guard_config_topology               — exactly one leader region across the config set
-#   mr_guard_config_backend                — postgresql backend only for multi-region nodes
+#   mr_guard_config_backend                — postgresql or mysql (Galera) backend, identical across regions
 #   mr_guard_config_clear_database         — clear_database must be off for multi-region nodes
 #   mr_guard_config_ceremony_keys          — identical ceremony key material across regions
 #   mr_guard_config_incompatible_features  — detect settings incompatible with multi-region
@@ -30,6 +30,10 @@
 #   mr_guard_crl_gating                    — behavioral proof: CRL issuance gating
 #   mr_guard_ceremony_gating               — behavioral proof: CO ceremony activation gating
 #   mr_prebuild_behavioral_tests           — build the behavioral test binaries without running them
+#   mr_galera_up / mr_galera_down          — start/stop the 2-node Galera compose profile
+#   mr_guard_galera_wiring                 — wsrep on, cluster size >= 2, node synced, ROW binlog
+#   mr_guard_mysql_primary_keys            — every table InnoDB with a PRIMARY KEY
+#   mr_guard_galera_state_and_grants       — behavioral proof: state merge, payload guard, GCM, grants
 
 [ -n "${_MISE_MULTI_REGION_GUARDS_SH_LOADED:-}" ] && return 0
 _MISE_MULTI_REGION_GUARDS_SH_LOADED=1
@@ -127,9 +131,10 @@ mr_guard_source_model() {
   local cron="${repo_root}/crate/server/src/cron.rs"
   local pgsql="${repo_root}/crate/server_database/src/stores/sql/pgsql.rs"
   local interfaces="${repo_root}/crate/interfaces/src/stores/objects_store.rs"
+  local mysql="${repo_root}/crate/server_database/src/stores/sql/mysql.rs"
   local f
 
-  for f in "$core" "$crl" "$ceremony" "$permissions" "$cron" "$pgsql" "$interfaces"; do
+  for f in "$core" "$crl" "$ceremony" "$permissions" "$cron" "$pgsql" "$interfaces" "$mysql"; do
     if [ ! -f "$f" ]; then
       print_warning "source guard: missing expected file $f"
       ok=1
@@ -159,6 +164,10 @@ mr_guard_source_model() {
   }
   grep -q "update_state_allow_downgrade" "$interfaces" || {
     print_warning "source guard: batch-UNDO downgrade bypass missing from ObjectsStore trait"
+    ok=1
+  }
+  grep -q "async fn update_state_allow_downgrade" "$mysql" || {
+    print_warning "source guard: MySQL update_state_allow_downgrade override missing from mysql.rs"
     ok=1
   }
 
@@ -213,17 +222,22 @@ mr_guard_config_topology() {
   return 0
 }
 
-# Multi-region nodes must use the PostgreSQL backend (the only backend with the
-# logical-replication schema hardening and the lifecycle event-log triggers).
-# Usage: mr_guard_config_backend <config>...
+# Multi-region nodes must use a backend with multi-master replication and a lifecycle-state
+# guard: PostgreSQL (logical replication + event-log triggers) or MySQL (Galera certification),
+# identical across regions. Usage: mr_guard_config_backend <config>...
 mr_guard_config_backend() {
-  local f backend ok=0
+  local f backend first="" ok=0
   mr_config_set_is_multi_region "$@" || return 0
   for f in "$@"; do
     backend="$(mr_toml_get "$f" database_type)"
-    if [ "$backend" != "postgresql" ]; then
+    if [ "$backend" != "postgresql" ] && [ "$backend" != "mysql" ]; then
       print_warning "config backend: $f declares database_type=${backend:-<unset>} — multi-region \
-active-active requires PostgreSQL (logical replication); sqlite/mysql/redis-findex cannot replicate"
+active-active requires postgresql (logical multi-master) or mysql (Galera); sqlite/redis-findex cannot replicate"
+      ok=1
+    elif [ -z "$first" ]; then
+      first="$backend"
+    elif [ "$backend" != "$first" ]; then
+      print_warning "config backend: mixed backends across regions ($first vs $backend in $f)"
       ok=1
     fi
   done
@@ -382,6 +396,42 @@ EOF
     ok=1
   else
     print_success "config guard self-test: sqlite follower correctly rejected"
+  fi
+
+  cat >"${tmpdir}/mysql_leader.toml" <<'EOF'
+region_role = "leader"
+database_type = "mysql"
+database_url = "mysql://kms:kms@127.0.0.1:3310/kms"
+EOF
+  cat >"${tmpdir}/mysql_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "mysql"
+database_url = "mysql://kms:kms@127.0.0.1:3311/kms"
+EOF
+  if mr_guard_config_backend "${tmpdir}/mysql_leader.toml" "${tmpdir}/mysql_follower.toml"; then
+    print_success "config guard self-test: mysql (Galera) leader + follower accepted"
+  else
+    print_warning "config guard self-test: mysql leader + follower was rejected by the backend guard"
+    ok=1
+  fi
+
+  cat >"${tmpdir}/redis_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "redis-findex"
+database_url = "redis://127.0.0.1:6379"
+EOF
+  if mr_guard_config_backend "${tmpdir}/redis_follower.toml"; then
+    print_warning "config guard self-test: redis-findex follower was NOT rejected by the backend guard"
+    ok=1
+  else
+    print_success "config guard self-test: redis-findex follower correctly rejected"
+  fi
+
+  if mr_guard_config_backend "${tmpdir}/leader.toml" "${tmpdir}/mysql_follower.toml"; then
+    print_warning "config guard self-test: mixed backends were NOT rejected"
+    ok=1
+  else
+    print_success "config guard self-test: mixed backends correctly rejected"
   fi
 
   cat >"${tmpdir}/leader2.toml" <<'EOF'
@@ -607,8 +657,8 @@ mr_prebuild_behavioral_tests() {
   )
 }
 
-# Run one of the `#[ignore]`d pgEdge cargo proofs. Usage: _mr_cargo_pgedge <repo_root> <package> <test_name>
-_mr_cargo_pgedge() {
+# Run one of the `#[ignore]`d live cargo proofs. Usage: _mr_cargo_ignored <repo_root> <package> <test_name>
+_mr_cargo_ignored() {
   local repo_root="$1" package="$2" test_name="$3"
   (
     cd "${repo_root}" || return 1
@@ -623,7 +673,7 @@ _mr_cargo_pgedge() {
 mr_guard_db_state_and_grants() {
   local repo_root="$1" pg1_url="$2" pg2_url="$3"
   KMS_PGEDGE_1_URL="${pg1_url}" KMS_PGEDGE_2_URL="${pg2_url}" \
-    _mr_cargo_pgedge "${repo_root}" cosmian_kms_server_database test_db_pgedge_active_active
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server_database test_db_pgedge_active_active
 }
 
 # CRL issuance gating: follower rejection, leader issuance, CDP replication,
@@ -631,7 +681,7 @@ mr_guard_db_state_and_grants() {
 mr_guard_crl_gating() {
   local repo_root="$1" pg1_url="$2" pg2_url="$3"
   KMS_PGEDGE_1_URL="${pg1_url}" KMS_PGEDGE_2_URL="${pg2_url}" \
-    _mr_cargo_pgedge "${repo_root}" cosmian_kms_server test_pgedge_crl_leader_only_generation_and_follower_cdp_replication
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server test_pgedge_crl_leader_only_generation_and_follower_cdp_replication
 }
 
 # CO ceremony gating: leader activation replicates, follower activation/revocation
@@ -639,5 +689,103 @@ mr_guard_crl_gating() {
 mr_guard_ceremony_gating() {
   local repo_root="$1" pg1_url="$2" pg2_url="$3"
   KMS_PGEDGE_1_URL="${pg1_url}" KMS_PGEDGE_2_URL="${pg2_url}" \
-    _mr_cargo_pgedge "${repo_root}" cosmian_kms_server test_pgedge_crypto_officer_multi_region_activation_replication_and_fail_secure
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server test_pgedge_crypto_officer_multi_region_activation_replication_and_fail_secure
+}
+
+# ── MySQL / Galera (Percona XtraDB Cluster) ────────────────────────────────────
+
+# Generate (once) the CA and server certificate the two Galera nodes share for their cluster
+# traffic: the SST refuses to run without a CA. Mounted at /cert by the compose file.
+_mr_galera_certs() {
+  local dir="${_MR_LIB_DIR}/../../target/galera-certs"
+  [ -f "${dir}/server-cert.pem" ] && return 0
+  mkdir -p "$dir" || return 1
+  (
+    cd "$dir" || exit 1
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout ca-key.pem -out ca.pem -days 3650 -subj "/CN=kms-galera-ca" 2>/dev/null &&
+      openssl req -newkey rsa:2048 -nodes -keyout server-key.pem -out server.csr -subj "/CN=galera" 2>/dev/null &&
+      openssl x509 -req -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem -days 3650 2>/dev/null &&
+      rm -f server.csr &&
+      chmod 644 ./*.pem # test-only keys: the mysql user of the container must read them
+  )
+}
+
+# Start the two-node Galera cluster of the `galera` compose profile and wait until both nodes
+# are synced. Usage: mr_galera_up
+mr_galera_up() {
+  local i
+  _mr_galera_certs || return 1
+  docker compose --profile galera up -d galera-1 || return 1
+  for i in $(seq 1 180); do
+    docker exec galera1 mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_ready'" 2>/dev/null | grep -q ON && break
+    [ "$i" -eq 180 ] && return 1
+    sleep 1
+  done
+  docker compose --profile galera up -d galera-2 || return 1
+  for i in $(seq 1 300); do
+    if [ "$(docker exec galera1 mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_cluster_size'" 2>/dev/null | awk '{print $2}')" = "2" ] &&
+      [ "$(docker exec galera2 mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_local_state_comment'" 2>/dev/null | awk '{print $2}')" = "Synced" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# Remove the Galera containers and their data: a stopped cluster whose first node shut down last
+# refuses to bootstrap (`safe_to_bootstrap: 0`). Usage: mr_galera_down
+mr_galera_down() {
+  docker compose --profile galera rm -fsv galera-1 galera-2 2>/dev/null || true
+}
+
+# Run a SQL statement in a Galera container. Usage: _mr_mysql <container> <sql>
+_mr_mysql() {
+  docker exec "$1" mysql -h127.0.0.1 -ukms -pkms -N -e "$2" kms 2>/dev/null
+}
+
+# Galera replication is on, the cluster has both nodes, this node is synced and the binlog is
+# row-based. Usage: mr_guard_galera_wiring <container>
+mr_guard_galera_wiring() {
+  local container="$1" ok=0 v
+  v="$(_mr_mysql "$container" "show variables like 'wsrep_on'" | awk '{print $2}')"
+  [ "$v" = "ON" ] || {
+    print_warning "galera wiring: $container wsrep_on=${v:-<none>}"
+    ok=1
+  }
+  v="$(_mr_mysql "$container" "show status like 'wsrep_cluster_size'" | awk '{print $2}')"
+  [ "${v:-0}" -ge 2 ] 2>/dev/null || {
+    print_warning "galera wiring: $container wsrep_cluster_size=${v:-<none>}, expected >= 2"
+    ok=1
+  }
+  v="$(_mr_mysql "$container" "show status like 'wsrep_local_state_comment'" | awk '{print $2}')"
+  [ "$v" = "Synced" ] || {
+    print_warning "galera wiring: $container wsrep_local_state_comment=${v:-<none>}"
+    ok=1
+  }
+  v="$(_mr_mysql "$container" "show variables like 'binlog_format'" | awk '{print $2}')"
+  [ "$v" = "ROW" ] || {
+    print_warning "galera wiring: $container binlog_format=${v:-<none>}"
+    ok=1
+  }
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# Every table is InnoDB with a PRIMARY KEY (Galera requires both). Usage: mr_guard_mysql_primary_keys <container>
+mr_guard_mysql_primary_keys() {
+  local container="$1" bad
+  bad="$(_mr_mysql "$container" "SELECT COUNT(*) FROM information_schema.tables t WHERE t.table_schema = DATABASE() AND (t.engine <> 'InnoDB' OR NOT EXISTS (SELECT 1 FROM information_schema.table_constraints c WHERE c.table_schema = t.table_schema AND c.table_name = t.table_name AND c.constraint_type = 'PRIMARY KEY'))")"
+  if [ "$bad" != "0" ]; then
+    print_warning "mysql primary keys: $container has ${bad:-<unreadable>} table(s) that are not InnoDB or have no PRIMARY KEY"
+    return 1
+  fi
+  return 0
+}
+
+# Behavioral proof: lifecycle-state merge, payload guard, GCM counters, grants across two Galera nodes.
+# Usage: mr_guard_galera_state_and_grants <repo_root> <url1> <url2>
+mr_guard_galera_state_and_grants() {
+  local repo_root="$1" url1="$2" url2="$3"
+  KMS_GALERA_1_URL="${url1}" KMS_GALERA_2_URL="${url2}" \
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server_database test_db_galera_active_active
 }

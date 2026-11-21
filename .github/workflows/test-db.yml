@@ -32,6 +32,9 @@ jobs:
           # proofs, so it is non-FIPS only to avoid duplicating the pgEdge job time
           - {leaf: pgedge, variant: fips}
           - {leaf: pgedge, variant: non-fips}
+          # multi-region active-active MySQL (Percona XtraDB Cluster, 2 Galera nodes)
+          - {leaf: galera, variant: fips}
+          - {leaf: galera, variant: non-fips}
           - {leaf: multi-region-guards, variant: non-fips}
           # redis (Findex) is non-FIPS only
           - {leaf: redis, variant: non-fips}
