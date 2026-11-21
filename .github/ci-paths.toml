@@ -7,7 +7,9 @@
 # - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
 # - Unit keys: test-group.yml `suite` ids (cloud, db:psql, interop:ase, ...) or the job keys tested in
 #   main.yml, test_all.yml and test_windows.yml. A job whose key is not listed here always runs.
-# - `variants` (db:* and interop:* units only, required there): the legs of the test-db.yml / test-interop.yml matrix that ci_changes.py builds; only running units get legs.
+# - `variants`: the legs (`fips`, `non-fips`) of a test-group.yml suite run by the `test-suites` job of test_all.yml;
+#   ci_changes.py turns the running units into its `suites-matrix`, so a suite that does not run has no row at all.
+#   Not on `cloud` and `ui`, which keep their own jobs (their secrets must stay isolated). `bench` (variant -> HSM models) is optional.
 # - [callers]: main.yml jobs skipped as a whole (one row) when none of their units runs.
 # Tags, schedule and workflow_dispatch ignore this file and run everything.
 
@@ -40,7 +42,7 @@ ignore = '''
 | ^\.mise/lib/(k8s|package_build|package_smoke|bench_helpers)\.sh$
 | ^\.mise/scripts/(audit|bench|demo|dev|git|package|pre-commit|release|sbom)/
 | ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
-| ^\.github/workflows/(test-db|test-group)\.yml$  # reusable wrappers: no suite leg stands for them, any run of another suite exercises them
+| ^\.github/workflows/test-group\.yml$  # reusable wrapper: no suite leg stands for it, any run of another suite exercises it
 | ^\.github/workflows/(no-nix|test_windows)\.yml$  # Rust-only jobs: they run on crate changes, not on their own workflow files
 | ^\.mise/scripts/windows/cargo_test\.ps1$  # idem: script of the Rust-only windows-cargo-test job
 '''
@@ -193,6 +195,8 @@ files = '''
 | ^\.mise/lib/(softhsm2|kryoptic|pkcs11_helpers)\.sh$
 | ^\.mise/scripts/test/(c2p_no_inotify\.c|pkcs11_fips_iv_shim\.c|pkcs11_gcm_iv_probe\.(c|py)|test_nix_helpers\.sh)$
 '''
+variants = ["fips", "non-fips"]
+bench = {fips = "softhsm2 utimaco crypt2pay-simulator", non-fips = "softhsm2 utimaco crypt2pay-simulator kryoptic"}
 
 [units.pkcs11]
 files = '''
@@ -205,6 +209,8 @@ files = '''
                        |test_pkcs11_check\.sh|requirements-pkcs11-check\.(in|txt)|test_veracrypt\.sh)$
 | ^crate/server/src/core/operations/pkcs11\.rs$
 '''
+# Every pkcs11 leaf is non-FIPS only.
+variants = ["non-fips"]
 
 [units.obs]
 files = '''
@@ -221,6 +227,7 @@ files = '''
 | ^crate/server/src/(core/audit/|middlewares/audit/|routes/kmip/audit\.rs$)
 | ^crate/server_database/src/stores/audit/
 '''
+variants = ["fips", "non-fips"]
 
 [units.pki]
 files = '''
@@ -234,6 +241,7 @@ files = '''
 | ^crate/server/src/core/operations/(certify/|generate_crl\.rs$|generate_csr\.rs$|recertify\.rs$)
 | ^crate/clients/clap/src/actions/certificates/
 '''
+variants = ["fips", "non-fips"]
 
 [units.spire]
 sets = ["server_core"]
@@ -244,6 +252,7 @@ files = '''
 | ^\.mise/lib/spire_test\.sh$
 | ^\.mise/scripts/test/grant_spire_pki_certify\.sh$
 '''
+variants = ["non-fips"]
 
 [units.ui]
 files = '''
@@ -321,7 +330,7 @@ variants = ["fips", "non-fips"]
 
 [units."interop:pykmip"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test-interop\.yml$'
+files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test_all\.yml$'
 variants = ["non-fips"]
 
 [units."interop:ssh-secrets"]

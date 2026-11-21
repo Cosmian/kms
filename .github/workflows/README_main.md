@@ -1,7 +1,7 @@
 # CI workflows: `main.yml`
 
 `main.yml` is the PR / tag / nightly test pipeline. Its jobs are direct callers, so the run page groups them by area (`test / …`, `supply-chain / …`, `no-nix / …`):
-`main.yml` -> `supply-chain.yml`, `no-nix.yml`, `forward_proxy.yml`, `test_windows.yml`, `test_all.yml` -> `test-db.yml`, `test-interop.yml`, `test-group.yml` / `cargo-publish.yml`.
+`main.yml` -> `supply-chain.yml`, `no-nix.yml`, `forward_proxy.yml`, `test_windows.yml`, `test_all.yml` -> `test-group.yml` / `cargo-publish.yml`.
 Packaging and releases are described in [README_nightly.md](README_nightly.md).
 
 ## Triggers and concurrency
@@ -59,8 +59,8 @@ flowchart TB
 ```mermaid
 flowchart TB
     Cache["nix-dev-shell-cache<br/>OpenSSL 3.1.2 / 3.6.5 + SoftHSM2 built once per Nix input hash"]
-    subgraph NixJobs["One job per test group, each run by test-group.yml (Nix dev shell)"]
-        Groups["test-cloud (upstream only) · test-db · test-hsm · test-interop · test-obs<br/>test-pkcs11 · test-pki · test-spire · test-ui"]
+    subgraph NixJobs["One job per test group or leg, each run by test-group.yml (Nix dev shell)"]
+        Groups["test-cloud (upstream only) · test-suites (db · hsm · interop · obs · pkcs11 · pki · spire legs) · test-ui"]
         Hsm["test-hsm-hardware<br/>proteccio · crypt2pay<br/>not on PR"]
     end
     Cache --> Groups & Hsm
@@ -76,17 +76,13 @@ Each test job runs one group of `.mise/tasks/test` (`mise run test:<group> --var
 |Job|Group|
 |---|---|
 |`test-cloud`|`cloud` (upstream only: needs the Google, AWS and Azure secrets)|
-|`test-db`|`test-db.yml`: one `test-group.yml` job per `db` leaf and variant (`sqlite`, `psql`, `mysql`, `mariadb`, `percona`, `redis` non-FIPS only), with the database environment variables|
-|`test-hsm`|`hsm` without the real HSMs (`skip: hsm:crypt2pay hsm:proteccio`), then the `bench` models|
-|`test-interop`|`test-interop.yml`: one `test-group.yml` job per `interop` leaf (`ase`, `db2`, `edb-tde`, `iris`, `jose`, `kmipkit`, `pykmip` non-FIPS only; `kmip-go` both variants), so a hang or leftover state in one leaf stays in its own job|
-|`test-obs`|`obs`|
-|`test-pkcs11`|`pkcs11`|
-|`test-pki`|`pki`|
-|`test-spire`|`spire`|
+|`test-suites`|one `test-group.yml` job per leg of the `suites-matrix` that `ci_changes.py` builds from the `variants` of `.github/ci-paths.toml`: the `db` leaves (with the database environment variables), `hsm` without the real HSMs (`skip: hsm:crypt2pay hsm:proteccio`) then the `bench` models, the `interop` leaves (a hang or leftover state in one leaf stays in its own job), `obs`, `pkcs11`, `pki` and `spire`; a suite that does not run has no leg, so no row|
 |`test-ui`|`ui`|
 |`test-hsm-hardware`|real HSMs `hsm:proteccio`, `hsm:crypt2pay`, one leaf per cell (never on pull requests)|
 
-`test-ui` runs without cloud or test secrets, because it executes `pnpm install`; `test-spire` receives only the Docker Hub login. Each caller passes `test-group.yml` only the secrets its leaves use. `test-cloud` skips on forks and fork pull requests, `test-hsm-hardware` never runs on pull requests and only in the upstream repository. In both jobs a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green cell proves its tasks ran. A cell's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` (also never on pull requests) shares the groups. A cell's `bench` is the list of HSM models whose benchmarks run after its tests, off pull requests. Pull requests cover the HSM code paths with the software simulators of `test-hsm` (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`).
+`test-suites` is the only job whose secrets depend on the leg (`secrets:` expressions on `matrix.suite`): the Docker Hub login for every leg, the EDB and IRIS tokens for `interop:*` legs, the Splunk password for `obs`. `cloud` and `ui` stay separate jobs so that their secret scope is set by the job, not by an expression.
+
+`test-ui` runs without cloud or test secrets, because it executes `pnpm install`. `test-cloud` skips on forks and fork pull requests, `test-hsm-hardware` never runs on pull requests and only in the upstream repository. In both jobs a task whose required `env:` variables are unset (a deleted or renamed secret, a typo in the mapping) fails instead of skipping, because its upstream gate calls `print_error` when `CI=true`, so a green cell proves its tasks ran. A cell's `lock` (`hsm-proteccio`, `hsm-crypt2pay`) is its concurrency group: the HSMs refuse concurrent runs, and `test-k8s-hsm` in `packaging-docker.yml` (also never on pull requests) shares the groups. A cell's `bench` is the list of HSM models whose benchmarks run after its tests, off pull requests. Pull requests cover the HSM code paths with the software simulators of the `hsm` legs of `test-suites` (`softhsm2`, `utimaco`, `crypt2pay-simulator`, `kryoptic`).
 
 A leaf that fails only when grouped (port, Docker or environment leak) or only in one variant: add its `<group>:<leaf>` id to the `skip` input of its job, with a one-line reason comment.
 

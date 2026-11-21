@@ -33,8 +33,7 @@ jobs:
       contents: read
     outputs:
       skip: ${{ steps.classify.outputs.skip }}
-      db-matrix: ${{ steps.classify.outputs.db-matrix }}
-      interop-matrix: ${{ steps.classify.outputs.interop-matrix }}
+      suites-matrix: ${{ steps.classify.outputs.suites-matrix }}
       run-test: ${{ steps.classify.outputs.run-test }}
       run-windows: ${{ steps.classify.outputs.run-windows }}
     steps:
@@ -112,8 +111,7 @@ jobs:
     secrets: inherit
     with:
       skip-units: ${{ needs.changes.outputs.skip }}
-      db-matrix: ${{ needs.changes.outputs.db-matrix }}
-      interop-matrix: ${{ needs.changes.outputs.interop-matrix }}
+      suites-matrix: ${{ needs.changes.outputs.suites-matrix }}
 
   build-documentation:
     name: Build documentation
