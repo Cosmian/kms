@@ -13,4 +13,7 @@ ARGS=(--base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}")
 
 print_header "CI changed-area classification"
 "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" "${ARGS[@]}"
+if [ "${usage_self_test:-false}" = "true" ]; then
+  "${PYTHON}" -m unittest discover -s "${REPO_ROOT}/.mise/scripts/dev" -p 'test_ci_changes.py'
+fi
 print_success "Classification complete"
