@@ -37,7 +37,7 @@ WORKSPACE = {
     'windows-cargo-test',
 }
 # Units that additionally run on any change of code linked into the server.
-SERVER_WIDE = WORKSPACE | {'forward-proxy', 'xks-remote', 'spire'}
+SERVER_WIDE = WORKSPACE | {'forward-proxy', 'spire'}
 DB_LEGS = {'db:psql', 'db:mysql', 'db:mariadb', 'db:percona', 'db:redis', 'db:openbao'}
 KMIP_INTEROP = {
     'interop:ase',
@@ -325,19 +325,23 @@ class CiWorkflows(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(run(path) & {'no-nix', 'windows-cargo-test'})
 
-    def test_xks_remote_runs_on_xks_related_rust_source(self) -> None:
-        # The job builds and deploys cosmian_kms, so the route, its config and the server wiring all trigger it.
+    def test_xks_remote_runs_only_on_xks_owned_source(self) -> None:
         for path in (
             'crate/server/src/routes/aws_xks/sigv4.rs',
             'crate/server/src/routes/aws_xks/encrypt_decrypt/encrypt_.rs',
-            'crate/server/src/config/params/server_params.rs',
-            'crate/server/src/config/command_line/clap_config.rs',
-            'crate/server/src/start_kms_server.rs',
-            'crate/server/src/middlewares/auth_verifier/token.rs',
-            'crate/server/src/core/operations/key_ops/crypto_op.rs',
+            '.mise/scripts/test/test_xks_remote.sh',
         ):
             with self.subTest(path=path):
                 self.assertIn('xks-remote', run(path))
+        # server code that merely mentions or wires XKS, and unrelated server changes, do not
+        for path in (
+            'crate/server/src/start_kms_server.rs',
+            'crate/server/src/config/params/server_params.rs',
+            'crate/server/src/core/operations/key_ops/crypto_op.rs',
+            'crate/kmip/src/lib.rs',
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn('xks-remote', run(path))
 
     def test_group_wrapper_runs_nothing(self) -> None:
         self.assertEqual(run('.github/workflows/test-group.yml'), set())

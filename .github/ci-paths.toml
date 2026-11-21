@@ -53,7 +53,7 @@ ignore = '''
 rust = '^crate/ | ^kmip$ | ^documentation/docs/google_cse/test_wrapped_private_key$'
 
 # Code linked into cosmian_kms or the ckms / test_kms_server harness: triggers the units that still run on any
-# server change (forward-proxy, xks-remote, spire). The negative lookaheads carve out feature-owned paths.
+# server change (forward-proxy, spire). The negative lookaheads carve out feature-owned paths.
 # sql/query.sql stays core: SQLite loads it under its query_sqlite.sql overrides (server_database/src/stores/mod.rs).
 server_core = '''
   ^crate/(kmip|kmip-derive|access|interfaces|crypto|test_kms_server)/
@@ -130,7 +130,6 @@ sets = ["rust"]
 files = '^\.github/workflows/(test_all|cargo-publish)\.yml$'
 
 [units.xks-remote]
-sets = ["server_core"]
 files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
 
 # ── test-group.yml suites (key = `suite` input; `pki` also gates the macOS job interop-macos) ──
