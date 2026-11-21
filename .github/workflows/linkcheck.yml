@@ -1,0 +1,23 @@
+---
+name: Link check
+
+# Link checking hits external sites (flaky on PRs): nightly only. A workflow of its own, so pull requests
+# do not list it as a skipped job.
+on:
+  schedule:
+    - cron: 0 3 * * * # Daily at 03:00 UTC
+
+jobs:
+  linkcheck:
+    name: Check documentation links
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - name: Link check
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
+        with:
+          args: --config lychee.toml 'documentation/docs/**/*.md'
+          fail: false

@@ -26,21 +26,19 @@ full = '''
 # Changed files that legitimately trigger nothing (docs, packaging, release, ungated jobs' inputs).
 ignore = '''
   \.md$
-| ^documentation/
 | ^CHANGELOG/
-| ^\.github/(skills|instructions)/
 | ^\.github/(dependabot\.yml|\.markdownlint\.yaml|scripts/patch-kube-apiserver\.py)$
-| ^\.github/workflows/(benchmark|build_windows|cla|flamegraph|github_cache_cleanup|nightly|nix-update-hashes
+| ^\.github/workflows/(benchmark|build_windows|cla|flamegraph|github_cache_cleanup|linkcheck|nightly|nix-update-hashes
                        |package-and-commit-sbom|packaging|packaging-apk|packaging-docker|packaging-kubernetes
                        |packaging-tests|release|supply-chain|update-generated-docs)\.yml$
 | ^\.github/actions/(docker-login-ghcr|import-gpg-key|push-package-cosmian|setup-helm-minikube)/
 | ^(supply-chain|sbom|cbom|charts|pkg|ansible|nix)/
 | ^(deny\.toml|_typos\.toml|lychee\.toml|\.pre-commit-config\.yaml|\.gitignore|\.gitattributes|LICENSE|\.cargo/audit\.toml)$
-| ^\.mise/tasks/(audit|bench|cse|demo|dev|docs|git|package|release|sbom)/
+| ^\.mise/tasks/(audit|bench|cse|demo|dev|git|package|release|sbom)/
 | ^\.mise/tasks/build/(docker|k8s-bins|k8s-csi-provider-image|k8s-operator-image|nix)$
 | ^\.mise/tasks/test/(k8s|pkg)/
 | ^\.mise/lib/(k8s|package_build|package_smoke|bench_helpers)\.sh$
-| ^\.mise/scripts/(audit|bench|demo|dev|docs|git|package|pre-commit|release|sbom)/
+| ^\.mise/scripts/(audit|bench|demo|dev|git|package|pre-commit|release|sbom)/
 | ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
 | ^\.github/workflows/(test-db|test-group)\.yml$  # reusable wrappers: no suite leg stands for them, any run of another suite exercises them
 | ^\.github/workflows/(no-nix|test_windows)\.yml$  # Rust-only jobs: they run on crate changes, not on their own workflow files
@@ -113,6 +111,16 @@ sets = ["rust"]
 [units.forward-proxy]
 sets = ["server_core"]
 files = '^\.github/workflows/(main|forward_proxy)\.yml$ | ^\.github/scripts/squid/'
+
+# `build-documentation` runs `docs:check-ai` (AI instruction files) and `docs:mdbook-build` (the mdBook site).
+[units.build-documentation]
+files = '''
+  ^documentation/
+| ^(AGENTS|CONTRIBUTING)\.md$
+| ^\.github/(copilot-instructions\.md|instructions/|skills/)
+| ^\.mise/(tasks|scripts)/docs/
+| ^\.github/workflows/main\.yml$
+'''
 
 # ── test_all.yml (non test-group jobs) ──────────────────────────────────────────────────────
 [units.cargo-publish-dry-run]
