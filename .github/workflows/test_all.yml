@@ -3,6 +3,12 @@ name: Build all
 
 on:
   workflow_call:
+    inputs:
+      skip-units:
+        description: JSON list of skipped CI units (.github/ci-paths.toml); jobs whose unit it contains are skipped
+        required: false
+        type: string
+        default: '[]'
   workflow_dispatch:
 
 jobs:
@@ -93,6 +99,7 @@ jobs:
     with:
       suite: cloud
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
       TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
@@ -110,6 +117,8 @@ jobs:
     name: Test db
     needs:
       - nix-dev-shell-cache
+    with:
+      skip-units: ${{ inputs.skip-units }}
     uses: ./.github/workflows/test-db.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -132,6 +141,7 @@ jobs:
       # real HSMs: test-hsm-hardware
       skip: hsm:crypt2pay hsm:proteccio
       bench: ${{ matrix.bench }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -140,6 +150,8 @@ jobs:
     name: Test interop
     needs:
       - nix-dev-shell-cache
+    with:
+      skip-units: ${{ inputs.skip-units }}
     uses: ./.github/workflows/test-interop.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -159,6 +171,7 @@ jobs:
     with:
       suite: obs
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -177,6 +190,7 @@ jobs:
     with:
       suite: pkcs11
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -193,6 +207,7 @@ jobs:
     with:
       suite: pki
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -210,6 +225,7 @@ jobs:
     with:
       suite: spire
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -230,6 +246,7 @@ jobs:
     with:
       suite: ui
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
 
   # The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
   # dispatch runs only; pull requests cover the HSM code with the software simulators of `test-hsm`. Upstream
@@ -283,7 +300,8 @@ jobs:
       github.event_name != 'schedule' &&
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+       github.event.pull_request.head.repo.full_name == github.repository) &&
+      !contains(fromJSON(inputs.skip-units || '[]'), 'xks-remote')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -331,6 +349,7 @@ jobs:
   # Inline, not test-group.yml: macOS has no Nix.
   interop-macos:
     name: Test pki (macOS)
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'pki') }}
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
@@ -372,7 +391,8 @@ jobs:
     if: >-
       !startsWith(github.ref, 'refs/tags/') &&
       (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+       github.event.pull_request.head.repo.full_name == github.repository) &&
+      !contains(fromJSON(inputs.skip-units || '[]'), 'cargo-publish-dry-run')
     uses: ./.github/workflows/cargo-publish.yml
     secrets:
       token: ${{ secrets.CRATES_IO }}
