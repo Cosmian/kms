@@ -182,6 +182,11 @@ which scans PKCS#11 objects in the HSM slot and parses `CKA_LABEL` to extract
 the `rotate_name` and `rotate_generation`.  Results are sorted by generation
 descending:
 
+> **Behaviour change.** Encrypt, Sign and MAC addressed by keyset name always run on the HSM.
+> They no longer export the key into the KMS and run in software. On a FIPS build, AES-GCM
+> Encrypt by keyset name therefore fails on an HSM that cannot generate the GCM IV itself
+> (for example SoftHSM2, Kryoptic).
+
 - **Encrypt / Sign** → uses the key with the **highest `rotate_generation`**
   (current latest). The `@latest` suffix in `CKA_LABEL` is *not* used for
   this determination — generation sorting is the authoritative source.

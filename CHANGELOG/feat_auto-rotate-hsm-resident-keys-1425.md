@@ -14,6 +14,7 @@
 - `find_due_for_rotation` returns the HSM admin as owner and only the keyset head, so retired generations with a past `CKA_END_DATE` are not rotated again.
 - A non-extractable RSA key is served as a private/public key stub instead of a symmetric-key stub.
 - `SetAttribute RotateInterval > 0` on an HSM public key is rejected (set it on the private key); rotation attributes in an HSM `Create` / `CreateKeyPair` are rejected instead of silently dropped.
+- Encrypt, Sign and MAC by HSM keyset name now run on the HSM instead of exporting the key and running in software; on a FIPS build, AES-GCM Encrypt by keyset name fails on an HSM that cannot generate the GCM IV.
 
 ## Documentation
 
