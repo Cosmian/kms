@@ -740,3 +740,4 @@ echo "  ✓ KMIP key activated for database encryption via ^EncryptionKey (3→1
 echo "  ✓ Database encrypted with Cosmian KMS key: ${ENC_KEY_ID:-see step 8a output}"
 echo "  ✓ Encrypted data NOT visible in raw IRIS.DAT (no-encryption check — step 8c)"
 echo "  ✓ Encrypted data IS readable via IRIS session (read — step 8d)"
+# ci probe
