@@ -272,6 +272,10 @@ class CiWorkflows(unittest.TestCase):
             '.mise/tasks/test/interop/pykmip',
             'ui/src/App.tsx',
             'documentation/docs/index.md',
+            'vcpkg.json',
+            '.github/actions/windows-vs-ninja/action.yml',
+            '.mise/scripts/windows/cargo_test.ps1',
+            '.mise/scripts/windows/test_ui.ps1',
         ):
             with self.subTest(path=path):
                 self.assertFalse(run(path) & {'no-nix', 'windows-cargo-test'})
@@ -378,7 +382,7 @@ UNIT_SAMPLES = {
     'interop:openbao-kmip': '.mise/tasks/test/interop/openbao-kmip',
     'interop:pykmip': '.mise/tasks/test/interop/pykmip',
     'interop:ssh-secrets': '.mise/tasks/test/interop/ssh-secrets',
-    'windows-cargo-test': '.mise/scripts/windows/cargo_test.ps1',
+    'windows-cargo-test': 'crate/server/src/lib.rs',
     'windows-ui': '.mise/scripts/windows/test_ui.ps1',
     'windows-cng-ksp': '.mise/scripts/windows/test_cng_ksp.ps1',
     'windows-hsm-idemia': '.mise/scripts/windows/test_hsm_idemia.ps1',
