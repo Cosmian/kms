@@ -622,13 +622,13 @@ async fn encrypt_with(kms: &KMS, uid_str: &str) -> KResult<Vec<u8>> {
         .encrypt(
             Encrypt {
                 unique_identifier: Some(uid(uid_str)),
-                data: Some(Zeroizing::new(b"hi".to_vec())),
+                data: Some(b"hi".to_vec().into()),
                 ..Encrypt::default()
             },
             &admin(),
         )
         .await?;
-    Ok(response.data.unwrap_or_default())
+    Ok(response.data.map(|d| d.to_vec()).unwrap_or_default())
 }
 
 async fn decrypt_with(kms: &KMS, uid_str: &str, ciphertext: &[u8]) -> KResult<Vec<u8>> {
