@@ -112,7 +112,7 @@ trap cleanup EXIT
 pull_image_with_retry() {
   local image="$1"
   if ! docker image inspect "${image}" >/dev/null 2>&1; then
-    retry 3 5 docker pull --quiet "${image}" >/dev/null || print_error "Could not pull image ${image}"
+    retry docker pull --quiet "${image}" >/dev/null || print_error "Could not pull image ${image}"
   fi
   local digest
   digest="$(docker inspect --format '{{join .RepoDigests ","}}' "${image}" 2>/dev/null || true)"
