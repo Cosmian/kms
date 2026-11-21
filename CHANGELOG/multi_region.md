@@ -11,6 +11,7 @@
   [Multi-region active-active deployment](../documentation/docs/configuration/database/multi_region.md).
 - Lifecycle events and their tombstones advance the object's version, so conditional writes reject snapshots taken before a state transition, including transitions applied through replication.
 - Initialize the KV/SSH internal identifier key on the leader before serving; followers only read its replicated value and return a retry error while it is missing, preventing conflicting per-region keys and unreachable metadata.
+- Downgrade, PostgreSQL (DEGRADED): a rolling restart from the previous release is not supported. Once this release has recorded its version an older KMS refuses to start, and until then an older node's Activate, Revoke or Destroy has no effect on objects that have lifecycle events. Stop every older node before starting the first node of this release. The lifecycle event log is now reconciled with `objects` at every startup (event-less objects get a baseline event, events of deleted objects are purged), replacing the one-time `object_state_events_backfilled` marker.
 
 ### Multi-region active-active MySQL (Galera)
 

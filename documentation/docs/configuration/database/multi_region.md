@@ -150,6 +150,12 @@ flowchart LR
   increments, and the counts would be too low. Spock delta-apply on `gcm_invocations.count` applies each region's
   *increment* instead. The cap is still checked against the local value: with replication lag, a key can exceed the
   cap by what the other regions reserved during the lag.
+  Each node reserves invocations in blocks of 4,096 and serves them from memory, so the overshoot is counted in
+  blocks: up to one block per node of the other regions, plus what they reserve during the lag.
+- **Read-modify-write on an object is regional.** KMIP Usage Limits counters and Vault KV v2 check-and-set versions
+  are updated with a version check on the object row. Two regions both pass their local check and last-update-wins
+  keeps one row: a key with Usage Limits can be used up to its limit in each region, and a check-and-set write can
+  succeed in two regions.
 
 Configure these two tables on every node, after adding the `public` tables to the replication set:
 
@@ -176,6 +182,11 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
 - Lifecycle events are never compacted; compaction would need cross-region coordination.
 - SQLite and Redis-with-Findex are not multi-region targets: a `region_role = "follower"` on them is rejected
   at startup.
+- Objects stored in an HSM do not replicate, including HSM-backed sub-CA keys: a region that signs CRLs or OCSP
+  responses with such a key needs the same HSM keys.
+- Upgrade one region first, then the others in the same window: the recorded database version replicates with
+  `parameters`, so once one region runs the new release, a node of the previous release in any region refuses to
+  restart. On Galera, start the first node alone before the others.
 - To check a deployment, run `mise run test:db:multi-region-guards`: it verifies the primary keys,
   the `ENABLE ALWAYS` triggers, the Spock wiring (PostgreSQL), the Galera wiring (MySQL) and the operator
   configuration (exactly one leader, PostgreSQL or MySQL backend identical across regions, identical ceremony secret).
@@ -194,6 +205,7 @@ which the KMS already retries, so there is no last-update-wins merge to guard ag
 | Key material of a `Destroyed` object | An update of the payload leaves the zeroized payload in place |
 | AES-GCM invocation counts | Exact: the counter row is locked, no delta-apply is needed |
 | Grants | Read-modify-write: a concurrent grant and revoke can drop one side, as on PostgreSQL |
+| Usage Limits counters, KV v2 check-and-set | Exact: certification aborts the concurrent commit, which retries on the fresh row |
 | Node heartbeats (`cluster_nodes`) | **Replicated**: Galera cannot exclude a table, so `GET /cluster/status` lists the nodes of every region |
 
 Operating notes:
