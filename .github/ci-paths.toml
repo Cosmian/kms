@@ -1,0 +1,376 @@
+# Pre-commit-style path filters for pull-request CI: main.yml job `changes` runs `mise run dev:ci-changes`
+# (.mise/scripts/dev/ci_changes.py), whose JSON list of skipped units gates the jobs.
+# - Every pattern is a Python regex compiled with re.VERBOSE (whitespace and `# comments` ignored) and
+#   applied with re.search to each repo-relative path the PR changes (renames list old and new path).
+# - `full`: one matching file runs every unit.
+# - A unit runs when a changed file matches one of its `sets` or its `files`.
+# - `strict = true` (needs `files`): the unit runs only when its own files match; `full` and unmatched files never force it.
+# - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
+# - Unit keys: test-group.yml `suite` ids (cloud, db:psql, interop:ase, ...) or the job keys tested in
+#   main.yml, test_all.yml and test_windows.yml. A job whose key is not listed here always runs.
+# - `variants`: the legs (`fips`, `non-fips`) of a test-group.yml suite run by the `test-suites` job of test_all.yml;
+#   ci_changes.py turns the running units into its `suites-matrix`, so a suite that does not run has no row at all.
+#   Not on `cloud` and `ui`, which keep their own jobs (their secrets must stay isolated). `bench` (variant -> HSM models) is optional.
+# - [callers]: main.yml jobs skipped as a whole (one row) when none of their units runs.
+# Tags, schedule and workflow_dispatch ignore this file and run everything.
+
+full = '''
+  ^\.github/actions/(install-mise|install-rust|setup-nix|setup-nix-mise|cache-openssl-buildrs|cleanup-runner)/
+| ^\.mise/lib/(common|nix_helpers|kms_build|kms_server|test_slots)\.sh$
+| ^\.mise/scripts/common\.sh$
+| ^(mise\.toml|shell\.nix|default\.nix|rust-toolchain\.toml|Cargo\.toml|Cargo\.lock|docker-compose\.yml)$
+| ^nix/(openssl\.nix|openssl-fips-bootstrap\.|softhsm2\.nix|utimaco\.nix)
+| ^\.cargo/config\.toml$
+| ^\.config/
+| ^crate/crypto/build\.rs$
+| ^(test_data|\.github/reusable_scripts)$
+'''
+
+# Changed files that legitimately trigger nothing (docs, packaging, release, ungated jobs' inputs).
+ignore = '''
+  \.md$
+| ^CHANGELOG/
+| ^\.github/(dependabot\.yml|\.markdownlint\.yaml|scripts/patch-kube-apiserver\.py)$
+| ^\.github/workflows/(benchmark|build_windows|cla|flamegraph|github_cache_cleanup|linkcheck|nightly|nix-update-hashes
+                       |package-and-commit-sbom|packaging|packaging-apk|packaging-docker|packaging-kubernetes
+                       |packaging-tests|release|supply-chain|update-generated-docs)\.yml$
+| ^\.github/actions/(docker-login-ghcr|import-gpg-key|push-package-cosmian|setup-helm-minikube)/
+| ^(supply-chain|sbom|cbom|charts|pkg|ansible|nix)/
+| ^(deny\.toml|_typos\.toml|lychee\.toml|\.pre-commit-config\.yaml|\.gitignore|\.gitattributes|LICENSE|\.cargo/audit\.toml)$
+| ^\.mise/tasks/(audit|bench|cse|demo|dev|git|package|release|sbom)/
+| ^\.mise/tasks/build/(docker|k8s-bins|k8s-csi-provider-image|k8s-operator-image|nix)$
+| ^\.mise/tasks/test/(k8s|pkg)/
+| ^\.mise/lib/(k8s|package_build|package_smoke|bench_helpers)\.sh$
+| ^\.mise/scripts/(audit|bench|demo|dev|git|package|pre-commit|release|sbom)/
+| ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
+| ^\.github/workflows/test-group\.yml$  # reusable wrapper: no suite leg stands for it, any run of another suite exercises it
+| ^\.github/workflows/(no-nix|test_windows)\.yml$  # Rust-only jobs: they run on crate changes, not on their own workflow files
+| ^\.mise/scripts/windows/cargo_test\.ps1$  # idem: script of the Rust-only windows-cargo-test job
+'''
+
+[sets]
+# Whole workspace: compile-wide jobs and whole-workspace unit-test runners.
+# kmip/ (KMIP XML vectors) and the Google CSE key fixture are read by crate tests.
+rust = '^crate/ | ^kmip$ | ^documentation/docs/google_cse/test_wrapped_private_key$'
+
+# Code linked into cosmian_kms or the ckms / test_kms_server harness: triggers the units that still run on any
+# server change (forward-proxy, spire). The negative lookaheads carve out feature-owned paths.
+# sql/query.sql stays core: SQLite loads it under its query_sqlite.sql overrides (server_database/src/stores/mod.rs).
+server_core = '''
+  ^crate/(kmip|kmip-derive|access|interfaces|crypto|test_kms_server)/
+| ^crate/hsm/(base_hsm|softhsm2)/
+| ^crate/clients/(client|client_utils|ckms)/
+| ^crate/clients/clap/(?!src/actions/(google/|aws/|azure/|pkcs11/|bench/|cng\.rs$|cng_verify\.rs$|audit\.rs$))
+| ^crate/server_database/(?!src/stores/(sql/(pgsql\.rs|mysql\.rs|query_mysql\.sql)$|redis/))
+| ^crate/server/(?!src/(routes/(aws_xks|azure_ekm|google_cse|ms_dke|est|scep|ocsp|jose)/
+                      |routes/(crl|jwks|ui_auth)\.rs$
+                      |core/otel_metrics\.rs$
+                      |middlewares/otel_http_middleware\.rs$
+                      |config/wizard/
+                      |tests/))
+'''
+
+pg_store = '^crate/server_database/src/stores/sql/pgsql\.rs$'
+mysql_store = '^crate/server_database/src/stores/sql/(mysql\.rs|query_mysql\.sql)$'
+
+# Database code shared by every backend (all of server_database except the other backends' stores).
+db_core = '^crate/server_database/(?!src/stores/(sql/(pgsql\.rs|mysql\.rs|query_mysql\.sql)$|redis/))'
+
+# KMIP wire format (TTLV types and the /kmip endpoint) that every KMIP interop client exercises.
+kmip_wire = '^crate/(kmip|kmip-derive)/ | ^crate/server/src/routes/kmip/'
+
+# Shared plumbing of every non-sqlite db leg (task, SoftHSM2 KEK helper).
+db_shared = '''
+  ^\.mise/tasks/test/db/_default$
+| ^\.mise/lib/softhsm2\.sh$
+'''
+
+interop_shared = '^\.mise/tasks/test/interop/_default$'
+
+windows = '''
+  ^vcpkg(_fips)?\.json$
+| ^\.github/actions/(build-static-openssl|windows-vs-ninja)/
+| ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
+'''
+
+# main.yml jobs that call a reusable workflow holding several units: main.yml skips the whole job (one row)
+# when none of its units runs. Values are fnmatch patterns over unit keys.
+[callers]
+test = ["cargo-publish-dry-run", "xks-remote", "db:*", "interop:*", "cloud", "hsm", "pkcs11", "obs", "pki", "spire", "ui"]
+windows = ["windows-*"]
+
+# ── main.yml ────────────────────────────────────────────────────────────────────────────────
+[units.cargo-clippy]
+strict = true
+files = '''
+  \.rs$
+| (^|/)Cargo\.toml$
+| ^Cargo\.lock$
+| ^(rust-toolchain|clippy)\.toml$
+| ^\.cargo/config\.toml$
+'''
+
+[units.cargo-machete]
+sets = ["rust"]
+files = '^\.github/workflows/main\.yml$'
+
+[units.no-nix]
+sets = ["rust"]
+
+[units.forward-proxy]
+sets = ["server_core"]
+files = '^\.github/workflows/(main|forward_proxy)\.yml$ | ^\.github/scripts/squid/'
+
+# `build-documentation` runs `docs:check-ai` (AI instruction files) and `docs:mdbook-build` (the mdBook site).
+[units.build-documentation]
+files = '''
+  ^documentation/
+| ^(AGENTS|CONTRIBUTING)\.md$
+| ^\.github/(copilot-instructions\.md|instructions/|skills/)
+| ^\.mise/(tasks|scripts)/docs/
+| ^\.github/workflows/main\.yml$
+'''
+
+# ── test_all.yml (non test-group jobs) ──────────────────────────────────────────────────────
+[units.cargo-publish-dry-run]
+sets = ["rust"]
+files = '^\.github/workflows/(test_all|cargo-publish)\.yml$'
+
+[units.xks-remote]
+files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
+
+# ── test-group.yml suites (key = `suite` input; `pki` also gates the macOS job interop-macos) ──
+[units."db:sqlite"]
+sets = ["rust", "db_shared"]
+files = '^\.mise/tasks/test/db/sqlite$'
+variants = ["fips", "non-fips"]
+
+[units."db:psql"]
+sets = ["db_core", "db_shared", "pg_store"]
+files = '^\.mise/tasks/test/db/psql$'
+variants = ["fips", "non-fips"]
+
+[units."db:mysql"]
+sets = ["db_core", "db_shared", "mysql_store"]
+files = '^\.mise/tasks/test/db/mysql$'
+variants = ["fips", "non-fips"]
+
+[units."db:mariadb"]
+sets = ["db_core", "db_shared", "mysql_store"]
+files = '^\.mise/tasks/test/db/mariadb$'
+variants = ["fips", "non-fips"]
+
+[units."db:percona"]
+sets = ["db_core", "db_shared", "mysql_store"]
+files = '^\.mise/tasks/test/db/percona$'
+variants = ["fips", "non-fips"]
+
+[units."db:redis"]
+sets = ["db_core", "db_shared"]
+files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$'
+# redis (Findex) is non-FIPS only
+variants = ["non-fips"]
+
+[units."db:openbao"]
+sets = ["db_core", "pg_store", "mysql_store"]
+files = '''
+  ^\.mise/tasks/test/db/(_default|openbao)$
+| ^\.mise/tasks/test/interop/openbao$
+| ^\.mise/scripts/test/openbao/
+| ^crate/server/src/routes/kv/
+'''
+# the OpenBao KV scenario replayed on PostgreSQL and MySQL
+variants = ["fips", "non-fips"]
+
+[units.cloud]
+files = '''
+  ^crate/server/src/(routes/(aws_xks|azure_ekm|google_cse)/|tests/)
+| ^crate/clients/clap/src/actions/(google|aws|azure)/
+| ^documentation/docs/google_cse/test_wrapped_private_key$
+| ^\.mise/tasks/test/cloud/
+| ^\.mise/scripts/test/(azure_ekm_test|azure_ekm_mtls_test|test_secret_aws|test_secret_azure|test_secret_vault
+                       |test_secret_cosmian_kms|test_xks)\.sh$
+'''
+
+[units.hsm]
+files = '''
+  ^crate/hsm/
+| ^crate/clients/pkcs11/
+| ^crate/server/src/tests/
+| ^\.mise/tasks/test/hsm/
+| ^\.mise/lib/(softhsm2|kryoptic|pkcs11_helpers)\.sh$
+| ^\.mise/scripts/test/(c2p_no_inotify\.c|pkcs11_fips_iv_shim\.c|pkcs11_gcm_iv_probe\.(c|py)|test_nix_helpers\.sh)$
+'''
+variants = ["fips", "non-fips"]
+bench = {fips = "softhsm2 utimaco crypt2pay-simulator", non-fips = "softhsm2 utimaco crypt2pay-simulator kryoptic"}
+
+[units.pkcs11]
+files = '''
+  ^crate/clients/pkcs11/
+| ^crate/clients/clap/src/actions/pkcs11/
+| ^\.mise/tasks/test/pkcs11/
+| ^\.mise/lib/(softhsm2|pkcs11_helpers)\.sh$
+| ^\.mise/scripts/test/(test_pkcs11_conformance\.sh|pkcs11_raw_abi_check\.py|test_gnupg\.sh|test_gnupg_smartcard\.sh
+                       |gnupg_pkcs11_scd_driver\.py|test_luks\.sh|test_openssh\.sh|test_hsm_kek_pkcs11_comprehensive\.sh
+                       |test_pkcs11_check\.sh|requirements-pkcs11-check\.(in|txt)|test_veracrypt\.sh)$
+| ^crate/server/src/core/operations/pkcs11\.rs$
+'''
+# Every pkcs11 leaf is non-FIPS only.
+variants = ["non-fips"]
+
+[units.obs]
+files = '''
+  ^crate/server/src/(core/otel_metrics\.rs$|middlewares/otel_http_middleware\.rs$|tests/)
+| ^crate/clients/clap/src/actions/audit\.rs$
+| ^\.mise/tasks/test/obs/
+| ^\.mise/lib/audit_(e2e|compat)\.sh$
+| ^\.mise/scripts/test/(test_audit_log\.sh|test_audit_postgres_log\.sh|generate_live_audit_fixture\.sh
+                       |validate_audit_compat\.py|fixtures/|test_cef_format\.sh|test_siem_[a-z_]+\.sh
+                       |siem_verify_fields\.py|cef_helper\.py|rsyslog\.conf|test_monitoring\.sh
+                       |requirements-(cef|audit-compat)\.(in|txt))
+| ^monitoring/
+| ^documentation/arcsight/
+| ^crate/server/src/(core/audit/|middlewares/audit/|routes/kmip/audit\.rs$)
+| ^crate/server_database/src/stores/audit/
+'''
+variants = ["fips", "non-fips"]
+
+[units.pki]
+files = '''
+  ^crate/server/src/routes/(est|scep|ocsp)/
+| ^crate/server/src/routes/crl\.rs$
+| ^\.mise/tasks/test/pki/
+| ^\.mise/scripts/test/(test_est_interop|test_scep_interop)\.sh$
+| ^\.mise/scripts/kmip-go/go\.mod$
+| ^crate/server/src/routes/(csr|enrollment|enrollment_guard)\.rs$
+| ^crate/server/src/core/certificate/
+| ^crate/server/src/core/operations/(certify/|generate_crl\.rs$|generate_csr\.rs$|recertify\.rs$)
+| ^crate/clients/clap/src/actions/certificates/
+'''
+variants = ["fips", "non-fips"]
+
+[units.spire]
+sets = ["server_core"]
+files = '''
+  ^crate/server/src/tests/
+| ^authentication$
+| ^\.mise/tasks/test/spire/
+| ^\.mise/lib/spire_test\.sh$
+| ^\.mise/scripts/test/grant_spire_pki_certify\.sh$
+'''
+variants = ["non-fips"]
+
+[units.ui]
+files = '''
+  ^ui/
+| ^crate/clients/wasm/
+| ^crate/server/src/routes/ui_auth\.rs$
+| ^authentication$
+| ^\.mise/tasks/test/ui/
+| ^\.mise/tasks/build/(ui|wasm)$
+| ^\.mise/scripts/test/(test_ui|test_ui_auth|test_ui_oidc|test_ui_saml)\.sh$
+| ^\.mise/scripts/test/saml_sso/
+'''
+
+[units."interop:ase"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
+variants = ["non-fips"]
+
+[units."interop:db2"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/test_db2_tde\.sh$'
+variants = ["non-fips"]
+
+[units."interop:edb-tde"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
+variants = ["non-fips"]
+
+[units."interop:iris"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/test_iris\.sh$'
+variants = ["non-fips"]
+
+[units."interop:jose"]
+sets = ["interop_shared"]
+files = '''
+  ^crate/server/src/(routes/(jose/|jwks\.rs$)|tests/)
+| ^crate/hsm/kryoptic/
+| ^\.mise/tasks/test/(interop|hsm)/jose$
+| ^\.mise/lib/kryoptic\.sh$
+| ^\.mise/scripts/test/(test_jose\.sh|jose_interop_helper\.py|requirements-jose\.(in|txt))$
+'''
+variants = ["non-fips"]
+
+[units."interop:kmip-go"]
+sets = ["kmip_wire", "interop_shared"]
+files = '''
+  ^kmip$
+| ^\.mise/tasks/test/interop/kmip-go$
+| ^\.mise/scripts/test/test_kmip_go\.sh$
+| ^\.mise/scripts/kmip-go/
+| ^\.mise/scripts/pykmip/kms\.toml$
+'''
+variants = ["fips", "non-fips"]
+
+[units."interop:kmipkit"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^\.mise/tasks/test/interop/kmipkit$ | ^\.mise/scripts/kmipkit-fixes\.patch$'
+variants = ["non-fips"]
+
+[units."interop:openbao"]
+sets = ["interop_shared"]
+files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/routes/kv/'
+variants = ["fips", "non-fips"]
+
+[units."interop:openbao-auth-verifier"]
+sets = ["interop_shared"]
+files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
+variants = ["fips", "non-fips"]
+
+[units."interop:openbao-kmip"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao/'
+variants = ["fips", "non-fips"]
+
+[units."interop:pykmip"]
+sets = ["kmip_wire", "interop_shared"]
+files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test_all\.yml$'
+variants = ["non-fips"]
+
+[units."interop:ssh-secrets"]
+sets = ["interop_shared", "pg_store", "mysql_store"]
+files = '''
+  ^\.mise/tasks/test/interop/ssh-secrets$
+| ^\.mise/scripts/test/(test_ssh_certificates|test_secret_rotation)\.sh$
+| ^\.mise/scripts/test/openbao/bao_verifier\.sh$
+| ^crate/server/src/routes/(ssh|kv)/
+'''
+variants = ["fips", "non-fips"]
+
+# ── test_windows.yml ────────────────────────────────────────────────────────────────────────
+[units.windows-cargo-test]
+sets = ["rust"]
+
+[units.windows-ui]
+sets = ["windows"]
+files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$'
+
+[units.windows-cng-ksp]
+sets = ["windows"]
+files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$'
+
+[units.windows-hsm-idemia]
+sets = ["windows"]
+files = '''
+  ^crate/hsm/
+| ^crate/server/src/tests/
+| ^\.mise/tasks/test/hsm/(idemia-sphere-simulator|other)$
+| ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
+| ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
+'''
+
+[units.windows-est]
+sets = ["windows"]
+files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$'

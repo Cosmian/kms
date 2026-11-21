@@ -25,8 +25,43 @@ jobs:
     uses: ./.github/workflows/cla.yml
     secrets: inherit
 
+  # Runs only the jobs whose files (.github/ci-paths.toml) the PR changes; tags, schedule and dispatch run everything.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ steps.classify.outputs.skip }}
+      suites-matrix: ${{ steps.classify.outputs.suites-matrix }}
+      run-test: ${{ steps.classify.outputs.run-test }}
+      run-windows: ${{ steps.classify.outputs.run-windows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # On pull_request the checkout is the test merge commit, whose first parent is the base branch tip.
+          fetch-depth: 2
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Classify changed files
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise run dev:ci-changes --self-test
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            mise run dev:ci-changes --base HEAD^1
+          else
+            mise run dev:ci-changes --all
+          fi
+
   cargo-clippy:
     uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'cargo-clippy') }}
 
   cargo-deny:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
@@ -34,37 +69,54 @@ jobs:
 
   cargo-machete:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'cargo-machete') }}
 
   supply-chain:
     uses: ./.github/workflows/supply-chain.yml
 
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'forward-proxy') }}
 
   no-nix:
     uses: ./.github/workflows/no-nix.yml
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'no-nix') }}
 
   windows:
     # Same gating as `test` (no dependabot PRs) plus no fork PRs. Windows is slow: PRs run the
     # quick suite; tags and nightly run the full one.
+    needs: changes
     if: >-
-      ((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
+      (((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
       || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+      && needs.changes.outputs.run-windows == 'true'
     uses: ./.github/workflows/test_windows.yml
     with:
       archive-name: windows
       # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off-PR only.
       full-suite: ${{ github.event_name != 'pull_request' }}
+      skip-units: ${{ needs.changes.outputs.skip }}
 
   test: # Run all tests (PRs, tags and the nightly schedule / manual dispatch)
-    if: (github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]') || startsWith(github.ref,
-      'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: >-
+      ((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && needs.changes.outputs.run-test == 'true'
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
+    with:
+      skip-units: ${{ needs.changes.outputs.skip }}
+      suites-matrix: ${{ needs.changes.outputs.suites-matrix }}
 
   build-documentation:
     name: Build documentation
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'build-documentation') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -83,22 +135,6 @@ jobs:
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
           mise run docs:mdbook-build
-
-  linkcheck:
-    # Link checking hits external sites (flaky on PRs): nightly only.
-    if: github.event_name == 'schedule'
-    name: Check documentation links
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - name: Link check
-        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
-        with:
-          args: --config lychee.toml 'documentation/docs/**/*.md'
-          fail: false
 
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
