@@ -14,6 +14,7 @@ pub use cosmian_crypto_core::bytes_ser_de::{
 };
 pub use data_to_encrypt::DataToEncrypt;
 pub use error::{KmipError, result::KmipResultHelper};
+pub use len_display::{ByteLen, LenDisplay};
 pub use safe_bigint::SafeBigInt;
 pub use sensitive::{Sensitive, SensitiveBytes, SensitiveSize, SensitiveString};
 pub use time_utils::{creation_time, time_normalize};

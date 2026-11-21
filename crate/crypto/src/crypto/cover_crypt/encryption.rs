@@ -5,7 +5,7 @@ use cosmian_crypto_core::{
     reexport::zeroize::Zeroizing,
 };
 use cosmian_kmip::{
-    DataToEncrypt,
+    DataToEncrypt, LenDisplay,
     kmip_2_1::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse},
@@ -127,8 +127,8 @@ impl CoverCryptEncryption {
         let ctx = Aes256Gcm::new(key).encrypt(&nonce, ptx, ad)?;
         let res = [&nonce.0, &*ctx].concat();
         debug!(
-            "Encrypted data with auth data of {} bytes, len (Plain/Enc): {}/{}",
-            ad.map_or(0, <[u8]>::len),
+            "Encrypted data with auth data {}, len (Plain/Enc): {}/{}",
+            ad.len_display(),
             ptx.len(),
             res.len(),
         );
@@ -144,8 +144,8 @@ impl EncryptionSystem for CoverCryptEncryption {
             .map(Vec::as_slice);
 
         trace!(
-            "authenticated_encryption_additional_data: {} bytes",
-            ad.map_or(0, <[u8]>::len)
+            "authenticated_encryption_additional_data: {}",
+            ad.len_display()
         );
 
         let encrypted_data =

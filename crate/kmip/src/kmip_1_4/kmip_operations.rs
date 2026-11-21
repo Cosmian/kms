@@ -33,6 +33,7 @@ use crate::{
     },
     kmip_1_4::kmip_attributes::Attribute,
     kmip_2_1::{self, kmip_attributes::Attributes},
+    len_display::LenDisplay,
 };
 
 /// Implements `Debug` by delegating to `Display`.
@@ -1962,10 +1963,10 @@ impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SignResponse {{ unique_identifier: {}, signature_data_len: {}, correlation_value: \
+            "SignResponse {{ unique_identifier: {}, signature_data: {}, correlation_value: \
              {} }}",
             self.unique_identifier,
-            self.signature_data.as_ref().map_or(0, Vec::len),
+            self.signature_data.len_display(),
             self.correlation_value.is_some()
         )
     }

@@ -11,6 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
+        LenDisplay,
         kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
         kmip_2_1::{
             KmipOperation,
@@ -236,9 +237,9 @@ pub(crate) async fn decrypt(
     user: &UserId,
 ) -> KResult<DecryptResponse> {
     trace!(
-        "Decrypt: uid={:?}, data_len={}",
+        "Decrypt: uid={:?}, data: {}",
         request.unique_identifier,
-        request.data.as_ref().map_or(0, Vec::len)
+        request.data.len_display()
     );
     Box::pin(kms.perform_crypto_operation::<DecryptOp>(request, user)).await
 }
