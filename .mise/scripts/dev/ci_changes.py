@@ -2,17 +2,21 @@
 # -*- coding: utf-8 -*-
 """Classify the files a pull request changes against .github/ci-paths.toml (stdlib only).
 
-  ci_changes.py [--base REF] [--head REF]   print the units to run/skip, emit `skip=<JSON list>`
+  ci_changes.py [--base REF] [--head REF]   print the units to run/skip, emit the $GITHUB_OUTPUT lines
+  ci_changes.py --all                       not a pull request: every unit runs, no git diff
   test_ci_changes.py                        unit tests of this module on the real config (`mise run dev:ci-changes --self-test`)
 
-The output line `skip=[...]` is appended to $GITHUB_OUTPUT when set (and always printed) so workflow jobs can
-gate themselves with `!contains(fromJSON(...), '<unit>')`. Fail-safe: an empty diff, a file matching `full`, or a
-file matching no unit and not `ignore`d skips nothing.
+The lines `skip=[...]`, `db-matrix=[...]`, `interop-matrix=[...]`, `run-test=<bool>` and `run-windows=<bool>` are
+appended to $GITHUB_OUTPUT when set (and always printed): workflow jobs gate themselves with
+`!contains(fromJSON(skip), '<unit>')`, test-db.yml / test-interop.yml take their legs from the matrices and main.yml
+skips a whole reusable-workflow call when its `run-<caller>` is false. Fail-safe: an empty diff, a file matching
+`full`, or a file matching no unit and not `ignore`d skips nothing.
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -27,12 +31,18 @@ REPO = Path(
 )
 CONFIG = REPO / '.github' / 'ci-paths.toml'
 
+# Units named `<group>:<leaf>` of these groups carry the `variants` of their test-db.yml / test-interop.yml matrix legs.
+MATRIX_GROUPS = ('db', 'interop')
+VARIANTS = ('fips', 'non-fips')
+
 
 @dataclass(frozen=True)
 class Config:
     full: re.Pattern[str]
     ignore: re.Pattern[str]
     units: dict[str, list[re.Pattern[str]]]
+    variants: dict[str, list[str]]  # unit -> matrix variants, in unit order
+    callers: dict[str, list[str]]  # main.yml caller job -> its unit keys, in unit order
 
 
 def fail(message: str) -> None:
@@ -61,12 +71,30 @@ def load_config(path: Path) -> Config:
         for name, value in raw.get('sets', {}).items()
     }
     units: dict[str, list[re.Pattern[str]]] = {}
+    variants: dict[str, list[str]] = {}
     for unit, spec in raw['units'].items():
-        unknown = set(spec) - {'sets', 'files'}
+        unknown = set(spec) - {'sets', 'files', 'variants'}
         if unknown:
             fail(f'units.{unit}: unknown key(s) {sorted(unknown)}')
-        if not spec:
+        if not {'sets', 'files'} & set(spec):
             fail(f'units.{unit}: needs `sets` or `files`')
+        in_matrix = unit.split(':', 1)[0] in MATRIX_GROUPS if ':' in unit else False
+        if in_matrix != ('variants' in spec):
+            fail(
+                f'units.{unit}: `variants` is required on {"/".join(MATRIX_GROUPS)} units and allowed only there'
+            )
+        if in_matrix:
+            legs = spec['variants']
+            if (
+                not isinstance(legs, list)
+                or not legs
+                or any(v not in VARIANTS for v in legs)
+                or len(set(legs)) != len(legs)
+            ):
+                fail(
+                    f'units.{unit}: `variants` must be a non-empty list of distinct values among {list(VARIANTS)}'
+                )
+            variants[unit] = list(legs)
         patterns = []
         for name in spec.get('sets', []):
             if name not in sets:
@@ -75,10 +103,22 @@ def load_config(path: Path) -> Config:
         if 'files' in spec:
             patterns.append(compile_pattern(f'units.{unit}.files', spec['files']))
         units[unit] = patterns
+    callers: dict[str, list[str]] = {}
+    for name, pats in raw.get('callers', {}).items():
+        if not isinstance(pats, list) or not all(isinstance(p, str) for p in pats):
+            fail(f'callers.{name}: expected a list of unit patterns')
+        for pat in pats:
+            if not any(fnmatch.fnmatchcase(u, pat) for u in units):
+                fail(f'callers.{name}: `{pat}` matches no unit')
+        callers[name] = [
+            u for u in units if any(fnmatch.fnmatchcase(u, p) for p in pats)
+        ]
     return Config(
         full=compile_pattern('full', raw['full']),
         ignore=compile_pattern('ignore', raw['ignore']),
         units=units,
+        variants=variants,
+        callers=callers,
     )
 
 
@@ -114,15 +154,38 @@ def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
     )
 
 
+def outputs(cfg: Config, skipped: list[str]) -> dict[str, str]:
+    """$GITHUB_OUTPUT values: `skip`, one `<group>-matrix` per MATRIX_GROUPS group, one `run-<caller>` per caller."""
+    compact = {'separators': (',', ':')}
+    result = {'skip': json.dumps(skipped, **compact)}
+    for group in MATRIX_GROUPS:
+        legs = [
+            {'leaf': unit.split(':', 1)[1], 'variant': variant}
+            for unit, variants in cfg.variants.items()
+            if unit.startswith(f'{group}:') and unit not in skipped
+            for variant in variants
+        ]
+        result[f'{group}-matrix'] = json.dumps(legs, **compact)
+    for caller, units in cfg.callers.items():
+        result[f'run-{caller}'] = str(any(u not in skipped for u in units)).lower()
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--base', default='HEAD^1')
     parser.add_argument('--head', default='HEAD')
+    parser.add_argument(
+        '--all', action='store_true', help='not a pull request: run everything'
+    )
     args = parser.parse_args()
 
     cfg = load_config(CONFIG)
-    files = changed_files(args.base, args.head)
-    skipped, reason = classify(cfg, files)
+    if args.all:
+        files, skipped, reason = [], [], 'not a pull request: run everything'
+    else:
+        files = changed_files(args.base, args.head)
+        skipped, reason = classify(cfg, files)
 
     print(f'Changed files ({len(files)}):')
     for f in files:
@@ -131,12 +194,13 @@ def main() -> None:
     for unit in cfg.units:
         print(f'{"SKIP" if unit in skipped else "RUN "} {unit}')
 
-    line = f'skip={json.dumps(skipped, separators=(",", ":"))}'
+    lines = [f'{key}={value}' for key, value in outputs(cfg, skipped).items()]
     output = os.environ.get('GITHUB_OUTPUT')
     if output:
         with open(output, 'a', encoding='utf-8') as handle:
-            handle.write(line + '\n')
-    print(line)
+            handle.write('\n'.join(lines) + '\n')
+    for line in lines:
+        print(line)
 
 
 if __name__ == '__main__':
