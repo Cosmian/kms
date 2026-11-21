@@ -255,13 +255,18 @@ impl EncryptAction {
         // extract the ciphertext and write it
         let data = encrypt_response
             .data
-            .context("The encrypted data is empty")?;
+            .context("The encrypted data is empty")?
+            .to_vec();
 
         // extract the authentication tag (only mandatory for AEAD modes: GCM, GCM-SIV, ChaCha20-Poly1305)
         // Note: For server_side_encrypt, the algorithm used is determined by the cryptographic_parameters
         // which may be different from self.data_encryption_algorithm (e.g., for key wrapping)
         let authentication_tag = encrypt_response.authenticated_encryption_tag; // Some encryption modes don't use authentication tags
-        Ok((nonce, data, authentication_tag))
+        Ok((
+            nonce.map(|n| n.to_vec()),
+            data,
+            authentication_tag.map(|t| t.to_vec()),
+        ))
     }
 
     /// Encrypt a file using a symmetric stream cipher
@@ -398,7 +403,7 @@ impl EncryptAction {
         // Generate the ephemeral key (DEK)
         let rng = KmsRng::new();
         let dek = generate_dek(&rng, data_encryption_algorithm)?;
-        trace!("dek (len={}): {dek:?}", dek.len());
+        trace!("dek (len={})", dek.len());
 
         // First export the KEK locally
         let wrapping_key = export_object(

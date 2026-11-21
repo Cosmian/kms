@@ -113,11 +113,11 @@ async fn encrypt_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KRe
     // back out. The session_impl::decrypt expects the data in exactly this layout.
     let mut full = Vec::new();
     if let Some(iv) = response.i_v_counter_nonce {
-        full.extend(iv);
+        full.extend(&*iv);
     }
-    full.extend(response.data.unwrap_or_default());
+    full.extend(&*response.data.unwrap_or_default());
     if let Some(tag) = response.authenticated_encryption_tag {
-        full.extend(tag);
+        full.extend(&*tag);
     }
     Ok(full)
 }

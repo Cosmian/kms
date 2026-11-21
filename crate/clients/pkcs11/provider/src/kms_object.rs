@@ -614,7 +614,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::TransparentSymmetricKey { key },
+                key_material: KeyMaterial::TransparentSymmetricKey { key: key.into() },
                 attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_length,
@@ -701,7 +701,7 @@ pub(crate) async fn kms_import_object_async(
             cryptographic_length,
             key_format_type: KeyFormatType::Raw,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(secret_data_value)),
+                key_material: KeyMaterial::ByteString(secret_data_value.into()),
                 attributes: Some(Box::new(attributes.clone())),
             }),
             key_compression_type: None,
@@ -842,9 +842,9 @@ async fn kms_encrypt_async(
             encrypt_ctx.remote_object_id.clone(),
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
-        data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: encrypt_ctx.iv.clone(),
-        authenticated_encryption_additional_data: encrypt_ctx.aad.clone(),
+        data: Some(data.into()),
+        i_v_counter_nonce: encrypt_ctx.iv.clone().map(Into::into),
+        authenticated_encryption_additional_data: encrypt_ctx.aad.clone().map(Into::into),
         ..Default::default()
     };
     let response = kms_rest_client.encrypt(encryption_request).await?;
@@ -853,7 +853,7 @@ async fn kms_encrypt_async(
     })?;
     let (iv, tag) = if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
         let iv = match response.i_v_counter_nonce {
-            Some(iv) => iv,
+            Some(iv) => iv.to_vec(),
             None if require_generated_nonce => {
                 return Err(Pkcs11Error::ServerError(
                     "AES-GCM message encryption response does not contain a nonce".to_owned(),
@@ -866,13 +866,13 @@ async fn kms_encrypt_async(
                 "AES-GCM encryption response does not contain an authentication tag".to_owned(),
             )
         })?;
-        (iv, tag)
+        (iv, tag.to_vec())
     } else {
         (Vec::new(), Vec::new())
     };
     debug!("kms_encrypt_async: ciphertext_len: {}", ciphertext.len());
     Ok(MessageEncryptionOutput {
-        ciphertext,
+        ciphertext: ciphertext.to_vec(),
         iv,
         tag,
     })
@@ -951,13 +951,13 @@ pub(crate) async fn kms_decrypt_async(
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(ciphertext),
-        i_v_counter_nonce: decrypt_ctx.iv.clone(),
-        authenticated_encryption_additional_data: decrypt_ctx.aad.clone(),
-        authenticated_encryption_tag,
+        i_v_counter_nonce: decrypt_ctx.iv.clone().map(Into::into),
+        authenticated_encryption_additional_data: decrypt_ctx.aad.clone().map(Into::into),
+        authenticated_encryption_tag: authenticated_encryption_tag.map(Into::into),
         ..Default::default()
     };
     let response = kms_rest_client.decrypt(decryption_request).await?;
-    response.data.ok_or_else(|| {
+    response.data.map(Into::into).ok_or_else(|| {
         Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
     })
 }
@@ -1367,7 +1367,7 @@ pub(crate) async fn kms_sign_async(
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters,
-        data: data_bytes.map(zeroize::Zeroizing::new),
+        data: data_bytes.map(Into::into),
         digested_data: digested_data_bytes,
         correlation_value: None,
         init_indicator: None,
@@ -1498,7 +1498,7 @@ pub(crate) fn kms_mac(
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters: Some(aes_mac_parameters(mode)),
         data: Some(data.to_vec()),
-        i_v_counter_nonce: iv,
+        i_v_counter_nonce: iv.map(Into::into),
         ..Default::default()
     };
     let response = RUNTIME.block_on(kms_rest_client.mac(request))?;

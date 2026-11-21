@@ -263,7 +263,7 @@ fn sign_with_private_key(
             let whole = Sign {
                 unique_identifier: request.unique_identifier.clone(),
                 cryptographic_parameters: state.cryptographic_parameters.take(),
-                data: Some(state.data.take()),
+                data: Some(state.data.take().into()),
                 ..Sign::default()
             };
             sign_message(owm, &whole).map(Some)

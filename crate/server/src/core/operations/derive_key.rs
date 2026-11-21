@@ -301,7 +301,11 @@ async fn derive_key_symmetric(
             )?
         }
         DerivationMethod::HKDF => {
-            let salt = request.derivation_parameters.salt.as_deref().unwrap_or(&[]);
+            let salt = request
+                .derivation_parameters
+                .salt
+                .as_deref()
+                .map_or(&[][..], Vec::as_slice);
             let info = request
                 .derivation_parameters
                 .derivation_data
@@ -356,7 +360,7 @@ async fn derive_key_symmetric(
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
                     key_material: KeyMaterial::TransparentSymmetricKey {
-                        key: derived_key_bytes,
+                        key: derived_key_bytes.into(),
                     },
                     attributes: Some(Box::new(attributes.clone())),
                 }),
@@ -371,7 +375,7 @@ async fn derive_key_symmetric(
                 key_format_type: KeyFormatType::Opaque,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(derived_key_bytes),
+                    key_material: KeyMaterial::ByteString(derived_key_bytes.into()),
                     attributes: Some(Box::new(attributes.clone())),
                 }),
                 cryptographic_algorithm: None,

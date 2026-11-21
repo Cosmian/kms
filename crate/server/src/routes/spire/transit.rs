@@ -857,7 +857,7 @@ async fn sign_with_transit_key_impl(
             ..Default::default()
         }),
         digested_data,
-        data,
+        data: data.map(Into::into),
         ..Default::default()
     };
 

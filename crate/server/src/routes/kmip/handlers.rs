@@ -1180,7 +1180,7 @@ fn perform_request_tweaks(request: &mut DecodedRequestMessage, major: i32, minor
                                      Authenticated Encryption Tag of length {len} from Data field"
                         );
                         let auth_tag = data.split_off(data.len() - len);
-                        decrypt.authenticated_encryption_tag = Some(auth_tag);
+                        decrypt.authenticated_encryption_tag = Some(auth_tag.into());
                     }
                 }
             }

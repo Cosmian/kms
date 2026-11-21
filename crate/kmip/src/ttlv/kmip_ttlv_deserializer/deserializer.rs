@@ -535,7 +535,8 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
             return visitor.visit_str(&element.tag);
         }
         if let TTLValue::TextString(s) = &element.value {
-            trace!("... text string: value: {}", s);
+            // never log the value: it can be a credential password (see `SECRET_LEAF_TAGS`)
+            trace!("... text string: value of {} chars", s.len());
             visitor.visit_str(s)
         } else if let TTLValue::ByteString(bytes) = &element.value {
             // Some KMIP 2.1 interop vectors encode ShortUniqueIdentifier as a ByteString even though
@@ -729,12 +730,15 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer<'_> {
         );
         let element = self.fetch_element()?;
         if let TTLValue::BigInteger(bi) = &element.value {
-            trace!("   ... assuming deserialization of BigInteger: {:?}", bi);
+            trace!("   ... assuming deserialization of BigInteger: {bi:?}");
             let seq_access = KmipBigIntDeserializer::instantiate(bi)?;
             return visitor.visit_seq(seq_access);
         }
         if let TTLValue::ByteString(bs) = &element.value {
-            trace!("   ... assuming deserialization of ByteString: {:?}", bs);
+            trace!(
+                "   ... assuming deserialization of ByteString: <{} bytes>",
+                bs.len()
+            );
             let deserializer = ByteStringDeserializer::new(bs);
             return visitor.visit_seq(deserializer);
         }

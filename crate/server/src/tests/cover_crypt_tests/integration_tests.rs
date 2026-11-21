@@ -75,7 +75,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, request).await?;
     let encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Top Secret";
@@ -131,7 +132,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     let encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     // Create a user decryption key
     let access_policy = "(Department::MKG || Department::FIN) && Security Level::Confidential";
@@ -259,7 +261,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let encrypt_response: EncryptResponse = test_utils::post_2_1(&app, &request).await?;
     let new_encrypted_data = encrypt_response
         .data
-        .expect("There should be encrypted data");
+        .expect("There should be encrypted data")
+        .to_vec();
 
     // Make sure the first user decryption key cannot decrypt the new encrypted message
     // (message being encrypted with the new `MKG` value)

@@ -43,7 +43,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
         ));
     };
     let bytes = match key_material {
-        KeyMaterial::ByteString(b) => b.clone(),
+        KeyMaterial::ByteString(b) => b.to_zeroizing(),
         x => {
             return Err(CryptoError::Kmip(format!(
                 "Invalid Key Material for the Covercrypt User Decryption Key: {x}"
@@ -135,7 +135,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.into()),
                     attributes: Some(Box::new(attributes)),
                 }),
                 cryptographic_length,
@@ -166,7 +166,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 ))
             })?;
 
-        trace!("Refreshed user decryption key {usk:?}");
+        trace!("Refreshed user decryption key");
 
         let user_decryption_key_bytes = usk.serialize().map_err(|e| {
             CryptoError::Kmip(format!("covercrypt: failed serializing the user key: {e}"))
@@ -178,7 +178,7 @@ impl<'a> UserDecryptionKeysHandler<'a> {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.into()),
                     attributes: Some(Box::new(usk_attributes)),
                 }),
                 cryptographic_length,

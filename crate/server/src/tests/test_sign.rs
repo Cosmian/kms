@@ -10,7 +10,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
 };
 use cosmian_logger::log_init;
-use zeroize::Zeroizing;
 
 use crate::{core::KMS, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
 
@@ -28,7 +27,7 @@ async fn test_single_signature(
     // Sign using the raw data
     let sign_request = Sign {
         unique_identifier: Some(private_key_id.clone()),
-        data: Some(Zeroizing::new(TEST_DATA.to_vec())),
+        data: Some(TEST_DATA.to_vec().into()),
         ..Default::default()
     };
     let sign_response: SignResponse = kms.sign(sign_request, owner).await?;
@@ -92,7 +91,7 @@ async fn test_streaming_signature_verification(
     // First, create a signature using regular (non-streaming) sign
     let sign_request = Sign {
         unique_identifier: Some(private_key_id.clone()),
-        data: Some(Zeroizing::new(TEST_DATA.to_vec())),
+        data: Some(TEST_DATA.to_vec().into()),
         ..Default::default()
     };
     let sign_response: SignResponse = kms.sign(sign_request, owner).await?;
@@ -165,7 +164,7 @@ async fn test_streaming_signature_verification(
             .sign(
                 Sign {
                     unique_identifier: Some(private_key_id.clone()),
-                    data: Some(Zeroizing::new(chunk.to_vec())),
+                    data: Some(chunk.to_vec().into()),
                     correlation_value: sign_cv.clone(),
                     init_indicator: (i == 0).then_some(true),
                     final_indicator: (i == chunks.len() - 1).then_some(true),

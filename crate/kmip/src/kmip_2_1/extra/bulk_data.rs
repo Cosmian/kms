@@ -12,8 +12,14 @@ use crate::{
 /// Bulk Data is a structure that holds a list of zeroizing byte arrays
 /// i.e., a `Vec<Zeroizing<Vec<u8>>>`
 /// When serialized it is prepended with the sequence 0x8787
-#[derive(Debug)]
 pub struct BulkData(Vec<Zeroizing<Vec<u8>>>);
+
+/// Never prints the items: only their count.
+impl std::fmt::Debug for BulkData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BulkData(<{} items>)", self.0.len())
+    }
+}
 
 impl BulkData {
     #[must_use]

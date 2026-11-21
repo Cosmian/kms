@@ -191,7 +191,7 @@ async fn test_pgp_import_public_then_export() {
             key_format_type: KeyFormatType::OpenPgpPublicKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(pub_bytes.clone()),
+                key_material: KeyMaterial::ByteString(pub_bytes.clone().into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
@@ -245,11 +245,11 @@ async fn test_pgp_encrypt_decrypt_rsa() {
     let plaintext = b"Hello OpenPGP from the Eviden KMS";
     let enc_req = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        data: Some(zeroize::Zeroizing::new(plaintext.to_vec())),
+        data: Some(plaintext.to_vec().into()),
         ..Encrypt::default()
     };
     let enc_resp = client.encrypt(enc_req).await.unwrap();
-    let ciphertext = enc_resp.data.expect("ciphertext present");
+    let ciphertext = enc_resp.data.expect("ciphertext present").to_vec();
     assert_ne!(ciphertext.len(), 0);
     assert_ne!(&ciphertext[..], plaintext);
 
@@ -278,11 +278,11 @@ async fn test_pgp_encrypt_decrypt_ed25519() {
     let plaintext = b"Hello OpenPGP from the Eviden KMS (Ed25519/cv25519)";
     let enc_req = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        data: Some(zeroize::Zeroizing::new(plaintext.to_vec())),
+        data: Some(plaintext.to_vec().into()),
         ..Encrypt::default()
     };
     let enc_resp = client.encrypt(enc_req).await.unwrap();
-    let ciphertext = enc_resp.data.expect("ciphertext present");
+    let ciphertext = enc_resp.data.expect("ciphertext present").to_vec();
     assert_ne!(ciphertext.len(), 0);
     assert_ne!(&ciphertext[..], plaintext);
 
@@ -311,7 +311,7 @@ async fn test_pgp_sign_verify_rsa() {
     let data = b"detached-signature-payload-rsa";
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        data: Some(zeroize::Zeroizing::new(data.to_vec())),
+        data: Some(data.to_vec().into()),
         ..Sign::default()
     };
     let sign_resp = client.sign(sign_req).await.unwrap();
@@ -361,7 +361,7 @@ async fn test_pgp_sign_verify_ed25519() {
     let data = b"detached-signature-payload-ed25519";
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        data: Some(zeroize::Zeroizing::new(data.to_vec())),
+        data: Some(data.to_vec().into()),
         ..Sign::default()
     };
     let sign_resp = client.sign(sign_req).await.unwrap();
@@ -435,7 +435,7 @@ async fn test_pgp_decrypt_with_public_only_key_fails() {
             key_format_type: KeyFormatType::OpenPgpPublicKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(pub_bytes),
+                key_material: KeyMaterial::ByteString(pub_bytes.into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

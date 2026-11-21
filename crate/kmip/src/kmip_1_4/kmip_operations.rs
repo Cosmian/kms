@@ -6,7 +6,6 @@ use std::{
 use cosmian_logger::{debug, trace};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use zeroize::Zeroizing;
 
 use super::{
     kmip_data_structures::{
@@ -23,7 +22,7 @@ use super::{
     },
 };
 use crate::{
-    KmipError, KmipResultHelper,
+    KmipError, KmipResultHelper, SensitiveBytes,
     kmip_0::{
         kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
@@ -34,6 +33,7 @@ use crate::{
     },
     kmip_1_4::kmip_attributes::Attribute,
     kmip_2_1::{self, kmip_attributes::Attributes},
+    len_display::LenDisplay,
 };
 
 /// Implements `Debug` by delegating to `Display`.
@@ -1672,12 +1672,12 @@ pub struct Encrypt {
 
     /// The data to be encrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1698,7 +1698,7 @@ pub struct Encrypt {
     /// Tag. If supplied in multi-part encryption,
     /// this data MUST be supplied on the initial Encrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<SensitiveBytes>,
 }
 
 impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
@@ -1708,7 +1708,7 @@ impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
                 .unique_identifier
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
-            data: value.data.map(Zeroizing::new),
+            data: value.data,
             i_v_counter_nonce: value.i_v_counter_nonce,
             correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,
@@ -1726,12 +1726,12 @@ pub struct EncryptResponse {
     pub unique_identifier: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1744,7 +1744,7 @@ pub struct EncryptResponse {
     /// Only returned on completion of the encryption of the last of the plaintext
     /// by an authenticated encryption cipher.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<SensitiveBytes>,
 }
 
 impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
@@ -1789,7 +1789,7 @@ pub struct Decrypt {
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1810,13 +1810,13 @@ pub struct Decrypt {
     /// Tag. If supplied in multipart encryption,
     /// this data MUST be supplied on the initial Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<SensitiveBytes>,
 
     /// Specifies the tag that will be needed to authenticate the decrypted data.
     /// If supplied in multipart decryption, this data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<SensitiveBytes>,
 }
 
 impl From<Decrypt> for kmip_2_1::kmip_operations::Decrypt {
@@ -1845,7 +1845,7 @@ pub struct DecryptResponse {
     pub unique_identifier: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1863,7 +1863,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
-            data: value.data.map(|d| d.to_vec()),
+            data: value.data,
             correlation_value: value.correlation_value,
         })
     }
@@ -1895,7 +1895,7 @@ pub struct Sign {
 
     /// The data to be signed
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The digest of the data to be signed.
     /// Provided when the data has been pre-hashed.
@@ -1925,7 +1925,7 @@ impl From<Sign> for kmip_2_1::kmip_operations::Sign {
                 .unique_identifier
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
-            data: value.data.map(|d| Zeroizing::new(d.to_vec())),
+            data: value.data,
             digested_data: value.digested_data,
             correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,
@@ -1963,10 +1963,10 @@ impl Display for SignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SignResponse {{ unique_identifier: {}, signature_data_len: {}, correlation_value: \
+            "SignResponse {{ unique_identifier: {}, signature_data: {}, correlation_value: \
              {} }}",
             self.unique_identifier,
-            self.signature_data.as_ref().map_or(0, Vec::len),
+            self.signature_data.len_display(),
             self.correlation_value.is_some()
         )
     }

@@ -3128,9 +3128,9 @@ pub fn derive_key_ttlv_request(
             hashing_algorithm: Some(hash_alg),
             ..CryptographicParameters::default()
         }),
-        initialization_vector,
+        initialization_vector: initialization_vector.map(Into::into),
         derivation_data: None,
-        salt: Some(salt),
+        salt: Some(salt.into()),
         iteration_count: Some(iteration_count),
     };
 

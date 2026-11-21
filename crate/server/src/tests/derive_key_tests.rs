@@ -38,6 +38,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::elliptic_curves::operation::{to_ec_private_key, to_ec_public_key},
 };
+#[cfg(feature = "non-fips")]
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
@@ -86,8 +87,8 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000), // Lower than default for faster testing
         },
         Attributes {
@@ -182,8 +183,8 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
                     ..CryptographicParameters::default()
                 }),
                 initialization_vector: None,
-                derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-                salt: Some(b"test salt 16 byte".to_vec()),
+                derivation_data: Some(b"test derivation data".to_vec().into()),
+                salt: Some(b"test salt 16 byte".to_vec().into()),
                 iteration_count: Some(10_000), // Lower for faster testing
             },
             Attributes {
@@ -245,8 +246,8 @@ async fn test_derive_key_hkdf() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test info for HKDF".to_vec())),
-            salt: Some(b"HKDF salt".to_vec()),
+            derivation_data: Some(b"test info for HKDF".to_vec().into()),
+            salt: Some(b"HKDF salt".to_vec().into()),
             iteration_count: None, // Not used for HKDF
         },
         Attributes {
@@ -310,8 +311,8 @@ async fn test_derive_key_resets_client_usage_limits_count() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"usage limits info".to_vec())),
-            salt: Some(b"HKDF salt".to_vec()),
+            derivation_data: Some(b"usage limits info".to_vec().into()),
+            salt: Some(b"HKDF salt".to_vec().into()),
             iteration_count: None,
         },
         Attributes {
@@ -377,8 +378,8 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"secret data derivation".to_vec())),
-            salt: Some(b"secret salt 16 byte".to_vec()),
+            derivation_data: Some(b"secret data derivation".to_vec().into()),
+            salt: Some(b"secret salt 16 byte".to_vec().into()),
             iteration_count: Some(50_000),
         },
         Attributes {
@@ -439,8 +440,8 @@ async fn test_derive_key_error_cases() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -482,7 +483,7 @@ async fn test_derive_key_preactive_base_and_unsupported_method() -> KResult<()> 
             base_key_id.clone(),
             method,
             DerivationParameters {
-                salt: Some(b"test salt 16 byte".to_vec()),
+                salt: Some(b"test salt 16 byte".to_vec().into()),
                 iteration_count: Some(1000),
                 ..DerivationParameters::default()
             },
@@ -560,7 +561,7 @@ async fn test_derive_key_hash_and_hmac_known_answers() -> KResult<()> {
                         hashing_algorithm: Some(h),
                         ..CryptographicParameters::default()
                     }),
-                    derivation_data: derivation_data.map(|d| Zeroizing::new(d.to_vec())),
+                    derivation_data: derivation_data.map(|d| d.to_vec().into()),
                     ..DerivationParameters::default()
                 },
                 Attributes {
@@ -635,7 +636,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
             salt: None, // Missing salt - should cause error
             iteration_count: Some(100_000),
         },
@@ -685,8 +686,8 @@ async fn test_derive_key_pbkdf2_fips_minimums() -> KResult<()> {
                     ..CryptographicParameters::default()
                 }),
                 initialization_vector: None,
-                derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-                salt: Some(salt.to_vec()),
+                derivation_data: Some(b"test derivation data".to_vec().into()),
+                salt: Some(salt.to_vec().into()),
                 iteration_count: Some(iterations),
             },
             Attributes {
@@ -732,8 +733,8 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -785,8 +786,8 @@ async fn test_derive_key_without_permission_is_object_not_found() -> KResult<()>
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -829,8 +830,8 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -996,8 +997,8 @@ fn build_hkdf_chacha_request(base_uid: &str, derived_uid: &str) -> DeriveKey {
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             }),
-            derivation_data: Some(Zeroizing::new(b"share-seal/v1".to_vec())),
-            salt: Some(b"share-seal-salt".to_vec()),
+            derivation_data: Some(b"share-seal/v1".to_vec().into()),
+            salt: Some(b"share-seal-salt".to_vec().into()),
             iteration_count: None,
             initialization_vector: None,
         },
@@ -1245,12 +1246,12 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                     ..CryptographicParameters::default()
                 }),
-                data: Some(plaintext.clone()),
-                i_v_counter_nonce: Some(nonce.clone()),
+                data: Some(plaintext.clone().into()),
+                i_v_counter_nonce: Some(nonce.clone().into()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: Some(aad.clone()),
+                authenticated_encryption_additional_data: Some(aad.clone().into()),
             },
             &owner,
         )
@@ -1264,12 +1265,12 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                     ..CryptographicParameters::default()
                 }),
-                data: encrypt_response.data.clone(),
-                i_v_counter_nonce: Some(nonce.clone()),
+                data: encrypt_response.data.as_ref().map(|d| d.to_vec()),
+                i_v_counter_nonce: Some(nonce.clone().into()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: Some(aad),
+                authenticated_encryption_additional_data: Some(aad.into()),
                 authenticated_encryption_tag: encrypt_response.authenticated_encryption_tag.clone(),
             },
             &owner,
@@ -1335,8 +1336,8 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                     ..CryptographicParameters::default()
                 }),
-                data: Some(Zeroizing::new(b"again".to_vec())),
-                i_v_counter_nonce: Some(nonce),
+                data: Some(b"again".to_vec().into()),
+                i_v_counter_nonce: Some(nonce.into()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
@@ -1801,7 +1802,7 @@ async fn test_derive_key_pbkdf2_is_wrapped_by_server_kek() -> KResult<()> {
                     }),
                     initialization_vector: None,
                     derivation_data: None,
-                    salt: Some(salt.clone()),
+                    salt: Some(salt.clone().into()),
                     iteration_count: Some(10_000),
                 },
                 Attributes {

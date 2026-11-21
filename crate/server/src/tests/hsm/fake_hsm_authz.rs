@@ -356,7 +356,7 @@ fn key_wrapped_by(wrapping_key_uid: &str, ciphertext: &[u8]) -> Object {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::new(ciphertext.to_vec()))),
+            key_value: Some(KeyValue::ByteString(ciphertext.to_vec().into())),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
             key_wrapping_data: Some(key_wrapping_data),
@@ -419,7 +419,7 @@ async fn stored_key_bytes(kms: &KMS, uid: &str) -> KResult<Vec<u8>> {
 async fn encrypt(kms: &KMS, user: &str, uid: &str) -> KResult<()> {
     let request = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
-        data: Some(Zeroizing::new(b"plaintext".to_vec())),
+        data: Some(b"plaintext".to_vec().into()),
         ..Encrypt::default()
     };
     kms.encrypt(request, &UserId::from(user)).await?;
@@ -563,7 +563,7 @@ async fn test_kek_wrapped_import_is_refused() -> KResult<()> {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KmipKeyMaterial::ByteString(Zeroizing::new(vec![7; 32])),
+                key_material: KmipKeyMaterial::ByteString(vec![7; 32].into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),

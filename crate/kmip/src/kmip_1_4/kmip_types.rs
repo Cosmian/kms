@@ -1505,11 +1505,26 @@ impl From<kmip_2_1::kmip_types::UniqueIdentifier> for UniqueIdentifier {
 }
 
 /// Link Structure represents the relationship between a Managed Object and another object.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "PascalCase")]
 pub struct Link {
     pub link_type: LinkType,
     pub linked_object_identifier: LinkedObjectIdentifier,
+}
+
+/// Prints `<redacted>` instead of the identifier of a `PKCS12PasswordLink`: it is the PKCS#12
+/// password (or the id of the secret holding it).
+impl std::fmt::Debug for Link {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut d = f.debug_struct("Link");
+        d.field("link_type", &self.link_type);
+        if matches!(self.link_type, LinkType::PKCS12PasswordLink) {
+            d.field("linked_object_identifier", &format_args!("<redacted>"));
+        } else {
+            d.field("linked_object_identifier", &self.linked_object_identifier);
+        }
+        d.finish()
+    }
 }
 
 impl From<Link> for kmip_2_1::kmip_types::Link {

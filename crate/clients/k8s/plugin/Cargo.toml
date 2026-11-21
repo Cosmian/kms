@@ -43,7 +43,6 @@ tokio = { workspace = true, features = [
 tokio-stream = { workspace = true, features = ["net"] }
 tonic = { workspace = true, features = ["transport"] }
 tracing = { workspace = true }
-zeroize = { workspace = true, features = ["zeroize_derive"] }
 
 [dev-dependencies]
 hyper-util = { workspace = true, features = ["tokio"] }

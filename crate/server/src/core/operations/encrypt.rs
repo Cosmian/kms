@@ -97,6 +97,7 @@ impl CryptoOpSpec for EncryptOp {
         let supplied_iv = request
             .i_v_counter_nonce
             .as_deref()
+            .map(Vec::as_slice)
             .is_some_and(|iv| !iv.is_empty());
         if supplied_iv
             || !matches!(owm.object(), Object::SymmetricKey { .. })
@@ -205,8 +206,11 @@ impl CryptoOpSpec for EncryptOp {
                 uid,
                 data,
                 ca.clone(),
-                request.authenticated_encryption_additional_data.as_deref(),
-                request.i_v_counter_nonce.as_deref(),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
+                request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
             )
             .await?;
         debug!(
@@ -215,10 +219,10 @@ impl CryptoOpSpec for EncryptOp {
         );
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            data: Some(encrypted_content.ciphertext),
-            i_v_counter_nonce: encrypted_content.iv,
+            data: Some(encrypted_content.ciphertext.into()),
+            i_v_counter_nonce: encrypted_content.iv.map(Into::into),
             correlation_value: request.correlation_value.clone(),
-            authenticated_encryption_tag: encrypted_content.tag,
+            authenticated_encryption_tag: encrypted_content.tag.map(Into::into),
         })
     }
 }
@@ -291,7 +295,7 @@ pub(super) fn encrypt_bulk(
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_deref()
-                .unwrap_or(EMPTY_SLICE);
+                .map_or(EMPTY_SLICE, Vec::as_slice);
             // One IV for several items would reuse a nonce under the same key (fatal for GCM):
             // every item then gets a fresh random nonce, prepended to its ciphertext.
             if request.i_v_counter_nonce.is_some() && bulk_data.len() > 1 {
@@ -305,10 +309,13 @@ pub(super) fn encrypt_bulk(
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 let (key_bytes, cipher) = get_key_and_cipher(request, owm)?;
                 let nonce = if cipher.iv_generated_by_module() {
-                    ensure_no_caller_gcm_iv(cipher, request.i_v_counter_nonce.as_deref())?;
+                    ensure_no_caller_gcm_iv(
+                        cipher,
+                        request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+                    )?;
                     Cow::Borrowed(EMPTY_SLICE)
                 } else {
-                    match request.i_v_counter_nonce.as_deref() {
+                    match request.i_v_counter_nonce.as_deref().map(Vec::as_slice) {
                         Some(n) => Cow::Borrowed(n),
                         None => Cow::Owned(random_nonce(rng, cipher)?),
                     }
@@ -343,9 +350,9 @@ pub(super) fn encrypt_bulk(
         Object::PublicKey { .. } => {
             let mut item_request = request_without_data(request);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                item_request.data = Some(plaintext);
+                item_request.data = Some(plaintext.into());
                 let response = encrypt_with_public_key(&item_request, server_params, owm, rng)?;
-                ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
+                ciphertexts.push(response.data.unwrap_or_default().into());
             }
         }
         Object::Certificate(Certificate {
@@ -353,7 +360,7 @@ pub(super) fn encrypt_bulk(
         }) => {
             let mut item_request = request_without_data(request);
             for plaintext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                item_request.data = Some(plaintext);
+                item_request.data = Some(plaintext.into());
                 let response = encrypt_with_certificate(
                     &item_request,
                     server_params,
@@ -361,7 +368,7 @@ pub(super) fn encrypt_bulk(
                     certificate_value,
                     rng,
                 )?;
-                ciphertexts.push(Zeroizing::new(response.data.unwrap_or_default()));
+                ciphertexts.push(response.data.unwrap_or_default().into());
             }
         }
         other => kms_bail!(KmsError::NotSupported(format!(
@@ -375,7 +382,7 @@ pub(super) fn encrypt_bulk(
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         // ciphertexts are not secret: move the buffer out instead of copying it
-        data: Some(std::mem::take(&mut *serialized)),
+        data: Some(std::mem::take(&mut *serialized).into()),
         i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,
@@ -429,13 +436,16 @@ fn encrypt_with_symmetric_key(
         let ciphertext = encrypt_fpe(
             key_block.key_bytes_ref()?,
             plaintext,
-            request.authenticated_encryption_additional_data.as_deref(),
-            request.i_v_counter_nonce.as_deref(),
+            request
+                .authenticated_encryption_additional_data
+                .as_deref()
+                .map(Vec::as_slice),
+            request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
         )
         .map_err(|e| KmsError::CryptographicError(format!("FPE encrypt failed: {e}")))?;
         return Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(ciphertext),
+            data: Some(ciphertext.into()),
             i_v_counter_nonce: None,
             correlation_value: request.correlation_value.clone(),
             authenticated_encryption_tag: None,
@@ -451,7 +461,7 @@ fn encrypt_with_symmetric_key(
     let aad = request
         .authenticated_encryption_additional_data
         .as_deref()
-        .unwrap_or(EMPTY_SLICE);
+        .map_or(EMPTY_SLICE, Vec::as_slice);
     let padding_method = padding_method(request.cryptographic_parameters.as_ref(), aead);
     if aead.nonce_size() == 0 {
         trace!(
@@ -482,11 +492,11 @@ fn encrypt_with_symmetric_key(
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(ciphertext),
+        data: Some(ciphertext.into()),
         // KMIP 2.1 Table 215: the IV is returned only when the server generated it.
-        i_v_counter_nonce: generated_nonce.then(|| nonce.into_owned()),
+        i_v_counter_nonce: generated_nonce.then(|| nonce.into_owned()).map(Into::into),
         correlation_value: None,
-        authenticated_encryption_tag: adjusted_tag,
+        authenticated_encryption_tag: adjusted_tag.map(Into::into),
     })
 }
 
@@ -542,6 +552,7 @@ pub(super) fn encryption_nonce<'a>(
     let iv_supplied = request
         .i_v_counter_nonce
         .as_deref()
+        .map(Vec::as_slice)
         .is_some_and(|iv| !iv.is_empty());
     let iv_length = if iv_supplied {
         None
@@ -557,7 +568,7 @@ pub(super) fn encryption_nonce<'a>(
             })
             .transpose()?
     };
-    match request.i_v_counter_nonce.as_deref() {
+    match request.i_v_counter_nonce.as_deref().map(Vec::as_slice) {
         Some(iv) if !iv.is_empty() => {
             ensure_no_caller_gcm_iv(cipher, Some(iv))?;
             let expected = cipher.nonce_size();
@@ -792,7 +803,7 @@ fn encrypt_multi_part(
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_deref()
-                .unwrap_or(EMPTY_SLICE);
+                .map_or(EMPTY_SLICE, Vec::as_slice);
             let module_iv = cipher.iv_generated_by_module();
             let mut stream = if module_iv {
                 cipher.gcm_stream_cipher_generated_iv(key_bytes, aad)?
@@ -812,8 +823,11 @@ fn encrypt_multi_part(
             state.fixed.check(
                 EncryptOp::OP_NAME,
                 request.cryptographic_parameters.as_ref(),
-                request.i_v_counter_nonce.as_deref(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
             )?;
             let mut output = state.cipher.update(
                 request
@@ -840,10 +854,10 @@ fn encrypt_multi_part(
     )?;
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: (!data.is_empty()).then_some(data),
-        i_v_counter_nonce: nonce,
+        data: (!data.is_empty()).then(|| data.into()),
+        i_v_counter_nonce: nonce.map(Into::into),
         correlation_value,
-        authenticated_encryption_tag: tag,
+        authenticated_encryption_tag: tag.map(Into::into),
     })
 }
 
@@ -1054,7 +1068,7 @@ fn kem_encrypt_response(
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(pack_kem_encapsulation(shared_secret, encapsulation)?.to_vec()),
+        data: Some(pack_kem_encapsulation(shared_secret, encapsulation)?.into()),
         i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,
@@ -1101,7 +1115,7 @@ fn encrypt_with_pkey(
     };
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_owned()),
-        data: Some(ciphertext),
+        data: Some(ciphertext.into()),
         i_v_counter_nonce: None,
         correlation_value: request.correlation_value.clone(),
         authenticated_encryption_tag: None,

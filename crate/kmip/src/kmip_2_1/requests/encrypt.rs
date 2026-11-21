@@ -1,5 +1,3 @@
-use zeroize::Zeroizing;
-
 use crate::{
     DataToEncrypt, KmipError,
     kmip_2_1::{
@@ -28,7 +26,7 @@ pub fn encrypt_request(
     let data_to_encrypt = if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,
-            plaintext,
+            plaintext: plaintext.into(),
         }
         .to_bytes()?
     } else {
@@ -40,11 +38,12 @@ pub fn encrypt_request(
             key_unique_identifier.to_owned(),
         )),
         cryptographic_parameters,
-        data: Some(Zeroizing::new(data_to_encrypt)),
-        i_v_counter_nonce: nonce,
+        data: Some(data_to_encrypt.into()),
+        i_v_counter_nonce: nonce.map(Into::into),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data,
+        authenticated_encryption_additional_data: authenticated_encryption_additional_data
+            .map(Into::into),
     })
 }

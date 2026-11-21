@@ -127,7 +127,7 @@ pub(crate) async fn pkcs11(kms: &KMS, request: PKCS11, _user: &UserId) -> KResul
                     pkcs11_output_parameters: if output.is_empty() {
                         None
                     } else {
-                        Some(output)
+                        Some(output.into())
                     },
                     pkcs11_return_code: Some(PKCS11ReturnCode::OK),
                     correlation_value: Some(correl),

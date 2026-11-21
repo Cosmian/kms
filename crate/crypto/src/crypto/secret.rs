@@ -8,8 +8,22 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// Holds secret information of `LENGTH` bytes.
 ///
 /// This secret is stored on the heap and is guaranteed to be zeroized on drop.
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, Clone)]
 pub struct Secret<const LENGTH: usize>(Pin<Box<[u8]>>);
+
+impl<const LENGTH: usize> PartialEq for Secret<LENGTH> {
+    fn eq(&self, other: &Self) -> bool {
+        // both sides hold exactly `LENGTH` bytes
+        self.0.len() == other.0.len() && openssl::memcmp::eq(&self.0, &other.0)
+    }
+}
+
+/// Never prints the secret bytes: only the length.
+impl<const LENGTH: usize> std::fmt::Debug for Secret<LENGTH> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Secret(<{LENGTH} bytes>)")
+    }
+}
 
 impl<const LENGTH: usize> Secret<LENGTH> {
     /// Creates a new secret and returns it.
@@ -77,3 +91,18 @@ impl<const LENGTH: usize> Drop for Secret<LENGTH> {
 }
 
 impl<const LENGTH: usize> ZeroizeOnDrop for Secret<LENGTH> {}
+
+#[cfg(test)]
+mod tests {
+    use super::Secret;
+
+    #[test]
+    fn debug_never_prints_secret_bytes() {
+        let secret = Secret::<16>::from_unprotected_bytes(&mut [0xAB; 16]);
+        for rendered in [format!("{secret:?}"), format!("{secret:#?}")] {
+            assert_eq!(rendered, "Secret(<16 bytes>)");
+            assert!(!rendered.contains("171"));
+            assert!(!rendered.to_lowercase().contains("ab"));
+        }
+    }
+}

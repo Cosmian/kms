@@ -66,7 +66,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use crate::{
     middlewares::UserId,
@@ -271,7 +270,7 @@ fn register_volume_key(client: &SocketClient) -> String {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::Opaque,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(KEY_MATERIAL.to_vec())),
+                key_material: KeyMaterial::ByteString(KEY_MATERIAL.to_vec().into()),
                 attribute: None,
             }),
             key_compression_type: None,

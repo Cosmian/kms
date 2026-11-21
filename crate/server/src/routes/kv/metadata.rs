@@ -36,6 +36,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
+        SensitiveBytes,
         kmip_0::kmip_types::{SecretDataType, State},
         kmip_2_1::{
             KmipOperation,
@@ -54,7 +55,6 @@ use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use super::error::{KvApiError, KvResult};
 use crate::{
@@ -504,7 +504,7 @@ pub(crate) fn destroy_version_operations(
     key_block.key_format_type = KeyFormatType::Raw;
     key_block.key_wrapping_data = None;
     key_block.key_value = Some(KeyValue::Structure {
-        key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+        key_material: KeyMaterial::ByteString(SensitiveBytes::default()),
         attributes: Some(Box::new(attributes.clone())),
     });
     Ok([

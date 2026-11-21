@@ -1,5 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
+        LenDisplay,
         kmip_0::kmip_types::State,
         kmip_2_1::{
             extra::VENDOR_ATTR_X509_EXTENSION,
@@ -104,13 +105,10 @@ pub(crate) async fn certify_for_owner(
 ) -> KResult<CertifyResponse> {
     // The CSR is not logged: a SCEP PKCSReq carries the enrollment challengePassword in it.
     trace!(
-        "Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes",
+        "Certify: unique_identifier={:?}, request type={:?}, request value: {}",
         request.unique_identifier,
         request.certificate_request_type,
-        request
-            .certificate_request_value
-            .as_ref()
-            .map_or(0, Vec::len)
+        request.certificate_request_value.len_display()
     );
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 

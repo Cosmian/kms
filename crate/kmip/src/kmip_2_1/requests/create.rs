@@ -1,5 +1,4 @@
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use crate::{
     KmipError,
@@ -138,7 +137,7 @@ pub fn create_symmetric_key_kmip_object(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::from(key_bytes.to_vec()),
+                    key: key_bytes.into(),
                 },
                 attributes: Some(Box::new(attributes)),
             }),
@@ -220,7 +219,7 @@ pub fn create_secret_data_kmip_object(
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(secret_bytes.to_vec())),
+                key_material: KeyMaterial::ByteString(secret_bytes.into()),
                 attributes: Some(Box::new(attributes)),
             }),
             key_wrapping_data: None,

@@ -22,11 +22,12 @@ pub fn decrypt_request(
         )),
         cryptographic_parameters,
         data: Some(ciphertext),
-        i_v_counter_nonce: nonce,
+        i_v_counter_nonce: nonce.map(Into::into),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data,
-        authenticated_encryption_tag: authenticated_tag,
+        authenticated_encryption_additional_data: authenticated_encryption_additional_data
+            .map(Into::into),
+        authenticated_encryption_tag: authenticated_tag.map(Into::into),
     }
 }

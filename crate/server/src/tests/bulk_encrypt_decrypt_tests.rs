@@ -19,8 +19,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 #[cfg(feature = "non-fips")]
 use uuid::Uuid;
-#[cfg(feature = "non-fips")]
-use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::{error::KmsError, result::KResult, tests::test_utils};
@@ -118,7 +116,7 @@ async fn single_encrypt_decrypt_cbc_mode() -> KResult<()> {
     // Bulk decrypt the messages
     let response: DecryptResponse = test_utils::post_2_1(
         &app,
-        decrypt_request(key_id.clone(), BlockCipherMode::CBC, ciphertexts.clone()),
+        decrypt_request(key_id.clone(), BlockCipherMode::CBC, ciphertexts.to_vec()),
     )
     .await?;
     let plaintexts = response
@@ -178,8 +176,10 @@ fn encrypt_request(
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..CryptographicParameters::default()
         }),
-        data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC).then(|| vec![0; 16]),
+        data: Some(data.into()),
+        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC)
+            .then(|| vec![0; 16])
+            .map(Into::into),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -201,7 +201,9 @@ fn decrypt_request(
             ..CryptographicParameters::default()
         }),
         data: Some(data),
-        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC).then(|| vec![0; 16]),
+        i_v_counter_nonce: (block_cipher_mode == BlockCipherMode::CBC)
+            .then(|| vec![0; 16])
+            .map(Into::into),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,

@@ -161,7 +161,7 @@ pub enum CredentialType {
 /// (e.g., user id/password pairs, Kerberos tokens, etc.).
 /// Only `UsernameAndPassword`, `Device`, and `Attestation` are supported in KMIP 1.x
 /// (this library does not enforce this)
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum CredentialValue {
     UsernameAndPassword {
         username: String,
@@ -196,6 +196,77 @@ pub enum CredentialValue {
     Ticket {
         ticket: Ticket,
     },
+}
+
+/// `Debug` redacts every secret (passwords, one-time and hashed passwords, tickets).
+impl fmt::Debug for CredentialValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const R: &str = "<redacted>";
+        match self {
+            Self::UsernameAndPassword { username, password } => f
+                .debug_struct("UsernameAndPassword")
+                .field("username", username)
+                .field("password", &password.as_ref().map(|_| R))
+                .finish(),
+            Self::Device {
+                device_serial_number,
+                password,
+                device_identifier,
+                network_identifier,
+                machine_identifier,
+                media_identifier,
+            } => f
+                .debug_struct("Device")
+                .field("device_serial_number", device_serial_number)
+                .field("password", &password.as_ref().map(|_| R))
+                .field("device_identifier", device_identifier)
+                .field("network_identifier", network_identifier)
+                .field("machine_identifier", machine_identifier)
+                .field("media_identifier", media_identifier)
+                .finish(),
+            Self::Attestation {
+                nonce,
+                attestation_type,
+                attestation_measurement,
+                attestation_assertion,
+            } => f
+                .debug_struct("Attestation")
+                .field("nonce", nonce)
+                .field("attestation_type", attestation_type)
+                .field(
+                    "attestation_measurement",
+                    &attestation_measurement.as_ref().map(|_| R),
+                )
+                .field(
+                    "attestation_assertion",
+                    &attestation_assertion.as_ref().map(|_| R),
+                )
+                .finish(),
+            Self::OneTimePassword {
+                username,
+                password,
+                one_time_password: _,
+            } => f
+                .debug_struct("OneTimePassword")
+                .field("username", username)
+                .field("password", &password.as_ref().map(|_| R))
+                .field("one_time_password", &R)
+                .finish(),
+            Self::HashedPassword {
+                username,
+                timestamp,
+                hashing_algorithm,
+                hashed_password: _,
+            } => f
+                .debug_struct("HashedPassword")
+                .field("username", username)
+                .field("timestamp", timestamp)
+                .field("hashing_algorithm", hashing_algorithm)
+                .field("hashed_password", &R)
+                .finish(),
+            Self::Ticket { ticket } => f.debug_struct("Ticket").field("ticket", ticket).finish(),
+        }
+    }
 }
 
 impl CredentialValue {

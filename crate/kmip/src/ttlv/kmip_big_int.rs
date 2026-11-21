@@ -32,8 +32,15 @@ use super::error::TtlvError;
 /// # Conversions
 /// This type provides `From` implementations for conversion between `KmipBigInt` and
 /// `num_bigint_dig::BigInt` in both directions.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct KmipBigInt(num_bigint_dig::BigInt);
+
+/// Never prints the value (it may be a private key component): only its bit length.
+impl std::fmt::Debug for KmipBigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KmipBigInt(<{} bits>)", self.0.bits())
+    }
+}
 
 impl From<num_bigint_dig::BigInt> for KmipBigInt {
     fn from(big_int: num_bigint_dig::BigInt) -> Self {

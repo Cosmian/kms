@@ -107,7 +107,7 @@ pub fn build_private_key_from_der_bytes(
             key_format_type,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(bytes),
+                key_material: KeyMaterial::ByteString(bytes.into()),
                 attributes: Some(Box::new(Attributes::default())),
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required
@@ -132,7 +132,7 @@ fn build_public_key_from_der_bytes(
             key_format_type,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(bytes),
+                key_material: KeyMaterial::ByteString(bytes.into()),
                 attributes: Some(Box::new(Attributes::default())),
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required
@@ -149,14 +149,14 @@ fn build_public_key_from_der_bytes(
 /// Wrap raw `OpenPGP` key bytes (armored or binary, secret or public) into a `PGPKey`
 /// managed object. The server normalizes and classifies the material during Import,
 /// so the client only has to produce a well-formed envelope.
-const fn build_pgp_key_from_bytes(bytes: Zeroizing<Vec<u8>>) -> Object {
+fn build_pgp_key_from_bytes(bytes: Zeroizing<Vec<u8>>) -> Object {
     Object::PGPKey(PGPKey {
         pgp_key_version: 4,
         key_block: KeyBlock {
             key_format_type: KeyFormatType::OpenPgpSecretKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(bytes),
+                key_material: KeyMaterial::ByteString(bytes.into()),
                 attributes: None,
             }),
             cryptographic_algorithm: None,
@@ -176,7 +176,7 @@ fn build_symmetric_key_from_bytes(
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::TransparentSymmetricKey { key: bytes },
+                key_material: KeyMaterial::TransparentSymmetricKey { key: bytes.into() },
                 attributes: Some(Box::new(Attributes::default())),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -335,7 +335,7 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
         key_value: Some(KeyValue::Structure {
             // No need to specify zeroizing as parameter type for this function
             // seems to only deal with public components.
-            key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
+            key_material: KeyMaterial::ByteString(bytes.into()),
             attributes: Some(Box::new(Attributes::default())),
         }),
         // According to the KMIP spec, the cryptographic algorithm is not required

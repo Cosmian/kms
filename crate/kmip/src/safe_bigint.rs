@@ -7,7 +7,7 @@ use zeroize::Zeroize;
 /// Holds a big integer secret information. Wraps around `BigInt` type which is
 /// essentially a pointer on the heap. Guarantees to be zeroized on drop with
 /// feature `zeroize` enabled from `num_bigint_dig` crate.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Eq)]
 pub struct SafeBigInt(BigInt);
 
 impl SafeBigInt {
@@ -15,6 +15,23 @@ impl SafeBigInt {
     #[must_use]
     pub fn from_bytes_be(bytes: &[u8]) -> Self {
         Self(BigInt::from_bytes_be(Sign::Plus, bytes))
+    }
+}
+
+impl PartialEq for SafeBigInt {
+    fn eq(&self, other: &Self) -> bool {
+        let (sa, mut a) = self.0.to_bytes_be();
+        let (sb, mut b) = other.0.to_bytes_be();
+        let eq = sa == sb && crate::sensitive::ct_eq(&a, &b);
+        a.zeroize();
+        b.zeroize();
+        eq
+    }
+}
+
+impl std::fmt::Debug for SafeBigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<{} bits>", self.0.bits())
     }
 }
 

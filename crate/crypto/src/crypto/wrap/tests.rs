@@ -138,7 +138,7 @@ fn test_no_encoding_preserves_raw_asymmetric_key_bytes() -> CryptoResult<()> {
     let key_block = KeyBlock {
         key_format_type: KeyFormatType::Raw,
         key_value: Some(KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(bytes.clone()),
+            key_material: KeyMaterial::ByteString(bytes.clone().into()),
             attributes: None,
         }),
         key_compression_type: None,

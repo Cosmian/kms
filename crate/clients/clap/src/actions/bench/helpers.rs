@@ -116,7 +116,7 @@ pub(super) fn run_warmup(rt: &Runtime, client: &KmsClient, warmup_secs: u64) -> 
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(data.clone()),
+            data: Some(data.clone().into()),
             ..Default::default()
         };
         drop(rt.block_on(client.encrypt(enc_req)));
