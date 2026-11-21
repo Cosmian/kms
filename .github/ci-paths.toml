@@ -100,8 +100,7 @@ windows = ["windows-*"]
 
 # ── main.yml ────────────────────────────────────────────────────────────────────────────────
 [units.cargo-clippy]
-sets = ["rust"]
-files = '^clippy\.toml$ | ^\.github/workflows/main\.yml$'
+files = '\.rs$ | (^|/)Cargo\.toml$ | ^clippy\.toml$'
 
 [units.cargo-machete]
 sets = ["rust"]
