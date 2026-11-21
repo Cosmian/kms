@@ -51,34 +51,39 @@ KMIP_INTEROP = {
 }
 
 
-def leaves(leaf: str, *variants: str) -> list[dict[str, str]]:
-    return [{'leaf': leaf, 'variant': v} for v in variants]
+def leg(suite: str, *variants: str, bench: str = '') -> list[dict[str, str]]:
+    return [{'suite': suite, 'variant': v, 'bench': bench} for v in variants]
 
 
 BOTH = ('fips', 'non-fips')
-# Every leg, in ci-paths.toml unit order (what `ci_changes.py --all` emits).
-FULL_DB = [
-    *leaves('sqlite', *BOTH),
-    *leaves('psql', *BOTH),
-    *leaves('mysql', *BOTH),
-    *leaves('mariadb', *BOTH),
-    *leaves('percona', *BOTH),
-    *leaves('redis', 'non-fips'),
-    *leaves('openbao', *BOTH),
-]
-FULL_INTEROP = [
-    *leaves('ase', 'non-fips'),
-    *leaves('db2', 'non-fips'),
-    *leaves('edb-tde', 'non-fips'),
-    *leaves('iris', 'non-fips'),
-    *leaves('jose', 'non-fips'),
-    *leaves('kmip-go', *BOTH),
-    *leaves('kmipkit', 'non-fips'),
-    *leaves('openbao', *BOTH),
-    *leaves('openbao-auth-verifier', *BOTH),
-    *leaves('openbao-kmip', *BOTH),
-    *leaves('pykmip', 'non-fips'),
-    *leaves('ssh-secrets', *BOTH),
+SOFT_HSMS = 'softhsm2 utimaco crypt2pay-simulator'
+# Every leg, in ci-paths.toml unit order (what `ci_changes.py --all` emits); `cloud` and `ui` have none.
+FULL_SUITES = [
+    *leg('db:sqlite', *BOTH),
+    *leg('db:psql', *BOTH),
+    *leg('db:mysql', *BOTH),
+    *leg('db:mariadb', *BOTH),
+    *leg('db:percona', *BOTH),
+    *leg('db:redis', 'non-fips'),
+    *leg('db:openbao', *BOTH),
+    *leg('hsm', 'fips', bench=SOFT_HSMS),
+    *leg('hsm', 'non-fips', bench=SOFT_HSMS + ' kryoptic'),
+    *leg('pkcs11', 'non-fips'),
+    *leg('obs', *BOTH),
+    *leg('pki', *BOTH),
+    *leg('spire', 'non-fips'),
+    *leg('interop:ase', 'non-fips'),
+    *leg('interop:db2', 'non-fips'),
+    *leg('interop:edb-tde', 'non-fips'),
+    *leg('interop:iris', 'non-fips'),
+    *leg('interop:jose', 'non-fips'),
+    *leg('interop:kmip-go', *BOTH),
+    *leg('interop:kmipkit', 'non-fips'),
+    *leg('interop:openbao', *BOTH),
+    *leg('interop:openbao-auth-verifier', *BOTH),
+    *leg('interop:openbao-kmip', *BOTH),
+    *leg('interop:pykmip', 'non-fips'),
+    *leg('interop:ssh-secrets', *BOTH),
 ]
 
 
@@ -278,8 +283,6 @@ class CiWorkflows(unittest.TestCase):
                 '.github/workflows/main.yml',
                 '.github/workflows/test_all.yml',
                 '.github/workflows/test-group.yml',
-                '.github/workflows/test-db.yml',
-                '.github/workflows/test-interop.yml',
                 '.github/workflows/test_windows.yml',
                 '.mise/scripts/dev/ci_changes.py',
             ),
@@ -310,7 +313,6 @@ class CiWorkflows(unittest.TestCase):
         for path in (
             '.github/workflows/main.yml',
             '.github/workflows/test_all.yml',
-            '.github/workflows/test-interop.yml',
             '.mise/tasks/test/db/psql',
             '.mise/tasks/test/interop/pykmip',
             'ui/src/App.tsx',
@@ -337,11 +339,8 @@ class CiWorkflows(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn('xks-remote', run(path))
 
-    def test_db_and_group_wrappers_run_nothing(self) -> None:
-        self.assertEqual(
-            run('.github/workflows/test-db.yml', '.github/workflows/test-group.yml'),
-            set(),
-        )
+    def test_group_wrapper_runs_nothing(self) -> None:
+        self.assertEqual(run('.github/workflows/test-group.yml'), set())
 
 
 class Matrices(unittest.TestCase):
@@ -353,9 +352,8 @@ class Matrices(unittest.TestCase):
 
     def test_everything_runs_every_leg_in_toml_order(self) -> None:
         for out in (self.out(), ci_changes.outputs(CFG, [])):
-            self.assertEqual(json.loads(out['db-matrix']), FULL_DB)
-            self.assertEqual(json.loads(out['interop-matrix']), FULL_INTEROP)
-            self.assertEqual((len(FULL_DB), len(FULL_INTEROP)), (13, 17))
+            self.assertEqual(json.loads(out['suites-matrix']), FULL_SUITES)
+            self.assertEqual(len(FULL_SUITES), 38)
             self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
 
     def test_workflow_only_pr(self) -> None:
@@ -364,37 +362,41 @@ class Matrices(unittest.TestCase):
             '.github/workflows/main.yml',
             '.github/workflows/test_all.yml',
             '.github/workflows/test-group.yml',
-            '.github/workflows/test-db.yml',
-            '.github/workflows/test-interop.yml',
             '.github/workflows/test_windows.yml',
             '.mise/scripts/dev/ci_changes.py',
         )
-        self.assertEqual(json.loads(out['db-matrix']), [])
         self.assertEqual(
-            json.loads(out['interop-matrix']), leaves('pykmip', 'non-fips')
+            json.loads(out['suites-matrix']), leg('interop:pykmip', 'non-fips')
         )
         self.assertEqual((out['run-test'], out['run-windows']), ('true', 'false'))
 
     def test_pg_store_change_keeps_only_the_legs_it_triggers(self) -> None:
         out = self.out('crate/server_database/src/stores/sql/pgsql.rs')
         self.assertEqual(
-            json.loads(out['db-matrix']),
+            json.loads(out['suites-matrix']),
             [
-                *leaves('sqlite', *BOTH),
-                *leaves('psql', *BOTH),
-                *leaves('openbao', *BOTH),
+                *leg('db:sqlite', *BOTH),
+                *leg('db:psql', *BOTH),
+                *leg('db:openbao', *BOTH),
+                *leg('interop:ssh-secrets', *BOTH),
             ],
-        )
-        self.assertEqual(
-            json.loads(out['interop-matrix']), leaves('ssh-secrets', *BOTH)
         )
         self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
 
     def test_ui_change_has_no_legs_but_still_runs_the_callers(self) -> None:
         out = self.out('ui/src/App.tsx')
-        self.assertEqual(out['db-matrix'], '[]')
-        self.assertEqual(out['interop-matrix'], '[]')
+        self.assertEqual(out['suites-matrix'], '[]')
         self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+
+    def test_only_hsm_running_keeps_its_bench_models_per_variant(self) -> None:
+        out = ci_changes.outputs(CFG, sorted(EVERYTHING - {'hsm'}))
+        self.assertEqual(
+            json.loads(out['suites-matrix']),
+            [
+                *leg('hsm', 'fips', bench=SOFT_HSMS),
+                *leg('hsm', 'non-fips', bench=SOFT_HSMS + ' kryoptic'),
+            ],
+        )
 
     def test_change_that_triggers_no_unit_skips_both_callers(self) -> None:
         out = self.out('clippy.toml')
@@ -418,7 +420,9 @@ class Wiring(unittest.TestCase):
         )
         v = set(CFG.variants)
         self.assertEqual(m | t | w | v, EVERYTHING)
-        self.assertEqual(len(m) + len(t) + len(w) + len(v), len(EVERYTHING))
+        self.assertEqual(
+            len(m) + len(w) + len(t | v), len(EVERYTHING)
+        )  # `pki` is in t and v
         self.assertEqual(set(CFG.callers['test']), t | v)
         self.assertEqual(set(CFG.callers['windows']), w)
 
@@ -524,7 +528,7 @@ class ConfigIntegrity(unittest.TestCase):
             with self.subTest(unit=unit):
                 ran = run(path)
                 self.assertIn(unit, ran)
-                self.assertNotEqual(ran, EVERYTHING, f'{path} hits full or an orphan')
+                self.assertNotEqual(ran, EVERYTHING, f"{path} hits full or an orphan")
 
     def test_classify_reports_skipped_units_sorted_and_disjoint_from_run(self) -> None:
         skipped, _ = ci_changes.classify(CFG, ['ui/src/App.tsx'])
@@ -639,11 +643,11 @@ class LoadConfig(unittest.TestCase):
         self.assertEqual(len(cfg.units['b']), 1)  # files only
         self.assertEqual(len(cfg.units['c']), 2)  # set + files
 
-    def test_variants_are_required_on_matrix_units_and_only_there(self) -> None:
-        self.rejects(
-            "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\nvariants = ['fips']\n"
-        )
-        self.rejects("full = 'x'\nignore = 'y'\n[units.'db:x']\nfiles = 'x'\n")
+    def test_bench_must_map_variants_of_the_unit(self) -> None:
+        head = "full = 'x'\nignore = 'y'\n[units.h]\nfiles = 'x'\n"
+        self.rejects(head + "bench = {fips = 'a'}\n")  # no variants
+        self.rejects(head + "variants = ['fips']\nbench = {non-fips = 'a'}\n")
+        self.rejects(head + "variants = ['fips']\nbench = {fips = 1}\n")
 
     def test_invalid_variants_are_rejected(self) -> None:
         for bad in ("['fips', 'fips']", '[]', "['x']"):
@@ -785,8 +789,8 @@ class Main(unittest.TestCase):
         lines = text.splitlines()
         self.assertEqual(lines[0], 'Changed files (1):')
         self.assertEqual(lines[1], '  ui/src/App.tsx')
-        self.assertEqual(lines[2], f'2 of {len(EVERYTHING)} units triggered')
-        marks = {line[5:]: line[:4] for line in lines[3:-5]}
+        self.assertEqual(lines[2], f"2 of {len(EVERYTHING)} units triggered")
+        marks = {line[5:]: line[:4] for line in lines[3:-4]}
         self.assertEqual(set(marks), EVERYTHING)
         self.assertEqual(
             {u for u, m in marks.items() if m == 'RUN '}, {'ui', 'windows-ui'}
@@ -798,10 +802,10 @@ class Main(unittest.TestCase):
     ) -> None:
         text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
         written = self.output.read_text().splitlines()
-        self.assertEqual(written, text.splitlines()[-5:])
+        self.assertEqual(written, text.splitlines()[-4:])
         self.assertEqual(
             [line.split('=', 1)[0] for line in written],
-            ['skip', 'db-matrix', 'interop-matrix', 'run-test', 'run-windows'],
+            ['skip', 'suites-matrix', 'run-test', 'run-windows'],
         )
         self.assertNotIn(' ', written[0])
         skipped = json.loads(written[0].removeprefix('skip='))
@@ -816,14 +820,13 @@ class Main(unittest.TestCase):
 
     def test_without_github_output_only_prints(self) -> None:
         text, _ = self.run_main(['ui/src/App.tsx'], output=None)
-        self.assertTrue(text.splitlines()[-5].startswith('skip=['))
+        self.assertTrue(text.splitlines()[-4].startswith('skip=['))
         self.assertFalse(self.output.exists())
 
     def assert_runs_everything(self, lines: list[str]) -> None:
         got = dict(line.split('=', 1) for line in lines)
         self.assertEqual(got['skip'], '[]')
-        self.assertEqual(json.loads(got['db-matrix']), FULL_DB)
-        self.assertEqual(json.loads(got['interop-matrix']), FULL_INTEROP)
+        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
         self.assertEqual((got['run-test'], got['run-windows']), ('true', 'true'))
 
     def test_empty_diff_reports_run_everything(self) -> None:
@@ -863,7 +866,7 @@ class Main(unittest.TestCase):
         text, _ = self.run_main(['README.md'], output=self.output)
         got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
         self.assertEqual(json.loads(got['skip']), sorted(EVERYTHING))
-        self.assertEqual((got['db-matrix'], got['interop-matrix']), ('[]', '[]'))
+        self.assertEqual(got['suites-matrix'], '[]')
         self.assertEqual((got['run-test'], got['run-windows']), ('false', 'false'))
         self.assertNotIn('RUN ', text)
 

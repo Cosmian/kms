@@ -6,9 +6,9 @@
   ci_changes.py --all                       not a pull request: every unit runs, no git diff
   test_ci_changes.py                        unit tests of this module on the real config (`mise run dev:ci-changes --self-test`)
 
-The lines `skip=[...]`, `db-matrix=[...]`, `interop-matrix=[...]`, `run-test=<bool>` and `run-windows=<bool>` are
-appended to $GITHUB_OUTPUT when set (and always printed): workflow jobs gate themselves with
-`!contains(fromJSON(skip), '<unit>')`, test-db.yml / test-interop.yml take their legs from the matrices and main.yml
+The lines `skip=[...]`, `suites-matrix=[...]`, `run-test=<bool>` and `run-windows=<bool>` are appended to
+$GITHUB_OUTPUT when set (and always printed): workflow jobs gate themselves with
+`!contains(fromJSON(skip), '<unit>')`, the `test-suites` job of test_all.yml takes its legs from the matrix and main.yml
 skips a whole reusable-workflow call when its `run-<caller>` is false. Fail-safe: an empty diff, a file matching
 `full`, or a file matching no unit and not `ignore`d skips nothing.
 """
@@ -31,8 +31,6 @@ REPO = Path(
 )
 CONFIG = REPO / '.github' / 'ci-paths.toml'
 
-# Units named `<group>:<leaf>` of these groups carry the `variants` of their test-db.yml / test-interop.yml matrix legs.
-MATRIX_GROUPS = ('db', 'interop')
 VARIANTS = ('fips', 'non-fips')
 
 
@@ -41,22 +39,27 @@ class Config:
     full: re.Pattern[str]
     ignore: re.Pattern[str]
     units: dict[str, list[re.Pattern[str]]]
-    variants: dict[str, list[str]]  # unit -> matrix variants, in unit order
+    variants: dict[
+        str, list[str]
+    ]  # suite unit -> variants of its matrix legs, in unit order
+    bench: dict[
+        str, dict[str, str]
+    ]  # suite unit -> variant -> HSM models benchmarked after the tests
     callers: dict[str, list[str]]  # main.yml caller job -> its unit keys, in unit order
 
 
 def fail(message: str) -> None:
-    print(f'ERROR: {message}', file=sys.stderr)
+    print(f"ERROR: {message}", file=sys.stderr)
     sys.exit(1)
 
 
 def compile_pattern(key: str, value: object) -> re.Pattern[str]:
     if not isinstance(value, str):
-        fail(f'{key}: expected a regex string')
+        fail(f"{key}: expected a regex string")
     try:
         return re.compile(str(value), re.VERBOSE)
     except re.error as exc:
-        fail(f'{key}: invalid regex: {exc}')
+        fail(f"{key}: invalid regex: {exc}")
         raise  # unreachable, fail() exits
 
 
@@ -65,25 +68,21 @@ def load_config(path: Path) -> Config:
         raw = tomllib.load(handle)
     for key in ('full', 'ignore', 'units'):
         if key not in raw:
-            fail(f'{path.name}: missing `{key}`')
+            fail(f"{path.name}: missing `{key}`")
     sets = {
-        name: compile_pattern(f'sets.{name}', value)
+        name: compile_pattern(f"sets.{name}", value)
         for name, value in raw.get('sets', {}).items()
     }
     units: dict[str, list[re.Pattern[str]]] = {}
     variants: dict[str, list[str]] = {}
+    bench: dict[str, dict[str, str]] = {}
     for unit, spec in raw['units'].items():
-        unknown = set(spec) - {'sets', 'files', 'variants'}
+        unknown = set(spec) - {'sets', 'files', 'variants', 'bench'}
         if unknown:
-            fail(f'units.{unit}: unknown key(s) {sorted(unknown)}')
+            fail(f"units.{unit}: unknown key(s) {sorted(unknown)}")
         if not {'sets', 'files'} & set(spec):
-            fail(f'units.{unit}: needs `sets` or `files`')
-        in_matrix = unit.split(':', 1)[0] in MATRIX_GROUPS if ':' in unit else False
-        if in_matrix != ('variants' in spec):
-            fail(
-                f'units.{unit}: `variants` is required on {"/".join(MATRIX_GROUPS)} units and allowed only there'
-            )
-        if in_matrix:
+            fail(f"units.{unit}: needs `sets` or `files`")
+        if 'variants' in spec:
             legs = spec['variants']
             if (
                 not isinstance(legs, list)
@@ -92,24 +91,35 @@ def load_config(path: Path) -> Config:
                 or len(set(legs)) != len(legs)
             ):
                 fail(
-                    f'units.{unit}: `variants` must be a non-empty list of distinct values among {list(VARIANTS)}'
+                    f"units.{unit}: `variants` must be a non-empty list of distinct values among {list(VARIANTS)}"
                 )
             variants[unit] = list(legs)
+        models = spec.get('bench', {})
+        if (
+            not isinstance(models, dict)
+            or not all(isinstance(m, str) for m in models.values())
+            or set(models) - set(variants.get(unit, []))
+        ):
+            fail(
+                f"units.{unit}: `bench` must map variants of the unit to a string of HSM models"
+            )
+        if models:
+            bench[unit] = dict(models)
         patterns = []
         for name in spec.get('sets', []):
             if name not in sets:
-                fail(f'units.{unit}: `sets` names unknown set `{name}`')
+                fail(f"units.{unit}: `sets` names unknown set `{name}`")
             patterns.append(sets[name])
         if 'files' in spec:
-            patterns.append(compile_pattern(f'units.{unit}.files', spec['files']))
+            patterns.append(compile_pattern(f"units.{unit}.files", spec['files']))
         units[unit] = patterns
     callers: dict[str, list[str]] = {}
     for name, pats in raw.get('callers', {}).items():
         if not isinstance(pats, list) or not all(isinstance(p, str) for p in pats):
-            fail(f'callers.{name}: expected a list of unit patterns')
+            fail(f"callers.{name}: expected a list of unit patterns")
         for pat in pats:
             if not any(fnmatch.fnmatchcase(u, pat) for u in units):
-                fail(f'callers.{name}: `{pat}` matches no unit')
+                fail(f"callers.{name}: `{pat}` matches no unit")
         callers[name] = [
             u for u in units if any(fnmatch.fnmatchcase(u, p) for p in pats)
         ]
@@ -118,6 +128,7 @@ def load_config(path: Path) -> Config:
         ignore=compile_pattern('ignore', raw['ignore']),
         units=units,
         variants=variants,
+        bench=bench,
         callers=callers,
     )
 
@@ -138,7 +149,7 @@ def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
         return [], 'empty diff: run everything'
     for f in files:
         if cfg.full.search(f):
-            return [], f'{f} matches full: run everything'
+            return [], f"{f} matches full: run everything"
     triggered: set[str] = set()
     orphans = []
     for f in files:
@@ -147,27 +158,32 @@ def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
         if not hits and not cfg.ignore.search(f):
             orphans.append(f)
     if orphans:
-        return [], f'{orphans[0]} matches no unit and is not ignored: run everything'
+        return [], f"{orphans[0]} matches no unit and is not ignored: run everything"
     return (
         sorted(set(cfg.units) - triggered),
-        f'{len(triggered)} of {len(cfg.units)} units triggered',
+        f"{len(triggered)} of {len(cfg.units)} units triggered",
     )
 
 
 def outputs(cfg: Config, skipped: list[str]) -> dict[str, str]:
-    """$GITHUB_OUTPUT values: `skip`, one `<group>-matrix` per MATRIX_GROUPS group, one `run-<caller>` per caller."""
+    """$GITHUB_OUTPUT values: `skip`, `suites-matrix` (legs of the running suite units) and one `run-<caller>` per caller."""
     compact = {'separators': (',', ':')}
-    result = {'skip': json.dumps(skipped, **compact)}
-    for group in MATRIX_GROUPS:
-        legs = [
-            {'leaf': unit.split(':', 1)[1], 'variant': variant}
-            for unit, variants in cfg.variants.items()
-            if unit.startswith(f'{group}:') and unit not in skipped
-            for variant in variants
-        ]
-        result[f'{group}-matrix'] = json.dumps(legs, **compact)
+    legs = [
+        {
+            'suite': unit,
+            'variant': variant,
+            'bench': cfg.bench.get(unit, {}).get(variant, ''),
+        }
+        for unit, variants in cfg.variants.items()
+        if unit not in skipped
+        for variant in variants
+    ]
+    result = {
+        'skip': json.dumps(skipped, **compact),
+        'suites-matrix': json.dumps(legs, **compact),
+    }
     for caller, units in cfg.callers.items():
-        result[f'run-{caller}'] = str(any(u not in skipped for u in units)).lower()
+        result[f"run-{caller}"] = str(any(u not in skipped for u in units)).lower()
     return result
 
 
@@ -187,14 +203,14 @@ def main() -> None:
         files = changed_files(args.base, args.head)
         skipped, reason = classify(cfg, files)
 
-    print(f'Changed files ({len(files)}):')
+    print(f"Changed files ({len(files)}):")
     for f in files:
-        print(f'  {f}')
+        print(f"  {f}")
     print(reason)
     for unit in cfg.units:
         print(f'{"SKIP" if unit in skipped else "RUN "} {unit}')
 
-    lines = [f'{key}={value}' for key, value in outputs(cfg, skipped).items()]
+    lines = [f"{key}={value}" for key, value in outputs(cfg, skipped).items()]
     output = os.environ.get('GITHUB_OUTPUT')
     if output:
         with open(output, 'a', encoding='utf-8') as handle:
