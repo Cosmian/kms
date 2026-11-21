@@ -456,25 +456,46 @@ class FailSafe(unittest.TestCase):
     def test_empty_diff_runs_everything(self) -> None:
         self.assertEqual(run(), EVERYTHING)
 
-    def test_unknown_path_runs_everything(self) -> None:
-        self.assertEqual(run('brand/new.txt'), EVERYTHING)
+    def test_unknown_path_runs_everything_but_strict_units(self) -> None:
+        self.assertEqual(run('brand/new.txt'), EVERYTHING - CFG.strict)
 
-    def test_unknown_path_among_ignored_files_runs_everything(self) -> None:
-        self.assertEqual(run('README.md', 'brand/new.txt'), EVERYTHING)
+    def test_unknown_path_among_ignored_files_runs_everything_but_strict_units(
+        self,
+    ) -> None:
+        self.assertEqual(run('README.md', 'brand/new.txt'), EVERYTHING - CFG.strict)
+
+    def test_clippy_is_never_forced_by_full_or_unknown_paths(self) -> None:
+        self.assertEqual(CFG.strict, {'cargo-clippy'})
+        for path in (
+            'mise.toml',
+            'shell.nix',
+            '.mise/lib/common.sh',
+            '.github/actions/setup-nix/action.yml',
+            'brand/new.txt',
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn('cargo-clippy', run(path))
+        for path in ('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml'):
+            with self.subTest(path=path):
+                self.assertIn('cargo-clippy', run(path))
 
     def test_full_patterns_run_everything(self) -> None:
         for path in (
             'Cargo.lock',
             'Cargo.toml',
             'rust-toolchain.toml',
-            'mise.toml',
-            '.mise/lib/common.sh',
-            '.github/actions/install-mise/action.yml',
             'crate/crypto/build.rs',
-            'test_data',
         ):
             with self.subTest(path=path):
                 self.assertEqual(run(path), EVERYTHING)
+        for path in (
+            'mise.toml',
+            '.mise/lib/common.sh',
+            '.github/actions/install-mise/action.yml',
+            'test_data',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(run(path), EVERYTHING - CFG.strict)
 
     def test_one_full_file_overrides_ignored_ones(self) -> None:
         self.assertEqual(run('README.md', 'Cargo.lock'), EVERYTHING)
@@ -684,6 +705,11 @@ class LoadConfig(unittest.TestCase):
     def test_unit_with_only_variants_is_rejected(self) -> None:
         self.rejects("full = 'x'\nignore = 'y'\n[units.'db:x']\nvariants = ['fips']\n")
 
+    def test_invalid_strict_is_rejected(self) -> None:
+        head = "full = 'x'\nignore = 'y'\n[sets]\ns = 'z'\n[units.a]\n"
+        self.rejects(head + "sets = ['s']\nstrict = true\n")
+        self.rejects(head + "files = 'x'\nstrict = false\n")
+
     def test_bad_callers_are_rejected(self) -> None:
         head = "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\n[callers]\n"
         self.rejects(head + "t = ['nope*']\n")
@@ -869,7 +895,9 @@ class Main(unittest.TestCase):
     def test_orphan_reports_run_everything(self) -> None:
         text, _ = self.run_main(['brand/new.txt'], output=self.output)
         self.assertIn('brand/new.txt matches no unit and is not ignored', text)
-        self.assert_runs_everything(self.output.read_text().splitlines())
+        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(json.loads(got['skip']), sorted(CFG.strict))
+        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
 
     def test_all_flag_runs_everything_without_git(self) -> None:
         out = io.StringIO()

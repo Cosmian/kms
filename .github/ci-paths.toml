@@ -4,6 +4,7 @@
 #   applied with re.search to each repo-relative path the PR changes (renames list old and new path).
 # - `full`: one matching file runs every unit.
 # - A unit runs when a changed file matches one of its `sets` or its `files`.
+# - `strict = true` (needs `files`): the unit runs only when its own files match; `full` and unmatched files never force it.
 # - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
 # - Unit keys: test-group.yml `suite` ids (cloud, db:psql, interop:ase, ...) or the job keys tested in
 #   main.yml, test_all.yml and test_windows.yml. A job whose key is not listed here always runs.
@@ -100,7 +101,14 @@ windows = ["windows-*"]
 
 # ── main.yml ────────────────────────────────────────────────────────────────────────────────
 [units.cargo-clippy]
-files = '\.rs$ | (^|/)Cargo\.toml$ | ^clippy\.toml$'
+strict = true
+files = '''
+  \.rs$
+| (^|/)Cargo\.toml$
+| ^Cargo\.lock$
+| ^(rust-toolchain|clippy)\.toml$
+| ^\.cargo/config\.toml$
+'''
 
 [units.cargo-machete]
 sets = ["rust"]

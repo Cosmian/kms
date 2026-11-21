@@ -9,7 +9,7 @@
 The lines `skip=[...]`, `suites-matrix=[...]`, `run-test=<bool>` and `run-windows=<bool>` are appended to
 $GITHUB_OUTPUT when set (and always printed): workflow jobs gate themselves with
 `!contains(fromJSON(skip), '<unit>')`, the `test-suites` job of test_all.yml takes its legs from the matrix and main.yml
-skips a whole reusable-workflow call when its `run-<caller>` is false. Fail-safe: an empty diff, a file matching
+skips a whole reusable-workflow call when its `run-<caller>` is false. Fail-safe (strict units excepted): an empty diff, a file matching
 `full`, or a file matching no unit and not `ignore`d skips nothing.
 """
 
@@ -39,6 +39,7 @@ class Config:
     full: re.Pattern[str]
     ignore: re.Pattern[str]
     units: dict[str, list[re.Pattern[str]]]
+    strict: frozenset[str]  # units that `full` and unmatched files never force
     variants: dict[
         str, list[str]
     ]  # suite unit -> variants of its matrix legs, in unit order
@@ -76,12 +77,19 @@ def load_config(path: Path) -> Config:
     units: dict[str, list[re.Pattern[str]]] = {}
     variants: dict[str, list[str]] = {}
     bench: dict[str, dict[str, str]] = {}
+    strict: set[str] = set()
     for unit, spec in raw['units'].items():
-        unknown = set(spec) - {'sets', 'files', 'variants', 'bench'}
+        unknown = set(spec) - {'sets', 'files', 'variants', 'bench', 'strict'}
         if unknown:
             fail(f"units.{unit}: unknown key(s) {sorted(unknown)}")
         if not {'sets', 'files'} & set(spec):
             fail(f"units.{unit}: needs `sets` or `files`")
+        if 'strict' in spec:
+            if spec['strict'] is not True:
+                fail(f"units.{unit}: `strict` must be true")
+            if 'files' not in spec:
+                fail(f"units.{unit}: a `strict` unit needs `files`")
+            strict.add(unit)
         if 'variants' in spec:
             legs = spec['variants']
             if (
@@ -129,6 +137,7 @@ def load_config(path: Path) -> Config:
         units=units,
         variants=variants,
         bench=bench,
+        strict=frozenset(strict),
         callers=callers,
     )
 
@@ -147,9 +156,6 @@ def changed_files(base: str, head: str) -> list[str]:
 def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
     if not files:
         return [], 'empty diff: run everything'
-    for f in files:
-        if cfg.full.search(f):
-            return [], f"{f} matches full: run everything"
     triggered: set[str] = set()
     orphans = []
     for f in files:
@@ -157,8 +163,15 @@ def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
         triggered |= hits
         if not hits and not cfg.ignore.search(f):
             orphans.append(f)
+    # `full` and orphans run everything except the strict units, which run only on their own files
+    forced = next((f for f in files if cfg.full.search(f)), None)
+    if forced:
+        return sorted(cfg.strict - triggered), f"{forced} matches full: run everything"
     if orphans:
-        return [], f"{orphans[0]} matches no unit and is not ignored: run everything"
+        return (
+            sorted(cfg.strict - triggered),
+            f"{orphans[0]} matches no unit and is not ignored: run everything",
+        )
     return (
         sorted(set(cfg.units) - triggered),
         f"{len(triggered)} of {len(cfg.units)} units triggered",
