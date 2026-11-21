@@ -606,7 +606,7 @@ mod redaction_tests {
         let secret = b"SECRET-MARKER".to_vec();
         for attr in [
             Attribute::Value(secret.clone()),
-            Attribute::PrivateExponent(secret.clone()),
+            Attribute::PrivateExponent(secret),
         ] {
             let out = format!("{attr:?} {attr:#?}");
             assert!(!out.contains("SECRET") && !out.contains("83, 69"), "{out}");
