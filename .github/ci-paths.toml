@@ -41,6 +41,7 @@ ignore = '''
 | ^\.mise/scripts/(audit|bench|demo|dev|docs|git|package|pre-commit|release|sbom)/
 | ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
 | ^\.github/workflows/(test-db|test-group)\.yml$  # reusable wrappers: no suite leg stands for them, any run of another suite exercises them
+| ^\.github/workflows/(no-nix|test_windows)\.yml$  # Rust-only jobs: they run on crate changes, not on their own workflow files
 '''
 
 [sets]
@@ -99,7 +100,6 @@ files = '^\.github/workflows/main\.yml$'
 
 [units.no-nix]
 sets = ["rust"]
-files = '^\.github/workflows/(main|no-nix)\.yml$'
 
 [units.forward-proxy]
 sets = ["server_core"]
@@ -299,7 +299,7 @@ files = '''
 # ── test_windows.yml ────────────────────────────────────────────────────────────────────────
 [units.windows-cargo-test]
 sets = ["rust", "windows"]
-files = '^\.mise/scripts/windows/cargo_test\.ps1$ | ^\.github/workflows/test_windows\.yml$'
+files = '^\.mise/scripts/windows/cargo_test\.ps1$'
 
 [units.windows-ui]
 sets = ["windows"]

@@ -244,12 +244,10 @@ class CiWorkflows(unittest.TestCase):
             {
                 'cargo-clippy',
                 'cargo-machete',
-                'no-nix',
                 'forward-proxy',
                 'cargo-publish-dry-run',
                 'xks-remote',
                 'interop:pykmip',
-                'windows-cargo-test',
             },
         )
 
@@ -258,6 +256,39 @@ class CiWorkflows(unittest.TestCase):
 
     def test_forward_proxy_workflow(self) -> None:
         self.assertEqual(run('.github/workflows/forward_proxy.yml'), {'forward-proxy'})
+
+    def test_rust_only_workflows_run_nothing(self) -> None:
+        self.assertEqual(
+            run('.github/workflows/no-nix.yml', '.github/workflows/test_windows.yml'),
+            set(),
+        )
+
+    def test_no_nix_and_windows_cargo_test_need_rust_source(self) -> None:
+        for path in (
+            '.github/workflows/main.yml',
+            '.github/workflows/test_all.yml',
+            '.github/workflows/test-interop.yml',
+            '.mise/tasks/test/db/psql',
+            '.mise/tasks/test/interop/pykmip',
+            'ui/src/App.tsx',
+            'documentation/docs/index.md',
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(run(path) & {'no-nix', 'windows-cargo-test'})
+
+    def test_xks_remote_runs_on_xks_related_rust_source(self) -> None:
+        # The job builds and deploys cosmian_kms, so the route, its config and the server wiring all trigger it.
+        for path in (
+            'crate/server/src/routes/aws_xks/sigv4.rs',
+            'crate/server/src/routes/aws_xks/encrypt_decrypt/encrypt_.rs',
+            'crate/server/src/config/params/server_params.rs',
+            'crate/server/src/config/command_line/clap_config.rs',
+            'crate/server/src/start_kms_server.rs',
+            'crate/server/src/middlewares/auth_verifier/token.rs',
+            'crate/server/src/core/operations/key_ops/crypto_op.rs',
+        ):
+            with self.subTest(path=path):
+                self.assertIn('xks-remote', run(path))
 
     def test_db_and_group_wrappers_run_nothing(self) -> None:
         self.assertEqual(
@@ -317,7 +348,7 @@ class MixedChanges(unittest.TestCase):
 UNIT_SAMPLES = {
     'cargo-clippy': 'clippy.toml',
     'cargo-machete': 'crate/server/src/lib.rs',
-    'no-nix': '.github/workflows/no-nix.yml',
+    'no-nix': 'crate/server/src/lib.rs',
     'forward-proxy': '.github/workflows/forward_proxy.yml',
     'cargo-publish-dry-run': '.github/workflows/cargo-publish.yml',
     'xks-remote': 'crate/server/src/routes/aws_xks/mod.rs',
