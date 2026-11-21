@@ -20,11 +20,14 @@ use cosmian_kms_interfaces::{
     HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, InterfaceError, InterfaceResult,
     KeyMetadata, KeyType, SigningAlgorithm, SigningKeyMetadata,
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_attributes::{Attribute, Attributes},
-    kmip_objects::ObjectType,
-    kmip_operations::{Create, CreateKeyPair, Decrypt, Encrypt, ReKeyKeyPair, SetAttribute},
-    kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        kmip_attributes::{Attribute, Attributes},
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, CreateKeyPair, Decrypt, Encrypt, ReKeyKeyPair, SetAttribute},
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+    },
 };
 use time::{Date, Duration, OffsetDateTime};
 use zeroize::Zeroizing;
@@ -35,6 +38,7 @@ use crate::{
         KMS,
         operations::{dispatch_renewal_warnings, run_auto_rotation},
     },
+    error::KmsError,
     middlewares::UserId,
     result::KResult,
     tests::test_utils::{https_clap_config, test_kms_with_config},
@@ -682,8 +686,17 @@ async fn hsm_keyset_members_obey_algorithm_policy() -> KResult<()> {
     seed_two_generations(&hsm);
 
     // single-member path (Encrypt -> latest), then chain-walk path (Decrypt)
-    encrypt_with(&kms, "hsm::0::k").await.unwrap_err();
-    decrypt_with(&kms, "hsm::0::k", b"k|hi").await.unwrap_err();
+    let denied = |e: KmsError| {
+        assert!(
+            matches!(
+                &e,
+                KmsError::Kmip21Error(ErrorReason::Constraint_Violation, _)
+            ),
+            "expected a policy denial, got {e:?}"
+        );
+    };
+    denied(encrypt_with(&kms, "hsm::0::k").await.unwrap_err());
+    denied(decrypt_with(&kms, "hsm::0::k", b"k|hi").await.unwrap_err());
     Ok(())
 }
 
