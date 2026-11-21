@@ -23,18 +23,21 @@ pub struct TTLV {
 
 /// Leaf tags whose value is a secret even when it is a `TextString`. `LinkedObjectIdentifier` is
 /// there because the target of a `PKCS12PasswordLink` is the PKCS#12 password (or the id of the
-/// secret holding it) and a leaf does not know the type of the link it belongs to.
-const SECRET_LEAF_TAGS: [&str; 5] = [
+/// secret holding it) and a leaf does not know the type of the link it belongs to. Likewise
+/// `UniqueIdentifier`: a PKCS#12 export carries the PKCS#12 password in that of its
+/// `EncryptionKeyInformation`, and the deserializer traces children on their own.
+const SECRET_LEAF_TAGS: [&str; 6] = [
     "Password",
     "OneTimePassword",
     "HashedPassword",
     "TicketValue",
     "LinkedObjectIdentifier",
+    "UniqueIdentifier",
 ];
 
-/// `Debug` never prints the value of a secret leaf tag (credential passwords), on top of the
-/// `ByteString`/`BigInteger` redaction of [`TTLValue`]. A whole incoming request is traced with
-/// `{:?}` by the deserializer, so this keeps credentials out of trace logs.
+/// `Debug` never prints the value of a secret leaf tag, on top of the `ByteString`/`BigInteger`
+/// redaction of [`TTLValue`]. A whole incoming request is traced with `{:?}` by the deserializer,
+/// so this keeps credentials out of trace logs.
 impl std::fmt::Debug for TTLV {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut d = f.debug_struct("TTLV");

@@ -97,7 +97,7 @@ impl AsRef<[u8]> for SensitiveBytes {
 }
 
 /// Constant-time comparison (length is not secret); XOR-folds every byte.
-fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len()
         && std::hint::black_box(a.iter().zip(b).fold(0_u8, |acc, (x, y)| acc | (x ^ y))) == 0
 }

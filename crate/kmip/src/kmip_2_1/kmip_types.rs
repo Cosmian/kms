@@ -1692,7 +1692,10 @@ impl CryptographicParameters {
 
 /// Contains the Unique Identifier value of the encryption key and
 /// associated cryptographic parameters.
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
+///
+/// `Debug` and `Display` never print the identifier: for a PKCS#12 export, `ckms` sends the
+/// PKCS#12 password in this field.
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptionKeyInformation {
     pub unique_identifier: UniqueIdentifier,
@@ -1700,12 +1703,20 @@ pub struct EncryptionKeyInformation {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
+impl Debug for EncryptionKeyInformation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EncryptionKeyInformation")
+            .field("unique_identifier", &format_args!("<redacted>"))
+            .field("cryptographic_parameters", &self.cryptographic_parameters)
+            .finish()
+    }
+}
+
 impl Display for EncryptionKeyInformation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "EncryptionKeyInformation(id: {}, params: {})",
-            self.unique_identifier,
+            "EncryptionKeyInformation(id: <redacted>, params: {})",
             self.cryptographic_parameters
                 .as_ref()
                 .map_or_else(|| "None".to_owned(), ToString::to_string)

@@ -113,5 +113,5 @@ pub(super) fn decrypt(
     assert_eq!(response.unique_identifier, key_id.to_owned());
     assert!(response.data.is_some());
     let data = response.data.as_ref().unwrap();
-    data.clone()
+    data.to_vec()
 }

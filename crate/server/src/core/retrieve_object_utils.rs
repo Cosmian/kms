@@ -38,9 +38,10 @@ pub(crate) async fn retrieve_object_for_operation(
     kms: &KMS,
     user: &UserId,
 ) -> KResult<Arc<ObjectWithMetadata>> {
+    // The handle can be a literal PKCS#12 password (see `resolve_pkcs12_password`): log its size only.
     trace!(
-        "object_handle: {object_handle}, user: {user}, \
-         operation_type: {operation_type:?}",
+        "object_handle: <{} chars>, user: {user}, operation_type: {operation_type:?}",
+        object_handle.as_str().len()
     );
 
     let mut candidates = kms

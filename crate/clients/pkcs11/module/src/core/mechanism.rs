@@ -766,4 +766,15 @@ mod tests {
             unsafe { parse_mechanism(null) }.unwrap_err();
         }
     }
+
+    #[test]
+    fn gcm_debug_hides_iv_and_aad() {
+        let m = Mechanism::AesGcm {
+            iv: b"SECRET-IV".to_vec(),
+            aad: b"SECRET-AAD".to_vec(),
+        };
+        let out = format!("{m:?} {m:#?}");
+        assert!(!out.contains("SECRET") && !out.contains("83, 69"), "{out}");
+        assert!(out.contains("iv_len") && out.contains("aad_len"), "{out}");
+    }
 }

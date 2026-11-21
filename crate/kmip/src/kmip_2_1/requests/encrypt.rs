@@ -26,7 +26,7 @@ pub fn encrypt_request(
     let data_to_encrypt = if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,
-            plaintext,
+            plaintext: plaintext.into(),
         }
         .to_bytes()?
     } else {

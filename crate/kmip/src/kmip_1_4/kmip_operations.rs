@@ -1671,7 +1671,7 @@ pub struct Encrypt {
 
     /// The data to be encrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
@@ -1707,7 +1707,7 @@ impl From<Encrypt> for kmip_2_1::kmip_operations::Encrypt {
                 .unique_identifier
                 .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
             cryptographic_parameters: value.cryptographic_parameters.map(Into::into),
-            data: value.data.map(Into::into),
+            data: value.data,
             i_v_counter_nonce: value.i_v_counter_nonce,
             correlation_value: value.correlation_value,
             init_indicator: value.init_indicator,
@@ -1725,7 +1725,7 @@ pub struct EncryptResponse {
     pub unique_identifier: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
@@ -1754,7 +1754,7 @@ impl TryFrom<kmip_2_1::kmip_operations::EncryptResponse> for EncryptResponse {
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
-            data: value.data.map(|d| d.to_vec()),
+            data: value.data,
             i_v_counter_nonce: value.i_v_counter_nonce,
             correlation_value: value.correlation_value,
             authenticated_encryption_tag: value.authenticated_encryption_tag,
@@ -1844,7 +1844,7 @@ pub struct DecryptResponse {
     pub unique_identifier: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1862,7 +1862,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DecryptResponse> for DecryptResponse {
 
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
-            data: value.data.map(|d| d.to_vec()),
+            data: value.data,
             correlation_value: value.correlation_value,
         })
     }

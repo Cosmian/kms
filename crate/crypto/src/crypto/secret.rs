@@ -8,8 +8,15 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// Holds secret information of `LENGTH` bytes.
 ///
 /// This secret is stored on the heap and is guaranteed to be zeroized on drop.
-#[derive(Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, Clone)]
 pub struct Secret<const LENGTH: usize>(Pin<Box<[u8]>>);
+
+impl<const LENGTH: usize> PartialEq for Secret<LENGTH> {
+    fn eq(&self, other: &Self) -> bool {
+        // both sides hold exactly `LENGTH` bytes
+        self.0.len() == other.0.len() && openssl::memcmp::eq(&self.0, &other.0)
+    }
+}
 
 /// Never prints the secret bytes: only the length.
 impl<const LENGTH: usize> std::fmt::Debug for Secret<LENGTH> {

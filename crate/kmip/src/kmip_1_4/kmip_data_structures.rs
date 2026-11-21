@@ -1340,12 +1340,23 @@ impl TryFrom<kmip_2_1::kmip_data_structures::KeyWrappingData> for KeyWrappingDat
 /// Encryption Key Information Structure
 /// The Encryption Key Information is a structure containing a unique identifier and
 /// optional parameters used to encrypt the key.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+///
+/// `Debug` never prints the identifier: for a PKCS#12 export it can carry the PKCS#12 password.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptionKeyInformation {
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+}
+
+impl std::fmt::Debug for EncryptionKeyInformation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EncryptionKeyInformation")
+            .field("unique_identifier", &format_args!("<redacted>"))
+            .field("cryptographic_parameters", &self.cryptographic_parameters)
+            .finish()
+    }
 }
 
 impl From<EncryptionKeyInformation> for kmip_2_1::kmip_types::EncryptionKeyInformation {
@@ -1942,7 +1953,7 @@ pub struct DerivationParameters {
     pub initialization_vector: Option<SensitiveBytes>,
     /// A value that identifies the derivation process
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub derivation_data: Option<Vec<u8>>,
+    pub derivation_data: Option<SensitiveBytes>,
     /// The length in bits of the derived data
     #[serde(skip_serializing_if = "Option::is_none")]
     pub salt: Option<SensitiveBytes>,
@@ -1956,7 +1967,7 @@ impl From<DerivationParameters> for kmip_2_1::kmip_data_structures::DerivationPa
         Self {
             cryptographic_parameters: params.cryptographic_parameters.map(Into::into),
             initialization_vector: params.initialization_vector,
-            derivation_data: params.derivation_data.map(Into::into),
+            derivation_data: params.derivation_data,
             salt: params.salt,
             iteration_count: params.iteration_count,
         }
@@ -1975,7 +1986,7 @@ impl TryFrom<kmip_2_1::kmip_data_structures::DerivationParameters> for Derivatio
                 .map(TryInto::try_into)
                 .transpose()?,
             initialization_vector: params.initialization_vector,
-            derivation_data: params.derivation_data.map(|z| z.to_vec()),
+            derivation_data: params.derivation_data,
             salt: params.salt,
             iteration_count: params.iteration_count,
         })

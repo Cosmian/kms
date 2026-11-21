@@ -596,3 +596,21 @@ mod characterization_tests {
         call_ensure_x509_or_none(&attrs).unwrap();
     }
 }
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::Attribute;
+
+    #[test]
+    fn key_material_attributes_print_only_their_length() {
+        let secret = b"SECRET-MARKER".to_vec();
+        for attr in [
+            Attribute::Value(secret.clone()),
+            Attribute::PrivateExponent(secret.clone()),
+        ] {
+            let out = format!("{attr:?} {attr:#?}");
+            assert!(!out.contains("SECRET") && !out.contains("83, 69"), "{out}");
+            assert!(out.contains("<13 bytes>"), "{out}");
+        }
+    }
+}

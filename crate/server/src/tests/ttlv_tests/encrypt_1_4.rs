@@ -67,7 +67,7 @@ pub(super) fn encrypt(
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         ..Default::default()
                     }),
-                    data: Some(data.to_vec()),
+                    data: Some(data.to_vec().into()),
                     i_v_counter_nonce: None,
                     correlation_value: None,
                     init_indicator: None,
@@ -110,7 +110,7 @@ pub(super) fn encrypt(
 
     (
         response.i_v_counter_nonce.clone().unwrap().to_vec(),
-        response.data.clone().unwrap(),
+        response.data.clone().unwrap().to_vec(),
         response
             .authenticated_encryption_tag
             .clone()

@@ -18,6 +18,7 @@ use crate::{
     kmip_0::kmip_types::{Authentication, Credential, CredentialType, CredentialValue},
     kmip_1_4::{
         kmip_attributes::Attribute as Attribute14,
+        kmip_data_structures::EncryptionKeyInformation as EncryptionKeyInformation14,
         kmip_types::{Link as Link14, LinkType as LinkType14},
     },
     kmip_2_1::{
@@ -25,7 +26,10 @@ use crate::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, PrivateKey},
         kmip_operations::{Decrypt, Encrypt},
-        kmip_types::{KeyFormatType, Link, LinkType, LinkedObjectIdentifier},
+        kmip_types::{
+            EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+            UniqueIdentifier,
+        },
     },
     ttlv::{KmipBigInt, KmipEnumerationVariant, TTLV, TTLValue, from_ttlv, to_ttlv},
 };
@@ -350,4 +354,32 @@ fn kmip_1_4_pkcs12_password_link_is_redacted() {
     assert_no_marker("1.4 serializer traces", &logs);
     let ttlv = ttlv.unwrap();
     assert_no_marker("1.4 TTLV Debug", &format!("{ttlv:?} {ttlv:#?}"));
+}
+
+/// `ckms certificates export --pkcs12-password` sends the PKCS#12 password as the
+/// `UniqueIdentifier` of the `EncryptionKeyInformation`.
+#[test]
+fn pkcs12_password_in_encryption_key_information_is_redacted() {
+    let eki = EncryptionKeyInformation {
+        unique_identifier: UniqueIdentifier::TextString(MARKER.to_owned()),
+        cryptographic_parameters: None,
+    };
+    assert_no_marker("EKI Debug", &format!("{eki:?} {eki:#?}"));
+    assert_no_marker("EKI Display", &eki.to_string());
+    let eki14 = EncryptionKeyInformation14 {
+        unique_identifier: MARKER.to_owned(),
+        cryptographic_parameters: None,
+    };
+    assert_no_marker("1.4 EKI Debug", &format!("{eki14:?} {eki14:#?}"));
+
+    let mut ttlv = None;
+    let logs = captured_logs(|| ttlv = Some(to_ttlv(&eki).unwrap()));
+    assert!(!logs.is_empty(), "no trace captured");
+    assert_no_marker("EKI serializer traces", &logs);
+    let ttlv = ttlv.unwrap();
+    assert_no_marker("EKI TTLV Debug", &format!("{ttlv:?} {ttlv:#?}"));
+    let logs = captured_logs(|| {
+        drop(from_ttlv::<EncryptionKeyInformation>(&ttlv).unwrap());
+    });
+    assert_no_marker("EKI deserializer traces", &logs);
 }
