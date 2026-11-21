@@ -126,8 +126,6 @@ def self_test() -> None:
     assert run(['ui/src/App.tsx']) == {'ui', 'windows-ui'}
     assert run(['.mise/scripts/test/test_iris.sh']) == {'interop:iris'}
     for files in (
-        ['crate/kmip/src/lib.rs'],
-        ['crate/server_database/src/stores/sql/query.sql'],
         ['.mise/lib/common.sh'],
         ['test_data'],
         ['brand/new.txt'],
@@ -152,6 +150,31 @@ def self_test() -> None:
     utimaco = run(['crate/hsm/utimaco/src/lib.rs'])
     assert {'hsm', 'windows-hsm-idemia'} <= utimaco
     assert not {'pkcs11', 'db:psql'} & utimaco
+
+    server_wide = {
+        'cargo-clippy',
+        'cargo-machete',
+        'no-nix',
+        'cargo-publish-dry-run',
+        'db:sqlite',
+        'windows-cargo-test',
+        'forward-proxy',
+        'xks-remote',
+        'spire',
+    }
+    assert run(['crate/server/src/core/operations/encrypt.rs']) == server_wide
+
+    kmip = run(['crate/kmip/src/lib.rs'])
+    assert {'interop:pykmip', 'interop:kmip-go', 'interop:iris'} <= kmip
+    assert not {'ui', 'db:psql', 'hsm', 'pki', 'interop:jose'} & kmip
+
+    query = run(['crate/server_database/src/stores/sql/query.sql'])
+    assert {'db:psql', 'db:mysql', 'db:redis', 'db:openbao', 'db:sqlite'} <= query
+    assert not {'ui', 'hsm', 'interop:iris', 'windows-ui'} & query
+
+    p11 = run(['crate/clients/pkcs11/module/src/pkcs11.rs'])
+    assert {'pkcs11', 'hsm', 'interop:ase', 'windows-cng-ksp'} <= p11
+    assert not {'db:psql', 'ui'} & p11
     print('self-test OK')
 
 

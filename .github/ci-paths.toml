@@ -50,8 +50,8 @@ ignore = '''
 # kmip/ (KMIP XML vectors) and the Google CSE key fixture are read by crate tests.
 rust = '^crate/ | ^kmip$ | ^documentation/docs/google_cse/test_wrapped_private_key$'
 
-# Code every server-driven suite exercises (linked into cosmian_kms or the ckms / test_kms_server harness).
-# The negative lookaheads carve out feature-owned paths: those trigger only the units listing them (+ `rust`).
+# Code linked into cosmian_kms or the ckms / test_kms_server harness: triggers the units that still run on any
+# server change (forward-proxy, xks-remote, spire). The negative lookaheads carve out feature-owned paths.
 # sql/query.sql stays core: SQLite loads it under its query_sqlite.sql overrides (server_database/src/stores/mod.rs).
 server_core = '''
   ^crate/(kmip|kmip-derive|access|interfaces|crypto|test_kms_server)/
@@ -70,11 +70,15 @@ server_core = '''
 pg_store = '^crate/server_database/src/stores/sql/pgsql\.rs$'
 mysql_store = '^crate/server_database/src/stores/sql/(mysql\.rs|query_mysql\.sql)$'
 
-# Every non-sqlite db leg also runs the lib tests of test_kms_server, ckms, cli_actions, cosmian_pkcs11,
-# cosmian_kms_k8s_plugin and cosmian_cng (KMS_SHARED_SERVER_TEST_PACKAGES, .mise/lib/common.sh) + SoftHSM2 KEK tests.
+# Database code shared by every backend (all of server_database except the other backends' stores).
+db_core = '^crate/server_database/(?!src/stores/(sql/(pgsql\.rs|mysql\.rs|query_mysql\.sql)$|redis/))'
+
+# KMIP wire format (TTLV types and the /kmip endpoint) that every KMIP interop client exercises.
+kmip_wire = '^crate/(kmip|kmip-derive)/ | ^crate/server/src/routes/kmip/'
+
+# Shared plumbing of every non-sqlite db leg (task, SoftHSM2 KEK helper, workflow).
 db_shared = '''
-  ^crate/clients/(pkcs11|cng|k8s)/
-| ^\.mise/tasks/test/db/_default$
+  ^\.mise/tasks/test/db/_default$
 | ^\.mise/lib/softhsm2\.sh$
 | ^\.github/workflows/test-db\.yml$
 '''
@@ -119,36 +123,36 @@ sets = ["rust", "db_shared"]
 files = '^\.mise/tasks/test/db/sqlite$'
 
 [units."db:psql"]
-sets = ["server_core", "db_shared", "pg_store"]
+sets = ["db_core", "db_shared", "pg_store"]
 files = '^\.mise/tasks/test/db/psql$'
 
 [units."db:mysql"]
-sets = ["server_core", "db_shared", "mysql_store"]
+sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/mysql$'
 
 [units."db:mariadb"]
-sets = ["server_core", "db_shared", "mysql_store"]
+sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/mariadb$'
 
 [units."db:percona"]
-sets = ["server_core", "db_shared", "mysql_store"]
+sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/percona$'
 
 [units."db:redis"]
-sets = ["server_core", "db_shared"]
+sets = ["db_core", "db_shared"]
 files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$'
 
 [units."db:openbao"]
-sets = ["server_core", "pg_store", "mysql_store"]
+sets = ["db_core", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
 | ^\.mise/scripts/test/openbao/
 | ^\.github/workflows/test-db\.yml$
+| ^crate/server/src/routes/kv/
 '''
 
 [units.cloud]
-sets = ["server_core"]
 files = '''
   ^crate/server/src/(routes/(aws_xks|azure_ekm|google_cse)/|tests/)
 | ^crate/clients/clap/src/actions/(google|aws|azure)/
@@ -159,7 +163,6 @@ files = '''
 '''
 
 [units.hsm]
-sets = ["server_core"]
 files = '''
   ^crate/hsm/
 | ^crate/clients/pkcs11/
@@ -170,7 +173,6 @@ files = '''
 '''
 
 [units.pkcs11]
-sets = ["server_core"]
 files = '''
   ^crate/clients/pkcs11/
 | ^crate/clients/clap/src/actions/pkcs11/
@@ -179,10 +181,10 @@ files = '''
 | ^\.mise/scripts/test/(test_pkcs11_conformance\.sh|pkcs11_raw_abi_check\.py|test_gnupg\.sh|test_gnupg_smartcard\.sh
                        |gnupg_pkcs11_scd_driver\.py|test_luks\.sh|test_openssh\.sh|test_hsm_kek_pkcs11_comprehensive\.sh
                        |test_pkcs11_check\.sh|requirements-pkcs11-check\.(in|txt)|test_veracrypt\.sh)$
+| ^crate/server/src/core/operations/pkcs11\.rs$
 '''
 
 [units.obs]
-sets = ["server_core"]
 files = '''
   ^crate/server/src/(core/otel_metrics\.rs$|middlewares/otel_http_middleware\.rs$|tests/)
 | ^crate/clients/clap/src/actions/audit\.rs$
@@ -194,16 +196,21 @@ files = '''
                        |requirements-(cef|audit-compat)\.(in|txt))
 | ^monitoring/
 | ^documentation/arcsight/
+| ^crate/server/src/(core/audit/|middlewares/audit/|routes/kmip/audit\.rs$)
+| ^crate/server_database/src/stores/audit/
 '''
 
 [units.pki]
-sets = ["server_core"]
 files = '''
   ^crate/server/src/routes/(est|scep|ocsp)/
 | ^crate/server/src/routes/crl\.rs$
 | ^\.mise/tasks/test/pki/
 | ^\.mise/scripts/test/(test_est_interop|test_scep_interop)\.sh$
 | ^\.mise/scripts/kmip-go/go\.mod$
+| ^crate/server/src/routes/(csr|enrollment|enrollment_guard)\.rs$
+| ^crate/server/src/core/certificate/
+| ^crate/server/src/core/operations/(certify/|generate_crl\.rs$|generate_csr\.rs$|recertify\.rs$)
+| ^crate/clients/clap/src/actions/certificates/
 '''
 
 [units.spire]
@@ -217,7 +224,6 @@ files = '''
 '''
 
 [units.ui]
-sets = ["server_core"]
 files = '''
   ^ui/
 | ^crate/clients/wasm/
@@ -230,23 +236,23 @@ files = '''
 '''
 
 [units."interop:ase"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
 
 [units."interop:db2"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/test_db2_tde\.sh$'
 
 [units."interop:edb-tde"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
 
 [units."interop:iris"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/test_iris\.sh$'
 
 [units."interop:jose"]
-sets = ["server_core", "interop_shared"]
+sets = ["interop_shared"]
 files = '''
   ^crate/server/src/(routes/(jose/|jwks\.rs$)|tests/)
 | ^crate/hsm/kryoptic/
@@ -256,7 +262,7 @@ files = '''
 '''
 
 [units."interop:kmip-go"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '''
   ^kmip$
 | ^\.mise/tasks/test/interop/kmip-go$
@@ -266,31 +272,32 @@ files = '''
 '''
 
 [units."interop:kmipkit"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/kmipkit$ | ^\.mise/scripts/kmipkit-fixes\.patch$'
 
 [units."interop:openbao"]
-sets = ["server_core", "interop_shared"]
-files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/openbao/'
+sets = ["interop_shared"]
+files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/routes/kv/'
 
 [units."interop:openbao-auth-verifier"]
-sets = ["server_core", "interop_shared"]
-files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/openbao/'
+sets = ["interop_shared"]
+files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
 
 [units."interop:openbao-kmip"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao/'
 
 [units."interop:pykmip"]
-sets = ["server_core", "interop_shared"]
+sets = ["kmip_wire", "interop_shared"]
 files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
 
 [units."interop:ssh-secrets"]
-sets = ["server_core", "interop_shared", "pg_store", "mysql_store"]
+sets = ["interop_shared", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/interop/ssh-secrets$
 | ^\.mise/scripts/test/(test_ssh_certificates|test_secret_rotation)\.sh$
 | ^\.mise/scripts/test/openbao/bao_verifier\.sh$
+| ^crate/server/src/routes/(ssh|kv)/
 '''
 
 # ── test_windows.yml ────────────────────────────────────────────────────────────────────────
@@ -299,15 +306,15 @@ sets = ["rust", "windows"]
 files = '^\.mise/scripts/windows/cargo_test\.ps1$'
 
 [units.windows-ui]
-sets = ["server_core", "windows"]
+sets = ["windows"]
 files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$'
 
 [units.windows-cng-ksp]
-sets = ["server_core", "windows"]
+sets = ["windows"]
 files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$'
 
 [units.windows-hsm-idemia]
-sets = ["server_core", "windows"]
+sets = ["windows"]
 files = '''
   ^crate/hsm/
 | ^crate/server/src/tests/
@@ -317,5 +324,5 @@ files = '''
 '''
 
 [units.windows-est]
-sets = ["server_core", "windows"]
+sets = ["windows"]
 files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$'
