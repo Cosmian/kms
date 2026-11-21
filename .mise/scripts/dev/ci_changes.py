@@ -3,7 +3,7 @@
 """Classify the files a pull request changes against .github/ci-paths.toml (stdlib only).
 
   ci_changes.py [--base REF] [--head REF]   print the units to run/skip, emit `skip=<JSON list>`
-  ci_changes.py --self-test                 assert the real config on representative change sets
+  test_ci_changes.py                        unit tests of this module on the real config (`mise run dev:ci-changes --self-test`)
 
 The output line `skip=[...]` is appended to $GITHUB_OUTPUT when set (and always printed) so workflow jobs can
 gate themselves with `!contains(fromJSON(...), '<unit>')`. Fail-safe: an empty diff, a file matching `full`, or a
@@ -114,103 +114,11 @@ def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
     )
 
 
-def self_test() -> None:
-    cfg = load_config(CONFIG)
-    everything = set(cfg.units)
-
-    def run(files: list[str]) -> set[str]:
-        return everything - set(classify(cfg, files)[0])
-
-    assert classify(cfg, [])[0] == []
-    assert run(['documentation/docs/index.md', 'CHANGELOG/x.md']) == set()
-    assert run(['ui/src/App.tsx']) == {'ui', 'windows-ui'}
-    assert run(['.mise/scripts/test/test_iris.sh']) == {'interop:iris'}
-    for files in (
-        ['.mise/lib/common.sh'],
-        ['test_data'],
-        ['brand/new.txt'],
-    ):
-        assert run(files) == everything, files
-
-    xks = run(['crate/server/src/routes/aws_xks/mod.rs'])
-    assert {
-        'cloud',
-        'xks-remote',
-        'db:sqlite',
-        'no-nix',
-        'cargo-clippy',
-        'windows-cargo-test',
-    } <= xks
-    assert not {'db:psql', 'hsm', 'ui'} & xks
-
-    pg = run(['crate/server_database/src/stores/sql/pgsql.rs'])
-    assert {'db:psql', 'db:openbao', 'interop:ssh-secrets', 'db:sqlite'} <= pg
-    assert not {'db:mysql', 'interop:ase'} & pg
-
-    utimaco = run(['crate/hsm/utimaco/src/lib.rs'])
-    assert {'hsm', 'windows-hsm-idemia'} <= utimaco
-    assert not {'pkcs11', 'db:psql'} & utimaco
-
-    server_wide = {
-        'cargo-clippy',
-        'cargo-machete',
-        'no-nix',
-        'cargo-publish-dry-run',
-        'db:sqlite',
-        'windows-cargo-test',
-        'forward-proxy',
-        'xks-remote',
-        'spire',
-    }
-    assert run(['crate/server/src/core/operations/encrypt.rs']) == server_wide
-
-    kmip = run(['crate/kmip/src/lib.rs'])
-    assert {'interop:pykmip', 'interop:kmip-go', 'interop:iris'} <= kmip
-    assert not {'ui', 'db:psql', 'hsm', 'pki', 'interop:jose'} & kmip
-
-    query = run(['crate/server_database/src/stores/sql/query.sql'])
-    assert {'db:psql', 'db:mysql', 'db:redis', 'db:openbao', 'db:sqlite'} <= query
-    assert not {'ui', 'hsm', 'interop:iris', 'windows-ui'} & query
-
-    p11 = run(['crate/clients/pkcs11/module/src/pkcs11.rs'])
-    assert {'pkcs11', 'hsm', 'interop:ase', 'windows-cng-ksp'} <= p11
-    assert not {'db:psql', 'ui'} & p11
-
-    workflows = run(
-        [
-            '.github/ci-paths.toml',
-            '.github/workflows/main.yml',
-            '.github/workflows/test_all.yml',
-            '.github/workflows/test-group.yml',
-            '.github/workflows/test-db.yml',
-            '.github/workflows/test-interop.yml',
-            '.github/workflows/test_windows.yml',
-            '.mise/scripts/dev/ci_changes.py',
-        ]
-    )
-    assert workflows == {
-        'cargo-clippy',
-        'cargo-machete',
-        'no-nix',
-        'forward-proxy',
-        'cargo-publish-dry-run',
-        'xks-remote',
-        'db:sqlite',
-        'interop:pykmip',
-        'windows-cargo-test',
-    }
-    print('self-test OK')
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--base', default='HEAD^1')
     parser.add_argument('--head', default='HEAD')
-    parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
-    if args.self_test:
-        self_test()
-        return
 
     cfg = load_config(CONFIG)
     files = changed_files(args.base, args.head)

@@ -8,6 +8,10 @@ Run: python3 -m unittest discover -s .mise/scripts/dev -p 'test_ci_changes.py'  
 
 from __future__ import annotations
 
+import contextlib
+import io
+import tempfile
+import textwrap
 import sys
 import unittest
 from pathlib import Path
@@ -304,24 +308,148 @@ class MixedChanges(unittest.TestCase):
         )
 
 
+# One file per unit that triggers it (and not by way of `full`).
+UNIT_SAMPLES = {
+    'cargo-clippy': 'clippy.toml',
+    'cargo-machete': 'crate/server/src/lib.rs',
+    'no-nix': '.github/workflows/no-nix.yml',
+    'forward-proxy': '.github/workflows/forward_proxy.yml',
+    'cargo-publish-dry-run': '.github/workflows/cargo-publish.yml',
+    'xks-remote': 'crate/server/src/routes/aws_xks/mod.rs',
+    'db:sqlite': '.mise/tasks/test/db/sqlite',
+    'db:psql': 'crate/server_database/src/stores/sql/pgsql.rs',
+    'db:mysql': 'crate/server_database/src/stores/sql/mysql.rs',
+    'db:mariadb': '.mise/tasks/test/db/mariadb',
+    'db:percona': '.mise/tasks/test/db/percona',
+    'db:redis': 'crate/server_database/src/stores/redis/findex.rs',
+    'db:openbao': '.mise/scripts/test/openbao/bao_verifier.sh',
+    'cloud': 'crate/server/src/routes/google_cse/mod.rs',
+    'hsm': 'crate/hsm/utimaco/src/lib.rs',
+    'pkcs11': 'crate/clients/pkcs11/module/src/pkcs11.rs',
+    'obs': 'crate/server/src/core/otel_metrics.rs',
+    'pki': 'crate/server/src/routes/est/mod.rs',
+    'spire': '.mise/tasks/test/spire/_default',
+    'ui': 'ui/src/App.tsx',
+    'interop:ase': '.mise/tasks/test/interop/ase',
+    'interop:db2': '.mise/tasks/test/interop/db2',
+    'interop:edb-tde': '.mise/tasks/test/interop/edb-tde',
+    'interop:iris': '.mise/tasks/test/interop/iris',
+    'interop:jose': 'crate/server/src/routes/jose/mod.rs',
+    'interop:kmip-go': '.mise/tasks/test/interop/kmip-go',
+    'interop:kmipkit': '.mise/tasks/test/interop/kmipkit',
+    'interop:openbao': '.mise/tasks/test/interop/openbao',
+    'interop:openbao-auth-verifier': '.mise/tasks/test/interop/openbao-auth-verifier',
+    'interop:openbao-kmip': '.mise/tasks/test/interop/openbao-kmip',
+    'interop:pykmip': '.mise/tasks/test/interop/pykmip',
+    'interop:ssh-secrets': '.mise/tasks/test/interop/ssh-secrets',
+    'windows-cargo-test': '.mise/scripts/windows/cargo_test.ps1',
+    'windows-ui': '.mise/scripts/windows/test_ui.ps1',
+    'windows-cng-ksp': '.mise/scripts/windows/test_cng_ksp.ps1',
+    'windows-hsm-idemia': '.mise/scripts/windows/test_hsm_idemia.ps1',
+    'windows-est': '.mise/scripts/windows/test_est_windows.ps1',
+}
+
+
 class ConfigIntegrity(unittest.TestCase):
-    def test_every_unit_is_reachable(self) -> None:
-        # A unit no changed file can trigger would silently never run on PRs.
-        samples = {
-            'cargo-clippy': 'clippy.toml',
-            'ui': 'ui/src/App.tsx',
-            'db:psql': 'crate/server_database/src/stores/sql/pgsql.rs',
-            'interop:jose': 'crate/server/src/routes/jose/mod.rs',
-            'windows-est': 'crate/server/src/routes/est/mod.rs',
-        }
-        for unit, path in samples.items():
+    def test_samples_cover_every_unit(self) -> None:
+        # A new or renamed unit fails here until it has a sample that triggers it.
+        self.assertEqual(set(UNIT_SAMPLES), EVERYTHING)
+
+    def test_every_unit_is_reachable_without_running_everything(self) -> None:
+        for unit, path in UNIT_SAMPLES.items():
             with self.subTest(unit=unit):
-                self.assertIn(unit, run(path))
+                ran = run(path)
+                self.assertIn(unit, ran)
+                self.assertNotEqual(ran, EVERYTHING, f'{path} hits full or an orphan')
 
     def test_classify_reports_skipped_units_sorted_and_disjoint_from_run(self) -> None:
         skipped, _ = ci_changes.classify(CFG, ['ui/src/App.tsx'])
         self.assertEqual(skipped, sorted(skipped))
         self.assertFalse(set(skipped) & {'ui', 'windows-ui'})
+
+
+def load(toml: str) -> ci_changes.Config:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / 'ci-paths.toml'
+        path.write_text(textwrap.dedent(toml))
+        return ci_changes.load_config(path)
+
+
+MINI = """
+    full = '^Cargo\\.lock$'
+    ignore = '\\.md$'
+    [sets]
+    core = '^lib/(?!feature/)'
+    [units.a]
+    sets = ["core"]
+    [units.b]
+    files = '^lib/feature/'
+    [units.c]
+    sets = ["core"]
+    files = '''
+      ^extra/   # comments and whitespace are ignored (re.VERBOSE)
+    | ^more/
+    '''
+"""
+
+
+class ClassifyEngine(unittest.TestCase):
+    """classify() semantics on a small inline config: the fail-safe branches decide whether CI is skipped."""
+
+    def setUp(self) -> None:
+        self.cfg = load(MINI)
+
+    def skipped(self, *files: str) -> list[str]:
+        return ci_changes.classify(self.cfg, list(files))[0]
+
+    def test_empty_diff_skips_nothing(self) -> None:
+        self.assertEqual(self.skipped(), [])
+
+    def test_full_hit_skips_nothing_even_with_ignored_files(self) -> None:
+        self.assertEqual(self.skipped('README.md', 'Cargo.lock'), [])
+
+    def test_orphan_skips_nothing(self) -> None:
+        self.assertEqual(self.skipped('lib/feature/x.rs', 'orphan.bin'), [])
+
+    def test_ignored_only_skips_everything(self) -> None:
+        self.assertEqual(self.skipped('README.md'), ['a', 'b', 'c'])
+
+    def test_negative_lookahead_carves_feature_path_out_of_the_set(self) -> None:
+        self.assertEqual(self.skipped('lib/feature/x.rs'), ['a', 'c'])
+
+    def test_set_path_triggers_every_unit_using_the_set(self) -> None:
+        self.assertEqual(self.skipped('lib/core.rs'), ['b'])
+
+    def test_unit_files_pattern_is_verbose_alternation(self) -> None:
+        self.assertEqual(self.skipped('more/x', 'README.md'), ['a', 'b'])
+        self.assertEqual(self.skipped('extra/x'), ['a', 'b'])
+
+    def test_union_over_changed_files_and_sorted_result(self) -> None:
+        self.assertEqual(self.skipped('lib/feature/x.rs', 'extra/y'), ['a'])
+
+    def test_rename_old_and_new_path_both_count(self) -> None:
+        self.assertEqual(self.skipped('lib/core.rs', 'lib/feature/core.rs'), [])
+
+
+class LoadConfig(unittest.TestCase):
+    def rejects(self, toml: str) -> None:
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            load(toml)
+
+    def test_unknown_set_is_rejected(self) -> None:
+        self.rejects("full = 'x'\nignore = 'y'\n[units.a]\nsets = ['nope']\n")
+
+    def test_unit_without_sets_or_files_is_rejected(self) -> None:
+        self.rejects("full = 'x'\nignore = 'y'\n[units.a]\n")
+
+    def test_unknown_unit_key_is_rejected(self) -> None:
+        self.rejects("full = 'x'\nignore = 'y'\n[units.a]\nfile = 'x'\n")
+
+    def test_missing_full_is_rejected(self) -> None:
+        self.rejects("ignore = 'y'\n[units.a]\nfiles = 'x'\n")
+
+    def test_invalid_regex_is_rejected(self) -> None:
+        self.rejects("full = '('\nignore = 'y'\n[units.a]\nfiles = 'x'\n")
 
 
 if __name__ == '__main__':
