@@ -667,18 +667,17 @@ impl KMS {
 
             let result = if let ObjectHandle::Hsm { prefix, .. } = hsm {
                 // Same algorithm policy as for the local path (metadata only).
-                match enforce_kmip_algorithm_policy_for_retrieved_key(
-                    &self.params,
-                    Op::OP_NAME,
-                    owm.id(),
-                    &owm,
-                ) {
-                    Ok(()) => {
-                        self.execute_oracle_recorded::<Op>(request, uid, prefix)
-                            .await
-                    }
-                    Err(e) => Err(e),
+                async {
+                    enforce_kmip_algorithm_policy_for_retrieved_key(
+                        &self.params,
+                        Op::OP_NAME,
+                        owm.id(),
+                        &owm,
+                    )?;
+                    self.execute_oracle_recorded::<Op>(request, uid, prefix)
+                        .await
                 }
+                .await
             } else {
                 self.execute_local_with_limits::<Op>(&owm, request, user)
                     .await

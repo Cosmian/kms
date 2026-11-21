@@ -155,6 +155,10 @@ The scheduler that rotates SQL keys also rotates HSM keys: AES keys through
 - For a key pair, set the interval on the **private key** only; `SetAttribute
   RotateInterval > 0` on the public key is rejected. The public keys form their
   own keyset, labelled `{base_uid}_pk::{generation}::{key_id}_pk[@latest]`.
+- The scheduler identity (the first non-`*` `hsm_admin`, or `admin`) goes through the same
+  `Create` permission check as a manual Re-Key. When `crypto_officer.users` is set, it must be
+  listed there (or be the default user, or hold a `Create` grant), otherwise every tick fails
+  with `Unauthorized`.
 - A key that never joined a keyset is **enrolled** at its first re-key (manual or
   automatic): its keyset name is its full base UID, the old label is retired and
   the new key is labelled `@latest`.

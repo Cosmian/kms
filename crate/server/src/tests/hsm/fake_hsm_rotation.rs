@@ -30,6 +30,7 @@ use time::{Date, Duration, OffsetDateTime};
 use zeroize::Zeroizing;
 
 use crate::{
+    config::{AesKeySize, ClapConfig},
     core::{
         KMS,
         operations::{dispatch_renewal_warnings, run_auto_rotation},
@@ -364,7 +365,11 @@ impl HSM for RotatingHsm {
 
 /// KMS on a fresh `SQLite` database with an empty [`RotatingHsm`] mounted under `hsm`.
 async fn kms_with_rotating_hsm() -> KResult<(Arc<KMS>, Arc<RotatingHsm>)> {
-    let kms = Box::pin(test_kms_with_config(https_clap_config())).await?;
+    kms_with_rotating_hsm_config(https_clap_config()).await
+}
+
+async fn kms_with_rotating_hsm_config(config: ClapConfig) -> KResult<(Arc<KMS>, Arc<RotatingHsm>)> {
+    let kms = Box::pin(test_kms_with_config(config)).await?;
     let hsm = Arc::new(RotatingHsm {
         keys: Mutex::new(HashMap::new()),
     });
@@ -664,6 +669,21 @@ async fn hsm_keyset_version_suffixes_resolve() -> KResult<()> {
     assert_eq!(decrypt_with(&kms, "hsm::0::k@first", b"k|hi").await?, b"hi");
     assert_eq!(decrypt_with(&kms, "hsm::0::k@0", b"k|hi").await?, b"hi");
     assert_eq!(encrypt_with(&kms, "hsm::0::k@1").await?, b"k@1|hi");
+    Ok(())
+}
+
+/// The algorithm policy applies to HSM keyset members as it does to SQL keys.
+#[tokio::test]
+async fn hsm_keyset_members_obey_algorithm_policy() -> KResult<()> {
+    let mut config = https_clap_config();
+    config.kmip_policy.policy_id = Some("CUSTOM".to_owned());
+    config.kmip_policy.allowlists.aes_key_sizes = Some(vec![AesKeySize::Aes128]);
+    let (kms, hsm) = kms_with_rotating_hsm_config(config).await?;
+    seed_two_generations(&hsm);
+
+    // single-member path (Encrypt -> latest), then chain-walk path (Decrypt)
+    encrypt_with(&kms, "hsm::0::k").await.unwrap_err();
+    decrypt_with(&kms, "hsm::0::k", b"k|hi").await.unwrap_err();
     Ok(())
 }
 
