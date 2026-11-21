@@ -420,8 +420,9 @@ pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
         return Err(DbError::ServerError("f: payload not restored".to_owned()));
     }
 
-    // g) backfill: an object without events gets exactly one, and the marker is set.
+    // g) startup reconcile: an event-less object gets one event, orphan events are purged.
     let uid = Uuid::new_v4().to_string();
+    let orphan = Uuid::new_v4().to_string();
     let url = option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
     {
         let client = pg.raw_pool().get().await.map_err(DbError::from)?;
@@ -435,33 +436,34 @@ pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
             .map_err(DbError::from)?;
         client
             .execute(
-                "DELETE FROM parameters WHERE name = $1",
-                &[&"object_state_events_backfilled"],
+                "INSERT INTO object_state_events (event_id, object_id, state) \
+                 VALUES (gen_random_uuid(), $1, 'Active')",
+                &[&orphan],
             )
             .await
             .map_err(DbError::from)?;
     }
     let pg_again = PgPool::instantiate(url, false, None).await?;
     let client = pg_again.raw_pool().get().await.map_err(DbError::from)?;
-    let events: i64 = client
-        .query_one(
-            "SELECT count(*) FROM object_state_events WHERE object_id = $1",
-            &[&uid],
-        )
-        .await
-        .map_err(DbError::from)?
-        .get(0);
-    let marker: String = client
-        .query_one(
-            "SELECT value FROM parameters WHERE name = $1",
-            &[&"object_state_events_backfilled"],
-        )
-        .await
-        .map_err(DbError::from)?
-        .get(0);
-    if events != 1 || marker != "true" {
+    let count_events = |id: String| {
+        let client = &client;
+        async move {
+            let n: i64 = client
+                .query_one(
+                    "SELECT count(*) FROM object_state_events WHERE object_id = $1",
+                    &[&id],
+                )
+                .await
+                .map_err(DbError::from)?
+                .get(0);
+            DbResult::Ok(n)
+        }
+    };
+    let events = count_events(uid).await?;
+    let orphans = count_events(orphan).await?;
+    if events != 1 || orphans != 0 {
         return Err(DbError::ServerError(format!(
-            "g: expected 1 event and marker true, got {events} and {marker}"
+            "g: expected 1 baseline event and 0 orphan events, got {events} and {orphans}"
         )));
     }
 

@@ -22,9 +22,6 @@ pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled
 /// Completion marker for the one-time certificate `_serial=<HEX>` tag backfill.
 pub(crate) const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
 
-/// Completion marker for the one-time lifecycle-state event backfill (one event per object).
-pub(crate) const OBJECT_STATE_EVENTS_BACKFILL_PARAM: &str = "object_state_events_backfilled";
-
 /// Maximum time a starting instance waits for another instance's migration lock.
 pub(crate) const MIGRATION_LOCK_TIMEOUT: Duration = Duration::from_mins(31);
 const MIGRATION_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(500);

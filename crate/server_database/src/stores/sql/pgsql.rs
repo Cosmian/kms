@@ -30,8 +30,8 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep,
-            OBJECT_STATE_EVENTS_BACKFILL_PARAM, certificate_serial_tag, wait_for_migration_lock,
+            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
+            wait_for_migration_lock,
         },
         pgsql_queries,
         sql::{
@@ -1618,7 +1618,7 @@ impl Migrate for PgPool {
     }
 
     async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
-        let mut client = pg_get_client(&self.pool).await?;
+        let client = pg_get_client(&self.pool).await?;
         // Bootstrap schema if needed: create tables if they don't exist
         for name in [
             "create-table-parameters",
@@ -1777,29 +1777,17 @@ impl Migrate for PgPool {
             .await
             .map_err(DbError::from)?;
 
-        // One-time lifecycle event backfill: one event per pre-existing object, gated by a
-        // completion marker (same transactional shape as above).
-        let events_backfill_done = client
-            .query_opt(
-                get_pgsql_query!("select-parameter"),
-                &[&OBJECT_STATE_EVENTS_BACKFILL_PARAM],
-            )
-            .await
-            .map_err(DbError::from)?
-            .map(|row| row.get::<usize, String>(0))
-            == Some("true".to_owned());
-        if !events_backfill_done {
-            let tx = client.transaction().await.map_err(DbError::from)?;
-            tx.execute(get_pgsql_query!("backfill-object-state-events"), &[])
+        // Reconcile with an older KMS (row 7): drop events of deleted objects, give event-less
+        // objects their baseline event.
+        for name in [
+            "purge-orphan-object-state-event-tombstones",
+            "purge-orphan-object-state-events",
+            "backfill-object-state-events",
+        ] {
+            client
+                .batch_execute(self.get_query(name)?)
                 .await
                 .map_err(DbError::from)?;
-            tx.execute(
-                get_pgsql_query!("upsert-parameter"),
-                &[&OBJECT_STATE_EVENTS_BACKFILL_PARAM, &"true"],
-            )
-            .await
-            .map_err(DbError::from)?;
-            tx.commit().await.map_err(DbError::from)?;
         }
 
         // Optionally clear any existing data (useful for tests)

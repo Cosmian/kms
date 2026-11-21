@@ -407,6 +407,16 @@ FROM objects o
 WHERE o.state IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM object_state_events e WHERE e.object_id = o.id);
 
+-- Events and tombstones of objects deleted by an older KMS (downgrade or rolling restart).
+-- name: purge-orphan-object-state-event-tombstones
+DELETE FROM object_state_event_tombstones
+WHERE event_id IN (SELECT e.event_id FROM object_state_events e
+                   WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = e.object_id));
+
+-- name: purge-orphan-object-state-events
+DELETE FROM object_state_events e
+WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = e.object_id);
+
 -- name: delete-object-state-event-tombstones
 DELETE FROM object_state_event_tombstones
 WHERE event_id IN (SELECT event_id FROM object_state_events WHERE object_id = $1);
