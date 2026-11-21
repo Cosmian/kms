@@ -1,0 +1,18 @@
+- name: Restart KMS systemd service after configuration update
+  ansible.builtin.systemd_service:
+    name: "{{ kms_config_service_name }}"
+    state: restarted
+  when:
+    - kms_config_manage_service
+    - kms_config_service_type != "container"
+  listen: Restart KMS after configuration update
+
+- name: Restart KMS container after configuration update
+  community.docker.docker_container:
+    name: "{{ kms_config_container_name }}"
+    state: started
+    restart: true
+  when:
+    - kms_config_manage_service
+    - kms_config_service_type == "container"
+  listen: Restart KMS after configuration update

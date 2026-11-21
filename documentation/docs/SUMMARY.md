@@ -37,6 +37,7 @@
 - [Integrations]()
   - [API Overview & Security](integrations/api.md)
   - [PKCS#11 provider module](integrations/pkcs11_provider.md)
+  - [Ansible collection](integrations/ansible.md)
   - [JOSE (JWS, JWE, JWKS)]()
     - [JOSE API](integrations/jose/jose_api.md)
     - [JWE Key Unwrap](integrations/jose/jwe_decryption.md)
