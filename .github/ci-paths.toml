@@ -10,11 +10,7 @@
 # Tags, schedule and workflow_dispatch ignore this file and run everything.
 
 full = '''
-  ^\.github/workflows/(main|test_all|test-group)\.yml$
-| ^\.github/actions/(install-mise|install-rust|setup-nix|setup-nix-mise|cache-openssl-buildrs|cleanup-runner)/
-| ^\.github/ci-paths\.toml$
-| ^\.mise/tasks/dev/ci-changes$
-| ^\.mise/scripts/dev/ci_changes\.py$
+  ^\.github/actions/(install-mise|install-rust|setup-nix|setup-nix-mise|cache-openssl-buildrs|cleanup-runner)/
 | ^\.mise/lib/(common|nix_helpers|kms_build|kms_server|test_slots)\.sh$
 | ^\.mise/scripts/common\.sh$
 | ^(mise\.toml|shell\.nix|default\.nix|rust-toolchain\.toml|Cargo\.toml|Cargo\.lock|docker-compose\.yml)$
@@ -43,6 +39,7 @@ ignore = '''
 | ^\.mise/tasks/test/(k8s|pkg)/
 | ^\.mise/lib/(k8s|package_build|package_smoke|bench_helpers)\.sh$
 | ^\.mise/scripts/(audit|bench|demo|dev|docs|git|package|pre-commit|release|sbom)/
+| ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
 '''
 
 [sets]
@@ -76,18 +73,16 @@ db_core = '^crate/server_database/(?!src/stores/(sql/(pgsql\.rs|mysql\.rs|query_
 # KMIP wire format (TTLV types and the /kmip endpoint) that every KMIP interop client exercises.
 kmip_wire = '^crate/(kmip|kmip-derive)/ | ^crate/server/src/routes/kmip/'
 
-# Shared plumbing of every non-sqlite db leg (task, SoftHSM2 KEK helper, workflow).
+# Shared plumbing of every non-sqlite db leg (task, SoftHSM2 KEK helper).
 db_shared = '''
   ^\.mise/tasks/test/db/_default$
 | ^\.mise/lib/softhsm2\.sh$
-| ^\.github/workflows/test-db\.yml$
 '''
 
-interop_shared = '^\.mise/tasks/test/interop/_default$ | ^\.github/workflows/test-interop\.yml$'
+interop_shared = '^\.mise/tasks/test/interop/_default$'
 
 windows = '''
   ^vcpkg(_fips)?\.json$
-| ^\.github/workflows/test_windows\.yml$
 | ^\.github/actions/(build-static-openssl|windows-vs-ninja)/
 | ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
 '''
@@ -95,32 +90,35 @@ windows = '''
 # ── main.yml ────────────────────────────────────────────────────────────────────────────────
 [units.cargo-clippy]
 sets = ["rust"]
-files = '^clippy\.toml$'
+files = '^clippy\.toml$ | ^\.github/workflows/main\.yml$'
 
 [units.cargo-machete]
 sets = ["rust"]
+files = '^\.github/workflows/main\.yml$'
 
 [units.no-nix]
 sets = ["rust"]
-files = '^\.github/workflows/no-nix\.yml$'
+files = '^\.github/workflows/(main|no-nix)\.yml$'
 
 [units.forward-proxy]
 sets = ["server_core"]
-files = '^\.github/workflows/forward_proxy\.yml$ | ^\.github/scripts/squid/'
+files = '^\.github/workflows/(main|forward_proxy)\.yml$ | ^\.github/scripts/squid/'
 
 # ── test_all.yml (non test-group jobs) ──────────────────────────────────────────────────────
 [units.cargo-publish-dry-run]
 sets = ["rust"]
-files = '^\.github/workflows/cargo-publish\.yml$'
+files = '^\.github/workflows/(test_all|cargo-publish)\.yml$'
 
 [units.xks-remote]
 sets = ["server_core"]
-files = '^crate/server/src/routes/aws_xks/ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
+files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
 
 # ── test-group.yml suites (key = `suite` input; `pki` also gates the macOS job interop-macos) ──
 [units."db:sqlite"]
 sets = ["rust", "db_shared"]
-files = '^\.mise/tasks/test/db/sqlite$'
+# The reusable workflows are exercised by one representative leg: main -> test_all -> test-group, and test-db.
+# shortcut: a leg stands for its whole workflow; add the file to `full` if a wiring change must prove every suite.
+files = '^\.mise/tasks/test/db/sqlite$ | ^\.github/workflows/(main|test_all|test-group|test-db)\.yml$'
 
 [units."db:psql"]
 sets = ["db_core", "db_shared", "pg_store"]
@@ -148,7 +146,6 @@ files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
 | ^\.mise/scripts/test/openbao/
-| ^\.github/workflows/test-db\.yml$
 | ^crate/server/src/routes/kv/
 '''
 
@@ -289,7 +286,7 @@ files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao
 
 [units."interop:pykmip"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
+files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test-interop\.yml$'
 
 [units."interop:ssh-secrets"]
 sets = ["interop_shared", "pg_store", "mysql_store"]
@@ -303,7 +300,7 @@ files = '''
 # ── test_windows.yml ────────────────────────────────────────────────────────────────────────
 [units.windows-cargo-test]
 sets = ["rust", "windows"]
-files = '^\.mise/scripts/windows/cargo_test\.ps1$'
+files = '^\.mise/scripts/windows/cargo_test\.ps1$ | ^\.github/workflows/test_windows\.yml$'
 
 [units.windows-ui]
 sets = ["windows"]

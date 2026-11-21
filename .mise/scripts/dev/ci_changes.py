@@ -175,6 +175,30 @@ def self_test() -> None:
     p11 = run(['crate/clients/pkcs11/module/src/pkcs11.rs'])
     assert {'pkcs11', 'hsm', 'interop:ase', 'windows-cng-ksp'} <= p11
     assert not {'db:psql', 'ui'} & p11
+
+    workflows = run(
+        [
+            '.github/ci-paths.toml',
+            '.github/workflows/main.yml',
+            '.github/workflows/test_all.yml',
+            '.github/workflows/test-group.yml',
+            '.github/workflows/test-db.yml',
+            '.github/workflows/test-interop.yml',
+            '.github/workflows/test_windows.yml',
+            '.mise/scripts/dev/ci_changes.py',
+        ]
+    )
+    assert workflows == {
+        'cargo-clippy',
+        'cargo-machete',
+        'no-nix',
+        'forward-proxy',
+        'cargo-publish-dry-run',
+        'xks-remote',
+        'db:sqlite',
+        'interop:pykmip',
+        'windows-cargo-test',
+    }
     print('self-test OK')
 
 
