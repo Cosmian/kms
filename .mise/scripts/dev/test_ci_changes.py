@@ -359,6 +359,13 @@ class CiWorkflows(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertNotIn('xks-remote', run(path))
 
+    def test_removed_suite_wrappers_run_nothing(self) -> None:
+        # deleting them must not fall through to the run-everything fail-safe
+        self.assertEqual(
+            run('.github/workflows/test-db.yml', '.github/workflows/test-interop.yml'),
+            set(),
+        )
+
     def test_group_wrapper_runs_nothing(self) -> None:
         self.assertEqual(run('.github/workflows/test-group.yml'), set())
 
