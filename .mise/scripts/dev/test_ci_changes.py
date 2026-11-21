@@ -421,8 +421,13 @@ class Wiring(unittest.TestCase):
         v = set(CFG.variants)
         self.assertEqual(m | t | w | v, EVERYTHING)
         self.assertEqual(
-            len(m) + len(w) + len(t | v), len(EVERYTHING)
-        )  # `pki` is in t and v
+            t & v, {'pki'}
+        )  # the macOS sibling of the `pki` suite legs only
+        self.assertFalse(
+            {'cloud', 'ui'} & v
+        )  # their own jobs: secrets scoped by the job
+        self.assertEqual(m & (t | v | w), set())
+        self.assertEqual(w & (t | v), set())
         self.assertEqual(set(CFG.callers['test']), t | v)
         self.assertEqual(set(CFG.callers['windows']), w)
 
