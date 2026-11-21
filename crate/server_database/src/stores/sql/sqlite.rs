@@ -831,6 +831,10 @@ impl ObjectsStore for SqlitePool {
         Ok(owned)
     }
 
+    async fn get_parameter(&self, name: &'static str) -> InterfaceResult<Option<String>> {
+        Ok(DbParameters::get_parameter(self, name).await?)
+    }
+
     async fn get_or_insert_parameter(
         &self,
         name: &'static str,

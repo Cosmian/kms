@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 use cosmian_kms_interfaces::UserId;
+use cosmian_logger::reexport::tracing;
 
 use super::Database;
 use crate::{
@@ -208,8 +209,11 @@ impl Database {
         keys.seal(&payload, role)
     }
 
-    /// Verify sealed record integrity. Returns `true` if a valid sealed record exists,
-    /// `false` if no record, or `Err` if the record is tampered.
+    /// Verify sealed record integrity. Returns `true` if a valid sealed record exists and
+    /// verifies against this node's `ceremony_keys`, `false` if no record exists **or** if the
+    /// record fails GCM verification (a tampered record, or — in a multi-region deployment — a
+    /// replicated record sealed with a different `ceremony_secret`/`ceremony_key_id` than this
+    /// node's), or `Err` only for a genuine local misconfiguration (`ceremony_keys` unset).
     fn verify_ceremony_record(&self, sealed_opt: Option<String>, role: &str) -> DbResult<bool> {
         match sealed_opt {
             None => Ok(false),
@@ -219,9 +223,25 @@ impl Database {
                         "ceremony_secret not configured: cannot verify ceremony record".to_owned(),
                     )
                 })?;
-                // Unseal verifies GCM tag — tampered records produce Err here.
-                keys.unseal(&sealed, role)?;
-                Ok(true)
+                // Unseal verifies GCM tag. Fail secure: a verification failure (tampered record,
+                // or a cross-region ceremony_secret/ceremony_key_id mismatch) means this node
+                // cannot confirm the ceremony is valid — treat as "not active" rather than
+                // propagating a hard error, mirroring
+                // dispatch.rs::check_role_permission's existing fallback for the identical
+                // underlying condition.
+                match keys.unseal(&sealed, role) {
+                    Ok(_) => Ok(true),
+                    Err(DbError::CryptographicError(e)) => {
+                        tracing::warn!(
+                            role,
+                            error = %e,
+                            "ceremony record verification failed (tampered record, or \
+                             ceremony_keys mismatch across regions); treating as inactive"
+                        );
+                        Ok(false)
+                    }
+                    Err(e) => Err(e),
+                }
             }
         }
     }

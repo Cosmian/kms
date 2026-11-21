@@ -87,6 +87,9 @@ The file should be a TOML file with the following structure:
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
+# See [`RegionRole`] for the full semantics.
+region_role = "leader"
+
 # When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false

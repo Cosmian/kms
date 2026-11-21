@@ -460,12 +460,26 @@ pub(super) async fn compare_and_swap_test<DB: ObjectsStore>(db: &DB) -> DbResult
     Ok(())
 }
 
-/// `get_or_insert_parameter` stores a value once: later calls, even with another value,
-/// return the first one.
+/// Reading an absent parameter never creates it; insertion chooses one stable value that
+/// subsequent read-only lookups and competing inserts return unchanged.
 pub(super) async fn get_or_insert_parameter<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
-    let name = "test_get_or_insert_parameter";
+    // Keep a process-unique static name so repeated runs on a live DB cannot collide.
+    static NAME: std::sync::LazyLock<String> =
+        std::sync::LazyLock::new(|| format!("test_get_or_insert_parameter_{}", Uuid::new_v4()));
+    let name = NAME.as_str();
+    assert_eq!(db.get_parameter(name).await?, None);
+    assert_eq!(
+        db.get_parameter(name).await?,
+        None,
+        "a missing-parameter lookup must not create a value"
+    );
     let first = Uuid::new_v4().to_string();
     let stored = db.get_or_insert_parameter(name, &first).await?;
+    assert_eq!(stored, first);
+    assert_eq!(
+        db.get_parameter(name).await?.as_deref(),
+        Some(stored.as_str())
+    );
     let again = db
         .get_or_insert_parameter(name, &Uuid::new_v4().to_string())
         .await?;
@@ -474,6 +488,10 @@ pub(super) async fn get_or_insert_parameter<DB: ObjectsStore>(db: &DB) -> DbResu
             "parameter changed from {stored} to {again}"
         )));
     }
+    assert_eq!(
+        db.get_parameter(name).await?.as_deref(),
+        Some(stored.as_str())
+    );
     Ok(())
 }
 

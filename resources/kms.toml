@@ -1,5 +1,8 @@
 default_username = "admin"
 
+# Multi-region active-active PostgreSQL (see documentation/docs/configuration/database/configuration.md)
+## region_role = "leader"   # or "follower" — exactly one region per deployment is "leader"
+
 # Specifies which KMIP object types should be automatically unwrapped when retrieved.
 # Repeat this option to specify multiple object types.
 # Allowed values: All, Certificate, CertificateRequest, OpaqueObject, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey

@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::{CryptoOracle, KeyType},
+    cosmian_kms_interfaces::{AtomicOperation, CryptoOracle, KeyType},
 };
 use cosmian_logger::{debug, info, trace};
 use zeroize::Zeroizing;
@@ -179,6 +179,7 @@ pub(crate) async fn recursively_destroy_object(
                     owm.object_mut(),
                     state,
                     kms,
+                    user,
                 )
                 .await?;
             }
@@ -237,6 +238,7 @@ pub(crate) async fn recursively_destroy_object(
                     owm.object_mut(),
                     state,
                     kms,
+                    user,
                 )
                 .await?;
             }
@@ -299,6 +301,7 @@ pub(crate) async fn recursively_destroy_object(
                     owm.object_mut(),
                     state,
                     kms,
+                    user,
                 )
                 .await?;
             }
@@ -332,11 +335,12 @@ async fn destroy_core(
     object: &mut Object,
     state: State,
     kms: &KMS,
+    user: &UserId,
 ) -> KResult<()> {
     if remove {
         remove_from_database(handle, state, kms).await?;
     } else {
-        update_as_destroyed(handle, object, state, kms).await?;
+        update_as_destroyed(handle, object, state, kms, user).await?;
     }
     // The key schedules of open multi-part operations must not outlive the key.
     kms.multi_part.purge_key(handle.as_str());
@@ -363,6 +367,7 @@ async fn update_as_destroyed(
     object: &mut Object,
     state: State,
     kms: &KMS,
+    user: &UserId,
 ) -> KResult<()> {
     // Active objects were rejected by the caller (KMIP 2.1 §6.1.15).
     let new_state = match state {
@@ -434,12 +439,20 @@ async fn update_as_destroyed(
         }
     };
 
+    // One transaction: the destroyed lifecycle event snapshots the zeroized payload.
     kms.database
-        .update_object(handle.as_str(), object, &attributes, None)
-        .await?;
-
-    kms.database
-        .update_state(handle.as_str(), new_state)
+        .atomic(
+            user,
+            &[
+                AtomicOperation::UpdateObject((
+                    handle.as_str().to_owned(),
+                    object.clone(),
+                    attributes,
+                    None,
+                )),
+                AtomicOperation::UpdateState((handle.as_str().to_owned(), new_state)),
+            ],
+        )
         .await?;
 
     debug!("Object with unique identifier: {handle} destroyed");

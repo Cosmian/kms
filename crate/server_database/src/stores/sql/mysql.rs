@@ -835,6 +835,14 @@ impl ObjectsStore for MySqlPool {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
+    async fn get_parameter(&self, name: &'static str) -> InterfaceResult<Option<String>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        Ok(conn
+            .exec_first(get_mysql_query!("select-parameter"), (name,))
+            .await
+            .map_err(DbError::from)?)
+    }
+
     async fn get_or_insert_parameter(
         &self,
         name: &'static str,

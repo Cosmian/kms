@@ -85,7 +85,7 @@ sequenceDiagram
 
 ## 2. Database Backends
 
-**Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`
+**Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`, `test:db:pgedge`, `test:db:multi-region-guards`
 **Orchestrator:** `test:db`
 
 All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
@@ -98,6 +98,8 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
 | `redis` | Redis + Findex | **no** | Non-FIPS only. |
+| `pgedge` | Two PostgreSQL nodes with Spock | yes | Lifecycle, grants, GCM counter and local-heartbeat convergence; CRL leader gating; ceremony gating in non-FIPS mode. |
+| `multi-region-guards` | Two PostgreSQL nodes with Spock | yes | Replays the behavioral proofs, then checks primary keys, lifecycle triggers, replication sets and counter delta-apply. CI runs non-FIPS only. |
 
 ### Architecture Overview
 
@@ -116,6 +118,8 @@ graph TB
         MariaDB[("MariaDB<br/>:3306")]
         Percona[("Percona XtraDB<br/>:3306")]
         Redis[("Redis<br/>+ Findex")]
+        PGEdgeA[("pgEdge region A")]
+        PGEdgeB[("pgEdge region B")]
     end
 
     Nix --> Cargo
@@ -125,6 +129,8 @@ graph TB
     Cargo --> MariaDB
     Cargo --> Percona
     Cargo --> Redis
+    Cargo --> PGEdgeA & PGEdgeB
+    PGEdgeA <-.->|"Spock replication<br/>excluding cluster_nodes"| PGEdgeB
     SoftHSM --> Cargo
 ```
 
@@ -156,6 +162,14 @@ sequenceDiagram
         DB-->>Cargo: success
     end
 ```
+
+### `test:db:pgedge`
+
+[Task](db/pgedge): accepts `--variant fips|non-fips` and `--link static|dynamic`, starts the `pgedge` Compose profile, runs the database and CRL proofs, and adds the ceremony proof in non-FIPS mode. Its exit trap stops both containers.
+
+### `test:db:multi-region-guards`
+
+[Task](db/multi-region-guards), backed by [multi_region_guards.sh](../../lib/multi_region_guards.sh): accepts the same variant/link flags plus `--configs` (space-separated complete server TOML fixtures) and `--skip-live`. It validates source/configuration invariants, prebuilds the test binaries before starting the containers, runs the behavioral proofs and checks each node's primary keys, `ENABLE ALWAYS` triggers, Spock wiring, local-only `cluster_nodes` and delta-apply GCM counter. Without `--configs` it exercises synthetic detector cases. Missing Docker or `--skip-live` produces an incomplete result and exits with failure, never a passing live proof.
 
 ---
 

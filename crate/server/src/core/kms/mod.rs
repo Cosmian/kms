@@ -74,7 +74,7 @@ const OTHER_HSM_PKCS11_LIB: &str = "libkmshsm.dll";
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
 use crate::{
-    config::{AuditBackendParams, OpenTelemetryConfig, ServerParams},
+    config::{AuditBackendParams, OpenTelemetryConfig, RegionRole, ServerParams},
     core::{
         OtelMetrics,
         audit::AuditStore,
@@ -191,34 +191,44 @@ impl KMS {
 
     /// The server-wide secret key from which internal records derive their UIDs (HMAC key).
     ///
-    /// Generated once from the KMS RNG and stored in the database parameters table, which no
-    /// KMIP operation can read or write; the first stored value wins, so every instance and
-    /// replica sharing the database uses the same key. Cached in this instance after the first
-    /// call: later calls do no database or RNG work.
+    /// The leader region initializes it before serving; followers only read the replicated
+    /// parameter and can retry if it has not arrived yet. The first stored value wins across
+    /// leader instances sharing a database. Only a valid key is cached; later calls do no
+    /// database or RNG work. No KMIP operation can read or write this parameter.
     ///
     /// # Errors
-    /// Fails if the RNG or the database fails, or if the stored value is not a 32-byte hex key.
+    /// Fails if the key has not replicated, the RNG or database fails, or the value is corrupt.
     pub(crate) async fn internal_uid_key(&self) -> KResult<&Zeroizing<Vec<u8>>> {
         self.internal_uid_key
             .get_or_try_init(|| async {
-                let mut candidate = Zeroizing::new([0_u8; INTERNAL_UID_KEY_LENGTH]);
-                self.rng
-                    .fill_bytes(&mut candidate[..])
-                    .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
-                let candidate_hex = Zeroizing::new(hex::encode(&candidate[..]));
-                let stored = Zeroizing::new(
-                    self.database
-                        .get_or_insert_parameter(INTERNAL_UID_KEY_PARAM, &candidate_hex)
-                        .await?,
-                );
-                let key = Zeroizing::new(hex::decode(stored.as_str()).map_err(|_e| {
-                    KmsError::ServerError("corrupt internal UID key parameter".to_owned())
-                })?);
-                if key.len() != INTERNAL_UID_KEY_LENGTH {
-                    return Err(KmsError::ServerError(
-                        "corrupt internal UID key parameter: expected 32 bytes".to_owned(),
-                    ));
-                }
+                let stored = match self.database.get_parameter(INTERNAL_UID_KEY_PARAM).await? {
+                    Some(stored) => Zeroizing::new(stored),
+                    None if self.params.region_role == RegionRole::Follower => {
+                        return Err(KmsError::ServerError(
+                            "internal UID key is not available in this follower region; \
+                             initialize the leader region and retry after replication"
+                                .to_owned(),
+                        ));
+                    }
+                    None => {
+                        let mut candidate = Zeroizing::new([0_u8; INTERNAL_UID_KEY_LENGTH]);
+                        self.rng
+                            .fill_bytes(&mut candidate[..])
+                            .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
+                        let candidate_hex = Zeroizing::new(hex::encode(&candidate[..]));
+                        Zeroizing::new(
+                            self.database
+                                .get_or_insert_parameter(INTERNAL_UID_KEY_PARAM, &candidate_hex)
+                                .await?,
+                        )
+                    }
+                };
+                let mut key = Zeroizing::new(vec![0_u8; INTERNAL_UID_KEY_LENGTH]);
+                hex::decode_to_slice(stored.as_str(), key.as_mut_slice()).map_err(|_e| {
+                    KmsError::ServerError(
+                        "corrupt internal UID key parameter: expected 32-byte hex key".to_owned(),
+                    )
+                })?;
                 Ok::<_, KmsError>(key)
             })
             .await
@@ -406,7 +416,7 @@ impl KMS {
         // Instantiate the unified KMS RNG.
         let rng = Arc::new(KmsRng::new());
 
-        Ok(Self {
+        let kms = Self {
             node_id: uuid::Uuid::new_v4().to_string(),
             hsm_probes: HsmProbes::default(),
             socket_server_task: OnceLock::new(),
@@ -425,7 +435,11 @@ impl KMS {
             tickets: TicketStore::default(),
             constraints: ConstraintStore::default(),
             internal_uid_key: OnceCell::new(),
-        })
+        };
+        if kms.params.region_role == RegionRole::Leader {
+            kms.internal_uid_key().await?;
+        }
+        Ok(kms)
     }
 
     /// Validate that the OTLP URL is not using plaintext HTTP unless explicitly allowed.
@@ -704,7 +718,12 @@ impl KMS {
 )]
 mod tests {
     use super::*;
-    use crate::{config::OpenTelemetryConfig, error::KmsError, result::KResult};
+    use crate::{
+        config::OpenTelemetryConfig,
+        error::KmsError,
+        result::KResult,
+        tests::test_utils::{test_kms, test_kms_with_config},
+    };
 
     /// Regression test for COSMIAN-2026-004: OTLP plaintext HTTP must be rejected
     /// unless explicitly allowed via `otlp_allow_insecure`.
@@ -830,8 +849,6 @@ mod tests {
     /// a restart and differs between databases.
     #[tokio::test]
     async fn internal_uid_key_is_stable_per_database() -> KResult<()> {
-        use crate::tests::test_utils::{test_kms, test_kms_with_config};
-
         let dir = tempfile::TempDir::new().expect("temporary directory");
         let path = dir.path().join("kms.sqlite");
         let first = test_kms_with_config(config_with_sqlite(&path)).await?;
@@ -853,9 +870,8 @@ mod tests {
                 std::ptr::eq(a, b) && std::ptr::eq(a, c),
                 "one instance must hold a single cached key"
             );
-            assert_eq!(
-                a.as_slice(),
-                r.as_slice(),
+            assert!(
+                openssl::memcmp::eq(a.as_slice(), r.as_slice()),
                 "replicas must converge on one key"
             );
             assert!(std::ptr::eq(a, first.internal_uid_key().await?));
@@ -865,17 +881,141 @@ mod tests {
         drop(replica);
 
         let restarted = test_kms_with_config(config_with_sqlite(&path)).await?;
-        assert_eq!(
-            restarted.internal_uid_key().await?.as_slice(),
-            key.as_slice(),
+        assert!(
+            openssl::memcmp::eq(
+                restarted.internal_uid_key().await?.as_slice(),
+                key.as_slice()
+            ),
             "a restart must keep the key, or every derived UID would change"
         );
         let other_database = test_kms().await?;
-        assert_ne!(
-            other_database.internal_uid_key().await?.as_slice(),
-            key.as_slice(),
+        assert!(
+            !openssl::memcmp::eq(
+                other_database.internal_uid_key().await?.as_slice(),
+                key.as_slice()
+            ),
             "each database must have its own key"
         );
+        Ok(())
+    }
+
+    /// A follower cannot mint a conflicting key while waiting for leader bootstrap.
+    #[tokio::test]
+    async fn internal_uid_key_follower_retries_after_leader_bootstrap() -> KResult<()> {
+        let dir = tempfile::TempDir::new()?;
+        let path = dir.path().join("kms.sqlite");
+        let mut follower_config = config_with_sqlite(&path);
+        follower_config.region_role = RegionRole::Follower;
+        let follower = test_kms_with_config(follower_config).await?;
+        assert!(
+            follower
+                .database
+                .get_parameter(INTERNAL_UID_KEY_PARAM)
+                .await?
+                .is_none(),
+            "follower startup must not insert a key"
+        );
+        let error = follower
+            .internal_uid_key()
+            .await
+            .expect_err("key is not replicated");
+        assert!(error.to_string().contains("retry after replication"));
+        assert!(follower.internal_uid_key.get().is_none());
+        assert!(
+            follower
+                .database
+                .get_parameter(INTERNAL_UID_KEY_PARAM)
+                .await?
+                .is_none(),
+            "failed lookup must not insert a key"
+        );
+
+        let leader = test_kms_with_config(config_with_sqlite(&path)).await?;
+        let key = leader
+            .internal_uid_key
+            .get()
+            .expect("leader initializes before serving");
+        assert_eq!(key.len(), INTERNAL_UID_KEY_LENGTH);
+        let stored = Zeroizing::new(
+            leader
+                .database
+                .get_parameter(INTERNAL_UID_KEY_PARAM)
+                .await?
+                .expect("leader persists the key before serving"),
+        );
+        let encoded = Zeroizing::new(hex::encode(key.as_slice()));
+        assert!(openssl::memcmp::eq(stored.as_bytes(), encoded.as_bytes()));
+        let replicated = follower.internal_uid_key().await?;
+        assert!(openssl::memcmp::eq(key.as_slice(), replicated.as_slice()));
+        assert!(std::ptr::eq(replicated, follower.internal_uid_key().await?));
+        let key = Zeroizing::new(key.to_vec());
+        drop(leader);
+        drop(follower);
+
+        let mut follower_config = config_with_sqlite(&path);
+        follower_config.region_role = RegionRole::Follower;
+        let restarted_follower = test_kms_with_config(follower_config).await?;
+        assert!(openssl::memcmp::eq(
+            restarted_follower.internal_uid_key().await?.as_slice(),
+            key.as_slice(),
+        ));
+        let restarted_leader = test_kms_with_config(config_with_sqlite(&path)).await?;
+        assert!(openssl::memcmp::eq(
+            restarted_leader.internal_uid_key().await?.as_slice(),
+            key.as_slice(),
+        ));
+        Ok(())
+    }
+
+    /// Malformed replicated parameters fail closed without being cached or replaced.
+    #[tokio::test]
+    async fn internal_uid_key_rejects_corrupt_parameters() -> KResult<()> {
+        for corrupt in [
+            &"zz".repeat(INTERNAL_UID_KEY_LENGTH),
+            "00",
+            &"ab".repeat(INTERNAL_UID_KEY_LENGTH + 1),
+        ] {
+            let dir = tempfile::TempDir::new()?;
+            let path = dir.path().join("kms.sqlite");
+            let mut config = config_with_sqlite(&path);
+            config.region_role = RegionRole::Follower;
+            let follower = test_kms_with_config(config).await?;
+            let stored = Zeroizing::new(
+                follower
+                    .database
+                    .get_or_insert_parameter(INTERNAL_UID_KEY_PARAM, corrupt)
+                    .await?,
+            );
+            for _ in 0..2 {
+                let error = follower
+                    .internal_uid_key()
+                    .await
+                    .expect_err("corrupt key rejected");
+                assert!(
+                    error
+                        .to_string()
+                        .contains("corrupt internal UID key parameter")
+                );
+                assert!(follower.internal_uid_key.get().is_none());
+            }
+            let error = test_kms_with_config(config_with_sqlite(&path))
+                .await
+                .err()
+                .expect("leader startup rejects a corrupt key");
+            assert!(
+                error
+                    .to_string()
+                    .contains("corrupt internal UID key parameter")
+            );
+            let unchanged = Zeroizing::new(
+                follower
+                    .database
+                    .get_parameter(INTERNAL_UID_KEY_PARAM)
+                    .await?
+                    .expect("corrupt parameter is not removed"),
+            );
+            assert!(openssl::memcmp::eq(stored.as_bytes(), unchanged.as_bytes()));
+        }
         Ok(())
     }
 
