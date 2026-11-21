@@ -5,6 +5,12 @@ name: Test interop
 # hang, leftover state or missing secret never affects another. Leaves that need non-FIPS only run there.
 on:
   workflow_call:
+    inputs:
+      skip-units:
+        description: JSON list of skipped CI units, passed to test-group.yml
+        required: false
+        type: string
+        default: '[]'
     secrets:
       DOCKERHUB_USERNAME: {required: false}
       DOCKERHUB_TOKEN: {required: false}
@@ -39,6 +45,7 @@ jobs:
     with:
       suite: interop:${{ matrix.leaf }}
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

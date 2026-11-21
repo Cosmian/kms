@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: ''
+      skip-units:
+        description: JSON list of skipped CI units (.github/ci-paths.toml); the job is skipped when it contains `suite`
+        required: false
+        type: string
+        default: '[]'
     secrets:
       DOCKERHUB_USERNAME: {required: false}
       DOCKERHUB_TOKEN: {required: false}
@@ -53,6 +58,7 @@ on:
 jobs:
   test:
     name: test:${{ inputs.suite }} - ${{ inputs.variant }}
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), inputs.suite) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read

@@ -4,6 +4,12 @@ name: Test db
 # One job per database backend (a leaf of .mise/tasks/test/db), so a slow or hung backend never blocks the others.
 on:
   workflow_call:
+    inputs:
+      skip-units:
+        description: JSON list of skipped CI units, passed to test-group.yml
+        required: false
+        type: string
+        default: '[]'
     secrets:
       DOCKERHUB_USERNAME: {required: false}
       DOCKERHUB_TOKEN: {required: false}
@@ -34,6 +40,7 @@ jobs:
     with:
       suite: db:${{ matrix.leaf }}
       variant: ${{ matrix.variant }}
+      skip-units: ${{ inputs.skip-units }}
       extra-env: |
         POSTGRES_USER=kms
         PGUSER=kms

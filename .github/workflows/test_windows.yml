@@ -12,10 +12,16 @@ on:
         required: false
         type: boolean
         default: true
+      skip-units:
+        description: JSON list of skipped CI units (.github/ci-paths.toml); the job is skipped when it contains its unit
+        required: false
+        type: string
+        default: '[]'
 
 jobs:
   cargo-test:
     name: ${{ inputs.archive-name }} - cargo test
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-cargo-test') }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -43,6 +49,7 @@ jobs:
 
   test-ui:
     name: ${{ inputs.archive-name }} - UI E2E tests
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-ui') }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -90,6 +97,7 @@ jobs:
 
   test-cng-ksp:
     name: ${{ inputs.archive-name }} - CNG KSP integration tests
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-cng-ksp') }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -120,6 +128,7 @@ jobs:
 
   test-hsm-idemia:
     name: ${{ inputs.archive-name }} - HSM tests (Idemia SPHERE simulator, ${{ matrix.variant }})
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-hsm-idemia') }}
     runs-on: windows-2022
     timeout-minutes: 120
     strategy:
@@ -184,6 +193,7 @@ jobs:
 
   test-est-interop:
     name: ${{ inputs.archive-name }} - EST interoperability tests
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-est') }}
     runs-on: windows-2022
     timeout-minutes: 60
     permissions:

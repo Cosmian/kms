@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Classify the files a PR changes with .github/ci-paths.toml: prints and appends skip=<JSON units> to GITHUB_OUTPUT"
+#USAGE flag "--base <ref>" help="Diff from the merge base of <ref> and --head (PR merge commit: HEAD^1 is the base tip)" default="HEAD^1"
+#USAGE flag "--head <ref>" help="Changed side" default="HEAD"
+#USAGE flag "--self-test" help="Run the built-in asserts against .github/ci-paths.toml and exit"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+PYTHON="$(pick_python312)"
+ARGS=(--base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}")
+[ "${usage_self_test:-false}" = "true" ] && ARGS+=(--self-test)
+
+print_header "CI changed-area classification"
+"${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" "${ARGS[@]}"
+print_success "Classification complete"
