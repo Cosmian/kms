@@ -98,6 +98,7 @@
     - [FortiGate / FortiOS](integrations/fortigate.md)
     - [OpenSSH](integrations/openssh.md)
     - [OpenBao (auto-unseal and KV store)](integrations/openbao.md)
+    - [SOPS (Vault Transit and OpenPGP)](integrations/sops.md)
     - [SSH certificates and external secret rotation](integrations/ssh_certificates_and_secret_rotation.md)
     - [GnuPG]()
       - [OpenPGP keys](integrations/gnupg/openpgp.md)
