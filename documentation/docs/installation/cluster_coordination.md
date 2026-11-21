@@ -46,8 +46,8 @@ a database lock named after the job:
 
 | Job | Lock name | Runs on |
 | --- | --------- | ------- |
-| Key auto-rotation and renewal warnings | `auto-rotation` | one node at a time |
-| CRL refresh | `crl-refresh` | one node at a time |
+| Key auto-rotation and renewal warnings | `auto-rotation` | one node at a time (leader region only, see [Multi-region deployments](#multi-region-deployments)) |
+| CRL refresh | `crl-refresh` | one node at a time (leader region only) |
 | Object counter reconciliation | `metrics-reconcile` | one node at a time |
 | Metrics gauges refresh (`kms.keys.active.count`, `kms.objects.total`) | none | every node (each node exports its own gauges) |
 | KV secret TTL expiry | `kv-ttl` | one node at a time |
@@ -123,6 +123,17 @@ What to expect:
 - **Clocks:** heartbeat times come from each node's own clock. Keep the node clocks synchronized (for example with NTP):
   a node whose clock is about 10 seconds or more behind the others can be shown as gone, or appear and disappear from
   the list. This only affects the status display.
+
+## Multi-region deployments
+
+In a [multi-region active-active deployment](../configuration/database/multi_region.md), each region has its own
+database, so the coordination above stays **inside a region**:
+
+- a job lock excludes a job running in the same region only. Key auto-rotation and its renewal warnings therefore
+  run on the leader region (`region_role = "leader"`) only: a follower skips them, as it skips the CRL refresh;
+- `/cluster/status` and `kms.cluster.nodes` show the nodes of the region that answers: the `cluster_nodes` table is
+  not replicated between regions;
+- `/health` is per region: check each region with its own load balancer.
 
 ## Supported databases
 

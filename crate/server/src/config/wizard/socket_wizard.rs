@@ -7,7 +7,10 @@ use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 use super::PromptResultExt;
 use crate::{config::SocketServerConfig, result::KResult};
 
-pub(crate) fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketServerConfig> {
+pub(crate) fn configure_socket_server(
+    has_clients_ca: bool,
+    listen_on_all: bool,
+) -> KResult<SocketServerConfig> {
     let theme = ColorfulTheme::default();
 
     let enable: bool = Confirm::with_theme(&theme)
@@ -29,10 +32,14 @@ pub(crate) fn configure_socket_server(has_clients_ca: bool) -> KResult<SocketSer
         )?;
     }
 
-    #[cfg(target_os = "windows")]
-    let default_hostname = "127.0.0.1".to_owned();
-    #[cfg(not(target_os = "windows"))]
-    let default_hostname = "0.0.0.0".to_owned();
+    // Several nodes sit behind a load balancer or share a virtual IP: they must accept
+    // connections on every interface (Windows otherwise defaults to loopback).
+    let default_hostname = if listen_on_all || !cfg!(target_os = "windows") {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    }
+    .to_owned();
 
     let port: u16 = Input::with_theme(&theme)
         .with_prompt("KMIP socket server port")

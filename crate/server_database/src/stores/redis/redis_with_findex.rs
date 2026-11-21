@@ -1090,6 +1090,10 @@ impl ObjectsStore for RedisWithFindex {
         Ok(object.owner == *owner)
     }
 
+    async fn get_parameter(&self, name: &'static str) -> InterfaceResult<Option<String>> {
+        Ok(self.objects_db.get_parameter(name).await?)
+    }
+
     async fn get_or_insert_parameter(
         &self,
         name: &'static str,

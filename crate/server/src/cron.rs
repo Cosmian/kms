@@ -11,6 +11,29 @@ use crate::core::{
 const CLUSTER_HEARTBEAT_INTERVAL_SECS: u64 = 5;
 pub(crate) const CLUSTER_NODE_TIMEOUT_SECS: i64 = 15;
 
+/// Whether this node belongs to a follower region of a multi-region deployment.
+///
+/// The job locks of [`run_with_cluster_lock`] live in the node's own database, and each region has
+/// its own, so they do not exclude a job running in another region: a job that must run in one
+/// region only is skipped on a follower.
+fn is_follower_region(kms: &KMS) -> bool {
+    kms.params.region_role == crate::config::RegionRole::Follower
+}
+
+/// One run of the auto-rotation job. Rotation creates a new key version and a renewal warning is a
+/// notification: run in every region, both would be duplicated, so only the leader region runs them.
+async fn run_auto_rotation_job(kms: &Arc<KMS>, warned: &mut HashMap<String, i64>) {
+    if is_follower_region(kms) {
+        debug!("[auto-rotate-cron] Skipping auto-rotation on follower region");
+        return;
+    }
+    run_with_cluster_lock(kms, "auto-rotation", || async {
+        run_auto_rotation(kms).await;
+        dispatch_renewal_warnings(kms, warned).await;
+    })
+    .await;
+}
+
 async fn run_with_cluster_lock<F, Fut>(kms: &Arc<KMS>, lock_name: &str, action: F)
 where
     F: FnOnce() -> Fut,
@@ -199,10 +222,7 @@ pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[auto-rotate-cron] Running scheduled key auto-rotation check");
-                        run_with_cluster_lock(&kms, "auto-rotation", || async {
-                            run_auto_rotation(&kms).await;
-                            dispatch_renewal_warnings(&kms, &mut warned).await;
-                        }).await;
+                        run_auto_rotation_job(&kms, &mut warned).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[auto-rotate-cron] Shutdown signal received; stopping cron thread");
@@ -272,6 +292,14 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
 /// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
 async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
+    // CRL content is public information (RFC 5280 §3) — no special role required.
+    let _signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
+
+    if is_follower_region(kms) {
+        debug!("[crl-refresh-cron] Skipping background CRL refresh on follower region");
+        return;
+    }
+
     // Enumerate all issuer IDs stored in the `crls` table.
     let issuers = match kms.database.list_crl_issuers().await {
         Ok(ids) => ids,
@@ -414,4 +442,77 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     });
 
     shutdown_tx
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
+mod tests {
+    use std::{collections::HashMap, time::Duration};
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attribute,
+        kmip_operations::SetAttribute,
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+        requests::symmetric_key_create_request,
+    };
+
+    use super::run_auto_rotation_job;
+    use crate::{
+        config::RegionRole,
+        middlewares::UserId,
+        result::KResult,
+        tests::test_utils::{https_clap_config, test_kms_follower, test_kms_with_config},
+    };
+
+    /// A key due for rotation is rotated by the leader region, and left alone by a follower
+    /// region: each region has its own job lock, so a follower rotating it too would fork the key.
+    #[tokio::test]
+    async fn test_auto_rotation_runs_on_leader_region_only() -> KResult<()> {
+        for (role, rotated) in [(RegionRole::Follower, false), (RegionRole::Leader, true)] {
+            let conf = https_clap_config();
+            let kms = match role {
+                RegionRole::Follower => test_kms_follower(conf).await?,
+                RegionRole::Leader => test_kms_with_config(conf).await?,
+            };
+            let owner = UserId::from("alice");
+            let request = symmetric_key_create_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                256,
+                CryptographicAlgorithm::AES,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?;
+            let uid = kms.create(request, &owner).await?.unique_identifier;
+            kms.set_attribute(
+                SetAttribute {
+                    unique_identifier: Some(uid.clone()),
+                    new_attribute: Attribute::RotateInterval(1),
+                },
+                &owner,
+            )
+            .await?;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let is_due = async || -> KResult<bool> {
+                let due = kms
+                    .database
+                    .find_due_for_rotation(time::OffsetDateTime::now_utc())
+                    .await?;
+                Ok(due
+                    .iter()
+                    .any(|(id, _)| UniqueIdentifier::TextString(id.clone()) == uid))
+            };
+            assert!(is_due().await?, "the key must be due before the job runs");
+
+            run_auto_rotation_job(&kms, &mut HashMap::new()).await;
+
+            assert_eq!(is_due().await?, !rotated, "{role:?}: rotated={rotated}");
+        }
+        Ok(())
+    }
 }
