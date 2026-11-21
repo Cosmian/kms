@@ -42,7 +42,7 @@
     rows before triggers run. The live pgEdge proof partitions replication deterministically
     and asserts convergence for `Destroyed` vs `Deactivated` in both orders,
     `Compromised` + `Destroyed` = `Destroyed_Compromised`, no key material resurrected on a
-    Destroyed row, and replicated batch-UNDO downgrades; static source guards pin the triggers.
+    Destroyed row, and replicated batch-UNDO downgrades; live SQL guards verify the installed triggers on both nodes.
   - **Grants/permissions** — the live pgEdge proof races a grant against a revoke on the
     same object/user and asserts both regions converge to one identical permission set
     (documented last-write-wins limitation).

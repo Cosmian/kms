@@ -3,7 +3,7 @@
 # PostgreSQL deployment model (issue #1187).
 #
 # The guard layers are:
-#   * static source guards  — the leader-gating wiring and the PostgreSQL trigger/schema DDL
+#   * static source guards  — the leader-gating wiring
 #   * static config guards  — operator TOML topology/backend/ceremony checks, including
 #                             detectors for features incompatible with multi-region mode
 #   * live DB guards        — PRIMARY KEY/REPLICA IDENTITY, ENABLE ALWAYS trigger, Spock wiring
@@ -157,22 +157,6 @@ mr_guard_source_model() {
     print_warning "source guard: follower CRL-refresh cron skip missing from cron.rs"
     ok=1
   }
-  grep -q "objects_state_derive()" "$pgsql" || {
-    print_warning "source guard: objects state derive function missing from pgsql.rs"
-    ok=1
-  }
-  for trg in trg_objects_state_derive trg_object_state_events_apply trg_object_state_event_tombstones_apply; do
-    grep -q "ENABLE ALWAYS TRIGGER $trg" "$pgsql" || {
-      print_warning "source guard: trigger $trg is no longer ENABLE ALWAYS in pgsql.rs"
-      ok=1
-    }
-  done
-  for pk in tags_pkey read_access_pkey crypto_officer_activations_pkey object_state_events object_state_event_tombstones; do
-    grep -q "$pk" "$pgsql" || {
-      print_warning "source guard: PRIMARY KEY migration for '$pk' missing from pgsql.rs"
-      ok=1
-    }
-  done
   grep -q "update_state_allow_downgrade" "$interfaces" || {
     print_warning "source guard: batch-UNDO downgrade bypass missing from ObjectsStore trait"
     ok=1

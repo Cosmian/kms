@@ -171,6 +171,8 @@ sequenceDiagram
 
 [Task](db/multi-region-guards), backed by [multi_region_guards.sh](../../lib/multi_region_guards.sh): accepts the same variant/link flags plus `--configs` (space-separated complete server TOML fixtures) and `--skip-live`. It validates source/configuration invariants, prebuilds the test binaries before starting the containers, runs the behavioral proofs and checks each node's primary keys, `ENABLE ALWAYS` triggers, Spock wiring, local-only `cluster_nodes` and delta-apply GCM counter. Without `--configs` it exercises synthetic detector cases. Missing Docker or `--skip-live` produces an incomplete result and exits with failure, never a passing live proof.
 
+Schema invariants are checked against the running databases, not the location of SQL text in the source tree. The live guards verify primary keys, replica identity and lifecycle trigger definitions on both nodes.
+
 ---
 
 ## 3. HSM Backends
