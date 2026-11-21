@@ -465,7 +465,7 @@ mod tests {
         config::RegionRole,
         middlewares::UserId,
         result::KResult,
-        tests::test_utils::{https_clap_config, test_kms_with_config},
+        tests::test_utils::{https_clap_config, test_kms_follower, test_kms_with_config},
     };
 
     /// A key due for rotation is rotated by the leader region, and left alone by a follower
@@ -473,9 +473,11 @@ mod tests {
     #[tokio::test]
     async fn test_auto_rotation_runs_on_leader_region_only() -> KResult<()> {
         for (role, rotated) in [(RegionRole::Follower, false), (RegionRole::Leader, true)] {
-            let mut conf = https_clap_config();
-            conf.region_role = role;
-            let kms = test_kms_with_config(conf).await?;
+            let conf = https_clap_config();
+            let kms = match role {
+                RegionRole::Follower => test_kms_follower(conf).await?,
+                RegionRole::Leader => test_kms_with_config(conf).await?,
+            };
             let owner = UserId::from("alice");
             let request = symmetric_key_create_request(
                 VENDOR_ID_COSMIAN,

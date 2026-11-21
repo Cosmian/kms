@@ -47,6 +47,15 @@ pub(crate) async fn test_kms_with_config(clap_config: ClapConfig) -> KResult<Arc
     ))
 }
 
+/// Like `test_kms_with_config`, but the node runs as a `region_role = follower`. `SQLite` stands
+/// in for a replicated database; `ServerParams::try_from` rejects a follower on `SQLite`.
+pub(crate) async fn test_kms_follower(clap_config: ClapConfig) -> KResult<Arc<KMS>> {
+    crate::openssl_providers::init_openssl_providers_for_tests();
+    let mut params = ServerParams::try_from(clap_config)?;
+    params.region_role = crate::config::RegionRole::Follower;
+    Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
+}
+
 /// Create a test KMS instance from the default HTTPS config.
 pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
     test_kms_with_config(https_clap_config()).await

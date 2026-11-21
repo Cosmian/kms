@@ -105,7 +105,6 @@ pub(crate) fn allowed_databases(
 ) -> Vec<DatabaseType> {
     let keep = |v: &DatabaseType| match profile {
         DeploymentProfile::SingleNode => true,
-        DeploymentProfile::MultiRegion => matches!(v, DatabaseType::Postgresql),
         _ => matches!(v, DatabaseType::Postgresql | DatabaseType::Mysql),
     };
     variants.iter().copied().filter(keep).collect()
@@ -150,8 +149,12 @@ pub(crate) fn profile_notes(
             notes.push("Run the wizard once per region; exactly one region is the leader.");
             notes.push("Use the same ceremony_secret in every region.");
             notes.push(
-                "Exclude cluster_nodes from the Spock replication set and enable delta-apply on \
-                 gcm_invocations.count.",
+                "PostgreSQL: exclude cluster_nodes from the Spock replication set and enable \
+                 delta-apply on gcm_invocations.count.",
+            );
+            notes.push(
+                "MySQL: use a Galera cluster with an arbitrator (garbd) in a third site, and \
+                 point all KMS nodes of a region at the same database node.",
             );
             if region_role == RegionRole::Follower {
                 notes.push(

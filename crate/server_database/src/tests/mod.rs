@@ -27,7 +27,7 @@ use crate::{
             atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
             find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
-            update_if_version_test, wrapping_key_link_test,
+            lifecycle_state_contract_test, update_if_version_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -247,6 +247,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
     Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
     gcm_invocations_test(&get_pgsql().await?).await?;
+    lifecycle_state_contract_test(&get_pgsql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_pgsql().await?, || async {
         PgPool::instantiate(
             option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms"),
@@ -390,18 +391,6 @@ pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
     pg.update_state(&uid, State::Deactivated).await?;
     replica_event(uid.clone(), "Destroyed", None).await?;
     expect_state("a", state_of(uid).await?, State::Destroyed)?;
-
-    // b) Compromised joined with Destroyed is Destroyed_Compromised, and stays so.
-    let uid = new_object().await?;
-    pg.update_state(&uid, State::Compromised).await?;
-    pg.update_state(&uid, State::Destroyed).await?;
-    expect_state(
-        "b",
-        state_of(uid.clone()).await?,
-        State::Destroyed_Compromised,
-    )?;
-    pg.update_state(&uid, State::Active).await?;
-    expect_state("b2", state_of(uid).await?, State::Destroyed_Compromised)?;
 
     // c) an explicit downgrade replaces the observed state.
     let uid = new_object().await?;
@@ -652,11 +641,10 @@ async fn sync_both(pg1: &PgPool, pg2: &PgPool) -> DbResult<()> {
 }
 
 async fn state_on(
-    pg: &PgPool,
+    db: &impl cosmian_kms_interfaces::ObjectsStore,
     uid: &str,
 ) -> DbResult<Option<cosmian_kmip::kmip_0::kmip_types::State>> {
-    use cosmian_kms_interfaces::ObjectsStore;
-    Ok(pg.retrieve_state(uid).await?.map(|(state, _)| state))
+    Ok(db.retrieve_state(uid).await?.map(|(state, _)| state))
 }
 
 #[ignore = "Orchestrated by `mise run test:db:pgedge` (requires the pgedge Docker Compose profile)."]
@@ -1068,6 +1056,7 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
     gcm_invocations_test(&get_mysql().await?).await?;
+    lifecycle_state_contract_test(&get_mysql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_mysql().await?, || async {
         MySqlPool::instantiate(
             option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms"),
@@ -1078,5 +1067,214 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     })
     .await?;
     Box::pin(sql_migration_tests::mysql_migration_scenarios()).await?;
+    Ok(())
+}
+
+#[ignore = "Orchestrated by `mise run test:db:galera` (requires the galera Docker Compose profile)."]
+#[tokio::test]
+pub(crate) async fn test_db_galera_active_active() -> DbResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, PermissionsStore, UserId};
+    use uuid::Uuid;
+
+    log_init(option_env!("RUST_LOG"));
+
+    let url1 = std::env::var("KMS_GALERA_1_URL")
+        .unwrap_or_else(|_| "mysql://kms:kms@127.0.0.1:3310/kms".to_owned());
+    let url2 = std::env::var("KMS_GALERA_2_URL")
+        .unwrap_or_else(|_| "mysql://kms:kms@127.0.0.1:3311/kms".to_owned());
+    // The clear on node 1 replicates.
+    let my1 = MySqlPool::instantiate(&url1, true, None).await?;
+    let my2 = MySqlPool::instantiate(&url2, false, None).await?;
+
+    let owner = UserId::from("galera_test_user");
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[0_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let zeroized_object = zeroized_copy(&key_obj)?;
+    let zeroized_json = serde_json::to_string(&zeroized_object)?;
+    let attrs = Attributes::default();
+
+    // Creates an object on node 1 (optionally `Active`); node 2 sees it (causal reads).
+    let new_object = |active: bool| {
+        let (my1, owner, key_obj) = (&my1, &owner, &key_obj);
+        async move {
+            let uid = Uuid::new_v4().to_string();
+            my1.atomic(
+                owner,
+                &[AtomicOperation::Create((
+                    uid.clone(),
+                    owner.clone(),
+                    key_obj.clone(),
+                    Attributes::default(),
+                    HashSet::new(),
+                ))],
+            )
+            .await?;
+            if active {
+                my1.update_state(&uid, State::Active).await?;
+            }
+            Ok::<_, DbError>(uid)
+        }
+    };
+    let expect = |label: &str, got: Option<State>, want: State| {
+        if got == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!(
+                "{label}: expected {want:?}, got {got:?}"
+            )))
+        }
+    };
+
+    // G1: Destroyed on node 1, then a stale Deactivated from node 2.
+    let uid = new_object(false).await?;
+    my1.update_state(&uid, State::Destroyed).await?;
+    my2.update_state(&uid, State::Deactivated).await?;
+    expect("G1 my1", state_on(&my1, &uid).await?, State::Destroyed)?;
+    expect("G1 my2", state_on(&my2, &uid).await?, State::Destroyed)?;
+
+    // G2: Compromised on node 1, then Destroyed on node 2.
+    let uid = new_object(false).await?;
+    my1.update_state(&uid, State::Compromised).await?;
+    my2.update_state(&uid, State::Destroyed).await?;
+    expect(
+        "G2 my1",
+        state_on(&my1, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+    expect(
+        "G2 my2",
+        state_on(&my2, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+
+    // G3: a payload write from the other node must not bring key material back.
+    let uid = new_object(false).await?;
+    my1.atomic(
+        &owner,
+        &[
+            AtomicOperation::UpdateObject((
+                uid.clone(),
+                zeroized_object.clone(),
+                attrs.clone(),
+                None,
+            )),
+            AtomicOperation::UpdateState((uid.clone(), State::Destroyed)),
+        ],
+    )
+    .await?;
+    my2.update_object(&uid, &key_obj, &attrs, None).await?;
+    for (name, my) in [("my1", &my1), ("my2", &my2)] {
+        expect(
+            &format!("G3 {name}"),
+            state_on(my, &uid).await?,
+            State::Destroyed,
+        )?;
+        let stored = my
+            .retrieve(&uid)
+            .await?
+            .ok_or_else(|| DbError::ServerError(format!("G3 {name}: object missing")))?;
+        if serde_json::to_string(stored.object())? != zeroized_json {
+            return Err(DbError::ServerError(format!(
+                "G3 {name}: key material survived Destroy"
+            )));
+        }
+    }
+
+    // G4: concurrent Destroyed and Deactivated from the two nodes both succeed (certification
+    // aborts are retried) and converge on Destroyed.
+    let uid = new_object(false).await?;
+    let (r1, r2) = tokio::join!(
+        my1.update_state(&uid, State::Destroyed),
+        my2.update_state(&uid, State::Deactivated)
+    );
+    r1?;
+    r2?;
+    expect("G4 my1", state_on(&my1, &uid).await?, State::Destroyed)?;
+    expect("G4 my2", state_on(&my2, &uid).await?, State::Destroyed)?;
+
+    // G5: an explicit downgrade replicates.
+    let uid = new_object(true).await?;
+    my1.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    expect("G5 my1", state_on(&my1, &uid).await?, State::PreActive)?;
+    expect("G5 my2", state_on(&my2, &uid).await?, State::PreActive)?;
+
+    // G6: concurrent AES-GCM invocation reservations add up exactly.
+    let gcm_uid = Uuid::new_v4().to_string();
+    for (a, b) in [(3, 4), (10, 20)] {
+        let (r1, r2) = tokio::join!(
+            my1.reserve_gcm_invocations(&gcm_uid, a),
+            my2.reserve_gcm_invocations(&gcm_uid, b)
+        );
+        r1?;
+        r2?;
+    }
+    for (name, my) in [("my1", &my1), ("my2", &my2)] {
+        let total = my.reserve_gcm_invocations(&gcm_uid, 0).await?;
+        if total != Some(37) {
+            return Err(DbError::ServerError(format!(
+                "G6 {name}: GCM invocation total is {total:?}, expected 37"
+            )));
+        }
+    }
+
+    // G7: Galera cannot exclude a table: `cluster_nodes` is a global view across regions.
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    my1.record_cluster_heartbeat("region-1-node", "test", now, true, 0)
+        .await?;
+    if !my2
+        .list_cluster_nodes(0)
+        .await?
+        .iter()
+        .any(|n| n.node_id == "region-1-node")
+    {
+        return Err(DbError::ServerError(
+            "G7: cluster_nodes was not replicated".to_owned(),
+        ));
+    }
+
+    // G8: grants: read-modify-write can lose one side (as on PostgreSQL), but the nodes agree.
+    let uid = new_object(false).await?;
+    let alice = UserId::from("alice");
+    my1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    let (r1, r2) = tokio::join!(
+        my2.remove_operations(&uid, &alice, HashSet::from([KmipOperation::Get])),
+        my1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Encrypt]))
+    );
+    r1?;
+    r2?;
+    let perm1 = my1
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    let perm2 = my2
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    if perm1 != perm2
+        || !(perm1.is_empty()
+            || perm1 == HashSet::from([KmipOperation::Encrypt])
+            || perm1 == HashSet::from([KmipOperation::Get, KmipOperation::Encrypt]))
+    {
+        return Err(DbError::ServerError(format!(
+            "read_access did not converge: my1={perm1:?}, my2={perm2:?}"
+        )));
+    }
+
     Ok(())
 }

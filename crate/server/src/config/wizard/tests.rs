@@ -402,7 +402,7 @@ fn test_resolve_profile_matches_decision_tree() {
     }
 }
 
-/// `SQLite` is for one node only; multi-region requires `PostgreSQL`.
+/// `SQLite` is for one node only; multi-region requires `PostgreSQL` or `MySQL` (Galera).
 #[test]
 fn test_allowed_databases_per_profile() {
     let all = DatabaseType::FIPS_VARIANTS;
@@ -420,7 +420,7 @@ fn test_allowed_databases_per_profile() {
     );
     assert_eq!(
         allowed_databases(DeploymentProfile::MultiRegion, all),
-        [DatabaseType::Postgresql]
+        [DatabaseType::Postgresql, DatabaseType::Mysql]
     );
 }
 

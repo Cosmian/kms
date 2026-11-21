@@ -39,6 +39,13 @@ impl MainDbParams {
             Self::RedisFindex(_, _) => "Redis-Findex",
         }
     }
+
+    /// Whether a follower region can run on this backend: it has a multi-master replication
+    /// that the lifecycle-state contract (`lifecycle_state_contract_test`) holds under.
+    #[must_use]
+    pub const fn supports_multi_region(&self) -> bool {
+        matches!(self, Self::Postgres(..) | Self::Mysql(..))
+    }
 }
 
 impl Display for MainDbParams {

@@ -1541,3 +1541,121 @@ where
     reopened.delete(&live_uid).await?;
     Ok(())
 }
+
+/// Lifecycle-state contract every multi-region-capable backend (`MainDbParams::supports_multi_region`)
+/// must hold; SQLite and Redis keep blind writes and do not run it.
+pub(super) async fn lifecycle_state_contract_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    log_init(None);
+
+    let owner = UserId::from("lifecycle_contract_user");
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[0_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let key_json = serde_json::to_string(&key_obj)?;
+    let zeroized = super::zeroized_copy(&key_obj)?;
+    let zeroized_json = serde_json::to_string(&zeroized)?;
+    let attrs = Attributes::default();
+
+    let new_object = || async {
+        db.create(None, &owner, &key_obj, &attrs, &HashSet::new())
+            .await
+    };
+    let expect_state = |label: &str, got: Option<(State, Attributes)>, want: State| {
+        if got.map(|(state, _)| state) == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!("{label}: expected {want:?}")))
+        }
+    };
+    let expect_json = |label: &str, got: Option<ObjectWithMetadata>, want: &str| {
+        let stored = got
+            .ok_or_else(|| DbError::ServerError(format!("{label}: object missing")))
+            .and_then(|owm| Ok(serde_json::to_string(owm.object())?))?;
+        if stored == want {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!("{label}: unexpected payload")))
+        }
+    };
+    // a Destroyed object whose payload is zeroized (the order `destroy` uses)
+    let destroyed_object = || async {
+        let uid = new_object().await?;
+        db.atomic(
+            &owner,
+            &[
+                AtomicOperation::UpdateObject((uid.clone(), zeroized.clone(), attrs.clone(), None)),
+                AtomicOperation::UpdateState((uid.clone(), State::Destroyed)),
+            ],
+        )
+        .await?;
+        Ok::<_, DbError>(uid)
+    };
+
+    // a) a write planned on a stale read never regresses the state
+    let uid = new_object().await?;
+    db.update_state(&uid, State::Active).await?;
+    db.update_state(&uid, State::PreActive).await?;
+    expect_state("a1", db.retrieve_state(&uid).await?, State::Active)?;
+    db.update_state(&uid, State::Deactivated).await?;
+    db.update_state(&uid, State::Active).await?;
+    expect_state("a2", db.retrieve_state(&uid).await?, State::Deactivated)?;
+
+    // b) a compromise is never forgotten
+    let uid = new_object().await?;
+    db.update_state(&uid, State::Compromised).await?;
+    db.update_state(&uid, State::Destroyed).await?;
+    expect_state(
+        "b1",
+        db.retrieve_state(&uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+    db.update_state(&uid, State::Active).await?;
+    expect_state(
+        "b2",
+        db.retrieve_state(&uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+
+    // c) an explicit downgrade replaces the state
+    let uid = new_object().await?;
+    db.update_state(&uid, State::Active).await?;
+    db.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    expect_state("c", db.retrieve_state(&uid).await?, State::PreActive)?;
+
+    // d) a payload write cannot bring key material back on a Destroyed object
+    let uid = destroyed_object().await?;
+    db.update_object(&uid, &key_obj, &attrs, None).await?;
+    expect_state("d", db.retrieve_state(&uid).await?, State::Destroyed)?;
+    expect_json("d", db.retrieve(&uid).await?, &zeroized_json)?;
+
+    // e) batch UNDO order: reset the state, then restore the payload
+    db.update_state_allow_downgrade(&uid, State::Active).await?;
+    db.update_object(&uid, &key_obj, &attrs, None).await?;
+    expect_state("e", db.retrieve_state(&uid).await?, State::Active)?;
+    expect_json("e", db.retrieve(&uid).await?, &key_json)?;
+
+    // f) import replace may overwrite a Destroyed object
+    let uid = destroyed_object().await?;
+    db.atomic(
+        &owner,
+        &[AtomicOperation::Upsert((
+            uid.clone(),
+            key_obj.clone(),
+            attrs.clone(),
+            None,
+            State::Active,
+        ))],
+    )
+    .await?;
+    expect_state("f", db.retrieve_state(&uid).await?, State::Active)?;
+    expect_json("f", db.retrieve(&uid).await?, &key_json)?;
+
+    Ok(())
+}

@@ -722,7 +722,7 @@ mod tests {
         config::OpenTelemetryConfig,
         error::KmsError,
         result::KResult,
-        tests::test_utils::{test_kms, test_kms_with_config},
+        tests::test_utils::{test_kms, test_kms_follower, test_kms_with_config},
     };
 
     /// Regression test for COSMIAN-2026-004: OTLP plaintext HTTP must be rejected
@@ -904,9 +904,8 @@ mod tests {
     async fn internal_uid_key_follower_retries_after_leader_bootstrap() -> KResult<()> {
         let dir = tempfile::TempDir::new()?;
         let path = dir.path().join("kms.sqlite");
-        let mut follower_config = config_with_sqlite(&path);
-        follower_config.region_role = RegionRole::Follower;
-        let follower = test_kms_with_config(follower_config).await?;
+        let follower_config = config_with_sqlite(&path);
+        let follower = test_kms_follower(follower_config).await?;
         assert!(
             follower
                 .database
@@ -952,9 +951,8 @@ mod tests {
         drop(leader);
         drop(follower);
 
-        let mut follower_config = config_with_sqlite(&path);
-        follower_config.region_role = RegionRole::Follower;
-        let restarted_follower = test_kms_with_config(follower_config).await?;
+        let follower_config = config_with_sqlite(&path);
+        let restarted_follower = test_kms_follower(follower_config).await?;
         assert!(openssl::memcmp::eq(
             restarted_follower.internal_uid_key().await?.as_slice(),
             key.as_slice(),
@@ -977,9 +975,8 @@ mod tests {
         ] {
             let dir = tempfile::TempDir::new()?;
             let path = dir.path().join("kms.sqlite");
-            let mut config = config_with_sqlite(&path);
-            config.region_role = RegionRole::Follower;
-            let follower = test_kms_with_config(config).await?;
+            let config = config_with_sqlite(&path);
+            let follower = test_kms_follower(config).await?;
             let stored = Zeroizing::new(
                 follower
                     .database

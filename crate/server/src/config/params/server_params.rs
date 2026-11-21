@@ -710,6 +710,18 @@ impl ServerParams {
                 .init(&conf.workspace.init().context("failed to init workspace")?)
                 .context("failed to init DB")?,
         );
+        if conf.region_role == RegionRole::Follower
+            && let Some(db) = main_db_params
+                .as_ref()
+                .filter(|db| !db.supports_multi_region())
+        {
+            return Err(KmsError::NotSupported(format!(
+                "region_role = follower requires a multi-region database (PostgreSQL with \
+                 logical multi-master replication, or a MySQL Galera cluster); {} cannot \
+                 replicate across regions",
+                db.db_name()
+            )));
+        }
         let audit_backend =
             Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
         let kv_mount = resolve_kv_mount(
@@ -1697,6 +1709,20 @@ mod tests {
             },
             ..ClapConfig::default()
         }
+    }
+
+    /// `SQLite` cannot replicate across regions: a follower on it is refused at startup.
+    #[test]
+    fn follower_region_role_rejected_on_sqlite() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.region_role = crate::config::RegionRole::Follower;
+        let err = ServerParams::try_from(conf).expect_err("a follower on SQLite must be refused");
+        assert!(
+            err.to_string()
+                .contains("region_role = follower requires a multi-region database"),
+            "{err}"
+        );
     }
 
     /// When `kms_public_url` is set and `cors_allowed_origins` is absent, the

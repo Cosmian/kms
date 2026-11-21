@@ -24,7 +24,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode, NoopClusterLockGuard},
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
@@ -146,9 +146,9 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
 /// MySQL error codes meaning "this column / key already exists" (`ER_DUP_FIELDNAME`, `ER_DUP_KEYNAME`).
 const MYSQL_ALREADY_EXISTS_CODES: [u16; 2] = [1060, 1061];
 
-/// Set once the "`GET_LOCK` refused" warning has been logged, so a refusing server does not flood
-/// the log at every cron tick.
-static GET_LOCK_REFUSED_WARNED: AtomicBool = AtomicBool::new(false);
+/// Set once the server refused `GET_LOCK`: later jobs go straight to the row lock, and the
+/// warning is logged once.
+static GET_LOCK_REFUSED: AtomicBool = AtomicBool::new(false);
 
 /// Run a schema-changing statement that MySQL cannot make `IF NOT EXISTS`. Several nodes may
 /// bootstrap the same fresh database at once: another node creating the column or index between
@@ -382,24 +382,27 @@ impl MySqlPool {
         lock_name: &str,
     ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
         let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
+        if GET_LOCK_REFUSED.load(Ordering::Relaxed) {
+            return try_acquire_row_cron_lock(conn, lock_name).await;
+        }
         // NULL (a GET_LOCK internal error) must not panic the row conversion.
         let acquired: Option<Option<i64>> = match conn
             .exec_first(get_mysql_query!("try-cron-lock"), (lock_name,))
             .await
         {
             Ok(acquired) => acquired,
-            // Percona XtraDB Cluster refuses GET_LOCK in its default strict mode: run the job on
-            // every node, as with Redis, rather than on none.
+            // Galera refuses GET_LOCK (Percona XtraDB Cluster strict mode: 1105; MariaDB Galera:
+            // 1235): fall back to a row lock, which still excludes the nodes sharing a database node.
             Err(mysql_async::Error::Server(e))
-                if e.code == 1105 && e.message.contains("GET_LOCK") =>
+                if matches!(e.code, 1105 | 1235) && e.message.contains("GET_LOCK") =>
             {
-                if !GET_LOCK_REFUSED_WARNED.swap(true, Ordering::Relaxed) {
+                if !GET_LOCK_REFUSED.swap(true, Ordering::Relaxed) {
                     warn!(
-                        "The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node",
+                        "The database refuses GET_LOCK ({}): scheduled jobs use row locks in kms_cron_locks, which exclude only the KMS nodes connected to the same database node",
                         e.message
                     );
                 }
-                return Ok(Some(Box::new(NoopClusterLockGuard)));
+                return try_acquire_row_cron_lock(conn, lock_name).await;
             }
             Err(e) => return Err(DbError::from(e)),
         };
@@ -511,6 +514,70 @@ impl ClusterLockGuard for MySqlCronLock {
                 "MySQL cron named lock was not held during release".to_owned(),
             ))
         }
+    }
+}
+
+/// Row-lock fallback of `GET_LOCK`: hold `lock_name`'s row `FOR UPDATE NOWAIT` in an open
+/// transaction on `conn` until the guard is released.
+async fn try_acquire_row_cron_lock(
+    mut conn: Conn,
+    lock_name: &str,
+) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+    // The macro's `?` needs a `DbError` context: resolve the queries outside the driver block.
+    let has_row = get_mysql_query!("has-cron-lock-row");
+    let insert_row = get_mysql_query!("insert-cron-lock-row");
+    let start_tx = get_mysql_query!("start-transaction");
+    let lock_row = get_mysql_query!("select-cron-lock-nowait");
+    let attempt = async {
+        // Only insert when a plain read misses the row: `INSERT IGNORE` on a row another
+        // connection holds waits out `innodb_lock_wait_timeout`.
+        if conn
+            .exec_first::<mysql_async::Row, _, _>(has_row, (lock_name,))
+            .await?
+            .is_none()
+        {
+            conn.exec_drop(insert_row, (lock_name,)).await?;
+        }
+        conn.query_drop(start_tx).await?;
+        conn.exec_first::<mysql_async::Row, _, _>(lock_row, (lock_name,))
+            .await
+    }
+    .await;
+    match attempt {
+        Ok(Some(_)) => Ok(Some(Box::new(MySqlRowCronLock { conn }))),
+        Ok(None) => {
+            conn.query_drop(get_mysql_query!("rollback"))
+                .await
+                .map_err(DbError::from)?;
+            Err(DbError::DatabaseError(
+                "MySQL cron lock row is missing".to_owned(),
+            ))
+        }
+        // ER_LOCK_NOWAIT / ER_LOCK_WAIT_TIMEOUT: held elsewhere.
+        Err(mysql_async::Error::Server(e)) if matches!(e.code, 1205 | 3572) => {
+            conn.query_drop(get_mysql_query!("rollback"))
+                .await
+                .map_err(DbError::from)?;
+            Ok(None)
+        }
+        // Another Galera node inserted the same row first: certification failure, retry next tick.
+        Err(mysql_async::Error::Server(e)) if e.code == 1213 => Ok(None),
+        Err(e) => Err(DbError::from(e)),
+    }
+}
+
+/// Scheduled-job lock held as a `FOR UPDATE` row lock in an open transaction.
+struct MySqlRowCronLock {
+    conn: Conn,
+}
+
+#[async_trait]
+impl ClusterLockGuard for MySqlRowCronLock {
+    async fn release(mut self: Box<Self>) -> DbResult<()> {
+        self.conn
+            .query_drop(get_mysql_query!("rollback"))
+            .await
+            .map_err(DbError::from)
     }
 }
 
@@ -680,51 +747,11 @@ impl ObjectsStore for MySqlPool {
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
-        async fn transact(tx: &mut Transaction<'_>, uid: &str, state: State) -> DbResult<()> {
-            update_state_(uid, state, tx).await
-        }
-        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
-        for attempt in 0..max_retries {
-            let mut conn = self.get_configured_conn().await?;
-            let mut tx = conn
-                .start_transaction(mysql_async::TxOpts::default())
-                .await
-                .map_err(DbError::from)?;
-            match transact(&mut tx, uid, state).await {
-                Ok(()) => match tx.commit().await {
-                    Ok(()) => return Ok(()),
-                    Err(e) => {
-                        let msg = e.to_string();
-                        let is_deadlock = is_mysql_deadlock(&msg);
-                        if is_deadlock && attempt + 1 < max_retries {
-                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                            continue;
-                        }
-                        return Err(InterfaceError::from(DbError::from(e)));
-                    }
-                },
-                Err(e) => {
-                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
-                        return Err(InterfaceError::from(re));
-                    }
-                    let is_deadlock = matches!(
-                        &e,
-                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
-                        if is_mysql_deadlock(msg)
-                    );
-                    if is_deadlock && attempt + 1 < max_retries {
-                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                        continue;
-                    }
-                    return Err(InterfaceError::from(e));
-                }
-            }
-        }
-        Err(InterfaceError::from(DbError::DatabaseError(
-            "too much contention: too many attempts".to_owned(),
-        )))
+        self.update_state_retrying(uid, state, false).await
+    }
+
+    async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        self.update_state_retrying(uid, state, true).await
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
@@ -1196,6 +1223,7 @@ impl Migrate for MySqlPool {
             "create-table-crls",
             "create-table-gcm_invocations",
             "create-table-cluster-nodes",
+            "create-table-cron-locks",
         ] {
             let sql = queries
                 .get(name)
@@ -1640,7 +1668,33 @@ pub(super) async fn update_object_(
     Ok(())
 }
 
-pub(super) async fn update_state_(
+/// Same order as `kms_state_join` in `pgsql_object_state_events.sql`: the later lifecycle phase
+/// wins, and a compromise is never forgotten.
+fn join_state(stored: State, new: State) -> State {
+    const fn phase(s: State) -> u8 {
+        match s {
+            State::PreActive => 1,
+            State::Active => 2,
+            State::Deactivated | State::Compromised => 3,
+            State::Destroyed | State::Destroyed_Compromised => 4,
+        }
+    }
+    const fn compromised(s: State) -> bool {
+        matches!(s, State::Compromised | State::Destroyed_Compromised)
+    }
+    let compromised = compromised(stored) || compromised(new);
+    match (phase(stored).max(phase(new)), compromised) {
+        (4, true) => State::Destroyed_Compromised,
+        (4, false) => State::Destroyed,
+        (3, true) => State::Compromised,
+        (3, false) => State::Deactivated,
+        (2, _) => State::Active,
+        _ => State::PreActive,
+    }
+}
+
+/// Unconditional state write (batch UNDO); `update_state_` is the monotonic one.
+pub(super) async fn force_state_(
     uid: &str,
     state: State,
     tx: &mut Transaction<'_>,
@@ -1653,6 +1707,94 @@ pub(super) async fn update_state_(
     .map_err(DbError::from)?;
     trace!("Updated in DB: {uid}");
     Ok(())
+}
+
+/// Monotonic lifecycle write: the stored state is joined with `state` so a write planned on a
+/// stale read never regresses it.
+pub(super) async fn update_state_(
+    uid: &str,
+    state: State,
+    tx: &mut Transaction<'_>,
+) -> DbResult<()> {
+    // the row lock makes a concurrent writer on another Galera node fail certification (1213)
+    // and retry on the joined state
+    let stored: Option<Option<String>> = tx
+        .exec_first(get_mysql_query!("select-object-state-for-update"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+    let joined = match stored.flatten() {
+        Some(s) => join_state(
+            State::try_from(s.as_str()).context("failed converting the state")?,
+            state,
+        ),
+        None => state,
+    };
+    force_state_(uid, joined, tx).await
+}
+
+impl MySqlPool {
+    /// Retry loop of `update_state` and `update_state_allow_downgrade`.
+    async fn update_state_retrying(
+        &self,
+        uid: &str,
+        state: State,
+        allow_downgrade: bool,
+    ) -> InterfaceResult<()> {
+        async fn transact(
+            tx: &mut Transaction<'_>,
+            uid: &str,
+            state: State,
+            allow_downgrade: bool,
+        ) -> DbResult<()> {
+            if allow_downgrade {
+                force_state_(uid, state, tx).await
+            } else {
+                update_state_(uid, state, tx).await
+            }
+        }
+        let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
+        for attempt in 0..max_retries {
+            let mut conn = self.get_configured_conn().await?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(DbError::from)?;
+            match transact(&mut tx, uid, state, allow_downgrade).await {
+                Ok(()) => match tx.commit().await {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        let is_deadlock = is_mysql_deadlock(&msg);
+                        if is_deadlock && attempt + 1 < max_retries {
+                            let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                        return Err(InterfaceError::from(DbError::from(e)));
+                    }
+                },
+                Err(e) => {
+                    if let Err(re) = tx.rollback().await.map_err(DbError::from) {
+                        return Err(InterfaceError::from(re));
+                    }
+                    let is_deadlock = matches!(
+                        &e,
+                        crate::DbError::SqlError(msg) | crate::DbError::DatabaseError(msg)
+                        if is_mysql_deadlock(msg)
+                    );
+                    if is_deadlock && attempt + 1 < max_retries {
+                        let delay_ms = mysql_deadlock_backoff_ms(attempt);
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        continue;
+                    }
+                    return Err(InterfaceError::from(e));
+                }
+            }
+        }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
+    }
 }
 
 /// Add `invocations` to the AES-GCM invocation count of `uid` under a row lock; `None` (nothing
@@ -1736,7 +1878,7 @@ pub(super) async fn upsert_(
             )));
         }
         tx.exec_drop(
-            get_mysql_query!("update-object-with-object"),
+            get_mysql_query!("replace-object-with-object"),
             (&object_json, &attributes_json, wrapping_key_id, uid),
         )
         .await
@@ -2145,7 +2287,7 @@ mod tests {
         {
             Ok(held) => held,
             // Percona XtraDB Cluster refuses GET_LOCK: there is no lock to vanish.
-            Err(mysql_async::Error::Server(e)) if e.code == 1105 => return,
+            Err(mysql_async::Error::Server(e)) if matches!(e.code, 1105 | 1235) => return,
             Err(e) => panic!("take lock: {e}"),
         };
         assert_eq!(held.flatten(), Some(1));
@@ -2164,6 +2306,70 @@ mod tests {
             .release()
             .await
             .expect_err("releasing a vanished lock must be an error, not a panic");
+    }
+
+    /// First holder gets the lock, a second one is refused, and it is free again once released
+    /// (`GET_LOCK` on MySQL/MariaDB, the `kms_cron_locks` row lock on Galera).
+    #[ignore = "Requires a running MySQL or MariaDB instance"]
+    #[tokio::test]
+    async fn test_db_mysql_cron_lock_excludes_second_holder() {
+        let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
+        let pool = MySqlPool::instantiate(url, false, None)
+            .await
+            .expect("instantiate MySQL pool");
+        let name = format!("exclusive-{}", Uuid::new_v4());
+
+        let first = pool
+            .try_acquire_cron_lock(&name)
+            .await
+            .expect("first acquire")
+            .expect("first holder gets the lock");
+        assert!(
+            pool.try_acquire_cron_lock(&name)
+                .await
+                .expect("second acquire")
+                .is_none(),
+            "a second holder must be refused"
+        );
+        first.release().await.expect("release");
+        pool.try_acquire_cron_lock(&name)
+            .await
+            .expect("third acquire")
+            .expect("the lock is free after release")
+            .release()
+            .await
+            .expect("release");
+    }
+
+    #[test]
+    fn join_state_is_a_monotonic_join() {
+        use State::{
+            Active, Compromised, Deactivated, Destroyed, Destroyed_Compromised, PreActive,
+        };
+        for (stored, new, want) in [
+            (Active, PreActive, Active),
+            (Deactivated, Active, Deactivated),
+            (Destroyed, Deactivated, Destroyed),
+            (Compromised, Destroyed, Destroyed_Compromised),
+            (Destroyed, Compromised, Destroyed_Compromised),
+            (PreActive, Active, Active),
+            (Destroyed_Compromised, Active, Destroyed_Compromised),
+        ] {
+            assert_eq!(join_state(stored, new), want, "{stored:?} + {new:?}");
+        }
+        let all = [
+            PreActive,
+            Active,
+            Deactivated,
+            Compromised,
+            Destroyed,
+            Destroyed_Compromised,
+        ];
+        for a in all {
+            for b in all {
+                assert_eq!(join_state(a, b), join_state(b, a), "{a:?} / {b:?}");
+            }
+        }
     }
 
     #[test]

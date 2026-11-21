@@ -59,10 +59,11 @@ pub fn get_default_config_path() -> String {
 }
 
 /// The topological role of this KMS node's region in a multi-region active-active
-/// `PostgreSQL` deployment (logical multi-master replication via a Spock/BDR/pgEdge-class
-/// extension). Exactly one region across the whole deployment should be `leader`; every
-/// other region is `follower`. This is a static, operator-set value — the KMS performs no
-/// election or consensus.
+/// deployment: `PostgreSQL` with logical multi-master replication (Spock/BDR/pgEdge-class) or a
+/// `MySQL` Galera cluster (Percona `XtraDB` Cluster, MariaDB Galera). A follower on `SQLite` or
+/// Redis-with-Findex is rejected at startup. Exactly one region across the whole deployment
+/// should be `leader`; every other region is `follower`. This is a static, operator-set value
+/// — the KMS performs no election or consensus.
 ///
 /// The leader is the only region allowed to generate/regenerate X.509 CRLs (RFC 5280
 /// §5.2.3 requires strict per-issuer CRL number monotonicity, incompatible with
