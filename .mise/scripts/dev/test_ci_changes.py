@@ -520,19 +520,24 @@ class LoadConfig(unittest.TestCase):
         self.assertEqual(len(cfg.units['c']), 2)  # set + files
 
 
+# Temp repos must not see the runner's or the developer's git config (signing, hooks, identity) nor write the
+# `changes` step's real $GITHUB_OUTPUT.
+GIT_ENV = {
+    **{k: v for k, v in os.environ.items() if k != 'GITHUB_OUTPUT'},
+    'GIT_CONFIG_GLOBAL': os.devnull,
+    'GIT_CONFIG_NOSYSTEM': '1',
+    'GIT_AUTHOR_NAME': 't',
+    'GIT_AUTHOR_EMAIL': 't@t',
+    'GIT_COMMITTER_NAME': 't',
+    'GIT_COMMITTER_EMAIL': 't@t',
+}
+
+
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        [
-            'git',
-            '-c',
-            'user.name=t',
-            '-c',
-            'user.email=t@t',
-            '-c',
-            'commit.gpgsign=false',
-            *args,
-        ],
+        ['git', '-c', 'commit.gpgsign=false', *args],
         cwd=repo,
+        env=GIT_ENV,
         check=True,
         capture_output=True,
         text=True,
@@ -710,6 +715,7 @@ class CommandLine(unittest.TestCase):
         done = subprocess.run(
             [sys.executable, str(script), '--base', 'HEAD', '--head', 'HEAD'],
             cwd=ci_changes.REPO,
+            env=GIT_ENV,
             capture_output=True,
             text=True,
             check=True,
@@ -720,7 +726,10 @@ class CommandLine(unittest.TestCase):
     def test_unknown_flag_is_rejected(self) -> None:
         script = Path(ci_changes.__file__)
         done = subprocess.run(
-            [sys.executable, str(script), '--nope'], capture_output=True, text=True
+            [sys.executable, str(script), '--nope'],
+            env=GIT_ENV,
+            capture_output=True,
+            text=True,
         )
         self.assertEqual(done.returncode, 2)
 
