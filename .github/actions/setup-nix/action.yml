@@ -16,7 +16,7 @@ inputs:
     default: ''
   dev-shell-cache:
     description: >
-      Import the Nix dev-shell closure cached by nix-dev-shell-cache.yml.
+      Import the Nix dev-shell closure cached by test_all.yml's nix-dev-shell-cache job.
     required: false
     default: 'false'
 
