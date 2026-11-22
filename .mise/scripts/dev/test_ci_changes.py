@@ -65,14 +65,61 @@ KMIP_INTEROP = {
 }
 
 
-def leg(suite: str, *variants: str, bench: str = '') -> list[dict[str, str]]:
-    return [{'suite': suite, 'variant': v, 'bench': bench} for v in variants]
+def leg(
+    suite: str,
+    *variants: str,
+    runner: str = 'ubuntu-24.04',
+    setup: str = 'nix',
+    bench: str = '',
+    timeout: int = 360,
+    lock: str = '',
+    environment: str = '',
+) -> list[dict[str, object]]:
+    return [
+        {
+            'suite': suite,
+            'variant': v,
+            'runner': runner,
+            'setup': setup,
+            'bench': bench,
+            'timeout': timeout,
+            'lock': lock,
+            'environment': environment,
+        }
+        for v in variants or ('',)
+    ]
+
+
+def written_legs(output: Path) -> list[dict[str, object]]:
+    """The legs of the `suites-matrix=` line main() appended to the $GITHUB_OUTPUT file `output`."""
+    line = output.read_text().splitlines()[-1]
+    return json.loads(line.removeprefix('suites-matrix='))
 
 
 BOTH = ('fips', 'non-fips')
 SOFT_HSMS = 'softhsm2 utimaco crypt2pay-simulator'
-# Every leg, in ci-paths.toml unit order (what `ci_changes.py --all` emits); `cloud` and `ui` have none.
+WIN = {'runner': 'windows-2022', 'setup': 'windows'}
+XKS = leg(
+    'xks-remote',
+    'non-fips',
+    timeout=30,
+    lock='xks-remote',
+    environment='xks-remote-approval',
+)
+NO_NIX = [  # runner-major, then variant
+    g
+    for runner in ('ubuntu-24.04', 'ubuntu-24.04-arm', 'macos-15')
+    for g in leg('no-nix', *BOTH, runner=runner, setup='plain')
+]
+# Every pull-request leg of an upstream PR, in ci-paths.toml unit order (what an empty diff emits).
 FULL_SUITES = [
+    *leg('cargo-clippy', setup='plain'),
+    *leg('cargo-machete', setup='plain'),
+    *NO_NIX,
+    *leg('forward-proxy', 'non-fips', setup='plain'),
+    *leg('build-documentation', setup='plain'),
+    *leg('cargo-publish-dry-run', setup='plain'),
+    *XKS,
     *leg('db:sqlite', *BOTH),
     *leg('db:psql', *BOTH),
     *leg('db:mysql', *BOTH),
@@ -80,12 +127,15 @@ FULL_SUITES = [
     *leg('db:percona', *BOTH),
     *leg('db:redis', 'non-fips'),
     *leg('db:openbao', *BOTH),
+    *leg('cloud', *BOTH),
     *leg('hsm', 'fips', bench=SOFT_HSMS),
     *leg('hsm', 'non-fips', bench=SOFT_HSMS + ' kryoptic'),
     *leg('pkcs11', 'non-fips'),
     *leg('obs', *BOTH),
     *leg('pki', *BOTH),
+    *leg('pki-macos', 'fips', runner='macos-15', setup='plain', timeout=60),
     *leg('spire', 'non-fips'),
+    *leg('ui', *BOTH),
     *leg('interop:ase', 'non-fips'),
     *leg('interop:db2', 'non-fips'),
     *leg('interop:edb-tde', 'non-fips'),
@@ -98,7 +148,31 @@ FULL_SUITES = [
     *leg('interop:openbao-kmip', *BOTH),
     *leg('interop:pykmip', 'non-fips'),
     *leg('interop:ssh-secrets', *BOTH),
+    *leg('windows-cargo-test', **WIN),
+    *leg('windows-ui', **WIN),
+    *leg('windows-cng-ksp', **WIN),
+    *leg('windows-hsm-idemia', 'non-fips', 'fips', timeout=120, **WIN),
+    *leg('windows-est', timeout=60, **WIN),
 ]
+
+
+# Units with their own steps in test-group.yml (the rest run `mise run test:<suite>`): any change to it runs them.
+GROUP_LEGS = {
+    'build-documentation',
+    'cargo-clippy',
+    'cargo-machete',
+    'cargo-publish-dry-run',
+    'cloud',
+    'forward-proxy',
+    'no-nix',
+    'pki-macos',
+    'windows-cargo-test',
+    'windows-cng-ksp',
+    'windows-est',
+    'windows-hsm-idemia',
+    'windows-ui',
+    'xks-remote',
+}
 
 
 def run(*files: str) -> set[str]:
@@ -249,13 +323,13 @@ class FeatureCrates(unittest.TestCase):
     def test_est_route(self) -> None:
         self.assertEqual(
             run('crate/server/src/routes/est/mod.rs'),
-            WORKSPACE | {'pki', 'windows-est'},
+            WORKSPACE | {'pki', 'pki-macos', 'windows-est'},
         )
 
     def test_certificate_core(self) -> None:
         self.assertEqual(
             run('crate/server/src/core/certificate/validate.rs'),
-            SERVER_WIDE | {'pki'},
+            SERVER_WIDE | {'pki', 'pki-macos'},
         )
 
     def test_audit_core(self) -> None:
@@ -278,7 +352,7 @@ class FeatureCrates(unittest.TestCase):
     def test_certificates_cli_action(self) -> None:
         self.assertEqual(
             run('crate/clients/clap/src/actions/certificates/certify.rs'),
-            SERVER_WIDE | {'pki'},
+            SERVER_WIDE | {'pki', 'pki-macos'},
         )
 
 
@@ -301,12 +375,8 @@ class CiWorkflows(unittest.TestCase):
                 '.github/workflows/test_windows.yml',
                 '.mise/scripts/dev/ci_changes.py',
             ),
-            {
-                'forward-proxy',
-                'build-documentation',
-                'xks-remote',
-                'interop:pykmip',
-            },
+            # every leg with its own steps in test-group.yml, plus the one suite the ci_changes.py change triggers
+            {*GROUP_LEGS, 'interop:pykmip'},
         )
 
     def test_strict_units_run_only_on_their_inputs(self) -> None:
@@ -358,12 +428,14 @@ class CiWorkflows(unittest.TestCase):
     def test_classifier_config_change_runs_nothing(self) -> None:
         self.assertEqual(run('.github/ci-paths.toml'), set())
 
-    def test_forward_proxy_workflow(self) -> None:
-        self.assertEqual(run('.github/workflows/forward_proxy.yml'), {'forward-proxy'})
-
-    def test_rust_only_workflows_run_nothing(self) -> None:
+    def test_removed_job_workflows_run_nothing(self) -> None:
+        # their jobs are legs of test-group.yml now: deleting them must not run everything
         self.assertEqual(
-            run('.github/workflows/no-nix.yml', '.github/workflows/test_windows.yml'),
+            run(
+                '.github/workflows/forward_proxy.yml',
+                '.github/workflows/no-nix.yml',
+                '.github/workflows/test_windows.yml',
+            ),
             set(),
         )
 
@@ -408,54 +480,83 @@ class CiWorkflows(unittest.TestCase):
             set(),
         )
 
-    def test_group_wrapper_runs_nothing(self) -> None:
-        self.assertEqual(run('.github/workflows/test-group.yml'), set())
+    def test_group_wrapper_runs_exactly_the_legs_with_their_own_steps(self) -> None:
+        self.assertEqual(run('.github/workflows/test-group.yml'), GROUP_LEGS)
 
 
 class Matrices(unittest.TestCase):
-    """outputs(): the legs and caller flags main.yml feeds to test_all.yml."""
+    """outputs(): the legs main.yml feeds to test_all.yml."""
 
-    def out(self, *files: str) -> dict[str, str]:
-        skipped, _ = ci_changes.classify(CFG, list(files))
-        return ci_changes.outputs(CFG, skipped)
+    def legs(self, files: list[str], **kwargs: object) -> list[dict[str, object]]:
+        skipped, _ = ci_changes.classify(CFG, files)
+        out = ci_changes.outputs(CFG, skipped, **kwargs)
+        self.assertEqual(list(out), ['suites-matrix'])
+        return json.loads(out['suites-matrix'])
+
+    def everything(self, event: str, **kwargs: object) -> list[dict[str, object]]:
+        return json.loads(
+            ci_changes.outputs(CFG, [], event=event, **kwargs)['suites-matrix']
+        )
 
     def test_everything_runs_every_leg_in_toml_order(self) -> None:
-        for out in (self.out(), ci_changes.outputs(CFG, [])):
-            self.assertEqual(json.loads(out['suites-matrix']), FULL_SUITES)
-            self.assertEqual(len(FULL_SUITES), 38)
-            self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+        for legs in (self.legs([]), self.everything('pull_request')):
+            self.assertEqual(legs, FULL_SUITES)
+            self.assertEqual(len(legs), 61)
+
+    def test_no_nix_legs_come_runner_major(self) -> None:
+        legs = [g for g in FULL_SUITES if g['suite'] == 'no-nix']
+        self.assertEqual(
+            [(g['runner'], g['variant']) for g in legs],
+            [
+                ('ubuntu-24.04', 'fips'),
+                ('ubuntu-24.04', 'non-fips'),
+                ('ubuntu-24.04-arm', 'fips'),
+                ('ubuntu-24.04-arm', 'non-fips'),
+                ('macos-15', 'fips'),
+                ('macos-15', 'non-fips'),
+            ],
+        )
 
     def test_workflow_only_pr(self) -> None:
-        out = self.out(
-            '.github/ci-paths.toml',
-            '.github/workflows/main.yml',
-            '.github/workflows/test_all.yml',
-            '.github/workflows/test-group.yml',
-            '.github/workflows/test_windows.yml',
-            '.mise/scripts/dev/ci_changes.py',
+        legs = self.legs(
+            [
+                '.github/ci-paths.toml',
+                '.github/workflows/main.yml',
+                '.github/workflows/test_all.yml',
+                '.github/workflows/test-group.yml',
+                '.mise/scripts/dev/ci_changes.py',
+            ]
         )
         self.assertEqual(
-            json.loads(out['suites-matrix']), leg('interop:pykmip', 'non-fips')
+            legs,
+            [g for g in FULL_SUITES if g['suite'] in {*GROUP_LEGS, 'interop:pykmip'}],
         )
-        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'false'))
 
     def test_pg_store_change_keeps_only_the_legs_it_triggers(self) -> None:
-        out = self.out('crate/server_database/src/stores/sql/pgsql.rs')
+        legs = self.legs(['crate/server_database/src/stores/sql/pgsql.rs'])
         self.assertEqual(
-            json.loads(out['suites-matrix']),
+            legs,
             [
+                *leg('cargo-clippy', setup='plain'),
+                *leg('cargo-machete', setup='plain'),
+                *NO_NIX,
+                *leg('cargo-publish-dry-run', setup='plain'),
                 *leg('db:sqlite', *BOTH),
                 *leg('db:psql', *BOTH),
                 *leg('db:openbao', *BOTH),
                 *leg('interop:ssh-secrets', *BOTH),
+                *leg('windows-cargo-test', **WIN),
             ],
         )
-        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
 
-    def test_ui_change_has_no_legs_but_still_runs_the_callers(self) -> None:
-        out = self.out('ui/src/App.tsx')
-        self.assertEqual(out['suites-matrix'], '[]')
-        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+    def test_ui_change_runs_the_ui_and_windows_ui_legs(self) -> None:
+        self.assertEqual(
+            self.legs(['ui/src/App.tsx']),
+            [
+                *leg('ui', *BOTH),
+                *leg('windows-ui', **WIN),
+            ],
+        )
 
     def test_only_hsm_running_keeps_its_bench_models_per_variant(self) -> None:
         out = ci_changes.outputs(CFG, sorted(EVERYTHING - {'hsm'}))
@@ -467,38 +568,79 @@ class Matrices(unittest.TestCase):
             ],
         )
 
-    def test_change_that_triggers_no_unit_skips_both_callers(self) -> None:
-        out = self.out('clippy.toml')
-        self.assertEqual((out['run-test'], out['run-windows']), ('false', 'false'))
+    def test_change_that_triggers_no_unit_has_no_legs(self) -> None:
+        out = ci_changes.outputs(CFG, ci_changes.classify(CFG, ['README.md'])[0])
+        self.assertEqual(out['suites-matrix'], '[]')
+
+    def test_nightly_runs_every_unit_but_xks(self) -> None:
+        legs = self.everything('schedule')
+        suites = {g['suite'] for g in legs}
+        self.assertEqual(len(legs), 62)
+        self.assertEqual(suites, set(EVERYTHING) - {'xks-remote'})
+        self.assertEqual(
+            [g['lock'] for g in legs if g['suite'].startswith('hsm:')],
+            ['hsm-crypt2pay', 'hsm-proteccio'],
+        )
+
+    def test_tag_runs_the_real_publish_instead_of_the_dry_run(self) -> None:
+        legs = self.everything('tag')
+        suites = {g['suite'] for g in legs}
+        self.assertEqual(len(legs), 62)
+        self.assertEqual(suites, set(EVERYTHING) - {'cargo-publish-dry-run'})
+        self.assertIn('xks-remote', suites)
+
+    def test_dispatch_runs_every_leg(self) -> None:
+        legs = self.everything('workflow_dispatch')
+        self.assertEqual(len(legs), 63)
+        self.assertEqual({g['suite'] for g in legs}, set(EVERYTHING))
+
+    def test_nightly_of_a_fork_repository(self) -> None:
+        legs = self.everything('schedule', secrets=False)
+        suites = {g['suite'] for g in legs}
+        self.assertEqual(len(legs), 58)
+        self.assertFalse(suites & {'cloud', 'hsm:crypt2pay', 'hsm:proteccio'})
+        self.assertTrue(suites >= {'cargo-publish-dry-run', 'windows-est'})
+
+    def test_fork_pull_request(self) -> None:
+        legs = self.legs([], secrets=False, fork_pr=True)
+        suites = {g['suite'] for g in legs}
+        self.assertEqual(len(legs), 51)
+        self.assertFalse(suites & {'cloud', 'xks-remote', 'cargo-publish-dry-run'})
+        self.assertFalse({u for u in suites if u.startswith('windows-')})
+
+    def test_dependabot_pull_request_keeps_the_rust_and_docs_units(self) -> None:
+        legs = self.legs([], dependabot=True)
+        self.assertEqual(len(legs), 10)
+        self.assertEqual(
+            {g['suite'] for g in legs},
+            {
+                'cargo-clippy',
+                'cargo-machete',
+                'no-nix',
+                'forward-proxy',
+                'build-documentation',
+            },
+        )
 
 
 class Wiring(unittest.TestCase):
-    """Every unit is gated where the workflows test it, and its caller group lists it (else it would never run)."""
+    """Every unit has a way to run: a mise task, or steps of its own in test-group.yml (else its leg would run nothing)."""
 
-    GATE = re.compile(
-        r"contains\(fromJSON\((?:needs\.changes\.outputs\.skip|inputs\.skip-units \|\| '\[\]')\), '([a-z0-9:-]+)'\)"
-    )
-
-    def gated(self, name: str) -> set[str]:
-        text = (ci_changes.REPO / '.github' / 'workflows' / name).read_text()
-        return set(self.GATE.findall(text))
-
-    def test_units_callers_and_workflows_agree(self) -> None:
-        m, t, w = (
-            self.gated(n) for n in ('main.yml', 'test_all.yml', 'test_windows.yml')
-        )
-        v = set(CFG.variants)
-        self.assertEqual(m | t | w | v, EVERYTHING)
+    def test_units_with_their_own_steps_are_exactly_the_non_nix_ones(self) -> None:
+        text = (
+            ci_changes.REPO / '.github' / 'workflows' / 'test-group.yml'
+        ).read_text()
+        steps = set(re.findall(r"inputs\.suite == '([a-z0-9:-]+)'", text))
         self.assertEqual(
-            t & v, {'pki'}
-        )  # the macOS sibling of the `pki` suite legs only
-        self.assertFalse(
-            {'cloud', 'ui'} & v
-        )  # their own jobs: secrets scoped by the job
-        self.assertEqual(m & (t | v | w), set())
-        self.assertEqual(w & (t | v), set())
-        self.assertEqual(set(CFG.callers['test']), t | v)
-        self.assertEqual(set(CFG.callers['windows']), w)
+            steps, {u for u, l in CFG.legs.items() if l.setup != 'nix'} | {'xks-remote'}
+        )
+
+    def test_every_nix_unit_runs_an_existing_mise_task(self) -> None:
+        tasks = ci_changes.REPO / '.mise' / 'tasks' / 'test'
+        for unit, legs in CFG.legs.items():
+            if legs.setup == 'nix' and unit != 'xks-remote':
+                with self.subTest(unit=unit):
+                    self.assertTrue((tasks / unit.replace(':', '/')).exists())
 
 
 class FailSafe(unittest.TestCase):
@@ -586,7 +728,7 @@ UNIT_SAMPLES = {
     'cargo-clippy': 'clippy.toml',
     'cargo-machete': 'crate/server/src/lib.rs',
     'no-nix': 'crate/server/src/lib.rs',
-    'forward-proxy': '.github/workflows/forward_proxy.yml',
+    'forward-proxy': '.github/scripts/squid/squid.conf',
     'cargo-publish-dry-run': '.github/workflows/cargo-publish.yml',
     'xks-remote': 'crate/server/src/routes/aws_xks/mod.rs',
     'db:sqlite': '.mise/tasks/test/db/sqlite',
@@ -598,9 +740,12 @@ UNIT_SAMPLES = {
     'db:openbao': '.mise/scripts/test/openbao/bao_verifier.sh',
     'cloud': 'crate/server/src/routes/google_cse/mod.rs',
     'hsm': 'crate/hsm/utimaco/src/lib.rs',
+    'hsm:crypt2pay': 'crate/hsm/crypt2pay/src/lib.rs',
+    'hsm:proteccio': 'crate/hsm/proteccio/src/lib.rs',
     'pkcs11': 'crate/clients/pkcs11/module/src/pkcs11.rs',
     'obs': 'crate/server/src/core/otel_metrics.rs',
     'pki': 'crate/server/src/routes/est/mod.rs',
+    'pki-macos': 'crate/server/src/routes/est/mod.rs',
     'spire': '.mise/tasks/test/spire/_default',
     'ui': 'ui/src/App.tsx',
     'interop:ase': '.mise/tasks/test/interop/ase',
@@ -768,18 +913,50 @@ class LoadConfig(unittest.TestCase):
         head = "full = 'x'\nignore = 'y'\n[sets]\ns = 'z'\n[units.a]\n"
         self.rejects(head + "files = 'x'\nstrict = false\n")
 
-    def test_bad_callers_are_rejected(self) -> None:
-        head = "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\n[callers]\n"
-        self.rejects(head + "t = ['nope*']\n")
-        self.rejects(head + "t = 'a'\n")
+    def test_invalid_leg_keys_are_rejected(self) -> None:
+        head = "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\n"
+        for bad in (
+            "setup = 'docker'",
+            "setup = 'windows'",  # default ubuntu runner
+            "setup = 'nix'\nrunners = ['macos-15']",
+            "setup = 'windows'\nrunners = ['windows-2022', 'ubuntu-24.04']",
+            'timeout = 0',
+            'timeout = 400',
+            'timeout = true',
+            'events = []',
+            "events = ['push']",
+            "events = ['tag', 'tag']",
+            'upstream = false',
+            'no-fork-pr = false',
+            'dependabot = false',
+            "lock = ''",
+            "environment = ''",
+            'runners = []',
+            "runners = ['ubuntu-24.04', 'ubuntu-24.04']",
+        ):
+            with self.subTest(bad=bad):
+                self.rejects(head + bad + '\n')
 
-    def test_callers_expand_patterns_in_unit_order(self) -> None:
+    def test_leg_defaults_and_overrides(self) -> None:
         cfg = load(
-            "full = 'x'\nignore = 'y'\n[units.'db:b']\nfiles = 'x'\nvariants = ['fips']\n"
-            "[units.a]\nfiles = 'x'\n[units.'db:c']\nfiles = 'x'\nvariants = ['fips']\n"
-            "[callers]\nt = ['db:*', 'a']\n"
+            "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\n"
+            "[units.b]\nfiles = 'x'\nsetup = 'plain'\nrunners = ['macos-15']\nvariants = ['fips']\n"
+            "timeout = 60\nlock = 'l'\nenvironment = 'e'\nevents = ['tag']\nupstream = true\n"
+            'no-fork-pr = true\ndependabot = true\n'
         )
-        self.assertEqual(cfg.callers['t'], ['db:b', 'a', 'db:c'])
+        a, b = cfg.legs['a'], cfg.legs['b']
+        self.assertEqual(
+            (a.variants, a.runners, a.setup, a.timeout, a.lock, a.environment),
+            (('',), ('ubuntu-24.04',), 'nix', 360, '', ''),
+        )
+        self.assertEqual(a.events, frozenset(ci_changes.EVENTS))
+        self.assertFalse(a.upstream or a.no_fork_pr or a.dependabot)
+        self.assertEqual(
+            (b.variants, b.runners, b.setup, b.timeout, b.lock, b.environment),
+            (('fips',), ('macos-15',), 'plain', 60, 'l', 'e'),
+        )
+        self.assertEqual(b.events, frozenset({'tag'}))
+        self.assertTrue(b.upstream and b.no_fork_pr and b.dependabot)
 
 
 # Temp repos must not see the runner's or the developer's git config (signing, hooks, identity) nor write the
@@ -870,7 +1047,7 @@ class ChangedFiles(unittest.TestCase):
 
 
 class Main(unittest.TestCase):
-    """main(): console report, `skip=` line and the $GITHUB_OUTPUT file the workflows read."""
+    """main(): console report and the `suites-matrix=` line of the $GITHUB_OUTPUT file the workflows read."""
 
     def run_main(
         self, files: list[str], *argv: str, output: Path | None
@@ -888,6 +1065,22 @@ class Main(unittest.TestCase):
             ci_changes.main()
         return out.getvalue(), cf
 
+    def run_all(self, *argv: str) -> tuple[str, list[dict[str, object]]]:
+        """`--all` run: the diff must never be read. Returns the report and the written legs."""
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                ci_changes,
+                'changed_files',
+                side_effect=AssertionError('git was called'),
+            ),
+            mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(self.output)}),
+            mock.patch.object(sys, 'argv', ['ci_changes.py', '--all', *argv]),
+            contextlib.redirect_stdout(out),
+        ):
+            ci_changes.main()
+        return out.getvalue(), written_legs(self.output)
+
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -899,89 +1092,110 @@ class Main(unittest.TestCase):
         self.assertEqual(lines[0], 'Changed files (1):')
         self.assertEqual(lines[1], '  ui/src/App.tsx')
         self.assertEqual(lines[2], f"2 of {len(EVERYTHING)} units triggered")
-        marks = {line[5:]: line[:4] for line in lines[3:-4]}
+        marks = {line[5:]: line[:4] for line in lines[3:-1]}
         self.assertEqual(set(marks), EVERYTHING)
         self.assertEqual(
             {u for u, m in marks.items() if m == 'RUN '}, {'ui', 'windows-ui'}
         )
         self.assertTrue(all(m in ('RUN ', 'SKIP') for m in marks.values()))
 
-    def test_output_lines_are_compact_json_in_order_and_appended_to_github_output(
-        self,
-    ) -> None:
+    def test_output_is_one_compact_json_line_appended_to_github_output(self) -> None:
         text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
         written = self.output.read_text().splitlines()
-        self.assertEqual(written, text.splitlines()[-4:])
-        self.assertEqual(
-            [line.split('=', 1)[0] for line in written],
-            ['skip', 'suites-matrix', 'run-test', 'run-windows'],
-        )
+        self.assertEqual(written, text.splitlines()[-1:])
+        self.assertTrue(written[0].startswith('suites-matrix=['))
         self.assertNotIn(' ', written[0])
-        skipped = json.loads(written[0].removeprefix('skip='))
-        self.assertEqual(skipped, sorted(EVERYTHING - {'ui', 'windows-ui'}))
+        self.assertEqual(
+            [(g['suite'], g['variant']) for g in written_legs(self.output)],
+            [('ui', 'fips'), ('ui', 'non-fips'), ('windows-ui', '')],
+        )
 
     def test_github_output_is_appended_not_overwritten(self) -> None:
         self.output.write_text('other=1\n')
         self.run_main(['ui/src/App.tsx'], output=self.output)
         lines = self.output.read_text().splitlines()
         self.assertEqual(lines[0], 'other=1')
-        self.assertTrue(lines[1].startswith('skip='))
+        self.assertTrue(lines[1].startswith('suites-matrix='))
 
     def test_without_github_output_only_prints(self) -> None:
         text, _ = self.run_main(['ui/src/App.tsx'], output=None)
-        self.assertTrue(text.splitlines()[-4].startswith('skip=['))
+        self.assertTrue(text.splitlines()[-1].startswith('suites-matrix=['))
         self.assertFalse(self.output.exists())
-
-    def assert_runs_everything(self, lines: list[str]) -> None:
-        got = dict(line.split('=', 1) for line in lines)
-        self.assertEqual(got['skip'], '[]')
-        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
-        self.assertEqual((got['run-test'], got['run-windows']), ('true', 'true'))
 
     def test_empty_diff_reports_run_everything(self) -> None:
         text, _ = self.run_main([], output=self.output)
         self.assertIn('Changed files (0):', text)
         self.assertIn('empty diff: run everything', text)
-        self.assert_runs_everything(self.output.read_text().splitlines())
-        self.assertNotIn('SKIP', text)
+        self.assertEqual(written_legs(self.output), FULL_SUITES)
+        # only the real HSMs have no pull-request leg
+        skipped = {l[5:] for l in text.splitlines() if l.startswith('SKIP')}
+        self.assertEqual(skipped, {'hsm:crypt2pay', 'hsm:proteccio'})
 
-    def test_full_match_reports_run_everything(self) -> None:
+    def test_full_match_runs_every_non_strict_unit(self) -> None:
         text, _ = self.run_main(['mise.toml', 'README.md'], output=self.output)
         self.assertIn('mise.toml matches full: run everything', text)
-        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
-        self.assertEqual(json.loads(got['skip']), sorted(STRICT))
-        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
-        self.assertEqual((got['run-test'], got['run-windows']), ('true', 'false'))
+        self.assertEqual(
+            {g['suite'] for g in written_legs(self.output)},
+            {g['suite'] for g in FULL_SUITES} - STRICT,
+        )
 
-    def test_orphan_reports_run_everything(self) -> None:
+    def test_orphan_runs_every_non_strict_unit(self) -> None:
         text, _ = self.run_main(['brand/new.txt'], output=self.output)
         self.assertIn('brand/new.txt matches no unit and is not ignored', text)
-        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
-        self.assertEqual(json.loads(got['skip']), sorted(STRICT))
-        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
+        self.assertEqual(
+            {g['suite'] for g in written_legs(self.output)},
+            {g['suite'] for g in FULL_SUITES} - STRICT,
+        )
 
-    def test_all_flag_runs_everything_without_git(self) -> None:
-        out = io.StringIO()
-        with (
-            mock.patch.object(
-                ci_changes,
-                'changed_files',
-                side_effect=AssertionError('git was called'),
-            ),
-            mock.patch.dict(os.environ, {'GITHUB_OUTPUT': str(self.output)}),
-            mock.patch.object(sys, 'argv', ['ci_changes.py', '--all']),
-            contextlib.redirect_stdout(out),
+    def test_nightly_never_reads_the_diff_and_skips_xks(self) -> None:
+        text, legs = self.run_all('--event', 'schedule')
+        self.assertIn('not a pull request: run everything', text)
+        self.assertEqual(len(legs), 62)
+        self.assertNotIn('xks-remote', {g['suite'] for g in legs})
+        self.assertIn('RUN  hsm:proteccio', text)
+        self.assertIn('SKIP xks-remote', text)
+
+    def test_nightly_without_secrets_keeps_windows_but_not_upstream_units(self) -> None:
+        _, legs = self.run_all('--event', 'schedule', '--no-secrets')
+        suites = {g['suite'] for g in legs}
+        self.assertEqual(len(legs), 58)
+        self.assertIn('windows-cargo-test', suites)
+        self.assertFalse(suites & {'cloud', 'hsm:crypt2pay', 'hsm:proteccio'})
+
+    def test_tag_and_dispatch_runs(self) -> None:
+        _, tag = self.run_all('--event', 'tag')
+        _, dispatch = self.run_all('--event', 'workflow_dispatch')
+        self.assertEqual((len(tag), len(dispatch)), (62, 63))
+
+    def test_fork_pr_without_secrets_drops_cloud_and_windows(self) -> None:
+        self.run_main(
+            ['ui/src/App.tsx'], '--no-secrets', '--fork-pr', output=self.output
+        )
+        self.assertEqual({g['suite'] for g in written_legs(self.output)}, {'ui'})
+
+    def test_dependabot_keeps_only_its_units(self) -> None:
+        self.run_main([], '--dependabot', output=self.output)
+        self.assertEqual(len(written_legs(self.output)), 10)
+
+    def test_inconsistent_flags_exit_with_status_2(self) -> None:
+        for argv in (
+            ['--all'],
+            ['--all', '--event', 'tag', '--dependabot'],
+            ['--all', '--event', 'tag', '--fork-pr'],
+            ['--event', 'tag'],
         ):
-            ci_changes.main()
-        self.assertIn('not a pull request: run everything', out.getvalue())
-        self.assert_runs_everything(self.output.read_text().splitlines())
+            with self.subTest(argv=argv):
+                with (
+                    mock.patch.object(sys, 'argv', ['ci_changes.py', *argv]),
+                    contextlib.redirect_stderr(io.StringIO()),
+                    self.assertRaises(SystemExit) as ctx,
+                ):
+                    ci_changes.main()
+                self.assertEqual(ctx.exception.code, 2)
 
-    def test_docs_only_skips_every_unit(self) -> None:
+    def test_docs_only_runs_nothing(self) -> None:
         text, _ = self.run_main(['README.md'], output=self.output)
-        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
-        self.assertEqual(json.loads(got['skip']), sorted(EVERYTHING))
-        self.assertEqual(got['suites-matrix'], '[]')
-        self.assertEqual((got['run-test'], got['run-windows']), ('false', 'false'))
+        self.assertEqual(self.output.read_text(), 'suites-matrix=[]\n')
         self.assertNotIn('RUN ', text)
 
     def test_default_refs_are_the_pr_merge_commit_parent_and_head(self) -> None:
@@ -1012,7 +1226,10 @@ class CommandLine(unittest.TestCase):
             check=True,
         )
         self.assertIn('empty diff: run everything', done.stdout)
-        self.assertIn('skip=[]', done.stdout.splitlines())
+        self.assertEqual(
+            json.loads(done.stdout.splitlines()[-1].removeprefix('suites-matrix=')),
+            FULL_SUITES,
+        )
 
     def test_unknown_flag_is_rejected(self) -> None:
         script = Path(ci_changes.__file__)

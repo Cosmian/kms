@@ -1,17 +1,41 @@
 ---
 name: Test MISE group
 
+# The one runner of every CI leg (see .github/ci-paths.toml): units with setup = nix run `mise run test:<suite>`;
+# every other unit has its own steps below, each guarded by `inputs.suite == '<unit>'`.
+
 on:
   workflow_call:
     inputs:
       suite:
-        description: test:<suite> task to run (a .mise/tasks/test group, or a leaf for real HSMs)
+        description: unit of .github/ci-paths.toml (test:<suite> task to run, or a leg with its own steps below)
         required: true
         type: string
       variant:
-        description: fips or non-fips
-        required: true
+        description: fips or non-fips ('' for a unit without variants)
+        required: false
         type: string
+        default: ''
+      runner:
+        description: runner label (runs-on)
+        required: false
+        type: string
+        default: ubuntu-24.04
+      setup:
+        description: nix (Nix shell + mise), plain (mise only) or windows
+        required: false
+        type: string
+        default: nix
+      timeout:
+        description: job timeout-minutes
+        required: false
+        type: number
+        default: 360
+      environment:
+        description: GitHub deployment environment (approval gate), '' for none
+        required: false
+        type: string
+        default: ''
       skip:
         description: Space-separated <group>:<leaf> ids exported as TEST_SKIP_LEAVES
         required: false
@@ -44,11 +68,22 @@ on:
       PROTECCIO_SLOT: {required: false}
       CRYPT2PAY_PASSWORD: {required: false}
       OVPN_CONF: {required: false}
+      KMS_XKS_SSH_PRIVATE_KEY: {required: false}
+      KMS_XKS_SSH_KNOWN_HOSTS: {required: false}
+      KMS_XKS_SSH_USER: {required: false}
+      KMS_XKS_SIGV4_ACCESS_KEY_ID: {required: false}
+      KMS_XKS_SIGV4_SECRET_ACCESS_KEY: {required: false}
+      AWS_XKS_ACCESS_KEY_ID: {required: false}
+      AWS_XKS_SECRET_ACCESS_KEY: {required: false}
+      AWS_XKS_KEY_ARN: {required: false}
+      PAT_TOKEN: {required: false}
 
 jobs:
   test:
-    name: test:${{ inputs.suite }} - ${{ inputs.variant }}
-    runs-on: ubuntu-24.04
+    name: ${{ inputs.suite }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
     env:
@@ -60,14 +95,72 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      - uses: ./.github/actions/cache-openssl-buildrs
+      - name: Free Disk Space (Ubuntu)
+        if: inputs.suite == 'cargo-publish-dry-run' && github.event_name != 'pull_request'
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
-          variant: ${{ inputs.variant }}
+          # This might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+
+          # All of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - uses: ./.github/actions/cleanup-runner
+        if: inputs.suite == 'cargo-publish-dry-run' && github.event_name != 'pull_request'
+
+      - uses: ./.github/actions/install-rust
+        if: inputs.setup != 'nix' || inputs.suite == 'xks-remote'
+
+      - uses: ./.github/actions/cache-openssl-buildrs
+        if: inputs.setup != 'windows' && inputs.suite != 'cargo-machete' && inputs.suite != 'build-documentation'
+        with:
+          variant: ${{ inputs.variant || 'non-fips' }}
 
       - uses: ./.github/actions/setup-nix-mise
+        if: inputs.setup == 'nix'
         with:
           cleanup-runner: 'true'
           dev-shell-cache: 'true'
+
+      - uses: ./.github/actions/install-mise
+        if: inputs.setup == 'plain'
+
+      # estclient / scepclient are Go programs built by the interop scripts
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: inputs.suite == 'pki-macos' || inputs.suite == 'windows-est'
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      # Run in the checkout so the target lands on the rust-toolchain.toml toolchain, not on stable.
+      - name: Add the wasm32 target
+        if: inputs.suite == 'windows-ui'
+        shell: pwsh
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: inputs.suite == 'windows-ui'
+        with:
+          node-version: '22'
+
+      # Corepack runs the pnpm pinned with its sha512 in ui/package.json.
+      - name: Enable Corepack pnpm
+        if: inputs.suite == 'windows-ui'
+        shell: pwsh
+        run: corepack enable pnpm
+
+      - uses: ./.github/actions/windows-vs-ninja
+        if: inputs.setup == 'windows'
+
+      - name: Build static OpenSSL
+        if: inputs.setup == 'windows'
+        uses: ./.github/actions/build-static-openssl
 
       - name: Export database suite environment
         if: startsWith(inputs.suite, 'db:')
@@ -106,6 +199,7 @@ jobs:
 
       # An upstream leaf fails, never skips, when a secret it needs is empty: a green upstream job proves it ran.
       - name: Test
+        if: inputs.setup == 'nix' && inputs.suite != 'xks-remote'
         env:
           EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
           IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
@@ -154,3 +248,280 @@ jobs:
         run: |
           # shellcheck disable=SC2086 # BENCH is a space-separated model list
           for m in $BENCH; do mise run bench:hsm --delegated --hsm-model "$m" --variant "$VARIANT" -s; done
+
+      # ── cargo-clippy (was the Cosmian/reusable_workflows clippy workflow) ──
+      - name: Check formatting
+        if: inputs.suite == 'cargo-clippy'
+        run: cargo fmt --all -- --check --color always
+
+      - name: Static analysis
+        if: inputs.suite == 'cargo-clippy'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Static analysis all features
+        if: inputs.suite == 'cargo-clippy'
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # ── cargo-machete (was the Cosmian/reusable_workflows machete workflow) ──
+      - name: Install nightly toolchain
+        if: inputs.suite == 'cargo-machete'
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Install cargo-machete
+        if: inputs.suite == 'cargo-machete'
+        run: cargo +nightly install cargo-machete
+
+      - name: Check unused dependencies in all crates
+        if: inputs.suite == 'cargo-machete'
+        run: cargo +nightly machete --with-metadata
+
+      # ── no-nix: plain `cargo test` (no Nix dev shell) on Linux x64/arm and macOS ──
+      - name: With cargo only
+        if: inputs.suite == 'no-nix'
+        env:
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -ex
+          if [ "$VARIANT" = "non-fips" ]; then
+            export FEATURES_FLAG="--features non-fips";
+            # Build the PKCS#11 cdylib so that `ckms pkcs11 verify` and
+            # integration tests can dynamically load it at runtime.
+            # `cargo test --lib` does not produce cdylib artifacts.
+            cargo build -p cosmian_pkcs11 --features non-fips
+          else
+            export FEATURES_FLAG="";
+          fi
+          # shellcheck disable=SC2086 # FEATURES_FLAG is an optional cargo flag
+          cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
+
+      # ── forward-proxy ──
+      - name: Prerequisites
+        if: inputs.suite == 'forward-proxy'
+        run: |
+          set -ex
+          sudo apt update
+          sudo apt install squid
+          sudo cp .github/scripts/squid/passwd /etc/squid/
+          sudo cp .github/scripts/squid/squid.conf /etc/squid/
+          sudo systemctl restart squid
+          sudo journalctl -u squid --no-pager -f &
+          sleep 5
+          curl http://localhost:8888
+          curl -v -x http://localhost:8888 -U myuser:mypwd http://example.org
+
+      - name: Forward proxy test
+        if: inputs.suite == 'forward-proxy'
+        run: |
+          set -ex
+          cargo build -p ckms --features non-fips
+
+          # Get the local IP address
+          LOCAL_IP=$(hostname -I | awk '{print $1}')
+          echo "Local IP address: $LOCAL_IP"
+
+          # Export only the host part in KMS_URL — the test extracts the host
+          # and combines it with the actual server port (dynamically allocated).
+          # The port in this URL is intentionally omitted; only the host matters.
+          export KMS_URL=http://$LOCAL_IP
+
+          cargo test -p ckms --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy
+
+      # ── build-documentation ──
+      - name: Check AI instruction consistency
+        if: inputs.suite == 'build-documentation'
+        run: mise run docs:check-ai
+
+      - name: Build documentation
+        if: inputs.suite == 'build-documentation'
+        env:
+          # Turns on the combined public docs build; the caller passes PAT_TOKEN on pull requests only (empty on fork PRs)
+          PUBLIC_DOCS_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          mise run docs:mdbook-build
+
+      # ── cargo-publish-dry-run: ensures the publication of crates is possible (no git deps, etc.) ──
+      - name: Publishing - dry run
+        if: inputs.suite == 'cargo-publish-dry-run' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          cargo publish --all-features --workspace --dry-run
+
+      # PRs skip the full compile: --no-verify still catches git/path deps without a version and bad metadata.
+      - name: Publishing - dry run (no compile)
+        if: inputs.suite == 'cargo-publish-dry-run' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          cargo publish --workspace --dry-run --no-verify
+
+      - name: Check disk space after build
+        if: always() && inputs.suite == 'cargo-publish-dry-run'
+        run: df -h
+
+      # ── xks-remote: AWS XKS against the remote test server ──
+      - name: Build KMS binary (non-fips, release)
+        if: inputs.suite == 'xks-remote'
+        run: cargo build --bin cosmian_kms --features non-fips --release
+
+      - name: Deploy binary to XKS test server
+        if: inputs.suite == 'xks-remote'
+        env:
+          KMS_XKS_SSH_PRIVATE_KEY: ${{ secrets.KMS_XKS_SSH_PRIVATE_KEY }}
+          KMS_XKS_SSH_KNOWN_HOSTS: ${{ secrets.KMS_XKS_SSH_KNOWN_HOSTS }}
+          KMS_XKS_SSH_USER: ${{ secrets.KMS_XKS_SSH_USER }}
+          KMS_BIN: target/release/cosmian_kms
+        run: bash .mise/scripts/test/deploy_xks_remote.sh
+
+      - name: Run XKS tests against remote server
+        if: inputs.suite == 'xks-remote'
+        env:
+          KMS_XKS_HOST: aws-xks-kms.cosmian.dev
+          KMS_XKS_URI_PREFIX: aws
+          KMS_XKS_REGION: eu-west-1
+          KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
+          KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
+        run: |
+          bash .mise/scripts/test/test_xks_remote.sh
+
+      - name: Run AWS KMS XKS end-to-end test
+        if: inputs.suite == 'xks-remote'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_XKS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_XKS_SECRET_ACCESS_KEY }}
+          AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
+        run: bash .mise/scripts/test/test_xks_aws_e2e.sh
+
+      # ── pki-macos: the pki group on macOS (no Nix there) ──
+      - name: Test (pki, macOS)
+        if: inputs.suite == 'pki-macos'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SUITE: pki
+          VARIANT: fips
+        run: |
+          st=0
+          mise run "test:${SUITE}" --variant "$VARIANT" || st=$?
+          if [ "$st" -eq 77 ]; then echo "::warning::test:${SUITE} skipped (see its SKIP line)"; st=0; fi
+          exit "$st"
+
+      # ── windows-cargo-test ──
+      - name: Tests
+        if: inputs.suite == 'windows-cargo-test'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.mise\scripts\windows\cargo_test.ps1
+          # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off pull requests only.
+          if ('${{ github.event_name != 'pull_request' }}' -eq 'true') { TestProject } else { TestProject -Quick }
+        env:
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+      # ── windows-ui ──
+      - name: Install wasm-pack
+        if: inputs.suite == 'windows-ui'
+        shell: pwsh
+        run: cargo install wasm-pack --locked
+
+      - name: Run UI E2E tests
+        if: inputs.suite == 'windows-ui'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_ui.ps1
+
+      - name: Upload logs on failure (windows-ui)
+        if: failure() && inputs.suite == 'windows-ui'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ui-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-stdout.log
+            ${{ runner.temp }}\kms-stderr.log
+            ui\test-results\
+            ui\playwright-report\
+
+      # ── windows-cng-ksp ──
+      - name: Run CNG KSP integration tests
+        if: inputs.suite == 'windows-cng-ksp'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_cng_ksp.ps1
+
+      - name: Upload logs on failure (windows-cng-ksp)
+        if: failure() && inputs.suite == 'windows-cng-ksp'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cng-ksp-test-logs
+          path: |
+            ${{ runner.temp }}\kms-cng-test-server.log
+            ${{ runner.temp }}\kms-cng-test-server.log.err
+
+      # ── windows-hsm-idemia (fips: simulator in SECURITY_LEVEL=FIPS + OpenSSL FIPS provider (fips.dll) + IV shim) ──
+      # The OpenSSL 3.1.2 FIPS provider build (nmake) takes ~15 minutes: cache the install. The
+      # script reuses a complete install, so a hit skips the build.
+      - name: Cache the OpenSSL FIPS provider
+        if: inputs.suite == 'windows-hsm-idemia' && inputs.variant == 'fips'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\openssl-fips
+          key: openssl-fips-3.1.2-${{ runner.os }}-${{ hashFiles('.mise/scripts/windows/prepare_windows_fips_provider.ps1') }}
+
+      # Downloads the simulator package (a hard failure when unavailable: no silent skip), installs
+      # SoftHSM2 + the simulator and exports HSM_* / IDEMIA_SPHERE_PKCS11_LIB / PATH to the next steps.
+      - name: Prepare the Idemia SPHERE HSM simulator
+        if: inputs.suite == 'windows-hsm-idemia'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $level = if ('${{ inputs.variant }}' -eq 'fips') { "FIPS" } else { "NON_FIPS" }
+          .\.github\reusable_scripts\prepare_idemia_hsm.ps1 -SecurityLevel $level
+
+      # The FIPS variant builds the OpenSSL FIPS provider and the PKCS#11 IV shims itself.
+      - name: HSM tests on the Idemia SPHERE simulator
+        if: inputs.suite == 'windows-hsm-idemia'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $fips = '${{ inputs.variant }}' -eq 'fips'
+          if ($fips) { .\.mise\scripts\windows\test_hsm_idemia.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_idemia.ps1 }
+
+      - name: hsm_model=other startup scenarios (SoftHSM2 behind the IV shim)
+        if: inputs.suite == 'windows-hsm-idemia'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $fips = '${{ inputs.variant }}' -eq 'fips'
+          if ($fips) { .\.mise\scripts\windows\test_hsm_other.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_other.ps1 }
+
+      - name: Upload logs on failure (windows-hsm-idemia)
+        if: failure() && inputs.suite == 'windows-hsm-idemia'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: hsm-idemia-test-logs-windows-${{ inputs.variant }}
+          path: |
+            C:\Idemia_HSM_Simulator\log\HSM_simulator.log
+            ${{ runner.temp }}\kms-idemia-test\kms.log
+            ${{ runner.temp }}\kms-idemia-test\kms.log.err
+
+      # ── windows-est ──
+      - name: Run EST interoperability tests
+        if: inputs.suite == 'windows-est'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .mise\scripts\windows\test_est_windows.ps1
+
+      - name: Upload logs on failure (windows-est)
+        if: failure() && inputs.suite == 'windows-est'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: est-interop-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log.err
+            ${{ runner.temp }}\kms-est-win-*\kms.log
+            ${{ runner.temp }}\kms-est-win-*\kms.log.err

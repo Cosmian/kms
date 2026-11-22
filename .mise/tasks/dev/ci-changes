@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Classify the files a PR changes with .github/ci-paths.toml: prints and appends skip, db-matrix, interop-matrix, run-test and run-windows to GITHUB_OUTPUT"
+#MISE description="Classify the files a PR changes with .github/ci-paths.toml: prints and appends suites-matrix to GITHUB_OUTPUT"
 #USAGE flag "--base <ref>" help="Diff from the merge base of <ref> and --head (PR merge commit: HEAD^1 is the base tip)" default="HEAD^1"
 #USAGE flag "--head <ref>" help="Changed side" default="HEAD"
-#USAGE flag "--all" help="Not a pull request: run every unit and emit the full matrices (no git diff)"
+#USAGE flag "--all" help="Not a pull request: ignore the diff, run every unit of --event (no git diff)"
+#USAGE flag "--event <event>" help="Not a pull request (with --all): schedule, tag or workflow_dispatch"
+#USAGE flag "--no-secrets" help="Cosmian/kms secrets unavailable (other repository or fork PR): drop upstream units"
+#USAGE flag "--fork-pr" help="Pull request from a fork: drop no-fork-pr units"
+#USAGE flag "--dependabot" help="Dependabot PR: keep only dependabot units"
 #USAGE flag "--self-test" help="Run the unit tests of the classifier (.mise/scripts/dev/test_ci_changes.py) against .github/ci-paths.toml and exit"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
@@ -12,9 +16,16 @@ PYTHON="$(pick_python312)"
 print_header "CI changed-area classification"
 if [ "${usage_self_test:-false}" = "true" ]; then
   "${PYTHON}" -m unittest discover -s "${REPO_ROOT}/.mise/scripts/dev" -p 'test_ci_changes.py'
-elif [ "${usage_all:-false}" = "true" ]; then
-  "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --all
 else
-  "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}"
+  extra=()
+  if [ -n "${usage_event:-}" ]; then extra+=(--event "${usage_event}"); fi
+  if [ "${usage_no_secrets:-false}" = "true" ]; then extra+=(--no-secrets); fi
+  if [ "${usage_fork_pr:-false}" = "true" ]; then extra+=(--fork-pr); fi
+  if [ "${usage_dependabot:-false}" = "true" ]; then extra+=(--dependabot); fi
+  if [ "${usage_all:-false}" = "true" ]; then
+    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --all "${extra[@]}"
+  else
+    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}" "${extra[@]}"
+  fi
 fi
 print_success "Classification complete"
