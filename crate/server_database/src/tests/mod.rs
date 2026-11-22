@@ -486,6 +486,36 @@ pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
         ));
     }
 
+    // h2) same through `AtomicOperation::Create` (the Import path), which has its own tombstone call.
+    let reused_atomic = Uuid::new_v4().to_string();
+    replica_event(
+        reused_atomic.clone(),
+        "Destroyed",
+        Some(zeroized_json.clone()),
+    )
+    .await?;
+    pg.atomic(
+        &owner,
+        &[cosmian_kms_interfaces::AtomicOperation::Create((
+            reused_atomic.clone(),
+            owner.clone(),
+            key_obj.clone(),
+            attrs.clone(),
+            HashSet::new(),
+        ))],
+    )
+    .await?;
+    expect_state(
+        "h2",
+        state_of(reused_atomic.clone()).await?,
+        State::PreActive,
+    )?;
+    if stored_json(reused_atomic).await? != key_json {
+        return Err(DbError::ServerError(
+            "h2: stale Destroyed event zeroized a new object".to_owned(),
+        ));
+    }
+
     Ok(())
 }
 
