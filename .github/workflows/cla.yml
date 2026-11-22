@@ -9,7 +9,8 @@ on:
 
 jobs:
   cla-assistant:
-    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    # Fork PRs only: pull_request_target carries the fork flag; issue_comment is re-checked by the step below.
+    if: (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.fork) || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     runs-on: ubuntu-24.04
     # explicitly configure permissions, in case your GITHUB_TOKEN workflow permissions are set to read-only in repository settings
     permissions:
