@@ -85,7 +85,8 @@ jobs:
     name: >-
       ${{ fromJSON(format('{{"no-nix":"No Nix - {0} - sqlite - {1}","cloud":"Test cloud ({1})","xks-remote":"AWS XKS — remote server","pki-macos":"Test
       pki (macOS)","windows-cargo-test":"windows - cargo test","windows-ui":"windows - UI E2E tests","windows-cng-ksp":"windows - CNG KSP integration tests","windows-hsm-idemia":"windows
-      - HSM tests (Idemia SPHERE simulator, {1})","windows-est":"windows - EST interoperability tests"}}', inputs.runner, inputs.variant))[inputs.suite]
+      - HSM tests (Idemia SPHERE simulator, {1})","windows-est":"windows - EST interoperability tests","build-documentation":"Build documentation","forward-proxy":"forward
+      proxy","cargo-clippy":"Cargo clippy","cargo-machete":"Cargo machete","cargo-publish-dry-run":"Cargo publish - dry run"}}', inputs.runner, inputs.variant))[inputs.suite]
       || format('Test {0}{1}', inputs.suite, inputs.variant != '' && format(' ({0})', inputs.variant) || '') }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout }}
