@@ -28,7 +28,7 @@
 
 ## 1. Master Orchestrator
 
-Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one job per group in `.github/workflows/test_all.yml` (`mise run test:<group>`).
+Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one leg per group and variant in `.github/workflows/test_all.yml` (`test-suites`), plus `test-cloud.yml` and `test-ui.yml` (`mise run test:<group>`).
 
 | Command | Effect |
 |---------|--------|
@@ -62,7 +62,7 @@ Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips o
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
 2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
-3. It then runs in CI with its group (`test-<group>` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
+3. It then runs in CI with its group (a leg of `test-suites` in `.github/workflows/test_all.yml`; `cloud` and `ui` have their own `test-cloud.yml` and `test-ui.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
 
 ### Sequence Diagram
 

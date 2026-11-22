@@ -1,0 +1,73 @@
+---
+name: Nix dev-shell cache
+
+on:
+  workflow_call: {}
+
+jobs:
+  # Builds the source-built Nix inputs of shell.nix (OpenSSL 3.1.2 / 3.6.5, FIPS bootstrap, SoftHSM2,
+  # Utimaco) once per input hash and caches their closure for every Nix job below. On a hit it is a
+  # sub-minute lookup. `continue-on-error`: a cache failure only means today's from-source builds.
+  cache:
+    name: Nix dev-shell cache
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Look up cached closure
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/nix-dev-shell
+          key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
+            'nix/utimaco.nix', '.mise/lib/common.sh') }}
+          lookup-only: true
+
+      - name: Write Nix post-build hook
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          cat > /tmp/nix-post-build-hook.sh <<'EOF'
+          #!/bin/sh
+          printf '%s\n' $OUT_PATHS >> /tmp/nix-built-paths
+          EOF
+          chmod 755 /tmp/nix-post-build-hook.sh
+
+      - name: Setup Nix
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: post-build-hook = /tmp/nix-post-build-hook.sh
+
+      - name: Build dev shells and export locally built paths
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          PIN_URL=$(sed -n 's/^export PIN_URL="\(.*\)"$/\1/p' .mise/lib/common.sh)
+          # WITH_HSM=1 realises every source-built input (openssl x3, bootstrap, softhsm per variant,
+          # utimaco); the other WITH_* flags only add substitutable nixpkgs packages.
+          for v in fips non-fips; do
+            WITH_HSM=1 nix-shell shell.nix --argstr variant "$v" -I "nixpkgs=${PIN_URL}" --run true
+          done
+          # rust-overlay toolchain paths are large and re-download fast: keep them out of the cache.
+          sort -u /tmp/nix-built-paths | grep -Ev '^/nix/store/[a-z0-9]{32}-(rust|rustc|cargo|clippy|rustfmt)-' > /tmp/nix-keep-paths || true
+          test -s /tmp/nix-keep-paths
+          mkdir -p /tmp/nix-dev-shell
+          # shellcheck disable=SC2046 # store paths contain no whitespace
+          nix-store --export $(nix-store -qR $(cat /tmp/nix-keep-paths)) > /tmp/nix-dev-shell/closure.nar
+          du -h /tmp/nix-dev-shell/closure.nar
+          # Size rule: above ~1 GB, list the biggest paths and add the non-OpenSSL/softhsm/utimaco ones to the grep -Ev above.
+          # shellcheck disable=SC2046
+          du -sh $(cat /tmp/nix-keep-paths) | sort -h | tail -n 15
+
+      - name: Save closure to cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/nix-dev-shell
+          key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
+            'nix/utimaco.nix', '.mise/lib/common.sh') }}

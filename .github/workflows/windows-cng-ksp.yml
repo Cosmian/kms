@@ -1,0 +1,61 @@
+---
+name: Windows CNG KSP tests
+
+on:
+  workflow_call:
+    inputs:
+      archive-name:
+        required: false
+        type: string
+        default: windows
+  pull_request:
+    paths:
+      - vcpkg.json
+      - vcpkg_fips.json
+      - .github/actions/build-static-openssl/**
+      - .github/actions/windows-vs-ninja/**
+      - .mise/scripts/windows/common.ps1
+      - .mise/scripts/windows/install_ninja.ps1
+      - crate/clients/cng/**
+      - crate/clients/pkcs11/**
+      - crate/clients/clap/src/actions/cng.rs
+      - crate/clients/clap/src/actions/cng_verify.rs
+      - .mise/scripts/windows/test_cng_ksp.ps1
+
+concurrency:
+  group: windows-cng-ksp-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-cng-ksp:
+    name: ${{ inputs.archive-name || 'windows' }} - CNG KSP integration tests
+    # Not on dependabot PRs and not on fork PRs (as before).
+    if: ${{ !(github.event_name == 'pull_request' && (startsWith(github.head_ref, 'dependabot/') || github.actor == 'dependabot[bot]' || github.event.pull_request.head.repo.full_name
+      != github.repository)) }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: Run CNG KSP integration tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_cng_ksp.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cng-ksp-test-logs
+          path: |
+            ${{ runner.temp }}\kms-cng-test-server.log
+            ${{ runner.temp }}\kms-cng-test-server.log.err
