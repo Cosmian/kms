@@ -1,0 +1,60 @@
+---
+name: CI
+run-name: CI (${{ github.head_ref || github.ref_name }})
+
+# Pull-request pipeline. Each single-job unit is its own workflow that runs on `pull_request` only when a file
+# matching its `paths:` changes, so an unaffected unit is never listed. The suite legs of `test_all.yml` (several
+# jobs sharing one workflow) are filtered by the `changes` job below (.github/ci-paths.toml).
+# Tags, the nightly schedule and manual dispatch run everything from main.yml.
+on:
+  pull_request:
+
+# A new push to the same PR cancels the pipeline still running for the previous commit.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Runs only the suite legs whose files (.github/ci-paths.toml) the PR changes.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ steps.classify.outputs.skip }}
+      suites-matrix: ${{ steps.classify.outputs.suites-matrix }}
+      run-test: ${{ steps.classify.outputs.run-test }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # The checkout is the test merge commit, whose first parent is the base branch tip.
+          fetch-depth: 2
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Classify changed files
+        id: classify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise run dev:ci-changes --self-test
+          mise run dev:ci-changes --base HEAD^1
+
+  cargo-deny:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
+    name: Security Audit
+
+  supply-chain:
+    uses: ./.github/workflows/supply-chain.yml
+
+  test: # Suite legs of test_all.yml; not on dependabot PRs
+    needs: changes
+    if: >-
+      !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+      && needs.changes.outputs.run-test == 'true'
+    uses: ./.github/workflows/test_all.yml
+    secrets: inherit
+    with:
+      suites-matrix: ${{ needs.changes.outputs.suites-matrix }}

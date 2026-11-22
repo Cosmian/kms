@@ -1,0 +1,60 @@
+---
+name: Test cloud
+
+on:
+  workflow_call: {}
+  pull_request:
+    paths:
+      - crate/server/src/routes/aws_xks/**
+      - crate/server/src/routes/azure_ekm/**
+      - crate/server/src/routes/google_cse/**
+      - crate/server/src/tests/**
+      - crate/clients/clap/src/actions/google/**
+      - crate/clients/clap/src/actions/aws/**
+      - crate/clients/clap/src/actions/azure/**
+      - documentation/docs/google_cse/test_wrapped_private_key
+      - .mise/tasks/test/cloud/**
+      - .mise/scripts/test/azure_ekm_test.sh
+      - .mise/scripts/test/azure_ekm_mtls_test.sh
+      - .mise/scripts/test/test_secret_aws.sh
+      - .mise/scripts/test/test_secret_azure.sh
+      - .mise/scripts/test/test_secret_vault.sh
+      - .mise/scripts/test/test_secret_cosmian_kms.sh
+      - .mise/scripts/test/test_xks.sh
+
+concurrency:
+  group: test-cloud-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cache:
+    uses: ./.github/workflows/nix-dev-shell-cache.yml
+
+  # Upstream only (not on forks or fork pull requests): the Google, AWS and Azure secrets are withheld there.
+  test-cloud:
+    name: Test cloud (${{ matrix.variant }})
+    needs: cache
+    if: >-
+      github.repository == 'Cosmian/kms' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [fips, non-fips]
+    uses: ./.github/workflows/test-group.yml
+    with:
+      suite: cloud
+      variant: ${{ matrix.variant }}
+    secrets:
+      TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+      TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+      KMS_CI_AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+      KMS_CI_AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+      KMS_CI_AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+      KMS_CI_AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+      KMS_CI_AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+      KMS_CI_AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+      KMS_CI_AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}

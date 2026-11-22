@@ -1,0 +1,36 @@
+---
+name: Cargo publish dry run
+
+on:
+  workflow_call: {}
+  pull_request:
+    paths:
+      - crate/**
+      - '!crate/**/*.md'
+      - kmip
+      - documentation/docs/google_cse/test_wrapped_private_key
+      - test_data
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - .cargo/config.toml
+      - .config/nextest.toml
+      - .github/actions/install-rust/**
+      - .github/actions/cache-openssl-buildrs/**
+      - .github/workflows/cargo-publish.yml
+
+concurrency:
+  group: cargo-publish-dry-run-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # cargo publish dry run: ensures the publication of crates is possible (no git deps, etc.). cargo-publish.yml does a dry
+  # run off-tag and a real publish on tags (called from main.yml once every test job passed).
+  publish:
+    if: >-
+      !startsWith(github.ref, 'refs/tags/') &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/cargo-publish.yml
+    secrets:
+      token: ${{ secrets.CRATES_IO }}

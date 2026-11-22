@@ -1,0 +1,41 @@
+---
+name: Build documentation
+
+on:
+  workflow_call: {}
+  pull_request:
+    paths:
+      - documentation/**
+      - AGENTS.md
+      - CONTRIBUTING.md
+      - .github/copilot-instructions.md
+      - .github/instructions/**
+      - .github/skills/**
+      - .mise/tasks/docs/**
+      - .mise/scripts/docs/**
+
+concurrency:
+  group: build-documentation-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-documentation:
+    name: Build documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Check AI instruction consistency
+        run: mise run docs:check-ai
+
+      - name: Build documentation
+        env:
+          # Turns on the combined public docs build; empty on fork PRs
+          PUBLIC_DOCS_TOKEN: ${{ github.event_name == 'pull_request' && secrets.PAT_TOKEN || '' }}
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          mise run docs:mdbook-build
