@@ -22,3 +22,5 @@ pub mod windows_service;
 )]
 #[cfg(test)]
 pub mod tests;
+
+// ci-path-gating probe: fork PR, one commit (to be closed, never merged)
