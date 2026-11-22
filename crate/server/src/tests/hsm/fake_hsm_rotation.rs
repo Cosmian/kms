@@ -72,6 +72,8 @@ struct RotatingHsm {
     fail_metadata: AtomicBool,
     return_empty_scan: AtomicBool,
     unauthenticated_only: AtomicBool,
+    /// Mimics Proteccio: a date can be set but not unset.
+    refuse_clear_dates: AtomicBool,
 }
 
 impl RotatingHsm {
@@ -441,6 +443,14 @@ impl HSM for RotatingHsm {
         start_date: Option<Date>,
         end_date: Option<Date>,
     ) -> InterfaceResult<()> {
+        if start_date.is_none()
+            && end_date.is_none()
+            && self.refuse_clear_dates.load(Ordering::Relaxed)
+        {
+            return Err(InterfaceError::Default(
+                "CKR_ATTRIBUTE_VALUE_INVALID".to_owned(),
+            ));
+        }
         let mut keys = self.keys();
         let key = keys
             .get_mut(key_id)
@@ -482,6 +492,7 @@ async fn kms_with_rotating_hsm_config(config: ClapConfig) -> KResult<(Arc<KMS>, 
         fail_metadata: AtomicBool::new(false),
         return_empty_scan: AtomicBool::new(false),
         unauthenticated_only: AtomicBool::new(false),
+        refuse_clear_dates: AtomicBool::new(false),
     });
     let store = HsmStore::new(hsm.clone(), &[ADMIN.to_owned()], kms.vendor_id(), "hsm");
     kms.database
@@ -1592,6 +1603,26 @@ async fn set_rotation_attributes_on_hsm_key() -> KResult<()> {
 
     set_hsm_attribute(&kms, "hsm::0::solo", Attribute::RotateInterval(0)).await?;
     assert_eq!(hsm.dates("solo"), (None, None));
+    Ok(())
+}
+
+/// A token that cannot unset a date (Proteccio) is disarmed with a zero-length validity, which
+/// is never a schedule: the scheduler does not rotate the key, and it can be armed again.
+#[tokio::test]
+async fn disarm_falls_back_to_zero_length_validity_when_dates_cannot_be_cleared() -> KResult<()> {
+    let (kms, hsm) = kms_with_rotating_hsm().await?;
+    hsm.refuse_clear_dates.store(true, Ordering::Relaxed);
+    hsm.insert("solo", KeyType::AesKey, 256, "solo", None, None);
+    set_hsm_attribute(&kms, "hsm::0::solo", Attribute::RotateInterval(7 * 86_400)).await?;
+    assert_eq!(hsm.dates("solo"), (Some(today()), Some(today() + days(7))));
+
+    set_hsm_attribute(&kms, "hsm::0::solo", Attribute::RotateInterval(0)).await?;
+    assert_eq!(hsm.dates("solo"), (Some(today()), Some(today())));
+    run_auto_rotation(&kms).await;
+    assert!(!hsm.contains("solo@1"), "a disarmed key must not rotate");
+
+    set_hsm_attribute(&kms, "hsm::0::solo", Attribute::RotateInterval(7 * 86_400)).await?;
+    assert_eq!(hsm.dates("solo"), (Some(today()), Some(today() + days(7))));
     Ok(())
 }
 

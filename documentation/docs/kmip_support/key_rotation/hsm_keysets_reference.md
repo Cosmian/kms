@@ -89,7 +89,7 @@ The schedule lives in the PKCS#11 `CKA_START_DATE` and `CKA_END_DATE` attributes
 | Action | Effect on the token |
 | --- | --- |
 | `SetAttribute RotateInterval = n`, n ≥ 86400 | `CKA_START_DATE` = today, `CKA_END_DATE` = today + ⌈n / 86400⌉ days; then, if the key is not in a keyset yet, it is enrolled under its base UID (generation-0 label `{base UID}::0::{key_id}@latest`) |
-| `SetAttribute RotateInterval = 0` | both dates cleared: auto-rotation disarmed; keyset membership (`CKA_LABEL`) is kept |
+| `SetAttribute RotateInterval = 0` | both dates cleared: auto-rotation disarmed; keyset membership (`CKA_LABEL`) is kept. A token that refuses to unset a date (Proteccio) gets `CKA_START_DATE` = `CKA_END_DATE` = today instead: a validity shorter than one day is never a schedule |
 | `SetAttribute RotateInterval = n`, 0 < n < 86400 | refused, `Invalid_Field` |
 | Re-Key (manual or automatic) of a key with dates | new key: `CKA_START_DATE` = rotation day, `CKA_END_DATE` = rotation day + the old interval |
 
@@ -134,7 +134,7 @@ Manual Re-Key and keyset addressing do not need key dates; they work on these HS
 | `SetAttribute RotateName` | must equal the base UID; writes the generation-0 label `{rotate_name}::0::{key_id}@latest` |
 | `SetAttribute RotateInterval` > 0 | arms auto-rotation: writes the dates, then enrolls the key under its base UID if it is not in a keyset yet (see [Rotation schedule](#rotation-schedule)) |
 | `SetAttribute RotateInterval` > 0 on a public key | refused, `Invalid_Field` (set it on the private key) |
-| `SetAttribute RotateInterval` = 0 | disarms auto-rotation (clears the dates, keeps keyset membership) |
+| `SetAttribute RotateInterval` = 0 | disarms auto-rotation (clears the dates, or writes a zero-length validity on a token that cannot unset a date; keeps keyset membership) |
 | `SetAttribute RotateAutomatic` | refused, `Feature_Not_Supported`: use `RotateInterval` to arm or disarm |
 | `SetAttribute RotateOffset` | refused, `Feature_Not_Supported` |
 | `x-rotate-*` attributes in `Create` / `CreateKeyPair` | refused, `Feature_Not_Supported`; the message asks to set the rotation policy with `SetAttribute` after creation |
