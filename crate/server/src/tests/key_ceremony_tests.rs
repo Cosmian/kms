@@ -40,8 +40,8 @@ use crate::{
     middlewares::UserId,
     result::KResult,
     tests::test_utils::{
-        assert_stored_wrapped_by_kek, get_tmp_sqlite_path, test_kms_with_config, test_kms_with_kek,
-        unwrapped_key_bytes,
+        assert_stored_wrapped_by_kek, get_tmp_sqlite_path, test_kms_follower, test_kms_with_config,
+        test_kms_with_kek, unwrapped_key_bytes,
     },
 };
 
@@ -1186,6 +1186,58 @@ async fn test_join_split_key_stores_reconstructed_key() -> KResult<()> {
         "KMIP JoinSplitKey path must store the reconstructed key in the DB (uid={reconstructed_uid})"
     );
 
+    Ok(())
+}
+
+/// On a follower region, `JoinSplitKey` over ceremony shares is refused with the leader-region
+/// error and activates no Crypto Officer (the gate runs before the reconstructed key is stored).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_join_split_key_on_follower_stores_nothing() -> KResult<()> {
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let provisioner = "admin";
+
+    let conf = base_ceremony_conf(
+        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
+        true,
+        None,
+    );
+    let kms = test_kms_follower(conf).await?;
+
+    let key_uid = "ceremony-key-follower-join";
+    let no_tags: &[&str] = &[];
+    let mut req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    req.attributes.activation_date = None;
+    kms.create(req, &UserId::from(provisioner)).await?;
+    let shares = Box::pin(split_key(&kms, provisioner, key_uid, 3)).await?;
+    for share in &shares[1..] {
+        kms.database
+            .grant_operations(
+                share,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+
+    let err = join_shares(&kms, alice, &shares, ObjectType::SymmetricKey)
+        .await
+        .expect_err("JoinSplitKey must be refused on a follower");
+    assert!(
+        err.to_string().contains("leader region"),
+        "unexpected error: {err}"
+    );
+    assert!(!kms.is_crypto_officer(&UserId::from(alice)).await?);
     Ok(())
 }
 

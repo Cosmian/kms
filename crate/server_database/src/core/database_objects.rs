@@ -960,13 +960,17 @@ impl Database {
                 | AtomicOperation::UpdateState((
                     uid,
                     State::Destroyed | State::Destroyed_Compromised,
+                ))
+                | AtomicOperation::ResetState((
+                    uid,
+                    State::Destroyed | State::Destroyed_Compromised,
                 )) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
                     self.rotate_name_cache.invalidate_member(uid, None);
                     Ok(())
                 }
-                AtomicOperation::UpdateState((uid, _)) => {
+                AtomicOperation::UpdateState((uid, _)) | AtomicOperation::ResetState((uid, _)) => {
                     // Evict the stale object so the new lifecycle state is
                     // visible immediately on the next retrieve_object call.
                     self.object_cache.invalidate(uid).await;
@@ -981,6 +985,10 @@ impl Database {
         for op in operations {
             if let AtomicOperation::Delete(uid)
             | AtomicOperation::UpdateState((
+                uid,
+                State::Destroyed | State::Destroyed_Compromised,
+            ))
+            | AtomicOperation::ResetState((
                 uid,
                 State::Destroyed | State::Destroyed_Compromised,
             )) = op

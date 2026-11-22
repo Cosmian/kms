@@ -186,8 +186,10 @@ pub(crate) fn configure_profile() -> KResult<(DeploymentProfile, RegionRole)> {
         ..ProfileAnswers::default()
     };
     if !answers.confidential_vm {
-        answers.several_regions =
-            ask("Serve clients from several regions (one PostgreSQL database per region)?")?;
+        answers.several_regions = ask(
+            "Serve clients from several regions (PostgreSQL with logical multi-master \
+             replication or MySQL Galera)?",
+        )?;
         if !answers.several_regions {
             answers.several_nodes = ask("More than one KMS node?")?;
             if answers.several_nodes {

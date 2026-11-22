@@ -211,7 +211,7 @@ PostgreSQL connections.
 
 #### Multi-region active-active PostgreSQL (Spock / pgEdge / BDR)
 
-The KMS supports multi-region active-active deployments using PostgreSQL with a Spock-, pgEdge-, or BDR-class logical multi-master replication extension (validated against `ghcr.io/pgedge/pgedge-postgres`). In this topology, each region runs a local KMS instance group connected to a local PostgreSQL node, serving local reads and writes for minimum latency. State converges asynchronously across regions via bidirectional logical replication.
+The KMS supports multi-region active-active deployments using PostgreSQL with a logical multi-master replication extension, validated with pgEdge Spock (`ghcr.io/pgedge/pgedge-postgres`); other extensions are not validated (see [Extension requirements](#extension-requirements)). In this topology, each region runs a local KMS instance group connected to a local PostgreSQL node, serving local reads and writes for minimum latency. State converges asynchronously across regions via bidirectional logical replication.
 
 !!! note
     A region can run on a MySQL Galera cluster instead (Percona XtraDB Cluster): see [MySQL with Galera](./multi_region.md#mysql-with-galera). A `region_role = "follower"` on SQLite or Redis-with-Findex is rejected at startup.
@@ -391,11 +391,23 @@ sequenceDiagram
 
 ##### Extension requirements
 
-Any PostgreSQL multi-master extension supporting Spock/BDR/pglogical protocols is supported. Key requirements:
+The implementation is validated with pgEdge Spock. Another logical multi-master extension needs the same settings
+and an equivalent of Spock delta-apply for `gcm_invocations.count`; it is not validated. Requirements:
 
 - `wal_level = logical`
 - `track_commit_timestamp = on`
-- Shared replication set covering all public KMS tables (`objects`, `tags`, `read_access`, `crypto_officer_activations`, `parameters`, `crls`).
+- Every public KMS table in the replication set except `cluster_nodes`, including the lifecycle event tables
+  `object_state_events` and `object_state_event_tombstones`, and delta-apply on `gcm_invocations.count`. With Spock, run
+  on every node:
+
+  ```sql
+  SELECT spock.repset_add_all_tables('default', ARRAY['public']);
+  SELECT spock.repset_remove_table('default', 'cluster_nodes');
+  ALTER TABLE gcm_invocations ALTER COLUMN count
+    SET (log_old_value = true, delta_apply_function = spock.delta_apply);
+  ```
+
+See [Multi-region active-active deployment](./multi_region.md#scheduled-jobs-and-cluster-coordination) for why.
 
 ### MySQL, MariaDB, or Percona XtraDB Cluster
 

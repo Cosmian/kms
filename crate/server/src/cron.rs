@@ -290,8 +290,9 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     shutdown_tx
 }
 
-/// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
-async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
+/// Scan all stored CRLs and regenerate those expiring within `overlap_hours`, or whose set of
+/// revoked certificates is out of date.
+pub(crate) async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
     // CRL content is public information (RFC 5280 §3) — no special role required.
     let _signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
 
@@ -319,14 +320,46 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
         )
         .map_or(true, |next_update| next_update <= threshold); // stale if unparsable
 
-        if !needs_refresh {
+        let refresh_reason = if needs_refresh {
+            Some(format!("expires within {overlap_hours}h"))
+        } else {
+            // Not near expiry: still republish when a revocation (e.g. served by a follower
+            // region and replicated here) is missing from the stored CRL.
+            match kms.database.get_crl(&issuer_id).await {
+                Ok(Some((der, _))) => match Box::pin(
+                    crate::core::operations::generate_crl::crl_revocations_changed(
+                        kms, &issuer_id, &der,
+                    ),
+                )
+                .await
+                {
+                    Ok(true) => Some("revoked certificates changed".to_owned()),
+                    Ok(false) => None,
+                    Err(e) => {
+                        warn!(
+                            issuer_id = issuer_id.as_str(),
+                            "[crl-refresh-cron] Revocation check failed for '{issuer_id}': {e}"
+                        );
+                        None
+                    }
+                },
+                Ok(None) => None,
+                Err(e) => {
+                    warn!(
+                        issuer_id = issuer_id.as_str(),
+                        "[crl-refresh-cron] Failed to load CRL for '{issuer_id}': {e}"
+                    );
+                    None
+                }
+            }
+        };
+        let Some(refresh_reason) = refresh_reason else {
             continue;
-        }
+        };
 
         info!(
             issuer_id = issuer_id.as_str(),
-            "[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' \
-             (expires within {overlap_hours}h)"
+            "[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})"
         );
 
         // Server-triggered: `default_username` usually has no grant on the CA key.

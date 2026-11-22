@@ -127,7 +127,7 @@ impl Database {
             .permissions
             .get_crypto_officer_activation_by(user)
             .await?;
-        self.verify_ceremony_record(sealed_opt, "crypto_officer")
+        self.verify_ceremony_record(sealed_opt, "crypto_officer", user)
     }
 
     /// Revoke `activated_by`'s active Crypto Officer ceremony record.
@@ -214,7 +214,12 @@ impl Database {
     /// record fails GCM verification (a tampered record, or — in a multi-region deployment — a
     /// replicated record sealed with a different `ceremony_secret`/`ceremony_key_id` than this
     /// node's), or `Err` only for a genuine local misconfiguration (`ceremony_keys` unset).
-    fn verify_ceremony_record(&self, sealed_opt: Option<String>, role: &str) -> DbResult<bool> {
+    fn verify_ceremony_record(
+        &self,
+        sealed_opt: Option<String>,
+        role: &str,
+        user: &str,
+    ) -> DbResult<bool> {
         match sealed_opt {
             None => Ok(false),
             Some(sealed) => {
@@ -232,8 +237,10 @@ impl Database {
                 match keys.unseal(&sealed, role) {
                     Ok(_) => Ok(true),
                     Err(DbError::CryptographicError(e)) => {
-                        tracing::warn!(
+                        tracing::error!(
+                            target: "audit",
                             role,
+                            user,
                             error = %e,
                             "ceremony record verification failed (tampered record, or \
                              ceremony_keys mismatch across regions); treating as inactive"

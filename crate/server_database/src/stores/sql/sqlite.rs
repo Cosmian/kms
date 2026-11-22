@@ -1800,7 +1800,8 @@ impl OwnedOp {
                     tags: tags.clone(),
                 })
             }
-            AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
+            AtomicOperation::UpdateState((uid, state))
+            | AtomicOperation::ResetState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
                 state_s: state.to_string(),
             }),

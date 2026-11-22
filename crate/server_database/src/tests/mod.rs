@@ -467,6 +467,25 @@ pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
         )));
     }
 
+    // h) a UID with stale events (late replicated event, older-node delete) can be created again:
+    // the new object starts PreActive with its own payload.
+    let reused = Uuid::new_v4().to_string();
+    replica_event(reused.clone(), "Destroyed", Some(zeroized_json.clone())).await?;
+    pg.create(
+        Some(reused.clone()),
+        &owner,
+        &key_obj,
+        &attrs,
+        &HashSet::new(),
+    )
+    .await?;
+    expect_state("h", state_of(reused.clone()).await?, State::PreActive)?;
+    if stored_json(reused).await? != key_json {
+        return Err(DbError::ServerError(
+            "h: stale Destroyed event zeroized a new object".to_owned(),
+        ));
+    }
+
     Ok(())
 }
 

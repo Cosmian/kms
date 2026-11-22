@@ -12,28 +12,27 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 
 use crate::{
-    config::{ClapConfig, MainDBConfig, RegionRole, ServerParams},
+    config::{ClapConfig, MainDBConfig, RegionRole},
     core::{
         KMS,
         operations::generate_crl::{
             CrlRequester, clear_generated_crl_cache_for_tests, generate_crl, get_cached_crl,
         },
     },
+    cron::refresh_expiring_crls,
     middlewares::UserId,
-    openssl_providers::init_openssl_providers_for_tests,
     result::KResult,
     tests::{
         crl_tests::{
             CA_EXT, LEAF_EXT, cert_serial, certify, get_cert_der, revoke_cert, revoked_serials,
         },
-        test_utils::wire_spock_bidirectional,
+        test_utils::{test_kms_with_config, wire_spock_bidirectional},
     },
 };
 
 const PUBLIC_URL: &str = "https://kms.example.com";
 
 async fn make_pgedge_kms(pg_url: &str, region_role: RegionRole) -> KResult<Arc<KMS>> {
-    init_openssl_providers_for_tests();
     let config = ClapConfig {
         db: MainDBConfig {
             database_type: Some("postgresql".to_owned()),
@@ -46,9 +45,7 @@ async fn make_pgedge_kms(pg_url: &str, region_role: RegionRole) -> KResult<Arc<K
         kms_public_url: Some(PUBLIC_URL.to_owned()),
         ..Default::default()
     };
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?,
-    ))
+    test_kms_with_config(config).await
 }
 
 /// Poll until `kms.get(...)` for `uid` succeeds (object has replicated), or time out.
@@ -165,26 +162,25 @@ async fn test_pgedge_crl_leader_only_generation_and_follower_cdp_replication() -
         "a follower-side revoke must not silently regenerate the leader's stored CRL"
     );
 
-    // Assertion 4 (eventual convergence): once the leader is explicitly asked to regenerate
-    // (simulating a manual `generate-crl` call, or the leader-only cron), the now-replicated
-    // revocation appears. Poll `generate_crl` because the `Compromised` state write from the
-    // follower still needs to replicate back to the leader's own local Postgres node first.
+    // Assertion 4 (convergence): once the follower's `Compromised` state has replicated back to
+    // the leader, the leader's refresh job republishes the CRL although the stored one is far
+    // from its nextUpdate. Poll because the replication is asynchronous.
+    let leaf_der = get_cert_der(&kms_a, &owner, &leaf_id).await;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-    let crl_2 = loop {
-        let der = generate_crl(&kms_a, &ca_id, None, CrlRequester::User(&owner))
-            .await?
-            .to_der()?;
-        let leaf_der = get_cert_der(&kms_a, &owner, &leaf_id).await;
+    loop {
+        refresh_expiring_crls(&kms_a, 0).await;
+        let (der, _, _) = get_cached_crl(&ca_id, &kms_a)
+            .await
+            .expect("leader must have a stored CRL");
         if revoked_serials(&der).contains(&cert_serial(&leaf_der)) {
-            break der;
+            break;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
-            "timed out waiting for the follower's revocation to replicate back to the leader"
+            "timed out waiting for the leader's refresh job to publish the follower's revocation"
         );
         tokio::time::sleep(Duration::from_millis(200)).await;
-    };
-    drop(crl_2); // regenerated CRL confirmed to contain the revoked leaf above
+    }
 
     Ok(())
 }

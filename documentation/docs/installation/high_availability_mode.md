@@ -50,7 +50,9 @@ How the nodes share background jobs and report their state (`/health`, `/cluster
 Profiles 2 to 5 need a PostgreSQL or MySQL/MariaDB database shared by all the nodes (see
 [Rules common to profiles 2 to 5](#rules-common-to-profiles-2-to-5)). The availability of the database itself is a
 separate choice, described in [Database availability](#database-availability). Profile 6 repeats one of them in each
-region, with a PostgreSQL database per region.
+region, with its own database in each region: a PostgreSQL database per region replicated with Spock, or a node per
+region of a MySQL Galera cluster spanning the regions (see
+[MySQL with Galera](../configuration/database/multi_region.md#mysql-with-galera)).
 
 ```mermaid
 %%{init: {"flowchart": {"curve": "linear"}}}%%
@@ -280,9 +282,10 @@ The configuration of both is described in [HAProxy and Keepalived](./haproxy_kee
 
 ## Profile 6: multi-region active-active
 
-Each region runs its own group of KMS nodes and its own PostgreSQL node, and the PostgreSQL nodes replicate to one
-another with a logical multi-master extension (validated with pgEdge Spock). Clients use the nearest region, which
-serves reads and writes locally. Inside a region, use one of profiles 2 to 5 for the nodes.
+Each region runs its own group of KMS nodes and its own database node: either a PostgreSQL node per region, the
+PostgreSQL nodes replicating to one another with a logical multi-master extension (validated with pgEdge Spock), or a
+node per region of a MySQL Galera cluster spanning the regions (validated with Percona XtraDB Cluster). Clients use
+the nearest region, which serves reads and writes locally. Inside a region, use one of profiles 2 to 5 for the nodes.
 
 ```mermaid
 %%{init: {"flowchart": {"curve": "linear"}}}%%
@@ -298,19 +301,19 @@ flowchart TB
     subgraph eu["EU — leader region"]
         lb_eu["🔀 Regional entry point<br/>(profile 2 to 5)"]:::entry
         kms_eu["🛡️ KMS nodes"]:::kms
-        db_eu[("🗄️ PostgreSQL EU")]:::db
+        db_eu[("🗄️ Database EU<br/>(PostgreSQL or<br/>Galera node)")]:::db
     end
     subgraph us["US — follower region"]
         lb_us["🔀 Regional entry point<br/>(profile 2 to 5)"]:::entry
         kms_us["🛡️ KMS nodes"]:::kms
-        db_us[("🗄️ PostgreSQL US")]:::db
+        db_us[("🗄️ Database US<br/>(PostgreSQL or<br/>Galera node)")]:::db
     end
 
     clients --> geo
     geo --> lb_eu & lb_us
     lb_eu --> kms_eu --> db_eu
     lb_us --> kms_us --> db_us
-    db_eu <-.->|"logical multi-master<br/>replication"| db_us
+    db_eu <-.->|"multi-master<br/>replication"| db_us
 ```
 
 What differs from profiles 2 to 5:
@@ -322,10 +325,13 @@ What differs from profiles 2 to 5:
 - **Cluster coordination stays inside a region**: job locks, heartbeats, `GET /cluster/status` and
   `GET /health` describe the region that answers (see
   [Multi-region deployments](./cluster_coordination.md#multi-region-deployments)). Point the health check of each
-  regional entry point at its own nodes, with `?strict=true` if a degraded node must leave the pool.
+  regional entry point at its own nodes, with `?strict=true` if a degraded node must leave the pool. On Galera, the
+  heartbeats replicate, so `GET /cluster/status` lists the nodes of every region.
 - **Convergence is eventual**: a change made in a region reaches the others after the replication lag. Object
   lifecycle states converge to the most restrictive one (a destroyed key stays destroyed in every region).
-- The validated topology has **two regions**, and the database must be PostgreSQL. All the regions use the same
+- The validated topology has **two regions**. The database is PostgreSQL with Spock (one database per region) or a
+  MySQL Galera cluster spanning the regions (see
+  [MySQL with Galera](../configuration/database/multi_region.md#mysql-with-galera)). All the regions use the same
   `ceremony_secret`.
 
 The topology, what converges and how, the replication set to configure and the limits are in

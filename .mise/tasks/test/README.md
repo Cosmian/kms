@@ -93,7 +93,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 | Task | Backend | FIPS? | Notes |
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
-| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. |
+| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. Runs `test_db_postgresql_state_event_merge` (lifecycle event-log merge and startup reconcile). |
 | `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
@@ -155,6 +155,9 @@ sequenceDiagram
     DB-->>Cargo: key material
     Cargo-->>Script: test results
     alt PostgreSQL only
+        Script->>Cargo: test_db_postgresql_state_event_merge
+        Cargo->>DB: event-log merge, reopen, startup reconcile
+        DB-->>Cargo: derived states and event counts
         Script->>DB: docker compose up pg-failover-1 / pg-failover-2
         Script->>Cargo: test_db_postgresql_failover (background)
         Cargo->>DB: warm pool on pg1

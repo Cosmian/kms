@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema has eight tables shared by all SQL backends, plus `kms_migration_lock` and `kms_cron_locks` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
+The KMS object-store schema has eight tables shared by all SQL backends, plus `object_state_events` and `object_state_event_tombstones` on PostgreSQL, and `kms_migration_lock` and `kms_cron_locks` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -19,10 +19,11 @@ The KMS object-store schema has eight tables shared by all SQL backends, plus `k
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
 | `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
 | `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
+| `object_state_events`, `object_state_event_tombstones` | Insert-only object lifecycle log from which `objects.state` is derived (PostgreSQL only) |
 | `kms_migration_lock` | Startup migration coordination row (MySQL, MariaDB, and Percona XtraDB Cluster only) |
 | `kms_cron_locks` | Scheduled-job row locks (MySQL, MariaDB, and Percona XtraDB Cluster only, when `GET_LOCK` is refused) |
 
-PostgreSQL deployments used in multi-region active-active topologies additionally keep the lifecycle state of objects in two insert-only tables, `object_state_events` and `object_state_event_tombstones`, from which `ENABLE ALWAYS` triggers derive `objects.state` (see [Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr)).
+Every PostgreSQL deployment, single- or multi-region, keeps the lifecycle state of objects in the two insert-only tables `object_state_events` and `object_state_event_tombstones`, created at startup, from which `ENABLE ALWAYS` triggers derive `objects.state`. In a multi-region active-active deployment they make the state converge across regions (see [Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr)).
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
 ```mermaid

@@ -141,12 +141,13 @@ database, so the coordination above stays **inside a region**:
 | -------- | --------- | ------------------------------- |
 | PostgreSQL | yes | yes |
 | MySQL / MariaDB | yes | yes |
-| Percona XtraDB Cluster (default `pxc_strict_mode=ENFORCING`) | **no**: the server refuses `GET_LOCK`, so every node runs every job | yes |
+| Galera: Percona XtraDB Cluster (default `pxc_strict_mode=ENFORCING`), MariaDB Galera | **partial**: the server refuses `GET_LOCK`, so the job lock is a row of `kms_cron_locks`, which excludes only the KMS nodes connected to the same database node | yes |
 | SQLite | not needed (single node) | yes, shows one node |
 | Redis with Findex (non-FIPS only) | **no**: every node runs every job | **no**: `/cluster/status` returns an empty node list |
 
-When the database refuses `GET_LOCK` (Percona XtraDB Cluster), the server logs one warning and runs the scheduled jobs
-on every node, as it did before job locks existed.
+When the database refuses `GET_LOCK` (Percona XtraDB Cluster strict mode, MariaDB Galera), the server logs one
+warning and locks a row of the `kms_cron_locks` table instead. The row lock excludes only the KMS nodes connected to
+the same database node: point all the KMS nodes of a site at the same database node so that each job runs once there.
 
 ## Monitoring
 

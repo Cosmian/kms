@@ -1657,5 +1657,18 @@ pub(super) async fn lifecycle_state_contract_test<DB: ObjectsStore>(db: &DB) -> 
     expect_state("f", db.retrieve_state(&uid).await?, State::Active)?;
     expect_json("f", db.retrieve(&uid).await?, &key_json)?;
 
+    // g) batch UNDO in one transaction: ResetState, then the payload
+    let uid = destroyed_object().await?;
+    db.atomic(
+        &owner,
+        &[
+            AtomicOperation::ResetState((uid.clone(), State::Active)),
+            AtomicOperation::UpdateObject((uid.clone(), key_obj.clone(), attrs.clone(), None)),
+        ],
+    )
+    .await?;
+    expect_state("g", db.retrieve_state(&uid).await?, State::Active)?;
+    expect_json("g", db.retrieve(&uid).await?, &key_json)?;
+
     Ok(())
 }

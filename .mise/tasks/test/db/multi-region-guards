@@ -20,10 +20,10 @@ setup_test_logging
 ensure_nix_shell
 
 REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
-PG1_URL="${KMS_PGEDGE_1_URL:-postgresql://kms:kms@127.0.0.1:6432/kms}"
-PG2_URL="${KMS_PGEDGE_2_URL:-postgresql://kms:kms@127.0.0.1:6433/kms}"
 PG1_PORT="${KMS_SLOT_PGEDGE_1_PORT:-6432}"
 PG2_PORT="${KMS_SLOT_PGEDGE_2_PORT:-6433}"
+PG1_URL="${KMS_PGEDGE_1_URL:-postgresql://kms:kms@127.0.0.1:${PG1_PORT}/kms}"
+PG2_URL="${KMS_PGEDGE_2_URL:-postgresql://kms:kms@127.0.0.1:${PG2_PORT}/kms}"
 GALERA1_PORT="${KMS_SLOT_GALERA_1_PORT:-3310}"
 GALERA2_PORT="${KMS_SLOT_GALERA_2_PORT:-3311}"
 GALERA1_URL="${KMS_GALERA_1_URL:-mysql://kms:kms@127.0.0.1:${GALERA1_PORT}/kms}"

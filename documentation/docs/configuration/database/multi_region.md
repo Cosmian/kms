@@ -150,8 +150,8 @@ flowchart LR
   increments, and the counts would be too low. Spock delta-apply on `gcm_invocations.count` applies each region's
   *increment* instead. The cap is still checked against the local value: with replication lag, a key can exceed the
   cap by what the other regions reserved during the lag.
-  Each node reserves invocations in blocks of 4,096 and serves them from memory, so the overshoot is counted in
-  blocks: up to one block per node of the other regions, plus what they reserve during the lag.
+  Each node leases invocations from the store in blocks of 4,096 and records the whole block when it leases it, so
+  the overshoot during the lag is counted in whole blocks, and the unused part of a block counts as used.
 - **Read-modify-write on an object is regional.** KMIP Usage Limits counters and Vault KV v2 check-and-set versions
   are updated with a version check on the object row. Two regions both pass their local check and last-update-wins
   keeps one row: a key with Usage Limits can be used up to its limit in each region, and a check-and-set write can
@@ -184,6 +184,14 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
   at startup.
 - Objects stored in an HSM do not replicate, including HSM-backed sub-CA keys: a region that signs CRLs or OCSP
   responses with such a key needs the same HSM keys.
+- A certificate revoked on a follower does not regenerate the CRL (the follower's automatic regeneration is refused).
+  The leader republishes it at the next run of its CRL refresh scheduler (every `crl_refresh_check_hours`, default
+  1 h, when `kms_public_url` is set), which regenerates a stored CRL near its `nextUpdate`
+  (`crl_refresh_overlap_hours`, default 24 h) or whose revoked certificates changed. To publish a revocation at once,
+  revoke on the leader region, or run `ckms certificates generate-crl` on the leader after revoking on a follower.
+- The OCSP response cache is per KMS process: a revocation evicts the cached response of the node that served it
+  only, and the other nodes of every region answer nonce-less requests from their cache until `ocsp_cache_ttl_secs`
+  (default 86400 s) elapses. Keep `ocsp_cache_ttl_secs` low in a multi-region deployment.
 - Upgrade one region first, then the others in the same window: the recorded database version replicates with
   `parameters`, so once one region runs the new release, a node of the previous release in any region refuses to
   restart. On Galera, start the first node alone before the others.

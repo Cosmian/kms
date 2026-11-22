@@ -42,6 +42,10 @@ pub enum AtomicOperation {
     UpdateObjectIfVersion((String, Object, Attributes, Option<HashSet<String>>, u64)),
     /// Update the state (uid, state)
     UpdateState((String, State)),
+    /// Replace the lifecycle state the store has observed (backward transition, e.g. KMIP batch
+    /// UNDO), like `ObjectsStore::update_state_allow_downgrade` but inside the batch. Place it
+    /// before the operations that write the object's payload.
+    ResetState((String, State)),
     /// Delete (uid)
     Delete(String),
 }
@@ -55,6 +59,7 @@ impl AtomicOperation {
             | Self::UpdateObject((uid, _, _, _))
             | Self::UpdateObjectIfVersion((uid, _, _, _, _))
             | Self::UpdateState((uid, _))
+            | Self::ResetState((uid, _))
             | Self::Delete(uid)
             | Self::CompareAndSwapObject { uid, .. } => uid,
         }

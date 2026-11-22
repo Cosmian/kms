@@ -311,6 +311,45 @@ async fn test_crl_includes_revoked_cert() -> KResult<()> {
     Ok(())
 }
 
+/// A revocation that did not regenerate the CRL (e.g. served by a follower region and replicated
+/// here) is published by the refresh job even though the stored CRL is far from its nextUpdate.
+#[tokio::test]
+async fn test_refresh_job_publishes_revocation_missing_from_stored_crl() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::new("crl_owner");
+
+    let (ca_id, ca_sk_id) = certify(&kms, &owner, "Refresh CA", None, None, CA_EXT).await?;
+    let (leaf_id, _) = certify(
+        &kms,
+        &owner,
+        "Refresh Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let leaf_serial = cert_serial(&get_cert_der(&kms, &owner, &leaf_id).await);
+
+    let crl_before = generate_crl_der(&kms, &owner, &ca_id).await;
+    revoke_cert(&kms, &owner, &leaf_id, RevocationReasonCode::KeyCompromise).await?;
+
+    // overlap 0h: the CRL is not near expiry, so only the revoked-set check can trigger it.
+    crate::cron::refresh_expiring_crls(&kms, 0).await;
+    let (stored, _) = kms
+        .database
+        .get_crl(&ca_id)
+        .await?
+        .expect("CRL must be stored");
+    assert_ne!(stored, crl_before, "refresh must have regenerated the CRL");
+    assert!(revoked_serials(&stored).contains(&leaf_serial));
+
+    // Nothing changed since: no further regeneration.
+    crate::cron::refresh_expiring_crls(&kms, 0).await;
+    let (again, _) = kms.database.get_crl(&ca_id).await?.expect("CRL stored");
+    assert_eq!(again, stored, "an up-to-date CRL must not be regenerated");
+    Ok(())
+}
+
 /// CRL Number must strictly increase across successive `generate_crl` calls.
 /// This tests RFC 5280 §5.2.3 within a single server instance.
 #[tokio::test]

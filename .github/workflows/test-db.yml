@@ -28,13 +28,14 @@ jobs:
           # the OpenBao KV scenario replayed on PostgreSQL and MySQL
           - {leaf: openbao, variant: fips}
           - {leaf: openbao, variant: non-fips}
-          # multi-region active-active PostgreSQL (pgEdge); the guard suite re-runs the behavioral
-          # proofs, so it is non-FIPS only to avoid duplicating the pgEdge job time
+          # multi-region active-active PostgreSQL (pgEdge)
           - {leaf: pgedge, variant: fips}
           - {leaf: pgedge, variant: non-fips}
           # multi-region active-active MySQL (Percona XtraDB Cluster, 2 Galera nodes)
           - {leaf: galera, variant: fips}
           - {leaf: galera, variant: non-fips}
+          # the multi-region guard suite re-runs the pgEdge and Galera behavioral proofs, so it is
+          # non-FIPS only to avoid duplicating their job time
           - {leaf: multi-region-guards, variant: non-fips}
           # redis (Findex) is non-FIPS only
           - {leaf: redis, variant: non-fips}

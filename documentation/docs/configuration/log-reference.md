@@ -572,7 +572,6 @@ Crate path: `crate/server`
 | `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
 | `warn` | `[crl-refresh-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
 | `warn` | `[crl-refresh-cron] Failed to list CRL issuers from DB: {e}` | `src/cron.rs` | `e` | - |
-| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
@@ -799,6 +798,9 @@ Crate path: `crate/server`
 | `trace` | `Request: request_context={:?} alg={:?} value_len={}` | `src/routes/azure_ekm/mod.rs` | - | ×2 in this file |
 | `trace` | `Certify: unique_identifier={:?}, request type={:?}, request value: {}` | `src/core/operations/certify/certify_op.rs` | - | - |
 | `trace` | `Decrypt: uid={:?}, data: {}` | `src/core/operations/decrypt.rs` | - | - |
+| `warn` | `[crl-refresh-cron] Failed to load CRL for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id` (CA certificate UID), `e` (database error) | The revoked-certificates check is skipped for this issuer until the next run. |
+| `warn` | `[crl-refresh-cron] Revocation check failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id` (CA certificate UID), `e` (error) | Comparing the stored CRL with the revoked certificates failed; retried at the next run. |
+| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})` | `src/cron.rs` | `issuer_id` (CA certificate UID), `refresh_reason` (`expires within <N>h` or `revoked certificates changed`) | Leader region only. |
 
 ### `cosmian_kms_server_database`
 
@@ -838,7 +840,6 @@ Crate path: `crate/server_database`
 | `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 | `debug` | `PostgreSQL error` | `src/error/db_error.rs` | `code`: SQLSTATE code<br>`message`: raw driver error message | Internal only — never surfaced via `SqlError` (which carries just the code) to avoid leaking table/constraint names to clients. |
 | `debug` | `SQLite transient lock encountered, retrying in {backoff:?}: {e}` | `src/stores/sql/sqlite.rs` | `backoff`: delay before the next retry attempt<br>`e`: the underlying "database is locked" error | Emitted while retrying a transient SQLite lock contention error; not an operator-actionable warning by itself, only relevant if retries are repeatedly exhausted. |
-| `warn` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | - | - |
 | `trace` | `find: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `trace` | `find_all: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `error` | `audit: dedicated advisory-lock session ended unexpectedly: {e}` | `src/stores/audit/pgsql.rs` | `e` | - |
@@ -853,7 +854,7 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
-| `warn` | `The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node` | `src/stores/sql/mysql.rs` | - | - |
+| `warn` | `The database refuses GET_LOCK ({}): scheduled jobs use row locks in kms_cron_locks, which exclude only the KMS nodes connected to the same database node` | `src/stores/sql/mysql.rs` | `{}` (database error message) | Galera (Percona XtraDB Cluster, MariaDB Galera); logged once per process. |
 | `warn` | `Failed to release database migration lock` | `src/stores/migrate.rs` | - | - |
 | `warn` | `Failed to release Redis migration lock on drop` | `src/stores/redis/migrations/mod.rs` | - | - |
 | `warn` | `Interrupted database migration detected; resuming` | `src/stores/migrate.rs` | - | - |
@@ -862,6 +863,7 @@ Crate path: `crate/server_database`
 | `info` | `Applying database migration step` | `src/stores/migrate.rs` | - | - |
 | `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
+| `error` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | `role`, `user`, `error` | Security: audit event on every check of the user. Tampered record, or `ceremony_secret`/`ceremony_key_id` differing between regions. |
 
 ### `cosmian_kms_crypto`
 

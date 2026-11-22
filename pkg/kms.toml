@@ -1,7 +1,12 @@
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
-# See [`RegionRole`] for the full semantics.
+# Role of this node's region in a multi-region active-active deployment:
+# `leader` (default) or `follower`. Exactly one region of the deployment is the leader;
+# a single-region deployment keeps `leader`.
+# Only the leader generates CRLs and activates or revokes Crypto Officer ceremonies.
+# A follower requires `PostgreSQL` with logical multi-master replication
+# or a `MySQL` Galera cluster.
 region_role = "leader"
 
 # When an authentication method is provided, perform the authentication

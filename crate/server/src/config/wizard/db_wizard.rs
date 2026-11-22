@@ -14,14 +14,22 @@ use crate::{
     result::KResult,
 };
 
+/// Database types the wizard offers in a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+const fn wizard_db_variants() -> &'static [DatabaseType] {
+    DatabaseType::FIPS_VARIANTS
+}
+
+/// Database types the wizard offers in a non-FIPS build.
+#[cfg(feature = "non-fips")]
+const fn wizard_db_variants() -> &'static [DatabaseType] {
+    DatabaseType::NON_FIPS_VARIANTS
+}
+
 pub(crate) fn configure_db(profile: DeploymentProfile) -> KResult<MainDBConfig> {
     let theme = ColorfulTheme::default();
 
-    #[cfg(not(feature = "non-fips"))]
-    let base_variants = DatabaseType::FIPS_VARIANTS;
-    #[cfg(feature = "non-fips")]
-    let base_variants = DatabaseType::NON_FIPS_VARIANTS;
-    let db_variants = allowed_databases(profile, base_variants);
+    let db_variants = allowed_databases(profile, wizard_db_variants());
 
     let db_idx = if let [only] = db_variants.as_slice() {
         writeln!(

@@ -604,7 +604,8 @@ impl RedisWithFindex {
                 db_object.attributes = Some(attributes.clone());
                 db_object.version += 1;
             }
-            AtomicOperation::UpdateState((uid, state)) => {
+            AtomicOperation::UpdateState((uid, state))
+            | AtomicOperation::ResetState((uid, state)) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
                 let Some(db_object) = entry.current.as_mut() else {
                     return Err(DbError::ItemNotFound(uid.clone()));

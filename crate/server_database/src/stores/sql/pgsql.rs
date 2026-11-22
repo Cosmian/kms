@@ -802,6 +802,9 @@ impl ObjectsStore for PgPool {
             let attrs_param = Json(attributes);
             let state = attributes.state.unwrap_or(State::PreActive).to_string();
             let wrapping_key_id = object.wrapping_key_uid();
+            // Events left for a reused UID (older-node delete, late replicated event) must not be
+            // joined into the new row by the insert trigger.
+            tombstone_state_events(tx, uid).await?;
             let stmt = tx
                 .prepare_cached(get_pgsql_query!("insert-objects"))
                 .await
@@ -1017,6 +1020,9 @@ impl ObjectsStore for PgPool {
                         let attrs_param = Json(attributes);
                         let state = attributes.state.unwrap_or(State::PreActive).to_string();
                         let wrapping_key_id = object.wrapping_key_uid();
+                        // Events left for a reused UID (older-node delete, late replicated event)
+                        // must not be joined into the new row by the insert trigger.
+                        tombstone_state_events(tx, uid).await?;
                         let stmt = tx
                             .prepare_cached(get_pgsql_query!("insert-objects"))
                             .await
@@ -1172,6 +1178,11 @@ impl ObjectsStore for PgPool {
                         uids.push(uid.clone());
                     }
                     AtomicOperation::UpdateState((uid, state)) => {
+                        insert_state_event(tx, uid, *state).await?;
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::ResetState((uid, state)) => {
+                        tombstone_state_events(tx, uid).await?;
                         insert_state_event(tx, uid, *state).await?;
                         uids.push(uid.clone());
                     }
@@ -1698,6 +1709,10 @@ impl Migrate for PgPool {
                 .await
                 .map_err(DbError::from)?;
             client
+                .batch_execute(self.get_query("phase1-tags-pkey-index-reset")?)
+                .await
+                .map_err(DbError::from)?;
+            client
                 .batch_execute(self.get_query("phase1-tags-pkey-index")?)
                 .await
                 .map_err(DbError::from)?;
@@ -1729,6 +1744,10 @@ impl Migrate for PgPool {
                 .await
                 .map_err(DbError::from)?;
             client
+                .batch_execute(self.get_query("phase1-read-access-pkey-index-reset")?)
+                .await
+                .map_err(DbError::from)?;
+            client
                 .batch_execute(self.get_query("phase1-read-access-pkey-index")?)
                 .await
                 .map_err(DbError::from)?;
@@ -1753,6 +1772,10 @@ impl Migrate for PgPool {
         if !co_has_pk {
             client
                 .batch_execute(self.get_query("phase1-co-activations-id")?)
+                .await
+                .map_err(DbError::from)?;
+            client
+                .batch_execute(self.get_query("phase1-co-activations-pkey-index-reset")?)
                 .await
                 .map_err(DbError::from)?;
             client

@@ -2246,6 +2246,12 @@ pub(super) async fn atomic_(
                 }
                 uids.push(uid.clone());
             }
+            AtomicOperation::ResetState((uid, state)) => {
+                if let Err(e) = force_state_(uid, *state, tx).await {
+                    db_bail!("reset of the state of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
             AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
                 upsert_(uid, owner, object, attributes, tags.as_ref(), *state, tx).await?;
                 uids.push(uid.clone());
