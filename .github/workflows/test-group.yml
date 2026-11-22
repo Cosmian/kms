@@ -80,7 +80,12 @@ on:
 
 jobs:
   test:
-    name: ${{ inputs.suite }}
+    # Titles of the jobs these legs replaced (the caller row already shows the suite, variant and non-default runner).
+    name: >-
+      ${{ fromJSON(format('{{"no-nix":"No Nix - {0} - sqlite - {1}","cloud":"Test cloud ({1})","xks-remote":"AWS XKS — remote server","pki-macos":"Test
+      pki (macOS)","windows-cargo-test":"windows - cargo test","windows-ui":"windows - UI E2E tests","windows-cng-ksp":"windows - CNG KSP integration tests","windows-hsm-idemia":"windows
+      - HSM tests (Idemia SPHERE simulator, {1})","windows-est":"windows - EST interoperability tests"}}', inputs.runner, inputs.variant))[inputs.suite]
+      || inputs.suite }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout }}
     environment: ${{ inputs.environment }}
