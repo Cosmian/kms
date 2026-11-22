@@ -315,6 +315,11 @@ class Database(unittest.TestCase):
         ran = run('crate/server_database/src/stores/sql/query.sql')
         self.assertFalse(ran & {'ui', 'hsm', 'pkcs11', 'windows-ui', 'interop:iris'})
 
+    def test_leader_gating_code_runs_the_multi_region_legs(self) -> None:
+        ran = run('crate/server/src/core/mod.rs')
+        self.assertTrue({'db:pgedge', 'db:galera', 'db:multi-region-guards'} <= ran)
+        self.assertFalse(ran & {'db:psql', 'db:mysql'})
+
     def test_db_task_script_runs_its_leg_only(self) -> None:
         self.assertEqual(run('.mise/tasks/test/db/psql'), {'db:psql'})
 

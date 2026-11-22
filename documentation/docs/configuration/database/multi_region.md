@@ -184,6 +184,10 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
   at startup.
 - Objects stored in an HSM do not replicate, including HSM-backed sub-CA keys: a region that signs CRLs or OCSP
   responses with such a key needs the same HSM keys.
+- Auto-rotation of HSM-resident keys runs on the leader region only, like every auto-rotation: the new key is created
+  in the leader region's HSM, which does not replicate. The other regions' HSMs are not rotated by the job, and a
+  rotated `hsm::` identifier replicated with the object metadata must be provisioned in each region's HSM before that
+  region uses it.
 - A certificate revoked on a follower does not regenerate the CRL (the follower's automatic regeneration is refused).
   The leader republishes it at the next run of its CRL refresh scheduler (every `crl_refresh_check_hours`, default
   1 h, when `kms_public_url` is set), which regenerates a stored CRL near its `nextUpdate`
