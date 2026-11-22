@@ -53,6 +53,7 @@ mod ec_dek;
 mod eddsa_sign;
 mod export_key_bytes;
 mod fake_hsm_authz;
+mod fake_hsm_rotation;
 #[cfg(feature = "non-fips")]
 mod hybrid_kem_dek;
 mod issues;
@@ -61,6 +62,7 @@ mod kek_wrap_modes;
 mod multi_hsm;
 mod non_extractable_key_bytes;
 mod permissions;
+mod rotation;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
@@ -183,6 +185,13 @@ async fn test_hsm_all() {
             .await
             .unwrap();
     }
+
+    // Last: it creates and removes its own keys, and its scheduler pass must not meet keys of
+    // other scenarios.
+    info!("HSM: keyset rotation (AES, RSA key pair, scheduler)");
+    Box::pin(rotation::test_hsm_keyset_rotation())
+        .await
+        .unwrap();
 }
 
 /// JOSE flow A against the HSM (runs standalone via `mise run test:hsm:jose`).
@@ -191,6 +200,16 @@ async fn test_hsm_all() {
 async fn test_hsm_jose() {
     log_init(option_env!("RUST_LOG"));
     Box::pin(jose_decrypt::test_jose_hsm_decryption())
+        .await
+        .unwrap();
+}
+
+/// Keyset rotation (re-key, retirement, scheduler) against the HSM, standalone.
+#[tokio::test]
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_keyset_rotation() {
+    log_init(option_env!("RUST_LOG"));
+    Box::pin(rotation::test_hsm_keyset_rotation())
         .await
         .unwrap();
 }

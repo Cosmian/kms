@@ -43,7 +43,7 @@ use crate::{
     kms_bail,
     result::KResult,
 };
-use super::key_ops::ObjectLifecycleExt;
+use super::{attributes::policy::reject_hsm_rotation_attributes, key_ops::ObjectLifecycleExt};
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
@@ -86,6 +86,18 @@ pub(crate) async fn create_key_pair(
             "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
                  ('{sk_uid}') — set the private key ID to the keyset name at creation time"
         )));
+    }
+    if ObjectHandle::from(&sk_uid).is_hsm() {
+        for attrs in [
+            &request.common_attributes,
+            &request.private_key_attributes,
+            &request.public_key_attributes,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            reject_hsm_rotation_attributes("CreateKeyPair", attrs)?;
+        }
     }
     // Capture requested ActivationDate values BEFORE moving the request into key generation
     // Private key: prefer private_key_attributes.activation_date then fallback to common_attributes.activation_date

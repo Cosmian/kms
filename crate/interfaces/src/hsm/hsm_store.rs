@@ -2,7 +2,10 @@
 //! for Hardware Security Module backends.  It consolidates what was previously two separate
 //! types (`HsmStore` and `HsmCryptoOracle`) that always wrapped the same `Arc<dyn HSM>`.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use KmipKeyMaterial::TransparentRSAPublicKey;
 use async_trait::async_trait;
@@ -355,13 +358,13 @@ impl ObjectsStore for HsmStore {
                     // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
                     // HsmStore::update_object is a no-op for KMIP attributes so there is
                     // no persistent KMIP storage for rotate_interval on HSM keys; we
-                    // recover it as (end_date − start_date) × 86400 s so that downstream
-                    // operations (e.g. auto-rotation re-key) can propagate the schedule.
-                    if let (Some(start), Some(end)) = (meta.start_date, meta.end_date) {
-                        let days = (end - start).whole_days();
-                        if days > 0 {
-                            attrs.rotate_interval = Some(days * crate::SECS_PER_DAY);
-                        }
+                    // recover it so that downstream operations (e.g. auto-rotation
+                    // re-key, renewal warnings) can propagate the schedule.
+                    if let Some((rotate_date, rotate_interval)) =
+                        rotation_from_dates(meta.start_date, meta.end_date)
+                    {
+                        attrs.rotate_date = Some(rotate_date);
+                        attrs.rotate_interval = Some(rotate_interval);
                     }
                 }
                 Ok(Some(owm))
@@ -619,7 +622,8 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<(String, String)>> {
         let today = now.date();
         let slot_ids = self.hsm.get_available_slot_list().await?;
-        let mut due_uids = Vec::new();
+        let mut keys: Vec<(String, KeyMetadata)> = Vec::new();
+        let mut max_generation: HashMap<String, i32> = HashMap::new();
 
         for slot_id in slot_ids {
             let found = self
@@ -636,24 +640,41 @@ impl ObjectsStore for HsmStore {
                 else {
                     continue;
                 };
-                // A key is due for rotation when end_date is set and today >= end_date
-                let Some(end_date) = meta.end_date else {
+                let Ok(object_string) = std::str::from_utf8(&object_id) else {
                     continue;
                 };
-                if today >= end_date {
-                    let Ok(object_string) = std::str::from_utf8(&object_id) else {
-                        continue;
-                    };
-                    let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
-                    // HSM objects have no KMIP "owner" — the HSM instance is single-tenant.
-                    // Return an empty owner string; the scheduler must resolve ownership
-                    // from the KMS system metadata if multi-tenancy is needed in future.
-                    due_uids.push((uid, String::new()));
+                if let Some(name) = &meta.rotate_name {
+                    let generation = meta.rotate_generation.unwrap_or(0);
+                    let max = max_generation.entry(name.clone()).or_insert(generation);
+                    *max = (*max).max(generation);
                 }
+                keys.push((format!("{}::{slot_id}::{object_string}", self.prefix), meta));
             }
         }
 
-        Ok(due_uids)
+        // The scheduler acts as the HSM admin that owns every HSM object (see retrieve()).
+        Ok(keys
+            .into_iter()
+            .filter(|(_, meta)| {
+                // Both keyset membership and valid dates are required: foreign PKCS#11
+                // validity dates alone never opt a key into KMS automatic rotation.
+                let Some(name) = meta.rotate_name.as_ref() else {
+                    return false;
+                };
+                let (Some(_), Some(end_date)) = (
+                    rotation_from_dates(meta.start_date, meta.end_date),
+                    meta.end_date,
+                ) else {
+                    return false;
+                };
+                // Retired generations keep their past CKA_END_DATE: only the keyset head may be rotated, so a repeated or partially failed tick never rotates twice.
+                let is_head = max_generation
+                    .get(name)
+                    .is_some_and(|max| meta.rotate_generation.unwrap_or(0) >= *max);
+                today >= end_date && is_head
+            })
+            .map(|(uid, _)| (uid, self.owner_name().to_owned()))
+            .collect())
     }
 
     /// Find HSM keys by keyset name, with optional generation and latest filters.
@@ -679,18 +700,9 @@ impl ObjectsStore for HsmStore {
         let mut results = Vec::new();
 
         for slot_id in slot_ids {
-            let found = self
-                .hsm
-                .find(slot_id, HsmObjectFilter::Any)
-                .await
-                .unwrap_or_default();
+            let found = self.hsm.find(slot_id, HsmObjectFilter::Any).await?;
             for object_id in found {
-                let Some(meta) = self
-                    .hsm
-                    .get_key_metadata(slot_id, &object_id)
-                    .await
-                    .unwrap_or_default()
-                else {
+                let Some(meta) = self.hsm.get_key_metadata(slot_id, &object_id).await? else {
                     continue;
                 };
                 // Only consider keys that belong to this keyset
@@ -1161,6 +1173,20 @@ impl CryptoOracle for HsmStore {
     }
 }
 
+/// Rebuild the rotation schedule of an HSM key from its `CKA_START_DATE` / `CKA_END_DATE`.
+///
+/// `HsmStore::update_object` is a no-op for KMIP attributes, so the dates are the only
+/// persistent trace of the schedule. Returns `(rotate_date, rotate_interval_secs)`
+/// when both dates are set and the span is at least one day.
+fn rotation_from_dates(
+    start: Option<time::Date>,
+    end: Option<time::Date>,
+) -> Option<(time::OffsetDateTime, i64)> {
+    let (start, end) = (start?, end?);
+    let days = (end - start).whole_days();
+    (days > 0).then(|| (start.midnight().assume_utc(), days * crate::SECS_PER_DAY))
+}
+
 /// Build a metadata-only `Attributes` struct for a non-extractable (sensitive) HSM key.
 ///
 /// Used when `hsm.export()` fails with a sensitive-key error. The stub allows
@@ -1208,20 +1234,7 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
             ec_key_format_type(ObjectType::PublicKey),
         ),
     };
-    // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
-    // HsmStore::update_object is a no-op for KMIP attributes, so this is the only
-    // way to expose the scheduled interval to attribute-only callers (e.g. re-key).
-    let rotate_interval = match (meta.start_date, meta.end_date) {
-        (Some(start), Some(end)) => {
-            let days = (end - start).whole_days();
-            if days > 0 {
-                Some(days * crate::SECS_PER_DAY)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    };
+    let rotation = rotation_from_dates(meta.start_date, meta.end_date);
     Attributes {
         cryptographic_algorithm: Some(algorithm),
         cryptographic_length: Some(i32::try_from(meta.key_length_in_bits).unwrap_or_default()),
@@ -1232,7 +1245,8 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
         sensitive: Some(meta.sensitive),
         rotate_name: meta.rotate_name.clone(),
         rotate_generation: meta.rotate_generation,
-        rotate_interval,
+        rotate_date: rotation.map(|(date, _)| date),
+        rotate_interval: rotation.map(|(_, interval)| interval),
         ..Attributes::default()
     }
 }
@@ -1269,9 +1283,6 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                 },
             })
         }
-        // For RSA sensitive keys (unusual but possible), build a minimal SymmetricKey-shaped
-        // stub so callers can still perform attribute-only operations.  The object_type in
-        // the attributes is set correctly (PrivateKey / PublicKey).
         KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
             let obj_type = if meta.key_type == KeyType::RsaPrivateKey {
                 ObjectType::PrivateKey
@@ -1285,23 +1296,46 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
                 sensitive: Some(meta.sensitive),
                 ..Attributes::default()
             };
-            // Return a SymmetricKey wrapper — the key material is empty and the
-            // sensitive flag signals callers not to attempt material access.
-            Object::SymmetricKey(SymmetricKey {
-                key_block: KeyBlock {
-                    key_format_type: KeyFormatType::TransparentSymmetricKey,
-                    key_compression_type: None,
-                    key_value: Some(KeyValue::Structure {
-                        key_material: KmipKeyMaterial::TransparentSymmetricKey {
-                            key: cosmian_kmip::SensitiveBytes::default(),
-                        },
-                        attributes: Some(Box::new(attributes)),
-                    }),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                    cryptographic_length: Some(length),
-                    key_wrapping_data: None,
-                },
-            })
+            let modulus = Box::new(BigInt::from_bytes_be(Sign::Plus, &[]));
+            let (key_format_type, key_material) = if obj_type == ObjectType::PrivateKey {
+                (
+                    KeyFormatType::TransparentRSAPrivateKey,
+                    KmipKeyMaterial::TransparentRSAPrivateKey {
+                        modulus,
+                        private_exponent: None,
+                        public_exponent: None,
+                        p: None,
+                        q: None,
+                        prime_exponent_p: None,
+                        prime_exponent_q: None,
+                        c_r_t_coefficient: None,
+                    },
+                )
+            } else {
+                (
+                    KeyFormatType::TransparentRSAPublicKey,
+                    TransparentRSAPublicKey {
+                        modulus,
+                        public_exponent: Box::new(BigInt::from_bytes_be(Sign::Plus, &[])),
+                    },
+                )
+            };
+            let key_block = KeyBlock {
+                key_format_type,
+                key_compression_type: None,
+                key_value: Some(KeyValue::Structure {
+                    key_material,
+                    attributes: Some(Box::new(attributes)),
+                }),
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                cryptographic_length: Some(length),
+                key_wrapping_data: None,
+            };
+            if obj_type == ObjectType::PrivateKey {
+                Object::PrivateKey(PrivateKey { key_block })
+            } else {
+                Object::PublicKey(PublicKey { key_block })
+            }
         }
         KeyType::EcPrivateKey | KeyType::EcPublicKey => {
             let obj_type = if meta.key_type == KeyType::EcPrivateKey {
@@ -2016,8 +2050,8 @@ mod tests {
     use zeroize::Zeroizing;
 
     #[cfg(feature = "non-fips")]
-    use super::{build_sensitive_stub_attributes, build_sensitive_stub_object};
-    use super::{check_basic_compatibility, to_object_with_metadata};
+    use super::build_sensitive_stub_attributes;
+    use super::{build_sensitive_stub_object, check_basic_compatibility, to_object_with_metadata};
     #[cfg(feature = "non-fips")]
     use crate::EcPrivateKeyMaterial;
     use crate::{
@@ -2967,6 +3001,28 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn sensitive_rsa_stubs_have_key_pair_object_types() {
+        for (key_type, expected) in [
+            (KeyType::RsaPrivateKey, ObjectType::PrivateKey),
+            (KeyType::RsaPublicKey, ObjectType::PublicKey),
+        ] {
+            let meta = KeyMetadata {
+                key_type,
+                key_length_in_bits: 2048,
+                sensitive: true,
+                id: "rsa".to_owned(),
+                tags: HashSet::new(),
+                curve: None,
+                start_date: None,
+                end_date: None,
+                rotate_name: None,
+                rotate_generation: None,
+            };
+            assert_eq!(build_sensitive_stub_object(&meta).object_type(), expected);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -3524,5 +3580,55 @@ mod characterization_tests {
         assert_eq!(attrs.rotate_name.as_deref(), Some("hsm::5::keyset"));
         assert_eq!(attrs.rotate_generation, Some(1));
         assert_eq!(attrs.cryptographic_length, Some(128));
+    }
+
+    #[tokio::test]
+    async fn find_due_for_rotation_returns_admin_owner_and_keyset_head_only() {
+        let now = time::OffsetDateTime::now_utc();
+        let yesterday = now.date() - time::Duration::days(1);
+        let tomorrow = now.date() + time::Duration::days(1);
+        let mut mock = MockHsm::new();
+        mock.expect_get_available_slot_list()
+            .returning(|| Ok(vec![0]));
+        mock.expect_find().returning(|_, _| {
+            Ok([b"a", b"b", b"c", b"d", b"e", b"f", b"g"]
+                .into_iter()
+                .map(|id| id.to_vec())
+                .collect())
+        });
+        mock.expect_get_key_metadata().returning(move |_, id| {
+            let mut meta = metadata(KeyType::AesKey, 256, None);
+            meta.start_date = Some(yesterday - time::Duration::days(30));
+            meta.end_date = Some(if id == b"d" { tomorrow } else { yesterday });
+            if id != b"g" {
+                meta.rotate_name = Some("c".to_owned());
+                meta.rotate_generation = Some(0);
+            }
+            if id == b"a" || id == b"b" {
+                meta.rotate_name = Some("n".to_owned());
+                meta.rotate_generation = Some(i32::from(id != b"a"));
+            }
+            // e: lone CKA_END_DATE (not armed by the KMS); f: empty schedule
+            if id == b"e" {
+                meta.start_date = None;
+            }
+            if id == b"f" {
+                meta.start_date = meta.end_date;
+            }
+            Ok(Some(meta))
+        });
+        let due: HashSet<(String, String)> = store(mock)
+            .find_due_for_rotation(now)
+            .await
+            .unwrap()
+            .into_iter()
+            .collect();
+        let expected: HashSet<(String, String)> = [
+            ("hsm::0::b".to_owned(), "admin".to_owned()),
+            ("hsm::0::c".to_owned(), "admin".to_owned()),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(due, expected);
     }
 }

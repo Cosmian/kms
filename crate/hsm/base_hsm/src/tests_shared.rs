@@ -2059,6 +2059,25 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
             .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
         assert_eq!(metadata.start_date, Some(start));
         assert_eq!(metadata.end_date, Some(end));
+
+        // Disarming the schedule must succeed. A token either unsets both dates, or (Proteccio,
+        // which refuses to unset a date) is left with a zero-length validity: "not a schedule"
+        // either way. (Elapsed dates are exercised by the server-level keyset rotation test: a
+        // token may refuse to store a date in the past.)
+        session.set_key_dates(key_handle, None, None)?;
+        let metadata = session
+            .get_key_metadata(key_handle)?
+            .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
+        let disarmed = match (metadata.start_date, metadata.end_date) {
+            (None, None) => true,
+            (Some(start), Some(end)) => start == end,
+            _ => false,
+        };
+        assert!(
+            disarmed,
+            "dates after clearing: {:?} / {:?}",
+            metadata.start_date, metadata.end_date
+        );
     } else {
         assert!(
             session
@@ -2120,7 +2139,65 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     assert_eq!(metadata.key_type, KeyType::RsaPublicKey);
     assert_eq!(metadata.key_length_in_bits, 2048);
     assert_eq!(metadata.id.as_str(), pk_id.as_str());
+
+    keyset_labels_keep_object_ids(&session, key_handle, &key_id, (sk, &sk_id), (pk, &pk_id))?;
     info!("Got key metadata");
+    Ok(())
+}
+
+/// HSM key rotation stores the keyset (`name::generation::key_id[@latest]`) in `CKA_LABEL`. The
+/// label must carry the keyset and generation, yet leave the object id and every lookup by id
+/// untouched, for a symmetric key and for both halves of a key pair: a public key's id used to
+/// be read from its label, so relabelling it renamed the object.
+fn keyset_labels_keep_object_ids(
+    session: &Session,
+    aes: CK_OBJECT_HANDLE,
+    aes_id: &str,
+    (sk, sk_id): (CK_OBJECT_HANDLE, &str),
+    (pk, pk_id): (CK_OBJECT_HANDLE, &str),
+) -> HResult<()> {
+    // short names: some tokens limit the length of CKA_LABEL
+    let short = Uuid::new_v4().simple().to_string();
+    let aes_keyset = format!("ks{}", &short[..8]);
+    let pair_keyset = format!("ks{}", &short[8..16]);
+    session.set_label(aes, &format!("{aes_keyset}::3::k{}@latest", &short[..4]))?;
+    session.set_label(sk, &format!("{pair_keyset}::2::k{}@latest", &short[..4]))?;
+    session.set_label(
+        pk,
+        &format!("{pair_keyset}_pk::2::k{}_pk@latest", &short[..4]),
+    )?;
+
+    session.clear_object_handles()?;
+    for (handle, id, keyset, generation) in [
+        (aes, aes_id, aes_keyset.as_str(), 3),
+        (sk, sk_id, pair_keyset.as_str(), 2),
+    ] {
+        let metadata = session
+            .get_key_metadata(handle)?
+            .ok_or_else(|| HError::Default("Relabelled key not found".to_owned()))?;
+        assert_eq!(metadata.rotate_name.as_deref(), Some(keyset));
+        assert_eq!(metadata.rotate_generation, Some(generation));
+        assert_eq!(
+            session.get_object_id(handle)?.as_deref(),
+            Some(id.as_bytes())
+        );
+        assert_eq!(session.get_object_handle(id.as_bytes())?, handle);
+    }
+    let public_keyset = format!("{pair_keyset}_pk");
+    let metadata = session
+        .get_key_metadata(pk)?
+        .ok_or_else(|| HError::Default("Relabelled public key not found".to_owned()))?;
+    assert_eq!(
+        metadata.rotate_name.as_deref(),
+        Some(public_keyset.as_str())
+    );
+    assert_eq!(metadata.rotate_generation, Some(2));
+    assert_eq!(
+        session.get_object_id(pk)?.as_deref(),
+        Some(pk_id.as_bytes())
+    );
+    assert_eq!(session.get_object_handle(pk_id.as_bytes())?, pk);
+    info!("Keyset labels keep object ids");
     Ok(())
 }
 

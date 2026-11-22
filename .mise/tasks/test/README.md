@@ -167,8 +167,8 @@ sequenceDiagram
 
 | Task | HSM Model | Platform | DB param |
 |------|-----------|----------|----------|
-| `softhsm2` | SoftHSM2 (software) | All | configurable |
-| `utimaco` | Utimaco simulator | Linux only | passthrough |
+| `softhsm2` | SoftHSM2 (software); the server `test_hsm_all` includes keyset rotation (re-key, retirement, all-generation processing; SoftHSM2 stores no key dates, so scheduling is asserted refused) | All | configurable |
+| `utimaco` | Utimaco simulator: loader tests, KMS startup with an HSM KEK and the server keyset rotation test, whose scheduler pass relies on the simulator storing `CKA_START_DATE` / `CKA_END_DATE` | Linux only | passthrough |
 | `proteccio` | Proteccio | Linux only | passthrough |
 | `crypt2pay` | Crypt2Pay | Linux only | passthrough |
 | `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
