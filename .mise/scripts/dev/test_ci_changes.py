@@ -38,6 +38,20 @@ WORKSPACE = {
 }
 # Units that additionally run on any change of code linked into the server.
 SERVER_WIDE = WORKSPACE | {'forward-proxy', 'spire'}
+# Strict units: never forced by `full` or an unmatched path (see ci-paths.toml).
+WINDOWS_PLATFORM = {
+    'windows-ui',
+    'windows-cng-ksp',
+    'windows-hsm-idemia',
+    'windows-est',
+}
+STRICT = {
+    'cargo-clippy',
+    'cargo-machete',
+    'no-nix',
+    'cargo-publish-dry-run',
+    'windows-cargo-test',
+} | WINDOWS_PLATFORM
 DB_LEGS = {'db:psql', 'db:mysql', 'db:mariadb', 'db:percona', 'db:redis', 'db:openbao'}
 KMIP_INTEROP = {
     'interop:ase',
@@ -171,7 +185,8 @@ class Database(unittest.TestCase):
     def test_shared_sql_runs_every_backend(self) -> None:
         self.assertEqual(
             run('crate/server_database/src/stores/sql/query.sql'),
-            (SERVER_WIDE | DB_LEGS) - {'cargo-clippy'},  # SQL is not linted
+            (SERVER_WIDE | DB_LEGS)
+            - {'cargo-clippy', 'cargo-machete'},  # SQL is not Rust source
         )
 
     def test_postgres_store_only(self) -> None:
@@ -287,13 +302,31 @@ class CiWorkflows(unittest.TestCase):
                 '.mise/scripts/dev/ci_changes.py',
             ),
             {
-                'cargo-machete',
                 'forward-proxy',
                 'build-documentation',
-                'cargo-publish-dry-run',
                 'xks-remote',
                 'interop:pykmip',
             },
+        )
+
+    def test_strict_units_run_only_on_their_inputs(self) -> None:
+        crate_rust = {'cargo-clippy', 'cargo-machete', 'no-nix'}
+        build = {'no-nix', 'cargo-publish-dry-run', 'windows-cargo-test'}
+        self.assertEqual(
+            run('crate/server/src/core/mod.rs') & STRICT, crate_rust | build
+        )
+        self.assertEqual(run('crate/server/kms_template.toml') & STRICT, build)
+        for path in (
+            '.github/workflows/main.yml',
+            '.github/workflows/test_all.yml',
+            'crate/server/README.md',
+            'ui/src/App.tsx',
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(run(path) & (STRICT - WINDOWS_PLATFORM))
+        self.assertEqual(
+            run('.github/workflows/cargo-publish.yml') & STRICT,
+            {'cargo-publish-dry-run'},
         )
 
     def test_clippy_runs_only_on_rust_changes(self) -> None:
@@ -471,8 +504,8 @@ class FailSafe(unittest.TestCase):
     ) -> None:
         self.assertEqual(run('README.md', 'brand/new.txt'), EVERYTHING - CFG.strict)
 
-    def test_clippy_is_never_forced_by_full_or_unknown_paths(self) -> None:
-        self.assertEqual(CFG.strict, {'cargo-clippy'})
+    def test_strict_units_are_never_forced_by_full_or_unknown_paths(self) -> None:
+        self.assertEqual(CFG.strict, STRICT)
         for path in (
             'mise.toml',
             'shell.nix',
@@ -481,20 +514,27 @@ class FailSafe(unittest.TestCase):
             'brand/new.txt',
         ):
             with self.subTest(path=path):
-                self.assertNotIn('cargo-clippy', run(path))
+                self.assertFalse(run(path) & STRICT)
         for path in ('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml'):
             with self.subTest(path=path):
-                self.assertIn('cargo-clippy', run(path))
+                self.assertTrue(
+                    {'cargo-clippy', 'no-nix', 'windows-cargo-test'} <= run(path)
+                )
 
     def test_full_patterns_run_everything(self) -> None:
         for path in (
             'Cargo.lock',
-            'Cargo.toml',
             'rust-toolchain.toml',
-            'crate/crypto/build.rs',
         ):
+            with self.subTest(
+                path=path
+            ):  # Rust inputs, but machete only reads manifests
+                self.assertEqual(
+                    run(path), EVERYTHING - {'cargo-machete'} - WINDOWS_PLATFORM
+                )
+        for path in ('Cargo.toml', 'crate/crypto/build.rs'):
             with self.subTest(path=path):
-                self.assertEqual(run(path), EVERYTHING)
+                self.assertEqual(run(path), EVERYTHING - WINDOWS_PLATFORM)
         for path in (
             'mise.toml',
             '.mise/lib/common.sh',
@@ -505,7 +545,7 @@ class FailSafe(unittest.TestCase):
                 self.assertEqual(run(path), EVERYTHING - CFG.strict)
 
     def test_one_full_file_overrides_ignored_ones(self) -> None:
-        self.assertEqual(run('README.md', 'Cargo.lock'), EVERYTHING)
+        self.assertEqual(run('README.md', 'Cargo.lock'), run('Cargo.lock'))
 
 
 class MixedChanges(unittest.TestCase):
@@ -714,7 +754,6 @@ class LoadConfig(unittest.TestCase):
 
     def test_invalid_strict_is_rejected(self) -> None:
         head = "full = 'x'\nignore = 'y'\n[sets]\ns = 'z'\n[units.a]\n"
-        self.rejects(head + "sets = ['s']\nstrict = true\n")
         self.rejects(head + "files = 'x'\nstrict = false\n")
 
     def test_bad_callers_are_rejected(self) -> None:
@@ -895,15 +934,18 @@ class Main(unittest.TestCase):
         self.assertNotIn('SKIP', text)
 
     def test_full_match_reports_run_everything(self) -> None:
-        text, _ = self.run_main(['Cargo.lock', 'README.md'], output=self.output)
-        self.assertIn('Cargo.lock matches full: run everything', text)
-        self.assert_runs_everything(self.output.read_text().splitlines())
+        text, _ = self.run_main(['mise.toml', 'README.md'], output=self.output)
+        self.assertIn('mise.toml matches full: run everything', text)
+        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(json.loads(got['skip']), sorted(STRICT))
+        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
+        self.assertEqual((got['run-test'], got['run-windows']), ('true', 'false'))
 
     def test_orphan_reports_run_everything(self) -> None:
         text, _ = self.run_main(['brand/new.txt'], output=self.output)
         self.assertIn('brand/new.txt matches no unit and is not ignored', text)
         got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
-        self.assertEqual(json.loads(got['skip']), sorted(CFG.strict))
+        self.assertEqual(json.loads(got['skip']), sorted(STRICT))
         self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
 
     def test_all_flag_runs_everything_without_git(self) -> None:
