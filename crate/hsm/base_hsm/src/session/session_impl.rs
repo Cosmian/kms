@@ -3656,18 +3656,25 @@ impl Session {
         } else {
             &[false, true]
         };
-        let mut first_rv = CKR_OK;
+        let mut attempts = Vec::with_capacity(forms.len());
         for &zeroed in forms {
             let rv = self.set_key_dates_once(key_handle, start_ck, end_ck, zeroed)?;
             if rv == CKR_OK {
                 return Ok(());
             }
-            if first_rv == CKR_OK {
-                first_rv = rv;
-            }
+            attempts.push(format!(
+                "{}={rv}",
+                if zeroed {
+                    "zeroed CK_DATE"
+                } else {
+                    "empty/set"
+                }
+            ));
         }
         Err(HError::Default(format!(
-            "Failed to set key dates for key handle: {key_handle}. Return code: {first_rv}"
+            "Failed to set key dates for key handle: {key_handle} (start {start_date:?}, end \
+             {end_date:?}). Return code: {}",
+            attempts.join(", ")
         )))
     }
 
