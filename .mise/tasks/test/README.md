@@ -28,7 +28,7 @@
 
 ## 1. Master Orchestrator
 
-Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one job per group in `.github/workflows/test_all.yml` (`mise run test:<group>`).
+Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one leg per group and variant in `.github/workflows/test_all.yml` (`test-suites`, `mise run test:<group>`).
 
 | Command | Effect |
 |---------|--------|
@@ -62,7 +62,7 @@ Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips o
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
 2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
-3. It then runs in CI with its group (`test-<group>` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
+3. It then runs in CI with its group (a unit of `.github/ci-paths.toml`, hence a leg of `test-suites` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
 
 ### Sequence Diagram
 
@@ -172,7 +172,7 @@ sequenceDiagram
 | `proteccio` | Proteccio | Linux only | passthrough |
 | `crypt2pay` | Crypt2Pay | Linux only | passthrough |
 | `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
-| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: `test_windows.yml`) | — |
+| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: the `windows-hsm-idemia` leg of `test-group.yml`) | — |
 | `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All (Windows: `.mise/scripts/windows/test_hsm_other.ps1`) | — |
 | `nix-helpers` | nix-shell re-entry secret-handling regression test (no HSM) | All | — |
 | `luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |

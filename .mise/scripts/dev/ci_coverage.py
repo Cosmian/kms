@@ -19,6 +19,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tomllib
 from collections import defaultdict
 from pathlib import Path
 
@@ -100,7 +101,12 @@ def yaml_suite_ids(lines: list[str]) -> set[str]:
 def ci_roots(tasks: dict[str, dict]) -> set[str]:
     roots: set[str] = set()
     for f in ci_files():
-        lines = [ln for ln in read_lines(f) if not ln.lstrip().startswith('#')]
+        # comments and `description:` prose are not calls: a task path named in a sentence must not count as covered
+        lines = [
+            ln
+            for ln in read_lines(f)
+            if not ln.lstrip().startswith(('#', 'description:'))
+        ]
         roots |= yaml_suite_ids(lines)
         for ln in lines:
             for m in MISE_RUN.finditer(ln):
@@ -112,6 +118,13 @@ def ci_roots(tasks: dict[str, dict]) -> set[str]:
                 roots.add(m.group(1))
             for m in TASK_FILE_REF.finditer(ln):
                 roots.add(task_id_of(TASKS_DIR / m.group(1)))
+    # legs are units of ci-paths.toml, run by test-group.yml as `mise run test:<unit>`
+    roots |= {
+        f"test:{u}"
+        for u in tomllib.loads((REPO / '.github' / 'ci-paths.toml').read_text())[
+            'units'
+        ]
+    }
     return {r for r in roots if r in tasks}
 
 

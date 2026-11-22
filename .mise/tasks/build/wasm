@@ -10,7 +10,7 @@ kms_init_env "${usage_variant:-fips}" "static"
 
 print_header "Building WASM package (${VARIANT_NAME})"
 
-require_cmd wasm-pack "wasm-pack is required. Install: cargo install wasm-pack"
+require_cmd wasm-pack "wasm-pack is required. Install: cargo install --locked wasm-pack@0.15.1"
 
 REPO_ROOT="$(get_repo_root)"
 WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
