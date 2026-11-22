@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="Classify the files a PR changes with .github/ci-paths.toml: prints and appends skip, suites-matrix and run-test to GITHUB_OUTPUT"
+#MISE description="Classify the files a PR changes with .github/ci-paths.toml: prints and appends skip, db-matrix, interop-matrix, run-test and run-windows to GITHUB_OUTPUT"
 #USAGE flag "--base <ref>" help="Diff from the merge base of <ref> and --head (PR merge commit: HEAD^1 is the base tip)" default="HEAD^1"
 #USAGE flag "--head <ref>" help="Changed side" default="HEAD"
-#USAGE flag "--all" help="Not a pull request: run every unit and emit the full suites matrix (no git diff)"
+#USAGE flag "--all" help="Not a pull request: run every unit and emit the full matrices (no git diff)"
 #USAGE flag "--self-test" help="Run the unit tests of the classifier (.mise/scripts/dev/test_ci_changes.py) against .github/ci-paths.toml and exit"
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"

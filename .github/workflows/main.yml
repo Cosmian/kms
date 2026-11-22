@@ -1,180 +1,140 @@
 ---
-name: CI (tags, nightly, manual)
+name: CI
 run-name: CI (${{ github.head_ref || github.ref_name }})
 
-# Tags, the nightly schedule and manual dispatch: every unit runs. Pull requests run pull-request.yml and the
-# unit workflows' own `pull_request: paths:` triggers instead.
 on:
   push:
     tags:
       - '**'
   workflow_dispatch:
+  pull_request:
   schedule:
     - cron: 0 3 * * * # Daily at 03:00 UTC
 
-# Every run (tag, schedule, manual) gets a unique group, so it is never queued behind or cancelled by another run.
+# A new push to the same PR cancels the pipeline still running for the previous commit.
+# Every other run (tag, schedule, manual) gets a unique group, so it is never queued behind or
+# cancelled by another run.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.run_id }}
-  cancel-in-progress: false
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Every suite leg of test_all.yml (`--all`: no git diff, nothing skipped).
-  matrix:
-    name: Build test matrix
+  cla-assistant:
+    if: (github.event.pull_request.head.repo.full_name != github.repository) && ((github.event.comment.body == 'recheck' || github.event.comment.body ==
+      'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target')
+    uses: ./.github/workflows/cla.yml
+    secrets: inherit
+
+  # Runs only the jobs whose files (.github/ci-paths.toml) the PR changes; tags, schedule and dispatch run everything.
+  changes:
+    name: Detect changed areas
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
+      skip: ${{ steps.classify.outputs.skip }}
       suites-matrix: ${{ steps.classify.outputs.suites-matrix }}
+      run-test: ${{ steps.classify.outputs.run-test }}
+      run-windows: ${{ steps.classify.outputs.run-windows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          # On pull_request the checkout is the test merge commit, whose first parent is the base branch tip.
+          fetch-depth: 2
 
       - uses: ./.github/actions/install-mise
 
-      - name: Build the full matrix
+      - name: Classify changed files
         id: classify
         env:
+          EVENT_NAME: ${{ github.event_name }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: mise run dev:ci-changes --all
+        run: |
+          mise run dev:ci-changes --self-test
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            mise run dev:ci-changes --base HEAD^1
+          else
+            mise run dev:ci-changes --all
+          fi
 
   cargo-clippy:
-    uses: ./.github/workflows/clippy.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/clippy.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'cargo-clippy') }}
 
   cargo-deny:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
     name: Security Audit
 
   cargo-machete:
-    uses: ./.github/workflows/machete.yml
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-machete.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'cargo-machete') }}
 
   supply-chain:
     uses: ./.github/workflows/supply-chain.yml
 
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'forward-proxy') }}
 
   no-nix:
     uses: ./.github/workflows/no-nix.yml
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'no-nix') }}
 
-  # Windows is slow: PRs run the quick suite of windows-cargo-test; tags and nightly run the full one.
-  windows-cargo-test:
-    uses: ./.github/workflows/windows-cargo-test.yml
+  windows:
+    # Same gating as `test` (no dependabot PRs) plus no fork PRs. Windows is slow: PRs run the
+    # quick suite; tags and nightly run the full one.
+    needs: changes
+    if: >-
+      (((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+      && needs.changes.outputs.run-windows == 'true'
+    uses: ./.github/workflows/test_windows.yml
     with:
       archive-name: windows
-      full-suite: true
+      # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off-PR only.
+      full-suite: ${{ github.event_name != 'pull_request' }}
+      skip-units: ${{ needs.changes.outputs.skip }}
 
-  windows-ui:
-    uses: ./.github/workflows/windows-ui.yml
-    with:
-      archive-name: windows
-
-  windows-cng-ksp:
-    uses: ./.github/workflows/windows-cng-ksp.yml
-    with:
-      archive-name: windows
-
-  windows-hsm-idemia:
-    uses: ./.github/workflows/windows-hsm-idemia.yml
-    with:
-      archive-name: windows
-
-  windows-est:
-    uses: ./.github/workflows/windows-est.yml
-    with:
-      archive-name: windows
-
-  build-documentation:
-    uses: ./.github/workflows/build-documentation.yml
-    secrets: inherit
-
-  # Cloud credentials stay out of test_all.yml; see test-cloud.yml. Upstream only.
-  test-cloud:
-    uses: ./.github/workflows/test-cloud.yml
-    secrets: inherit
-
-  # Runs pnpm install and the JS toolchain: any npm dependency can read the job's environment, so test-ui.yml gets
-  # no cloud/test secrets.
-  test-ui:
-    uses: ./.github/workflows/test-ui.yml
-    secrets: inherit
-
-  # PKI group on macOS; Linux runs it in the `pki` legs of test_all.yml.
-  test-pki-macos:
-    uses: ./.github/workflows/test-pki-macos.yml
-
-  xks-remote:
-    uses: ./.github/workflows/xks-remote.yml
-    secrets: inherit
-
-  test: # Suite legs (db, interop, hsm, obs, pkcs11, pki, spire)
-    needs: matrix
+  test: # Run all tests (PRs, tags and the nightly schedule / manual dispatch)
+    needs: changes
+    if: >-
+      ((github.event_name == 'pull_request' && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && needs.changes.outputs.run-test == 'true'
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
     with:
-      suites-matrix: ${{ needs.matrix.outputs.suites-matrix }}
+      skip-units: ${{ needs.changes.outputs.skip }}
+      suites-matrix: ${{ needs.changes.outputs.suites-matrix }}
 
-  nix-dev-shell-cache:
-    uses: ./.github/workflows/nix-dev-shell-cache.yml
+  build-documentation:
+    name: Build documentation
+    needs: changes
+    if: ${{ !contains(fromJSON(needs.changes.outputs.skip), 'build-documentation') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
 
-  # The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
-  # dispatch runs only; pull requests cover the HSM code with the software simulators of the `hsm` legs of `test-suites`. Upstream
-  # repository only, where the secrets exist. The HSMs refuse concurrent connections from several CI runs:
-  # each cell's `lock` is one concurrency group shared by all runs, queued (test-k8s-hsm in packaging-docker.yml
-  # uses the same groups). A task fails, never skips, when an `env:` need is unset: a green cell proves its
-  # suite ran.
-  # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
-  # Luna (no reachable partition). To bring one back, add its cell to `test-hsm-hardware` with its `suite`
-  # and its `lock`, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and
-  # pass its secrets through test-group.yml (names in crate/hsm/<name>/README.md).
-  test-hsm-hardware:
-    name: Test ${{ matrix.suite }} (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    if: github.repository == 'Cosmian/kms'
-    concurrency:
-      group: ${{ matrix.lock }}
-      queue: max
-      cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {suite: hsm:crypt2pay, variant: non-fips, lock: hsm-crypt2pay}
-          - {suite: hsm:proteccio, variant: non-fips, lock: hsm-proteccio}
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: ${{ matrix.suite }}
-      variant: ${{ matrix.variant }}
-    secrets:
-      PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
-      PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
-      PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
-      CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
-      OVPN_CONF: ${{ secrets.OVPN_CONF }}
+      - uses: ./.github/actions/install-mise
 
-  # cargo publish is a main.yml job so that crates are known to be publishable (no git deps, etc.).
-  # cargo-publish.yml does a dry run off-tag and a real publish on tags, so it is called twice:
-  # the (long) dry run starts immediately, the real publish only once every test job passed.
-  cargo-publish-dry-run:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    uses: ./.github/workflows/cargo-publish-dry-run.yml
-    secrets: inherit
+      - name: Check AI instruction consistency
+        run: mise run docs:check-ai
 
-  cargo-publish:
-    needs:
-      - test
-      - test-cloud
-      - test-hsm-hardware
-      - test-ui
-    # Real publish, tags only: a skipped dependency (upstream-only jobs on forks) must not skip
-    # it, but any failed or cancelled dependency blocks it.
-    if: >-
-      startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
-    uses: ./.github/workflows/cargo-publish.yml
-    secrets:
-      token: ${{ secrets.CRATES_IO }}
+      - name: Build documentation
+        env:
+          # Turns on the combined public docs build; empty on fork PRs
+          PUBLIC_DOCS_TOKEN: ${{ github.event_name == 'pull_request' && secrets.PAT_TOKEN || '' }}
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          mise run docs:mdbook-build
 
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
