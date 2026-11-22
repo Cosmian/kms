@@ -156,7 +156,7 @@ FULL_SUITES = [
 ]
 
 
-# The one leg per setup path a test-group.yml change runs (plain Linux, nix, macOS, Windows).
+# The one leg per setup path a change to the shared CI setup (ci_setup) runs (plain Linux, nix, macOS, Windows).
 SETUP_PROBES = {'forward-proxy', 'interop:pykmip', 'pki-macos', 'windows-est'}
 # Units whose own steps are the composite action .github/actions/legs/<unit>/.
 LEG_ACTIONS = {
@@ -173,15 +173,6 @@ LEG_ACTIONS = {
     'windows-hsm-idemia',
     'windows-ui',
     'xks-remote',
-}
-DB_UNITS = {
-    'db:sqlite',
-    'db:psql',
-    'db:mysql',
-    'db:mariadb',
-    'db:percona',
-    'db:redis',
-    'db:openbao',
 }
 
 
@@ -385,9 +376,8 @@ class CiWorkflows(unittest.TestCase):
                 '.github/workflows/test_windows.yml',
                 '.mise/scripts/dev/ci_changes.py',
             ),
-            # the setup probes (test-group.yml), build-documentation (main.yml is in its files), xks-remote and
-            # interop:pykmip (test_all.yml is in their files)
-            {*SETUP_PROBES, 'build-documentation', 'xks-remote'},
+            # only the shared setup (test_all.yml, test-group.yml) triggers legs: the setup probes
+            SETUP_PROBES,
         )
 
     def test_strict_units_run_only_on_their_inputs(self) -> None:
@@ -401,7 +391,6 @@ class CiWorkflows(unittest.TestCase):
             'test_data',
             'Cargo.lock',
             '.config/nextest.toml',
-            '.github/actions/install-rust/action.yml',
             'crate/server_database/src/stores/sql/query.sql',
         ):
             with self.subTest(path=path):
@@ -414,10 +403,6 @@ class CiWorkflows(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertFalse(run(path) & (STRICT - WINDOWS_PLATFORM))
-        self.assertEqual(
-            run('.github/workflows/cargo-publish.yml') & STRICT,
-            {'cargo-publish-dry-run'},
-        )
 
     def test_clippy_runs_only_on_rust_changes(self) -> None:
         for path in (
@@ -491,14 +476,39 @@ class CiWorkflows(unittest.TestCase):
             set(),
         )
 
-    def test_group_wrapper_runs_one_leg_per_setup_path(self) -> None:
-        self.assertEqual(run('.github/workflows/test-group.yml'), SETUP_PROBES)
+    def test_shared_ci_setup_runs_one_leg_per_setup_path(self) -> None:
+        for path in (
+            '.github/workflows/test-group.yml',
+            '.github/workflows/test_all.yml',
+            *(
+                f'.github/actions/{a}/action.yml'
+                for a in (
+                    'install-rust',
+                    'install-mise',
+                    'setup-nix',
+                    'setup-nix-mise',
+                    'cache-openssl-buildrs',
+                    'cleanup-runner',
+                    'build-static-openssl',
+                    'windows-vs-ninja',
+                )
+            ),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(run(path), SETUP_PROBES)
 
-    def test_a_leg_action_runs_only_its_units(self) -> None:
-        for unit in LEG_ACTIONS:
-            with self.subTest(unit=unit):
-                self.assertEqual(run(f'.github/actions/legs/{unit}/action.yml'), {unit})
-        self.assertEqual(run('.github/actions/legs/db/action.yml'), DB_UNITS)
+    def test_other_ci_files_run_nothing(self) -> None:
+        for path in (
+            *(f'.github/actions/legs/{u}/action.yml' for u in LEG_ACTIONS | {'db'}),
+            '.github/workflows/main.yml',
+            '.github/workflows/cargo-publish.yml',
+            '.github/workflows/ansible.yml',
+            '.github/workflows/ansible-galaxy-publish.yml',
+            '.github/workflows/brand-new.yml',
+            '.github/actions/brand-new/action.yml',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(run(path), set())
 
 
 class Matrices(unittest.TestCase):
@@ -546,11 +556,7 @@ class Matrices(unittest.TestCase):
         )
         self.assertEqual(
             legs,
-            [
-                g
-                for g in FULL_SUITES
-                if g['suite'] in {*SETUP_PROBES, 'build-documentation', 'xks-remote'}
-            ],
+            [g for g in FULL_SUITES if g['suite'] in SETUP_PROBES],
         )
 
     def test_pg_store_change_keeps_only_the_legs_it_triggers(self) -> None:
@@ -712,7 +718,6 @@ class FailSafe(unittest.TestCase):
             'mise.toml',
             'shell.nix',
             '.mise/lib/common.sh',
-            '.github/actions/setup-nix/action.yml',
             'brand/new.txt',
         ):
             with self.subTest(path=path):
@@ -744,7 +749,6 @@ class FailSafe(unittest.TestCase):
         for path in (
             'mise.toml',
             '.mise/lib/common.sh',
-            '.github/actions/install-mise/action.yml',
         ):
             with self.subTest(path=path):
                 self.assertEqual(run(path), EVERYTHING - CFG.strict)
@@ -780,7 +784,7 @@ UNIT_SAMPLES = {
     'cargo-machete': 'crate/server/src/lib.rs',
     'no-nix': 'crate/server/src/lib.rs',
     'forward-proxy': '.github/scripts/squid/squid.conf',
-    'cargo-publish-dry-run': '.github/workflows/cargo-publish.yml',
+    'cargo-publish-dry-run': 'crate/server/kms_template.toml',
     'xks-remote': 'crate/server/src/routes/aws_xks/mod.rs',
     'db:sqlite': '.mise/tasks/test/db/sqlite',
     'db:psql': 'crate/server_database/src/stores/sql/pgsql.rs',
