@@ -88,13 +88,17 @@ db_shared = '''
 
 interop_shared = '^\.mise/tasks/test/interop/_default$'
 
-# What compiles or tests the workspace: every crate file but its READMEs (nothing includes a .md), the toolchain pins.
+# What compiles or tests the workspace: every crate file but its READMEs (nothing includes a .md), the toolchain
+# pins and installer, the nextest config and the test_data submodule the tests read.
 rust_build = '''
   ^crate/(?!.*\.md$)
 | ^kmip$
 | ^documentation/docs/google_cse/test_wrapped_private_key$
+| ^test_data$
 | ^(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)$
 | ^\.cargo/config\.toml$
+| ^\.config/nextest\.toml$
+| ^\.github/actions/(install-rust|cache-openssl-buildrs)/
 '''
 
 windows = '''
