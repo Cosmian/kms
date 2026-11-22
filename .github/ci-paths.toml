@@ -6,13 +6,20 @@
 # - A unit runs when a changed file matches one of its `sets` or its `files`.
 # - `strict = true`: the unit runs only when its own `sets`/`files` match; `full` and unmatched files never force it.
 # - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
-# - Unit keys: test-group.yml `suite` ids (cloud, db:psql, interop:ase, ...) or the job keys tested in
-#   main.yml, test_all.yml and test_windows.yml. A job whose key is not listed here always runs.
-# - `variants`: the legs (`fips`, `non-fips`) of a test-group.yml suite run by the `test-suites` job of test_all.yml;
-#   ci_changes.py turns the running units into its `suites-matrix`, so a suite that does not run has no row at all.
-#   Not on `cloud` and `ui`, which keep their own jobs (their secrets must stay isolated). `bench` (variant -> HSM models) is optional.
-# - [callers]: main.yml jobs skipped as a whole (one row) when none of their units runs.
-# Tags, schedule and workflow_dispatch ignore this file and run everything.
+# - Unit keys: test-group.yml suite ids. A unit with setup = "nix" (xks-remote excepted) runs the mise task test:<unit>;
+#   every other unit has its own steps in test-group.yml. Each unit is a set of legs (runners x variants) of the one
+#   `test-suites` matrix job of test_all.yml; ci_changes.py builds the matrix. Optional keys, defaults in brackets:
+# - `variants`: non-empty list among `fips`, `non-fips` [one leg without variant]. `bench` (variant -> HSM models) is optional.
+# - `runners`: non-empty list of runner labels [ubuntu-24.04]; legs = runners x variants.
+# - `setup`: `nix` (Nix shell + mise), `plain` (mise only) or `windows` [nix]; picks the setup steps of test-group.yml.
+# - `timeout`: job timeout-minutes, 1-360 [360].
+# - `lock`: concurrency group shared by all runs (real HSMs, XKS server) [none].
+# - `environment`: GitHub deployment environment, i.e. an approval gate [none].
+# - `events`: subset of pull_request, schedule, tag, workflow_dispatch on which the legs exist [all four].
+# - `upstream = true`: needs the Cosmian/kms secrets; no legs outside that repository or on fork PRs.
+# - `no-fork-pr = true`: no legs on fork pull requests (still run on a fork's own schedule, tag or dispatch).
+# - `dependabot = true`: also runs on Dependabot PRs, which keep only these units.
+# Tags, schedule and workflow_dispatch ignore the diff and run every unit whose events list them.
 
 full = '''
   ^\.github/actions/(install-mise|install-rust|setup-nix|setup-nix-mise|cache-openssl-buildrs|cleanup-runner)/
@@ -44,8 +51,7 @@ ignore = '''
 | ^\.mise/scripts/(audit|bench|demo|dev|git|package|pre-commit|release|sbom)/
 | ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
 | ^\.github/workflows/(test-db|test-interop)\.yml$  # removed: their legs are now matrix entries of test_all.yml, whose own change runs its units
-| ^\.github/workflows/test-group\.yml$  # reusable wrapper: no suite leg stands for it, any run of another suite exercises it
-| ^\.github/workflows/(no-nix|test_windows)\.yml$  # Rust-only jobs: they run on crate changes, not on their own workflow files
+| ^\.github/workflows/(no-nix|test_windows|forward_proxy)\.yml$  # removed: their jobs are legs of test-group.yml
 | ^\.mise/scripts/windows/cargo_test\.ps1$  # idem: script of the Rust-only windows-cargo-test job
 '''
 
@@ -107,15 +113,29 @@ windows = '''
 | ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
 '''
 
-# main.yml jobs that call a reusable workflow holding several units: main.yml skips the whole job (one row)
-# when none of its units runs. Values are fnmatch patterns over unit keys.
-[callers]
-test = ["cargo-publish-dry-run", "xks-remote", "db:*", "interop:*", "cloud", "hsm", "pkcs11", "obs", "pki", "spire", "ui"]
-windows = ["windows-*"]
+# The reusable runner of every leg: a change to it runs the legs that have their own steps in it, the rest are
+# exercised by any other run of it.
+test_group = '^\.github/workflows/test-group\.yml$'
 
-# ── main.yml ────────────────────────────────────────────────────────────────────────────────
+# PKI group: the `pki` legs and the macOS leg `pki-macos`.
+pki = '''
+  ^crate/server/src/routes/(est|scep|ocsp)/
+| ^crate/server/src/routes/crl\.rs$
+| ^\.mise/tasks/test/pki/
+| ^\.mise/scripts/test/(test_est_interop|test_scep_interop)\.sh$
+| ^\.mise/scripts/kmip-go/go\.mod$
+| ^crate/server/src/routes/(csr|enrollment|enrollment_guard)\.rs$
+| ^crate/server/src/core/certificate/
+| ^crate/server/src/core/operations/(certify/|generate_crl\.rs$|generate_csr\.rs$|recertify\.rs$)
+| ^crate/clients/clap/src/actions/certificates/
+'''
+
+# ── test-group.yml legs with their own steps ────────────────────────────────────────────────
 [units.cargo-clippy]
+sets = ["test_group"]
 strict = true
+setup = "plain"
+dependabot = true
 files = '''
   \.rs$
 | (^|/)Cargo\.toml$
@@ -125,19 +145,30 @@ files = '''
 '''
 
 [units.cargo-machete]
+sets = ["test_group"]
 strict = true
+setup = "plain"
+dependabot = true
 files = '\.rs$ | (^|/)Cargo\.toml$'
 
 [units.no-nix]
 strict = true
-sets = ["rust_build"]
+sets = ["rust_build", "test_group"]
+setup = "plain"
+runners = ["ubuntu-24.04", "ubuntu-24.04-arm", "macos-15"]
+variants = ["fips", "non-fips"]
+dependabot = true
 
 [units.forward-proxy]
-sets = ["server_core"]
-files = '^\.github/workflows/(main|forward_proxy)\.yml$ | ^\.github/scripts/squid/'
+sets = ["server_core", "test_group"]
+files = '^\.github/workflows/main\.yml$ | ^\.github/scripts/squid/'
+setup = "plain"
+variants = ["non-fips"]
+dependabot = true
 
 # `build-documentation` runs `docs:check-ai` (AI instruction files) and `docs:mdbook-build` (the mdBook site).
 [units.build-documentation]
+sets = ["test_group"]
 files = '''
   ^documentation/
 | ^(AGENTS|CONTRIBUTING)\.md$
@@ -145,17 +176,29 @@ files = '''
 | ^\.mise/(tasks|scripts)/docs/
 | ^\.github/workflows/main\.yml$
 '''
+setup = "plain"
+dependabot = true
 
-# ── test_all.yml (non test-group jobs) ──────────────────────────────────────────────────────
+# ── test-group.yml legs with their own steps ────────────────────────────────────────────────
 [units.cargo-publish-dry-run]
 strict = true
-sets = ["rust_build"]
+sets = ["rust_build", "test_group"]
 files = '^\.github/workflows/cargo-publish\.yml$'
+setup = "plain"
+no-fork-pr = true
+events = ["pull_request", "schedule", "workflow_dispatch"]
 
 [units.xks-remote]
+sets = ["test_group"]
 files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
+variants = ["non-fips"]
+upstream = true
+events = ["pull_request", "tag", "workflow_dispatch"]
+timeout = 30
+lock = "xks-remote"
+environment = "xks-remote-approval"
 
-# ── test-group.yml suites (key = `suite` input; `pki` also gates the macOS job interop-macos) ──
+# ── test-group.yml suites (key = `suite` input of the `test-suites` job of test_all.yml) ──
 [units."db:sqlite"]
 sets = ["rust", "db_shared"]
 files = '^\.mise/tasks/test/db/sqlite$'
@@ -199,6 +242,7 @@ files = '''
 variants = ["fips", "non-fips"]
 
 [units.cloud]
+sets = ["test_group"]
 files = '''
   ^crate/server/src/(routes/(aws_xks|azure_ekm|google_cse)/|tests/)
 | ^crate/clients/clap/src/actions/(google|aws|azure)/
@@ -207,6 +251,8 @@ files = '''
 | ^\.mise/scripts/test/(azure_ekm_test|azure_ekm_mtls_test|test_secret_aws|test_secret_azure|test_secret_vault
                        |test_secret_cosmian_kms|test_xks)\.sh$
 '''
+variants = ["fips", "non-fips"]
+upstream = true
 
 [units.hsm]
 files = '''
@@ -219,6 +265,30 @@ files = '''
 '''
 variants = ["fips", "non-fips"]
 bench = {fips = "softhsm2 utimaco crypt2pay-simulator", non-fips = "softhsm2 utimaco crypt2pay-simulator kryoptic"}
+
+# The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
+# dispatch runs only; pull requests cover the HSM code with the software simulators of the `hsm` legs. Upstream
+# repository only, where the secrets exist. The HSMs refuse concurrent connections from several CI runs:
+# each unit's `lock` is one concurrency group shared by all runs, queued (test-k8s-hsm in packaging-docker.yml
+# uses the same groups). A task fails, never skips, when an `env:` need is unset: a green leg proves its
+# suite ran.
+# Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
+# Luna (no reachable partition). To bring one back, add its unit here with its `lock`, make its task fail loudly
+# on a missing secret when `CI=true` (upstream `env:` gate), and pass its secrets through test_all.yml and
+# test-group.yml (names in crate/hsm/<name>/README.md).
+[units."hsm:crypt2pay"]
+files = '^crate/hsm/crypt2pay/'
+variants = ["non-fips"]
+upstream = true
+events = ["schedule", "tag", "workflow_dispatch"]
+lock = "hsm-crypt2pay"
+
+[units."hsm:proteccio"]
+files = '^crate/hsm/proteccio/'
+variants = ["non-fips"]
+upstream = true
+events = ["schedule", "tag", "workflow_dispatch"]
+lock = "hsm-proteccio"
 
 [units.pkcs11]
 files = '''
@@ -252,18 +322,15 @@ files = '''
 variants = ["fips", "non-fips"]
 
 [units.pki]
-files = '''
-  ^crate/server/src/routes/(est|scep|ocsp)/
-| ^crate/server/src/routes/crl\.rs$
-| ^\.mise/tasks/test/pki/
-| ^\.mise/scripts/test/(test_est_interop|test_scep_interop)\.sh$
-| ^\.mise/scripts/kmip-go/go\.mod$
-| ^crate/server/src/routes/(csr|enrollment|enrollment_guard)\.rs$
-| ^crate/server/src/core/certificate/
-| ^crate/server/src/core/operations/(certify/|generate_crl\.rs$|generate_csr\.rs$|recertify\.rs$)
-| ^crate/clients/clap/src/actions/certificates/
-'''
+sets = ["pki"]
 variants = ["fips", "non-fips"]
+
+[units.pki-macos]
+sets = ["pki", "test_group"]
+setup = "plain"
+runners = ["macos-15"]
+variants = ["fips"]
+timeout = 60
 
 [units.spire]
 sets = ["server_core"]
@@ -287,6 +354,7 @@ files = '''
 | ^\.mise/scripts/test/(test_ui|test_ui_auth|test_ui_oidc|test_ui_saml)\.sh$
 | ^\.mise/scripts/test/saml_sso/
 '''
+variants = ["fips", "non-fips"]
 
 [units."interop:ase"]
 sets = ["kmip_wire", "interop_shared"]
@@ -365,24 +433,33 @@ files = '''
 '''
 variants = ["fips", "non-fips"]
 
-# ── test_windows.yml ────────────────────────────────────────────────────────────────────────
+# ── test-group.yml legs with their own steps ────────────────────────────────────────────────
 [units.windows-cargo-test]
 strict = true
-sets = ["rust_build"]
+sets = ["rust_build", "test_group"]
+setup = "windows"
+runners = ["windows-2022"]
+no-fork-pr = true
 
 [units.windows-ui]
 strict = true
-sets = ["windows"]
+sets = ["windows", "test_group"]
 files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$'
+setup = "windows"
+runners = ["windows-2022"]
+no-fork-pr = true
 
 [units.windows-cng-ksp]
 strict = true
-sets = ["windows"]
+sets = ["windows", "test_group"]
 files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$'
+setup = "windows"
+runners = ["windows-2022"]
+no-fork-pr = true
 
 [units.windows-hsm-idemia]
 strict = true
-sets = ["windows"]
+sets = ["windows", "test_group"]
 files = '''
   ^crate/hsm/
 | ^crate/server/src/tests/
@@ -390,8 +467,17 @@ files = '''
 | ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
 | ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
 '''
+setup = "windows"
+runners = ["windows-2022"]
+variants = ["non-fips", "fips"]
+timeout = 120
+no-fork-pr = true
 
 [units.windows-est]
 strict = true
-sets = ["windows"]
+sets = ["windows", "test_group"]
 files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$'
+setup = "windows"
+runners = ["windows-2022"]
+timeout = 60
+no-fork-pr = true

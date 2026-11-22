@@ -1,7 +1,11 @@
 ---
 name: CLA Assistant
+# pull_request_target: write token and secrets for fork PRs; this workflow checks out no PR code.
 on:
-  workflow_call:
+  pull_request_target:
+    types: [opened, closed, synchronize]
+  issue_comment:
+    types: [created]
 
 # explicitly configure permissions, in case your GITHUB_TOKEN workflow permissions are set to read-only in repository settings
 permissions:
@@ -12,9 +16,13 @@ permissions:
 
 jobs:
   cla-assistant:
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
     runs-on: ubuntu-24.04
     steps:
       - name: CLA Assistant
+        # External fork PRs only; on internal PRs this job is a green no-op, not a skipped row.
+        if: github.event.pull_request.head.repo.full_name != github.repository && (github.event_name == 'pull_request_target' || github.event.comment.body
+          == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')
         uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
