@@ -87,8 +87,6 @@ def load_config(path: Path) -> Config:
         if 'strict' in spec:
             if spec['strict'] is not True:
                 fail(f"units.{unit}: `strict` must be true")
-            if 'files' not in spec:
-                fail(f"units.{unit}: a `strict` unit needs `files`")
             strict.add(unit)
         if 'variants' in spec:
             legs = spec['variants']
