@@ -23,9 +23,9 @@ else
   if [ "${usage_fork_pr:-false}" = "true" ]; then extra+=(--fork-pr); fi
   if [ "${usage_dependabot:-false}" = "true" ]; then extra+=(--dependabot); fi
   if [ "${usage_all:-false}" = "true" ]; then
-    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --all "${extra[@]}"
+    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --all ${extra[@]+"${extra[@]}"}
   else
-    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}" "${extra[@]}"
+    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}" ${extra[@]+"${extra[@]}"}
   fi
 fi
 print_success "Classification complete"

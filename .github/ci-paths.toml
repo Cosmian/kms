@@ -113,8 +113,8 @@ windows = '''
 | ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
 '''
 
-# The reusable runner of every leg: a change to it runs the legs that have their own steps in it, the rest are
-# exercised by any other run of it.
+# The reusable runner of every leg: a change to it runs the legs that have their own steps in it and the database
+# legs (their service environment lives there); the `cloud` leg exercises the shared nix path.
 test_group = '^\.github/workflows/test-group\.yml$'
 
 # PKI group: the `pki` legs and the macOS leg `pki-macos`.
@@ -161,7 +161,7 @@ dependabot = true
 
 [units.forward-proxy]
 sets = ["server_core", "test_group"]
-files = '^\.github/workflows/main\.yml$ | ^\.github/scripts/squid/'
+files = '^\.github/scripts/squid/'
 setup = "plain"
 variants = ["non-fips"]
 dependabot = true
@@ -205,33 +205,33 @@ files = '^\.mise/tasks/test/db/sqlite$'
 variants = ["fips", "non-fips"]
 
 [units."db:psql"]
-sets = ["db_core", "db_shared", "pg_store"]
+sets = ["db_core", "db_shared", "pg_store", "test_group"]
 files = '^\.mise/tasks/test/db/psql$'
 variants = ["fips", "non-fips"]
 
 [units."db:mysql"]
-sets = ["db_core", "db_shared", "mysql_store"]
+sets = ["db_core", "db_shared", "mysql_store", "test_group"]
 files = '^\.mise/tasks/test/db/mysql$'
 variants = ["fips", "non-fips"]
 
 [units."db:mariadb"]
-sets = ["db_core", "db_shared", "mysql_store"]
+sets = ["db_core", "db_shared", "mysql_store", "test_group"]
 files = '^\.mise/tasks/test/db/mariadb$'
 variants = ["fips", "non-fips"]
 
 [units."db:percona"]
-sets = ["db_core", "db_shared", "mysql_store"]
+sets = ["db_core", "db_shared", "mysql_store", "test_group"]
 files = '^\.mise/tasks/test/db/percona$'
 variants = ["fips", "non-fips"]
 
 [units."db:redis"]
-sets = ["db_core", "db_shared"]
+sets = ["db_core", "db_shared", "test_group"]
 files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$'
 # redis (Findex) is non-FIPS only
 variants = ["non-fips"]
 
 [units."db:openbao"]
-sets = ["db_core", "pg_store", "mysql_store"]
+sets = ["db_core", "pg_store", "mysql_store", "test_group"]
 files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
