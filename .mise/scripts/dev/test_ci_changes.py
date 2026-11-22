@@ -316,6 +316,15 @@ class CiWorkflows(unittest.TestCase):
             run('crate/server/src/core/mod.rs') & STRICT, crate_rust | build
         )
         self.assertEqual(run('crate/server/kms_template.toml') & STRICT, build)
+        for path in (  # inputs the build and test jobs consume besides crate/
+            'test_data',
+            'Cargo.lock',
+            '.config/nextest.toml',
+            '.github/actions/install-rust/action.yml',
+            'crate/server_database/src/stores/sql/query.sql',
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(build <= run(path))
         for path in (
             '.github/workflows/main.yml',
             '.github/workflows/test_all.yml',
@@ -532,6 +541,10 @@ class FailSafe(unittest.TestCase):
                 self.assertEqual(
                     run(path), EVERYTHING - {'cargo-machete'} - WINDOWS_PLATFORM
                 )
+        self.assertEqual(  # the tests read it; lint and manifests do not
+            run('test_data'),
+            EVERYTHING - {'cargo-clippy', 'cargo-machete'} - WINDOWS_PLATFORM,
+        )
         for path in ('Cargo.toml', 'crate/crypto/build.rs'):
             with self.subTest(path=path):
                 self.assertEqual(run(path), EVERYTHING - WINDOWS_PLATFORM)
@@ -539,7 +552,6 @@ class FailSafe(unittest.TestCase):
             'mise.toml',
             '.mise/lib/common.sh',
             '.github/actions/install-mise/action.yml',
-            'test_data',
         ):
             with self.subTest(path=path):
                 self.assertEqual(run(path), EVERYTHING - CFG.strict)
