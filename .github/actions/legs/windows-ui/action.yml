@@ -1,0 +1,43 @@
+---
+name: Leg windows-ui
+description: >
+  Run the UI Playwright E2E tests on Windows.
+
+runs:
+  using: composite
+  steps:
+    # Run in the checkout so the target lands on the rust-toolchain.toml toolchain, not on stable.
+    - name: Add the wasm32 target
+      shell: pwsh
+      run: rustup target add wasm32-unknown-unknown
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version: '22'
+
+    # Corepack runs the pnpm pinned with its sha512 in ui/package.json.
+    - name: Enable Corepack pnpm
+      shell: pwsh
+      run: corepack enable pnpm
+
+    # ── windows-ui ──
+    - name: Install wasm-pack
+      shell: pwsh
+      run: cargo install wasm-pack --locked
+
+    - name: Run UI E2E tests
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        .\.mise\scripts\windows\test_ui.ps1
+
+    - name: Upload logs on failure (windows-ui)
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: ui-test-logs-windows
+        path: |
+          ${{ runner.temp }}\kms-stdout.log
+          ${{ runner.temp }}\kms-stderr.log
+          ui\test-results\
+          ui\playwright-report\

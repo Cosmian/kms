@@ -1,0 +1,23 @@
+---
+name: Leg windows-cng-ksp
+description: >
+  Run the CNG KSP integration tests on Windows.
+
+runs:
+  using: composite
+  steps:
+    # ── windows-cng-ksp ──
+    - name: Run CNG KSP integration tests
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        .\.mise\scripts\windows\test_cng_ksp.ps1
+
+    - name: Upload logs on failure (windows-cng-ksp)
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: cng-ksp-test-logs
+        path: |
+          ${{ runner.temp }}\kms-cng-test-server.log
+          ${{ runner.temp }}\kms-cng-test-server.log.err
