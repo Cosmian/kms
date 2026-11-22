@@ -1,7 +1,7 @@
 ---
 name: Test MISE group
 
-# The one runner of every CI leg (see .github/ci-paths.toml): units with setup = nix run `mise run test:<suite>`;
+# The one runner of every CI leg (see .github/ci-paths.toml): units with setup = nix run `mise run test:<suite>`; (probe)
 # every other unit runs its own composite action .github/actions/legs/<unit>/ (the db:* units also run legs/db).
 
 on:
