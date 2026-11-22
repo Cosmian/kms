@@ -156,13 +156,20 @@ FULL_SUITES = [
 ]
 
 
-# Units with their own steps in test-group.yml (the rest run `mise run test:<suite>`): any change to it runs them.
+# Units that depend on test-group.yml beyond the shared `mise run test:<suite>` step (their own steps, or the database
+# service environment): any change to it runs them.
 GROUP_LEGS = {
     'build-documentation',
     'cargo-clippy',
     'cargo-machete',
     'cargo-publish-dry-run',
     'cloud',
+    'db:mariadb',
+    'db:mysql',
+    'db:openbao',
+    'db:percona',
+    'db:psql',
+    'db:redis',
     'forward-proxy',
     'no-nix',
     'pki-macos',
