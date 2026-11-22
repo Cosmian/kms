@@ -257,7 +257,6 @@ Crate path: `crate/server`
 | `trace` | `CRL deserialized OK: {crl_path}` | `src/core/operations/validate.rs` | `crl_path` — … | ×2 in this file |
 | `trace` | `cryptographic_algorithm: {cryptographic_algorithm}` | `src/core/operations/create_key_pair.rs` | `cryptographic_algorithm` — … | — |
 | `trace` | `curve: {curve}` | `src/core/operations/create_key_pair.rs` | `curve` — … | — |
-| `trace` | `Decrypt: uid={:?}, data_len={}` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `DELETE /v1/crypto/keys/{kid}` | `src/routes/jose/keys.rs` | `kid` — … | — |
 | `trace` | `Description: {:?}` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `ECB encrypt result: ciphertext_len={}` | `src/core/operations/encrypt.rs` | — | — |
@@ -674,7 +673,6 @@ Crate path: `crate/server`
 | `info` | `POST /.well-known/est/simplereenroll from {client}` | `src/routes/est/enroll.rs` | `client` | - |
 | `info` | `SCEP PKIOperation from {client}: messageType={} transactionID={}` | `src/routes/scep/pki_operation.rs` | `client` | - |
 | `debug` | `enrollment: issued certificate {uid} (serial {serial_hex}) from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `serial_hex`, `ca_uid` | - |
-| `trace` | `Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes` | `src/core/operations/certify/certify_op.rs` | - | - |
 | `trace` | `RNGSeed: {} bytes` | `src/core/operations/rng_seed.rs` | - | - |
 | `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped, and `create` when Crypto Officers are configured). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
 | `error` | `` SCEP: the enrollment CA `{ca_uid}` cannot be used: {e} `` | `src/routes/scep/pki_operation.rs` | `ca_uid`, `e` | Server-side detail only: the client gets a fixed HTTP 500 without CA identifiers. |
@@ -797,6 +795,8 @@ Crate path: `crate/server`
 | `trace` | `object_handle: <{} chars>, user: {user}, operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `user`, `operation_type` | - |
 | `trace` | `POST /{key_name}/{key_id}/Decrypt` | `src/routes/ms_dke/mod.rs` | `key_name`, `key_id` | - |
 | `trace` | `Request: request_context={:?} alg={:?} value_len={}` | `src/routes/azure_ekm/mod.rs` | - | ×2 in this file |
+| `trace` | `Certify: unique_identifier={:?}, request type={:?}, request value: {}` | `src/core/operations/certify/certify_op.rs` | - | - |
+| `trace` | `Decrypt: uid={:?}, data: {}` | `src/core/operations/decrypt.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -923,10 +923,10 @@ Crate path: `crate/crypto`
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 | `warn` | `` Delegated OCSP responder certificate does not carry the `id-pkix-ocsp-nocheck`              extension (OID 1.3.6.1.5.5.7.48.1.5, RFC 6960 §4.2.2.2.1). Relying parties may              attempt to recursively check this certificate's own revocation status via CDP,              AIA, or local policy instead. `` | `src/openssl/ocsp.rs` | - | - |
 | `trace` | `bytes len: {}, bits: {}, curve_bits: {:?}` | `src/crypto/elliptic_curves/operation.rs` | - | ×2 in this file |
-| `debug` | `Encrypted data with auth data of {} bytes, len (Plain/Enc): {}/{}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
-| `trace` | `authenticated_encryption_additional_data: {} bytes` | `src/crypto/cover_crypt/encryption.rs` | - | - |
-| `trace` | `decrypt: ad: {} bytes` | `src/crypto/cover_crypt/decryption.rs` | - | - |
 | `trace` | `Refreshed user decryption key` | `src/crypto/cover_crypt/user_key.rs` | - | - |
+| `debug` | `Encrypted data with auth data {}, len (Plain/Enc): {}/{}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
+| `trace` | `authenticated_encryption_additional_data: {}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
+| `trace` | `decrypt: ad: {}` | `src/crypto/cover_crypt/decryption.rs` | - | - |
 
 ### `cosmian_kmip`
 

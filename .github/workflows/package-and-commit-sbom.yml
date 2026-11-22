@@ -62,23 +62,29 @@ jobs:
           # Capture the timestamp before dispatch so we can find the new run
           BEFORE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          gh workflow run packaging.yml \
+          # gh prints the run URL when the dispatch API returns run details.
+          OUT=$(gh workflow run packaging.yml \
             --repo Cosmian/kms \
-            --ref "$BRANCH"
+            --ref "$BRANCH")
+          echo "$OUT"
+          RUN_ID=$(sed -nE 's#.*/actions/runs/([0-9]+).*#\1#p' <<<"$OUT" | head -n1)
 
-          # Wait a few seconds for the run to register in the API
-          sleep 10
+          # Fallback when no URL was printed: poll the run list (it lags the
+          # dispatch by more than a fixed 10 s sleep at times) for a run created
+          # after BEFORE; a transient API error just moves on to the next try.
+          for _ in $(seq 1 18); do
+            [ -n "$RUN_ID" ] && break
+            sleep 10
+            RUN_ID=$(GH_PAGER=cat gh run list \
+              --repo Cosmian/kms \
+              --branch "$BRANCH" \
+              --workflow packaging.yml \
+              --limit 5 \
+              --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt > \"$BEFORE\")] | .[0].databaseId // empty") || RUN_ID=
+          done
 
-          # Find the run that was created after our dispatch timestamp
-          RUN_ID=$(GH_PAGER=cat gh run list \
-            --repo Cosmian/kms \
-            --branch "$BRANCH" \
-            --workflow packaging.yml \
-            --limit 5 \
-            --json databaseId,createdAt \
-            --jq "[.[] | select(.createdAt > \"$BEFORE\")] | .[0].databaseId // empty")
-
-          if [ -z "${RUN_ID:-}" ] || [ "$RUN_ID" = "null" ]; then
+          if [ -z "$RUN_ID" ]; then
             echo "ERROR: Could not find the dispatched packaging.yml run." >&2
             exit 1
           fi
