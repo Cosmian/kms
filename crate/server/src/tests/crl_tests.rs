@@ -332,6 +332,15 @@ async fn test_refresh_job_publishes_revocation_missing_from_stored_crl() -> KRes
 
     let crl_before = generate_crl_der(&kms, &owner, &ca_id).await;
     revoke_cert(&kms, &owner, &leaf_id, RevocationReasonCode::KeyCompromise).await?;
+    let (unchanged, _) = kms
+        .database
+        .get_crl(&ca_id)
+        .await?
+        .expect("CRL must be stored");
+    assert_eq!(
+        unchanged, crl_before,
+        "revoke without kms_public_url must not regenerate the CRL"
+    );
 
     // overlap 0h: the CRL is not near expiry, so only the revoked-set check can trigger it.
     crate::cron::refresh_expiring_crls(&kms, 0).await;

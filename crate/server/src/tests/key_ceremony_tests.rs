@@ -1234,7 +1234,8 @@ async fn test_join_split_key_on_follower_stores_nothing() -> KResult<()> {
         .await
         .expect_err("JoinSplitKey must be refused on a follower");
     assert!(
-        err.to_string().contains("leader region"),
+        err.to_string()
+            .contains("JoinSplitKey ceremony reconstruction"),
         "unexpected error: {err}"
     );
     assert!(!kms.is_crypto_officer(&UserId::from(alice)).await?);

@@ -351,7 +351,7 @@ pub(crate) async fn join_split_key(
     // The ceremony activation below is leader-only: refuse before storing (and replicating) the
     // reconstructed key instead of relying on the compensating delete.
     if reconstructed.all_ceremony_tagged && kms.params.crypto_officer.require_ceremony {
-        crate::core::require_leader_region(kms, "Crypto Officer ceremony activation")?;
+        crate::core::require_leader_region(kms, "JoinSplitKey ceremony reconstruction")?;
     }
 
     // Build the reconstructed key object.
