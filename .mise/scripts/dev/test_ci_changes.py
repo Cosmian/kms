@@ -27,10 +27,31 @@ import ci_changes  # noqa: E402
 CFG = ci_changes.load_config(ci_changes.CONFIG)
 EVERYTHING = set(CFG.units)
 
-# Unit that runs on any crate/** change (the whole-workspace unit-test runner).
-WORKSPACE = {'db:sqlite'}
+# Units that run on any crate/** change (compile-wide jobs and whole-workspace unit-test runners).
+WORKSPACE = {
+    'cargo-clippy',
+    'cargo-machete',
+    'no-nix',
+    'cargo-publish-dry-run',
+    'db:sqlite',
+    'windows-cargo-test',
+}
 # Units that additionally run on any change of code linked into the server.
-SERVER_WIDE = WORKSPACE | {'spire'}
+SERVER_WIDE = WORKSPACE | {'forward-proxy', 'spire'}
+# Strict units: never forced by `full` or an unmatched path (see ci-paths.toml).
+WINDOWS_PLATFORM = {
+    'windows-ui',
+    'windows-cng-ksp',
+    'windows-hsm-idemia',
+    'windows-est',
+}
+STRICT = {
+    'cargo-clippy',
+    'cargo-machete',
+    'no-nix',
+    'cargo-publish-dry-run',
+    'windows-cargo-test',
+} | WINDOWS_PLATFORM
 DB_LEGS = {'db:psql', 'db:mysql', 'db:mariadb', 'db:percona', 'db:redis', 'db:openbao'}
 KMIP_INTEROP = {
     'interop:ase',
@@ -90,18 +111,19 @@ class DocsAndIgnored(unittest.TestCase):
     def test_changelog_and_root_readme_run_nothing(self) -> None:
         self.assertEqual(run('CHANGELOG/x.md', 'README.md'), set())
 
-    def test_documentation_and_ai_instruction_files_run_nothing(self) -> None:
+    def test_documentation_and_ai_instruction_files_run_only_the_doc_build(
+        self,
+    ) -> None:
         for path in (
             'documentation/docs/index.md',
             'documentation/book.toml',
-            'documentation/docs/favicon.png',
             'AGENTS.md',
             '.github/skills/foo/SKILL.md',
             '.github/instructions/rust.instructions.md',
             '.mise/scripts/docs/check_ai_docs.py',
         ):
             with self.subTest(path=path):
-                self.assertEqual(run(path), set())
+                self.assertEqual(run(path), {'build-documentation'})
 
     def test_packaging_and_release_files_run_nothing(self) -> None:
         self.assertEqual(
@@ -116,13 +138,19 @@ class DocsAndIgnored(unittest.TestCase):
 
 
 class Ui(unittest.TestCase):
-    """`ui` has no unit: test-ui.yml / windows-ui.yml are filtered by their own `paths:`."""
+    def test_ui_source(self) -> None:
+        self.assertEqual(run('ui/src/App.tsx'), {'ui', 'windows-ui'})
 
-    def test_ui_source_runs_nothing(self) -> None:
-        self.assertEqual(run('ui/src/App.tsx', 'ui/tests/e2e/keys.spec.ts'), set())
+    def test_ui_playwright_test(self) -> None:
+        self.assertEqual(run('ui/tests/e2e/keys.spec.ts'), {'ui', 'windows-ui'})
 
-    def test_wasm_crate_runs_only_the_workspace_suite(self) -> None:
-        self.assertEqual(run('crate/clients/wasm/src/lib.rs'), WORKSPACE)
+    def test_wasm_crate_runs_workspace_and_ui(self) -> None:
+        self.assertEqual(
+            run('crate/clients/wasm/src/lib.rs'), WORKSPACE | {'ui', 'windows-ui'}
+        )
+
+    def test_ui_does_not_touch_rust_jobs(self) -> None:
+        self.assertFalse(run('ui/src/App.tsx') & WORKSPACE)
 
 
 class RustCoreCrates(unittest.TestCase):
@@ -148,7 +176,8 @@ class RustCoreCrates(unittest.TestCase):
     def test_core_change_skips_feature_suites(self) -> None:
         ran = run('crate/server/src/core/operations/encrypt.rs')
         self.assertFalse(
-            ran & ({'hsm', 'pkcs11', 'obs', 'pki', 'interop:jose'} | DB_LEGS)
+            ran
+            & ({'ui', 'hsm', 'pkcs11', 'obs', 'pki', 'cloud', 'interop:jose'} | DB_LEGS)
         )
 
 
@@ -156,7 +185,8 @@ class Database(unittest.TestCase):
     def test_shared_sql_runs_every_backend(self) -> None:
         self.assertEqual(
             run('crate/server_database/src/stores/sql/query.sql'),
-            SERVER_WIDE | DB_LEGS,
+            (SERVER_WIDE | DB_LEGS)
+            - {'cargo-clippy', 'cargo-machete'},  # SQL is not Rust source
         )
 
     def test_postgres_store_only(self) -> None:
@@ -186,7 +216,7 @@ class Database(unittest.TestCase):
 
     def test_db_change_skips_non_db_suites(self) -> None:
         ran = run('crate/server_database/src/stores/sql/query.sql')
-        self.assertFalse(ran & {'hsm', 'pkcs11', 'interop:iris'})
+        self.assertFalse(ran & {'ui', 'hsm', 'pkcs11', 'windows-ui', 'interop:iris'})
 
     def test_db_task_script_runs_its_leg_only(self) -> None:
         self.assertEqual(run('.mise/tasks/test/db/psql'), {'db:psql'})
@@ -194,25 +224,33 @@ class Database(unittest.TestCase):
 
 class FeatureCrates(unittest.TestCase):
     def test_hsm_vendor_crate(self) -> None:
-        self.assertEqual(run('crate/hsm/utimaco/src/lib.rs'), WORKSPACE | {'hsm'})
+        self.assertEqual(
+            run('crate/hsm/utimaco/src/lib.rs'),
+            WORKSPACE | {'hsm', 'windows-hsm-idemia'},
+        )
 
     def test_pkcs11_client(self) -> None:
         self.assertEqual(
             run('crate/clients/pkcs11/module/src/pkcs11.rs'),
-            WORKSPACE | {'pkcs11', 'hsm', 'interop:ase'},
+            WORKSPACE | {'pkcs11', 'hsm', 'interop:ase', 'windows-cng-ksp'},
         )
 
-    def test_cloud_provider_routes_only_run_the_workspace_suite(self) -> None:
-        # their own workflows (test-cloud.yml, xks-remote.yml) are filtered by `paths:`
-        for path in (
-            'crate/server/src/routes/aws_xks/mod.rs',
-            'crate/server/src/routes/google_cse/mod.rs',
-        ):
-            with self.subTest(path=path):
-                self.assertEqual(run(path), WORKSPACE)
+    def test_aws_xks_route(self) -> None:
+        self.assertEqual(
+            run('crate/server/src/routes/aws_xks/mod.rs'),
+            WORKSPACE | {'cloud', 'xks-remote'},
+        )
+
+    def test_google_cse_route(self) -> None:
+        self.assertEqual(
+            run('crate/server/src/routes/google_cse/mod.rs'), WORKSPACE | {'cloud'}
+        )
 
     def test_est_route(self) -> None:
-        self.assertEqual(run('crate/server/src/routes/est/mod.rs'), WORKSPACE | {'pki'})
+        self.assertEqual(
+            run('crate/server/src/routes/est/mod.rs'),
+            WORKSPACE | {'pki', 'windows-est'},
+        )
 
     def test_certificate_core(self) -> None:
         self.assertEqual(
@@ -257,66 +295,116 @@ class CiWorkflows(unittest.TestCase):
         self.assertEqual(
             run(
                 '.github/ci-paths.toml',
-                '.github/workflows/pull-request.yml',
                 '.github/workflows/main.yml',
                 '.github/workflows/test_all.yml',
                 '.github/workflows/test-group.yml',
+                '.github/workflows/test_windows.yml',
                 '.mise/scripts/dev/ci_changes.py',
             ),
-            {'interop:pykmip'},
+            {
+                'forward-proxy',
+                'build-documentation',
+                'xks-remote',
+                'interop:pykmip',
+            },
         )
+
+    def test_strict_units_run_only_on_their_inputs(self) -> None:
+        crate_rust = {'cargo-clippy', 'cargo-machete', 'no-nix'}
+        build = {'no-nix', 'cargo-publish-dry-run', 'windows-cargo-test'}
+        self.assertEqual(
+            run('crate/server/src/core/mod.rs') & STRICT, crate_rust | build
+        )
+        self.assertEqual(run('crate/server/kms_template.toml') & STRICT, build)
+        for path in (  # inputs the build and test jobs consume besides crate/
+            'test_data',
+            'Cargo.lock',
+            '.config/nextest.toml',
+            '.github/actions/install-rust/action.yml',
+            'crate/server_database/src/stores/sql/query.sql',
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(build <= run(path))
+        for path in (
+            '.github/workflows/main.yml',
+            '.github/workflows/test_all.yml',
+            'crate/server/README.md',
+            'ui/src/App.tsx',
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(run(path) & (STRICT - WINDOWS_PLATFORM))
+        self.assertEqual(
+            run('.github/workflows/cargo-publish.yml') & STRICT,
+            {'cargo-publish-dry-run'},
+        )
+
+    def test_clippy_runs_only_on_rust_changes(self) -> None:
+        for path in (
+            'crate/server/src/core/mod.rs',
+            'crate/server/Cargo.toml',
+            'clippy.toml',
+        ):
+            with self.subTest(path=path):
+                self.assertIn('cargo-clippy', run(path))
+        for path in (
+            '.github/workflows/main.yml',
+            'crate/server/kms_template.toml',
+            'crate/server/README.md',
+            'ui/src/App.tsx',
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn('cargo-clippy', run(path))
 
     def test_classifier_config_change_runs_nothing(self) -> None:
         self.assertEqual(run('.github/ci-paths.toml'), set())
 
-    def test_single_job_workflows_run_nothing(self) -> None:
-        # each has its own `paths:` filter (or is tag/schedule only): the suites must not rerun for them
+    def test_forward_proxy_workflow(self) -> None:
+        self.assertEqual(run('.github/workflows/forward_proxy.yml'), {'forward-proxy'})
+
+    def test_rust_only_workflows_run_nothing(self) -> None:
         self.assertEqual(
-            run(
-                '.github/workflows/clippy.yml',
-                '.github/workflows/machete.yml',
-                '.github/workflows/build-documentation.yml',
-                '.github/workflows/cargo-publish-dry-run.yml',
-                '.github/workflows/no-nix.yml',
-                '.github/workflows/forward_proxy.yml',
-                '.github/workflows/nix-dev-shell-cache.yml',
-                '.github/workflows/test-cloud.yml',
-                '.github/workflows/test-ui.yml',
-                '.github/workflows/test-pki-macos.yml',
-                '.github/workflows/xks-remote.yml',
-                '.github/workflows/windows-cargo-test.yml',
-                '.github/workflows/windows-ui.yml',
-                '.github/workflows/windows-cng-ksp.yml',
-                '.github/workflows/windows-hsm-idemia.yml',
-                '.github/workflows/windows-est.yml',
-            ),
+            run('.github/workflows/no-nix.yml', '.github/workflows/test_windows.yml'),
             set(),
         )
 
-    def test_inputs_of_single_job_workflows_run_nothing(self) -> None:
-        self.assertEqual(
-            run(
-                'clippy.toml',
-                'vcpkg.json',
-                '.github/scripts/squid/squid.conf',
-                '.mise/scripts/windows/test_ui.ps1',
-                '.mise/scripts/test/test_ui.sh',
-                '.mise/scripts/test/test_xks_remote.sh',
-                '.mise/tasks/test/cloud/xks',
-                '.mise/tasks/test/ui/standard',
-                '.mise/tasks/build/wasm',
-            ),
-            set(),
-        )
+    def test_no_nix_and_windows_cargo_test_need_rust_source(self) -> None:
+        for path in (
+            '.github/workflows/main.yml',
+            '.github/workflows/test_all.yml',
+            '.mise/tasks/test/db/psql',
+            '.mise/tasks/test/interop/pykmip',
+            'ui/src/App.tsx',
+            'documentation/docs/index.md',
+            'vcpkg.json',
+            '.github/actions/windows-vs-ninja/action.yml',
+            '.mise/scripts/windows/cargo_test.ps1',
+            '.mise/scripts/windows/test_ui.ps1',
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(run(path) & {'no-nix', 'windows-cargo-test'})
 
-    def test_removed_workflows_run_nothing(self) -> None:
+    def test_xks_remote_runs_only_on_xks_owned_source(self) -> None:
+        for path in (
+            'crate/server/src/routes/aws_xks/sigv4.rs',
+            'crate/server/src/routes/aws_xks/encrypt_decrypt/encrypt_.rs',
+            '.mise/scripts/test/test_xks_remote.sh',
+        ):
+            with self.subTest(path=path):
+                self.assertIn('xks-remote', run(path))
+        # server code that merely mentions or wires XKS, and unrelated server changes, do not
+        for path in (
+            'crate/server/src/start_kms_server.rs',
+            'crate/server/src/config/params/server_params.rs',
+            'crate/server/src/core/operations/key_ops/crypto_op.rs',
+            'crate/kmip/src/lib.rs',
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn('xks-remote', run(path))
+
+    def test_removed_suite_wrappers_run_nothing(self) -> None:
         # deleting them must not fall through to the run-everything fail-safe
         self.assertEqual(
-            run(
-                '.github/workflows/test-db.yml',
-                '.github/workflows/test-interop.yml',
-                '.github/workflows/test_windows.yml',
-            ),
+            run('.github/workflows/test-db.yml', '.github/workflows/test-interop.yml'),
             set(),
         )
 
@@ -325,7 +413,7 @@ class CiWorkflows(unittest.TestCase):
 
 
 class Matrices(unittest.TestCase):
-    """outputs(): the legs and the `run-test` flag pull-request.yml feeds to test_all.yml."""
+    """outputs(): the legs and caller flags main.yml feeds to test_all.yml."""
 
     def out(self, *files: str) -> dict[str, str]:
         skipped, _ = ci_changes.classify(CFG, list(files))
@@ -335,22 +423,21 @@ class Matrices(unittest.TestCase):
         for out in (self.out(), ci_changes.outputs(CFG, [])):
             self.assertEqual(json.loads(out['suites-matrix']), FULL_SUITES)
             self.assertEqual(len(FULL_SUITES), 38)
-            self.assertEqual(out['run-test'], 'true')
-            self.assertEqual(list(out), ['skip', 'suites-matrix', 'run-test'])
+            self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
 
     def test_workflow_only_pr(self) -> None:
         out = self.out(
             '.github/ci-paths.toml',
-            '.github/workflows/pull-request.yml',
+            '.github/workflows/main.yml',
             '.github/workflows/test_all.yml',
             '.github/workflows/test-group.yml',
-            '.github/workflows/clippy.yml',
+            '.github/workflows/test_windows.yml',
             '.mise/scripts/dev/ci_changes.py',
         )
         self.assertEqual(
             json.loads(out['suites-matrix']), leg('interop:pykmip', 'non-fips')
         )
-        self.assertEqual(out['run-test'], 'true')
+        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'false'))
 
     def test_pg_store_change_keeps_only_the_legs_it_triggers(self) -> None:
         out = self.out('crate/server_database/src/stores/sql/pgsql.rs')
@@ -363,7 +450,12 @@ class Matrices(unittest.TestCase):
                 *leg('interop:ssh-secrets', *BOTH),
             ],
         )
-        self.assertEqual(out['run-test'], 'true')
+        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
+
+    def test_ui_change_has_no_legs_but_still_runs_the_callers(self) -> None:
+        out = self.out('ui/src/App.tsx')
+        self.assertEqual(out['suites-matrix'], '[]')
+        self.assertEqual((out['run-test'], out['run-windows']), ('true', 'true'))
 
     def test_only_hsm_running_keeps_its_bench_models_per_variant(self) -> None:
         out = ci_changes.outputs(CFG, sorted(EVERYTHING - {'hsm'}))
@@ -375,87 +467,128 @@ class Matrices(unittest.TestCase):
             ],
         )
 
-    def test_change_that_triggers_no_unit_skips_the_test_caller(self) -> None:
-        for path in ('ui/src/App.tsx', 'clippy.toml', 'README.md'):
-            with self.subTest(path=path):
-                out = self.out(path)
-                self.assertEqual(out['suites-matrix'], '[]')
-                self.assertEqual(out['run-test'], 'false')
+    def test_change_that_triggers_no_unit_skips_both_callers(self) -> None:
+        out = self.out('clippy.toml')
+        self.assertEqual((out['run-test'], out['run-windows']), ('false', 'false'))
 
 
 class Wiring(unittest.TestCase):
-    """Every unit is a suite leg group of the `test` caller (else it would never run, or run without a matrix leg)."""
+    """Every unit is gated where the workflows test it, and its caller group lists it (else it would never run)."""
 
-    def test_every_unit_has_legs_and_belongs_to_the_test_caller(self) -> None:
-        self.assertEqual(set(CFG.variants), EVERYTHING)
-        self.assertEqual(set(CFG.callers), {'test'})
-        self.assertEqual(set(CFG.callers['test']), EVERYTHING)
+    GATE = re.compile(
+        r"contains\(fromJSON\((?:needs\.changes\.outputs\.skip|inputs\.skip-units \|\| '\[\]')\), '([a-z0-9:-]+)'\)"
+    )
 
-    def test_single_job_units_are_not_classified(self) -> None:
-        # they have their own workflow with `pull_request: paths:` (clippy.yml, test-ui.yml, windows-*.yml, ...)
-        moved = {
-            'cloud',
-            'ui',
-            'xks-remote',
-            'cargo-clippy',
-            'cargo-machete',
-            'no-nix',
-            'forward-proxy',
-        }
-        self.assertFalse(moved & EVERYTHING)
-        self.assertFalse({u for u in EVERYTHING if u.startswith('windows-')})
+    def gated(self, name: str) -> set[str]:
+        text = (ci_changes.REPO / '.github' / 'workflows' / name).read_text()
+        return set(self.GATE.findall(text))
+
+    def test_units_callers_and_workflows_agree(self) -> None:
+        m, t, w = (
+            self.gated(n) for n in ('main.yml', 'test_all.yml', 'test_windows.yml')
+        )
+        v = set(CFG.variants)
+        self.assertEqual(m | t | w | v, EVERYTHING)
+        self.assertEqual(
+            t & v, {'pki'}
+        )  # the macOS sibling of the `pki` suite legs only
+        self.assertFalse(
+            {'cloud', 'ui'} & v
+        )  # their own jobs: secrets scoped by the job
+        self.assertEqual(m & (t | v | w), set())
+        self.assertEqual(w & (t | v), set())
+        self.assertEqual(set(CFG.callers['test']), t | v)
+        self.assertEqual(set(CFG.callers['windows']), w)
 
 
 class FailSafe(unittest.TestCase):
     def test_empty_diff_runs_everything(self) -> None:
         self.assertEqual(run(), EVERYTHING)
 
-    def test_unknown_path_runs_everything(self) -> None:
-        self.assertEqual(run('brand/new.txt'), EVERYTHING)
+    def test_unknown_path_runs_everything_but_strict_units(self) -> None:
+        self.assertEqual(run('brand/new.txt'), EVERYTHING - CFG.strict)
 
-    def test_unknown_path_among_ignored_files_runs_everything(self) -> None:
-        self.assertEqual(run('README.md', 'brand/new.txt'), EVERYTHING)
+    def test_unknown_path_among_ignored_files_runs_everything_but_strict_units(
+        self,
+    ) -> None:
+        self.assertEqual(run('README.md', 'brand/new.txt'), EVERYTHING - CFG.strict)
+
+    def test_strict_units_are_never_forced_by_full_or_unknown_paths(self) -> None:
+        self.assertEqual(CFG.strict, STRICT)
+        for path in (
+            'mise.toml',
+            'shell.nix',
+            '.mise/lib/common.sh',
+            '.github/actions/setup-nix/action.yml',
+            'brand/new.txt',
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(run(path) & STRICT)
+        for path in ('Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml'):
+            with self.subTest(path=path):
+                self.assertTrue(
+                    {'cargo-clippy', 'no-nix', 'windows-cargo-test'} <= run(path)
+                )
 
     def test_full_patterns_run_everything(self) -> None:
         for path in (
             'Cargo.lock',
             'rust-toolchain.toml',
-            'Cargo.toml',
-            'test_data',
-            'crate/crypto/build.rs',
+        ):
+            with self.subTest(
+                path=path
+            ):  # Rust inputs, but machete only reads manifests
+                self.assertEqual(
+                    run(path), EVERYTHING - {'cargo-machete'} - WINDOWS_PLATFORM
+                )
+        self.assertEqual(  # the tests read it; lint and manifests do not
+            run('test_data'),
+            EVERYTHING - {'cargo-clippy', 'cargo-machete'} - WINDOWS_PLATFORM,
+        )
+        for path in ('Cargo.toml', 'crate/crypto/build.rs'):
+            with self.subTest(path=path):
+                self.assertEqual(run(path), EVERYTHING - WINDOWS_PLATFORM)
+        for path in (
             'mise.toml',
             '.mise/lib/common.sh',
             '.github/actions/install-mise/action.yml',
         ):
             with self.subTest(path=path):
-                self.assertEqual(run(path), EVERYTHING)
+                self.assertEqual(run(path), EVERYTHING - CFG.strict)
 
     def test_one_full_file_overrides_ignored_ones(self) -> None:
         self.assertEqual(run('README.md', 'Cargo.lock'), run('Cargo.lock'))
 
 
 class MixedChanges(unittest.TestCase):
-    def test_ui_plus_docs_run_nothing(self) -> None:
-        self.assertEqual(run('ui/src/App.tsx', 'documentation/docs/index.md'), set())
+    def test_ui_plus_docs(self) -> None:
+        self.assertEqual(
+            run('ui/src/App.tsx', 'documentation/docs/index.md'),
+            {'ui', 'windows-ui', 'build-documentation'},
+        )
 
     def test_union_of_independent_areas(self) -> None:
         self.assertEqual(
-            run(
-                '.mise/scripts/test/test_iris.sh',
-                'crate/server_database/src/stores/redis/findex.rs',
-            ),
-            WORKSPACE | {'interop:iris', 'db:redis'},
+            run('ui/src/App.tsx', 'crate/server_database/src/stores/redis/findex.rs'),
+            WORKSPACE | {'ui', 'windows-ui', 'db:redis'},
         )
 
-    def test_core_plus_ui_is_server_wide(self) -> None:
+    def test_core_plus_ui_is_server_wide_plus_ui(self) -> None:
         self.assertEqual(
             run('crate/crypto/src/lib.rs', 'ui/src/App.tsx'),
-            SERVER_WIDE,
+            SERVER_WIDE | {'ui', 'windows-ui'},
         )
 
 
 # One file per unit that triggers it (and not by way of `full`).
 UNIT_SAMPLES = {
+    'build-documentation': 'documentation/docs/index.md',
+    'cargo-clippy': 'clippy.toml',
+    'cargo-machete': 'crate/server/src/lib.rs',
+    'no-nix': 'crate/server/src/lib.rs',
+    'forward-proxy': '.github/workflows/forward_proxy.yml',
+    'cargo-publish-dry-run': '.github/workflows/cargo-publish.yml',
+    'xks-remote': 'crate/server/src/routes/aws_xks/mod.rs',
     'db:sqlite': '.mise/tasks/test/db/sqlite',
     'db:psql': 'crate/server_database/src/stores/sql/pgsql.rs',
     'db:mysql': 'crate/server_database/src/stores/sql/mysql.rs',
@@ -463,11 +596,13 @@ UNIT_SAMPLES = {
     'db:percona': '.mise/tasks/test/db/percona',
     'db:redis': 'crate/server_database/src/stores/redis/findex.rs',
     'db:openbao': '.mise/scripts/test/openbao/bao_verifier.sh',
+    'cloud': 'crate/server/src/routes/google_cse/mod.rs',
     'hsm': 'crate/hsm/utimaco/src/lib.rs',
     'pkcs11': 'crate/clients/pkcs11/module/src/pkcs11.rs',
     'obs': 'crate/server/src/core/otel_metrics.rs',
     'pki': 'crate/server/src/routes/est/mod.rs',
     'spire': '.mise/tasks/test/spire/_default',
+    'ui': 'ui/src/App.tsx',
     'interop:ase': '.mise/tasks/test/interop/ase',
     'interop:db2': '.mise/tasks/test/interop/db2',
     'interop:edb-tde': '.mise/tasks/test/interop/edb-tde',
@@ -480,6 +615,11 @@ UNIT_SAMPLES = {
     'interop:openbao-kmip': '.mise/tasks/test/interop/openbao-kmip',
     'interop:pykmip': '.mise/tasks/test/interop/pykmip',
     'interop:ssh-secrets': '.mise/tasks/test/interop/ssh-secrets',
+    'windows-cargo-test': 'crate/server/src/lib.rs',
+    'windows-ui': '.mise/scripts/windows/test_ui.ps1',
+    'windows-cng-ksp': '.mise/scripts/windows/test_cng_ksp.ps1',
+    'windows-hsm-idemia': '.mise/scripts/windows/test_hsm_idemia.ps1',
+    'windows-est': '.mise/scripts/windows/test_est_windows.ps1',
 }
 
 
@@ -496,9 +636,9 @@ class ConfigIntegrity(unittest.TestCase):
                 self.assertNotEqual(ran, EVERYTHING, f"{path} hits full or an orphan")
 
     def test_classify_reports_skipped_units_sorted_and_disjoint_from_run(self) -> None:
-        skipped, _ = ci_changes.classify(CFG, ['.mise/scripts/test/test_iris.sh'])
+        skipped, _ = ci_changes.classify(CFG, ['ui/src/App.tsx'])
         self.assertEqual(skipped, sorted(skipped))
-        self.assertNotIn('interop:iris', skipped)
+        self.assertFalse(set(skipped) & {'ui', 'windows-ui'})
 
 
 def load(toml: str) -> ci_changes.Config:
@@ -624,10 +764,9 @@ class LoadConfig(unittest.TestCase):
     def test_unit_with_only_variants_is_rejected(self) -> None:
         self.rejects("full = 'x'\nignore = 'y'\n[units.'db:x']\nvariants = ['fips']\n")
 
-    def test_strict_is_no_longer_a_unit_key(self) -> None:
-        self.rejects(
-            "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\nstrict = true\n"
-        )
+    def test_invalid_strict_is_rejected(self) -> None:
+        head = "full = 'x'\nignore = 'y'\n[sets]\ns = 'z'\n[units.a]\n"
+        self.rejects(head + "files = 'x'\nstrict = false\n")
 
     def test_bad_callers_are_rejected(self) -> None:
         head = "full = 'x'\nignore = 'y'\n[units.a]\nfiles = 'x'\n[callers]\n"
@@ -755,47 +894,49 @@ class Main(unittest.TestCase):
         self.output = Path(tmp.name) / 'github_output'
 
     def test_report_lists_files_reason_and_every_unit(self) -> None:
-        text, _ = self.run_main(['.mise/scripts/test/test_iris.sh'], output=self.output)
+        text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
         lines = text.splitlines()
         self.assertEqual(lines[0], 'Changed files (1):')
-        self.assertEqual(lines[1], '  .mise/scripts/test/test_iris.sh')
-        self.assertEqual(lines[2], f"1 of {len(EVERYTHING)} units triggered")
-        marks = {line[5:]: line[:4] for line in lines[3:-3]}
+        self.assertEqual(lines[1], '  ui/src/App.tsx')
+        self.assertEqual(lines[2], f"2 of {len(EVERYTHING)} units triggered")
+        marks = {line[5:]: line[:4] for line in lines[3:-4]}
         self.assertEqual(set(marks), EVERYTHING)
-        self.assertEqual({u for u, m in marks.items() if m == 'RUN '}, {'interop:iris'})
+        self.assertEqual(
+            {u for u, m in marks.items() if m == 'RUN '}, {'ui', 'windows-ui'}
+        )
         self.assertTrue(all(m in ('RUN ', 'SKIP') for m in marks.values()))
 
     def test_output_lines_are_compact_json_in_order_and_appended_to_github_output(
         self,
     ) -> None:
-        text, _ = self.run_main(['.mise/scripts/test/test_iris.sh'], output=self.output)
+        text, _ = self.run_main(['ui/src/App.tsx'], output=self.output)
         written = self.output.read_text().splitlines()
-        self.assertEqual(written, text.splitlines()[-3:])
+        self.assertEqual(written, text.splitlines()[-4:])
         self.assertEqual(
             [line.split('=', 1)[0] for line in written],
-            ['skip', 'suites-matrix', 'run-test'],
+            ['skip', 'suites-matrix', 'run-test', 'run-windows'],
         )
         self.assertNotIn(' ', written[0])
         skipped = json.loads(written[0].removeprefix('skip='))
-        self.assertEqual(skipped, sorted(EVERYTHING - {'interop:iris'}))
+        self.assertEqual(skipped, sorted(EVERYTHING - {'ui', 'windows-ui'}))
 
     def test_github_output_is_appended_not_overwritten(self) -> None:
         self.output.write_text('other=1\n')
-        self.run_main(['.mise/scripts/test/test_iris.sh'], output=self.output)
+        self.run_main(['ui/src/App.tsx'], output=self.output)
         lines = self.output.read_text().splitlines()
         self.assertEqual(lines[0], 'other=1')
         self.assertTrue(lines[1].startswith('skip='))
 
     def test_without_github_output_only_prints(self) -> None:
-        text, _ = self.run_main(['.mise/scripts/test/test_iris.sh'], output=None)
-        self.assertTrue(text.splitlines()[-3].startswith('skip=['))
+        text, _ = self.run_main(['ui/src/App.tsx'], output=None)
+        self.assertTrue(text.splitlines()[-4].startswith('skip=['))
         self.assertFalse(self.output.exists())
 
     def assert_runs_everything(self, lines: list[str]) -> None:
         got = dict(line.split('=', 1) for line in lines)
         self.assertEqual(got['skip'], '[]')
         self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
-        self.assertEqual(got['run-test'], 'true')
+        self.assertEqual((got['run-test'], got['run-windows']), ('true', 'true'))
 
     def test_empty_diff_reports_run_everything(self) -> None:
         text, _ = self.run_main([], output=self.output)
@@ -807,12 +948,17 @@ class Main(unittest.TestCase):
     def test_full_match_reports_run_everything(self) -> None:
         text, _ = self.run_main(['mise.toml', 'README.md'], output=self.output)
         self.assertIn('mise.toml matches full: run everything', text)
-        self.assert_runs_everything(self.output.read_text().splitlines())
+        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(json.loads(got['skip']), sorted(STRICT))
+        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
+        self.assertEqual((got['run-test'], got['run-windows']), ('true', 'false'))
 
     def test_orphan_reports_run_everything(self) -> None:
         text, _ = self.run_main(['brand/new.txt'], output=self.output)
         self.assertIn('brand/new.txt matches no unit and is not ignored', text)
-        self.assert_runs_everything(self.output.read_text().splitlines())
+        got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(json.loads(got['skip']), sorted(STRICT))
+        self.assertEqual(json.loads(got['suites-matrix']), FULL_SUITES)
 
     def test_all_flag_runs_everything_without_git(self) -> None:
         out = io.StringIO()
@@ -835,7 +981,7 @@ class Main(unittest.TestCase):
         got = dict(line.split('=', 1) for line in self.output.read_text().splitlines())
         self.assertEqual(json.loads(got['skip']), sorted(EVERYTHING))
         self.assertEqual(got['suites-matrix'], '[]')
-        self.assertEqual(got['run-test'], 'false')
+        self.assertEqual((got['run-test'], got['run-windows']), ('false', 'false'))
         self.assertNotIn('RUN ', text)
 
     def test_default_refs_are_the_pr_merge_commit_parent_and_head(self) -> None:

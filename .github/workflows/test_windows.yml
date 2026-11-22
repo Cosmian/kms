@@ -1,0 +1,232 @@
+---
+name: Windows Tests
+
+on:
+  workflow_call:
+    inputs:
+      archive-name:
+        required: true
+        type: string
+      full-suite:
+        description: false skips test_kms_server and ckms lib tests (covered on Linux)
+        required: false
+        type: boolean
+        default: true
+      skip-units:
+        description: JSON list of skipped CI units (.github/ci-paths.toml); the job is skipped when it contains its unit
+        required: false
+        type: string
+        default: '[]'
+
+jobs:
+  cargo-test:
+    name: ${{ inputs.archive-name }} - cargo test
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-cargo-test') }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\.mise\scripts\windows\cargo_test.ps1
+          if ('${{ inputs.full-suite }}' -eq 'true') { TestProject } else { TestProject -Quick }
+        env:
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+  test-ui:
+    name: ${{ inputs.archive-name }} - UI E2E tests
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-ui') }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      # Run in the checkout so the target lands on the rust-toolchain.toml toolchain, not on stable.
+      - run: rustup target add wasm32-unknown-unknown
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+
+      # Corepack runs the pnpm pinned with its sha512 in ui/package.json.
+      - name: Enable Corepack pnpm
+        run: corepack enable pnpm
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: Install wasm-pack
+        shell: pwsh
+        run: cargo install wasm-pack --locked
+
+      - name: Run UI E2E tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_ui.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ui-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-stdout.log
+            ${{ runner.temp }}\kms-stderr.log
+            ui\test-results\
+            ui\playwright-report\
+
+  test-cng-ksp:
+    name: ${{ inputs.archive-name }} - CNG KSP integration tests
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-cng-ksp') }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: Run CNG KSP integration tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.mise\scripts\windows\test_cng_ksp.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cng-ksp-test-logs
+          path: |
+            ${{ runner.temp }}\kms-cng-test-server.log
+            ${{ runner.temp }}\kms-cng-test-server.log.err
+
+  test-hsm-idemia:
+    name: ${{ inputs.archive-name }} - HSM tests (Idemia SPHERE simulator, ${{ matrix.variant }})
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-hsm-idemia') }}
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # fips: simulator in SECURITY_LEVEL=FIPS + OpenSSL FIPS provider (fips.dll) + IV shim.
+        variant: [non-fips, fips]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      # The OpenSSL 3.1.2 FIPS provider build (nmake) takes ~15 minutes: cache the install. The
+      # script reuses a complete install, so a hit skips the build.
+      - name: Cache the OpenSSL FIPS provider
+        if: matrix.variant == 'fips'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\openssl-fips
+          key: openssl-fips-3.1.2-${{ runner.os }}-${{ hashFiles('.mise/scripts/windows/prepare_windows_fips_provider.ps1') }}
+
+      # Downloads the simulator package (a hard failure when unavailable: no silent skip), installs
+      # SoftHSM2 + the simulator and exports HSM_* / IDEMIA_SPHERE_PKCS11_LIB / PATH to the next steps.
+      - name: Prepare the Idemia SPHERE HSM simulator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $level = if ('${{ matrix.variant }}' -eq 'fips') { "FIPS" } else { "NON_FIPS" }
+          .\.github\reusable_scripts\prepare_idemia_hsm.ps1 -SecurityLevel $level
+
+      # The FIPS variant builds the OpenSSL FIPS provider and the PKCS#11 IV shims itself.
+      - name: HSM tests on the Idemia SPHERE simulator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $fips = '${{ matrix.variant }}' -eq 'fips'
+          if ($fips) { .\.mise\scripts\windows\test_hsm_idemia.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_idemia.ps1 }
+
+      - name: hsm_model=other startup scenarios (SoftHSM2 behind the IV shim)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $fips = '${{ matrix.variant }}' -eq 'fips'
+          if ($fips) { .\.mise\scripts\windows\test_hsm_other.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_other.ps1 }
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: hsm-idemia-test-logs-windows-${{ matrix.variant }}
+          path: |
+            C:\Idemia_HSM_Simulator\log\HSM_simulator.log
+            ${{ runner.temp }}\kms-idemia-test\kms.log
+            ${{ runner.temp }}\kms-idemia-test\kms.log.err
+
+  test-est-interop:
+    name: ${{ inputs.archive-name }} - EST interoperability tests
+    if: ${{ !contains(fromJSON(inputs.skip-units || '[]'), 'windows-est') }}
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: .mise/scripts/kmip-go/go.mod
+
+      - uses: ./.github/actions/windows-vs-ninja
+
+      - name: Build static OpenSSL
+        uses: ./.github/actions/build-static-openssl
+
+      - name: Run EST interoperability tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .mise\scripts\windows\test_est_windows.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: est-interop-test-logs-windows
+          path: |
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log
+            ${{ runner.temp }}\kms-est-win-*\kms-bootstrap.log.err
+            ${{ runner.temp }}\kms-est-win-*\kms.log
+            ${{ runner.temp }}\kms-est-win-*\kms.log.err

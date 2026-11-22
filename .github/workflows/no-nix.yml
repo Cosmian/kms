@@ -4,25 +4,7 @@ name: No Nix
 # Plain `cargo test` (no Nix dev shell) on Linux x64/arm and macOS.
 
 on:
-  workflow_call: {}
-  pull_request:
-    paths:
-      - crate/**
-      - '!crate/**/*.md'
-      - kmip
-      - documentation/docs/google_cse/test_wrapped_private_key
-      - test_data
-      - Cargo.toml
-      - Cargo.lock
-      - rust-toolchain.toml
-      - .cargo/config.toml
-      - .config/nextest.toml
-      - .github/actions/install-rust/**
-      - .github/actions/cache-openssl-buildrs/**
-
-concurrency:
-  group: no-nix-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
 
 jobs:
   cargo-test:
