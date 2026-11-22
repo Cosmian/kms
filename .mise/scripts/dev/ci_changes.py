@@ -219,8 +219,9 @@ def changed_files(base: str, head: str) -> list[str]:
         ).stdout
 
     merge = git('merge-base', base, head).strip()
-    out = git('diff', '--name-only', '--no-renames', merge, head)
-    return [line for line in out.splitlines() if line]
+    # -z: raw NUL-separated paths; without it git quotes non-ASCII names ("calf\303\251.rs"), which match no pattern.
+    out = git('diff', '--name-only', '-z', '--no-renames', merge, head)
+    return [path for path in out.split('\0') if path]
 
 
 def classify(cfg: Config, files: list[str]) -> tuple[list[str], str]:
@@ -299,7 +300,11 @@ def outputs(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    parser.add_argument('--base', default='HEAD^1')
+    # CI passes --base HEAD^1 (the base tip of the PR test merge commit); locally diff from the PR's base branch,
+    # so every commit of the branch counts, not only the last one.
+    parser.add_argument(
+        '--base', default=f'origin/{os.environ.get("GITHUB_BASE_REF") or "develop"}'
+    )
     parser.add_argument('--head', default='HEAD')
     parser.add_argument(
         '--all', action='store_true', help='not a pull request: ignore the diff'

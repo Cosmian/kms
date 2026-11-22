@@ -116,11 +116,9 @@ jobs:
       EDB_SUBSCRIPTION_TOKEN: ${{ startsWith(matrix.suite, 'interop:') && secrets.EDB_SUBSCRIPTION_TOKEN || '' }}
       IRIS_LICENSE_KEY: ${{ startsWith(matrix.suite, 'interop:') && secrets.IRIS_LICENSE_KEY || '' }}
       AUDIT_COMPAT_SPLUNK_PASSWORD: ${{ matrix.suite == 'obs' && secrets.AUDIT_COMPAT_SPLUNK_PASSWORD || '' }}
-      TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ contains(fromJSON('["cloud","windows-cargo-test"]'), matrix.suite) && secrets.TEST_GOOGLE_OAUTH_CLIENT_ID || '' }}
-      TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ contains(fromJSON('["cloud","windows-cargo-test"]'), matrix.suite) && secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET
-        || '' }}
-      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ contains(fromJSON('["cloud","windows-cargo-test"]'), matrix.suite) && secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN
-        || '' }}
+      TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ matrix.suite == 'cloud' && secrets.TEST_GOOGLE_OAUTH_CLIENT_ID || '' }}
+      TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ matrix.suite == 'cloud' && secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET || '' }}
+      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ matrix.suite == 'cloud' && secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN || '' }}
       GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ matrix.suite == 'cloud' && secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '' }}
       KMS_CI_AWS_ACCESS_KEY_ID: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AWS_ACCESS_KEY_ID || '' }}
       KMS_CI_AWS_SECRET_ACCESS_KEY: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AWS_SECRET_ACCESS_KEY || '' }}

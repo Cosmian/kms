@@ -7,22 +7,29 @@ on:
   issue_comment:
     types: [created]
 
-# explicitly configure permissions, in case your GITHUB_TOKEN workflow permissions are set to read-only in repository settings
-permissions:
-  actions: write
-  contents: write # this can be 'read' if the signatures are in remote repository
-  pull-requests: write
-  statuses: write
-
 jobs:
   cla-assistant:
     if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
     runs-on: ubuntu-24.04
+    # explicitly configure permissions, in case your GITHUB_TOKEN workflow permissions are set to read-only in repository settings
+    permissions:
+      actions: write
+      contents: write # this can be 'read' if the signatures are in remote repository
+      pull-requests: write
+      statuses: write
     steps:
+      # issue_comment events carry no pull_request payload: ask the API whether the PR comes from a fork.
+      - name: Detect fork PR
+        id: fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: echo "fork=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '.head.repo.full_name != .base.repo.full_name')" >> "${GITHUB_OUTPUT}"
+
       - name: CLA Assistant
         # External fork PRs only; on internal PRs this job is a green no-op, not a skipped row.
-        if: github.event.pull_request.head.repo.full_name != github.repository && (github.event_name == 'pull_request_target' || github.event.comment.body
-          == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')
+        if: steps.fork.outputs.fork == 'true' && (github.event_name == 'pull_request_target' || github.event.comment.body == 'recheck' || github.event.comment.body
+          == 'I have read the CLA Document and I hereby sign the CLA')
         uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

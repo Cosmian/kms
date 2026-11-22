@@ -481,7 +481,7 @@ class CiWorkflows(unittest.TestCase):
             '.github/workflows/test-group.yml',
             '.github/workflows/test_all.yml',
             *(
-                f'.github/actions/{a}/action.yml'
+                f".github/actions/{a}/action.yml"
                 for a in (
                     'install-rust',
                     'install-mise',
@@ -499,7 +499,7 @@ class CiWorkflows(unittest.TestCase):
 
     def test_other_ci_files_run_nothing(self) -> None:
         for path in (
-            *(f'.github/actions/legs/{u}/action.yml' for u in LEG_ACTIONS | {'db'}),
+            *(f".github/actions/legs/{u}/action.yml" for u in LEG_ACTIONS | {'db'}),
             '.github/workflows/main.yml',
             '.github/workflows/cargo-publish.yml',
             '.github/workflows/ansible.yml',
@@ -739,10 +739,24 @@ class FailSafe(unittest.TestCase):
                 self.assertEqual(
                     run(path), EVERYTHING - {'cargo-machete'} - WINDOWS_PLATFORM
                 )
-        self.assertEqual(  # the tests read it; lint and manifests do not
+        self.assertEqual(  # the tests read it; lint and manifests do not; so do the Windows legs that run them
             run('test_data'),
-            EVERYTHING - {'cargo-clippy', 'cargo-machete'} - WINDOWS_PLATFORM,
+            EVERYTHING
+            - {'cargo-clippy', 'cargo-machete'}
+            - (WINDOWS_PLATFORM - {'windows-ui', 'windows-cng-ksp'}),
         )
+        self.assertTrue({'cargo-machete', 'cargo-clippy'}.isdisjoint(run('test_data')))
+        for (
+            path,
+            unit,
+        ) in (  # inputs read by a strict unit that no other pattern covered
+            ('.rustfmt.toml', 'cargo-clippy'),
+            ('rustfmt.toml', 'cargo-clippy'),
+            ('.github/reusable_scripts', 'windows-hsm-idemia'),
+        ):
+            with self.subTest(path=path):
+                self.assertIn(unit, run(path))
+        self.assertIn('db:sqlite', run('pkg/kms.toml'))
         for path in ('Cargo.toml', 'crate/crypto/build.rs'):
             with self.subTest(path=path):
                 self.assertEqual(run(path), EVERYTHING - WINDOWS_PLATFORM)
@@ -1096,6 +1110,28 @@ class ChangedFiles(unittest.TestCase):
         git(self.repo, 'merge', '-q', '--no-ff', '-m', 'merge', 'feature')
         self.assertEqual(ci_changes.changed_files('HEAD^1', 'HEAD'), ['a_txt'])
 
+    def test_every_commit_of_the_branch_counts_after_a_merge_from_the_base(
+        self,
+    ) -> None:
+        # The tip of a branch that merged the base back in is a merge commit: HEAD^1 is the previous branch
+        # commit, so the diff is taken from the merge base with the base branch instead.
+        commit_files(self.repo, 'pr1', f1_txt='1')
+        commit_files(self.repo, 'pr2', f2_txt='2')
+        commit_files(self.repo, 'pr3', f3_txt='3')
+        git(self.repo, 'switch', '-q', 'main')
+        commit_files(self.repo, 'base moves on', base_only_txt='x')
+        git(self.repo, 'switch', '-q', 'feature')
+        git(self.repo, 'merge', '-q', '--no-ff', '-m', 'merge main', 'main')
+        self.assertEqual(
+            ci_changes.changed_files('main', 'HEAD'), ['f1_txt', 'f2_txt', 'f3_txt']
+        )
+
+    def test_non_ascii_path_is_returned_unquoted(self) -> None:
+        commit_files(self.repo, 'pr', **{'crate__r\u00e9sum\u00e9_rs': 'x'})
+        self.assertEqual(
+            ci_changes.changed_files('main', 'feature'), ['crate/r\u00e9sum\u00e9_rs']
+        )
+
     def test_unknown_ref_raises(self) -> None:
         with self.assertRaises(subprocess.CalledProcessError):
             ci_changes.changed_files('does-not-exist', 'feature')
@@ -1253,9 +1289,14 @@ class Main(unittest.TestCase):
         self.assertEqual(self.output.read_text(), 'suites-matrix=[]\n')
         self.assertNotIn('RUN ', text)
 
-    def test_default_refs_are_the_pr_merge_commit_parent_and_head(self) -> None:
-        _, cf = self.run_main(['README.md'], output=self.output)
-        cf.assert_called_once_with('HEAD^1', 'HEAD')
+    def test_default_base_is_the_pr_base_branch_so_every_commit_counts(self) -> None:
+        with mock.patch.dict(os.environ, {'GITHUB_BASE_REF': 'release'}):
+            _, cf = self.run_main(['README.md'], output=self.output)
+        cf.assert_called_once_with('origin/release', 'HEAD')
+        with mock.patch.dict(os.environ):
+            os.environ.pop('GITHUB_BASE_REF', None)
+            _, cf = self.run_main(['README.md'], output=self.output)
+        cf.assert_called_once_with('origin/develop', 'HEAD')
 
     def test_base_and_head_flags_are_forwarded(self) -> None:
         _, cf = self.run_main(

@@ -52,8 +52,8 @@ ignore = '''
 
 [sets]
 # Whole workspace: compile-wide jobs and whole-workspace unit-test runners.
-# kmip/ (KMIP XML vectors) and the Google CSE key fixture are read by crate tests.
-rust = '^crate/ | ^kmip$ | ^documentation/docs/google_cse/test_wrapped_private_key$'
+# kmip/ (KMIP XML vectors), the Google CSE key fixture and the packaged pkg/kms.toml are read by crate tests.
+rust = '^crate/ | ^kmip$ | ^documentation/docs/google_cse/test_wrapped_private_key$ | ^pkg/kms\.toml$'
 
 # Code linked into cosmian_kms or the ckms / test_kms_server harness: triggers the units that still run on any
 # server change (forward-proxy, spire). The negative lookaheads carve out feature-owned paths.
@@ -96,6 +96,7 @@ rust_build = '''
 | ^kmip$
 | ^documentation/docs/google_cse/test_wrapped_private_key$
 | ^test_data$
+| ^pkg/kms\.toml$
 | ^(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)$
 | ^\.cargo/config\.toml$
 | ^\.config/nextest\.toml$
@@ -136,7 +137,7 @@ files = '''
   \.rs$
 | (^|/)Cargo\.toml$
 | ^Cargo\.lock$
-| ^(rust-toolchain|clippy)\.toml$
+| ^(rust-toolchain|clippy|\.?rustfmt)\.toml$
 | ^\.cargo/config\.toml$
 '''
 
@@ -434,7 +435,7 @@ no-fork-pr = true
 [units.windows-ui]
 strict = true
 sets = ["windows"]
-files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$'
+files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$ | ^test_data$'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
@@ -442,7 +443,7 @@ no-fork-pr = true
 [units.windows-cng-ksp]
 strict = true
 sets = ["windows"]
-files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$'
+files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$ | ^test_data$'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
@@ -456,6 +457,7 @@ files = '''
 | ^\.mise/tasks/test/hsm/(idemia-sphere-simulator|other)$
 | ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
 | ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
+| ^\.github/reusable_scripts$
 '''
 setup = "windows"
 runners = ["windows-2022"]

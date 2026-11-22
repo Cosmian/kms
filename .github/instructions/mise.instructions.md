@@ -153,7 +153,7 @@ Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`
 - Prologue, in order: `source common.sh`, `source nix_helpers.sh` (only with `ensure_nix_shell` or `WITH_*`), `kms_init_env "${usage_variant:-<default>}" "${usage_link:-static}"`, `setup_test_logging`, `REPO_ROOT=` (only if used), gates (variant, OS, profile, env, local probes inside `if [ "${CI:-}" != true ]`, apt), `export WITH_*` + `ensure_nix_shell`, `docker compose up -d` (skip on failure). Snippets are listed in `.mise/tasks/test/README.md` § 1.
 - An upstream leaf (repository secrets) calls `print_error` before `skip_test` when `CI=true` and a secret is unset, so a green upstream CI leg proves it ran.
 - Never hand-roll a test aggregator: a group's `_default` is `run_test_leaves "$(dirname "$0")" <leaf>...`; add the new leaf to that list.
-- To run a leaf in CI, add its id to a leg of `.github/workflows/test_all.yml` (the leaf must declare `-v --variant`).
+- To run a leaf in CI, add it to its group's `_default` (the leaf must declare `-v --variant`); `.github/ci-paths.toml` decides which pull requests run the group.
 
 ## Aggregator tasks — collect failures, report at the end
 

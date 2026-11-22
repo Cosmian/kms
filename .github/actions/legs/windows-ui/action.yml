@@ -23,7 +23,7 @@ runs:
     # ── windows-ui ──
     - name: Install wasm-pack
       shell: pwsh
-      run: cargo install wasm-pack --locked
+      run: cargo install --locked wasm-pack@0.15.1
 
     - name: Run UI E2E tests
       shell: pwsh

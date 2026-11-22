@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Classify the files a PR changes with .github/ci-paths.toml: prints and appends suites-matrix to GITHUB_OUTPUT"
-#USAGE flag "--base <ref>" help="Diff from the merge base of <ref> and --head (PR merge commit: HEAD^1 is the base tip)" default="HEAD^1"
+#USAGE flag "--base <ref>" help="Diff from the merge base of <ref> and --head, i.e. every commit of the branch (default origin/$GITHUB_BASE_REF, else origin/develop; CI passes HEAD^1, the base tip of the PR merge commit)"
 #USAGE flag "--head <ref>" help="Changed side" default="HEAD"
 #USAGE flag "--all" help="Not a pull request: ignore the diff, run every unit of --event (no git diff)"
 #USAGE flag "--event <event>" help="Not a pull request (with --all): schedule, tag or workflow_dispatch"
@@ -25,7 +25,9 @@ else
   if [ "${usage_all:-false}" = "true" ]; then
     "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --all ${extra[@]+"${extra[@]}"}
   else
-    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" --base "${usage_base:-HEAD^1}" --head "${usage_head:-HEAD}" ${extra[@]+"${extra[@]}"}
+    base=()
+    if [ -n "${usage_base:-}" ]; then base+=(--base "${usage_base}"); fi
+    "${PYTHON}" "${REPO_ROOT}/.mise/scripts/dev/ci_changes.py" ${base[@]+"${base[@]}"} --head "${usage_head:-HEAD}" ${extra[@]+"${extra[@]}"}
   fi
 fi
 print_success "Classification complete"

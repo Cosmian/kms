@@ -227,10 +227,6 @@ jobs:
 
       - if: inputs.suite == 'windows-cargo-test'
         uses: ./.github/actions/legs/windows-cargo-test
-        with:
-          google-oauth-client-id: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-          google-oauth-client-secret: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-          google-oauth-refresh-token: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
       - if: inputs.suite == 'windows-ui'
         uses: ./.github/actions/legs/windows-ui
