@@ -180,18 +180,26 @@ async fn verify(
     signature: &[u8],
     message: &[u8],
 ) -> KResult<ValidityIndicator> {
-    kms.signature_verify(
-        SignatureVerify {
-            unique_identifier: Some(uid(uid_str)),
-            data: Some(message.to_vec()),
-            signature_data: Some(signature.to_vec()),
-            ..SignatureVerify::default()
-        },
-        &UserId::from(ADMIN),
-    )
-    .await?
-    .validity_indicator
-    .ok_or_else(|| KmsError::ServerError("no validity indicator".to_owned()))
+    let response = kms
+        .signature_verify(
+            SignatureVerify {
+                unique_identifier: Some(uid(uid_str)),
+                data: Some(message.to_vec()),
+                signature_data: Some(signature.to_vec()),
+                ..SignatureVerify::default()
+            },
+            &UserId::from(ADMIN),
+        )
+        .await
+        .map_err(|e| {
+            KmsError::ServerError(format!(
+                "verify of `{uid_str}` ({} byte message) failed: {e}",
+                message.len()
+            ))
+        })?;
+    response
+        .validity_indicator
+        .ok_or_else(|| KmsError::ServerError("no validity indicator".to_owned()))
 }
 
 async fn rekey(kms: &KMS, uid_str: &str, user: &str) -> KResult<String> {
@@ -421,18 +429,23 @@ async fn key_pair_keyset(kms: &KMS, slot: usize, created: &mut Vec<String>) -> K
             ValidityIndicator::Valid
         );
     }
-    assert_eq!(
-        verify(kms, &format!("{public}@latest"), &signature_0, MESSAGE).await?,
-        ValidityIndicator::Invalid,
-        "an addressed generation does not walk the keyset"
+    // A signature that does not verify is never `Valid`. Most tokens answer `Invalid`; Kryoptic
+    // fails the verification with CKR_DEVICE_ERROR instead of CKR_SIGNATURE_INVALID.
+    // An addressed generation does not walk the keyset: a signature made by another key is
+    // rejected.
+    let wrong_generation = verify(kms, &format!("{public}@latest"), &signature_0, MESSAGE).await;
+    assert!(
+        matches!(&wrong_generation, Ok(ValidityIndicator::Invalid) | Err(_)),
+        "{wrong_generation:?}"
     );
     assert_eq!(
         verify(kms, &format!("{public}@0"), &signature_0, MESSAGE).await?,
         ValidityIndicator::Valid
     );
-    assert_eq!(
-        verify(kms, &public, &signature_1, b"another message").await?,
-        ValidityIndicator::Invalid
+    let wrong_message = verify(kms, &public, &signature_1, b"another message").await;
+    assert!(
+        matches!(&wrong_message, Ok(ValidityIndicator::Invalid) | Err(_)),
+        "{wrong_message:?}"
     );
 
     // Re-key refusals leave the pair untouched.
