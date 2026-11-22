@@ -1,0 +1,20 @@
+---
+name: Leg cargo-machete
+description: >
+  Check for unused dependencies in all crates with cargo-machete (nightly).
+
+runs:
+  using: composite
+  steps:
+    # ── cargo-machete (was the Cosmian/reusable_workflows machete workflow) ──
+    - name: Install nightly toolchain
+      shell: bash
+      run: rustup toolchain install nightly --profile minimal
+
+    - name: Install cargo-machete
+      shell: bash
+      run: cargo +nightly install cargo-machete
+
+    - name: Check unused dependencies in all crates
+      shell: bash
+      run: cargo +nightly machete --with-metadata

@@ -156,20 +156,14 @@ FULL_SUITES = [
 ]
 
 
-# Units that depend on test-group.yml beyond the shared `mise run test:<suite>` step (their own steps, or the database
-# service environment): any change to it runs them.
-GROUP_LEGS = {
+# The one leg per setup path a test-group.yml change runs (plain Linux, nix, macOS, Windows).
+SETUP_PROBES = {'forward-proxy', 'interop:pykmip', 'pki-macos', 'windows-est'}
+# Units whose own steps are the composite action .github/actions/legs/<unit>/.
+LEG_ACTIONS = {
     'build-documentation',
     'cargo-clippy',
     'cargo-machete',
     'cargo-publish-dry-run',
-    'cloud',
-    'db:mariadb',
-    'db:mysql',
-    'db:openbao',
-    'db:percona',
-    'db:psql',
-    'db:redis',
     'forward-proxy',
     'no-nix',
     'pki-macos',
@@ -179,6 +173,15 @@ GROUP_LEGS = {
     'windows-hsm-idemia',
     'windows-ui',
     'xks-remote',
+}
+DB_UNITS = {
+    'db:sqlite',
+    'db:psql',
+    'db:mysql',
+    'db:mariadb',
+    'db:percona',
+    'db:redis',
+    'db:openbao',
 }
 
 
@@ -382,8 +385,9 @@ class CiWorkflows(unittest.TestCase):
                 '.github/workflows/test_windows.yml',
                 '.mise/scripts/dev/ci_changes.py',
             ),
-            # every leg with its own steps in test-group.yml, plus the one suite the ci_changes.py change triggers
-            {*GROUP_LEGS, 'interop:pykmip'},
+            # the setup probes (test-group.yml), build-documentation (main.yml is in its files), xks-remote and
+            # interop:pykmip (test_all.yml is in their files)
+            {*SETUP_PROBES, 'build-documentation', 'xks-remote'},
         )
 
     def test_strict_units_run_only_on_their_inputs(self) -> None:
@@ -487,8 +491,14 @@ class CiWorkflows(unittest.TestCase):
             set(),
         )
 
-    def test_group_wrapper_runs_exactly_the_legs_with_their_own_steps(self) -> None:
-        self.assertEqual(run('.github/workflows/test-group.yml'), GROUP_LEGS)
+    def test_group_wrapper_runs_one_leg_per_setup_path(self) -> None:
+        self.assertEqual(run('.github/workflows/test-group.yml'), SETUP_PROBES)
+
+    def test_a_leg_action_runs_only_its_units(self) -> None:
+        for unit in LEG_ACTIONS:
+            with self.subTest(unit=unit):
+                self.assertEqual(run(f'.github/actions/legs/{unit}/action.yml'), {unit})
+        self.assertEqual(run('.github/actions/legs/db/action.yml'), DB_UNITS)
 
 
 class Matrices(unittest.TestCase):
@@ -536,7 +546,11 @@ class Matrices(unittest.TestCase):
         )
         self.assertEqual(
             legs,
-            [g for g in FULL_SUITES if g['suite'] in {*GROUP_LEGS, 'interop:pykmip'}],
+            [
+                g
+                for g in FULL_SUITES
+                if g['suite'] in {*SETUP_PROBES, 'build-documentation', 'xks-remote'}
+            ],
         )
 
     def test_pg_store_change_keeps_only_the_legs_it_triggers(self) -> None:
@@ -641,6 +655,36 @@ class Wiring(unittest.TestCase):
         self.assertEqual(
             steps, {u for u, l in CFG.legs.items() if l.setup != 'nix'} | {'xks-remote'}
         )
+
+    def test_each_unit_with_own_steps_calls_its_leg_action(self) -> None:
+        text = (
+            ci_changes.REPO / '.github' / 'workflows' / 'test-group.yml'
+        ).read_text()
+        calls = set(
+            re.findall(
+                r"^\s+- if: inputs\.suite == '([a-z0-9-]+)'\n\s+uses: \./\.github/actions/legs/\1$",
+                text,
+                re.M,
+            )
+        )
+        self.assertEqual(calls, LEG_ACTIONS)
+        self.assertEqual(
+            LEG_ACTIONS,
+            {u for u, l in CFG.legs.items() if l.setup != 'nix'} | {'xks-remote'},
+        )
+        self.assertIn('uses: ./.github/actions/legs/db\n', text)
+        for unit in LEG_ACTIONS | {'db'}:
+            with self.subTest(unit=unit):
+                self.assertTrue(
+                    (
+                        ci_changes.REPO
+                        / '.github'
+                        / 'actions'
+                        / 'legs'
+                        / unit
+                        / 'action.yml'
+                    ).is_file()
+                )
 
     def test_every_nix_unit_runs_an_existing_mise_task(self) -> None:
         tasks = ci_changes.REPO / '.mise' / 'tasks' / 'test'

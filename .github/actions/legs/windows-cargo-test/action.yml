@@ -1,0 +1,35 @@
+---
+name: Leg windows-cargo-test
+description: >
+  Run the Windows cargo tests (full suite off pull requests, quick on them).
+
+inputs:
+  google-oauth-client-id:
+    description: passed from the caller secret
+    required: false
+    default: ''
+  google-oauth-client-secret:
+    description: passed from the caller secret
+    required: false
+    default: ''
+  google-oauth-refresh-token:
+    description: passed from the caller secret
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # ── windows-cargo-test ──
+    - name: Tests
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        . .\.mise\scripts\windows\cargo_test.ps1
+        # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off pull requests only.
+        if ('${{ github.event_name != 'pull_request' }}' -eq 'true') { TestProject } else { TestProject -Quick }
+      env:
+        # Google variables
+        TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ inputs.google-oauth-client-id }}
+        TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ inputs.google-oauth-client-secret }}
+        TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ inputs.google-oauth-refresh-token }}

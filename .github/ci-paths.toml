@@ -7,7 +7,7 @@
 # - `strict = true`: the unit runs only when its own `sets`/`files` match; `full` and unmatched files never force it.
 # - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
 # - Unit keys: test-group.yml suite ids. A unit with setup = "nix" (xks-remote excepted) runs the mise task test:<unit>;
-#   every other unit has its own steps in test-group.yml. Each unit is a set of legs (runners x variants) of the one
+#   every other unit runs .github/actions/legs/<unit>/ from test-group.yml. Each unit is a set of legs (runners x variants) of the one
 #   `test-suites` matrix job of test_all.yml; ci_changes.py builds the matrix. Optional keys, defaults in brackets:
 # - `variants`: non-empty list among `fips`, `non-fips` [one leg without variant]. `bench` (variant -> HSM models) is optional.
 # - `runners`: non-empty list of runner labels [ubuntu-24.04]; legs = runners x variants.
@@ -113,9 +113,12 @@ windows = '''
 | ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
 '''
 
-# The reusable runner of every leg: a change to it runs the legs that have their own steps in it and the database
-# legs (their service environment lives there); the `cloud` leg exercises the shared nix path.
+# Shared setup of every leg: a change runs one leg per setup path (plain Linux, nix + Docker login + test step,
+# macOS, Windows VS/OpenSSL); unit steps live in .github/actions/legs/<unit>/.
 test_group = '^\.github/workflows/test-group\.yml$'
+
+# Database service environment of every db:* leg.
+db_env = '^\.github/actions/legs/db/'
 
 # PKI group: the `pki` legs and the macOS leg `pki-macos`.
 pki = '''
@@ -130,9 +133,8 @@ pki = '''
 | ^crate/clients/clap/src/actions/certificates/
 '''
 
-# ── test-group.yml legs with their own steps ────────────────────────────────────────────────
+# ── legs with their own action (.github/actions/legs/<unit>/) ───────────────────────────────
 [units.cargo-clippy]
-sets = ["test_group"]
 strict = true
 setup = "plain"
 dependabot = true
@@ -142,18 +144,19 @@ files = '''
 | ^Cargo\.lock$
 | ^(rust-toolchain|clippy)\.toml$
 | ^\.cargo/config\.toml$
+| ^\.github/actions/legs/cargo-clippy/
 '''
 
 [units.cargo-machete]
-sets = ["test_group"]
 strict = true
 setup = "plain"
 dependabot = true
-files = '\.rs$ | (^|/)Cargo\.toml$'
+files = '\.rs$ | (^|/)Cargo\.toml$ | ^\.github/actions/legs/cargo-machete/'
 
 [units.no-nix]
 strict = true
-sets = ["rust_build", "test_group"]
+sets = ["rust_build"]
+files = '^\.github/actions/legs/no-nix/'
 setup = "plain"
 runners = ["ubuntu-24.04", "ubuntu-24.04-arm", "macos-15"]
 variants = ["fips", "non-fips"]
@@ -161,36 +164,35 @@ dependabot = true
 
 [units.forward-proxy]
 sets = ["server_core", "test_group"]
-files = '^\.github/scripts/squid/'
+files = '^\.github/scripts/squid/ | ^\.github/actions/legs/forward-proxy/'
 setup = "plain"
 variants = ["non-fips"]
 dependabot = true
 
 # `build-documentation` runs `docs:check-ai` (AI instruction files) and `docs:mdbook-build` (the mdBook site).
 [units.build-documentation]
-sets = ["test_group"]
 files = '''
   ^documentation/
 | ^(AGENTS|CONTRIBUTING)\.md$
 | ^\.github/(copilot-instructions\.md|instructions/|skills/)
 | ^\.mise/(tasks|scripts)/docs/
 | ^\.github/workflows/main\.yml$
+| ^\.github/actions/legs/build-documentation/
 '''
 setup = "plain"
 dependabot = true
 
-# ── test-group.yml legs with their own steps ────────────────────────────────────────────────
+# ── legs with their own action (.github/actions/legs/<unit>/) ───────────────────────────────
 [units.cargo-publish-dry-run]
 strict = true
-sets = ["rust_build", "test_group"]
-files = '^\.github/workflows/cargo-publish\.yml$'
+sets = ["rust_build"]
+files = '^\.github/workflows/cargo-publish\.yml$ | ^\.github/actions/legs/cargo-publish-dry-run/'
 setup = "plain"
 no-fork-pr = true
 events = ["pull_request", "schedule", "workflow_dispatch"]
 
 [units.xks-remote]
-sets = ["test_group"]
-files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
+files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$ | ^\.github/actions/legs/xks-remote/'
 variants = ["non-fips"]
 upstream = true
 events = ["pull_request", "tag", "workflow_dispatch"]
@@ -200,38 +202,38 @@ environment = "xks-remote-approval"
 
 # ── test-group.yml suites (key = `suite` input of the `test-suites` job of test_all.yml) ──
 [units."db:sqlite"]
-sets = ["rust", "db_shared"]
+sets = ["rust", "db_shared", "db_env"]
 files = '^\.mise/tasks/test/db/sqlite$'
 variants = ["fips", "non-fips"]
 
 [units."db:psql"]
-sets = ["db_core", "db_shared", "pg_store", "test_group"]
+sets = ["db_core", "db_shared", "pg_store", "db_env"]
 files = '^\.mise/tasks/test/db/psql$'
 variants = ["fips", "non-fips"]
 
 [units."db:mysql"]
-sets = ["db_core", "db_shared", "mysql_store", "test_group"]
+sets = ["db_core", "db_shared", "mysql_store", "db_env"]
 files = '^\.mise/tasks/test/db/mysql$'
 variants = ["fips", "non-fips"]
 
 [units."db:mariadb"]
-sets = ["db_core", "db_shared", "mysql_store", "test_group"]
+sets = ["db_core", "db_shared", "mysql_store", "db_env"]
 files = '^\.mise/tasks/test/db/mariadb$'
 variants = ["fips", "non-fips"]
 
 [units."db:percona"]
-sets = ["db_core", "db_shared", "mysql_store", "test_group"]
+sets = ["db_core", "db_shared", "mysql_store", "db_env"]
 files = '^\.mise/tasks/test/db/percona$'
 variants = ["fips", "non-fips"]
 
 [units."db:redis"]
-sets = ["db_core", "db_shared", "test_group"]
+sets = ["db_core", "db_shared", "db_env"]
 files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$'
 # redis (Findex) is non-FIPS only
 variants = ["non-fips"]
 
 [units."db:openbao"]
-sets = ["db_core", "pg_store", "mysql_store", "test_group"]
+sets = ["db_core", "pg_store", "mysql_store", "db_env"]
 files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
@@ -242,7 +244,6 @@ files = '''
 variants = ["fips", "non-fips"]
 
 [units.cloud]
-sets = ["test_group"]
 files = '''
   ^crate/server/src/(routes/(aws_xks|azure_ekm|google_cse)/|tests/)
 | ^crate/clients/clap/src/actions/(google|aws|azure)/
@@ -327,6 +328,7 @@ variants = ["fips", "non-fips"]
 
 [units.pki-macos]
 sets = ["pki", "test_group"]
+files = '^\.github/actions/legs/pki-macos/'
 setup = "plain"
 runners = ["macos-15"]
 variants = ["fips"]
@@ -419,7 +421,7 @@ files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao
 variants = ["fips", "non-fips"]
 
 [units."interop:pykmip"]
-sets = ["kmip_wire", "interop_shared"]
+sets = ["kmip_wire", "interop_shared", "test_group"]
 files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test_all\.yml$'
 variants = ["non-fips"]
 
@@ -433,39 +435,41 @@ files = '''
 '''
 variants = ["fips", "non-fips"]
 
-# ── test-group.yml legs with their own steps ────────────────────────────────────────────────
+# ── legs with their own action (.github/actions/legs/<unit>/) ───────────────────────────────
 [units.windows-cargo-test]
 strict = true
-sets = ["rust_build", "test_group"]
+sets = ["rust_build"]
+files = '^\.github/actions/legs/windows-cargo-test/'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
 
 [units.windows-ui]
 strict = true
-sets = ["windows", "test_group"]
-files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$'
+sets = ["windows"]
+files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$ | ^\.github/actions/legs/windows-ui/'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
 
 [units.windows-cng-ksp]
 strict = true
-sets = ["windows", "test_group"]
-files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$'
+sets = ["windows"]
+files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$ | ^\.github/actions/legs/windows-cng-ksp/'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
 
 [units.windows-hsm-idemia]
 strict = true
-sets = ["windows", "test_group"]
+sets = ["windows"]
 files = '''
   ^crate/hsm/
 | ^crate/server/src/tests/
 | ^\.mise/tasks/test/hsm/(idemia-sphere-simulator|other)$
 | ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
 | ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
+| ^\.github/actions/legs/windows-hsm-idemia/
 '''
 setup = "windows"
 runners = ["windows-2022"]
@@ -476,7 +480,7 @@ no-fork-pr = true
 [units.windows-est]
 strict = true
 sets = ["windows", "test_group"]
-files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$'
+files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$ | ^\.github/actions/legs/windows-est/'
 setup = "windows"
 runners = ["windows-2022"]
 timeout = 60
