@@ -6,6 +6,7 @@
 # - A unit runs when a changed file matches one of its `sets` or its `files`.
 # - `strict = true`: the unit runs only when its own `sets`/`files` match; `full` and unmatched files never force it.
 # - A changed file matching no unit must match `ignore`, otherwise every unit runs (fail-safe for new paths).
+# - CI wiring (.github/workflows/, .github/actions/) triggers no unit except the shared setup (`ci_setup`), which runs one leg per setup path.
 # - Unit keys: test-group.yml suite ids. A unit with setup = "nix" (xks-remote excepted) runs the mise task test:<unit>;
 #   every other unit runs .github/actions/legs/<unit>/ from test-group.yml. Each unit is a set of legs (runners x variants) of the one
 #   `test-suites` matrix job of test_all.yml; ci_changes.py builds the matrix. Optional keys, defaults in brackets:
@@ -22,8 +23,7 @@
 # Tags, schedule and workflow_dispatch ignore the diff and run every unit whose events list them.
 
 full = '''
-  ^\.github/actions/(install-mise|install-rust|setup-nix|setup-nix-mise|cache-openssl-buildrs|cleanup-runner)/
-| ^\.mise/lib/(common|nix_helpers|kms_build|kms_server|test_slots)\.sh$
+  ^\.mise/lib/(common|nix_helpers|kms_build|kms_server|test_slots)\.sh$
 | ^\.mise/scripts/common\.sh$
 | ^(mise\.toml|shell\.nix|default\.nix|rust-toolchain\.toml|Cargo\.toml|Cargo\.lock|docker-compose\.yml)$
 | ^nix/(openssl\.nix|openssl-fips-bootstrap\.|softhsm2\.nix|utimaco\.nix)
@@ -38,10 +38,7 @@ ignore = '''
   \.md$
 | ^CHANGELOG/
 | ^\.github/(dependabot\.yml|\.markdownlint\.yaml|scripts/patch-kube-apiserver\.py)$
-| ^\.github/workflows/(benchmark|build_windows|cla|flamegraph|github_cache_cleanup|linkcheck|nightly|nix-update-hashes
-                       |package-and-commit-sbom|packaging|packaging-apk|packaging-docker|packaging-kubernetes
-                       |packaging-tests|release|supply-chain|update-generated-docs)\.yml$
-| ^\.github/actions/(docker-login-ghcr|import-gpg-key|push-package-cosmian|setup-helm-minikube)/
+| ^\.github/(workflows|actions)/  # CI wiring triggers no leg; the ci_setup set catches the shared setup first
 | ^(supply-chain|sbom|cbom|charts|pkg|ansible|nix)/
 | ^(deny\.toml|_typos\.toml|lychee\.toml|\.pre-commit-config\.yaml|\.gitignore|\.gitattributes|LICENSE|\.cargo/audit\.toml)$
 | ^\.mise/tasks/(audit|bench|cse|demo|dev|git|package|release|sbom)/
@@ -50,9 +47,7 @@ ignore = '''
 | ^\.mise/lib/(k8s|package_build|package_smoke|bench_helpers)\.sh$
 | ^\.mise/scripts/(audit|bench|demo|dev|git|package|pre-commit|release|sbom)/
 | ^\.github/ci-paths\.toml$  # validated by the `--self-test` run of the `changes` job
-| ^\.github/workflows/(test-db|test-interop)\.yml$  # removed: their legs are now matrix entries of test_all.yml, whose own change runs its units
-| ^\.github/workflows/(no-nix|test_windows|forward_proxy)\.yml$  # removed: their jobs are legs of test-group.yml
-| ^\.mise/scripts/windows/cargo_test\.ps1$  # idem: script of the Rust-only windows-cargo-test job
+| ^\.mise/scripts/windows/cargo_test\.ps1$  # script of the Rust-only windows-cargo-test job
 '''
 
 [sets]
@@ -104,21 +99,20 @@ rust_build = '''
 | ^(Cargo\.toml|Cargo\.lock|rust-toolchain\.toml)$
 | ^\.cargo/config\.toml$
 | ^\.config/nextest\.toml$
-| ^\.github/actions/(install-rust|cache-openssl-buildrs)/
 '''
 
 windows = '''
   ^vcpkg(_fips)?\.json$
-| ^\.github/actions/(build-static-openssl|windows-vs-ninja)/
 | ^\.mise/scripts/windows/(common|install_ninja)\.ps1$
 '''
 
-# Shared setup of every leg: a change runs one leg per setup path (plain Linux, nix + Docker login + test step,
-# macOS, Windows VS/OpenSSL); unit steps live in .github/actions/legs/<unit>/.
-test_group = '^\.github/workflows/test-group\.yml$'
-
-# Database service environment of every db:* leg.
-db_env = '^\.github/actions/legs/db/'
+# Shared setup of every leg: the test_all.yml matrix, the test-group.yml setup steps and the toolchain actions. A change
+# runs one leg per setup path (plain Linux, nix, macOS, Windows); every other CI file is ignored.
+ci_setup = '''
+  ^\.github/workflows/(test-group|test_all)\.yml$
+| ^\.github/actions/(install-rust|install-mise|setup-nix|setup-nix-mise|cache-openssl-buildrs|cleanup-runner
+                     |build-static-openssl|windows-vs-ninja)/
+'''
 
 # PKI group: the `pki` legs and the macOS leg `pki-macos`.
 pki = '''
@@ -144,27 +138,25 @@ files = '''
 | ^Cargo\.lock$
 | ^(rust-toolchain|clippy)\.toml$
 | ^\.cargo/config\.toml$
-| ^\.github/actions/legs/cargo-clippy/
 '''
 
 [units.cargo-machete]
 strict = true
 setup = "plain"
 dependabot = true
-files = '\.rs$ | (^|/)Cargo\.toml$ | ^\.github/actions/legs/cargo-machete/'
+files = '\.rs$ | (^|/)Cargo\.toml$'
 
 [units.no-nix]
 strict = true
 sets = ["rust_build"]
-files = '^\.github/actions/legs/no-nix/'
 setup = "plain"
 runners = ["ubuntu-24.04", "ubuntu-24.04-arm", "macos-15"]
 variants = ["fips", "non-fips"]
 dependabot = true
 
 [units.forward-proxy]
-sets = ["server_core", "test_group"]
-files = '^\.github/scripts/squid/ | ^\.github/actions/legs/forward-proxy/'
+sets = ["server_core", "ci_setup"]
+files = '^\.github/scripts/squid/'
 setup = "plain"
 variants = ["non-fips"]
 dependabot = true
@@ -176,8 +168,6 @@ files = '''
 | ^(AGENTS|CONTRIBUTING)\.md$
 | ^\.github/(copilot-instructions\.md|instructions/|skills/)
 | ^\.mise/(tasks|scripts)/docs/
-| ^\.github/workflows/main\.yml$
-| ^\.github/actions/legs/build-documentation/
 '''
 setup = "plain"
 dependabot = true
@@ -186,13 +176,12 @@ dependabot = true
 [units.cargo-publish-dry-run]
 strict = true
 sets = ["rust_build"]
-files = '^\.github/workflows/cargo-publish\.yml$ | ^\.github/actions/legs/cargo-publish-dry-run/'
 setup = "plain"
 no-fork-pr = true
 events = ["pull_request", "schedule", "workflow_dispatch"]
 
 [units.xks-remote]
-files = '^crate/server/src/routes/aws_xks/ | ^\.github/workflows/test_all\.yml$ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$ | ^\.github/actions/legs/xks-remote/'
+files = '^crate/server/src/routes/aws_xks/ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
 variants = ["non-fips"]
 upstream = true
 events = ["pull_request", "tag", "workflow_dispatch"]
@@ -202,38 +191,38 @@ environment = "xks-remote-approval"
 
 # ── test-group.yml suites (key = `suite` input of the `test-suites` job of test_all.yml) ──
 [units."db:sqlite"]
-sets = ["rust", "db_shared", "db_env"]
+sets = ["rust", "db_shared"]
 files = '^\.mise/tasks/test/db/sqlite$'
 variants = ["fips", "non-fips"]
 
 [units."db:psql"]
-sets = ["db_core", "db_shared", "pg_store", "db_env"]
+sets = ["db_core", "db_shared", "pg_store"]
 files = '^\.mise/tasks/test/db/psql$'
 variants = ["fips", "non-fips"]
 
 [units."db:mysql"]
-sets = ["db_core", "db_shared", "mysql_store", "db_env"]
+sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/mysql$'
 variants = ["fips", "non-fips"]
 
 [units."db:mariadb"]
-sets = ["db_core", "db_shared", "mysql_store", "db_env"]
+sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/mariadb$'
 variants = ["fips", "non-fips"]
 
 [units."db:percona"]
-sets = ["db_core", "db_shared", "mysql_store", "db_env"]
+sets = ["db_core", "db_shared", "mysql_store"]
 files = '^\.mise/tasks/test/db/percona$'
 variants = ["fips", "non-fips"]
 
 [units."db:redis"]
-sets = ["db_core", "db_shared", "db_env"]
+sets = ["db_core", "db_shared"]
 files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$'
 # redis (Findex) is non-FIPS only
 variants = ["non-fips"]
 
 [units."db:openbao"]
-sets = ["db_core", "pg_store", "mysql_store", "db_env"]
+sets = ["db_core", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
@@ -327,8 +316,7 @@ sets = ["pki"]
 variants = ["fips", "non-fips"]
 
 [units.pki-macos]
-sets = ["pki", "test_group"]
-files = '^\.github/actions/legs/pki-macos/'
+sets = ["pki", "ci_setup"]
 setup = "plain"
 runners = ["macos-15"]
 variants = ["fips"]
@@ -421,8 +409,8 @@ files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao
 variants = ["fips", "non-fips"]
 
 [units."interop:pykmip"]
-sets = ["kmip_wire", "interop_shared", "test_group"]
-files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/ | ^\.github/workflows/test_all\.yml$'
+sets = ["kmip_wire", "interop_shared", "ci_setup"]
+files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
 variants = ["non-fips"]
 
 [units."interop:ssh-secrets"]
@@ -439,7 +427,6 @@ variants = ["fips", "non-fips"]
 [units.windows-cargo-test]
 strict = true
 sets = ["rust_build"]
-files = '^\.github/actions/legs/windows-cargo-test/'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
@@ -447,7 +434,7 @@ no-fork-pr = true
 [units.windows-ui]
 strict = true
 sets = ["windows"]
-files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$ | ^\.github/actions/legs/windows-ui/'
+files = '^ui/ | ^crate/clients/wasm/ | ^crate/server/src/routes/ui_auth\.rs$ | ^\.mise/scripts/windows/test_ui\.ps1$'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
@@ -455,7 +442,7 @@ no-fork-pr = true
 [units.windows-cng-ksp]
 strict = true
 sets = ["windows"]
-files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$ | ^\.github/actions/legs/windows-cng-ksp/'
+files = '^crate/clients/(cng|pkcs11)/ | ^crate/clients/clap/src/actions/(cng|cng_verify)\.rs$ | ^\.mise/scripts/windows/test_cng_ksp\.ps1$'
 setup = "windows"
 runners = ["windows-2022"]
 no-fork-pr = true
@@ -469,7 +456,6 @@ files = '''
 | ^\.mise/tasks/test/hsm/(idemia-sphere-simulator|other)$
 | ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
 | ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
-| ^\.github/actions/legs/windows-hsm-idemia/
 '''
 setup = "windows"
 runners = ["windows-2022"]
@@ -479,8 +465,8 @@ no-fork-pr = true
 
 [units.windows-est]
 strict = true
-sets = ["windows", "test_group"]
-files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$ | ^\.github/actions/legs/windows-est/'
+sets = ["windows", "ci_setup"]
+files = '^crate/server/src/routes/est/ | ^\.mise/scripts/windows/test_est_windows\.ps1$ | ^\.mise/scripts/kmip-go/go\.mod$'
 setup = "windows"
 runners = ["windows-2022"]
 timeout = 60
