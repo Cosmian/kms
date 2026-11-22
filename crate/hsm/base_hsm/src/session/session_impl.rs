@@ -4125,20 +4125,25 @@ impl Session {
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
     ///
-    /// Reads `CKA_LABEL` first for public keys so paired keys can share `CKA_ID`; for
-    /// private and symmetric keys, reads `CKA_ID` first and falls back to `CKA_LABEL`.
-    /// For public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
+    /// A public key created by the KMS carries its id (`…_pk`) in `CKA_ID`, while its
+    /// `CKA_LABEL` may hold a keyset label (`name::generation::key_id`) once the key pair
+    /// has been re-keyed: `CKA_ID` is read first for those. Other public keys (externally
+    /// provisioned pairs that share the private key's `CKA_ID`) read `CKA_LABEL` first, so
+    /// paired keys can share `CKA_ID`; private and symmetric keys read `CKA_ID` first and
+    /// fall back to `CKA_LABEL`. For public keys read via `CKA_LABEL`, the `_pk` suffix is
+    /// appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
         let is_public_key = matches!(
             self.get_key_type(object_handle)?,
             Some(KeyType::RsaPublicKey | KeyType::EcPublicKey)
         );
-        let attr_types = if is_public_key {
-            [CKA_LABEL, CKA_ID]
+        // (attribute, accepted only when it ends with `_pk`)
+        let attempts = if is_public_key {
+            vec![(CKA_ID, true), (CKA_LABEL, false), (CKA_ID, false)]
         } else {
-            [CKA_ID, CKA_LABEL]
+            vec![(CKA_ID, false), (CKA_LABEL, false)]
         };
-        for attr_type in attr_types {
+        for (attr_type, requires_pk_suffix) in attempts {
             let mut template = [CK_ATTRIBUTE {
                 type_: attr_type,
                 pValue: ptr::null_mut(),
@@ -4166,7 +4171,7 @@ impl Session {
             {
                 continue;
             }
-            if id.is_empty() {
+            if id.is_empty() || (requires_pk_suffix && !id.ends_with(b"_pk")) {
                 continue;
             }
             let (decoded_id, _) = if attr_type == CKA_LABEL {
