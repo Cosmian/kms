@@ -2060,19 +2060,12 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         assert_eq!(metadata.start_date, Some(start));
         assert_eq!(metadata.end_date, Some(end));
 
-        // Elapsed dates (what the rotation scheduler acts on), then disarming the schedule:
-        // clearing both dates must work and read back as unset.
-        let past_start = time::Date::from_calendar_date(2020, time::Month::January, 2)
-            .map_err(|e| HError::Default(e.to_string()))?;
-        let past_end = time::Date::from_calendar_date(2020, time::Month::February, 1)
-            .map_err(|e| HError::Default(e.to_string()))?;
-        session.set_key_dates(key_handle, Some(past_start), Some(past_end))?;
-        let metadata = session
-            .get_key_metadata(key_handle)?
-            .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
-        assert_eq!(metadata.start_date, Some(past_start));
-        assert_eq!(metadata.end_date, Some(past_end));
-        session.set_key_dates(key_handle, None, None)?;
+        // Disarming the schedule: clearing both dates must work and read back as unset. (Elapsed
+        // dates are exercised by the server-level keyset rotation test: a token may refuse to
+        // store a date in the past.)
+        session
+            .set_key_dates(key_handle, None, None)
+            .map_err(|e| HError::Default(format!("clearing both key dates failed: {e}")))?;
         let metadata = session
             .get_key_metadata(key_handle)?
             .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
