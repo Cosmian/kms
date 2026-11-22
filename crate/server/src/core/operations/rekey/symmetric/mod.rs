@@ -1,9 +1,8 @@
 //! KMIP `ReKey` for symmetric keys — dispatcher.
 //!
 //! Routes the request to either the SQL-backed pipeline ([`sql::SqlSymmetricRekeyer`]) or
-//! the HSM PKCS#11 rotation path ([`hsm`] module) based on the UID prefix.
+//! the HSM PKCS#11 rotation path ([`super::hsm`] module) based on the UID prefix.
 
-mod hsm;
 mod sql;
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -16,11 +15,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 
 use self::sql::SqlSymmetricRekeyer;
-use super::common::execute_rekey;
+use super::{common::execute_rekey, hsm::conceal_hsm_rekey_error};
 use crate::{
     core::{
         KMS,
-        uid_utils::{ObjectHandle, from_request, resolve_uid_or_keyset},
+        uid_utils::{ObjectHandle, addresses_one_generation, from_request, resolve_uid_or_keyset},
     },
     error::KmsError,
     middlewares::UserId,
@@ -35,16 +34,23 @@ use crate::{
 ///   `CKA_START_DATE` / `CKA_END_DATE` on both the old and new keys.
 pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &UserId) -> KResult<ReKeyResponse> {
     trace!("ReKey request");
-    let uid = from_request(request.unique_identifier.as_ref(), "ReKey")?
-        .as_str()
-        .to_owned();
+    let requested = from_request(request.unique_identifier.as_ref(), "ReKey")?;
+    let uid = requested.as_str().to_owned();
 
     // Resolve keyset references (`name@latest`, `name@first`, `name@N`, bare name) to a
     // concrete UID before routing. This allows `re-key --key-id my-keyset@latest` to work
     // transparently for both SQL and HSM-backed keysets.
+    let pinned = addresses_one_generation(&uid);
     let uid = if let Some(resolved) =
-        resolve_uid_or_keyset(ObjectHandle::from(&uid), "ReKey", kms, owner).await?
-    {
+        resolve_uid_or_keyset(ObjectHandle::from(&uid), "ReKey", kms, owner)
+            .await
+            .map_err(|error| {
+                if requested.is_hsm() {
+                    conceal_hsm_rekey_error(error, requested.as_str())
+                } else {
+                    error
+                }
+            })? {
         trace!("ReKey: resolved keyset ref '{}' → '{}'", uid, resolved);
         resolved
     } else {
@@ -68,7 +74,9 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &UserId) -> KResult<
                     .to_owned(),
             ));
         }
-        return Box::pin(kms.rekey_hsm_symmetric(&uid, owner)).await;
+        return Box::pin(kms.rekey_hsm_symmetric(&uid, owner, pinned))
+            .await
+            .map_err(|error| conceal_hsm_rekey_error(error, requested.as_str()));
     }
 
     let request = ReKey {

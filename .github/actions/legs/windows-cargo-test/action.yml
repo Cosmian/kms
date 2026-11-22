@@ -1,0 +1,16 @@
+---
+name: Leg windows-cargo-test
+description: >
+  Run the Windows cargo tests (full suite off pull requests, quick on them).
+
+runs:
+  using: composite
+  steps:
+    # ── windows-cargo-test ──
+    - name: Tests
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        . .\.mise\scripts\windows\cargo_test.ps1
+        # test_kms_server and ckms lib tests are covered on Linux; the full suite runs off pull requests only.
+        if ('${{ github.event_name != 'pull_request' }}' -eq 'true') { TestProject } else { TestProject -Quick }

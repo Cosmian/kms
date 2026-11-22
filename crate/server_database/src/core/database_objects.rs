@@ -818,6 +818,16 @@ impl Database {
         generation: Option<i32>,
         owner: &UserId,
     ) -> DbResult<Vec<(String, Attributes)>> {
+        // HSM keysets belong to one routed store. Do not turn a failed scan into an empty
+        // keyset: callers use this result to refuse protection with retired generations.
+        if cosmian_kms_interfaces::ObjectHandle::from(name).is_hsm() {
+            return self
+                .get_object_store(name)
+                .await?
+                .find_by_rotate_name(name, generation, owner)
+                .await
+                .map_err(Into::into);
+        }
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
         for db in map.values() {
@@ -846,6 +856,7 @@ impl Database {
     pub async fn set_key_label(&self, uid: &str, label: &str) -> DbResult<()> {
         let store = self.get_object_store(uid).await?;
         store.set_key_label(uid, label).await?;
+        self.object_cache.invalidate(uid).await;
         // On HSM stores the label carries the keyset name and generation.
         self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
@@ -863,8 +874,9 @@ impl Database {
         let store = self.get_object_store(uid).await?;
         store
             .set_key_rotation_dates(uid, start_date, end_date)
-            .await
-            .map_err(Into::into)
+            .await?;
+        self.object_cache.invalidate(uid).await;
+        Ok(())
     }
 
     /// Perform an atomic set of operations on the database.

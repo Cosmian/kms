@@ -1,0 +1,27 @@
+---
+name: Leg build-documentation
+description: >
+  Check AI instruction consistency and build the mdBook documentation.
+
+inputs:
+  public-docs-token:
+    description: passed from the caller secret
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # ── build-documentation ──
+    - name: Check AI instruction consistency
+      shell: bash
+      run: mise run docs:check-ai
+
+    - name: Build documentation
+      env:
+        # Turns on the combined public docs build; the caller passes PAT_TOKEN on pull requests only (empty on fork PRs)
+        PUBLIC_DOCS_TOKEN: ${{ inputs.public-docs-token }}
+      shell: bash
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
+        mise run docs:mdbook-build

@@ -592,6 +592,11 @@ criteria = "safe-to-deploy"
 version = "0.10.0"
 criteria = "safe-to-run"
 
+[[exemptions.form_urlencoded]]
+version = "1.2.3"
+criteria = "safe-to-deploy"
+notes = "required by url 2.5.9 (RUSTSEC-2026-0592 fix) — unaudited, pending review"
+
 [[exemptions.fragile]]
 version = "2.1.0"
 criteria = "safe-to-run"
@@ -1521,6 +1526,11 @@ criteria = "safe-to-deploy"
 version = "0.9.10"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+
+[[exemptions.url]]
+version = "2.5.9"
+criteria = "safe-to-deploy"
+notes = "bump fixes RUSTSEC-2026-0592 (>=2.5.9) — unaudited, pending review"
 
 [[exemptions.uuid]]
 version = "1.28.0"

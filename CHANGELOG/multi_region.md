@@ -91,5 +91,6 @@
     (HSM-stored objects do not replicate), and auto-rotation cron enabled on followers only
     (followers skip it, so no region would rotate). When no configs are given, a self-test proves the
     detectors fire on synthetic configurations.
-- Wired the guard suite into the CI matrix (`.github/workflows/test-db.yml`) as a
-  non-FIPS-only job to avoid duplicating the pgEdge behavioral-test runtime.
+- Wired the pgEdge, Galera and guard-suite legs into the CI matrix (`.github/ci-paths.toml` units
+  `db:pgedge`, `db:galera`, `db:multi-region-guards`); the guard suite is non-FIPS only to avoid
+  duplicating the pgEdge behavioral-test runtime.

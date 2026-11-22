@@ -1,0 +1,25 @@
+---
+name: Leg pki-macos
+description: >
+  Run the pki test group on macOS (no Nix there).
+
+runs:
+  using: composite
+  steps:
+    # estclient / scepclient are Go programs built by the interop scripts
+    - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version-file: .mise/scripts/kmip-go/go.mod
+
+    # ── pki-macos: the pki group on macOS (no Nix there) ──
+    - name: Test (pki, macOS)
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SUITE: pki
+        VARIANT: fips
+      shell: bash
+      run: |
+        st=0
+        mise run "test:${SUITE}" --variant "$VARIANT" || st=$?
+        if [ "$st" -eq 77 ]; then echo "::warning::test:${SUITE} skipped (see its SKIP line)"; st=0; fi
+        exit "$st"
