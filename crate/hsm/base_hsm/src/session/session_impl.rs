@@ -3630,7 +3630,12 @@ impl Session {
     }
 
     /// Set `CKA_START_DATE` and/or `CKA_END_DATE` on a key object.
-    /// Passing `None` clears the attribute (sets to empty `CK_DATE`).
+    ///
+    /// Passing `None` clears the attribute. Tokens disagree on how an unset date is written: the
+    /// Utimaco simulator accepts the empty attribute (zero length, PKCS#11 "default empty") and
+    /// refuses an all-zero `CK_DATE` (`CKR_GENERAL_ERROR`), whereas Proteccio refuses the empty
+    /// attribute (`CKR_ATTRIBUTE_VALUE_INVALID`). The empty form is tried first, the zeroed
+    /// `CK_DATE` second.
     pub fn set_key_dates(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -3646,9 +3651,42 @@ impl Session {
         }
         let start_ck = start_date.map(Self::format_ck_date);
         let end_ck = end_date.map(Self::format_ck_date);
-        // An unset date is the empty attribute (zero length, PKCS#11 §4.1 "default empty"), not
-        // an all-zero CK_DATE: tokens such as the Utimaco simulator refuse the latter with
-        // CKR_GENERAL_ERROR, which made disarming a rotation schedule fail.
+        let forms: &[bool] = if start_ck.is_some() && end_ck.is_some() {
+            &[false]
+        } else {
+            &[false, true]
+        };
+        let mut first_rv = CKR_OK;
+        for &zeroed in forms {
+            let rv = self.set_key_dates_once(key_handle, start_ck, end_ck, zeroed)?;
+            if rv == CKR_OK {
+                return Ok(());
+            }
+            if first_rv == CKR_OK {
+                first_rv = rv;
+            }
+        }
+        Err(HError::Default(format!(
+            "Failed to set key dates for key handle: {key_handle}. Return code: {first_rv}"
+        )))
+    }
+
+    /// One `C_SetAttributeValue` of both dates; an unset date is written as an all-zero
+    /// `CK_DATE` when `zeroed_unset`, as an empty attribute otherwise. Returns the PKCS#11 code.
+    fn set_key_dates_once(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        start_ck: Option<CK_DATE>,
+        end_ck: Option<CK_DATE>,
+        zeroed_unset: bool,
+    ) -> HResult<CK_RV> {
+        let zero = CK_DATE {
+            year: [0; 4],
+            month: [0; 2],
+            day: [0; 2],
+        };
+        let start_ck = start_ck.or_else(|| zeroed_unset.then_some(zero));
+        let end_ck = end_ck.or_else(|| zeroed_unset.then_some(zero));
         let date_len = CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?;
         let date_attribute = |type_, date: &Option<CK_DATE>| CK_ATTRIBUTE {
             type_,
@@ -3685,12 +3723,7 @@ impl Session {
                 ));
             }
         };
-        if rv != CKR_OK {
-            return Err(HError::Default(format!(
-                "Failed to set key dates for key handle: {key_handle}. Return code: {rv}"
-            )));
-        }
-        Ok(())
+        Ok(rv)
     }
 
     /// Parse keyset metadata from a `CKA_LABEL` value.
