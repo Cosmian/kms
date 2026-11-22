@@ -3633,9 +3633,11 @@ impl Session {
     ///
     /// Passing `None` clears the attribute. Tokens disagree on how an unset date is written: the
     /// Utimaco simulator accepts the empty attribute (zero length, PKCS#11 "default empty") and
-    /// refuses an all-zero `CK_DATE` (`CKR_GENERAL_ERROR`), whereas Proteccio refuses the empty
-    /// attribute (`CKR_ATTRIBUTE_VALUE_INVALID`). The empty form is tried first, the zeroed
-    /// `CK_DATE` second.
+    /// refuses an all-zero `CK_DATE` (`CKR_GENERAL_ERROR`). The empty form is tried first, the
+    /// zeroed `CK_DATE` second. Proteccio refuses both with `CKR_ATTRIBUTE_VALUE_INVALID`: when
+    /// both dates are cleared and every form got that code, the key is left with a zero-length
+    /// validity (`start == end == today`), which is never a rotation schedule. Any other failure
+    /// (lost session, missing handle, ...) is returned as is.
     pub fn set_key_dates(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -3662,19 +3664,38 @@ impl Session {
             if rv == CKR_OK {
                 return Ok(());
             }
-            attempts.push(format!(
-                "{}={rv}",
-                if zeroed {
-                    "zeroed CK_DATE"
-                } else {
-                    "empty/set"
-                }
-            ));
+            attempts.push((zeroed, rv));
         }
+        if start_date.is_none()
+            && end_date.is_none()
+            && attempts
+                .iter()
+                .all(|&(_, rv)| rv == pkcs11_sys::CKR_ATTRIBUTE_VALUE_INVALID)
+        {
+            let today = Self::format_ck_date(time::OffsetDateTime::now_utc().date());
+            let rv = self.set_key_dates_once(key_handle, Some(today), Some(today), false)?;
+            if rv == CKR_OK {
+                return Ok(());
+            }
+            attempts.push((false, rv));
+        }
+        let attempts = attempts
+            .iter()
+            .map(|&(zeroed, rv)| {
+                format!(
+                    "{}={rv}",
+                    if zeroed {
+                        "zeroed CK_DATE"
+                    } else {
+                        "empty/set"
+                    }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         Err(HError::Default(format!(
             "Failed to set key dates for key handle: {key_handle} (start {start_date:?}, end \
-             {end_date:?}). Return code: {}",
-            attempts.join(", ")
+             {end_date:?}). Return code: {attempts}"
         )))
     }
 

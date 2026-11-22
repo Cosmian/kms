@@ -23,7 +23,7 @@
 - `ReKey` / `ReKeyKeyPair` on `name@first` / `name@0` of an HSM keyset whose generation 0 is retired is rejected instead of silently rotating the head.
 - HSM `ReKey` / `ReKeyKeyPair`: a missing key returns `Item_Not_Found` (was `Invalid_Field`), a wrong object type returns `Invalid_Object_Type` (was `Feature_Not_Supported`). A missing explicitly addressed generation never redirects to the head.
 - An HSM key at generation `i32::MAX` fails re-key with an error instead of aborting the server.
-- `SetAttribute RotateInterval 0` (disarming an HSM rotation schedule) failed on tokens that refuse to unset a `CK_DATE`: the Utimaco simulator refuses an all-zero `CK_DATE` (`CKR_GENERAL_ERROR`) and Proteccio refuses both forms (`CKR_ATTRIBUTE_VALUE_INVALID`). An unset date is now written as an empty attribute first, then as a zeroed `CK_DATE`; if the token still refuses, the key is disarmed with a zero-length validity (`CKA_START_DATE` = `CKA_END_DATE` = today), which is never a schedule.
+- `SetAttribute RotateInterval 0` (disarming an HSM rotation schedule) failed on tokens that refuse to unset a `CK_DATE`: the Utimaco simulator refuses an all-zero `CK_DATE` (`CKR_GENERAL_ERROR`) and Proteccio refuses both forms (`CKR_ATTRIBUTE_VALUE_INVALID`). An unset date is now written as an empty attribute first, then as a zeroed `CK_DATE`; when a token answers `CKR_ATTRIBUTE_VALUE_INVALID` to both, the key is disarmed with a zero-length validity (`CKA_START_DATE` = `CKA_END_DATE` = today), which is never a schedule. Any other error is reported.
 
 ### Key rotation
 

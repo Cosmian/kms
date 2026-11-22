@@ -2060,23 +2060,23 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
         assert_eq!(metadata.start_date, Some(start));
         assert_eq!(metadata.end_date, Some(end));
 
-        // Disarming the schedule. A token either unsets both dates, or (Proteccio) refuses to
-        // unset them: the store then disarms with a zero-length validity, which must round-trip.
-        // (Elapsed dates are exercised by the server-level keyset rotation test: a token may
-        // refuse to store a date in the past.)
-        let cleared = session.set_key_dates(key_handle, None, None);
-        let (expected_start, expected_end) = if cleared.is_ok() {
-            (None, None)
-        } else {
-            session.set_key_dates(key_handle, Some(start), Some(start))?;
-            (Some(start), Some(start))
-        };
+        // Disarming the schedule must succeed. A token either unsets both dates, or (Proteccio,
+        // which refuses to unset a date) is left with a zero-length validity: "not a schedule"
+        // either way. (Elapsed dates are exercised by the server-level keyset rotation test: a
+        // token may refuse to store a date in the past.)
+        session.set_key_dates(key_handle, None, None)?;
         let metadata = session
             .get_key_metadata(key_handle)?
             .ok_or_else(|| HError::Default("Key not found".to_owned()))?;
-        assert_eq!(
-            (metadata.start_date, metadata.end_date),
-            (expected_start, expected_end)
+        let disarmed = match (metadata.start_date, metadata.end_date) {
+            (None, None) => true,
+            (Some(start), Some(end)) => start == end,
+            _ => false,
+        };
+        assert!(
+            disarmed,
+            "dates after clearing: {:?} / {:?}",
+            metadata.start_date, metadata.end_date
         );
     } else {
         assert!(

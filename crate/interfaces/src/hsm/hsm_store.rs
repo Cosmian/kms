@@ -738,11 +738,6 @@ impl ObjectsStore for HsmStore {
             .await
     }
 
-    /// Write the rotation window of a key; `(None, None)` disarms it.
-    ///
-    /// Some tokens (Proteccio) cannot unset a `CKA_START_DATE` / `CKA_END_DATE`. Disarming then
-    /// writes a zero-length validity (`start == end == today`): [`rotation_from_dates`]
-    /// requires a span of at least one day, so it is never a schedule.
     async fn set_key_rotation_dates(
         &self,
         uid: &str,
@@ -750,21 +745,9 @@ impl ObjectsStore for HsmStore {
         end_date: Option<time::Date>,
     ) -> InterfaceResult<()> {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
-        let result = self
-            .hsm
+        self.hsm
             .set_key_dates(slot_id, key_id.as_bytes(), start_date, end_date)
-            .await;
-        if let (Err(error), None, None) = (&result, start_date, end_date) {
-            warn!(
-                "HSM key '{uid}' refused to clear its dates ({error}); disarming with a zero-length validity"
-            );
-            let today = time::OffsetDateTime::now_utc().date();
-            return self
-                .hsm
-                .set_key_dates(slot_id, key_id.as_bytes(), Some(today), Some(today))
-                .await;
-        }
-        result
+            .await
     }
 
     /// Count all non-destroyed objects on this HSM.

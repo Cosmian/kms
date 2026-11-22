@@ -72,8 +72,9 @@ struct RotatingHsm {
     fail_metadata: AtomicBool,
     return_empty_scan: AtomicBool,
     unauthenticated_only: AtomicBool,
-    /// Mimics Proteccio: a date can be set but not unset.
-    refuse_clear_dates: AtomicBool,
+    /// Mimics the Proteccio loader: a token that cannot unset a date is left with a zero-length
+    /// validity (`start == end == today`) when both dates are cleared.
+    clear_leaves_zero_length_validity: AtomicBool,
 }
 
 impl RotatingHsm {
@@ -443,14 +444,16 @@ impl HSM for RotatingHsm {
         start_date: Option<Date>,
         end_date: Option<Date>,
     ) -> InterfaceResult<()> {
-        if start_date.is_none()
+        let (start_date, end_date) = if start_date.is_none()
             && end_date.is_none()
-            && self.refuse_clear_dates.load(Ordering::Relaxed)
+            && self
+                .clear_leaves_zero_length_validity
+                .load(Ordering::Relaxed)
         {
-            return Err(InterfaceError::Default(
-                "CKR_ATTRIBUTE_VALUE_INVALID".to_owned(),
-            ));
-        }
+            (Some(today()), Some(today()))
+        } else {
+            (start_date, end_date)
+        };
         let mut keys = self.keys();
         let key = keys
             .get_mut(key_id)
@@ -492,7 +495,7 @@ async fn kms_with_rotating_hsm_config(config: ClapConfig) -> KResult<(Arc<KMS>, 
         fail_metadata: AtomicBool::new(false),
         return_empty_scan: AtomicBool::new(false),
         unauthenticated_only: AtomicBool::new(false),
-        refuse_clear_dates: AtomicBool::new(false),
+        clear_leaves_zero_length_validity: AtomicBool::new(false),
     });
     let store = HsmStore::new(hsm.clone(), &[ADMIN.to_owned()], kms.vendor_id(), "hsm");
     kms.database
@@ -1606,12 +1609,14 @@ async fn set_rotation_attributes_on_hsm_key() -> KResult<()> {
     Ok(())
 }
 
-/// A token that cannot unset a date (Proteccio) is disarmed with a zero-length validity, which
-/// is never a schedule: the scheduler does not rotate the key, and it can be armed again.
+/// Server contract for a token whose loader disarms with a zero-length validity (Proteccio):
+/// such a key is never a schedule, so the scheduler does not rotate it, and it can be armed
+/// again. The loader fallback itself is covered by the shared loader test on real tokens.
 #[tokio::test]
-async fn disarm_falls_back_to_zero_length_validity_when_dates_cannot_be_cleared() -> KResult<()> {
+async fn zero_length_validity_disarms_and_can_be_rearmed() -> KResult<()> {
     let (kms, hsm) = kms_with_rotating_hsm().await?;
-    hsm.refuse_clear_dates.store(true, Ordering::Relaxed);
+    hsm.clear_leaves_zero_length_validity
+        .store(true, Ordering::Relaxed);
     hsm.insert("solo", KeyType::AesKey, 256, "solo", None, None);
     set_hsm_attribute(&kms, "hsm::0::solo", Attribute::RotateInterval(7 * 86_400)).await?;
     assert_eq!(hsm.dates("solo"), (Some(today()), Some(today() + days(7))));

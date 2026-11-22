@@ -28,7 +28,10 @@ use uuid::Uuid;
 
 use super::{
     EMPTY_TAGS, delete_key, hsm_clap_config, locate_keys,
-    test_helpers::{assert_gcm_encrypt_refused, hsm_cannot_generate_gcm_iv, hsm_key_dates_support},
+    test_helpers::{
+        assert_gcm_encrypt_refused, get_hsm_model, hsm_cannot_generate_gcm_iv,
+        hsm_key_dates_support,
+    },
 };
 use crate::{
     core::{KMS, operations::run_auto_rotation},
@@ -172,6 +175,18 @@ async fn sign(kms: &KMS, uid_str: &str) -> KResult<Vec<u8>> {
         )
         .await?;
     Ok(response.signature_data.unwrap_or_default())
+}
+
+/// A signature that must not verify is answered `Invalid`. Only Kryoptic differs: it fails an
+/// RSA verification that does not match with `CKR_DEVICE_ERROR` (48) instead of
+/// `CKR_SIGNATURE_INVALID`; any other error, or that error on another token, is a failure.
+fn assert_rejected(result: &KResult<ValidityIndicator>) {
+    let kryoptic_device_error = get_hsm_model().as_deref() == Some("kryoptic")
+        && matches!(result, Err(e) if e.to_string().contains("Return code: 48"));
+    assert!(
+        matches!(result, Ok(ValidityIndicator::Invalid)) || kryoptic_device_error,
+        "{result:?}"
+    );
 }
 
 async fn verify(
@@ -429,24 +444,14 @@ async fn key_pair_keyset(kms: &KMS, slot: usize, created: &mut Vec<String>) -> K
             ValidityIndicator::Valid
         );
     }
-    // A signature that does not verify is never `Valid`. Most tokens answer `Invalid`; Kryoptic
-    // fails the verification with CKR_DEVICE_ERROR instead of CKR_SIGNATURE_INVALID.
     // An addressed generation does not walk the keyset: a signature made by another key is
     // rejected.
-    let wrong_generation = verify(kms, &format!("{public}@latest"), &signature_0, MESSAGE).await;
-    assert!(
-        matches!(&wrong_generation, Ok(ValidityIndicator::Invalid) | Err(_)),
-        "{wrong_generation:?}"
-    );
+    assert_rejected(&verify(kms, &format!("{public}@latest"), &signature_0, MESSAGE).await);
     assert_eq!(
         verify(kms, &format!("{public}@0"), &signature_0, MESSAGE).await?,
         ValidityIndicator::Valid
     );
-    let wrong_message = verify(kms, &public, &signature_1, b"another message").await;
-    assert!(
-        matches!(&wrong_message, Ok(ValidityIndicator::Invalid) | Err(_)),
-        "{wrong_message:?}"
-    );
+    assert_rejected(&verify(kms, &public, &signature_1, b"another message").await);
 
     // Re-key refusals leave the pair untouched.
     assert_refused_with(
