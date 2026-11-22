@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason, kmip_2_1::kmip_types::UniqueIdentifier,
+};
 pub(crate) use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectHandle;
 use cosmian_logger::trace;
 
@@ -130,6 +132,17 @@ fn looks_like_uuid(s: &str) -> bool {
         8 | 13 | 18 | 23 => c == '-',
         _ => c.is_ascii_hexdigit(),
     })
+}
+
+/// `true` when `identifier` addresses one keyset generation (`name@first`, `name@0`,
+/// `name@N`) rather than the keyset head (`name`, `name@latest`).
+pub(crate) fn addresses_one_generation(identifier: &str) -> bool {
+    matches!(
+        identifier
+            .rsplit_once('@')
+            .and_then(|(_, suffix)| parse_version_suffix(suffix)),
+        Some(KeysetVersion::First | KeysetVersion::Generation(_))
+    )
 }
 
 /// Try to parse an identifier as a keyset reference.
@@ -268,6 +281,10 @@ pub(crate) async fn resolve_uid_or_keyset(
             // Bare name (or plain HSM base UID): no keyset members found → fall through
             // to direct object lookup. The key may simply have no rotate_name set yet.
             KeysetVersion::Bare => Ok(None),
+            _ if handle.is_hsm() => Err(KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("{op_name}: keyset '{handle}' not found or has no resolvable latest key"),
+            )),
             // Explicit versioned ref (`@latest`, `@N`, `@first`): not finding the keyset
             // is always a user error.
             _ => Err(KmsError::InvalidRequest(format!(

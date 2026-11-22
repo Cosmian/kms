@@ -21,11 +21,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::trace;
 
 use self::sql::SqlKeypairRekeyer;
-use super::common::execute_rekey;
+use super::{common::execute_rekey, hsm::conceal_hsm_rekey_error};
 use crate::{
     core::{
         KMS,
-        uid_utils::{ObjectHandle, resolve_uid_or_keyset},
+        uid_utils::{ObjectHandle, addresses_one_generation, resolve_uid_or_keyset},
     },
     error::KmsError,
     middlewares::UserId,
@@ -63,7 +63,9 @@ pub(crate) async fn rekey_keypair(
         .and_then(|u| u.as_str())
         && ObjectHandle::from(uid).is_hsm()
     {
-        return Box::pin(route_hsm_keypair(kms, &request, uid, user)).await;
+        return Box::pin(route_hsm_keypair(kms, &request, uid, user))
+            .await
+            .map_err(|error| conceal_hsm_rekey_error(error, uid));
     }
 
     // Covercrypt early-return: uses a completely different code path (in-place attribute rekey)
@@ -140,10 +142,11 @@ async fn route_hsm_keypair(
                 .to_owned(),
         ));
     }
+    let pinned = addresses_one_generation(uid);
     let uid = resolve_uid_or_keyset(ObjectHandle::from(uid), "ReKeyKeyPair", kms, user)
         .await?
         .unwrap_or_else(|| uid.to_owned());
-    Box::pin(kms.rekey_hsm_keypair(&uid, user)).await
+    Box::pin(kms.rekey_hsm_keypair(&uid, user, pinned)).await
 }
 
 impl KMS {

@@ -656,16 +656,21 @@ impl ObjectsStore for HsmStore {
         Ok(keys
             .into_iter()
             .filter(|(_, meta)| {
-                // A key is due for rotation when end_date is set and today >= end_date
-                let Some(end_date) = meta.end_date else {
+                // Both keyset membership and valid dates are required: foreign PKCS#11
+                // validity dates alone never opt a key into KMS automatic rotation.
+                let Some(name) = meta.rotate_name.as_ref() else {
+                    return false;
+                };
+                let (Some(_), Some(end_date)) = (
+                    rotation_from_dates(meta.start_date, meta.end_date),
+                    meta.end_date,
+                ) else {
                     return false;
                 };
                 // Retired generations keep their past CKA_END_DATE: only the keyset head may be rotated, so a repeated or partially failed tick never rotates twice.
-                let is_head = meta.rotate_name.as_ref().is_none_or(|name| {
-                    max_generation
-                        .get(name)
-                        .is_none_or(|max| meta.rotate_generation.unwrap_or(0) >= *max)
-                });
+                let is_head = max_generation
+                    .get(name)
+                    .is_some_and(|max| meta.rotate_generation.unwrap_or(0) >= *max);
                 today >= end_date && is_head
             })
             .map(|(uid, _)| (uid, self.owner_name().to_owned()))
@@ -695,18 +700,9 @@ impl ObjectsStore for HsmStore {
         let mut results = Vec::new();
 
         for slot_id in slot_ids {
-            let found = self
-                .hsm
-                .find(slot_id, HsmObjectFilter::Any)
-                .await
-                .unwrap_or_default();
+            let found = self.hsm.find(slot_id, HsmObjectFilter::Any).await?;
             for object_id in found {
-                let Some(meta) = self
-                    .hsm
-                    .get_key_metadata(slot_id, &object_id)
-                    .await
-                    .unwrap_or_default()
-                else {
+                let Some(meta) = self.hsm.get_key_metadata(slot_id, &object_id).await? else {
                     continue;
                 };
                 // Only consider keys that belong to this keyset
@@ -3595,19 +3591,29 @@ mod characterization_tests {
         mock.expect_get_available_slot_list()
             .returning(|| Ok(vec![0]));
         mock.expect_find().returning(|_, _| {
-            Ok(vec![
-                b"a".to_vec(),
-                b"b".to_vec(),
-                b"c".to_vec(),
-                b"d".to_vec(),
-            ])
+            Ok([b"a", b"b", b"c", b"d", b"e", b"f", b"g"]
+                .into_iter()
+                .map(|id| id.to_vec())
+                .collect())
         });
         mock.expect_get_key_metadata().returning(move |_, id| {
             let mut meta = metadata(KeyType::AesKey, 256, None);
+            meta.start_date = Some(yesterday - time::Duration::days(30));
             meta.end_date = Some(if id == b"d" { tomorrow } else { yesterday });
+            if id != b"g" {
+                meta.rotate_name = Some("c".to_owned());
+                meta.rotate_generation = Some(0);
+            }
             if id == b"a" || id == b"b" {
                 meta.rotate_name = Some("n".to_owned());
                 meta.rotate_generation = Some(i32::from(id != b"a"));
+            }
+            // e: lone CKA_END_DATE (not armed by the KMS); f: empty schedule
+            if id == b"e" {
+                meta.start_date = None;
+            }
+            if id == b"f" {
+                meta.start_date = meta.end_date;
             }
             Ok(Some(meta))
         });

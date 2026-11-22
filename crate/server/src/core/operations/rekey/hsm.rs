@@ -53,7 +53,7 @@ impl KMS {
     /// Resolve a missing HSM key by falling back to keyset-name resolution.
     ///
     /// Looks up the latest-generation key for `full_base_uid` as a keyset name and
-    /// delegates to [`Self::rekey_hsm`]. Returns an `InvalidRequest` error
+    /// delegates to [`Self::rekey_hsm`]. Returns an `Item_Not_Found` error
     /// if no keyset exists under that name.
     async fn hsm_keyset_fallback(
         &self,
@@ -63,12 +63,9 @@ impl KMS {
         object_type: ObjectType,
     ) -> KResult<String> {
         if let Some(latest) = self.latest_hsm_keyset_uid(full_base_uid, user).await {
-            Box::pin(self.rekey_hsm(&latest, user, object_type)).await
+            Box::pin(self.rekey_hsm(&latest, user, object_type, false)).await
         } else {
-            Err(KmsError::InvalidRequest(format!(
-                "HSM key '{uid}' not found and no keyset named '{full_base_uid}' exists on \
-                 this HSM slot"
-            )))
+            Err(hsm_key_not_found(uid, full_base_uid))
         }
     }
 
@@ -81,24 +78,31 @@ impl KMS {
     }
 
     /// Rotate an HSM-resident AES key and return the UID of the new key.
+    ///
+    /// `pinned`: the caller addressed one generation (`name@first`, `name@0`), so a
+    /// non-latest key is refused instead of redirected to the keyset head.
     pub(super) async fn rekey_hsm_symmetric(
         &self,
         uid: &str,
         user: &UserId,
+        pinned: bool,
     ) -> KResult<ReKeyResponse> {
-        let new_uid = Box::pin(self.rekey_hsm(uid, user, ObjectType::SymmetricKey)).await?;
+        let new_uid = Box::pin(self.rekey_hsm(uid, user, ObjectType::SymmetricKey, pinned)).await?;
         Ok(ReKeyResponse {
             unique_identifier: UniqueIdentifier::TextString(new_uid),
         })
     }
 
     /// Rotate an HSM-resident key pair, identified by its private key UID.
+    ///
+    /// `pinned`: see [`Self::rekey_hsm_symmetric`].
     pub(super) async fn rekey_hsm_keypair(
         &self,
         uid: &str,
         user: &UserId,
+        pinned: bool,
     ) -> KResult<ReKeyKeyPairResponse> {
-        let new_uid = Box::pin(self.rekey_hsm(uid, user, ObjectType::PrivateKey)).await?;
+        let new_uid = Box::pin(self.rekey_hsm(uid, user, ObjectType::PrivateKey, pinned)).await?;
         let public_uid = format!("{new_uid}{SYSTEM_TAG_PUBLIC_KEY}");
         Ok(ReKeyKeyPairResponse {
             private_key_unique_identifier: UniqueIdentifier::TextString(new_uid),
@@ -128,16 +132,21 @@ impl KMS {
     /// ## Non-latest generation rejection
     ///
     /// If the key belongs to a named keyset but is not the latest generation, the request
-    /// is rejected with an error.  Callers should use the bare keyset name (e.g.
-    /// `re-key --key-id my-key`) or `my-key@latest` — the dispatcher resolves those to
-    /// the latest UID before this function is called.
+    /// is rejected when the caller addressed that generation (`@N` UID, or `pinned` for
+    /// `name@first` / `name@0`); a bare base UID is redirected to the keyset head.
     async fn rekey_hsm(
         &self,
         uid: &str,
         user: &UserId,
         object_type: ObjectType,
+        pinned: bool,
     ) -> KResult<String> {
         self.enforce_create_permission(user).await?;
+        let op_name = if object_type == ObjectType::SymmetricKey {
+            "ReKey"
+        } else {
+            "ReKeyKeyPair"
+        };
 
         // Parse the UID early — prefix, slot_id, and key_id are needed for the
         // keyset-name fallback resolution that follows.
@@ -151,34 +160,45 @@ impl KMS {
             parsed.has_explicit_gen,
         );
 
-        // Retrieve old key metadata from the HSM.
-        // When the PKCS#11 slot does not have a key with this exact UID — returned
-        // either as `Ok(None)` or as an `Err` containing "not found" — fall back to
-        // keyset-name resolution using the full base UID as the rotate_name.
+        // Only a bare keyset handle can fall back to its current head. A missing addressed
+        // generation must never silently rotate a different key.
         let old_owm = match self.database.retrieve_object(uid).await {
-            Ok(Some(owm)) => owm,
-            Ok(None) => {
-                return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user, object_type))
-                    .await;
+            Ok(owm) => owm,
+            Err(e) if e.to_string().to_lowercase().contains("not found") => None,
+            Err(e) => return Err(KmsError::Database(e)),
+        };
+        let Some(old_owm) = old_owm else {
+            if has_explicit_gen || pinned {
+                return Err(hsm_key_not_found(uid, &full_base_uid));
             }
-            Err(e) => {
-                // PKCS#11 returns an error (not just empty results) for missing objects;
-                // treat any "not found" message as an absent key and try keyset resolution.
-                if e.to_string().to_lowercase().contains("not found") {
-                    return Box::pin(self.hsm_keyset_fallback(
-                        uid,
-                        &full_base_uid,
-                        user,
-                        object_type,
-                    ))
-                    .await;
-                }
-                return Err(KmsError::Database(e));
-            }
+            return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user, object_type)).await;
         };
 
+        // Per-object authorization, before anything about the key is disclosed: the caller
+        // must own the key or hold an explicit Rekey grant.  `enforce_create_permission`
+        // above only checks the server-level "can create" right.  A caller with no grant at
+        // all gets the same answer as for a missing key (COSMIAN-2026-037).
+        if !self
+            .user_can_perform_operation(&old_owm, user, &KmipOperation::Rekey)
+            .await?
+        {
+            let has_grant = !self
+                .database
+                .list_user_operations_on_object(uid, user, true)
+                .await?
+                .is_empty();
+            return Err(if has_grant {
+                KmsError::Unauthorized(format!(
+                    "User '{user}' does not have Rekey permission on HSM key '{uid}'"
+                ))
+            } else {
+                hsm_key_not_found(uid, &full_base_uid)
+            });
+        }
+
         if old_owm.object().object_type() != object_type {
-            return Err(KmsError::NotSupported(
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Object_Type,
                 if object_type == ObjectType::SymmetricKey {
                     "HSM ReKey is supported for AES symmetric keys only; re-key an HSM key pair \
                      with ReKeyKeyPair on its private key"
@@ -204,17 +224,17 @@ impl KMS {
         let old_attrs = old_owm.attributes();
 
         // Decide how to handle a non-latest key:
-        // - Explicit generation (@N suffix): the caller targeted a specific old generation
-        //   — this is an error.  Use the base UID (no suffix) to always rotate the head.
+        // - Addressed generation (`@N` suffix, or `pinned`): the caller targeted a specific
+        //   old generation — this is an error.  Use the base UID to always rotate the head.
         // - Bare base UID (no @N): treat as a stable keyset handle and redirect silently
         //   to the actual latest.  For HSM keys rotate_name is the full base UID, which
         //   is unique across slots (embed slot ID).
         if !self.is_keyset_latest(uid, old_attrs, user).await? {
-            if has_explicit_gen {
+            if has_explicit_gen || pinned {
                 return Err(KmsError::InvalidRequest(format!(
-                    "ReKey: HSM key '{uid}' is not the latest in its keyset — only the latest \
-                     generation can be rotated. Use '{full_base_uid}' to always rotate the \
-                     current head."
+                    "{op_name}: HSM key '{uid}' (generation {old_gen}) is not the latest in its \
+                     keyset — only the latest generation can be rotated. Use '{full_base_uid}' \
+                     or '{full_base_uid}@latest' to rotate the current head."
                 )));
             }
             // Stable handle: redirect to the latest generation.
@@ -224,11 +244,15 @@ impl KMS {
             if let Some(latest_uid) = self.latest_hsm_keyset_uid(keyset_id, user).await
                 && latest_uid != uid
             {
-                return Box::pin(self.rekey_hsm(&latest_uid, user, object_type)).await;
+                return Box::pin(self.rekey_hsm(&latest_uid, user, object_type, false)).await;
             }
         }
 
-        let new_gen = old_gen + 1;
+        let new_gen = old_gen.checked_add(1).ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "{op_name}: HSM key '{uid}' is at the maximum generation {old_gen}"
+            ))
+        })?;
         let new_uid = format!("{prefix}::{slot_id}::{base_id}@{new_gen}");
 
         // A key that never joined a keyset is enrolled under its full base UID.
@@ -410,5 +434,30 @@ impl KMS {
         }
 
         Ok(new_uid)
+    }
+}
+
+/// `Item_Not_Found` for an HSM key that is missing, or hidden from a caller without any grant.
+fn hsm_key_not_found(uid: &str, full_base_uid: &str) -> KmsError {
+    KmsError::Kmip21Error(
+        ErrorReason::Item_Not_Found,
+        format!(
+            "HSM key '{uid}' not found and no keyset named '{full_base_uid}' exists on this HSM \
+             slot"
+        ),
+    )
+}
+
+/// Hide the resolved generation in errors: callers without a grant must only see their
+/// supplied identifier, whether the keyset is missing or resolves to an inaccessible head.
+pub(super) fn conceal_hsm_rekey_error(error: KmsError, requested: &str) -> KmsError {
+    match error {
+        KmsError::ItemNotFound(_) | KmsError::Kmip21Error(ErrorReason::Item_Not_Found, _) => {
+            KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("HSM key '{requested}' not found"),
+            )
+        }
+        other => other,
     }
 }
