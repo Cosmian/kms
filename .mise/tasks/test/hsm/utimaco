@@ -38,6 +38,16 @@ HSM_USER_PASSWORD="12345678" cargo test \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
   -- --nocapture tests::test_hsm_utimaco_all --ignored --exact
 
+# Server-level keyset rotation against the simulator: re-key of AES keys and key pairs on the
+# slot, retirement of old generations and, because the simulator stores CKA_START_DATE /
+# CKA_END_DATE, the auto-rotation scheduler. No HSM_MODEL: the server tests default to the
+# Utimaco simulator on slot 0 with this PIN.
+HSM_USER_PASSWORD="12345678" cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- --ignored --exact tests::hsm::test_hsm_keyset_rotation
+
 # Verify KMS startup with a Utimaco-backed KEK in both configured variants.
 HSM_USER_PASSWORD="12345678" cargo test \
   -p test_kms_server \

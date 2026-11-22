@@ -23,6 +23,7 @@
 - `ReKey` / `ReKeyKeyPair` on `name@first` / `name@0` of an HSM keyset whose generation 0 is retired is rejected instead of silently rotating the head.
 - HSM `ReKey` / `ReKeyKeyPair`: a missing key returns `Item_Not_Found` (was `Invalid_Field`), a wrong object type returns `Invalid_Object_Type` (was `Feature_Not_Supported`). A missing explicitly addressed generation never redirects to the head.
 - An HSM key at generation `i32::MAX` fails re-key with an error instead of aborting the server.
+- `SetAttribute RotateInterval 0` (disarming an HSM rotation schedule) failed with `CKR_GENERAL_ERROR` on tokens that refuse an all-zero `CK_DATE`, such as the Utimaco simulator: an unset `CKA_START_DATE` / `CKA_END_DATE` is now sent as an empty attribute.
 
 ### Key rotation
 
@@ -31,3 +32,7 @@
 ## Documentation
 
 - Split the HSM key rotation documentation into how-to, reference and explanation pages: keyset addressing per operation, retired generations, auto-rotation due rule and error reasons.
+
+## Testing
+
+- HSM keyset rotation runs against real PKCS#11 tokens: the server `test_hsm_all` (SoftHSM2, Kryoptic) and the Utimaco simulator task cover re-key of AES keys and key pairs, retirement of old generations, processing with every generation and, on tokens that store `CKA_START_DATE` / `CKA_END_DATE`, the auto-rotation scheduler. The shared PKCS#11 loader test, run by every HSM loader including the hardware Proteccio and Crypt2Pay jobs, checks that keyset labels keep object ids and lookups for AES keys and both halves of a key pair, and, where the token stores key dates, that dates can be set, elapse and be cleared.
