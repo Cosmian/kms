@@ -6,7 +6,7 @@ attached to a key object; a background scheduler then rotates any key whose
 interval has elapsed — without any operator action.
 
 > **HSM keys** are rotated by the same scheduler; see
-> [HSM Key Rotation](hsm.md#auto-rotation).
+> [HSM keysets reference — Rotation schedule](hsm_keysets_reference.md#rotation-schedule).
 >
 > For the rotation flows and sequence diagrams for each key type, see
 > [Key Rotation](index.md).
@@ -66,7 +66,7 @@ ckms sym keys set-rotation-policy \
     --key-id  my-keyset   \
     --interval 3600       \
     --offset   60         \
-    --name     my-keyset
+    --rotation-name my-keyset
 ```
 
 `SetAttribute` initialises `x-rotate-generation = 0` and
@@ -136,7 +136,7 @@ On each tick, the scheduler:
 4. Emits an OpenTelemetry counter `kms.key.auto_rotation` labelled with `uid`
    and `algorithm` for each successful rotation.
 
-HSM keys are rotated too; see [HSM auto-rotation](hsm.md#auto-rotation).
+HSM keys are rotated too, under a different due rule; see [HSM keysets reference — Due rule](hsm_keysets_reference.md#due-rule).
 
 ### Attribute changes on auto-rotation
 
@@ -178,7 +178,7 @@ ckms sym keys create --key-id my-keyset --algorithm aes --length 256
 ```bash
 ckms sym keys set-rotation-policy \
     --key-id   my-keyset \
-    --name     my-keyset \
+    --rotation-name my-keyset \
     --interval 3600      \
     --offset   60
 ```
