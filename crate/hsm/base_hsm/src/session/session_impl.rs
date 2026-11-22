@@ -3644,34 +3644,23 @@ impl Session {
                     .to_owned(),
             ));
         }
-        let start_ck = start_date.map_or(
-            CK_DATE {
-                year: [0; 4],
-                month: [0; 2],
-                day: [0; 2],
-            },
-            Self::format_ck_date,
-        );
-        let end_ck = end_date.map_or(
-            CK_DATE {
-                year: [0; 4],
-                month: [0; 2],
-                day: [0; 2],
-            },
-            Self::format_ck_date,
-        );
+        let start_ck = start_date.map(Self::format_ck_date);
+        let end_ck = end_date.map(Self::format_ck_date);
+        // An unset date is the empty attribute (zero length, PKCS#11 §4.1 "default empty"), not
+        // an all-zero CK_DATE: tokens such as the Utimaco simulator refuse the latter with
+        // CKR_GENERAL_ERROR, which made disarming a rotation schedule fail.
+        let date_len = CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?;
+        let date_attribute = |type_, date: &Option<CK_DATE>| CK_ATTRIBUTE {
+            type_,
+            pValue: date.as_ref().map_or(ptr::null_mut(), |date| {
+                ptr::from_ref(date).cast_mut().cast()
+            }),
+            ulValueLen: if date.is_some() { date_len } else { 0 },
+        };
 
         let mut template = vec![
-            CK_ATTRIBUTE {
-                type_: CKA_START_DATE,
-                pValue: ptr::addr_of!(start_ck).cast_mut().cast(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
-            },
-            CK_ATTRIBUTE {
-                type_: CKA_END_DATE,
-                pValue: ptr::addr_of!(end_ck).cast_mut().cast(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
-            },
+            date_attribute(CKA_START_DATE, &start_ck),
+            date_attribute(CKA_END_DATE, &end_ck),
         ];
 
         #[expect(
