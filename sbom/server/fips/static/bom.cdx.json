@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:c5e5bc14-d70c-479e-85c3-4cdcd360d7b6",
+  "serialNumber": "urn:uuid:c1e2c325-415c-479b-ba4c-9d62da570772",
   "metadata": {
-    "timestamp": "2026-11-23T03:05:21.062151+00:00",
+    "timestamp": "2026-11-23T11:37:42.938730+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/7a0w5pbmvh1z0nl6zkn7d5052vzgj09d-cosmian-kms-server-5.29.0.drv",
+      "bom-ref": "/nix/store/xb22l13rsb2h13qvs7vyxxf0dz04jav4-cosmian-kms-server-5.29.0.drv",
       "name": "cosmian-kms-server",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/x5d2gh8l0p042sgnfzxa7rdzq81d52rz-cosmian-kms-server-5.29.0"
+          "value": "/nix/store/841mgj1l0mmc1c72l7vd33xj9l3cpmrc-cosmian-kms-server-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/7a0w5pbmvh1z0nl6zkn7d5052vzgj09d-cosmian-kms-server-5.29.0.drv"
+          "value": "/nix/store/xb22l13rsb2h13qvs7vyxxf0dz04jav4-cosmian-kms-server-5.29.0.drv"
         }
       ]
     }
@@ -21672,31 +21672,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.7",
+      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
       "name": "eslint-plugin-react-refresh",
-      "version": "0.5.7",
-      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.7",
+      "version": "0.5.8",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.7:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.7(eslint@9.39.3(jiti@2.7.0))",
+      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "name": "eslint-plugin-react-refresh",
-      "version": "0.5.7(eslint@9.39.3(jiti@2.7.0))",
-      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.7(eslint@9.39.3(jiti@2.7.0))",
+      "version": "0.5.8(eslint@9.39.3(jiti@2.7.0))",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.7_eslint_9.39.3_jiti_2.7.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.8_eslint_9.39.3_jiti_2.7.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23044,31 +23044,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/playwright@1.65.0",
+      "bom-ref": "pkg:npm/playwright@1.65.1",
       "name": "playwright",
-      "version": "1.65.0",
-      "purl": "pkg:npm/playwright@1.65.0",
+      "version": "1.65.1",
+      "purl": "pkg:npm/playwright@1.65.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:microsoft:playwright:1.65.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:microsoft:playwright:1.65.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/playwright-core@1.65.0",
+      "bom-ref": "pkg:npm/playwright-core@1.65.1",
       "name": "playwright-core",
-      "version": "1.65.0",
-      "purl": "pkg:npm/playwright-core@1.65.0",
+      "version": "1.65.1",
+      "purl": "pkg:npm/playwright-core@1.65.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:playwright-core:playwright-core:1.65.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:playwright-core:playwright-core:1.65.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25173,7 +25173,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/7a0w5pbmvh1z0nl6zkn7d5052vzgj09d-cosmian-kms-server-5.29.0.drv",
+      "ref": "/nix/store/xb22l13rsb2h13qvs7vyxxf0dz04jav4-cosmian-kms-server-5.29.0.drv",
       "dependsOn": [
         "/nix/store/3drp9bbs91jnc7rwavclv30v5q4wjyq7-openssl-3.6.5.drv"
       ]
