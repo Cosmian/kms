@@ -49,11 +49,15 @@
   lifecycle event tables `object_state_events` and `object_state_event_tombstones` with the triggers that derive
   `objects.state` from them.
 - Downgrade, PostgreSQL (DEGRADED), every PostgreSQL deployment, not only multi-region: a rolling restart from the
-  previous release is not supported. Once this release has recorded its version an older KMS refuses to start, and
-  until then an older node's Activate, Revoke or Destroy has no effect on objects that have lifecycle events. Stop
-  every older node before starting the first node of this release. The lifecycle event log is now reconciled with
-  `objects` at every startup (event-less objects get a baseline event, events of deleted objects are purged),
-  replacing the one-time `object_state_events_backfilled` marker.
+  previous release is not supported. The previous release (5.29.0) has no database version check, so it starts on
+  this database; while the lifecycle triggers are installed, the state it writes to `objects.state` is replaced by
+  the state derived from the events, so its Activate, Revoke or Destroy has no effect on objects that have lifecycle
+  events. Stop every older node before starting the first node of this release. For a deliberate downgrade, drop the
+  three lifecycle triggers first (see [Database tables](../documentation/docs/configuration/database/tables.md)).
+  The lifecycle event log is reconciled with `objects` at every startup: event-less objects get baseline events;
+  stored states that add a later phase or compromise status to the event join are recorded with their Destroyed
+  payload snapshots when applicable; events of deleted objects are purged. This replaces the one-time
+  `object_state_events_backfilled` marker. Lowered states and UID reuse during a downgrade remain unsupported.
 
 ## Testing
 

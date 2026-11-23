@@ -158,7 +158,7 @@ flowchart TB
 | `update_state`, `AtomicOperation::UpdateState` | One event with the new state; never an `UPDATE` of `objects.state` |
 | `update_state_allow_downgrade`, `AtomicOperation::ResetState` | Tombstones the events this node has observed, then one event with the replacement state |
 | `delete` | Deletes the tombstones and events of the object in the same transaction as the object |
-| `ensure_schema` (every startup) | Purges events of objects that no longer exist, gives every event-less object a baseline event |
+| `ensure_schema` (every startup) | Purges orphan events and tombstones; appends missing state information for event-less objects and objects whose stored state adds a later phase or compromise status to their event join |
 
 - **Destroyed events carry the payload.** For `Destroyed` and `Destroyed_Compromised`, the event stores a copy of the
   zeroized `object` and `wrapping_key_id`, and the derive trigger restores them on the row. A replicated older

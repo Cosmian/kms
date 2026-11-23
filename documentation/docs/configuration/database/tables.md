@@ -230,7 +230,39 @@ PostgreSQL only. Insert-only lifecycle log from which `objects.state` is derived
 
 Applying a lifecycle event or a tombstone also advances `objects.version`. Conditional writes using a snapshot from before that transition fail with a conflict, including when the event arrived through replication.
 
-**Downgrade.** DEGRADED. Once this release has recorded its version, an older KMS refuses to start (migration runner). During a rolling restart, an older node still serves writes of `objects.state` directly; on an object that has lifecycle events, the trigger replaces that write with the derived state, so an Activate, Revoke or Destroy served by the older node does not take effect. Stop every older node before starting the first node of this release; if an older node served lifecycle operations after that, repeat them once every node runs this release. Objects an older node creates or deletes are reconciled at the next startup (baseline event added, orphan events purged).
+**Downgrade.** DEGRADED. Release 5.29.0 predates the migration runner's newer-version check: it starts on this database. A binary with that check refuses startup only when the recorded database version exceeds its own version.
+
+With the lifecycle triggers installed, older nodes' direct state writes are replaced by the event-derived state. Activate, Revoke and Destroy therefore cannot change the state of objects with events. Destroy can still zeroize their payload.
+
+Stop all older nodes before starting this release. Do not use mixed-version rolling restarts. Repeat lifecycle operations served by older nodes after the cutover; startup cannot reconstruct transitions that the trigger suppressed.
+
+Older releases' deletes and `clear_database` leave events and tombstones behind. Startup purges these orphans and adds baseline events for event-less objects.
+
+It also records stored states that add information to the event join, preserving later phases and compromise status.
+
+### Deliberate PostgreSQL downgrade and return
+
+This procedure addresses the lifecycle triggers only; it does not establish compatibility of unrelated release changes.
+
+1. Stop every KMS node in every region, let replication catch up, and back up each database before modifying it.
+2. On each database, remove the lifecycle triggers below. Do not assume that DDL is replicated. Keep the event tables and their contents.
+
+    ```sql
+    BEGIN;
+    DROP TRIGGER IF EXISTS trg_objects_state_derive ON objects;
+    DROP TRIGGER IF EXISTS trg_object_state_events_apply ON object_state_events;
+    DROP TRIGGER IF EXISTS trg_object_state_event_tombstones_apply ON object_state_event_tombstones;
+    COMMIT;
+    ```
+
+3. Start the older release. This procedure does not bypass a newer-version refusal in a binary that implements that check.
+4. Before returning to this release, stop every older node again and let replication catch up. Startup reinstalls the triggers and appends missing state information from `objects`, including a Destroyed payload snapshot.
+
+**Limits.** Reconciliation preserves the join, not an arbitrary replacement: a state lowered by the older release (such as batch UNDO) cannot override surviving events. Do not delete and recreate an object with the same UID during the downgrade.
+
+If a UID is reused, surviving events can override the replacement object's state or payload. The older release's `clear_database` does not remove this risk. Use a tested backup/restore plan for these cases.
+
+The startup scan evaluates the surviving event join for every object. Its cost grows with the object and event counts; events are not compacted.
 
 ## `crls`
 

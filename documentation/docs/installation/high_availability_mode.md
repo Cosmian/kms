@@ -336,12 +336,12 @@ What differs from profiles 2 to 5:
 
 ### Operating profile 6
 
-- **Upgrade the KMS release** one region first, then the others in the same window, and stop every node of the
-  previous release before starting the first node of the new one. The recorded database version replicates, so once
-  one region runs the new release, a node of the previous release in any region refuses to restart; until then, an
-  older node's Activate, Revoke or Destroy on an object that has lifecycle events has no effect. There is no in-place
-  downgrade of PostgreSQL. On Galera, start the first node alone before the others. The storage changes themselves
-  are applied at startup; no migration command is needed.
+- **Upgrade the KMS release** one region first, then the others in the same window, stopping every older node before
+  starting the new release. On PostgreSQL, release 5.29.0 starts on the upgraded database, but lifecycle triggers
+  override its direct state writes. No mixed-version rolling restart is supported on PostgreSQL.
+  See [Database tables](../configuration/database/tables.md#deliberate-postgresql-downgrade-and-return) for downgrade recovery and limits.
+  On Galera, start the first node alone before the others. The storage changes themselves are applied at startup;
+  no migration command is needed.
 - **Move an existing deployment to profile 6**: a region must run PostgreSQL or MySQL; a node with
   `region_role = "follower"` on SQLite or Redis-with-Findex is rejected at startup. The existing region keeps the
   default `region_role = "leader"`. The replication setup of the new region is in

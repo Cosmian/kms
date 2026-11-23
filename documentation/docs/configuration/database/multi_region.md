@@ -240,9 +240,10 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
 - The OCSP response cache is per KMS process: a revocation evicts the cached response of the node that served it
   only, and the other nodes of every region answer nonce-less requests from their cache until `ocsp_cache_ttl_secs`
   (default 86400 s) elapses. Keep `ocsp_cache_ttl_secs` low in a multi-region deployment.
-- Upgrade one region first, then the others in the same window: the recorded database version replicates with
-  `parameters`, so once one region runs the new release, a node of the previous release in any region refuses to
-  restart. On Galera, start the first node alone before the others.
+- Upgrade one region first, then the others in the same window, stopping every older node before starting the new release.
+  On PostgreSQL, release 5.29.0 starts on the upgraded database, but lifecycle triggers override its direct state writes.
+  See [Database tables](./tables.md#deliberate-postgresql-downgrade-and-return) for the downgrade procedure and round-trip limits.
+  On Galera, start the first node alone before the others.
 - To check a deployment, run `mise run test:db:multi-region-guards`: it verifies the primary keys,
   the `ENABLE ALWAYS` triggers, the Spock wiring (PostgreSQL), the Galera wiring (MySQL) and the operator
   configuration (exactly one leader, PostgreSQL or MySQL backend identical across regions, identical ceremony secret).

@@ -398,14 +398,19 @@ SELECT e.event_id FROM object_state_events e
 WHERE e.object_id = $1
   AND NOT EXISTS (SELECT 1 FROM object_state_event_tombstones t WHERE t.event_id = e.event_id);
 
+-- Reconcile state information written by an older KMS without the derive trigger: append missing
+-- phases or compromise status, including a baseline when no live event remains.
 -- name: backfill-object-state-events
+WITH observed AS MATERIALIZED (
+    SELECT id, kms_effective_state(id) AS effective_state FROM objects WHERE state IS NOT NULL
+)
 INSERT INTO object_state_events (event_id, object_id, state, object, wrapping_key_id)
 SELECT gen_random_uuid(), o.id, o.state,
        CASE WHEN o.state IN ('Destroyed', 'Destroyed_Compromised') THEN o.object END,
        CASE WHEN o.state IN ('Destroyed', 'Destroyed_Compromised') THEN o.wrapping_key_id END
 FROM objects o
-WHERE o.state IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM object_state_events e WHERE e.object_id = o.id);
+JOIN observed e ON e.id = o.id
+WHERE kms_state_join(e.effective_state, o.state) IS DISTINCT FROM e.effective_state;
 
 -- Events and tombstones of objects deleted by an older KMS (downgrade or rolling restart).
 -- name: purge-orphan-object-state-event-tombstones

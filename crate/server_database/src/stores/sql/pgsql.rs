@@ -1800,8 +1800,8 @@ impl Migrate for PgPool {
             .await
             .map_err(DbError::from)?;
 
-        // Reconcile with an older KMS (row 7): drop events of deleted objects, give event-less
-        // objects their baseline event.
+        // Reconcile with an older KMS (row 7): drop events of deleted objects, then give every
+        // event-less object, or object whose state outran its events, one event with its state.
         for name in [
             "purge-orphan-object-state-event-tombstones",
             "purge-orphan-object-state-events",

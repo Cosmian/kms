@@ -467,6 +467,60 @@ pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
         )));
     }
 
+    // g2) an older KMS ran without the derive trigger: preserve its Destroyed state and payload.
+    let older = Uuid::new_v4().to_string();
+    {
+        let mut legacy_client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        let tx = legacy_client.transaction().await.map_err(DbError::from)?;
+        tx.execute(
+            "INSERT INTO objects (id, object, attributes, state, owner) \
+             VALUES ($1, $2, '{}'::jsonb, 'Active', 'backfill_owner')",
+            &[&older, &key_json],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.execute(
+            "INSERT INTO object_state_events (event_id, object_id, state) \
+             VALUES (gen_random_uuid(), $1, 'Active')",
+            &[&older],
+        )
+        .await
+        .map_err(DbError::from)?;
+        // Transactional DDL restores the trigger even if the simulated legacy write fails.
+        tx.batch_execute("ALTER TABLE objects DISABLE TRIGGER trg_objects_state_derive")
+            .await
+            .map_err(DbError::from)?;
+        tx.execute(
+            "UPDATE objects SET state = 'Destroyed', object = $2 WHERE id = $1",
+            &[&older, &zeroized_json],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.batch_execute("ALTER TABLE objects ENABLE ALWAYS TRIGGER trg_objects_state_derive")
+            .await
+            .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)?;
+    }
+    let reconciled = PgPool::instantiate(url, false, None).await?;
+    // A stale lifecycle write and payload update must not undo the reconciled destruction.
+    reconciled.update_state(&older, State::Active).await?;
+    reconciled
+        .update_object(&older, &key_obj, &attrs, None)
+        .await?;
+    expect_state("g2", state_of(older.clone()).await?, State::Destroyed)?;
+    if stored_json(older.clone()).await? != zeroized_json {
+        return Err(DbError::ServerError(
+            "g2: reconciled Destroyed payload was overwritten".to_owned(),
+        ));
+    }
+    let events_before = count_events(older.clone()).await?;
+    let _reopened = PgPool::instantiate(url, false, None).await?;
+    if count_events(older).await? != events_before {
+        return Err(DbError::ServerError(
+            "g2: repeated startup must not append redundant events".to_owned(),
+        ));
+    }
+
     // h) a UID with stale events (late replicated event, older-node delete) can be created again:
     // the new object starts PreActive with its own payload.
     let reused = Uuid::new_v4().to_string();
