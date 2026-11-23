@@ -22,8 +22,8 @@
 # elsewhere.
 #
 # Usage:
-#   bash .github/scripts/test/test_ui_auth.sh
-#   AUTH_VERIFIER_REPO=/path/to/authentication bash .github/scripts/test/test_ui_auth.sh
+#   bash .mise/scripts/test/ui/test_ui_auth.sh
+#   AUTH_VERIFIER_REPO=/path/to/authentication bash .mise/scripts/test/ui/test_ui_auth.sh
 # ============================================================================
 set -euo pipefail
 
@@ -32,7 +32,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=.github/scripts/common.sh
 # shellcheck disable=SC1091
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 
 REPO_ROOT="$(get_repo_root "$SCRIPT_DIR")"
 UI_DIR="${REPO_ROOT}/ui"

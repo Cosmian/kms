@@ -17,7 +17,7 @@ set -euo pipefail
 
 # ── Paths & common helpers ───────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MISE_CONFIG_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+MISE_CONFIG_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 

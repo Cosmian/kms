@@ -6,7 +6,7 @@
  * running Auth Verifier authentication server (not mocked) and a REAL KMS server
  * configured with `[auth_verifier]`.
  *
- * Prerequisites (see `.github/scripts/test/test_ui_auth.sh`):
+ * Prerequisites (see `.mise/scripts/test/ui/test_ui_auth.sh`):
  *   - Auth Verifier server running on https://localhost:8443 with the bundled
  *     dev seed (realm "_", super-admin `admin` / `change_me`).
  *   - KMS server running on http://localhost:9998, serving the UI itself

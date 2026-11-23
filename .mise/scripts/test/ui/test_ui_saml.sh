@@ -16,7 +16,7 @@
 # Fixed host ports: 8443 (proxy), 8444 (Auth Verifier), 9443 (Keycloak), 9998 (KMS).
 # Overrides: KEYCLOAK_IMAGE, NGINX_IMAGE (e.g. a registry mirror), AUTH_VERIFIER_REPO.
 #
-# Usage: bash .mise/scripts/test/test_ui_saml.sh [--variant non-fips]
+# Usage: bash .mise/scripts/test/ui/test_ui_saml.sh [--variant non-fips]
 # ============================================================================
 set -euo pipefail
 
@@ -25,7 +25,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=.mise/scripts/common.sh
 # shellcheck disable=SC1091
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 
 REPO_ROOT="$(get_repo_root "$SCRIPT_DIR")"
 UI_DIR="${REPO_ROOT}/ui"

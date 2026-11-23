@@ -342,8 +342,8 @@ files = '''
 | ^authentication$
 | ^\.mise/tasks/test/ui/
 | ^\.mise/tasks/build/(ui|wasm)$
-| ^\.mise/scripts/test/(test_ui|test_ui_auth|test_ui_oidc|test_ui_saml)\.sh$
-| ^\.mise/scripts/test/saml_sso/
+| ^\.mise/scripts/test/ui/(test_ui|test_ui_auth|test_ui_oidc|test_ui_saml)\.sh$
+| ^\.mise/scripts/test/ui/saml_sso/
 '''
 variants = ["fips", "non-fips"]
 

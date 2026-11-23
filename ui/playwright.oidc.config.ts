@@ -24,7 +24,7 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
  *
  * The redirect URI is pre-registered with the Auth0 application, so the KMS
  * MUST be reachable at the fixed origin http://127.0.0.1:9998 (no dynamic
- * ports). The harness `.github/scripts/test/test_ui_oidc.sh` builds and starts
+ * ports). The harness `.mise/scripts/test/ui/test_ui_oidc.sh` builds and starts
  * everything, then sets `PLAYWRIGHT_BASE_URL` accordingly.
  */
 export default defineConfig({

@@ -60,4 +60,4 @@ grep -rnE '"\[(http|db|auth_verifier|tls|ui_config|socket_server)\]|^\s*\[(http|
 grep -rn 'auth_verifier.dev.toml' .mise .github/scripts
 ```
 
-Report each hit as `file:line — legacy | introduced by this diff`. Only hits introduced by the current diff (`git diff` added lines) block; legacy hits are listed, not migrated, unless the file is being touched. Known legacy: `.mise/scripts/test/test_ui_auth.sh`, 21 `kms_write_config` callers, `crate/server/src/config/command_line/clap_config.rs` loader-precedence tests, `crate/server/src/main.rs` inline TOML, `crate/clients/ckms/src/tests/login_tests.rs`.
+Report each hit as `file:line — legacy | introduced by this diff`. Only hits introduced by the current diff (`git diff` added lines) block; legacy hits are listed, not migrated, unless the file is being touched. Known legacy: `.mise/scripts/test/ui/test_ui_auth.sh`, 21 `kms_write_config` callers, `crate/server/src/config/command_line/clap_config.rs` loader-precedence tests, `crate/server/src/main.rs` inline TOML, `crate/clients/ckms/src/tests/login_tests.rs`.

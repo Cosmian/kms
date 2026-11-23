@@ -8,7 +8,7 @@
  * (demo-kms.eu.auth0.com). Not exhaustive: focuses on login, the security
  * guarantee (no token in the browser), session persistence and logout.
  *
- * Requires real credentials via env (see `.github/scripts/test/test_ui_oidc.sh`):
+ * Requires real credentials via env (see `.mise/scripts/test/ui/test_ui_oidc.sh`):
  *   - OIDC_TEST_USERNAME / OIDC_TEST_PASSWORD (a user with a verified `email`).
  * When absent, every test in this file is skipped.
  *

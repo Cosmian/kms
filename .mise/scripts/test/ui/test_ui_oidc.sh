@@ -18,7 +18,7 @@
 #
 # Usage:
 #   OIDC_CLIENT_SECRET=... OIDC_TEST_USERNAME=... OIDC_TEST_PASSWORD=... \
-#     bash .github/scripts/test/test_ui_oidc.sh
+#     bash .mise/scripts/test/ui/test_ui_oidc.sh
 # ============================================================================
 set -euo pipefail
 
@@ -27,7 +27,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=.github/scripts/common.sh
 # shellcheck disable=SC1091
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 
 REPO_ROOT="$(get_repo_root "$SCRIPT_DIR")"
 UI_DIR="${REPO_ROOT}/ui"
