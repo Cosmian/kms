@@ -57,7 +57,7 @@ runs:
         # Key = the files shell.nix imports. A stale key costs only speed, never correctness:
         # Nix ignores imported paths whose derivation hash changed.
         key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
-          'nix/utimaco.nix', '.mise/lib/common.sh') }}
+          'nix/utimaco.nix', '.mise/lib/common.sh', 'crate/crypto/openssl_versions.json') }}
 
     - name: Import Nix dev-shell closure
       if: inputs.dev-shell-cache == 'true' && steps.devshell.outputs.cache-hit == 'true'
