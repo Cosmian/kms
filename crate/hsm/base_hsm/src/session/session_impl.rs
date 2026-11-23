@@ -3618,22 +3618,30 @@ impl Session {
         key_type: &KeyType,
     ) -> HResult<Option<KeyUsageFlags>> {
         // Querying an attribute undefined for the object class fails the whole call.
-        let attribute_types: &[CK_ULONG] = match key_type {
+        let attributes: &[(CK_ULONG, KeyUsageFlags)] = match key_type {
             AesKey => &[
-                CKA_ENCRYPT,
-                CKA_DECRYPT,
-                CKA_SIGN,
-                CKA_VERIFY,
-                CKA_WRAP,
-                CKA_UNWRAP,
+                (CKA_ENCRYPT, KeyUsageFlags::ENCRYPT),
+                (CKA_DECRYPT, KeyUsageFlags::DECRYPT),
+                (CKA_SIGN, KeyUsageFlags::SIGN),
+                (CKA_VERIFY, KeyUsageFlags::VERIFY),
+                (CKA_WRAP, KeyUsageFlags::WRAP),
+                (CKA_UNWRAP, KeyUsageFlags::UNWRAP),
             ],
-            RsaPrivateKey => &[CKA_DECRYPT, CKA_SIGN, CKA_UNWRAP],
-            RsaPublicKey => &[CKA_ENCRYPT, CKA_VERIFY, CKA_WRAP],
+            RsaPrivateKey => &[
+                (CKA_DECRYPT, KeyUsageFlags::DECRYPT),
+                (CKA_SIGN, KeyUsageFlags::SIGN),
+                (CKA_UNWRAP, KeyUsageFlags::UNWRAP),
+            ],
+            RsaPublicKey => &[
+                (CKA_ENCRYPT, KeyUsageFlags::ENCRYPT),
+                (CKA_VERIFY, KeyUsageFlags::VERIFY),
+                (CKA_WRAP, KeyUsageFlags::WRAP),
+            ],
             EcPrivateKey | EcPublicKey => return Ok(None),
         };
-        let mut values: Vec<CK_BBOOL> = vec![CK_FALSE; attribute_types.len()];
-        let mut template = Vec::with_capacity(attribute_types.len());
-        for (type_, value) in attribute_types.iter().zip(values.iter_mut()) {
+        let mut values: Vec<CK_BBOOL> = vec![CK_FALSE; attributes.len()];
+        let mut template = Vec::with_capacity(attributes.len());
+        for ((type_, _), value) in attributes.iter().zip(values.iter_mut()) {
             template.push(CK_ATTRIBUTE {
                 type_: *type_,
                 pValue: std::ptr::from_mut(value).cast::<std::ffi::c_void>(),
@@ -3651,18 +3659,10 @@ impl Session {
             )));
         }
         let mut flags = KeyUsageFlags::empty();
-        for (type_, value) in attribute_types.iter().zip(values) {
-            if value != CK_TRUE {
-                continue;
+        for ((_, flag), value) in attributes.iter().zip(values) {
+            if value == CK_TRUE {
+                flags |= *flag;
             }
-            flags |= match *type_ {
-                CKA_ENCRYPT => KeyUsageFlags::ENCRYPT,
-                CKA_DECRYPT => KeyUsageFlags::DECRYPT,
-                CKA_SIGN => KeyUsageFlags::SIGN,
-                CKA_VERIFY => KeyUsageFlags::VERIFY,
-                CKA_WRAP => KeyUsageFlags::WRAP,
-                _ => KeyUsageFlags::UNWRAP,
-            };
         }
         Ok(Some(flags))
     }
