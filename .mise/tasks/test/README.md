@@ -202,6 +202,42 @@ sequenceDiagram
 
 [Task](db/multi-region-guards), backed by [multi_region_guards.sh](../../lib/multi_region_guards.sh): accepts the same variant/link flags plus `--configs` (space-separated complete server TOML fixtures), `--skip-live` and `--backend postgresql|mysql|all` (default `all`). It validates source/configuration invariants, prebuilds the test binaries before starting the containers, runs the behavioral proofs and checks each node's primary keys, `ENABLE ALWAYS` triggers, Spock wiring, local-only `cluster_nodes` and delta-apply GCM counter (pgEdge), and Galera wiring, InnoDB primary keys and the lifecycle/payload/GCM/grants proof (Galera). Without `--configs` it exercises synthetic detector cases. Missing Docker or `--skip-live` produces an incomplete result and exits with failure, never a passing live proof.
 
+```mermaid
+sequenceDiagram
+    participant Task as test:db:multi-region-guards
+    participant Static as static guards
+    participant Cargo as cargo (behavioral tests)
+    participant Docker as docker compose
+    participant PG as pgedge1 and pgedge2
+    participant Galera as galera1 and galera2
+
+    Task->>Static: source model wiring (leader gating)
+    alt --configs given
+        Task->>Static: topology, backend, clear_database, ceremony keys, incompatible features
+    else no --configs
+        Task->>Static: detector self-test on synthetic configs
+    end
+    alt --skip-live, or Docker unavailable
+        Task-->>Task: live checks skipped, result INCOMPLETE (exit 1)
+    else live checks
+        Task->>Cargo: prebuild the behavioral test binaries (containers still down)
+        opt backend is postgresql or all
+            Task->>Docker: up pgedge-1 pgedge-2
+            Task->>Cargo: state merge and grants, CRL gating, ceremony gating (non-FIPS only)
+            Cargo->>PG: create the schema, wire Spock full-mesh, write on both nodes
+            Task->>PG: primary keys, lifecycle triggers, cluster tables, Spock wiring
+        end
+        opt backend is mysql or all
+            Task->>Docker: up galera-1 galera-2 (wait until synced)
+            Task->>Cargo: state merge, payload guard, GCM, grants
+            Cargo->>Galera: writes on both nodes
+            Task->>Galera: wsrep wiring, InnoDB primary keys
+        end
+        Task->>Docker: stop pgedge, remove galera (EXIT trap)
+    end
+    Task-->>Task: exit 1 if any guard failed, else all guards passed
+```
+
 Schema invariants are checked against the running databases, not the location of SQL text in the source tree. The live guards verify primary keys, replica identity and lifecycle trigger definitions on both nodes.
 
 ---

@@ -16,6 +16,33 @@ asynchronously. The implementation is generic and is validated against pgEdge Co
 as the reference; other logical multi-master extensions (EDB Postgres Distributed, Postgres-BDR)
 are expected to behave the same way but are not part of the CI validation.
 
+## What is Spock
+
+Spock is a PostgreSQL extension, developed by pgEdge, for multi-master replication: every node accepts writes and
+replicates them to the others. Native PostgreSQL logical replication can already run in both directions, but it has
+no conflict resolution: two regions changing the same row make replication fail or the nodes diverge. Spock adds
+conflict resolution and conflict-free counters (delta-apply). Eviden KMS does not embed or call Spock: it relies on
+the guarantees below, and the operator installs and wires the extension. Spock needs `wal_level = logical`,
+`track_commit_timestamp = on` (conflict resolution compares commit timestamps) and
+`shared_preload_libraries = 'spock'`; the validated image is `pgedge/pgedge-postgres` with Spock 5 on PostgreSQL 16.
+See the [Spock documentation](https://docs.pgedge.com/spock-v5/v5-0-12/conflicts) and its
+[configuration guide](https://github.com/pgEdge/spock/blob/main/docs/configuring.md).
+
+| Spock concept | Meaning | Where it matters for the KMS |
+| ------------- | ------- | ---------------------------- |
+| Node | One PostgreSQL database taking part in the group | One per region |
+| Subscription | A one-way logical replication link from a provider node to a subscriber node | One in each direction makes a two-region group (a full mesh with more regions) |
+| Replication set | The list of tables a node publishes | Every `public` table except `cluster_nodes` (see [Scheduled jobs and cluster coordination](#scheduled-jobs-and-cluster-coordination)) |
+| Conflict resolution (`last_update_wins`) | When two regions change the same row, the version with the latest commit timestamp is kept | Object payload, attributes and tags; lifecycle states need another mechanism (see [Object-state conflict merge](#object-state-conflict-merge)) |
+| Delta-apply | A numeric column is replicated as an increment instead of a new value | `gcm_invocations.count`, so the AES-GCM counts of the regions add up |
+
+Replication is **asynchronous**: a commit succeeds locally and reaches the other regions after the replication lag.
+The KMS creates its lifecycle triggers as `ENABLE ALWAYS` so that they also fire on rows applied by replication.
+`mise run test:db:multi-region-guards` checks the extension, the node, the subscriptions and these settings on every
+node.
+
+MySQL has no Spock: the Galera alternative is described [below](#mysql-with-galera).
+
 ## Global architecture
 
 ```mermaid

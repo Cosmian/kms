@@ -85,6 +85,148 @@ KMS_SQLITE_PATH=/path/to/database.db
 KMS_REDIS_URL=redis://host:6379
 ```
 
+## Object Lifecycle State
+
+The KMIP lifecycle state of an object (`PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed`,
+`Destroyed_Compromised`) is stored in `objects.state`. The two multi-region backends, PostgreSQL and MySQL, apply
+the same merge rule when two writers change the state of one object at the same time, but they reach it differently,
+because their replication differs: PostgreSQL with Spock replicates committed rows and merges them afterwards, while
+MySQL Galera serializes concurrent writers and retries the loser. SQLite and Redis-with-Findex have a single writer,
+are not multi-region targets, and write the new state as is, without a join.
+
+### The merge rule
+
+The states are joined, not overwritten: the later phase wins and a compromise is never forgotten. The join is
+commutative, associative and idempotent, so every node reaches the same state whatever order the changes arrive in.
+It is implemented twice with the same order: `kms_state_join` in
+[`pgsql_object_state_events.sql`][pgsql-events-sql] and `join_state` in [`mysql.rs`][mysql-rs].
+
+```mermaid
+flowchart LR
+    classDef phase fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
+    classDef final fill:#f8cecc,stroke:#b85450,stroke-width:2px,color:#000
+
+    pre["PreActive<br/>phase 1"]:::phase --> act["Active<br/>phase 2"]:::phase
+    act --> deact["Deactivated<br/>phase 3"]:::phase
+    act --> comp["Compromised<br/>phase 3"]:::phase
+    deact --> dest["Destroyed<br/>phase 4"]:::final
+    comp --> destcomp["Destroyed_Compromised<br/>phase 4"]:::final
+    comp -.->|"join with Destroyed"| destcomp
+```
+
+- The result has the highest phase of the two states.
+- If either state is `Compromised` or `Destroyed_Compromised`, the result is the compromised variant of that phase.
+- Example: joining `Destroyed` and `Deactivated` gives `Destroyed`; joining `Destroyed` and `Compromised` gives
+  `Destroyed_Compromised`.
+- Batch UNDO is the only way back: `update_state_allow_downgrade` replaces the observed state.
+
+### PostgreSQL: an insert-only event log
+
+Spock resolves a conflict on one row by last-update-wins, so two regions writing `objects.state` would lose one of
+the changes. PostgreSQL therefore never writes `objects.state` for a transition. It inserts an event, and a trigger
+derives the state from the events. Events are insert-only rows with random UUIDs, so they never conflict and both
+regions end with the same set of events.
+
+```mermaid
+flowchart TB
+    classDef table fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
+    classDef trigger fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#000
+    classDef code fill:#e1d5e7,stroke:#9673a6,stroke-width:2px,color:#000
+
+    api["update_state<br/>update_state_allow_downgrade<br/>create, Upsert, delete"]:::code
+    events[("object_state_events<br/>event_id, object_id, state,<br/>object, wrapping_key_id")]:::table
+    tombs[("object_state_event_tombstones<br/>event_id")]:::table
+    apply["AFTER INSERT triggers<br/>touch the objects row,<br/>version + 1"]:::trigger
+    derive["BEFORE INSERT OR UPDATE trigger<br/>objects_state_derive"]:::trigger
+    eff["kms_effective_state<br/>joins the events<br/>that have no tombstone"]:::trigger
+    objects[("objects<br/>state, object,<br/>wrapping_key_id, version")]:::table
+
+    api -->|"insert an event"| events
+    api -->|"insert a tombstone<br/>(UNDO, reused uid)"| tombs
+    events --> apply
+    tombs --> apply
+    apply --> objects
+    objects --> derive
+    derive --> eff
+    eff --> events
+    derive -->|"overwrites state, and the<br/>zeroized payload when destroyed"| objects
+```
+
+| Code path in [`pgsql.rs`][pgsql-rs] | What it writes |
+| ----------------------------------- | -------------- |
+| `create`, `Upsert` | Tombstones the leftover events of a reused UID, inserts the `objects` row, then one event with the initial state, in one transaction |
+| `update_state`, `AtomicOperation::UpdateState` | One event with the new state; never an `UPDATE` of `objects.state` |
+| `update_state_allow_downgrade`, `AtomicOperation::ResetState` | Tombstones the events this node has observed, then one event with the replacement state |
+| `delete` | Deletes the tombstones and events of the object in the same transaction as the object |
+| `ensure_schema` (every startup) | Purges events of objects that no longer exist, gives every event-less object a baseline event |
+
+- **Destroyed events carry the payload.** For `Destroyed` and `Destroyed_Compromised`, the event stores a copy of the
+  zeroized `object` and `wrapping_key_id`, and the derive trigger restores them on the row. A replicated older
+  payload therefore cannot bring key material back.
+- **Tombstones are observed-remove.** A tombstone names events, so UNDO removes only the events this node has seen;
+  an event created concurrently in another region and not yet received still counts.
+- **Versions advance.** The apply triggers bump `objects.version`, so a conditional write planned on a snapshot taken
+  before a transition fails instead of overwriting it.
+- **All the triggers are `ENABLE ALWAYS`**, so they also fire on rows applied by replication.
+
+Concurrent changes in two regions:
+
+```mermaid
+sequenceDiagram
+    participant EU as KMS EU
+    participant DB_EU as PostgreSQL EU
+    participant DB_US as PostgreSQL US
+    participant US as KMS US
+
+    EU->>DB_EU: Destroy key K
+    DB_EU->>DB_EU: insert event Destroyed (with zeroized payload)
+    US->>DB_US: Deactivate key K
+    DB_US->>DB_US: insert event Deactivated
+    Note over DB_EU,DB_US: Spock replicates the events in both directions
+    DB_EU->>DB_US: event Destroyed
+    DB_US->>DB_EU: event Deactivated
+    DB_EU->>DB_EU: derive trigger joins both events, state is Destroyed
+    DB_US->>DB_US: derive trigger joins both events, state is Destroyed
+```
+
+### MySQL (Galera): a row lock and a retry
+
+Galera certifies each transaction at commit: a transaction that changes a row another node changed concurrently fails
+certification (error 1213) and the KMS retries it. No conflicting rows ever have to be merged, so MySQL has no event
+log. `update_state_` in [`mysql.rs`][mysql-rs] reads the stored state with `SELECT … FOR UPDATE`, joins it with the
+new state using `join_state`, and writes the result with `version + 1`. The retry then runs on the fresh row and
+joins again.
+
+```mermaid
+sequenceDiagram
+    participant KMS_A as KMS on node A
+    participant Galera_A as Galera node A
+    participant Galera_B as Galera node B
+    participant KMS_B as KMS on node B
+
+    KMS_A->>Galera_A: SELECT state FOR UPDATE
+    KMS_B->>Galera_B: SELECT state FOR UPDATE
+    KMS_A->>Galera_A: write join(stored, Destroyed), version + 1
+    KMS_B->>Galera_B: write join(stored, Deactivated), version + 1
+    Galera_A->>Galera_B: commit certification
+    Galera_B-->>KMS_B: error 1213, transaction aborted
+    KMS_B->>Galera_B: retry: SELECT state FOR UPDATE (now Destroyed)
+    KMS_B->>Galera_B: write join(Destroyed, Deactivated) = Destroyed
+```
+
+`update_state_allow_downgrade` (batch UNDO) is a plain write on MySQL: the row lock already serializes it.
+
+| | PostgreSQL (Spock) | MySQL (Galera) |
+| --- | --- | --- |
+| Concurrent writers | Both commit; rows merge after replication | One aborts (1213) and retries |
+| State written by the code | An event; the trigger derives `objects.state` | `objects.state` directly, joined under a row lock |
+| Extra tables | `object_state_events`, `object_state_event_tombstones` | none |
+| UNDO | Tombstones plus a replacement event | Plain write |
+| Destroyed payload | Stored in the event and restored by the trigger | Kept by the payload update path of `mysql.rs` |
+
+See [Multi-region active-active deployment](../../documentation/docs/configuration/database/multi_region.md) for the
+operator view and [`tables.md`][tables-md] for the columns and the downgrade verdicts.
+
 ## Schema Changes and Migrations
 
 Startup migrations are driven by `Migrate::bootstrap` in [`src/stores/migrate.rs`][migrate-rs].
@@ -113,6 +255,7 @@ One-time backfills or format conversions across releases are registered in [`src
 [query-sqlite]: ./src/stores/sql/query_sqlite.sql
 [sqlite-rs]: ./src/stores/sql/sqlite.rs
 [pgsql-rs]: ./src/stores/sql/pgsql.rs
+[pgsql-events-sql]: ./src/stores/sql/pgsql_object_state_events.sql
 [mysql-rs]: ./src/stores/sql/mysql.rs
 [redis-mig]: ./src/stores/redis/migrations/mod.rs
 [tables-md]: ../../documentation/docs/configuration/database/tables.md
