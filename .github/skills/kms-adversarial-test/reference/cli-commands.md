@@ -21,38 +21,7 @@ cargo run -p ckms -- <subcommand> [args]
 
 ## Command tree
 
-| Command              | Subcommands                                                                                         | Feature gate |
-| -------------------- | --------------------------------------------------------------------------------------------------- | ------------ |
-| `ckms sym`           | `keys` (`create`, `create-split-key`, `join-split-key`, `re-key`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt` | — |
-| `ckms rsa`           | `keys` (`create`, `re-key`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt`, `sign`, `sign-verify` | — |
-| `ckms ec`            | `keys` (`create`, `re-key`, `export`, `import`, `destroy`, …), `sign`, `sign-verify`; `encrypt`, `decrypt` (`non-fips`) | — |
-| `ckms certificates`  | `activate`, `certify`, `validate`, `encrypt`, `decrypt`, `export`, `import`, `revoke`, `destroy`, `generate-crl`, `generate-csr`, `set-rotation-policy` | — |
-| `ckms mac`           | `compute`, `verify`                                                                                 | —            |
-| `ckms hash`          | (hash operations)                                                                                   | —            |
-| `ckms derive-key`    | (key derivation)                                                                                    | —            |
-| `ckms locate`        | (object search with filters)                                                                        | —            |
-| `ckms attributes`    | `get`, `set`, `modify`, `delete`                                                                    | —            |
-| `ckms access-rights` | `grant`, `revoke`, `list`, `owned`, `obtained`, `crypto-officer`                                    | —            |
-| `ckms audit`         | `export`, `verify`                                                                                  | —            |
-| `ckms rng`           | `retrieve`, `seed`                                                                                  | —            |
-| `ckms secret-data`   | `create`, `export`, `import`, `wrap`, `unwrap`, `activate`, `revoke`, `destroy`                     | —            |
-| `ckms opaque-object` | `create`, `export`, `import`, `activate`, `revoke`, `destroy`                                       | —            |
-| `ckms kv`            | `put`, `get`, `list`, `delete`                                                                      | —            |
-| `ckms login`         | (authenticate and store token in `ckms.toml`)                                                       | —            |
-| `ckms logout`        | (clear stored credentials from `ckms.toml`)                                                         | —            |
-| `ckms aws`           | (BYOK export/import)                                                                                | —            |
-| `ckms azure`         | (BYOK export/import)                                                                                | —            |
-| `ckms google`        | `key-pairs`, `identities` (Google Workspace CSE)                                                    | —            |
-| `ckms cng`           | `register`, `unregister`, `status`, `list-keys`, `verify`                                           | —            |
-| `ckms pkcs11`        | `verify`, `capabilities`, `bench`                                                                   | —            |
-| `ckms vault`         | `approle`                                                                                           | —            |
-| `ckms server`        | `version`, `query`, `discover-versions`                                                             | —            |
-| `ckms bench`         | (performance benchmarks)                                                                            | —            |
-| `ckms cc`            | (Covercrypt operations)                                                                             | `non-fips`   |
-| `ckms fpe`           | `keys` (`create`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt`                           | `non-fips`   |
-| `ckms pgp`           | `keys` (`create`, `export`, `import`, `destroy`, …), `export`, `import`, `encrypt`, `decrypt`, `sign`, `sign-verify` | `non-fips` |
-| `ckms pqc`           | `keys` (`create`, `re-key`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt`, `sign`, `sign-verify` | `non-fips` |
-| `ckms tokenize`      | `hash`, `noise`, `word-mask`, `word-tokenize`, `word-pattern-mask`, `aggregate-number`, `aggregate-date`, `scale-number` | `non-fips` |
+Read [commands.rs](../../../../crate/clients/ckms/src/commands.rs) for top-level commands, then follow the relevant handler into [the clap actions](../../../../crate/clients/clap/src/actions/) for subcommands, flags, and feature gates. If the test binary is already built, use its `--help` to check which commands and flags that build exposes.
 
 ---
 

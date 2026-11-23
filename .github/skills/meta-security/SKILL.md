@@ -141,27 +141,12 @@ Output the [unified report](../shared/orchestrator-contract.md#4-unified-report-
 
 ## Step 7 — Blocking Criteria (per Orchestrator Contract Section 5)
 
-Determine go/no-go using this order:
-
-### BLOCKER (GO → NO-GO)
-
-- Any 🔴 **CRITICAL** finding from any phase
-- Any 🟠 **HIGH** finding from security-review or cryptography-review
-- Any 🔴 **Violation** from standards-review
-- Unmitigated **CRITICAL/HIGH** threats from threat-model
-- ⏭ **SKIPPED** phases are acceptable only in an explicitly requested incremental review with confirmed inapplicability; never skip in full/comprehensive or release mode
-
-### WARNING (recorded but non-blocking)
-
-- **MEDIUM** findings; must be addressed before merge if count > 5
-- **LOW** findings
+Apply the [shared blocking criteria](../shared/orchestrator-contract.md#5-gono-go-blocking-criteria). Also block on any high finding from security or cryptography review, any standards violation, or any unmitigated high or critical threat.
 
 ## Step 8 — Output Rules
 
 - **Never** auto-apply fixes within this audit — present the unified report for human review (auto-fixing self-review is `/kms-pr-review`'s job)
-- **Always** attribute each finding to its source phase (per deduplication rules in shared contract Section 3)
-- **Always** deduplicate findings that appear in multiple phases (keep the most detailed version, note the overlap)
-- **Group** blocking findings at the top for immediate visibility
+- **Group** blockers in the verdict summary; keep findings in phase order.
 - If all phases pass cleanly, say so clearly with a summary of what was scanned
 
 > **Note**: An incremental PASS is not a release go/no-go; use the full `/pre-release` gate before release.

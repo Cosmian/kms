@@ -29,7 +29,7 @@ curl -s http://127.0.0.1:9998/server-info | jq .
 # {"version":"...","fips_mode":false,...}
 ```
 
-**Chrome DevTools MCP** (for UI testing): install `npx -y chrome-devtools-mcp@latest`. Skill is designed for VS Code but works in any MCP-capable IDE. See `reference/ui-routes.md` for fully-qualified tool names.
+**Chrome DevTools MCP** (for UI testing): see [UI testing notes](reference/ui-routes.md#testing-with-chrome-devtools-mcp).
 
 ---
 
@@ -45,7 +45,7 @@ Identify which channel(s) the PR affects and test accordingly.
 cargo run -p ckms --features non-fips -- <subcommand> [args]
 ```
 
-Full command tree, roundtrip examples → **`reference/cli-commands.md`**
+See [CLI source links and roundtrip examples](reference/cli-commands.md).
 
 ### 1.2 — HTTP endpoints (`curl`)
 
@@ -74,7 +74,7 @@ Context-window size is capacity, not a separate free-token category.
 
 UI is served at `http://127.0.0.1:9998/ui/`. Use `io.github.ChromeDevTools:navigate_page` to open a route, `io.github.ChromeDevTools:fill_form` and `io.github.ChromeDevTools:click` to interact, `io.github.ChromeDevTools:take_screenshot` and `io.github.ChromeDevTools:wait_for` to observe results.
 
-Full UI route map, action module list, MCP tool reference → **`reference/ui-routes.md`**
+See [UI route, form, and test guidance](reference/ui-routes.md).
 
 ### 1.4 — Other channels
 
@@ -308,7 +308,7 @@ The tester agent **must be aware** of which feature flags are active and test ac
 
 ## 11 — KMIP Operations & Test Configurations
 
-Full dispatch table (all 44 operations, handlers, notes) and server config reference → **`reference/kmip-ops-and-configs.md`**
+See [KMIP dispatch and fixture sources](reference/kmip-ops-and-configs.md).
 
 ---
 
