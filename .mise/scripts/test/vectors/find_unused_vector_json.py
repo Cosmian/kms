@@ -17,7 +17,7 @@ import sys
 import re
 from pathlib import Path
 
-VECTORS_DIR = Path(__file__).resolve().parent.parent / 'test_data' / 'vectors'
+VECTORS_DIR = Path(__file__).resolve().parents[4] / 'test_data' / 'vectors'
 # jose/ uses runtime discovery — skip it entirely
 SKIP_DIRS = {'jose'}
 
