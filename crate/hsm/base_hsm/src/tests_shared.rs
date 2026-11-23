@@ -19,7 +19,7 @@ use std::{
 use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
-    MacAlgorithm,
+    KeyUsageFlags, MacAlgorithm,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
 use libloading::Library;
@@ -2021,6 +2021,45 @@ pub fn list_objects(slot: &Arc<SlotManager>) -> HResult<()> {
     Ok(())
 }
 
+/// Check that the PKCS#11 usage attributes of KMS-generated AES and RSA keys are read back.
+/// Only for HSMs known to expose them (`get_key_metadata` tolerates `usage: None`).
+pub fn key_usage_attributes(slot: &Arc<SlotManager>) -> HResult<()> {
+    let session = slot.open_session(true)?;
+    let usage_of = |handle| -> HResult<KeyUsageFlags> {
+        session
+            .get_key_metadata(handle)?
+            .and_then(|metadata| metadata.usage)
+            .ok_or_else(|| HError::Default("Key usage attributes missing".to_owned()))
+    };
+    let aes_id = test_object_id();
+    let aes = session.generate_aes_key(aes_id.as_bytes(), AesKeySize::Aes256, true, None)?;
+    // CKA_SIGN/CKA_VERIFY are not set by the KMS template: they carry the HSM default.
+    assert!(usage_of(aes)?.contains(
+        KeyUsageFlags::ENCRYPT
+            | KeyUsageFlags::DECRYPT
+            | KeyUsageFlags::WRAP
+            | KeyUsageFlags::UNWRAP
+    ));
+    let sk_id = test_object_id();
+    let pk_id = sk_id.clone() + "_pk";
+    let (sk, pk) = session.generate_rsa_key_pair(
+        sk_id.as_bytes(),
+        pk_id.as_bytes(),
+        RsaKeySize::Rsa2048,
+        true,
+        None,
+    )?;
+    assert!(
+        usage_of(sk)?
+            .contains(KeyUsageFlags::DECRYPT | KeyUsageFlags::UNWRAP | KeyUsageFlags::SIGN)
+    );
+    assert!(
+        usage_of(pk)?
+            .contains(KeyUsageFlags::ENCRYPT | KeyUsageFlags::WRAP | KeyUsageFlags::VERIFY)
+    );
+    Ok(())
+}
+
 pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let session = slot.open_session(true)?;
@@ -2046,6 +2085,16 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 256);
     assert_eq!(metadata.id.as_str(), key_id.as_str());
+    // CKA_ENCRYPT/DECRYPT/WRAP/UNWRAP are set on KMS-generated AES keys; HSMs that do not
+    // expose the attributes report `None`.
+    if let Some(usage) = metadata.usage {
+        assert!(usage.contains(
+            KeyUsageFlags::ENCRYPT
+                | KeyUsageFlags::DECRYPT
+                | KeyUsageFlags::WRAP
+                | KeyUsageFlags::UNWRAP
+        ));
+    }
 
     // CKA_START_DATE / CKA_END_DATE round-trip (HSM key rotation scheduling)
     let start = time::Date::from_calendar_date(2030, time::Month::January, 2)
