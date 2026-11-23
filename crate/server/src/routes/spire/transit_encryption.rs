@@ -133,7 +133,7 @@ fn version_tag(version: u32) -> String {
 
 /// Format a Vault ciphertext: `vault:v{version}:{base64(nonce || ct || tag)}`.
 fn format_ciphertext(version: u32, nonce: &[u8], ciphertext: &[u8], tag: &[u8]) -> String {
-    let mut body = Vec::with_capacity(nonce.len() + ciphertext.len() + tag.len());
+    let mut body = Vec::new();
     body.extend_from_slice(nonce);
     body.extend_from_slice(ciphertext);
     body.extend_from_slice(tag);
@@ -325,6 +325,10 @@ pub(crate) fn symmetric_key_info(
 /// ciphertext, unknown key version, AEAD failure), so callers cannot tell them apart.
 const DECRYPT_FAILED: &str = "cipher: message authentication failed";
 
+fn require_kms_response_data<T>(data: Option<T>, operation: &str) -> SpireResult<T> {
+    data.ok_or_else(|| SpireApiError::InternalError(format!("{operation} response missing data")))
+}
+
 fn decrypt_failed(reason: &dyn std::fmt::Display) -> SpireApiError {
     debug!("vault transit: decryption failed: {reason}");
     SpireApiError::BadRequest(DECRYPT_FAILED.to_owned())
@@ -414,7 +418,7 @@ async fn encrypt_impl(
     let tag = resp
         .authenticated_encryption_tag
         .ok_or_else(|| missing("authentication tag"))?;
-    let ciphertext = resp.data.unwrap_or_default();
+    let ciphertext = require_kms_response_data(resp.data, "Encrypt")?;
     if nonce.len() != GCM_NONCE_LEN || tag.len() != GCM_TAG_LEN {
         return Err(SpireApiError::InternalError(format!(
             "unexpected AES-GCM nonce/tag length {}/{}",
@@ -496,7 +500,7 @@ async fn decrypt_impl(
         .await
         .map_err(decrypt_error)?;
 
-    let plaintext = resp.data.unwrap_or_default();
+    let plaintext = require_kms_response_data(resp.data, "Decrypt")?;
     Ok(Json(DecryptTransitResponse {
         data: DecryptTransitData {
             plaintext: BASE64_STANDARD.encode(plaintext.as_slice()),
@@ -582,8 +586,8 @@ mod tests {
     use super::{
         DECRYPT_FAILED, GCM_NONCE_LEN, GCM_TAG_LEN, decrypt_with_transit_key,
         decrypt_with_transit_key_put, encrypt_with_transit_key, encrypt_with_transit_key_put,
-        find_owned_symmetric_versions, format_ciphertext, parse_ciphertext, rotate_transit_key,
-        rotate_transit_key_put,
+        find_owned_symmetric_versions, format_ciphertext, parse_ciphertext,
+        require_kms_response_data, rotate_transit_key, rotate_transit_key_put,
     };
     use crate::{
         core::KMS,
@@ -626,6 +630,13 @@ mod tests {
         ] {
             assert!(parse_ciphertext(&bad).is_err(), "accepted {bad:?}");
         }
+    }
+
+    #[test]
+    fn missing_kms_response_data_is_an_error() {
+        let error = require_kms_response_data::<()>(None, "Encrypt")
+            .expect_err("missing response data must be rejected");
+        assert!(error.to_string().contains("Encrypt response missing data"));
     }
 
     /// Call one transit route as `user` (injected as the authenticated identity).

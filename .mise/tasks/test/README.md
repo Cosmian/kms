@@ -719,7 +719,7 @@ sequenceDiagram
     participant Test as vault-transit-seal
     participant AV as auth-verifier :8443
     participant KMS as KMS :9998
-    participant Vault as Vault OSS :8210
+    participant Vault as Vault OSS<br/>(dynamic host port)
 
     Test->>AV: ckms vault approle create-role vault-seal
     Test->>KMS: POST /v1/auth/approle/login

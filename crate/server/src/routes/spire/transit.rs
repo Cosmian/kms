@@ -296,6 +296,16 @@ fn transit_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
     }
 }
 
+#[cfg(feature = "non-fips")]
+const fn nonfips_supported_transit_types_suffix() -> &'static str {
+    ", ed25519, ml-dsa-65"
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn nonfips_supported_transit_types_suffix() -> &'static str {
+    ""
+}
+
 /// Map a Vault key type string to an RSA bit count.
 fn transit_rsa_bits_from_key_type(key_type: &str) -> Option<usize> {
     match key_type {
@@ -606,11 +616,7 @@ async fn create_transit_key_impl(
         "unsupported transit key type '{}'. Supported: aes256-gcm96, ecdsa-p256, ecdsa-p384, \
          rsa-2048, rsa-4096{}",
         body.key_type,
-        if cfg!(feature = "non-fips") {
-            ", ed25519, ml-dsa-65"
-        } else {
-            ""
-        }
+        nonfips_supported_transit_types_suffix()
     )))
 }
 

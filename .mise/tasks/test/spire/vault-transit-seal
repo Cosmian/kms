@@ -44,7 +44,7 @@ require_cmd python3
 # Multi-arch index digest of hashicorp/vault:1.21 (docker buildx imagetools inspect).
 VAULT_IMAGE="hashicorp/vault:1.21@sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569"
 VAULT_CONTAINER="kms-vault-transit-seal"
-VAULT_PORT="8210"
+VAULT_PORT="$(kms_pick_free_port)"
 VAULT_ADDR="http://127.0.0.1:${VAULT_PORT}"
 KMS_ADDR="https://localhost:9998"
 SEAL_KEY="vault-autounseal"
