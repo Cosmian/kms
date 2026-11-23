@@ -1885,6 +1885,7 @@ pub async fn prepare_kms_server(
                 "/ec{_:.*}",
                 "/pqc{_:.*}",
                 "/pgp{_:.*}",
+                "/fpe{_:.*}",
                 "/mac{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
@@ -1898,6 +1899,7 @@ pub async fn prepare_kms_server(
                 "/google-cse{_:.*}",
                 "/tokenize{_:.*}",
                 "/rotation-policy{_:.*}",
+                "/hsm-status",
                 "/kv-secrets{_:.*}",
                 "/ssh-certificate{_:.*}",
                 "/ssh-ca{_:.*}",
@@ -2346,6 +2348,37 @@ fn kv_scope(
 mod tests {
     use super::*;
     use crate::tests::test_utils::https_clap_config;
+
+    #[actix_web::test]
+    async fn embedded_ui_deep_links_serve_index() {
+        let ui_dir = tempfile::tempdir().unwrap();
+        let index = "<!doctype html><title>KMS test UI</title>";
+        std::fs::write(ui_dir.path().join("index.html"), index).unwrap();
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.http.hostname = "127.0.0.1".to_owned();
+        config.ui_config.enable = true;
+        config.ui_config.index_html_folder = Some(ui_dir.path().display().to_string());
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        for path in ["/ui/fpe/encrypt", "/ui/hsm-status"] {
+            let response = client.get(format!("{base}{path}")).send().await.unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            assert_eq!(response.text().await.unwrap(), index, "{path}");
+        }
+        handle.stop(false).await;
+    }
 
     #[test]
     fn test_derive_session_key_deterministic() {
