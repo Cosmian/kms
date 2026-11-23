@@ -64,6 +64,7 @@ async fn test_openapi_yaml_endpoint() -> Result<(), String> {
         "/v1/ssh/roles/{name}:",
         "/v1/ssh/sign/{role}:",
         "/v1/secrets/password:",
+        "/ui/config:",
     ] {
         if !body.contains(path) {
             return Err(format!("missing OpenAPI path: {path}"));

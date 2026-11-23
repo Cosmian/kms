@@ -86,6 +86,16 @@ components:
     mtls:
       type: mutualTLS
       description: Client certificate presented during TLS handshake
+    uiSession:
+      type: apiKey
+      in: cookie
+      name: auth_session
+      description: KMS browser session established by UI login
+    authVerifierSession:
+      type: apiKey
+      in: cookie
+      name: _ea_
+      description: Auth Verifier SAML browser session for the configured realm
     basicAuth:
       type: http
       scheme: basic
@@ -4657,6 +4667,52 @@ paths:
                     example: alice@example.com
         '401':
           description: No active session
+
+  /ui/config:
+    get:
+      tags: [UI Auth]
+      summary: Optional sections available to the current UI user
+      description: >-
+        Available when KMS serves the Web UI. Accepts a KMS or Auth Verifier browser
+        session or an authenticated client certificate. If no authentication is
+        configured, the flags apply to the default user. The flags describe UI
+        visibility and do not grant permissions.
+      operationId: uiConfig
+      security:
+        - uiSession: []
+        - authVerifierSession: []
+        - mtls: []
+        - {}
+      responses:
+        '200':
+          description: UI visibility flags
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: "private, no-store"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kv, hsm, google_cse, crypto_officer]
+                additionalProperties: false
+                properties:
+                  kv:
+                    type: boolean
+                  hsm:
+                    type: boolean
+                  google_cse:
+                    type: boolean
+                  crypto_officer:
+                    type: boolean
+                    description: Whether the caller is configured as a Crypto Officer
+        '401':
+          description: Authentication required or invalid
+        '403':
+          description: The authenticated credential is not accepted for UI configuration
+        '404':
+          description: UI configuration route is not mounted
 
   /ui/logout:
     get:
