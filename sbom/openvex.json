@@ -3,8 +3,8 @@
   "@id": "https://package.cosmian.com/kms/openvex/cosmian-kms",
   "author": "Cosmian KMS security team <tech@cosmian.com>",
   "role": "Document Creator",
-  "timestamp": "2026-11-23T12:30:00Z",
-  "version": 3,
+  "timestamp": "2026-11-23T14:09:08Z",
+  "version": 4,
   "tooling": "Hand-curated; checked by `mise run sbom:validate`. Bump version and timestamp on every change.",
   "statements": [
     {
@@ -22,13 +22,6 @@
       "products": [{ "@id": "pkg:cargo/crypto-bigint@0.5.5" }],
       "status": "under_investigation",
       "status_notes": "Scope: crypto-bigint 0.5.5 as compiled into the Cosmian KMS server and ckms. No 0.5.x patch exists (fixed in >= 0.7.6, which the workspace uses for 0.7.x). FIPS builds reach it only via elliptic-curve 0.13 (p256/p384) from jsonwebtoken 10.4 for JWT ES256/ES384 signature verification over public inputs. Non-FIPS builds also reach it via pgp 0.21 -> cx448 0.1.1, used for OpenPGP X448/Ed448 secret-key operations (crate/crypto/src/crypto/openpgp/mod.rs: component_session_key falls back to pgp DecryptionKey::decrypt for non-RSA keys); exploitability of that path is not yet assessed."
-    },
-    {
-      "vulnerability": { "name": "RUSTSEC-2026-0594", "aliases": ["GHSA-8wcq-xq25-7fhm"] },
-      "products": [{ "@id": "pkg:cargo/cookie@0.16.2" }],
-      "status": "not_affected",
-      "justification": "inline_mitigations_already_exist",
-      "impact_statement": "Scope: cookie 0.16.2 (actix-web 4, which requires ^0.16; no patched 0.16.x exists) as compiled into the Cosmian KMS server and ckms. cookie 0.18.x (reqwest cookie_store) is locked at the patched 0.18.3. The nonce reuse needs a process that calls fork() and then adds private cookies in more than one of the resulting processes. The server reaches PrivateJar::add through the actix-session CookieSessionStore but never forks (no fork or daemonize call in crate/), and it builds the cookie key with Key::from(...) instead of Key::generate(), one of the workarounds listed by the advisory."
     }
   ]
 }
