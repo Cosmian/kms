@@ -3,10 +3,10 @@
   Build the OpenSSL FIPS provider (fips.dll) on Windows and stage it for the KMS.
 
 .DESCRIPTION
-  The KMS loads the CMVP-validated OpenSSL FIPS provider (3.1.2) at runtime next to a newer
+  The KMS loads the CMVP-validated OpenSSL FIPS provider at runtime next to a newer
   libcrypto (see crate/crypto/build.rs, which does the same on Linux/macOS). On Windows the
   KMS links the vcpkg OpenSSL, which ships no FIPS module, so this script:
-    1. downloads the pinned openssl-3.1.2 tarball (same URL and SHA-256 as crate/crypto/build.rs),
+    1. downloads the pinned FIPS provider tarball (crate/crypto/openssl_versions.json, as crate/crypto/build.rs),
     2. builds fips.dll with `Configure VC-WIN64A enable-fips no-shared no-asm` + nmake
        (Visual Studio environment located through vswhere / vcvars64.bat),
     3. runs `nmake install_fips install_ssldirs` (this also runs `openssl fipsinstall`, which
@@ -37,12 +37,6 @@ if ($env:OS -ne "Windows_NT") { throw "prepare_windows_fips_provider.ps1 runs on
 
 . (Join-Path $PSScriptRoot "common.ps1")
 
-# Must stay identical to OPENSSL_FIPS_* in crate/crypto/build.rs.
-$Version = "3.1.2"
-$Tarball = "openssl-$Version.tar.gz"
-$Url = "https://package.cosmian.com/openssl/$Tarball"
-$Sha256 = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"
-
 $scriptDir = (Resolve-Path -LiteralPath $PSScriptRoot).Path
 if ($scriptDir -match '[\\/]\.mise[\\/]scripts[\\/]windows$') {
     $repoRoot = (Resolve-Path -LiteralPath (Join-Path $scriptDir "..\..\..")).Path
@@ -50,6 +44,14 @@ if ($scriptDir -match '[\\/]\.mise[\\/]scripts[\\/]windows$') {
     $repoRoot = (Get-Location).Path
 }
 if (-not $EnvFile) { $EnvFile = Join-Path $repoRoot ".openssl-fips\env" }
+
+# Single source of truth shared with crate/crypto/build.rs, the Nix build and the packaging scripts.
+$pinned = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot "crate\crypto\openssl_versions.json") |
+    ConvertFrom-Json).fips
+$Version = $pinned.version
+$Tarball = "openssl-$Version.tar.gz"
+$Url = "https://package.cosmian.com/openssl/$Tarball"
+$Sha256 = $pinned.sha256
 
 $modulesDir = Join-Path $InstallDir "lib\ossl-modules"
 $sslDir = Join-Path $InstallDir "ssl"

@@ -47,7 +47,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Cache["nix-dev-shell-cache<br/>OpenSSL 3.1.2 / 3.6.5 + SoftHSM2 built once per Nix input hash"]
+    Cache["nix-dev-shell-cache<br/>FIPS provider + main OpenSSL + SoftHSM2 built once per Nix input hash"]
     Suites["test-suites<br/>one leg per triggered unit of ci-paths.toml, each run by test-group.yml<br/>(Nix, plain or Windows setup)"]
     Publish["cargo-publish<br/>tags only"]
     Cache --> Suites
@@ -96,7 +96,7 @@ eviction replace the former `cleanup` job, which deleted every cache after each 
 
 |Key prefix|Content|Producer|Approximate size|
 |---|---|---|---|
-|`nix-dev-shell-<os>-<arch>-<input hash>`|NAR export of the source-built Nix closure (OpenSSL 3.1.2, 3.6.5, FIPS bootstrap, SoftHSM2, Utimaco)|`nix-dev-shell-cache` job in `test_all.yml`; consumers use `setup-nix` with `dev-shell-cache: 'true'`|0.2 to 0.6 GB estimated (the job logs the exact size)|
+|`nix-dev-shell-<os>-<arch>-<input hash>`|NAR export of the source-built Nix closure (FIPS provider and main OpenSSL, FIPS bootstrap, SoftHSM2, Utimaco)|`nix-dev-shell-cache` job in `test_all.yml`; consumers use `setup-nix` with `dev-shell-cache: 'true'`|0.2 to 0.6 GB estimated (the job logs the exact size)|
 |`openssl-buildrs-<os>-<arch>-<variant>-<hash of crypto/build.rs>`|`target/openssl-*` prefixes installed by `crate/crypto/build.rs`|first job that builds it (`cache-openssl-buildrs`)|23 to 30 MB per prefix|
 |`vcpkg-<os>-<image version>-<hash of vcpkg.json>`|vcpkg binary cache of the static OpenSSL port|first Windows job (`build-static-openssl`)|tens of MB|
 
