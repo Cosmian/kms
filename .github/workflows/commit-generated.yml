@@ -58,10 +58,22 @@ jobs:
     outputs:
       ref: ${{ inputs.ref }}
     steps:
+      # Helpers come from the workflow's OWN commit, never from base-sha: base-sha is reported by a builder
+      # that ran dependency code, and the last step runs one of these helpers with PAT_TOKEN.
+      - name: Checkout trusted helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          path: trusted-src
+          sparse-checkout: .mise/scripts/release
+          submodules: false
+          persist-credentials: false
+
       - name: Checkout base commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.base-sha }}
+          path: base
           fetch-depth: 0
           submodules: false
           persist-credentials: false
@@ -72,7 +84,6 @@ jobs:
           name: ${{ inputs.artifact }}
           path: ${{ runner.temp }}/generated
 
-      # Trusted copies taken from the base commit BEFORE the patch is applied.
       - name: Stage trusted helpers
         env:
           PATHS: ${{ inputs.paths }}
@@ -80,13 +91,21 @@ jobs:
           set -euo pipefail
           trusted="${RUNNER_TEMP}/trusted"
           mkdir -p "${trusted}"
-          cp .mise/scripts/release/validate_generated_changes.py \
-             .mise/scripts/release/commit_generated.sh \
-             .mise/scripts/release/push_generated.sh "${trusted}/"
+          cp trusted-src/.mise/scripts/release/{validate_generated_changes.py,commit_generated.sh,push_generated.sh,check_base_lineage.sh} "${trusted}/"
           printf '%s\n' "${PATHS}" > "${trusted}/allowed.txt"
+
+      # The base commit must belong to this repository's history before anything is applied or authenticated.
+      - name: Verify the base commit lineage
+        working-directory: base
+        env:
+          REF: ${{ inputs.ref }}
+          BASE_SHA: ${{ inputs.base-sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'develop' }}
+        run: bash "${RUNNER_TEMP}/trusted/check_base_lineage.sh"
 
       - name: Apply, validate and commit the patch (no credential)
         id: apply
+        working-directory: base
         env:
           BASE_SHA: ${{ inputs.base-sha }}
           MESSAGE: ${{ inputs.message }}
@@ -96,6 +115,7 @@ jobs:
             bash "${RUNNER_TEMP}/trusted/commit_generated.sh"
 
       - name: Rebase and push
+        working-directory: base
         env:
           REF: ${{ inputs.ref }}
           BASE_SHA: ${{ inputs.base-sha }}

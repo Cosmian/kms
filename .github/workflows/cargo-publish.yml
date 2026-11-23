@@ -4,14 +4,11 @@ name: Cargo Publish Workspace
 # Two jobs on two fresh runners, so no dependency code (build script, proc macro) can ever run next to the
 # registry token:
 #   verify  — builds the whole workspace package set (`--dry-run` compiles); holds NO credential.
-#   publish — tags only, environment `crates-io` (required reviewers + CRATES_IO secret); `--no-verify` skips
-#             compilation. Cargo repackages the same immutable commit: it does not upload verify's tarballs.
+#   publish — tags only, environment `crates-io` (required reviewers; the CRATES_IO secret lives ONLY in that
+#             environment, so callers never hold it); `--no-verify` skips compilation. Cargo repackages the same immutable commit: it does not upload verify's tarballs.
 
 on:
   workflow_call:
-    secrets:
-      token:
-        required: true
 
 permissions:
   contents: read
@@ -79,5 +76,5 @@ jobs:
       # Nothing is compiled here: --no-verify skips the build that would run dependency code.
       - name: Publishing
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.token }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
         run: cargo publish --all-features --workspace --no-verify

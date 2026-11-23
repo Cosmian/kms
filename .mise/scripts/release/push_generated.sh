@@ -36,7 +36,9 @@ case "${status}" in
       exit 0
     fi
     git_net fetch --quiet --no-tags "${REMOTE_URL}" "+refs/heads/${REF}:refs/remotes/target/${REF}"
-    if ! git -c core.hooksPath=/dev/null -c commit.gpgsign=false rebase --quiet "refs/remotes/target/${REF}"; then
+    # --onto BASE_SHA transplants only the generated commit; a plain rebase would also replay every commit of
+    # BASE_SHA that the target branch lacks (e.g. develop commits into an existing release branch).
+    if ! git -c core.hooksPath=/dev/null -c commit.gpgsign=false rebase --quiet --onto "refs/remotes/target/${REF}" "${BASE_SHA}"; then
       git rebase --abort || true
       echo "::error::generated commit does not apply on top of ${REF}; resolve manually" >&2
       exit 1
