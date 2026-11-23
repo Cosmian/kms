@@ -15,15 +15,15 @@
 #      `sudo profiles renew -type configuration -identifier <id>`; what Apple sends is recorded,
 #      not asserted. On macOS 26.6 it produced no SCEP traffic for a manually installed profile.
 #
-# Usage: bash .mise/scripts/test/test_scep_apple.sh [--variant fips|non-fips] [--link static|dynamic]
+# Usage: bash .mise/scripts/test/pki/test_scep_apple.sh [--variant fips|non-fips] [--link static|dynamic]
 # Env:   SCEP_APPLE_WAIT_SECS (default 600) per wait, SCEP_APPLE_RENEW=1 (renewal step),
 #        SCEP_APPLE_FP_ALG (sha256|sha1, default sha256) for CAFingerprint,
 #        SCEP_APPLE_OVERWRITE=1 to replace an existing test_data/scep/apple/macos-<version> capture.
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 
 init_build_env "$@"
 setup_test_logging

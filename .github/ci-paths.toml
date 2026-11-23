@@ -120,7 +120,7 @@ pki = '''
   ^crate/server/src/routes/(est|scep|ocsp)/
 | ^crate/server/src/routes/crl\.rs$
 | ^\.mise/tasks/test/pki/
-| ^\.mise/scripts/test/(test_est_interop|test_scep_interop)\.sh$
+| ^\.mise/scripts/test/pki/(test_est_interop|test_scep_interop)\.sh$
 | ^\.mise/scripts/kmip-go/go\.mod$
 | ^crate/server/src/routes/(csr|enrollment|enrollment_guard)\.rs$
 | ^crate/server/src/core/certificate/

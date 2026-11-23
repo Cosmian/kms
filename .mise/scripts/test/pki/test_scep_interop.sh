@@ -8,12 +8,12 @@
 #   3. scepclient RenewalReq (existing cert) w/o challenge -> renewed certificate
 #   4. scepclient PKCSReq with a wrong challenge        -> failInfo: badRequest
 #
-# Usage: bash .mise/scripts/test/test_scep_interop.sh [--variant fips|non-fips]
+# Usage: bash .mise/scripts/test/pki/test_scep_interop.sh [--variant fips|non-fips]
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 
 init_build_env "$@"
 setup_test_logging
