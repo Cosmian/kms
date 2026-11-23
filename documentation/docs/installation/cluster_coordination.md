@@ -133,6 +133,8 @@ database, so the coordination above stays **inside a region**:
   run on the leader region (`region_role = "leader"`) only: a follower skips them, as it skips the CRL refresh;
 - `/cluster/status` and `kms.cluster.nodes` show the nodes of the region that answers: the `cluster_nodes` table is
   not replicated between regions;
+- the leader-only features that are not locked jobs (CRL generation, Crypto Officer ceremonies) are listed with the
+  jobs in [Scheduled jobs and cluster coordination](../configuration/database/multi_region.md#scheduled-jobs-and-cluster-coordination);
 - `/health` is per region: check each region with its own load balancer.
 
 ## Supported databases

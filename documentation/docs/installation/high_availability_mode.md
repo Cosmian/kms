@@ -334,6 +334,26 @@ What differs from profiles 2 to 5:
   [MySQL with Galera](../configuration/database/multi_region.md#mysql-with-galera)). All the regions use the same
   `ceremony_secret`.
 
+### Operating profile 6
+
+- **Upgrade the KMS release** one region first, then the others in the same window, and stop every node of the
+  previous release before starting the first node of the new one. The recorded database version replicates, so once
+  one region runs the new release, a node of the previous release in any region refuses to restart; until then, an
+  older node's Activate, Revoke or Destroy on an object that has lifecycle events has no effect. There is no in-place
+  downgrade of PostgreSQL. On Galera, start the first node alone before the others. The storage changes themselves
+  are applied at startup; no migration command is needed.
+- **Move an existing deployment to profile 6**: a region must run PostgreSQL or MySQL; a node with
+  `region_role = "follower"` on SQLite or Redis-with-Findex is rejected at startup. The existing region keeps the
+  default `region_role = "leader"`. The replication setup of the new region is in
+  [Multi-region active-active deployment](../configuration/database/multi_region.md).
+- **If the leader region is lost**, the followers keep serving reads and writes, but CRL generation, Crypto Officer
+  ceremonies and auto-rotation stop. There is no automatic election: set `region_role = "leader"` on one surviving
+  region and restart its nodes, and make sure the lost region cannot come back as a leader (never two leaders).
+- **Objects in an HSM do not replicate**: each region needs the same HSM keys.
+
+The full list of operating notes and limits is in
+[Multi-region active-active deployment](../configuration/database/multi_region.md#operating-notes).
+
 The topology, what converges and how, the replication set to configure and the limits are in
 [Multi-region active-active deployment](../configuration/database/multi_region.md); the settings are in
 [Database configuration](../configuration/database/configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr).

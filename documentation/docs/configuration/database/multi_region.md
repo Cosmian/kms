@@ -137,6 +137,19 @@ flowchart LR
     db_eu <-.->|"objects, events, CRLs, GCM counts<br/>(not cluster_nodes)"| db_us
 ```
 
+Which region runs each job, and which features the leader region keeps to itself:
+
+| Job or feature | Lock name | Runs on, in a multi-region deployment |
+| -------------- | --------- | ------------------------------------- |
+| Key auto-rotation and renewal warnings | `auto-rotation` | one node at a time, **leader region only** |
+| CRL refresh | `crl-refresh` | one node at a time, **leader region only** |
+| CRL generation (`generate-crl`) | none | **leader region only**; a follower answers HTTP 422 |
+| Crypto Officer ceremony activation and revocation | none | **leader region only**; a follower answers HTTP 422 |
+| Object counter reconciliation | `metrics-reconcile` | one node at a time, in every region |
+| Metrics gauges refresh (`kms.keys.active.count`, `kms.objects.total`) | none | every node of every region (each node exports its own gauges) |
+| KV secret TTL expiry | `kv-ttl` | one node at a time, in every region (repeating it converges) |
+| Every other KMIP operation and REST route | none | every region, locally; except that a follower's KV v2 and SSH CA/role requests return a retry error until the leader's `kv_metadata_uid_key` has replicated (see [Operating notes](#operating-notes)) |
+
 - **A job lock excludes a job in its own region only.** Two regions would run the same job at the same time, so a
   job that must run once runs on the leader region only: key auto-rotation and its renewal warnings (a follower
   skips them, like the CRL refresh). Enable `auto_rotation_check_interval_secs` on the leader region; it has no effect
