@@ -455,7 +455,7 @@ class CiWorkflows(unittest.TestCase):
         for path in (
             'crate/server/src/routes/aws_xks/sigv4.rs',
             'crate/server/src/routes/aws_xks/encrypt_decrypt/encrypt_.rs',
-            '.mise/scripts/test/test_xks_remote.sh',
+            '.mise/scripts/test/cloud/test_xks_remote.sh',
         ):
             with self.subTest(path=path):
                 self.assertIn('xks-remote', run(path))

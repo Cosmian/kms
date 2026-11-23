@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 
 : "${KMS_XKS_SSH_PRIVATE_KEY:?KMS_XKS_SSH_PRIVATE_KEY is required}"
 : "${KMS_XKS_SSH_KNOWN_HOSTS:?KMS_XKS_SSH_KNOWN_HOSTS is required}"

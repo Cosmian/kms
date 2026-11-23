@@ -16,7 +16,7 @@ set -x
 #
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 
 init_build_env "$@"
 setup_test_logging

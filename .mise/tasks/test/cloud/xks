@@ -23,6 +23,6 @@ ensure_nix_shell
 print_header "Running AWS XKS tests"
 
 # Delegate to the existing XKS test script (curl + SigV4)
-bash "${REPO_ROOT}/.mise/scripts/test/test_xks.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/cloud/test_xks.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "AWS XKS tests completed"

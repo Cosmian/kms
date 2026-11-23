@@ -14,7 +14,7 @@ set -euo pipefail
 set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 
 require_cmd aws "aws-cli v2 is required for the AWS KMS end-to-end test."
 require_cmd jq "jq is required to parse describe-key output."

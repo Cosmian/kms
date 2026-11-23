@@ -12,11 +12,11 @@ set -x
 # Required tools: cargo, python3
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 # shellcheck source=.mise/lib/kms_server.sh
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 # shellcheck source=.mise/lib/test_slots.sh
-source "${SCRIPT_DIR}/../../lib/test_slots.sh"
+source "${SCRIPT_DIR}/../../../lib/test_slots.sh"
 
 init_build_env "$@"
 setup_test_logging

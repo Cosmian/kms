@@ -182,7 +182,7 @@ no-fork-pr = true
 events = ["pull_request", "schedule", "workflow_dispatch"]
 
 [units.xks-remote]
-files = '^crate/server/src/routes/aws_xks/ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
+files = '^crate/server/src/routes/aws_xks/ | ^\.mise/scripts/test/cloud/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
 variants = ["non-fips"]
 upstream = true
 events = ["pull_request", "tag", "workflow_dispatch"]
@@ -239,7 +239,7 @@ files = '''
 | ^crate/clients/clap/src/actions/(google|aws|azure)/
 | ^documentation/docs/google_cse/test_wrapped_private_key$
 | ^\.mise/tasks/test/cloud/
-| ^\.mise/scripts/test/(azure_ekm_test|azure_ekm_mtls_test|test_secret_aws|test_secret_azure|test_secret_vault
+| ^\.mise/scripts/test/cloud/(azure_ekm_test|azure_ekm_mtls_test|test_secret_aws|test_secret_azure|test_secret_vault
                        |test_secret_cosmian_kms|test_xks)\.sh$
 '''
 variants = ["fips", "non-fips"]
