@@ -3,9 +3,8 @@
 #
 # Runs `mise run docs:sync-all` (server/ckms docs, KMIP tables, CBOM, log
 # index), regenerates the test vector README and `sbom/licenses.txt`, then
-# commits the result back to
-# `ref`. Mirrors nix-update-hashes.yml's checkout → run → commit-if-changed →
-# rebase → push flow.
+# publishes the result to `ref`: a credential-free builder job uploads a patch and
+# commit-generated.yml (Git only) applies and pushes it.
 #
 # Callers / triggers
 # ──────────────────
@@ -56,9 +55,15 @@ on:
         required: true
 
 jobs:
-  update-generated-docs:
-    name: Update generated docs
+  # Builder: executes the generators (cargo run, cdxgen, ...) and holds NO credential. It uploads a data
+  # patch limited to the generated files; commit-generated.yml is the only job that can push.
+  generate-docs:
+    name: Regenerate docs
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -66,16 +71,18 @@ jobs:
           ref: ${{ inputs.ref || github.ref_name }}
           fetch-depth: 0
           submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
+          persist-credentials: false
 
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Capture base commit
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/install-rust
 
       - uses: ./.github/actions/install-mise
+
+      - name: Probe that dependency code receives no release credential
+        run: python3 .mise/scripts/dev/test_release_security.py --probe "$GITHUB_WORKSPACE"
 
       - name: Regenerate all documentation
         run: |
@@ -106,34 +113,59 @@ jobs:
       - name: Generate SBOM licenses list
         run: cargo deny list -l crate | sed 's/\x1b\[[0-9;]*m//g' > sbom/licenses.txt
 
-      - name: Commit generated files
-        run: |
-          REF="${{ inputs.ref || github.ref_name }}"
-          # Explicit pathspec: never commit stray changes (e.g. a Cargo.lock
-          # touched by a non-`--locked` cargo build).
-          git add -- \
-            README.md \
-            cbom/cbom.cdx.json \
-            crate/server/kms_template.toml \
-            pkg/kms.toml \
-            sbom/licenses.txt \
-            documentation/docs/configuration/server_cli.md \
-            documentation/docs/configuration/server_configuration_file.md \
-            documentation/docs/configuration/log-reference.md \
-            documentation/docs/kms_clients/cli/main_commands.md \
-            documentation/docs/kms_clients/usage.md \
-            documentation/docs/kmip_support/support.md \
+      - name: Capture the generated files as a patch
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          OUT_DIR: ${{ runner.temp }}/generated-docs
+          # Explicit paths: never capture stray changes (e.g. a Cargo.lock touched by a non-`--locked` build).
+          PATHS: |
+            README.md
+            cbom/cbom.cdx.json
+            crate/server/kms_template.toml
+            pkg/kms.toml
+            sbom/licenses.txt
+            documentation/docs/configuration/server_cli.md
+            documentation/docs/configuration/server_configuration_file.md
+            documentation/docs/configuration/log-reference.md
+            documentation/docs/kms_clients/cli/main_commands.md
+            documentation/docs/kms_clients/usage.md
+            documentation/docs/kmip_support/support.md
             crate/test_kms_server/README.md
-          if git diff --cached --quiet; then
-            echo "Generated files are already up-to-date, nothing to commit."
-          else
-            MSG="docs: regenerate generated files"
-            if [ -n "${{ inputs.new_version }}" ]; then MSG="$MSG for ${{ inputs.new_version }}"; fi
-            # [skip ci] prevents push-triggered workflows (e.g. nightly.yml)
-            # from re-running on this automated commit and creating a loop.
-            git commit -m "$MSG [skip ci]"
-            # Pull after committing to avoid "index contains uncommitted
-            # changes" errors if another job pushed to the same ref meanwhile.
-            git pull --rebase origin "$REF"
-            git push origin "$REF"
-          fi
+        run: bash .mise/scripts/release/make_generated_patch.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: generated-docs
+          path: ${{ runner.temp }}/generated-docs
+          retention-days: 1
+          if-no-files-found: error
+
+  # Publisher: Git only. [skip ci] prevents push-triggered workflows (e.g. nightly.yml) from re-running
+  # on this automated commit and creating a loop.
+  update-generated-docs:
+    name: Commit generated docs
+    needs: generate-docs
+    permissions:
+      contents: read
+    uses: ./.github/workflows/commit-generated.yml
+    with:
+      ref: ${{ inputs.ref || github.ref_name }}
+      base-sha: ${{ needs.generate-docs.outputs.base_sha }}
+      artifact: generated-docs
+      message: >-
+        docs: regenerate generated files${{ inputs.new_version != '' && format(' for {0}', inputs.new_version) || '' }} [skip ci]
+      paths: |
+        README.md
+        cbom/cbom.cdx.json
+        crate/server/kms_template.toml
+        pkg/kms.toml
+        sbom/licenses.txt
+        documentation/docs/configuration/server_cli.md
+        documentation/docs/configuration/server_configuration_file.md
+        documentation/docs/configuration/log-reference.md
+        documentation/docs/kms_clients/cli/main_commands.md
+        documentation/docs/kms_clients/usage.md
+        documentation/docs/kmip_support/support.md
+        crate/test_kms_server/README.md
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}

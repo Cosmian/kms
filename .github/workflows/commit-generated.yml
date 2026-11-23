@@ -1,0 +1,104 @@
+---
+# Local reusable workflow — commit generated files, Git only.
+#
+# The only place that holds PAT_TOKEN for generated-file commits. It runs no
+# Rust/Nix/MISE/pip/npm: a builder job (which executes dependency code and holds
+# no credential) uploads `changes.patch` + `base-sha.txt`; this workflow applies
+# that DATA onto the same commit, accepts it only if it changes plain files at the
+# caller's exact `paths`, then rebases onto the target branch and pushes normally.
+#
+# Callers: release.yml (version bump), nix-update-hashes.yml, update-generated-docs.yml,
+# package-and-commit-sbom.yml.
+
+name: Commit generated files
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch to push to (created from base-sha when it does not exist yet).
+        required: true
+        type: string
+      base-sha:
+        description: Full commit SHA the patch was generated against.
+        required: true
+        type: string
+      artifact:
+        description: Name of the same-run artifact holding changes.patch and base-sha.txt.
+        required: true
+        type: string
+      paths:
+        description: Newline-separated exact repository-relative paths the patch may add or modify.
+        required: true
+        type: string
+      message:
+        description: Commit message (include [skip ci] when the push must not retrigger workflows).
+        required: true
+        type: string
+    secrets:
+      PAT_TOKEN:
+        description: >
+          Personal Access Token with `repo` + `workflow` scopes, so the push re-triggers
+          other workflows (GITHUB_TOKEN cannot do this). Used by the last step only.
+        required: true
+    outputs:
+      ref:
+        description: Branch the generated files were published to.
+        value: ${{ jobs.commit.outputs.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  commit:
+    name: Commit ${{ inputs.artifact }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      ref: ${{ inputs.ref }}
+    steps:
+      - name: Checkout base commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.base-sha }}
+          fetch-depth: 0
+          submodules: false
+          persist-credentials: false
+
+      - name: Download generated artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}/generated
+
+      # Trusted copies taken from the base commit BEFORE the patch is applied.
+      - name: Stage trusted helpers
+        env:
+          PATHS: ${{ inputs.paths }}
+        run: |
+          set -euo pipefail
+          trusted="${RUNNER_TEMP}/trusted"
+          mkdir -p "${trusted}"
+          cp .mise/scripts/release/validate_generated_changes.py \
+             .mise/scripts/release/commit_generated.sh \
+             .mise/scripts/release/push_generated.sh "${trusted}/"
+          printf '%s\n' "${PATHS}" > "${trusted}/allowed.txt"
+
+      - name: Apply, validate and commit the patch (no credential)
+        id: apply
+        env:
+          BASE_SHA: ${{ inputs.base-sha }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          ARTIFACT_DIR="${RUNNER_TEMP}/generated" ALLOWED_FILE="${RUNNER_TEMP}/trusted/allowed.txt" \
+            VALIDATOR="${RUNNER_TEMP}/trusted/validate_generated_changes.py" \
+            bash "${RUNNER_TEMP}/trusted/commit_generated.sh"
+
+      - name: Rebase and push
+        env:
+          REF: ${{ inputs.ref }}
+          BASE_SHA: ${{ inputs.base-sha }}
+          CHANGED: ${{ steps.apply.outputs.changed }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: bash "${RUNNER_TEMP}/trusted/push_generated.sh"

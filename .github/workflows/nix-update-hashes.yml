@@ -2,7 +2,7 @@
 # Local reusable workflow — Update Nix vendor hashes.
 #
 # Runs on a Linux + macOS matrix, recomputes all Nix vendor hash files via
-# `mise run release:nix-update-hashes`, commits the result back to `ref`, and
+# `mise run release:nix-update-hashes` (credential-free builders), publishes the result to `ref` through commit-generated.yml, and
 # optionally dispatches packaging.yml on the same ref once both platform jobs
 # have completed.
 #
@@ -79,9 +79,43 @@ on:
         required: true
 
 jobs:
-  update-nix-hashes:
-    name: Update Nix vendor hashes (${{ matrix.runner }})
+  # Read-only: pins the branch tip once so both platform builders and both publishers work on the
+  # same commit, and expands the exact hash files a patch may touch.
+  resolve-ref:
+    name: Resolve ${{ inputs.ref || github.ref_name }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.pin.outputs.sha }}
+      hash_paths: ${{ steps.pin.outputs.hash_paths }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # workflow_dispatch: fall back to the dispatched branch when no
+          # explicit ref is given.
+          ref: ${{ inputs.ref || github.ref_name }}
+          submodules: false
+          persist-credentials: false
+
+      - name: Pin commit and list tracked hash files
+        id: pin
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo 'hash_paths<<EOF'
+            git ls-files -- 'nix/expected-hashes/*.sha256'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  # Builders: execute dependency build code (nix builds) and hold NO credential.
+  generate-nix-hashes:
+    name: Recompute Nix vendor hashes (${{ matrix.runner }})
+    needs: resolve-ref
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -90,49 +124,65 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # workflow_dispatch: fall back to the dispatched branch when no
-          # explicit ref is given.
-          ref: ${{ inputs.ref || github.ref_name }}
+          ref: ${{ needs.resolve-ref.outputs.sha }}
           fetch-depth: 0
           submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-nix-mise
         with:
           extra-nix-config: http-connections = 8
 
+      - uses: ./.github/actions/install-rust
+
+      - name: Probe that dependency code receives no release credential
+        run: python3 .mise/scripts/dev/test_release_security.py --probe "$GITHUB_WORKSPACE"
+
       - name: Recompute all Nix vendor hashes
         run: mise run release:nix-update-hashes
 
-      - name: Commit updated Nix hashes
-        run: |
-          REF="${{ inputs.ref || github.ref_name }}"
-          git add nix/expected-hashes/
-          if git diff --cached --quiet; then
-            echo "Nix hashes are already up-to-date, nothing to commit."
-          else
-            MSG="build: update Nix vendor hashes (${{ runner.os }})"
-            if [ -n "${{ inputs.new_version }}" ]; then
-              MSG="$MSG for ${{ inputs.new_version }}"
-            fi
-            # [skip ci] prevents push-triggered workflows (e.g. nightly.yml)
-            # from re-running on this automated commit and creating a loop.
-            git commit -m "$MSG [skip ci]"
-            # Pull after committing to avoid "index contains uncommitted changes"
-            # error. The two platform jobs touch disjoint file sets so rebase
-            # always succeeds cleanly.
-            git pull --rebase origin "$REF"
-            git push origin "$REF"
-          fi
+      - name: Capture the hash changes as a patch
+        env:
+          BASE_SHA: ${{ needs.resolve-ref.outputs.sha }}
+          OUT_DIR: ${{ runner.temp }}/nix-hashes
+          PATHS: ${{ needs.resolve-ref.outputs.hash_paths }}
+        run: bash .mise/scripts/release/make_generated_patch.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nix-hashes-${{ matrix.runner }}
+          path: ${{ runner.temp }}/nix-hashes
+          retention-days: 1
+          if-no-files-found: error
+
+  # Publishers (Git only, no build): one platform at a time. The two file sets are disjoint and each
+  # commit is rebased onto the branch tip, so order does not matter.
+  commit-nix-hashes:
+    name: Commit Nix vendor hashes (${{ matrix.runner }})
+    needs: [resolve-ref, generate-nix-hashes]
+    strategy:
+      max-parallel: 1
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/commit-generated.yml
+    with:
+      ref: ${{ inputs.ref || github.ref_name }}
+      base-sha: ${{ needs.resolve-ref.outputs.sha }}
+      artifact: nix-hashes-${{ matrix.runner }}
+      paths: ${{ needs.resolve-ref.outputs.hash_paths }}
+      # [skip ci] prevents push-triggered workflows (e.g. nightly.yml)
+      # from re-running on this automated commit and creating a loop.
+      message: >-
+        build: update Nix vendor hashes (${{ startsWith(matrix.runner, 'macos') && 'macOS' || 'Linux' }})${{
+        inputs.new_version != '' && format(' for {0}', inputs.new_version) || '' }} [skip ci]
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Optional follow-up: dispatch packaging.yml on the same ref once BOTH
-  # platform hash-update jobs have completed successfully.
+  # platform hash commits have been published.
   #
   # This keeps packaging.yml a pure build workflow (no commits, no hash logic).
   # The release workflow sets trigger_packaging=false and manages its own
@@ -140,17 +190,18 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   trigger-packaging:
     name: Dispatch packaging.yml
-    needs: update-nix-hashes
+    needs: commit-nix-hashes
     if: inputs.trigger_packaging
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
 
     steps:
       - name: Dispatch packaging.yml on ${{ inputs.ref || github.ref_name }}
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          REF: ${{ inputs.ref || github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          REF="${{ inputs.ref || github.ref_name }}"
           echo "Dispatching packaging.yml on ref '$REF'…"
-          gh workflow run packaging.yml \
-            --repo "${{ github.repository }}" \
-            --ref "$REF"
+          gh workflow run packaging.yml --repo "$REPOSITORY" --ref "$REF"

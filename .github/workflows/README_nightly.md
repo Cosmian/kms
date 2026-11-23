@@ -6,7 +6,7 @@
 ## Triggers
 
 `nightly.yml` runs on the schedule (daily 00:00 UTC), on pushes to `develop` and `main`, on tags and on manual
-dispatch. Bot commits from `nix-update-hashes.yml`, `update-generated-docs.yml` and `package-and-commit-sbom.yml` carry `[skip ci]`, so they do not
+dispatch. Bot commits from `nix-update-hashes.yml`, `update-generated-docs.yml` and `package-and-commit-sbom.yml` (pushed by `commit-generated.yml`, the Git-only publisher) carry `[skip ci]`, so they do not
 re-trigger it. All jobs are restricted to `Cosmian/kms`: they need secrets that forks do not have.
 
 `main.yml` runs the full nightly test set at 03:00 UTC, three hours after the packaging cron (see "PR versus nightly" in `README_main.md`). The two workflows are independent.

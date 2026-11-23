@@ -18,6 +18,9 @@ on:
         required: true
       AZURE_CLIENT_SECRET_POC:
         required: true
+      # Resolved from the `package-publish` environment of publish-windows-release; never passed by callers.
+      PACKAGE_COSMIAN_SSH_PRIVATE_KEY:
+        required: false
 
 jobs:
   cargo-build:
@@ -214,44 +217,42 @@ jobs:
   publish-windows-release:
     name: ${{ inputs.archive-name }} - publish assets
     needs: sign
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: write # GitHub Release assets
 
     steps:
       - name: Checkout repository (for release metadata)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Download Windows build artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ inputs.archive-name }}-release-signed
-          path: .
+          path: ${{ runner.temp }}/package-artifacts
 
       - name: List downloaded files
-        run: |
-          set -ex
-          ls -la
-          find . -maxdepth 3 -type f -print
+        run: find "${RUNNER_TEMP}/package-artifacts" -maxdepth 3 -type f -print
 
       - name: Push installers to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: windows/x86_64/${{ inputs.variant }}/static-openssl
           files: |
-            **/cosmian-kms-server*.exe
-            ${{ inputs.variant == 'non-fips' && '**/cosmian-kms-cli*.exe' || '' }}
+            ${{ runner.temp }}/package-artifacts/**/cosmian-kms-server*.exe
+            ${{ inputs.variant == 'non-fips' && format('{0}/package-artifacts/**/cosmian-kms-cli*.exe', runner.temp) || '' }}
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
-            cosmian-kms-server*.exe
-            ${{ inputs.variant == 'non-fips' && 'cosmian-kms-cli*.exe' || '' }}
+            ${{ runner.temp }}/package-artifacts/cosmian-kms-server*.exe
+            ${{ inputs.variant == 'non-fips' && format('{0}/package-artifacts/cosmian-kms-cli*.exe', runner.temp) || '' }}
             ./nix/signing-keys/cosmian-kms-public.asc

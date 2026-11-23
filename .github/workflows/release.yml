@@ -4,10 +4,13 @@ name: Release
 # Fully automated release workflow.
 #
 # What it does:
-#   1. Validates semver inputs and checks the release branch does not exist yet.
-#   2. Creates "release/<new_version>" from develop (matching the git-flow model).
-#   3. Runs the version-bump script (.mise/scripts/release/release.sh).
-#   4. Commits the bumped versions on the release branch and pushes it.
+#   1. Validates semver inputs and that the release tag does not exist yet.
+#   2. Runs the version-bump script (.mise/scripts/release/release.sh) in a
+#      credential-free builder job (prepare-build) that uploads a data patch.
+#   3. commit-generated.yml, the only job with PAT_TOKEN, applies that patch
+#      (exact file list) and creates "release/<new_version>" from develop
+#      (matching the git-flow model), or rebases onto the existing branch.
+#   4. The bumped versions are pushed on the release branch.
 #   5. Runs `nix_build_update_hash.sh` on BOTH Linux and macOS runners in
 #      parallel to recompute all Nix vendor hashes (Linux writes server +
 #      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
@@ -31,15 +34,17 @@ name: Release
 # Prerequisites (repository secrets):
 #   PAT_TOKEN — Personal Access Token with `repo` + `workflow` scopes.
 #               Required so that commits and tag pushes made by this workflow
-#               re-trigger other workflows (GITHUB_TOKEN pushes do not).
+#               re-trigger other workflows (GITHUB_TOKEN pushes do not). Only
+#               Git-only jobs (commit-generated.yml, sync-branches) receive it.
 #
 # Retry / recovery:
 #   Re-dispatching with the same inputs is safe as long as the tag has NOT
 #   been pushed yet:
-#   - `prepare` hard-stops if the tag already exists (tags are permanent and
+#   - `prepare-build` hard-stops if the tag already exists (tags are permanent and
 #     will NEVER be deleted by this workflow).
-#   - `prepare` deletes the release branch if it exists, then recreates it
-#     from scratch (clean-slate retry for jobs 1-4).
+#   - `prepare` never deletes or force-pushes: it rebases the bump onto an
+#     existing release branch (an identical bump is dropped as already applied)
+#     and fails when the branch holds conflicting work.
 #   - If the tag was already pushed (sync-branches got past the tagging step
 #     but then failed), re-dispatch is still safe: sync-branches is fully
 #     idempotent and skips steps that already succeeded (checks Cargo.toml
@@ -69,136 +74,249 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Job 1 — Validate inputs, create the release branch, bump versions
+  # Job 1 — Validate inputs and bump versions. A builder: it holds NO credential
+  # (checkout without token/persisted auth, read-only token) and only uploads a
+  # data patch; the next job is the only one that can write to Git.
   # ─────────────────────────────────────────────────────────────────────────────
-  prepare:
-    name: Prepare release branch & bump versions
+  prepare-build:
+    name: Validate inputs & bump versions
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
-      release_branch: ${{ steps.vars.outputs.release_branch }}
+      base_sha: ${{ steps.base.outputs.sha }}
 
     steps:
       - name: Validate semver format
+        env:
+          OLD_VERSION: ${{ inputs.old_version }}
+          NEW_VERSION: ${{ inputs.new_version }}
         run: |
           semver_re='^[0-9]+\.[0-9]+\.[0-9]+$'
-          if ! [[ "${{ inputs.old_version }}" =~ $semver_re ]]; then
-            echo "ERROR: old_version '${{ inputs.old_version }}' is not valid semver X.Y.Z" >&2
+          if ! [[ "$OLD_VERSION" =~ $semver_re ]]; then
+            echo "ERROR: old_version '$OLD_VERSION' is not valid semver X.Y.Z" >&2
             exit 1
           fi
-          if ! [[ "${{ inputs.new_version }}" =~ $semver_re ]]; then
-            echo "ERROR: new_version '${{ inputs.new_version }}' is not valid semver X.Y.Z" >&2
+          if ! [[ "$NEW_VERSION" =~ $semver_re ]]; then
+            echo "ERROR: new_version '$NEW_VERSION' is not valid semver X.Y.Z" >&2
             exit 1
           fi
-          if [ "${{ inputs.old_version }}" = "${{ inputs.new_version }}" ]; then
+          if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
             echo "ERROR: old_version and new_version are identical" >&2
             exit 1
           fi
 
-      # Use PAT_TOKEN so commits and tag pushes re-trigger other workflows.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: develop
           fetch-depth: 0
           submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
+          persist-credentials: false
 
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Capture base commit
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Validate old_version matches Cargo.toml
+        env:
+          OLD_VERSION: ${{ inputs.old_version }}
+          NEW_VERSION: ${{ inputs.new_version }}
         run: |
           actual=$(grep -A 20 '^\[workspace\.package\]' Cargo.toml \
             | grep '^version' | head -1 \
             | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
-          if [ "$actual" = "${{ inputs.old_version }}" ]; then
+          if [ "$actual" = "$OLD_VERSION" ]; then
             echo "develop is at $actual — OK."
-          elif [ "$actual" = "${{ inputs.new_version }}" ]; then
-            echo "NOTE: develop is already at ${{ inputs.new_version }}." \
+          elif [ "$actual" = "$NEW_VERSION" ]; then
+            echo "NOTE: develop is already at $NEW_VERSION." \
                  "A previous run already merged the version bump into develop." \
                  "The version-bump step will be a no-op; continuing."
           else
-            echo "ERROR: old_version '${{ inputs.old_version }}' does not match" \
+            echo "ERROR: old_version '$OLD_VERSION' does not match" \
                  "workspace Cargo.toml version '$actual'" >&2
             exit 1
           fi
 
-      - name: Clean up any pre-existing state for this version
+      # Hard-stop if the tag already exists: a tag on main is the proof that at
+      # least the merge + tagging step already succeeded. The workflow NEVER
+      # deletes tags. If sync-branches failed AFTER tagging, re-run the workflow:
+      # its idempotency guards skip the steps that already happened.
+      - name: Refuse an already released version
+        env:
+          TAG: ${{ inputs.new_version }}
         run: |
-          set -euo pipefail
-          BRANCH="release/${{ inputs.new_version }}"
-          TAG="${{ inputs.new_version }}"
-
-          # Hard-stop if the tag already exists: a tag on main is the proof
-          # that at least the merge + tagging step already succeeded.
-          # The workflow NEVER deletes tags — they are permanent release
-          # identifiers that cannot be reconstructed safely.
-          # If sync-branches failed AFTER tagging, re-run the workflow: the
-          # sync-branches idempotency guards will skip the merge + tag that
-          # already happened and only retry the remaining steps.
           if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
             echo "ERROR: Tag '$TAG' already exists on origin." >&2
             echo "       The release tag is permanent and will never be deleted" \
                  "by this workflow." >&2
-            echo "       If sync-branches failed after tagging, re-run the" \
-                 "workflow — the idempotency guards will skip completed steps." >&2
             exit 1
           fi
-
-          # Delete the release branch so we can start fresh (enables clean retry).
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            echo "WARNING: Branch '$BRANCH' already exists — deleting for clean retry."
-            git push origin --delete "$BRANCH"
-          fi
-
-      - name: Set output variables
-        id: vars
-        run: echo "release_branch=release/${{ inputs.new_version }}" >> "$GITHUB_OUTPUT"
-
-      - name: Create release branch from develop
-        run: |
-          git checkout -b "release/${{ inputs.new_version }}"
 
       - uses: ./.github/actions/install-rust
 
       - uses: ./.github/actions/install-mise
 
+      - name: Probe that dependency code receives no release credential
+        run: python3 .mise/scripts/dev/test_release_security.py --probe "$GITHUB_WORKSPACE"
+
       - name: Run version-bump script
+        env:
+          OLD_VERSION: ${{ inputs.old_version }}
+          NEW_VERSION: ${{ inputs.new_version }}
         run: |
           # release.sh performs sed-based substitutions across all Cargo.toml
           # and other versioned files.  The --ci flag skips the pre-commit
           # hooks section (nix-build-all, cbom, release-docker-build-ui) since
           # those are handled by dedicated jobs in this workflow.
-          mise run release:bump --ci \
-            "${{ inputs.old_version }}" \
-            "${{ inputs.new_version }}"
+          mise run release:bump --ci "$OLD_VERSION" "$NEW_VERSION"
 
+      # Refreshes the workspace entries of Cargo.lock only: no compilation, so no
+      # dependency build script or proc macro runs in this job.
       - name: Update Cargo.lock
-        run: cargo build --workspace
+        run: cargo update --workspace
 
-      - name: Commit version bump and push release branch
+      - name: Capture the version bump as a patch
+        env:
+          OLD_VERSION: ${{ inputs.old_version }}
+          NEW_VERSION: ${{ inputs.new_version }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          OUT_DIR: ${{ runner.temp }}/release-bump
+          PATHS: |
+            .github/copilot-instructions.md
+            .mise/scripts/windows/windows_ui.ps1
+            Cargo.lock
+            Cargo.toml
+            README.md
+            charts/cosmian-kms/Chart.yaml
+            crate/access/Cargo.toml
+            crate/clients/ckms/Cargo.toml
+            crate/clients/clap/Cargo.toml
+            crate/clients/client/Cargo.toml
+            crate/clients/client_utils/Cargo.toml
+            crate/clients/cng/Cargo.toml
+            crate/clients/k8s/csi_provider/Cargo.toml
+            crate/clients/pkcs11/module/Cargo.toml
+            crate/clients/pkcs11/provider/Cargo.toml
+            crate/clients/wasm/Cargo.toml
+            crate/crypto/Cargo.toml
+            crate/hsm/aws_cloudhsm/Cargo.toml
+            crate/hsm/base_hsm/Cargo.toml
+            crate/hsm/crypt2pay/Cargo.toml
+            crate/hsm/kryoptic/Cargo.toml
+            crate/hsm/proteccio/Cargo.toml
+            crate/hsm/smartcardhsm/Cargo.toml
+            crate/hsm/softhsm2/Cargo.toml
+            crate/hsm/utimaco/Cargo.toml
+            crate/interfaces/Cargo.toml
+            crate/kmip/Cargo.toml
+            crate/server/Cargo.toml
+            crate/server_database/Cargo.toml
+            crate/test_kms_server/Cargo.toml
+            documentation/docs/certifications_and_compliance/fips.md
+            documentation/docs/configuration/monitoring-setup.md
+            documentation/docs/index.md
+            documentation/docs/installation/installation_getting_started.md
+            documentation/docs/installation/marketplace_guide.md
+            documentation/docs/integrations/cloud_providers/microsoft/windows_cng_ksp.md
+            documentation/docs/integrations/databases/demo_tde/setup_oracle_tde.sh
+            documentation/docs/integrations/databases/oracle_tde.md
+            documentation/docs/kms_clients/index.md
+            documentation/docs/kms_clients/installation.md
+            nix/README.md
+            nix/docker.nix
+            nix/kms-server.nix
+            nix/signing-keys/README.md
+            nix/ui.nix
+            ui/package.json
         run: |
-          git add -A
-          if git diff --cached --quiet; then
+          set -euo pipefail
+          if git diff --quiet HEAD; then
             # No diff: either old_version is wrong, or develop was already at
             # new_version (previous run merged it back). Distinguish the two.
             CURRENT=$(grep -A 20 '^\[workspace\.package\]' Cargo.toml \
               | grep '^version' | head -1 \
               | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
-            if [ "$CURRENT" = "${{ inputs.new_version }}" ]; then
-              echo "NOTE: version already at ${{ inputs.new_version }} — version bump"
-              echo "      was a no-op (develop already merged in a previous run)."
-              echo "      Pushing branch as-is and continuing."
-            else
+            if [ "$CURRENT" != "$NEW_VERSION" ]; then
               echo "ERROR: Nothing changed after version bump. Check that" \
-                   "old_version='${{ inputs.old_version }}' is correct." >&2
+                   "old_version='$OLD_VERSION' is correct." >&2
               exit 1
             fi
-          else
-            git commit -m "build: release ${{ inputs.new_version }}"
+            echo "NOTE: version already at $NEW_VERSION — version bump was a no-op."
           fi
-          git push origin "release/${{ inputs.new_version }}"
+          bash .mise/scripts/release/make_generated_patch.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-bump
+          path: ${{ runner.temp }}/release-bump
+          retention-days: 1
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1b — Commit the version bump to release/<new_version> (Git only).
+  # Creates the branch from the base commit when it does not exist; an existing
+  # branch is rebased onto, never deleted or force-pushed.
+  # ─────────────────────────────────────────────────────────────────────────────
+  prepare:
+    name: Commit release branch
+    needs: prepare-build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/commit-generated.yml
+    with:
+      ref: release/${{ inputs.new_version }}
+      base-sha: ${{ needs.prepare-build.outputs.base_sha }}
+      artifact: release-bump
+      message: 'build: release ${{ inputs.new_version }}'
+      paths: |
+        .github/copilot-instructions.md
+        .mise/scripts/windows/windows_ui.ps1
+        Cargo.lock
+        Cargo.toml
+        README.md
+        charts/cosmian-kms/Chart.yaml
+        crate/access/Cargo.toml
+        crate/clients/ckms/Cargo.toml
+        crate/clients/clap/Cargo.toml
+        crate/clients/client/Cargo.toml
+        crate/clients/client_utils/Cargo.toml
+        crate/clients/cng/Cargo.toml
+        crate/clients/k8s/csi_provider/Cargo.toml
+        crate/clients/pkcs11/module/Cargo.toml
+        crate/clients/pkcs11/provider/Cargo.toml
+        crate/clients/wasm/Cargo.toml
+        crate/crypto/Cargo.toml
+        crate/hsm/aws_cloudhsm/Cargo.toml
+        crate/hsm/base_hsm/Cargo.toml
+        crate/hsm/crypt2pay/Cargo.toml
+        crate/hsm/kryoptic/Cargo.toml
+        crate/hsm/proteccio/Cargo.toml
+        crate/hsm/smartcardhsm/Cargo.toml
+        crate/hsm/softhsm2/Cargo.toml
+        crate/hsm/utimaco/Cargo.toml
+        crate/interfaces/Cargo.toml
+        crate/kmip/Cargo.toml
+        crate/server/Cargo.toml
+        crate/server_database/Cargo.toml
+        crate/test_kms_server/Cargo.toml
+        documentation/docs/certifications_and_compliance/fips.md
+        documentation/docs/configuration/monitoring-setup.md
+        documentation/docs/index.md
+        documentation/docs/installation/installation_getting_started.md
+        documentation/docs/installation/marketplace_guide.md
+        documentation/docs/integrations/cloud_providers/microsoft/windows_cng_ksp.md
+        documentation/docs/integrations/databases/demo_tde/setup_oracle_tde.sh
+        documentation/docs/integrations/databases/oracle_tde.md
+        documentation/docs/kms_clients/index.md
+        documentation/docs/kms_clients/installation.md
+        nix/README.md
+        nix/docker.nix
+        nix/kms-server.nix
+        nix/signing-keys/README.md
+        nix/ui.nix
+        ui/package.json
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 2 — Recompute Nix vendor hashes (matrix: Linux + macOS)
@@ -211,7 +329,7 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/nix-update-hashes.yml
     with:
-      ref: ${{ needs.prepare.outputs.release_branch }}
+      ref: ${{ needs.prepare.outputs.ref }}
       new_version: ${{ inputs.new_version }}
       # package-and-commit-sbom.yml dispatches packaging itself (with polling +
       # SBOM retrieval), so the reusable workflow must NOT dispatch it again.
@@ -232,7 +350,7 @@ jobs:
     needs: [prepare, update-nix-hashes]
     uses: ./.github/workflows/update-generated-docs.yml
     with:
-      ref: ${{ needs.prepare.outputs.release_branch }}
+      ref: ${{ needs.prepare.outputs.ref }}
       new_version: ${{ inputs.new_version }}
     secrets:
       PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -249,7 +367,7 @@ jobs:
     needs: [prepare, update-nix-hashes, update-generated-docs]
     uses: ./.github/workflows/package-and-commit-sbom.yml
     with:
-      ref: ${{ needs.prepare.outputs.release_branch }}
+      ref: ${{ needs.prepare.outputs.ref }}
       new_version: ${{ inputs.new_version }}
     secrets:
       PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -270,27 +388,43 @@ jobs:
     name: git-flow release finish ${{ inputs.new_version }}
     needs: [prepare, package-and-commit-sbom]
     runs-on: ubuntu-24.04
+    # Git only: no build, no dependency code. PAT_TOKEN reaches each network command
+    # through the environment of that command (see git-auth.sh), never the checkout config.
+    permissions:
+      contents: read
 
     steps:
-      # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
           fetch-depth: 0
-          submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
+          submodules: false
+          persist-credentials: false
 
-      - name: Configure git identity
+      - name: Configure git identity and authenticated-git helper
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # PAT_TOKEN is (re)supplied by the steps that need the network, so pushes re-trigger CI.
+          cat > "${RUNNER_TEMP}/git-auth.sh" <<'EOS'
+          git_auth() {
+            local encoded
+            encoded="$(printf 'x-access-token:%s' "${PAT_TOKEN:?}" | base64 | tr -d '\n')"
+            echo "::add-mask::${encoded}"
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${encoded}" GIT_TERMINAL_PROMPT=0 git "$@"
+          }
+          EOS
 
       - name: Merge release branch into main
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          RELEASE_BRANCH: ${{ needs.prepare.outputs.ref }}
+          TAG: ${{ inputs.new_version }}
         run: |
-          RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
-          TAG="${{ inputs.new_version }}"
+          source "${RUNNER_TEMP}/git-auth.sh"
 
-          git fetch origin main "$RELEASE_BRANCH"
+          git_auth fetch origin main "$RELEASE_BRANCH"
           git reset --hard origin/main
 
           # Idempotency: skip if main already carries the new version.
@@ -305,36 +439,42 @@ jobs:
             # --no-ff creates an explicit merge commit on main for visibility.
             git merge --no-ff "origin/$RELEASE_BRANCH" \
               -m "build: merge $RELEASE_BRANCH into main"
-            git push origin main
+            git_auth push origin main
             echo "Merged '$RELEASE_BRANCH' into 'main'."
           fi
 
       - name: Create and push annotated tag on main
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          TAG: ${{ inputs.new_version }}
         run: |
-          TAG="${{ inputs.new_version }}"
+          source "${RUNNER_TEMP}/git-auth.sh"
 
           # Idempotency: skip if the tag was already pushed.
           # (Happens when retrying after the tag was pushed but a later step
           # failed in a previous run.)
-          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
+          if git_auth ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
             echo "Tag '$TAG' already exists — skipping."
           else
             # Ensure we are on the latest main HEAD before tagging.
-            git fetch origin main
+            git_auth fetch origin main
             git reset --hard origin/main
             git tag -a "$TAG" -m "Release $TAG"
-            git push origin "$TAG"
+            git_auth push origin "$TAG"
             echo "Tag '$TAG' pushed on main."
             echo "packaging.yml (on:push:tags) will now build and publish the release."
           fi
 
       - name: Merge release branch into develop
         shell: bash
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          RELEASE_BRANCH: ${{ needs.prepare.outputs.ref }}
+          TAG: ${{ inputs.new_version }}
         run: |
-          RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
-          TAG="${{ inputs.new_version }}"
+          source "${RUNNER_TEMP}/git-auth.sh"
 
-          git fetch origin develop "$RELEASE_BRANCH"
+          git_auth fetch origin develop "$RELEASE_BRANCH"
           git checkout develop
           git reset --hard origin/develop
 
@@ -348,19 +488,23 @@ jobs:
             echo "develop is already at $TAG — merge already done in a previous run, skipping."
           else
             # develop may not contain the helper yet; use the release branch copy.
+            # The script is Git-only (merge/diff/restore/commit): it runs no build.
             git show "origin/$RELEASE_BRANCH:.mise/scripts/release/merge_into_develop.sh" \
               | bash -s -- "origin/$RELEASE_BRANCH"
-            git push origin develop
+            git_auth push origin develop
             echo "Merged '$RELEASE_BRANCH' into 'develop'."
           fi
 
-      - name: Delete release branch
+      - name: Delete finished release branch
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          RELEASE_BRANCH: ${{ needs.prepare.outputs.ref }}
         run: |
-          RELEASE_BRANCH="${{ needs.prepare.outputs.release_branch }}"
+          source "${RUNNER_TEMP}/git-auth.sh"
           # Idempotency: skip if already deleted (previous run deleted it but
           # then failed in the workflow summary step, for example).
-          if git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
-            git push origin --delete "$RELEASE_BRANCH"
+          if git_auth ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
+            git_auth push origin --delete "$RELEASE_BRANCH"
             echo "Deleted remote branch '$RELEASE_BRANCH'."
           else
             echo "Branch '$RELEASE_BRANCH' already deleted — nothing to do."
