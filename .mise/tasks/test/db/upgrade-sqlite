@@ -139,7 +139,7 @@ VERIFY_PY_ARGS=(
 print_header "Phase 1: seed (old server)"
 mkdir -p "${WORK_DIR}/db-seed"
 start_server seed "${OLD_KMS}" "${WORK_DIR}/db-seed"
-python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" seed \
+python3 "${REPO_ROOT}/.mise/scripts/test/db/verify_db_upgrade.py" seed \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
   --seed "${SEED}" \
@@ -156,7 +156,7 @@ cp -a "${WORK_DIR}/backup" "${WORK_DIR}/db-candidate"
 # ── Phase 3: candidate server on the copy ────────────────────────────────────
 print_header "Phase 3: candidate (new server)"
 start_server candidate "${NEW_KMS}" "${WORK_DIR}/db-candidate"
-python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
+python3 "${REPO_ROOT}/.mise/scripts/test/db/verify_db_upgrade.py" verify \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
   --phase candidate \
@@ -164,7 +164,7 @@ python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
 kms_stop
 
 start_server candidate-restart "${NEW_KMS}" "${WORK_DIR}/db-candidate"
-python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
+python3 "${REPO_ROOT}/.mise/scripts/test/db/verify_db_upgrade.py" verify \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
   --phase candidate-restart || fail_phase "candidate-restart verification failed"
@@ -175,7 +175,7 @@ PHASE="restore"
 print_header "Phase 4: restore (old server on the pre-upgrade backup)"
 cp -a "${WORK_DIR}/backup" "${WORK_DIR}/db-restore"
 start_server restore "${OLD_KMS}" "${WORK_DIR}/db-restore"
-python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" verify \
+python3 "${REPO_ROOT}/.mise/scripts/test/db/verify_db_upgrade.py" verify \
   "${VERIFY_PY_ARGS[@]}" \
   --snapshot "${SNAPSHOT}" \
   --phase restore || fail_phase "restore verification failed"

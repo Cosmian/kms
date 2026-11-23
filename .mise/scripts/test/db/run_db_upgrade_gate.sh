@@ -304,7 +304,7 @@ run_py_verifier() {
   local cert_dir="${REPO_ROOT}/test_data/certificates/client_server"
   local replay
   replay="$(format_replay_cmd "${backend}" "${old_version}" "${seed}")"
-  python3 "${REPO_ROOT}/.mise/scripts/test/verify_db_upgrade.py" "${subcmd}" \
+  python3 "${REPO_ROOT}/.mise/scripts/test/db/verify_db_upgrade.py" "${subcmd}" \
     --url "https://127.0.0.1:${KMS_HOST_PORT}" \
     --ca-cert "${cert_dir}/ca/ca.crt" \
     --client-cert "${cert_dir}/owner/owner.client.acme.com.crt" \
