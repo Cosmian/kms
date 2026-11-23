@@ -307,6 +307,11 @@ for _i in $(seq 1 300); do
   fi
   if [ "${_i}" -eq 300 ]; then
     echo "ERROR: KMS server did not start in 300 s; log:" >&2
+    echo "--- readiness probe (curl -v), which curl: $(command -v curl || echo none) ---" >&2
+    env -u LD_PRELOAD -u LD_LIBRARY_PATH curl -v --max-time 5 --insecure \
+      --cert "${OWNER_CERT}" --key "${OWNER_KEY}" \
+      -X POST -H "Content-Type: application/json" -d '{}' \
+      "https://127.0.0.1:${KMS_PORT}/kmip/2_1" >&2 || echo "curl exit code: $?" >&2
     cat "${KMS_LOG}" >&2
     exit 1
   fi
