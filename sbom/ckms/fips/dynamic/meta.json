@@ -5,7 +5,7 @@
     "derivation": "kms-cli-fips-dynamic-openssl",
     "output_path": "/nix/store/w5iz7axh8gfq7zsck3a9j1shkjf56h37-cosmian-kms-cli-dynamic-5.29.0",
     "sbomnix_target": "/nix/store/w5iz7axh8gfq7zsck3a9j1shkjf56h37-cosmian-kms-cli-dynamic-5.29.0",
-    "timestamp": "2026-11-23T13:45:39Z",
+    "timestamp": "2026-11-23T15:32:38Z",
     "generator": {
       "tool": "sbomnix",
       "version": "v1.8.0"
