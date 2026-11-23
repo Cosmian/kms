@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Throw-away OpenBao dev server used directly as the KMS `X-Vault-Token` verifier
 # (`vault_auth_verifier_url`). Sourced by .mise/tasks/test/interop/openbao and
-# .mise/scripts/test/test_secret_rotation.sh after .mise/lib/common.sh.
+# .mise/scripts/test/interop/test_secret_rotation.sh after .mise/lib/common.sh.
 #
 # Provides:
 #   bao_verifier_start <container-name>  start the container; sets BAO_VERIFIER_URL

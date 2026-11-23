@@ -22,6 +22,6 @@ ensure_nix_shell
 
 print_header "Running PyKMIP + Synology DSM tests"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_pykmip.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/interop/test_pykmip.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "PyKMIP tests completed"

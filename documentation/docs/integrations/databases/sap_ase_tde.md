@@ -41,7 +41,7 @@ sequenceDiagram
 
 | Product | Tested path | Test entry point |
 | --- | --- | --- |
-| SAP ASE 16 | PKCS#11 provider (`libcosmian_pkcs11.so`) to KMS HTTPS endpoint | `.mise/scripts/test/test_ase_tde.sh` |
+| SAP ASE 16 | PKCS#11 provider (`libcosmian_pkcs11.so`) to KMS HTTPS endpoint | `.mise/scripts/test/interop/test_ase_tde.sh` |
 
 ## Configuration
 
@@ -95,4 +95,4 @@ The test verifies:
 - **Provider loading failure:** If ASE cannot load `libcosmian_pkcs11.so`, inspect container logs and ensure the library is built for `linux/amd64` and has no unsatisfied dynamic dependencies.
 - **TLS negotiation error:** If ASE fails during TLS negotiation with KMS, verify the CA certificate, server certificate hostname, client certificate/PKCS#12 bundle, and KMS client-CA trust configuration.
 
-The complete reproducible procedure is in `.mise/scripts/test/test_ase_tde.sh`.
+The complete reproducible procedure is in `.mise/scripts/test/interop/test_ase_tde.sh`.

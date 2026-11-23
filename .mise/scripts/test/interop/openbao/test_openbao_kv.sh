@@ -27,7 +27,7 @@ BAO_CACERT_HOST="${BAO_CACERT_HOST:-}"
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=.mise/lib/common.sh
-source "${SCRIPT_DIR}/../../../lib/common.sh"
+source "${SCRIPT_DIR}/../../../../lib/common.sh"
 
 require_cmd docker "Docker is required to run the OpenBao CLI."
 require_cmd python3 "python3 is required to parse CLI JSON output."

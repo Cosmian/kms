@@ -26,8 +26,8 @@ set -euo pipefail
 # Usage: test_secret_rotation.sh --variant <fips|non-fips> --link <static|dynamic> [--db <postgres|mysql>]
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../../lib/common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 source "${SCRIPT_DIR}/openbao/bao_verifier.sh"
 
 VARIANT_ARG="fips"

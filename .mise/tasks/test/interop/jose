@@ -29,6 +29,6 @@ ensure_nix_shell
 print_header "Running JOSE REST API tests (${VARIANT_NAME})"
 
 # Delegate to the existing JOSE test script which handles both phases
-bash "${REPO_ROOT}/.mise/scripts/test/test_jose.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/interop/test_jose.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "JOSE tests completed"

@@ -227,7 +227,7 @@ sets = ["db_core", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
-| ^\.mise/scripts/test/openbao/
+| ^\.mise/scripts/test/interop/openbao/
 | ^crate/server/src/routes/kv/
 '''
 # the OpenBao KV scenario replayed on PostgreSQL and MySQL
@@ -349,22 +349,22 @@ variants = ["fips", "non-fips"]
 
 [units."interop:ase"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
+files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/interop/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
 variants = ["non-fips"]
 
 [units."interop:db2"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/test_db2_tde\.sh$'
+files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/interop/test_db2_tde\.sh$'
 variants = ["non-fips"]
 
 [units."interop:edb-tde"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
+files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/interop/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
 variants = ["non-fips"]
 
 [units."interop:iris"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/test_iris\.sh$'
+files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/interop/test_iris\.sh$'
 variants = ["non-fips"]
 
 [units."interop:jose"]
@@ -374,7 +374,7 @@ files = '''
 | ^crate/hsm/kryoptic/
 | ^\.mise/tasks/test/(interop|hsm)/jose$
 | ^\.mise/lib/kryoptic\.sh$
-| ^\.mise/scripts/test/(test_jose\.sh|jose_interop_helper\.py|requirements-jose\.(in|txt))$
+| ^\.mise/scripts/test/interop/(test_jose\.sh|jose_interop_helper\.py|requirements-jose\.(in|txt))$
 '''
 variants = ["non-fips"]
 
@@ -383,7 +383,7 @@ sets = ["kmip_wire", "interop_shared"]
 files = '''
   ^kmip$
 | ^\.mise/tasks/test/interop/kmip-go$
-| ^\.mise/scripts/test/test_kmip_go\.sh$
+| ^\.mise/scripts/test/interop/test_kmip_go\.sh$
 | ^\.mise/scripts/kmip-go/
 | ^\.mise/scripts/pykmip/kms\.toml$
 '''
@@ -396,30 +396,30 @@ variants = ["non-fips"]
 
 [units."interop:openbao"]
 sets = ["interop_shared"]
-files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/routes/kv/'
+files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/interop/openbao/ | ^crate/server/src/routes/kv/'
 variants = ["fips", "non-fips"]
 
 [units."interop:openbao-auth-verifier"]
 sets = ["interop_shared"]
-files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
+files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/interop/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
 variants = ["fips", "non-fips"]
 
 [units."interop:openbao-kmip"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao/'
+files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/interop/openbao/'
 variants = ["fips", "non-fips"]
 
 [units."interop:pykmip"]
 sets = ["kmip_wire", "interop_shared", "ci_setup"]
-files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
+files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/interop/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
 variants = ["non-fips"]
 
 [units."interop:ssh-secrets"]
 sets = ["interop_shared", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/interop/ssh-secrets$
-| ^\.mise/scripts/test/(test_ssh_certificates|test_secret_rotation)\.sh$
-| ^\.mise/scripts/test/openbao/bao_verifier\.sh$
+| ^\.mise/scripts/test/interop/(test_ssh_certificates|test_secret_rotation)\.sh$
+| ^\.mise/scripts/test/interop/openbao/bao_verifier\.sh$
 | ^crate/server/src/routes/(ssh|kv)/
 '''
 variants = ["fips", "non-fips"]

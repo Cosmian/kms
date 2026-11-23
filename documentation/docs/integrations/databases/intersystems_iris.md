@@ -239,7 +239,7 @@ The CI job exits 0 with the KMIP steps marked as `SKIPPED` when using the Commun
 
 ```bash
 # Local run (uses Community image by default)
-bash .mise/scripts/test/test_iris.sh --variant non-fips
+bash .mise/scripts/test/interop/test_iris.sh --variant non-fips
 
 # Via the Nix wrapper (matches CI exactly)
 mise run test:interop:iris --variant non-fips

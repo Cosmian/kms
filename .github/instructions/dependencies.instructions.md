@@ -70,7 +70,7 @@ Gates: CI job `npm-dependency-audit` (`.github/workflows/supply-chain.yml`), pre
 Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
 
 - [ ] Prefer the standard library (`python.instructions.md`).
-- [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/requirements-jose.in`).
+- [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/interop/requirements-jose.in`).
 - [ ] Regenerate the `.txt` with the exact `pip-compile --generate-hashes …` command recorded in its header, from the repository root, under the Python version that header names; commit both files.
 - [ ] `pip-audit -r <file>.txt` reports no known vulnerability.
 - [ ] Test and docs scripts install with `pip install --require-hashes -r <file>.txt`, never `pip install <pkg>`.

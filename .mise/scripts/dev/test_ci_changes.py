@@ -359,7 +359,9 @@ class FeatureCrates(unittest.TestCase):
 
 class TestScripts(unittest.TestCase):
     def test_interop_script_runs_only_its_suite(self) -> None:
-        self.assertEqual(run('.mise/scripts/test/test_iris.sh'), {'interop:iris'})
+        self.assertEqual(
+            run('.mise/scripts/test/interop/test_iris.sh'), {'interop:iris'}
+        )
 
     def test_hsm_task_script(self) -> None:
         self.assertIn('hsm', run('.mise/tasks/test/hsm/softhsm'))
@@ -806,7 +808,7 @@ UNIT_SAMPLES = {
     'db:mariadb': '.mise/tasks/test/db/mariadb',
     'db:percona': '.mise/tasks/test/db/percona',
     'db:redis': 'crate/server_database/src/stores/redis/findex.rs',
-    'db:openbao': '.mise/scripts/test/openbao/bao_verifier.sh',
+    'db:openbao': '.mise/scripts/test/interop/openbao/bao_verifier.sh',
     'cloud': 'crate/server/src/routes/google_cse/mod.rs',
     'hsm': 'crate/hsm/utimaco/src/lib.rs',
     'hsm:crypt2pay': 'crate/hsm/crypt2pay/src/lib.rs',

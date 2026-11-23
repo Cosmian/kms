@@ -23,8 +23,8 @@ set -euo pipefail
 # curl and python3. Usage: test_ssh_certificates.sh --variant <fips|non-fips> --link <static|dynamic>
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../../lib/common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 
 VARIANT_ARG="fips"
 LINK_ARG="static"

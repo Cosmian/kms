@@ -166,7 +166,7 @@ For React/TypeScript/WASM conventions, see
   exemption for what is still reported (`cargo vet suggest` lists it) on the PR branch before merging. Routine bumps
   are done by hand (`cargo update -p <crate> --precise <version>`).
 - **Python test dependencies** — edit the human-authored `.in` file next to the requirements (for example
-  `.mise/scripts/test/requirements-jose.in`), then regenerate the hash-pinned lockfile with
+  `.mise/scripts/test/interop/requirements-jose.in`), then regenerate the hash-pinned lockfile with
   `pip-compile --generate-hashes --output-file=<name>.txt <name>.in` and commit both. Never hand-edit the `.txt`;
   install sites use `pip install --require-hashes`. The `jose` and `cef` lockfiles are compiled with Python 3.9 because
   `.mise/scripts/common.sh` puts the macOS Command Line Tools `python3` first in `PATH`; the other lockfiles are
