@@ -330,7 +330,7 @@ files = '''
 | ^authentication$
 | ^\.mise/tasks/test/spire/
 | ^\.mise/lib/spire_test\.sh$
-| ^\.mise/scripts/test/grant_spire_pki_certify\.sh$
+| ^\.mise/scripts/test/spire/grant_spire_pki_certify\.sh$
 '''
 variants = ["non-fips"]
 

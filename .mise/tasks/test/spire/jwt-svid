@@ -316,7 +316,7 @@ source "${SPIRE_SECRETS_ENV}"
 
 # sign-intermediate requires an explicit `certify` grant on the CA private key.
 CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
-  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+  bash "${REPO_ROOT}/.mise/scripts/test/spire/grant_spire_pki_certify.sh"
 
 # ── Step 5: Start SPIRE server (tenant A) ────────────────────────────────────
 print_status "Step 5: Starting SPIRE server A..."
