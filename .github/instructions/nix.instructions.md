@@ -18,7 +18,7 @@ When CI reports a hash mismatch:
 
 1. **Verify intent**: Check if `Cargo.lock` or `ui/pnpm-lock.yaml` actually changed in this PR.
 2. **If unintentional**: Revert the lock file change.
-3. **If intentional**: Retrieve the correct hash from the CI log output (`got: sha256-...`) and update the corresponding file in `nix/expected-hashes/`.
+3. **If intentional**: Do **not** renew the hash in the PR, and do not edit `nix/expected-hashes/`. The nightly workflow (`nightly.yml` → `nix-update-hashes.yml`) recomputes and commits them. See `lockfile-hashes.instructions.md`. Only a nightly run, or an explicit user request, may renew them.
 
 ## CI entry point
 
