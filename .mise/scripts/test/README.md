@@ -26,6 +26,6 @@ The task documentation (scenarios, diagrams) lives in [`.mise/tasks/test/README.
 1. A script lives in the folder of the `.mise/tasks/test/<group>/` task that calls it (`vectors/` for the `dev:vectors-*` tools).
 2. Helpers, fixtures, configs and a `requirements-*.in`/`.txt` pair sit next to the scripts that use them.
 3. A shell helper used by two or more groups goes in `.mise/lib/`; any other shared file goes in `.mise/scripts/test/common/` (created when first needed).
-4. A new `requirements-*.txt` outside `interop/`, `obs/` and `pkcs11/` needs its folder added to the `pip` directories of `.github/dependabot.yml` and its path added to the `python-dependency-audit` list of `.github/workflows/supply-chain.yml`.
+4. Add every new `requirements-*.txt` to the `python-dependency-audit` list of `.github/workflows/supply-chain.yml`; outside `interop/`, `obs/` and `pkcs11/`, also add its folder to the `pip` directories of `.github/dependabot.yml`.
 5. Moving or adding a script means updating `.github/ci-paths.toml`; check with `mise run dev:ci-changes --self-test`.
-6. Scripts locate sibling files with `${SCRIPT_DIR}/...`; a script one level deeper than its folder (`openbao/`, `saml_sso/`) needs one more `../`.
+6. Paths that climb out of the folder (`${SCRIPT_DIR}/../…`) need one more `../` per extra nesting level (`openbao/`, `saml_sso/`).
