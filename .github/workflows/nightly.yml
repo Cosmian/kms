@@ -13,6 +13,7 @@ on:
       - main
     tags:
       - '**'
+      - '!ansible-v*' # collection releases must not run the KMS packaging and publish its assets
   workflow_call:
   workflow_dispatch:
   schedule:
