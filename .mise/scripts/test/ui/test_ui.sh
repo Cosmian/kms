@@ -296,7 +296,9 @@ KMS_PID=$!
 # loop that passes --insecure and the owner client certificate.
 echo "==> Waiting for KMS to be ready (mTLS) …"
 for _i in $(seq 1 300); do
-  if env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+  # curl links the Nix OpenSSL, which cannot load the 3.5.9 FIPS provider that OPENSSL_CONF /
+  # OPENSSL_MODULES select for the KMS server ("derivation function init failed"): run it without them.
+  if env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
     curl -sS --max-time 2 --insecure \
     --cert "${OWNER_CERT}" --key "${OWNER_KEY}" \
     -o /dev/null -w "%{http_code}" \
@@ -307,13 +309,6 @@ for _i in $(seq 1 300); do
   fi
   if [ "${_i}" -eq 300 ]; then
     echo "ERROR: KMS server did not start in 300 s; log:" >&2
-    echo "--- readiness probe (curl -v), which curl: $(command -v curl || echo none) ---" >&2
-    echo "OPENSSL_CONF=${OPENSSL_CONF:-} OPENSSL_MODULES=${OPENSSL_MODULES:-}" >&2
-    curl --version >&2 || true
-    env -u LD_PRELOAD -u LD_LIBRARY_PATH curl -v --max-time 5 --insecure \
-      --cert "${OWNER_CERT}" --key "${OWNER_KEY}" \
-      -X POST -H "Content-Type: application/json" -d '{}' \
-      "https://127.0.0.1:${KMS_PORT}/kmip/2_1" >&2 || echo "curl exit code: $?" >&2
     cat "${KMS_LOG}" >&2
     exit 1
   fi
