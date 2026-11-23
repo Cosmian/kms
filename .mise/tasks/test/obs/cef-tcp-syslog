@@ -18,6 +18,6 @@ fi
 
 print_header "Running CEF-over-TCP-syslog SIEM integration test (${VARIANT_NAME})"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_siem_cef_tcp_syslog.sh" --variant "$VARIANT"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_siem_cef_tcp_syslog.sh" --variant "$VARIANT"
 
 print_success "CEF-over-TCP-syslog SIEM test completed"

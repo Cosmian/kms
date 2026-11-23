@@ -22,16 +22,16 @@ set -euo pipefail
 #  11. Print evidence
 #
 # Usage:
-#   bash .mise/scripts/test/test_monitoring.sh [--variant fips|non-fips]
+#   bash .mise/scripts/test/obs/test_monitoring.sh [--variant fips|non-fips]
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=.mise/scripts/common.sh
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 # shellcheck source=.mise/lib/kms_build.sh
-source "${SCRIPT_DIR}/../../lib/kms_build.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_build.sh"
 # shellcheck source=.mise/lib/kms_server.sh
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 # shellcheck source=.mise/lib/test_slots.sh
-source "${SCRIPT_DIR}/../../lib/test_slots.sh"
+source "${SCRIPT_DIR}/../../../lib/test_slots.sh"
 
 init_build_env "$@"
 setup_test_logging

@@ -18,14 +18,14 @@
 # Compose service before calling this script.
 #
 # Usage:
-#   KMS_AUDIT_POSTGRES_URL=postgresql://... bash .mise/scripts/test/test_audit_postgres_log.sh [--variant fips|non-fips]
+#   KMS_AUDIT_POSTGRES_URL=postgresql://... bash .mise/scripts/test/obs/test_audit_postgres_log.sh [--variant fips|non-fips]
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_build.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
-source "${SCRIPT_DIR}/../../lib/audit_e2e.sh"
+source "${SCRIPT_DIR}/../../common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_build.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/audit_e2e.sh"
 
 init_build_env "$@"
 setup_test_logging
@@ -188,7 +188,7 @@ kill "${KMS_PID}" 2>/dev/null || true
 wait "${KMS_PID}" 2>/dev/null || true
 KMS_PID=""
 
-_repo_root="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+_repo_root="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 tamper_out=$(
   docker compose --project-directory "${_repo_root}" exec -T postgres-audit \
     psql -U kms_audit -d kms_audit -v ON_ERROR_STOP=1 <<SQL

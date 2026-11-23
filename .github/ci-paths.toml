@@ -301,7 +301,7 @@ files = '''
 | ^crate/clients/clap/src/actions/audit\.rs$
 | ^\.mise/tasks/test/obs/
 | ^\.mise/lib/audit_(e2e|compat)\.sh$
-| ^\.mise/scripts/test/(test_audit_log\.sh|test_audit_postgres_log\.sh|generate_live_audit_fixture\.sh
+| ^\.mise/scripts/test/obs/(test_audit_log\.sh|test_audit_postgres_log\.sh|generate_live_audit_fixture\.sh
                        |validate_audit_compat\.py|fixtures/|test_cef_format\.sh|test_siem_[a-z_]+\.sh
                        |siem_verify_fields\.py|cef_helper\.py|rsyslog\.conf|test_monitoring\.sh
                        |requirements-(cef|audit-compat)\.(in|txt))

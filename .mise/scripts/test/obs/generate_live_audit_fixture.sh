@@ -7,13 +7,13 @@
 # hands off the resulting file at --output.
 #
 # Usage:
-#   bash .mise/scripts/test/generate_live_audit_fixture.sh --output /path/to/audit.jsonl
+#   bash .mise/scripts/test/obs/generate_live_audit_fixture.sh --output /path/to/audit.jsonl
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../../lib/common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_build.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_build.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 
 OUTPUT=""
 while [ $# -gt 0 ]; do

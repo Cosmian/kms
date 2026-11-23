@@ -20,6 +20,6 @@ docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d elasticsearch || {
 
 print_header "Running Filebeat → Elasticsearch SIEM integration test (${VARIANT_NAME})"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_siem_filebeat.sh" --variant "$VARIANT"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_siem_filebeat.sh" --variant "$VARIANT"
 
 print_success "Filebeat → Elasticsearch SIEM test completed"

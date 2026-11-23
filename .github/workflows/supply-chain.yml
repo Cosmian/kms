@@ -38,8 +38,8 @@ jobs:
           for f in \
             .mise/scripts/test/requirements-pkcs11-check.txt \
             .mise/scripts/test/requirements-jose.txt \
-            .mise/scripts/test/requirements-cef.txt \
-            .mise/scripts/test/requirements-audit-compat.txt \
+            .mise/scripts/test/obs/requirements-cef.txt \
+            .mise/scripts/test/obs/requirements-audit-compat.txt \
             .mise/scripts/docs/requirements.txt; do
             echo "::group::pip-audit $f"
             pip-audit -r "$f"

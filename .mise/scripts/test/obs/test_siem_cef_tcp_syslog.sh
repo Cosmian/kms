@@ -23,14 +23,14 @@ set -euo pipefail
 #   8. Clean up
 #
 # Usage:
-#   bash .mise/scripts/test/test_siem_cef_tcp_syslog.sh [--variant fips|non-fips]
+#   bash .mise/scripts/test/obs/test_siem_cef_tcp_syslog.sh [--variant fips|non-fips]
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=.mise/scripts/common.sh
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 # shellcheck source=.mise/lib/kms_build.sh
-source "${SCRIPT_DIR}/../../lib/kms_build.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_build.sh"
 # shellcheck source=.mise/lib/kms_server.sh
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 init_build_env "$@"
 setup_test_logging
 

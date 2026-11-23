@@ -68,7 +68,7 @@
       "type": ["string", "object"],
       "required": true,
       "nullable": false,
-      "description": "\"Success\", or an object {\"Failure\": \"<http status + reason>\"} on error. Polymorphic — normalized to result_status/result_detail before ingestion into either backend, see .mise/scripts/test/validate_audit_compat.py."
+      "description": "\"Success\", or an object {\"Failure\": \"<http status + reason>\"} on error. Polymorphic — normalized to result_status/result_detail before ingestion into either backend, see .mise/scripts/test/obs/validate_audit_compat.py."
     },
     {
       "name": "duration_ms",

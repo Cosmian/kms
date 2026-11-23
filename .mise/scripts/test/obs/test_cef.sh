@@ -11,13 +11,13 @@
 #   KMS server → audit middleware → JSONL file → ckms audit export → CEF → jc parser
 #
 # Usage:
-#   bash .mise/scripts/test/test_cef.sh [--variant fips|non-fips]
+#   bash .mise/scripts/test/obs/test_cef.sh [--variant fips|non-fips]
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
-source "${SCRIPT_DIR}/../../lib/kms_build.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../common.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_build.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 
 init_build_env "$@"
 setup_test_logging
