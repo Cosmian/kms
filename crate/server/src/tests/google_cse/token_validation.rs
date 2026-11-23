@@ -28,8 +28,8 @@ use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
 use super::{
-    import_google_cse_key_file_with_access, import_google_cse_symmetric_key_with_access,
-    rsa_encrypt,
+    dek_algorithm, import_google_cse_key_file_with_access,
+    import_google_cse_symmetric_key_with_access, rsa_encrypt,
     utils::{
         DRIVE_RESOURCE, LOCAL_AUTHN_ISSUER, LOCAL_KACLS_URL, LOCAL_KID, LOCAL_KMS_PUBLIC_URL,
         authn_token, authn_token_with_aud, authz_token, build_jwks_manager_with_key,
@@ -443,7 +443,7 @@ async fn private_key_sign_and_decrypt_with_tokens() {
         PrivateKeyDecryptRequest {
             authentication: authn,
             authorization: gmail_authz_token(&rsa, USER, "decrypter", &spki_hash),
-            algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
+            algorithm: dek_algorithm().to_owned(),
             encrypted_data_encryption_key: encrypted,
             rsa_oaep_label: None,
             reason: String::new(),

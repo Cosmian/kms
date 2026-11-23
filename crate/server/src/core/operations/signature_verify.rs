@@ -436,11 +436,16 @@ fn verify_message(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "non-fips")]
     use hex::FromHex;
+    #[cfg(feature = "non-fips")]
     use openssl::{hash::MessageDigest, rsa::Padding, sign::Verifier};
 
     use super::*;
 
+    // The FIPS provider refuses the automatic PSS salt length this vector is verified with
+    // (rsa_pss_saltlen_check_passed: invalid salt length).
+    #[cfg(feature = "non-fips")]
     #[test]
     fn verify_cs_ac_m_2_21_step1_openssl() {
         // Public key from XML (PKCS1 DER, hex-encoded)
@@ -466,6 +471,9 @@ mod tests {
         }
     }
 
+    // The FIPS provider refuses the automatic PSS salt length this vector is verified with
+    // (rsa_pss_saltlen_check_passed: invalid salt length).
+    #[cfg(feature = "non-fips")]
     #[test]
     fn verify_cs_ac_m_2_21_step1_kms_path() {
         let pk_hex = "3082010a0282010100ab7f161c0042496ccd6c6d4dadb919973435357776003acf54b7af1e440afb80b64a8755f8002cfeba6b184540a2d66086d74648346d75b8d71812b205387c0f6583bc4d7dc7ec114f3b176b7957c422e7d03fc6267fa2a6f89b9bee9e60a1d7c2d833e5a5f4bb0b1434f4e795a41100f8aa214900df8b65089f98135b1c67b701675abdbc7d5721aac9d14a7f081fcec80b64e8a0ecc8295353c795328abf70e1b42e7bb8b7f4e8ac8c810cdb66e3d21126eba8da7d0ca34142cb76f91f013da809e9c1b7ae64c54130fbc21d80e9c2cb06c5c8d7cce8946a9ac99b1c2815c3612a29a82d73a1f99374fe30e54951662a6eda29c6fc411335d5dc7426b0f6050203010001";

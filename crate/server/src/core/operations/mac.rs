@@ -652,7 +652,9 @@ mod tests {
                 requests::symmetric_key_create_request,
             },
         },
-        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::caller_gcm_iv_allowed,
+        cosmian_kms_crypto::crypto::{
+            is_fips_build, symmetric::symmetric_ciphers::caller_gcm_iv_allowed,
+        },
     };
 
     use crate::{
@@ -672,7 +674,7 @@ mod tests {
         result.unwrap_err();
 
         // Empty data
-        let key = vec![1, 2, 3, 4];
+        let key = vec![1_u8; 16];
         let data = vec![];
         let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
         assert_ne!(hmac.len(), 0);
@@ -684,7 +686,7 @@ mod tests {
         result.unwrap_err();
 
         // Large data (1MB)
-        let key = vec![1, 2, 3, 4];
+        let key = vec![1_u8; 16];
         let data = vec![0_u8; 1024 * 1024];
         let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
         assert_eq!(hmac.len(), 32);
@@ -1365,7 +1367,10 @@ mod tests {
                 .unwrap()
         {
             let computed = compute_hmac(&v.key, &v.msg, v.hash);
-            if v.valid {
+            if is_fips_build() && v.key.len() < 14 {
+                // SP 800-131A: the FIPS provider refuses an HMAC key under 112 bits.
+                assert!(computed.is_err(), "{} ({})", v.id, v.source);
+            } else if v.valid {
                 let computed = computed.unwrap_or_else(|e| panic!("{} ({}): {e}", v.id, v.source));
                 assert_eq!(
                     computed.get(..v.tag.len()),

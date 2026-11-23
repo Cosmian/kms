@@ -1110,7 +1110,10 @@ mod tests {
     fn test_hkdf_official_vectors() {
         for v in hkdf_vectors().unwrap() {
             let okm = derive_hkdf(&v.ikm, &v.salt, &v.info, v.size, v.hash);
-            if v.valid {
+            if is_fips_build() && v.ikm.len() < 14 {
+                // SP 800-131A: the FIPS provider refuses an HKDF key under 112 bits.
+                assert!(okm.is_err(), "{} ({})", v.id, v.source);
+            } else if v.valid {
                 let okm = okm.unwrap_or_else(|e| panic!("{} ({}): {e}", v.id, v.source));
                 assert_eq!(okm.to_vec(), v.okm, "{} ({})", v.id, v.source);
             } else {
