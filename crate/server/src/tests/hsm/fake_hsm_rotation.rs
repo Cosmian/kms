@@ -360,6 +360,7 @@ impl HSM for RotatingHsm {
                 end_date: key.end,
                 rotate_name,
                 rotate_generation,
+                usage: None,
             }
         }))
     }

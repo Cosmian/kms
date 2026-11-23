@@ -17,6 +17,52 @@ use zeroize::Zeroizing;
 
 use crate::{InterfaceError, KeyType, error::InterfaceResult};
 
+/// PKCS#11 usage attributes read from an HSM key, as a bit set; attributes not defined on the
+/// key's class are never set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct KeyUsageFlags(u8);
+
+impl KeyUsageFlags {
+    /// `CKA_DECRYPT`
+    pub const DECRYPT: Self = Self(1 << 1);
+    /// `CKA_ENCRYPT`
+    pub const ENCRYPT: Self = Self(1);
+    /// `CKA_SIGN`
+    pub const SIGN: Self = Self(1 << 2);
+    /// `CKA_UNWRAP`
+    pub const UNWRAP: Self = Self(1 << 5);
+    /// `CKA_VERIFY`
+    pub const VERIFY: Self = Self(1 << 3);
+    /// `CKA_WRAP`
+    pub const WRAP: Self = Self(1 << 4);
+
+    /// No attribute set.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    /// `true` when every attribute of `other` is set in `self`.
+    #[must_use]
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+
+impl std::ops::BitOr for KeyUsageFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitOrAssign for KeyUsageFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct KeyMetadata {
     pub key_type: KeyType,
@@ -36,6 +82,8 @@ pub struct KeyMetadata {
     pub rotate_name: Option<String>,
     /// Keyset generation counter parsed from `CKA_LABEL`.
     pub rotate_generation: Option<i32>,
+    /// Usage attributes; None when not read (EC keys) or the HSM rejects them.
+    pub usage: Option<KeyUsageFlags>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

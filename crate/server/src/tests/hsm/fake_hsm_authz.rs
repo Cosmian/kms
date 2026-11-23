@@ -222,6 +222,7 @@ impl HSM for FakeHsm {
             end_date: None,
             rotate_name: key.rotate_name.clone(),
             rotate_generation: key.rotate_generation,
+            usage: None,
         }))
     }
 
