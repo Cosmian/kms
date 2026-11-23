@@ -217,7 +217,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0459)                                                                                                                                                  |
 | References | [RUSTSEC-2026-0459](https://rustsec.org/advisories/RUSTSEC-2026-0459.html), [CVE-2026-119375](https://nvd.nist.gov/vuln/detail/CVE-2026-119375), [#1388](https://github.com/Cosmian/kms/pull/1388) |
 
-**Summary:** `rusqlite` 0.37 bundled SQLite through `libsqlite3-sys` 0.35, which is older than 3.54. SQLite before 3.54.0 can return uninitialised page-cache memory when a process opens a database file together with a sibling `-wal` file whose page size differs from the database's.
+**Summary:** `rusqlite` 0.37 bundled SQLite through `libsqlite3-sys` 0.35, which bundles SQLite older than 3.54. SQLite before 3.54.0 can return uninitialised page-cache memory when a process opens a database file together with a sibling `-wal` file whose page size differs from the database's.
 
 **Impact:** Exploitation needs a crafted database and `-wal` file pair opened by the server, so an attacker must be able to write in the SQLite database directory; the vector is local. The KMS opens only its own database file. Severity is Low unless the database directory is writable by a less trusted party. PostgreSQL, MySQL and Redis backends are not affected.
 
