@@ -208,24 +208,31 @@ def comparison(runs: list[dict]) -> list[str]:
         (
             'peak message ms (all)',
             [
-                fmt(r['summary']['per_server'][0]['peak_message_ms'])
-                if reached_switch(r)
-                else 'n/a'
+                (
+                    fmt(r['summary']['per_server'][0]['peak_message_ms'])
+                    if reached_switch(r)
+                    else 'n/a'
+                )
                 for r in runs
             ],
         ),
         (
             'recovery ms (all)',
             [
-                fmt(recovery(r['summary']['per_server'][0]))
-                if reached_switch(r) and keeps_rate(r)
-                else 'n/a'
+                (
+                    fmt(recovery(r['summary']['per_server'][0]))
+                    if reached_switch(r) and keeps_rate(r)
+                    else 'n/a'
+                )
                 for r in runs
             ],
         ),
         (
             'measurement s / switch at s',
-            [f"{r['summary']['duration_s']} / +{r['summary']['switch_at_s']}" for r in runs],
+            [
+                f"{r['summary']['duration_s']} / +{r['summary']['switch_at_s']}"
+                for r in runs
+            ],
         ),
     ]
     servers = [
