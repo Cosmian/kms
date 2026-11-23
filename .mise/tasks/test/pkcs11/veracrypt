@@ -18,6 +18,6 @@ fi
 
 print_header "Running VeraCrypt PKCS#11 tests (${VARIANT_NAME})"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_veracrypt.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/pkcs11/test_veracrypt.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "VeraCrypt tests completed"

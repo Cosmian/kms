@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MISE_CONFIG_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+MISE_CONFIG_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"

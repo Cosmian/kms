@@ -287,7 +287,7 @@ files = '''
 | ^crate/clients/clap/src/actions/pkcs11/
 | ^\.mise/tasks/test/pkcs11/
 | ^\.mise/lib/(softhsm2|pkcs11_helpers)\.sh$
-| ^\.mise/scripts/test/(test_pkcs11_conformance\.sh|pkcs11_raw_abi_check\.py|test_gnupg\.sh|test_gnupg_smartcard\.sh
+| ^\.mise/scripts/test/pkcs11/(test_pkcs11_conformance\.sh|pkcs11_raw_abi_check\.py|test_gnupg\.sh|test_gnupg_smartcard\.sh
                        |gnupg_pkcs11_scd_driver\.py|test_luks\.sh|test_openssh\.sh|test_hsm_kek_pkcs11_comprehensive\.sh
                        |test_pkcs11_check\.sh|requirements-pkcs11-check\.(in|txt)|test_veracrypt\.sh)$
 | ^crate/server/src/core/operations/pkcs11\.rs$

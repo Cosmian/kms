@@ -20,7 +20,7 @@
 #
 # For multipart operations (C_*Update/Final) and PKCS#11 v3.0 message-based
 # operations (C_MessageSignInit, C_EncryptMessage, etc.), see the companion
-# ctypes raw-ABI harness: .mise/scripts/test/pkcs11_raw_abi_check.py
+# ctypes raw-ABI harness: .mise/scripts/test/pkcs11/pkcs11_raw_abi_check.py
 #
 # Usage (via mise):
 #   mise run test:pkcs11:tool --variant non-fips
@@ -28,7 +28,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MISE_CONFIG_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+MISE_CONFIG_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
@@ -768,4 +768,4 @@ print_success "  ✓ Cross-checks (HSM-KEK ↔ KMIP consistency)"
 print_success ""
 print_success "For PKCS#11 v3.0 message-based operations (C_MessageSignInit, etc.),"
 print_success "see the companion ctypes raw-ABI harness:"
-print_success "  .mise/scripts/test/pkcs11_raw_abi_check.py"
+print_success "  .mise/scripts/test/pkcs11/pkcs11_raw_abi_check.py"

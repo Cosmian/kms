@@ -36,7 +36,7 @@ jobs:
           source /tmp/pip-audit-venv/bin/activate
           pip install --quiet pip-audit==2.10.1
           for f in \
-            .mise/scripts/test/requirements-pkcs11-check.txt \
+            .mise/scripts/test/pkcs11/requirements-pkcs11-check.txt \
             .mise/scripts/test/requirements-jose.txt \
             .mise/scripts/test/obs/requirements-cef.txt \
             .mise/scripts/test/obs/requirements-audit-compat.txt \

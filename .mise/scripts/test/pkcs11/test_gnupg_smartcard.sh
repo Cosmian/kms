@@ -23,14 +23,14 @@
 #
 # Usage:
 #   mise run test:pkcs11:gnupg --variant non-fips   (also runs the OpenPGP interoperability tests)
-#   bash .mise/scripts/test/test_gnupg_smartcard.sh
+#   bash .mise/scripts/test/pkcs11/test_gnupg_smartcard.sh
 set -euo pipefail
 set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
-source "${SCRIPT_DIR}/../../lib/pkcs11_helpers.sh"
-source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+source "${SCRIPT_DIR}/../../common.sh"
+source "${SCRIPT_DIR}/../../../lib/pkcs11_helpers.sh"
+source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
 
 init_build_env "$@"
 setup_test_logging
