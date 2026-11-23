@@ -62,7 +62,8 @@ Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips o
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
 2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
-3. It then runs in CI with its group (a unit of `.github/ci-paths.toml`, hence a leg of `test-suites` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
+3. A helper script the leaf calls goes in `.mise/scripts/test/<group>/` (see [`.mise/scripts/test/README.md`](../../scripts/test/README.md)).
+4. It then runs in CI with its group (a unit of `.github/ci-paths.toml`, hence a leg of `test-suites` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
 
 ### Sequence Diagram
 

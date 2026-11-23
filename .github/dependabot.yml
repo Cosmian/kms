@@ -38,7 +38,9 @@ updates:
 
   - package-ecosystem: pip
     directories:
-      - /.mise/scripts/test
+      - /.mise/scripts/test/interop
+      - /.mise/scripts/test/obs
+      - /.mise/scripts/test/pkcs11
       - /.mise/scripts/docs
     schedule:
       interval: daily
