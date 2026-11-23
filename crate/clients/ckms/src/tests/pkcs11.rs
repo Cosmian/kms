@@ -393,7 +393,7 @@ fn assert_mechanism_names_covered(stdout: &str, expected_names: usize) {
 const FAULT_CHILD_ENV: &str = "COSMIAN_PKCS11_FAULT_CHILD";
 /// Raw-pointer host for the cdylib under test; `libloading` has no safe API.
 mod fault_host {
-    #![expect(unsafe_code)] // tracked in #925: dlopen of the shipped library
+    #![expect(unsafe_code, reason = "tracked in #925: dlopen of the shipped library")]
 
     use super::pkcs11_lib_path;
 
@@ -403,6 +403,11 @@ mod fault_host {
     const CKF_SERIAL_SESSION: std::ffi::c_ulong = 4;
 
     type InitFn = unsafe extern "C" fn(*mut std::ffi::c_void) -> std::ffi::c_ulong;
+    type SlotListFn = unsafe extern "C" fn(
+        u8,
+        *mut std::ffi::c_ulong,
+        *mut std::ffi::c_ulong,
+    ) -> std::ffi::c_ulong;
     type OpenSessionFn = unsafe extern "C" fn(
         std::ffi::c_ulong,
         std::ffi::c_ulong,
@@ -410,8 +415,11 @@ mod fault_host {
         *mut std::ffi::c_void,
         *mut std::ffi::c_ulong,
     ) -> std::ffi::c_ulong;
-    type RandomFn =
-        unsafe extern "C" fn(std::ffi::c_ulong, *mut u8, std::ffi::c_ulong) -> std::ffi::c_ulong;
+    type FindObjectsInitFn = unsafe extern "C" fn(
+        std::ffi::c_ulong,
+        *mut std::ffi::c_void,
+        std::ffi::c_ulong,
+    ) -> std::ffi::c_ulong;
     type StatusFn = unsafe extern "C" fn(std::ffi::c_ulong) -> std::ffi::c_ulong;
     type DiscoverFn = unsafe extern "C" fn(*mut *const usize) -> std::ffi::c_ulong;
 
@@ -461,18 +469,21 @@ mod fault_host {
         assert_eq!(unsafe { discover(&raw mut table) }, CKR_OK);
 
         // SAFETY: each type is the PKCS#11 signature of the named function and slot (v2.40 order).
-        let (init, finalize, open_session, random, status) = unsafe {
+        let (init, finalize, slot_list, open_session, find_init, status) = unsafe {
             (
                 resolve::<InitFn>(&lib, table, b"C_Initialize\0", 0),
                 resolve::<InitFn>(&lib, table, b"C_Finalize\0", 1),
+                resolve::<SlotListFn>(&lib, table, b"C_GetSlotList\0", 4),
                 resolve::<OpenSessionFn>(&lib, table, b"C_OpenSession\0", 12),
-                resolve::<RandomFn>(&lib, table, b"C_GenerateRandom\0", 64),
+                resolve::<FindObjectsInitFn>(&lib, table, b"C_FindObjectsInit\0", 26),
                 resolve::<StatusFn>(&lib, table, b"C_GetFunctionStatus\0", 65),
             )
         };
         let mut session: std::ffi::c_ulong = 0;
-        let mut bytes = [0_u8; 16];
-        // SAFETY: valid pointers and lengths for the calls below.
+        let mut slot_count: std::ffi::c_ulong = 0;
+        let mut template = [0_usize; 4];
+        // SAFETY: valid pointers and lengths for the calls below; `find_init` panics in
+        // `Vec::with_capacity` before `template` is read as a slice.
         unsafe {
             assert_eq!(init(std::ptr::null_mut()), CKR_OK);
             assert_eq!(
@@ -486,17 +497,17 @@ mod fault_host {
                 CKR_OK
             );
             assert_eq!(
-                random(session, bytes.as_mut_ptr(), 16),
+                slot_list(1, std::ptr::null_mut(), &raw mut slot_count),
                 CKR_OK,
                 "healthy call failed"
             );
-            // The length overflows Vec capacity before the buffer is touched.
+            // `Attributes::try_from` overflows `Vec::with_capacity` before reading `pTemplate`.
             assert_eq!(
-                random(session, bytes.as_mut_ptr(), oversized),
+                find_init(session, (&raw mut template).cast(), oversized),
                 CKR_GENERAL_ERROR
             );
             assert_eq!(
-                random(session, bytes.as_mut_ptr(), 16),
+                slot_list(1, std::ptr::null_mut(), &raw mut slot_count),
                 CKR_GENERAL_ERROR,
                 "work after fault"
             );

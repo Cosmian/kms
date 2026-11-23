@@ -116,7 +116,9 @@ impl tracing::Subscriber for PanicSubscriber {
     }
 
     fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+
     fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+
     fn event(&self, event: &tracing::Event<'_>) {
         if self.0 == "return" {
             std::panic::resume_unwind(Box::new("return fault"));
@@ -125,12 +127,15 @@ impl tracing::Subscriber for PanicSubscriber {
             event.record(&mut FormatVisitor);
         }
     }
+
     fn enter(&self, _: &tracing::span::Id) {}
+
     fn exit(&self, _: &tracing::span::Id) {
         if self.0 == "exit" {
             std::panic::resume_unwind(Box::new("exit fault"));
         }
     }
+
     fn try_close(&self, _: tracing::span::Id) -> bool {
         if self.0 == "close" {
             std::panic::resume_unwind(Box::new("close fault"));
