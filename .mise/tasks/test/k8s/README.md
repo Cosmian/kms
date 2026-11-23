@@ -294,5 +294,5 @@ mise run test:k8s:hsm --model proteccio --variant fips --local-image ghcr.io/cos
 Image-loading regression tests run without a cluster or HSM:
 
 ```bash
-python3 .mise/scripts/test/test_k8s_hsm_images.py
+python3 .mise/scripts/test/k8s/test_k8s_hsm_images.py
 ```

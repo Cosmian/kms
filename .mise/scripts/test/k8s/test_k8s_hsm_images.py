@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 TASK = ROOT / '.mise/tasks/test/k8s/hsm'
 IMAGE = 'registry.invalid/kms:test-tag'  # docker and minikube are mocked: only the form matters
 MOCK = """#!/usr/bin/env bash
