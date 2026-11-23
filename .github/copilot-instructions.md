@@ -87,7 +87,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
 - Regression test: every bug fix ships a test that fails before the fix (or the commit message says why not).
 - CLI tests: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
-- SQL: every SQL statement lives as a named entry in the backend's `.sql` file (`crate/server_database/src/stores/sql/query*.sql`, `stores/audit/audit.sql`), never as a string literal in non-test Rust — see `.github/instructions/rust-database.instructions.md` § SQL statements live in SQL files.
+- SQL: follow the [SQL placement rules and exceptions](instructions/rust-database.instructions.md#sql-statements-live-in-sql-files).
 - Secrets: compare in constant time, keep in `Zeroizing`, never log — see `.github/instructions/rust-security.instructions.md`.
 - Commit subjects: conventional-commit type + descriptive subject; never `fix: PR review`, `fix: commit`.
 

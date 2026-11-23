@@ -105,8 +105,7 @@ recommends RSA-3072+):
 3. Note which standard takes precedence in the deployment context (if known)
 
 ```markdown
-**Multi-standard divergence**: RSA-2048 is approved by [FIPS 140-3] / [FIPS 186-5],
-whereas [BSI TR-02102-1] (2024) requires ≥ 3000 bits (3072+ in practice) after the
-≥ 2000-bit transitional period ended in 2023. The applicable standard depends on the
-deployment jurisdiction.
+**Multi-standard divergence**: RSA-2048 is approved by [FIPS 140-3] but deprecated
+by [BSI TR-02102-1] (2024) which recommends 3072+ bits. The applicable standard
+depends on the deployment jurisdiction.
 ```

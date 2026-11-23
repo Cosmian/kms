@@ -50,7 +50,7 @@ Identify every cryptographic algorithm used in the scanned code. For each:
 
 | Category | Approved algorithms | Governing standard |
 |----------|--------------------|--------------------|
-| Symmetric encryption | AES-128, AES-192, AES-256 (GCM, CCM, CBC, CTR, KW, KWP) | FIPS 197, SP 800-38A/D/F |
+| Symmetric encryption | AES-128, AES-192, AES-256 (GCM, CCM, CBC, CTR, KW, KWP, XTS*) | FIPS 197, SP 800-38A/D/F |
 | Asymmetric encryption | RSA-2048+, EC P-256, P-384, P-521 | FIPS 186-5, SP 800-56A r3 |
 | Digital signatures | ECDSA (P-256/384/521), RSA-PSS, RSA-PKCS1v15, ML-DSA (FIPS 204), SLH-DSA (FIPS 205) | FIPS 186-5, FIPS 204, FIPS 205 |
 | Key encapsulation | ML-KEM (FIPS 203) | FIPS 203 |
@@ -60,7 +60,7 @@ Identify every cryptographic algorithm used in the scanned code. For each:
 | Key establishment | ECDH (SP 800-56A r3), RSA-KEM (SP 800-56B r2) | SP 800-56A r3, SP 800-56B r2 |
 | RNG | CTR_DRBG, HASH_DRBG (via OpenSSL FIPS provider) | SP 800-90A r1 |
 
-> **Note**: NIST SP 800-38E approves AES-XTS only for storage-device confidentiality, not general-purpose KMIP encryption; Eviden KMS gates AES-XTS behind `#[cfg(feature = "non-fips")]`.
+*AES-XTS is non-FIPS in this codebase (`non-fips` feature).
 
 ### BSI TR-02102-1 (2024) — Algorithm Recommendations
 
@@ -71,7 +71,7 @@ Cross-check each algorithm found in Step 1 against BSI recommendations:
 | Symmetric | AES-128+ (GCM, CCM, CBC with HMAC), no ECB | 3DES deprecated since 2023 |
 | Hash | SHA-256+, SHA-3-256+ | SHA-1 forbidden for signatures, allowed for HMAC only until 2025 |
 | MAC | HMAC-SHA-256+, CMAC-AES | HMAC-SHA-1 deprecated |
-| RSA | ≥ 3000 bits (3072+ in practice) | ≥ 2000-bit (RSA-2048) transitional allowance ended at end of 2023 |
+| RSA | ≥ 3000 bits (BSI recommends 3072+) | 2048 acceptable until 2025 only |
 | EC | P-256, P-384, P-521, Brainpool | Curve25519 acceptable for key agreement |
 | PQC | ML-KEM, ML-DSA, SLH-DSA | Recommended for hybrid schemes |
 
@@ -95,7 +95,7 @@ Cross-check each algorithm against ANSSI requirements:
 
 - MD5, SHA1 for any security purpose
 - DES, 3DES, RC4, Blowfish, ChaCha20
-- AES-XTS (approved by NIST SP 800-38E for storage devices only, not general KMIP encryption; gated behind `non-fips` in KMS)
+- AES-XTS (not in FIPS 140-3 approved mode list for this provider)
 - Covercrypt, Redis-findex (non-standard, non-FIPS)
 - PQC algorithms beyond ML-KEM/ML-DSA/SLH-DSA (pre-standardization)
 - EC curves outside P-256/P-384/P-521 (e.g. Curve25519, secp256k1)
@@ -133,14 +133,15 @@ Check all key generation and import operations in `crate/server/src/core/operati
 
 | Algorithm | Minimum key size (FIPS) | BSI minimum | ANSSI minimum | Check location |
 |-----------|------------------------|-------------|---------------|----------------|
-| RSA | 2048 bits | 3000 bits (3072+ in practice; since 2024) | 2048 bits | `create.rs`, `import.rs` |
+| RSA | 2048 bits | 3072 bits (2024) | 2048 bits | `create.rs`, `import.rs` |
 | AES | 128 bits | 128 bits | 128 bits | `create.rs` |
 | EC | P-256 (256 bits) | P-256 (256 bits) | P-256 (256 bits) | `create.rs` |
 | HMAC keys | 112 bits (SP 800-131A) | 128 bits | 128 bits | `create.rs` |
 
 Flag any operation that accepts key sizes below these minimums without rejecting them.
 
-> For BSI compliance, emit a **warning** (not a blocking finding in FIPS builds) for RSA-2048 keys — BSI TR-02102-1 requires ≥ 3000 bits since 2024 (the ≥ 2000-bit transition ended in 2023), while FIPS 186-5 and ANSSI allow 2048.
+> For BSI compliance, emit a **warning** (not a blocking finding) for RSA-2048 keys — BSI
+> recommends 3072+ since 2024 but does not yet forbid 2048.
 
 ## Step 5 — OpenSSL Provider Init
 
@@ -186,7 +187,7 @@ For each algorithm found in the inventory (Step 1), produce this table:
 | Algorithm | FIPS 140-3 | BSI TR-02102-1 (2024) | ANSSI (2021) | SP 800-131A r2 | Notes |
 |-----------|-----------|----------------------|--------------|----------------|-------|
 | AES-256-GCM | ✅ Approved | ✅ Recommended | ✅ Approved | ✅ Current | — |
-| RSA-2048 | ✅ Approved | ⚠️ Legacy (ended 2023; ≥ 3000 bits since 2024) | ✅ Approved (until 2030) | ✅ Approved | BSI TR-02102-1 requires ≥ 3000 bits (3072+ in practice) since 2024 |
+| RSA-2048 | ✅ Approved | ⚠️ Deprecated (2024) | ✅ Approved (until 2030) | ⚠️ Legacy use | BSI recommends 3072+ |
 | ... | ... | ... | ... | ... | ... |
 ```
 

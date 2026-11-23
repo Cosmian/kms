@@ -119,7 +119,6 @@ canonical, stable publication link (final/versioned). Organized by issuing body.
 | ASVS v5.0 | Application Security Verification Standard (v5.0.0, May 2025) | <https://owasp.org/www-project-application-security-verification-standard/> |
 | Crypto Cheat Sheet | Cryptographic Storage Cheat Sheet | <https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html> |
 | Key Mgmt Cheat Sheet | Key Management Cheat Sheet | <https://cheatsheetseries.owasp.org/cheatsheets/Key_Management_Cheat_Sheet.html> |
-| Password Storage Cheat Sheet | Password Storage Cheat Sheet | <https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html> |
 
 ## CWE / MITRE
 

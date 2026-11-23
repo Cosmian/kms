@@ -222,7 +222,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed — see .github/instructions/rust.instructions.md § Randomness.
 - **Regression test**: every bug fix ships a test that fails before the fix (or the commit message says why that is impossible) — see `rust.instructions.md` § Testing.
 - **CLI tests**: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
-- **SQL**: every SQL statement lives as a named entry in the backend's `.sql` file (`crate/server_database/src/stores/sql/query*.sql`, `stores/audit/audit.sql`), never as a string literal in non-test Rust — see `.github/instructions/rust-database.instructions.md` § SQL statements live in SQL files.
+- **SQL**: follow the [SQL placement rules and exceptions](.github/instructions/rust-database.instructions.md#sql-statements-live-in-sql-files).
 - **Secrets**: compare in constant time, keep in `Zeroizing`, never log — see `rust-security.instructions.md`.
 - **Commit subjects**: conventional-commit type + a descriptive subject (`fix(server): reject MAC with wrong length`); never `fix: PR review`, `fix: commit`, `fix: last fixes`.
 
@@ -317,7 +317,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | Auth method change | 4.9 |
 | Server config/wizard change | 4.6, 4.7 |
 | Database backend or persisted KMIP serde type change | 4.18 |
-| Cloud provider integration | 4.12, 4.10 |
+| Cloud provider integration | 4.12 |
 | HSM backend | 4.13 |
 | Documentation/behavior change | 4.14 |
 | Playwright E2E test change | 4.16 |

@@ -33,7 +33,7 @@ Feature flags:
 
 - In `crate/server/Cargo.toml`, `default = ["interop"]`; `non-fips`, `insecure` (dev/test only), and `timeout` are opt-in non-default features.
 - Across library and client crates, `non-fips` is the main opt-in feature flag for non-approved algorithms and backends.
-- Never add a `default` feature that enables `non-fips` or `insecure`.
+- Never add a `default` feature that enables `non-fips`.
 
 ## `.cargo/config.toml`
 
