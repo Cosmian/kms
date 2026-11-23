@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:51b88bc4-9817-4e61-8258-5b679dccb068",
+  "serialNumber": "urn:uuid:41c66241-a4ce-411b-af8d-47f651e79ffd",
   "metadata": {
-    "timestamp": "2026-11-22T07:25:42.592769+00:00",
+    "timestamp": "2026-11-23T15:31:32.016327+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/rypxrz3cxw62v9kkpnz1ckjq0g35wggl-cosmian-kms-server-dynamic-5.29.0.drv",
+      "bom-ref": "/nix/store/1bk8zxrlcara96830qnjdvh7mz7yibxl-cosmian-kms-server-dynamic-5.29.0.drv",
       "name": "cosmian-kms-server-dynamic",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server-dynamic@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/2hcfabaw1ff299q1kfm4361nwkl3ywac-cosmian-kms-server-dynamic-5.29.0"
+          "value": "/nix/store/m8my6azjz4vwmqarmr3lp5jdgjlkg52z-cosmian-kms-server-dynamic-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/rypxrz3cxw62v9kkpnz1ckjq0g35wggl-cosmian-kms-server-dynamic-5.29.0.drv"
+          "value": "/nix/store/1bk8zxrlcara96830qnjdvh7mz7yibxl-cosmian-kms-server-dynamic-5.29.0.drv"
         }
       ]
     }
@@ -6572,10 +6572,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/form_urlencoded@1.2.2",
+      "bom-ref": "pkg:cargo/form_urlencoded@1.2.3",
       "name": "form_urlencoded",
-      "version": "1.2.2",
-      "purl": "pkg:cargo/form_urlencoded@1.2.2",
+      "version": "1.2.3",
+      "purl": "pkg:cargo/form_urlencoded@1.2.3",
       "description": "Parser and serializer for the application/x-www-form-urlencoded syntax, as used by HTML forms.",
       "licenses": [
         {
@@ -6597,7 +6597,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:form_urlencoded:form_urlencoded:1.2.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:form_urlencoded:form_urlencoded:1.2.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18879,10 +18879,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/url@2.5.8",
+      "bom-ref": "pkg:cargo/url@2.5.9",
       "name": "url",
-      "version": "2.5.8",
-      "purl": "pkg:cargo/url@2.5.8",
+      "version": "2.5.9",
+      "purl": "pkg:cargo/url@2.5.9",
       "description": "URL library for Rust, based on the WHATWG URL Standard",
       "licenses": [
         {
@@ -18904,7 +18904,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:url:url:2.5.8:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:url:url:2.5.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -21672,31 +21672,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.7",
+      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
       "name": "eslint-plugin-react-refresh",
-      "version": "0.5.7",
-      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.7",
+      "version": "0.5.8",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.7:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.7(eslint@9.39.3(jiti@2.7.0))",
+      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "name": "eslint-plugin-react-refresh",
-      "version": "0.5.7(eslint@9.39.3(jiti@2.7.0))",
-      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.7(eslint@9.39.3(jiti@2.7.0))",
+      "version": "0.5.8(eslint@9.39.3(jiti@2.7.0))",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.7_eslint_9.39.3_jiti_2.7.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.8_eslint_9.39.3_jiti_2.7.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23044,31 +23044,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/playwright@1.65.0",
+      "bom-ref": "pkg:npm/playwright@1.65.1",
       "name": "playwright",
-      "version": "1.65.0",
-      "purl": "pkg:npm/playwright@1.65.0",
+      "version": "1.65.1",
+      "purl": "pkg:npm/playwright@1.65.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:microsoft:playwright:1.65.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:microsoft:playwright:1.65.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/playwright-core@1.65.0",
+      "bom-ref": "pkg:npm/playwright-core@1.65.1",
       "name": "playwright-core",
-      "version": "1.65.0",
-      "purl": "pkg:npm/playwright-core@1.65.0",
+      "version": "1.65.1",
+      "purl": "pkg:npm/playwright-core@1.65.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:playwright-core:playwright-core:1.65.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:playwright-core:playwright-core:1.65.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25173,7 +25173,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/rypxrz3cxw62v9kkpnz1ckjq0g35wggl-cosmian-kms-server-dynamic-5.29.0.drv",
+      "ref": "/nix/store/1bk8zxrlcara96830qnjdvh7mz7yibxl-cosmian-kms-server-dynamic-5.29.0.drv",
       "dependsOn": [
         "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv"
       ]

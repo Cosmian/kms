@@ -1,7 +1,7 @@
 /**
  * SAML 2.0 single sign-on — true end-to-end test of the KMS Web UI.
  *
- * Real stack (`.mise/scripts/test/saml_sso/stack.sh`, started by `test_ui_saml.sh`): Keycloak
+ * Real stack (`.mise/scripts/test/ui/saml_sso/stack.sh`, started by `test_ui_saml.sh`): Keycloak
  * as SAML IdP, the Auth Verifier SAML build (`cargo run`) as SAML SP, nginx serving both and the KMS on
  * `https://localhost:8443`. Nothing is mocked: the browser goes KMS -> Auth Verifier -> Keycloak
  * login form -> Auth Verifier ACS -> `_ea_` cookie -> KMS, and the KMS validates the session

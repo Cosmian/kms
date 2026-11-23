@@ -1,7 +1,7 @@
 # CI workflows: `main.yml`
 
 `main.yml` is the PR / tag / nightly test pipeline. The `test` job calls `test_all.yml`, which runs every CI unit as a leg of one matrix, each leg through `test-group.yml` (`test / <unit> …` rows):
-`main.yml` -> `supply-chain.yml`, `test_all.yml` -> `test-group.yml` / `cargo-publish.yml`. `cla.yml` is its own workflow (`pull_request_target`).
+`main.yml` -> `supply-chain.yml`, `test_all.yml` -> `test-group.yml` / `cargo-publish.yml`. The CLA is enforced by the hosted CLA Assistant GitHub App (`license/cla` status), not by a workflow.
 Packaging and releases are described in [README_nightly.md](README_nightly.md).
 
 ## Triggers and concurrency
@@ -18,7 +18,6 @@ Only PRs share a concurrency group (`ci-CI-<head_ref>`). Every other event gets 
 ```mermaid
 flowchart LR
     Main["main.yml<br/>pull_request · tags · schedule 03:00 UTC · dispatch"]
-    Cla["cla.yml<br/>own workflow, external fork PRs"]
     Supply["supply-chain.yml<br/>cargo vet · pip-audit · govulncheck · npm audit"]
     TestAll["test_all.yml<br/>suites matrix (ci_changes.py)"]
     Group["test-group.yml<br/>one job per leg"]

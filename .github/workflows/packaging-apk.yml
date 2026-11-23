@@ -181,7 +181,7 @@ jobs:
         run: mise run test:pkg:alpine-native-build --variant ${{ matrix.features }}
 
   # Proves the Nix-built Alpine apk packages install (`apk add`) and run on real
-  # Alpine. See .mise/scripts/test/test_alpine_musl.sh for the full sequence:
+  # Alpine. See .mise/scripts/test/pkg/test_alpine_musl.sh for the full sequence:
   # installed-binary --version/--info pre-checks, server start, /version and UI
   # checks, FIPS/legacy-provider log checks, AES/RSA/EC round-trips, and PQC for
   # non-FIPS (SLH-DSA as a musl thread-stack-size canary).
@@ -231,7 +231,7 @@ jobs:
             echo "::group::${features}"
             SERVER_APK=$(find "${features}/result-apk-server-${features}" -name "cosmian-kms-server-*.apk")
             CLI_APK=$(find "${features}/result-apk-cli-${features}" -name "cosmian-kms-cli-*.apk")
-            bash .mise/scripts/test/test_alpine_musl.sh \
+            bash .mise/scripts/test/pkg/test_alpine_musl.sh \
               --variant "${features}" \
               --server-apk "$(pwd)/${SERVER_APK}" \
               --cli-apk "$(pwd)/${CLI_APK}" \

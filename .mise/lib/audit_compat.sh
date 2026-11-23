@@ -45,6 +45,6 @@ audit_compat_python() {
   if [ ! -x "${venv_dir}/bin/python3" ]; then
     "$py" -m venv "${venv_dir}" >&2
   fi
-  "${venv_dir}/bin/python3" -m pip install --quiet --require-hashes -r "${repo_root}/.mise/scripts/test/requirements-audit-compat.txt" >&2
+  "${venv_dir}/bin/python3" -m pip install --quiet --require-hashes -r "${repo_root}/.mise/scripts/test/obs/requirements-audit-compat.txt" >&2
   echo "${venv_dir}/bin/python3"
 }

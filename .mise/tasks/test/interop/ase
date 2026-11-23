@@ -23,6 +23,6 @@ print_header "Running SAP ASE KMIP TDE integration test (${VARIANT_NAME})"
 
 require_cmd docker "Docker is required to run the ASE container."
 
-bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/test_ase_tde.sh" --variant "$VARIANT" --link "$LINK"
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/interop/test_ase_tde.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "ASE TDE test completed"

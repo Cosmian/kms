@@ -16,6 +16,6 @@ print_header "Running nix_helpers.sh re-entry test"
 
 # shellcheck disable=SC2119  # get_repo_root intentionally receives no task arguments
 REPO_ROOT="$(get_repo_root)"
-bash "${REPO_ROOT}/.mise/scripts/test/test_nix_helpers.sh"
+bash "${REPO_ROOT}/.mise/scripts/test/hsm/test_nix_helpers.sh"
 
 print_success "nix_helpers.sh re-entry test completed"

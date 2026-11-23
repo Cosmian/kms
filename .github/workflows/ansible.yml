@@ -1,21 +1,8 @@
 name: Ansible collection
 
 on:
-  pull_request:
-    paths:
-      - "ansible/**"
-      - "documentation/docs/integrations/ansible.md"
-      - "documentation/nav.yml"
-      - ".github/workflows/ansible.yml"
-      - ".github/workflows/ansible-galaxy-publish.yml"
-  push:
-    branches: [develop]
-    paths:
-      - "ansible/**"
-      - "documentation/docs/integrations/ansible.md"
-      - "documentation/nav.yml"
-      - ".github/workflows/ansible.yml"
-      - ".github/workflows/ansible-galaxy-publish.yml"
+  schedule:
+    - cron: 0 1 * * * # Nightly
   workflow_dispatch:
 
 jobs:

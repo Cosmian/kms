@@ -40,4 +40,4 @@ ensure_nix_shell
 
 # ── Standard E2E tests ───────────────────────────────────────────────────────
 print_header "Standard UI E2E tests"
-bash "${REPO_ROOT}/.mise/scripts/test/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"
+bash "${REPO_ROOT}/.mise/scripts/test/ui/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"

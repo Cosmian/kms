@@ -31,4 +31,4 @@ fi
 
 ensure_nix_shell
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_ui_oidc.sh" --variant "${VARIANT}" --link "${LINK}"
+bash "${REPO_ROOT}/.mise/scripts/test/ui/test_ui_oidc.sh" --variant "${VARIANT}" --link "${LINK}"

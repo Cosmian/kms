@@ -80,6 +80,7 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     // skipped entirely here rather than gated by FIPS variant.
     shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;
+    shared::key_usage_attributes(&slot)?;
     shared::list_objects(&slot)?;
     shared::search_incompatible_key(&hsm, &cfg)?;
     shared::destroy_all(&slot)?;

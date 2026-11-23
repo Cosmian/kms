@@ -18,6 +18,6 @@ fi
 
 print_header "Running Fluent Bit SIEM integration test (${VARIANT_NAME})"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_siem_fluent_bit.sh" --variant "$VARIANT"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_siem_fluent_bit.sh" --variant "$VARIANT"
 
 print_success "Fluent Bit SIEM test completed"

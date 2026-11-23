@@ -49,11 +49,11 @@ require_cmd cargo
 # thread) while keys are created/destroyed: a race inside the vendor library that no caller can
 # avoid. These single-process tests do not need that watcher, so build a tiny LD_PRELOAD shim
 # that makes inotify_init1() fail; the library then runs without the thread.
-# See .mise/scripts/test/c2p_no_inotify.c.
+# See .mise/scripts/test/hsm/c2p_no_inotify.c.
 C2P_SHIM_DIR="$(mktemp -d)"
 require_cmd cc
 cc -shared -fPIC -O2 -o "${C2P_SHIM_DIR}/c2p_no_inotify.so" \
-  "${MISE_CONFIG_ROOT}/.mise/scripts/test/c2p_no_inotify.c"
+  "${MISE_CONFIG_ROOT}/.mise/scripts/test/hsm/c2p_no_inotify.c"
 
 # CRYPT2PAY_SIM_PASSWORD: PKCS#11 user PIN of the simulator slot.
 LD_PRELOAD="${C2P_SHIM_DIR}/c2p_no_inotify.so${LD_PRELOAD:+:${LD_PRELOAD}}" \

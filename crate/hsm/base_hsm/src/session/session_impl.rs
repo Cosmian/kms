@@ -13,7 +13,7 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
     HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
-    MacAlgorithm, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
+    KeyUsageFlags, MacAlgorithm, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
     SigningKeyMetadata,
 };
 use cosmian_logger::{debug, trace};
@@ -21,20 +21,21 @@ use pkcs11_sys::{
     CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_HKDF_PARAMS, CK_KEY_TYPE,
     CK_MECHANISM, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG,
-    CKA_CLASS, CKA_COEFFICIENT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_END_DATE,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
-    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
-    CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL,
-    CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC,
-    CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED,
-    CKM_AES_CBC, CKM_AES_CMAC, CKM_AES_GCM, CKM_AES_GMAC, CKM_ECDSA, CKM_ECDSA_SHA256,
-    CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE,
-    CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA_1_HMAC,
-    CKM_SHA1_RSA_PKCS, CKM_SHA3_224_HMAC, CKM_SHA3_256_HMAC, CKM_SHA3_384_HMAC, CKM_SHA3_512_HMAC,
-    CKM_SHA224_HMAC, CKM_SHA256, CKM_SHA256_HMAC, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
-    CKM_SHA384, CKM_SHA384_HMAC, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
-    CKM_SHA512_HMAC, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL,
+    CKA_CLASS, CKA_COEFFICIENT, CKA_DECRYPT, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_ENCRYPT,
+    CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_EXTRACTABLE, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
+    CKA_MODULUS, CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT,
+    CKA_SENSITIVE, CKA_SIGN, CKA_START_DATE, CKA_TOKEN, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN,
+    CKA_VERIFY, CKA_WRAP, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL, CKG_MGF1_SHA1, CKG_MGF1_SHA256,
+    CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY,
+    CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_CMAC, CKM_AES_GCM,
+    CKM_AES_GMAC, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA,
+    CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS,
+    CKM_SHA_1, CKM_SHA_1_HMAC, CKM_SHA1_RSA_PKCS, CKM_SHA3_224_HMAC, CKM_SHA3_256_HMAC,
+    CKM_SHA3_384_HMAC, CKM_SHA3_512_HMAC, CKM_SHA224_HMAC, CKM_SHA256, CKM_SHA256_HMAC,
+    CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_HMAC, CKM_SHA384_RSA_PKCS,
+    CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512, CKM_SHA512_HMAC, CKM_SHA512_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKO_VENDOR_DEFINED,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_BUFFER_TOO_SMALL,
     CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
@@ -3607,6 +3608,65 @@ impl Session {
         Ok((start, end))
     }
 
+    /// Read the PKCS#11 usage attributes (`CKA_ENCRYPT`, `CKA_DECRYPT`, `CKA_SIGN`, `CKA_VERIFY`,
+    /// `CKA_WRAP`, `CKA_UNWRAP`) defined for the key class.
+    /// Returns `None` for key types other than AES/RSA, for a vanished key, or when the HSM does
+    /// not expose these attributes (`CKR_ATTRIBUTE_TYPE_INVALID`).
+    fn get_key_usage(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        key_type: &KeyType,
+    ) -> HResult<Option<KeyUsageFlags>> {
+        // Querying an attribute undefined for the object class fails the whole call.
+        let attributes: &[(CK_ULONG, KeyUsageFlags)] = match key_type {
+            AesKey => &[
+                (CKA_ENCRYPT, KeyUsageFlags::ENCRYPT),
+                (CKA_DECRYPT, KeyUsageFlags::DECRYPT),
+                (CKA_SIGN, KeyUsageFlags::SIGN),
+                (CKA_VERIFY, KeyUsageFlags::VERIFY),
+                (CKA_WRAP, KeyUsageFlags::WRAP),
+                (CKA_UNWRAP, KeyUsageFlags::UNWRAP),
+            ],
+            RsaPrivateKey => &[
+                (CKA_DECRYPT, KeyUsageFlags::DECRYPT),
+                (CKA_SIGN, KeyUsageFlags::SIGN),
+                (CKA_UNWRAP, KeyUsageFlags::UNWRAP),
+            ],
+            RsaPublicKey => &[
+                (CKA_ENCRYPT, KeyUsageFlags::ENCRYPT),
+                (CKA_VERIFY, KeyUsageFlags::VERIFY),
+                (CKA_WRAP, KeyUsageFlags::WRAP),
+            ],
+            EcPrivateKey | EcPublicKey => return Ok(None),
+        };
+        let mut values: Vec<CK_BBOOL> = vec![CK_FALSE; attributes.len()];
+        let mut template = Vec::with_capacity(attributes.len());
+        for ((type_, _), value) in attributes.iter().zip(values.iter_mut()) {
+            template.push(CK_ATTRIBUTE {
+                type_: *type_,
+                pValue: std::ptr::from_mut(value).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_BBOOL>())?,
+            });
+        }
+        let rv = self.raw_get_attributes(key_handle, &mut template)?;
+        if rv == CKR_OBJECT_HANDLE_INVALID || rv == CKR_ATTRIBUTE_TYPE_INVALID {
+            return Ok(None);
+        }
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to get the HSM key usage attributes for key handle: {key_handle}. Return \
+                 code: {rv}"
+            )));
+        }
+        let mut flags = KeyUsageFlags::empty();
+        for ((_, flag), value) in attributes.iter().zip(values) {
+            if value == CK_TRUE {
+                flags |= *flag;
+            }
+        }
+        Ok(Some(flags))
+    }
+
     /// Format a `time::Date` into a `CK_DATE` (8-byte ASCII "YYYYMMDD").
     fn format_ck_date(date: time::Date) -> CK_DATE {
         let year = date.year();
@@ -3895,6 +3955,7 @@ impl Session {
                 };
                 let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
+                let usage = self.get_key_usage(key_handle, &key_type)?;
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits: usize::try_from(key_size).map_err(|e| {
@@ -3908,6 +3969,7 @@ impl Session {
                     end_date,
                     rotate_name,
                     rotate_generation,
+                    usage,
                 }))
             }
             KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
@@ -3971,6 +4033,7 @@ impl Session {
                 let sensitive = sensitive == CK_TRUE;
                 let (start_date, end_date) = self.get_key_dates(key_handle)?;
                 let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
+                let usage = self.get_key_usage(key_handle, &key_type)?;
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits,
@@ -3982,6 +4045,7 @@ impl Session {
                     end_date,
                     rotate_name,
                     rotate_generation,
+                    usage,
                 }))
             }
             KeyType::EcPrivateKey | KeyType::EcPublicKey => {
@@ -4057,6 +4121,7 @@ impl Session {
                     end_date,
                     rotate_name,
                     rotate_generation,
+                    usage: None,
                 }))
             }
         }

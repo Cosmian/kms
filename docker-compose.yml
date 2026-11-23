@@ -257,11 +257,11 @@ services:
   #
   # Used by: mise run test:obs:cef-tcp-syslog, mise run test:obs
   # No special startup needed — the test script manages the container lifecycle
-  # with the .mise/scripts/test/rsyslog.conf config.
+  # with the .mise/scripts/test/obs/rsyslog.conf config.
   #
   # Start manually for debugging:
   #   docker run --rm --name kms-rsyslog -p 51514:514 \
-  #     -v ./.mise/scripts/test/rsyslog.conf:/etc/rsyslog.conf:ro \
+  #     -v ./.mise/scripts/test/obs/rsyslog.conf:/etc/rsyslog.conf:ro \
   #     -v /tmp/rsyslog:/var/log:rw \
   #     rsyslog/syslog_appliance_alpine:latest
 
