@@ -153,8 +153,8 @@ Look up the correct vendor/product in the
 
 Report locations:
 
-- `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
-- `sbom/openssl_3_6_5/` — SBOM + vulnerability scan for the OpenSSL 3.6.5 (non-FIPS) derivation
+- `sbom/openssl_fips/` — SBOM + vulnerability scan for the OpenSSL FIPS provider derivation
+- `sbom/openssl_main/` — SBOM + vulnerability scan for the main (non-FIPS) OpenSSL derivation
 - `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
     - `<variant>`: `fips` | `non-fips`
     - `<link>`: `static` | `dynamic`
@@ -288,7 +288,7 @@ Note: the current `vulns.csv` includes an `osv` column as well, since `vulnxscan
 
 ### Import to Dependency-Track
 
-Pick the `bom.cdx.json` you want to import (for example, `sbom/server/fips/static/bom.cdx.json` or `sbom/openssl_3_1_2/bom.cdx.json`).
+Pick the `bom.cdx.json` you want to import (for example, `sbom/server/fips/static/bom.cdx.json` or `sbom/openssl_fips/bom.cdx.json`).
 
 ```bash
 curl -X POST "https://dtrack.example.com/api/v1/bom" \
@@ -380,11 +380,11 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 # From repository root (generates OpenSSL + all server combinations)
 mise run sbom:generate
 
-# OpenSSL 3.1.2 derivation only (writes under sbom/openssl_3_1_2)
-mise run sbom:generate --target openssl_3_1_2
+# OpenSSL FIPS provider derivation only (writes under sbom/openssl_fips)
+mise run sbom:generate --target openssl_fips
 
-# OpenSSL 3.6.5 derivation only (writes under sbom/openssl_3_6_5)
-mise run sbom:generate --target openssl_3_6_5
+# Main OpenSSL derivation only (writes under sbom/openssl_main)
+mise run sbom:generate --target openssl_main
 
 # All server combinations (writes under sbom/server/<variant>/<link>)
 mise run sbom:generate --target server

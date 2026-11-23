@@ -19,8 +19,8 @@ runtime dependencies. They are available for all build variants:
 |----------|----------|----------|
 | KMS server | `fips` / `non-fips` × `static` / `dynamic` | `sbom/server/<variant>/<link>/` |
 | `ckms` CLI | `fips` / `non-fips` × `static` / `dynamic` | `sbom/ckms/<variant>/<link>/` |
-| OpenSSL 3.1.2 (FIPS derivation) | — | `sbom/openssl_3_1_2/` |
-| OpenSSL 3.6.0 (non-FIPS derivation) | — | `sbom/openssl_3_6_0/` |
+| OpenSSL FIPS provider derivation | — | `sbom/openssl_fips/` |
+| OpenSSL main (non-FIPS) derivation | — | `sbom/openssl_main/` |
 
 Each output directory contains:
 
@@ -59,8 +59,8 @@ mise run sbom:generate
 # Server only — one specific combination
 mise run sbom:generate --target server --variant fips --link static
 
-# OpenSSL 3.6.0 derivation only
-mise run sbom:generate --target openssl_3_6_0
+# Main OpenSSL derivation only
+mise run sbom:generate --target openssl_main
 ```
 
 See the [SBOM artifact directory](../../../sbom/server/fips/static/bom.cdx.json) for the full regeneration guide and usage

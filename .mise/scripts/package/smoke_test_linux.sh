@@ -6,6 +6,9 @@
 # Usage: Source this file from package-specific smoke test scripts
 #   source "$(dirname "$0")/smoke_test_linux.sh"
 
+# shellcheck source=.mise/lib/openssl.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/openssl.sh"
+
 # Color output for better readability
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -292,13 +295,14 @@ verify_openssl_runtime_version() {
   local is_dynamic="${4:-false}"
 
   # Determine expected OpenSSL version based on variant
-  # - FIPS dynamic: OpenSSL 3.1.2 (both runtime and FIPS provider)
-  # - All others: OpenSSL 3.6.5
+  # (versions: crate/crypto/openssl_versions.json)
+  # - FIPS dynamic: the FIPS provider's OpenSSL (both runtime and FIPS provider)
+  # - All others: the main OpenSSL
   local expected_version
   if [ "$is_fips" = true ] && [ "$is_dynamic" = true ]; then
-    expected_version="3.1.2"
+    expected_version="$(openssl_version fips)"
   else
-    expected_version="3.6.5"
+    expected_version="$(openssl_version main)"
   fi
 
   info "Verifying OpenSSL runtime version (expected $expected_version)…"
@@ -388,14 +392,9 @@ EOF
       local strings_output
       strings_output=$(strings "$fips_module")
 
-      # For FIPS dynamic builds, FIPS provider should match runtime (3.1.2)
-      # For FIPS static builds, FIPS provider is 3.1.2 but runtime is 3.6.5
+      # The packaged FIPS provider is always built from the FIPS provider's OpenSSL version
       local expected_fips_version
-      if [ "$is_dynamic" = true ]; then
-        expected_fips_version="3.1.2"
-      else
-        expected_fips_version="3.1.2"
-      fi
+      expected_fips_version="$(openssl_version fips)"
 
       # Use bash pattern matching instead of grep
       if [[ "$strings_output" == *"$expected_fips_version"* ]]; then

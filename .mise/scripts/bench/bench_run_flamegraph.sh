@@ -31,6 +31,8 @@ set -euo pipefail
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT:-${_SCRIPT_DIR}/../..}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/openssl.sh
+source "${MISE_CONFIG_ROOT:-${_SCRIPT_DIR}/../..}/.mise/lib/openssl.sh"
 
 # Default to non-fips for benchmarks.
 : "${VARIANT:=non-fips}"
@@ -140,15 +142,16 @@ fi
 export RUSTFLAGS="${RUSTFLAGS:-} -C force-frame-pointers=yes"
 
 # ── Ensure OpenSSL is built with debug symbols for perf ────────────────────────
-# build.rs (crate/crypto/build.rs) builds OpenSSL 3.6.5 automatically.
+# build.rs (crate/crypto/build.rs) builds the main OpenSSL automatically.
 # For flamegraphs we need DWARF debug symbols (-g) so perf can resolve
 # OpenSSL frames instead of showing [unknown].  Export CFLAGS so that
 # build.rs's `./Configure` inherits it, and delete the cached non-debug build
 # (plus build.rs's own output) to force a rebuild.
 if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
   ARCH="$(uname -m)"
-  OPENSSL_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-3.6.5-linux-${ARCH}"
-  OPENSSL_NON_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-non-fips-3.6.5-linux-${ARCH}"
+  OSSL_MAIN_VERSION="$(openssl_version main)"
+  OPENSSL_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-${OSSL_MAIN_VERSION}-linux-${ARCH}"
+  OPENSSL_NON_FIPS_PREFIX="${CARGO_TARGET_DIR}/openssl-non-fips-${OSSL_MAIN_VERSION}-linux-${ARCH}"
 
   if [ "${VARIANT}" = "fips" ]; then
     OPENSSL_BUILD_PREFIX="${OPENSSL_FIPS_PREFIX}"

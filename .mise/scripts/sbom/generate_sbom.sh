@@ -20,12 +20,12 @@ SBOMNIX_VERSION="v1.8.0"
 export NIX_CONFIG="experimental-features = nix-command flakes"
 
 # Parse arguments
-# Target: what to generate SBOM for. Supported: 'openssl_3_1_2', 'openssl_3_6_5', 'server', or 'ckms'.
-# - openssl_3_1_2: scans the OpenSSL 3.1.2 (FIPS) derivation from nix/openssl.nix
-# - openssl_3_6_5: scans the OpenSSL 3.6.5 (non-FIPS) derivation from nix/openssl.nix
+# Target: what to generate SBOM for. Supported: 'openssl_fips', 'openssl_main', 'server', or 'ckms'.
+# - openssl_fips: scans the FIPS provider's OpenSSL derivation from nix/openssl.nix
+# - openssl_main: scans the main (non-FIPS) OpenSSL derivation from nix/openssl.nix
 # - server:        scans the KMS server derivation
 # - ckms:          scans the ckms CLI binary derivation
-TARGET="openssl_3_1_2"
+TARGET="openssl_fips"
 # Variant and link are only relevant for 'server' target
 VARIANT="fips" # fips | non-fips
 LINK="static"  # static | dynamic (static by default)
@@ -43,12 +43,12 @@ Generate SBOM (Software Bill of Materials) using sbomnix standard tools
 Usage: $0 [OPTIONS]
 
 Options:
-  --target TARGET      One of: openssl_3_1_2 | openssl_3_6_5 | server | ckms (default: openssl_3_1_2)
+  --target TARGET      One of: openssl_fips | openssl_main | server | ckms (default: openssl_fips)
   --variant VARIANT    One of: fips | non-fips (server/ckms target only; default: fips)
   --link LINK          One of: static | dynamic (server/ckms target only; default: static)
   --output DIR         Output directory for SBOM files (default:
-                       - openssl_3_1_2: ./sbom/openssl_3_1_2
-                       - openssl_3_6_5: ./sbom/openssl_3_6_5
+                       - openssl_fips: ./sbom/openssl_fips
+                       - openssl_main: ./sbom/openssl_main
                        - server:        ./sbom/server/<variant>/<link>
                        - ckms:          ./sbom/ckms/<variant>/<link>)
   --retrieve           Download pre-built SBOMs from package.cosmian.com
@@ -64,9 +64,9 @@ Options:
   -h, --help           Show this help message
 
 Examples:
-  $0                                           # Generate SBOM for OpenSSL 3.1.2 (default)
-  $0 --target openssl_3_1_2                    # Explicitly target OpenSSL 3.1.2 (FIPS)
-  $0 --target openssl_3_6_5                    # Target OpenSSL 3.6.5 (non-FIPS)
+  $0                                           # Generate SBOM for the FIPS provider OpenSSL (default)
+  $0 --target openssl_fips                    # Explicitly target the FIPS provider OpenSSL
+  $0 --target openssl_main                    # Target the main (non-FIPS) OpenSSL
   $0 --target server                           # Target KMS server (fips, static OpenSSL)
   $0 --target server --variant non-fips        # Target KMS server (non-fips)
   $0 --target server --link dynamic            # Target KMS server (dynamic link, if available)
@@ -185,11 +185,11 @@ fi
 
 # Determine the derivation to analyze based on target
 case "$TARGET" in
-  openssl_3_1_2)
+  openssl_fips)
     DERIVATION="opensslFips"
     NIX_RESULT="$REPO_ROOT/result-openssl-fips"
     ;;
-  openssl_3_6_5)
+  openssl_main)
     DERIVATION="openssl36-static"
     NIX_RESULT="$REPO_ROOT/result-openssl-360"
     ;;
@@ -246,7 +246,7 @@ case "$TARGET" in
     fi
     ;;
   *)
-    echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_5', 'server', or 'ckms'." >&2
+    echo "Error: Unknown --target '$TARGET'. Use 'openssl_fips', 'openssl_main', 'server', or 'ckms'." >&2
     exit 1
     ;;
 esac
@@ -274,11 +274,11 @@ if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
     ckms)
       OUTPUT_DIR="$REPO_ROOT/sbom/ckms/$VARIANT/$LINK"
       ;;
-    openssl_3_1_2)
-      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_1_2"
+    openssl_fips)
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_fips"
       ;;
-    openssl_3_6_5)
-      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_6_5"
+    openssl_main)
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_main"
       ;;
   esac
 fi

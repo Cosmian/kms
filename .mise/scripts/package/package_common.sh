@@ -12,6 +12,8 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+# shellcheck source=.mise/lib/openssl.sh
+source "${REPO_ROOT}/.mise/lib/openssl.sh"
 # Source unified PIN_URL and helpers
 source "${REPO_ROOT}/.mise/scripts/common.sh"
 cd "$REPO_ROOT"
@@ -113,24 +115,30 @@ fi
 # Persistent Cargo cache location used for offline packaging
 OFFLINE_CARGO_HOME="$REPO_ROOT/target/cargo-offline-home"
 
-# 0) Ensure OpenSSL tarball exists locally (offline build precondition)
-# Only needed for static linking
-OSSL_TARBALL_REL="resources/tarballs/openssl-3.1.2.tar.gz"
+# 0) Ensure the OpenSSL source tarballs (main library + FIPS provider) exist locally
+# (offline build precondition). Versions and hashes: crate/crypto/openssl_versions.json;
+# nix/openssl.nix verifies the hash. Only needed for static linking.
 one_shot_fetch_openssl() {
   # Skip OpenSSL fetch for dynamic builds
   if [ "$LINK" = "dynamic" ]; then
     return 0
   fi
 
-  local tarball="$REPO_ROOT/$OSSL_TARBALL_REL"
-  if [ ! -f "$tarball" ]; then
-    echo "OpenSSL 3.1.2 tarball missing at $OSSL_TARBALL_REL; downloading once so subsequent steps can run offline…"
-    mkdir -p "$(dirname "$tarball")"
-    curl -fL --retry 3 -o "$tarball" "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz" || {
-      echo "ERROR: Could not fetch OpenSSL tarball (network/offline?). Place it at $OSSL_TARBALL_REL and retry." >&2
-      exit 1
-    }
-  fi
+  local which version tarball_rel tarball
+  for which in main fips; do
+    version=$(openssl_version "$which")
+    tarball_rel="resources/tarballs/openssl-${version}.tar.gz"
+    tarball="$REPO_ROOT/$tarball_rel"
+    if [ ! -f "$tarball" ]; then
+      echo "OpenSSL ${version} tarball missing at $tarball_rel; downloading once so subsequent steps can run offline…"
+      mkdir -p "$(dirname "$tarball")"
+      curl -fL --retry 3 -o "$tarball" "$(openssl_url "$which")" || {
+        rm -f "$tarball"
+        echo "ERROR: Could not fetch OpenSSL tarball (network/offline?). Place it at $tarball_rel and retry." >&2
+        exit 1
+      }
+    fi
+  done
 }
 
 # 0.1) Pre-warm Nix store (may use network) for openssl and server
@@ -509,16 +517,16 @@ write_binary_hash_file() {
   echo "Wrote expected-hash: $(basename "$out_file") = $actual_hash"
 }
 
-# 2) Get OpenSSL 3.1.2 path via Nix (for source files in Cargo.toml) offline
+# 2) Get the OpenSSL path via Nix (for source files in Cargo.toml) offline
 # Needed for both static and dynamic builds (dynamic builds ship OpenSSL .so files)
 resolve_openssl_path() {
   # Resolve OpenSSL files to stage for packaging
   # For dynamic builds, use the libs staged in the server derivation, which
-  # already selects 3.6.5 for non-fips and 3.1.2 for fips.
+  # already selects the main OpenSSL for non-fips and the FIPS provider's for fips.
   if [ "$LINK" = "dynamic" ]; then
     OSSL_PATH="$REAL_SERVER/usr/local/cosmian"
   else
-    # Static builds rely on the OpenSSL FIPS provider (3.5.9); stage from opensslFips
+    # Static builds rely on the OpenSSL FIPS provider; stage from opensslFips
     local openssl_attr="opensslFips-static"
     local link="$REPO_ROOT/result-openssl-fips"
     if [ -L "$link" ] && [ -d "$(readlink -f "$link")" ]; then :; else
@@ -530,8 +538,8 @@ resolve_openssl_path() {
 
   # Compute staging directory matching Cargo.toml asset paths
   # Format expected:
-  #  - FIPS:      target/openssl-3.6.5-<os>-<arch>
-  #  - non-FIPS:  target/openssl-non-fips-3.6.5-<os>-<arch>
+  #  - FIPS:      target/openssl-fips-<os>-<arch>
+  #  - non-FIPS:  target/openssl-non-fips-<os>-<arch>
   local os_name arch_name stage_basename stage_dir
   os_name=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os_name" in
@@ -540,11 +548,7 @@ resolve_openssl_path() {
     *) : ;;
   esac
   arch_name=$(uname -m)
-  if [ "$VARIANT" = "non-fips" ]; then
-    stage_basename="openssl-non-fips-3.6.5-${os_name}-${arch_name}"
-  else
-    stage_basename="openssl-3.6.5-${os_name}-${arch_name}"
-  fi
+  stage_basename="openssl-${VARIANT}-${os_name}-${arch_name}"
   stage_dir="$REPO_ROOT/crate/server/target/${stage_basename}"
 
   # Clean previous staging and create directories
@@ -576,13 +580,13 @@ resolve_openssl_path() {
       cp "$OSSL_PATH/lib/ossl-modules/fips.so" "$stage_dir/lib/ossl-modules/"
     fi
   else
-    # Prefer provider from server derivation; fallback to OpenSSL 3.6.5 store
+    # Prefer provider from server derivation; fallback to the main OpenSSL store
     if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
       cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
     else
-      # Fallback: locate legacy.so from any OpenSSL 3.6.5 derivation in the Nix store
+      # Fallback: locate legacy.so from any main-version OpenSSL derivation in the Nix store
       # Use find instead of ls to handle arbitrary filenames and stop at first match
-      LEGACY_SRC=$(find /nix/store -type f -path '*/openssl-3.6.5*/lib/ossl-modules/legacy.so' -print -quit 2>/dev/null || true)
+      LEGACY_SRC=$(find /nix/store -type f -path "*/openssl-$(openssl_version main)*/lib/ossl-modules/legacy.so" -print -quit 2>/dev/null || true)
       if [ -n "${LEGACY_SRC}" ] && [ -f "${LEGACY_SRC}" ]; then
         cp "${LEGACY_SRC}" "$stage_dir/lib/ossl-modules/"
       else
@@ -631,12 +635,7 @@ resolve_openssl_path() {
 
   # Create architecture-agnostic symlinks for cargo-deb/cargo-generate-rpm
   # These allow Cargo.toml to reference a fixed path regardless of build architecture
-  local generic_basename
-  if [ "$VARIANT" = "non-fips" ]; then
-    generic_basename="openssl-non-fips-3.6.5-linux"
-  else
-    generic_basename="openssl-3.6.5-linux"
-  fi
+  local generic_basename="openssl-${VARIANT}-linux"
 
   # Create symlink in crate/server/target for cargo-deb
   local generic_path_crate="$REPO_ROOT/crate/server/target/${generic_basename}"
