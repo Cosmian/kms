@@ -179,9 +179,9 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0544)                                                                                                                                                |
 | References | [RUSTSEC-2026-0544](https://rustsec.org/advisories/RUSTSEC-2026-0544.html), [CVE-2026-85091](https://nvd.nist.gov/vuln/detail/CVE-2026-85091), [#1431](https://github.com/Cosmian/kms/pull/1431) |
 
-**Summary:** `libz-sys` 1.1.25 to 1.1.32 bundle zlib 1.3.1.2 to 1.3.2, whose `gz_vacate()` overflows a heap buffer when `gzprintf()` or `gzvprintf()` is called after a stalled non-blocking `gzwrite()`. KMS 5.29.0 shipped `libz-sys` 1.1.31, reached only through `flat2` and `mysql_async`.
+**Summary:** `libz-sys` 1.1.25 to 1.1.32 bundle zlib 1.3.1.2 to 1.3.2, whose `gz_vacate()` overflows a heap buffer when `gzprintf()` or `gzvprintf()` is called after a stalled non-blocking `gzwrite()`. KMS 5.29.0 shipped `libz-sys` 1.1.31, reached only through `flate2` and `mysql_async`.
 
-**Impact:** The KMS does not call the `gz*` file API, and `flat2` uses the deflate and inflate stream API, so the vulnerable code path is not reachable. Severity is Low.
+**Impact:** The KMS does not call the `gz*` file API, and `flate2` uses the deflate and inflate stream API, so the vulnerable code path is not reachable. Severity is Low.
 
 **Mitigation:** Upgrade to 6.0.0, which bundles `libz-sys` 1.1.33.
 
