@@ -9,7 +9,7 @@ applyTo: 'Cargo.lock, ui/pnpm-lock.yaml'
 When `Cargo.lock` or `ui/pnpm-lock.yaml` changes, the Nix vendor hashes under `nix/expected-hashes/` become stale.
 **Do not recompute or edit them** in a feature, fix, dependency or Dependabot PR: the nightly build does it.
 
-- The nightly workflow (`.github/workflows/nightly.yml`, job `update-nix-hashes` calling `nix-update-hashes.yml`) runs `mise run release:nix-update-hashes` on Linux and macOS and commits the refreshed hashes back to the branch.
+- The nightly workflow (`.github/workflows/nightly.yml`, job `update-nix-hashes` calling `nix-update-hashes.yml`) runs `mise run release:nix-update-hashes` on Linux and macOS and commits the refreshed hashes back to the ref it ran on. It triggers on the daily schedule, manual dispatch, tags and pushes to `develop`/`main`, so a feature branch gets fresh hashes only after it is merged: its Nix jobs may stay red on `hash mismatch` until then.
 - Never run `mise run release:nix-update-hashes`, `mise run release:update-hashes`, `nix_build_update_hash.sh` or `nix-build -A <attr>` to refresh hashes by hand, and never copy a `got: sha256-...` value from a log into `nix/expected-hashes/`.
 - Never hand-edit `nix/expected-hashes/*` in a PR. Leave them untouched, even when a Nix job fails with `hash mismatch` after a lock file change.
 - Exception: a run of the nightly workflow itself (schedule, or a manual dispatch of it), or an explicit request from the user to renew them.

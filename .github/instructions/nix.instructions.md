@@ -37,4 +37,4 @@ mise run [--variant fips|non-fips] [--link static|dynamic] <task>
 
 - Pin all inputs — never use `fetchurl` without a hash.
 - Keep derivations minimal — build logic belongs in `build.rs` or `Makefile`, not Nix.
-- Test locally with `nix-build` before pushing hash changes.
+- Test `.nix` expression changes locally with `nix-build` before pushing. This never means renewing vendor hashes: those are left to the nightly build (`lockfile-hashes.instructions.md`).
