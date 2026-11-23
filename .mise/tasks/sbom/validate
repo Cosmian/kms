@@ -70,6 +70,13 @@ elif ! jq -e 'all(.statements[];
 else
   echo "  OK   ${vex_rel}"
 fi
+# Ignore lists, lock-file patch floors and OpenVEX statements must agree (reuses the schema-validated file).
+if "$(pick_python312)" "${MISE_CONFIG_ROOT}/.mise/scripts/sbom/check_advisory_coverage.py" --root "${REPO_ROOT}" --policy-only; then
+  echo "  OK   advisory ignore lists / OpenVEX / Cargo.lock patch floors"
+else
+  echo "  FAIL advisory policy (see above)" >&2
+  failed=1
+fi
 [ "$failed" -eq 0 ] || {
   echo "CycloneDX validation failed" >&2
   exit 1
