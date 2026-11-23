@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:51b88bc4-9817-4e61-8258-5b679dccb068",
+  "serialNumber": "urn:uuid:2909e6c2-bea7-4449-b85e-799dde570781",
   "metadata": {
-    "timestamp": "2026-11-22T07:25:42.592769+00:00",
+    "timestamp": "2026-11-23T00:26:42.096835+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/rypxrz3cxw62v9kkpnz1ckjq0g35wggl-cosmian-kms-server-dynamic-5.29.0.drv",
+      "bom-ref": "/nix/store/4vzb479b17kqrv43024n8ppjlk3pj0pi-cosmian-kms-server-dynamic-5.29.0.drv",
       "name": "cosmian-kms-server-dynamic",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server-dynamic@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/2hcfabaw1ff299q1kfm4361nwkl3ywac-cosmian-kms-server-dynamic-5.29.0"
+          "value": "/nix/store/alyl4yy0rh9zgy5a6l61pjkml8m1cn9i-cosmian-kms-server-dynamic-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/rypxrz3cxw62v9kkpnz1ckjq0g35wggl-cosmian-kms-server-dynamic-5.29.0.drv"
+          "value": "/nix/store/4vzb479b17kqrv43024n8ppjlk3pj0pi-cosmian-kms-server-dynamic-5.29.0.drv"
         }
       ]
     }
@@ -6572,10 +6572,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/form_urlencoded@1.2.2",
+      "bom-ref": "pkg:cargo/form_urlencoded@1.2.3",
       "name": "form_urlencoded",
-      "version": "1.2.2",
-      "purl": "pkg:cargo/form_urlencoded@1.2.2",
+      "version": "1.2.3",
+      "purl": "pkg:cargo/form_urlencoded@1.2.3",
       "description": "Parser and serializer for the application/x-www-form-urlencoded syntax, as used by HTML forms.",
       "licenses": [
         {
@@ -6597,7 +6597,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:form_urlencoded:form_urlencoded:1.2.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:form_urlencoded:form_urlencoded:1.2.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18879,10 +18879,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/url@2.5.8",
+      "bom-ref": "pkg:cargo/url@2.5.9",
       "name": "url",
-      "version": "2.5.8",
-      "purl": "pkg:cargo/url@2.5.8",
+      "version": "2.5.9",
+      "purl": "pkg:cargo/url@2.5.9",
       "description": "URL library for Rust, based on the WHATWG URL Standard",
       "licenses": [
         {
@@ -18904,7 +18904,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:url:url:2.5.8:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:url:url:2.5.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25173,7 +25173,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/rypxrz3cxw62v9kkpnz1ckjq0g35wggl-cosmian-kms-server-dynamic-5.29.0.drv",
+      "ref": "/nix/store/4vzb479b17kqrv43024n8ppjlk3pj0pi-cosmian-kms-server-dynamic-5.29.0.drv",
       "dependsOn": [
         "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv"
       ]
