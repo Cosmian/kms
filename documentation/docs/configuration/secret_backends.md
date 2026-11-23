@@ -234,7 +234,7 @@ bao kv list kv/myapp
 
 The KMS keeps some of its own state as ordinary KMIP objects: the KV path metadata and the SSH CA and role records. KMIP clients may choose the UID of the objects they create, so a predictable UID such as `kv/<path>` would let a client pre-create an object there and block the path or the SSH configuration. The KMS therefore uses the first 16 bytes of `HMAC-SHA256(server key, domain || record name)` as the UID of these records.
 
-The server key is 32 random bytes from the KMS RNG, stored in the `parameters` table (`kv_metadata_uid_key`), which no KMIP operation can read or write. It is created on first use by the KV store or the SSH CA/role API (a read is enough). All instances and replicas sharing the database use the same key: the first stored value wins.
+The server key is 32 random bytes from the KMS RNG, stored in the `parameters` table (`kv_metadata_uid_key`), which no KMIP operation can read or write. The leader region initializes or validates it at startup, before serving requests. Instances sharing one database use the same persisted key: the first stored value wins. In a [multi-region deployment](./database/multi_region.md), followers only read the replicated key; if it has not arrived yet, KV/SSH requests return a retry error without generating a competing value.
 
 The same key also derives the tag that marks KV versions carrying a TTL, so that no client can make the TTL sweep visit its own objects. The key only names and marks internal records: it encrypts nothing and never touches secret material.
 

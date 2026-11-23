@@ -523,6 +523,18 @@ impl Database {
         Ok(db.delete_gcm_invocations(uid).await?)
     }
 
+    /// Update the state of an object in the database, allowing downgrade (for KMIP batch UNDO).
+    pub async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> DbResult<()> {
+        self.record("update_state", async move {
+            let db = self.get_object_store(uid).await?;
+            Ok(db.update_state_allow_downgrade(uid, state).await?)
+        })
+        .await?;
+        self.object_cache.invalidate(uid).await;
+        self.rotate_name_cache.invalidate_member(uid, None);
+        Ok(())
+    }
+
     /// Delete an object from the database.
     pub async fn delete(&self, uid: &str) -> DbResult<()> {
         self.record("delete", async move {
@@ -542,6 +554,18 @@ impl Database {
         self.record("is_object_owned_by", async move {
             let db = self.get_object_store(uid).await?;
             Ok(db.is_object_owned_by(uid, owner).await?)
+        })
+        .await
+    }
+
+    /// Read a server-internal parameter from the main database without writing it.
+    ///
+    /// # Errors
+    /// Fails if the main store cannot read or decrypt the parameter.
+    pub async fn get_parameter(&self, name: &'static str) -> DbResult<Option<String>> {
+        self.record("get_parameter", async move {
+            let db = self.get_object_store("").await?;
+            Ok(db.get_parameter(name).await?)
         })
         .await
     }
@@ -948,13 +972,17 @@ impl Database {
                 | AtomicOperation::UpdateState((
                     uid,
                     State::Destroyed | State::Destroyed_Compromised,
+                ))
+                | AtomicOperation::ResetState((
+                    uid,
+                    State::Destroyed | State::Destroyed_Compromised,
                 )) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
                     self.rotate_name_cache.invalidate_member(uid, None);
                     Ok(())
                 }
-                AtomicOperation::UpdateState((uid, _)) => {
+                AtomicOperation::UpdateState((uid, _)) | AtomicOperation::ResetState((uid, _)) => {
                     // Evict the stale object so the new lifecycle state is
                     // visible immediately on the next retrieve_object call.
                     self.object_cache.invalidate(uid).await;
@@ -969,6 +997,10 @@ impl Database {
         for op in operations {
             if let AtomicOperation::Delete(uid)
             | AtomicOperation::UpdateState((
+                uid,
+                State::Destroyed | State::Destroyed_Compromised,
+            ))
+            | AtomicOperation::ResetState((
                 uid,
                 State::Destroyed | State::Destroyed_Compromised,
             )) = op

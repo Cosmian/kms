@@ -18,7 +18,7 @@ use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
         AuditConfig, AuditFailureMode, AuthVerifierConfig, AzureEkmConfig, ClapConfig,
-        GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig, WorkspaceConfig,
+        GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig, RegionRole, WorkspaceConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -254,6 +254,8 @@ pub struct ServerParams {
     /// When an authentication method is provided, perform the authentication
     /// but always use the default username instead of the one provided by the authentication method
     pub force_default_username: bool,
+    /// The topological role of this KMS node's region in a multi-region active-active deployment
+    pub region_role: RegionRole,
 
     /// The DB parameters may be supplied on the command line
     pub main_db_params: Option<MainDbParams>,
@@ -708,6 +710,18 @@ impl ServerParams {
                 .init(&conf.workspace.init().context("failed to init workspace")?)
                 .context("failed to init DB")?,
         );
+        if conf.region_role == RegionRole::Follower
+            && let Some(db) = main_db_params
+                .as_ref()
+                .filter(|db| !db.supports_multi_region())
+        {
+            return Err(KmsError::NotSupported(format!(
+                "region_role = follower requires a multi-region database (PostgreSQL with \
+                 logical multi-master replication, or a MySQL Galera cluster); {} cannot \
+                 replicate across regions",
+                db.db_name()
+            )));
+        }
         let audit_backend =
             Self::resolve_audit_backend(&conf.audit, &conf.workspace, main_db_params.as_ref())?;
         let kv_mount = resolve_kv_mount(
@@ -879,6 +893,7 @@ impl ServerParams {
             vendor_identification: conf.vendor_identification,
             default_username: conf.default_username,
             force_default_username: conf.force_default_username,
+            region_role: conf.region_role,
             api_token_id: conf.http.api_token_id,
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
@@ -1363,6 +1378,7 @@ impl fmt::Debug for ServerParams {
         debug_struct
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username)
+            .field("region_role", &self.region_role)
             .field("vendor_identification", &self.vendor_identification);
 
         if let Some(ref db_params) = self.main_db_params {
@@ -1693,6 +1709,20 @@ mod tests {
             },
             ..ClapConfig::default()
         }
+    }
+
+    /// `SQLite` cannot replicate across regions: a follower on it is refused at startup.
+    #[test]
+    fn follower_region_role_rejected_on_sqlite() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.region_role = crate::config::RegionRole::Follower;
+        let err = ServerParams::try_from(conf).expect_err("a follower on SQLite must be refused");
+        assert!(
+            err.to_string()
+                .contains("region_role = follower requires a multi-region database"),
+            "{err}"
+        );
     }
 
     /// When `kms_public_url` is set and `cors_allowed_origins` is absent, the

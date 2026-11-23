@@ -217,6 +217,24 @@ impl ObjectsDB {
         format!("kms::parameter::{name}")
     }
 
+    /// Read and decrypt a server parameter without inserting or changing it.
+    pub(crate) async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+        let stored: Option<Vec<u8>> = self.mgr.clone().get(Self::parameter_key(name)).await?;
+        let Some(sealed) = stored else {
+            return Ok(None);
+        };
+        let aad = format!("\0kms-parameter\0{name}");
+        let plaintext = self
+            .open(aad.as_bytes(), &sealed)
+            .with_context(|| format!("server parameter {name}"))?;
+        String::from_utf8(plaintext.to_vec())
+            .map(Some)
+            .map_err(|e| {
+                e.into_bytes().zeroize();
+                db_error!("server parameter {name} is not UTF-8")
+            })
+    }
+
     /// Return the server parameter `name`, storing `value` first if it is absent.
     ///
     /// The value is stored sealed under the database key, bound to `name`, with `SET NX`: the
@@ -227,24 +245,18 @@ impl ObjectsDB {
         name: &str,
         value: &str,
     ) -> DbResult<String> {
-        let key = Self::parameter_key(name);
-        let aad = format!("\0kms-parameter\0{name}");
-        let mut mgr = self.mgr.clone();
-        let mut stored: Option<Vec<u8>> = mgr.get(&key).await?;
-        if stored.is_none() {
-            let candidate = self.seal(aad.as_bytes(), value.as_bytes())?;
-            mgr.set_nx::<_, _, bool>(&key, candidate).await?;
-            stored = mgr.get(&key).await?;
+        if let Some(stored) = self.get_parameter(name).await? {
+            return Ok(stored);
         }
-        let sealed = stored
-            .ok_or_else(|| db_error!("server parameter {name} vanished right after insertion"))?;
-        let plaintext = self
-            .open(aad.as_bytes(), &sealed)
-            .with_context(|| format!("server parameter {name}"))?;
-        String::from_utf8(plaintext.to_vec()).map_err(|e| {
-            e.into_bytes().zeroize();
-            db_error!("server parameter {name} is not UTF-8")
-        })
+        let aad = format!("\0kms-parameter\0{name}");
+        let candidate = self.seal(aad.as_bytes(), value.as_bytes())?;
+        self.mgr
+            .clone()
+            .set_nx::<_, _, bool>(Self::parameter_key(name), candidate)
+            .await?;
+        self.get_parameter(name)
+            .await?
+            .ok_or_else(|| db_error!("server parameter {name} vanished right after insertion"))
     }
 
     /// Unconditionally write an object. Test-only (seeds legacy objects): production

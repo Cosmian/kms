@@ -72,6 +72,13 @@ server_core = '''
                       |tests/))
 '''
 
+# Server code of the multi-region active-active model: leader gating, leader-only jobs, CRL and ceremony operations.
+multi_region = '''
+  ^crate/server/src/(cron\.rs|core/mod\.rs|config/command_line/clap_config\.rs)$
+| ^crate/server/src/core/operations/(generate_crl|join_split_key|batch_undo)\.rs$
+| ^crate/server/src/tests/(pgedge_|key_ceremony_tests\.rs)
+'''
+
 pg_store = '^crate/server_database/src/stores/sql/pgsql\.rs$'
 mysql_store = '^crate/server_database/src/stores/sql/(mysql\.rs|query_mysql\.sql)$'
 
@@ -232,6 +239,23 @@ files = '''
 '''
 # the OpenBao KV scenario replayed on PostgreSQL and MySQL
 variants = ["fips", "non-fips"]
+
+# Multi-region active-active legs (2-node pgEdge/Spock, 2-node Galera). The guard suite re-runs both proofs and is
+# non-FIPS only, to avoid duplicating their job time.
+[units."db:pgedge"]
+sets = ["multi_region", "db_core", "db_shared", "pg_store"]
+files = '^\.mise/tasks/test/db/pgedge$ | ^\.mise/lib/multi_region_guards\.sh$ | ^crate/server/src/tests/pgedge_'
+variants = ["fips", "non-fips"]
+
+[units."db:galera"]
+sets = ["multi_region", "db_core", "db_shared", "mysql_store"]
+files = '^\.mise/tasks/test/db/galera$ | ^\.mise/lib/multi_region_guards\.sh$'
+variants = ["fips", "non-fips"]
+
+[units."db:multi-region-guards"]
+sets = ["multi_region", "db_core", "db_shared", "pg_store", "mysql_store"]
+files = '^\.mise/tasks/test/db/(pgedge|galera|multi-region-guards)$ | ^\.mise/lib/multi_region_guards\.sh$ | ^crate/server/src/tests/pgedge_'
+variants = ["non-fips"]
 
 [units.cloud]
 files = '''

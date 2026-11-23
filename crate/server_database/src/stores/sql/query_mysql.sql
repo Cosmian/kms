@@ -142,7 +142,26 @@ FROM objects
 WHERE objects.id = ?
 FOR UPDATE;
 
+-- A Destroyed row keeps its zeroized payload (PostgreSQL: objects_state_derive).
 -- name: update-object-with-object
+UPDATE objects
+SET object=IF(state IN ('Destroyed', 'Destroyed_Compromised'), object, ?),
+    attributes=?,
+    wrapping_key_id=IF(state IN ('Destroyed', 'Destroyed_Compromised'), wrapping_key_id, ?),
+    version=version + 1
+WHERE id = ?;
+
+-- name: update-object-with-object-if-version
+UPDATE objects
+SET object=IF(state IN ('Destroyed', 'Destroyed_Compromised'), object, ?),
+    attributes=?,
+    wrapping_key_id=IF(state IN ('Destroyed', 'Destroyed_Compromised'), wrapping_key_id, ?),
+    version=version + 1
+WHERE id = ?
+  AND version = ?;
+
+-- Import replace may overwrite a Destroyed row (PostgreSQL: Upsert tombstones first).
+-- name: replace-object-with-object
 UPDATE objects
 SET object=?,
     attributes=?,
@@ -150,14 +169,8 @@ SET object=?,
     version=version + 1
 WHERE id = ?;
 
--- name: update-object-with-object-if-version
-UPDATE objects
-SET object=?,
-    attributes=?,
-    wrapping_key_id=?,
-    version=version + 1
-WHERE id = ?
-  AND version = ?;
+-- name: select-object-state-for-update
+SELECT state FROM objects WHERE id = ? FOR UPDATE;
 
 -- name: update-object-with-state
 UPDATE objects
@@ -447,3 +460,26 @@ SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256), 0);
 
 -- name: release-cron-lock
 SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256));
+
+-- Scheduled-job row locks, used when the server refuses GET_LOCK (Galera). A row lock
+-- excludes connections to the same database node only.
+-- name: create-table-cron-locks
+CREATE TABLE IF NOT EXISTS kms_cron_locks
+(
+    name VARCHAR(128) NOT NULL PRIMARY KEY
+);
+
+-- name: has-cron-lock-row
+SELECT name FROM kms_cron_locks WHERE name = ?;
+
+-- name: insert-cron-lock-row
+INSERT IGNORE INTO kms_cron_locks (name) VALUES (?);
+
+-- name: select-cron-lock-nowait
+SELECT name FROM kms_cron_locks WHERE name = ? FOR UPDATE NOWAIT;
+
+-- name: start-transaction
+START TRANSACTION;
+
+-- name: rollback
+ROLLBACK;

@@ -52,7 +52,17 @@ STRICT = {
     'cargo-publish-dry-run',
     'windows-cargo-test',
 } | WINDOWS_PLATFORM
-DB_LEGS = {'db:psql', 'db:mysql', 'db:mariadb', 'db:percona', 'db:redis', 'db:openbao'}
+DB_LEGS = {
+    'db:psql',
+    'db:mysql',
+    'db:mariadb',
+    'db:percona',
+    'db:redis',
+    'db:openbao',
+    'db:pgedge',
+    'db:galera',
+    'db:multi-region-guards',
+}
 KMIP_INTEROP = {
     'interop:ase',
     'interop:db2',
@@ -127,6 +137,9 @@ FULL_SUITES = [
     *leg('db:percona', *BOTH),
     *leg('db:redis', 'non-fips'),
     *leg('db:openbao', *BOTH),
+    *leg('db:pgedge', *BOTH),
+    *leg('db:galera', *BOTH),
+    *leg('db:multi-region-guards', 'non-fips'),
     *leg('cloud', *BOTH),
     *leg('hsm', 'fips', bench=SOFT_HSMS),
     *leg('hsm', 'non-fips', bench=SOFT_HSMS + ' kryoptic'),
@@ -267,7 +280,14 @@ class Database(unittest.TestCase):
     def test_postgres_store_only(self) -> None:
         self.assertEqual(
             run('crate/server_database/src/stores/sql/pgsql.rs'),
-            WORKSPACE | {'db:psql', 'db:openbao', 'interop:ssh-secrets'},
+            WORKSPACE
+            | {
+                'db:psql',
+                'db:openbao',
+                'db:pgedge',
+                'db:multi-region-guards',
+                'interop:ssh-secrets',
+            },
         )
 
     def test_mysql_store_runs_all_three_mysql_flavours(self) -> None:
@@ -279,6 +299,8 @@ class Database(unittest.TestCase):
                 'db:mariadb',
                 'db:percona',
                 'db:openbao',
+                'db:galera',
+                'db:multi-region-guards',
                 'interop:ssh-secrets',
             },
         )
@@ -292,6 +314,11 @@ class Database(unittest.TestCase):
     def test_db_change_skips_non_db_suites(self) -> None:
         ran = run('crate/server_database/src/stores/sql/query.sql')
         self.assertFalse(ran & {'ui', 'hsm', 'pkcs11', 'windows-ui', 'interop:iris'})
+
+    def test_leader_gating_code_runs_the_multi_region_legs(self) -> None:
+        ran = run('crate/server/src/core/mod.rs')
+        self.assertTrue({'db:pgedge', 'db:galera', 'db:multi-region-guards'} <= ran)
+        self.assertFalse(ran & {'db:psql', 'db:mysql'})
 
     def test_db_task_script_runs_its_leg_only(self) -> None:
         self.assertEqual(run('.mise/tasks/test/db/psql'), {'db:psql'})
@@ -530,7 +557,7 @@ class Matrices(unittest.TestCase):
     def test_everything_runs_every_leg_in_toml_order(self) -> None:
         for legs in (self.legs([]), self.everything('pull_request')):
             self.assertEqual(legs, FULL_SUITES)
-            self.assertEqual(len(legs), 61)
+            self.assertEqual(len(legs), 66)
 
     def test_no_nix_legs_come_runner_major(self) -> None:
         legs = [g for g in FULL_SUITES if g['suite'] == 'no-nix']
@@ -573,6 +600,8 @@ class Matrices(unittest.TestCase):
                 *leg('db:sqlite', *BOTH),
                 *leg('db:psql', *BOTH),
                 *leg('db:openbao', *BOTH),
+                *leg('db:pgedge', *BOTH),
+                *leg('db:multi-region-guards', 'non-fips'),
                 *leg('interop:ssh-secrets', *BOTH),
                 *leg('windows-cargo-test', **WIN),
             ],
@@ -604,7 +633,7 @@ class Matrices(unittest.TestCase):
     def test_nightly_runs_every_unit_but_xks(self) -> None:
         legs = self.everything('schedule')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 62)
+        self.assertEqual(len(legs), 67)
         self.assertEqual(suites, set(EVERYTHING) - {'xks-remote'})
         self.assertEqual(
             [g['lock'] for g in legs if g['suite'].startswith('hsm:')],
@@ -614,26 +643,26 @@ class Matrices(unittest.TestCase):
     def test_tag_runs_the_real_publish_instead_of_the_dry_run(self) -> None:
         legs = self.everything('tag')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 62)
+        self.assertEqual(len(legs), 67)
         self.assertEqual(suites, set(EVERYTHING) - {'cargo-publish-dry-run'})
         self.assertIn('xks-remote', suites)
 
     def test_dispatch_runs_every_leg(self) -> None:
         legs = self.everything('workflow_dispatch')
-        self.assertEqual(len(legs), 63)
+        self.assertEqual(len(legs), 68)
         self.assertEqual({g['suite'] for g in legs}, set(EVERYTHING))
 
     def test_nightly_of_a_fork_repository(self) -> None:
         legs = self.everything('schedule', secrets=False)
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 58)
+        self.assertEqual(len(legs), 63)
         self.assertFalse(suites & {'cloud', 'hsm:crypt2pay', 'hsm:proteccio'})
         self.assertTrue(suites >= {'cargo-publish-dry-run', 'windows-est'})
 
     def test_fork_pull_request(self) -> None:
         legs = self.legs([], secrets=False, fork_pr=True)
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 51)
+        self.assertEqual(len(legs), 56)
         self.assertFalse(suites & {'cloud', 'xks-remote', 'cargo-publish-dry-run'})
         self.assertFalse({u for u in suites if u.startswith('windows-')})
 
@@ -809,6 +838,9 @@ UNIT_SAMPLES = {
     'db:percona': '.mise/tasks/test/db/percona',
     'db:redis': 'crate/server_database/src/stores/redis/findex.rs',
     'db:openbao': '.mise/scripts/test/interop/openbao/bao_verifier.sh',
+    'db:pgedge': '.mise/tasks/test/db/pgedge',
+    'db:galera': '.mise/tasks/test/db/galera',
+    'db:multi-region-guards': '.mise/tasks/test/db/multi-region-guards',
     'cloud': 'crate/server/src/routes/google_cse/mod.rs',
     'hsm': 'crate/hsm/utimaco/src/lib.rs',
     'hsm:crypt2pay': 'crate/hsm/crypt2pay/src/lib.rs',
@@ -1243,7 +1275,7 @@ class Main(unittest.TestCase):
     def test_nightly_never_reads_the_diff_and_skips_xks(self) -> None:
         text, legs = self.run_all('--event', 'schedule')
         self.assertIn('not a pull request: run everything', text)
-        self.assertEqual(len(legs), 62)
+        self.assertEqual(len(legs), 67)
         self.assertNotIn('xks-remote', {g['suite'] for g in legs})
         self.assertIn('RUN  hsm:proteccio', text)
         self.assertIn('SKIP xks-remote', text)
@@ -1251,14 +1283,14 @@ class Main(unittest.TestCase):
     def test_nightly_without_secrets_keeps_windows_but_not_upstream_units(self) -> None:
         _, legs = self.run_all('--event', 'schedule', '--no-secrets')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 58)
+        self.assertEqual(len(legs), 63)
         self.assertIn('windows-cargo-test', suites)
         self.assertFalse(suites & {'cloud', 'hsm:crypt2pay', 'hsm:proteccio'})
 
     def test_tag_and_dispatch_runs(self) -> None:
         _, tag = self.run_all('--event', 'tag')
         _, dispatch = self.run_all('--event', 'workflow_dispatch')
-        self.assertEqual((len(tag), len(dispatch)), (62, 63))
+        self.assertEqual((len(tag), len(dispatch)), (67, 68))
 
     def test_fork_pr_without_secrets_drops_cloud_and_windows(self) -> None:
         self.run_main(

@@ -571,7 +571,6 @@ Crate path: `crate/server`
 | `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
 | `warn` | `[crl-refresh-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
 | `warn` | `[crl-refresh-cron] Failed to list CRL issuers from DB: {e}` | `src/cron.rs` | `e` | - |
-| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
 | `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
 | `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
@@ -601,6 +600,7 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: cannot acquire audit log lock {} ({e}) — retrying` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error other than contention (EACCES, EROFS, directory-creation failure) | Deployment fault distinct from the benign "held by another instance" case; retried on the same interval. |
 | `trace` | `Extractable: {:?}` | `src/core/operations/attributes/add.rs` | - | - |
 | `trace` | `Set Attribute: Extractable: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `debug` | `[crl-refresh-cron] Skipping background CRL refresh on follower region` | `src/cron.rs` | - | - |
 | `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
 | `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
@@ -786,6 +786,7 @@ Crate path: `crate/server`
 | `warn` | `[{lock_name}] Failed to acquire or release cluster lock: {e}` | `src/cron.rs` | `lock_name`, `e` | - |
 | `warn` | `health check: {what}: {detail}` | `src/routes/health.rs` | `what`, `detail` | - |
 | `info` | `GET /cluster/status {}` | `src/routes/cluster.rs` | - | - |
+| `debug` | `[auto-rotate-cron] Skipping auto-rotation on follower region` | `src/cron.rs` | - | - |
 | `debug` | `[cluster-heartbeat] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
 | `debug` | `[{lock_name}] Skipping scheduled work; another node holds the lock` | `src/cron.rs` | `lock_name` | - |
 | `info` | `Encrypted Data: alg={:?} value_len={}` | `src/routes/ms_dke/mod.rs` | - | - |
@@ -796,6 +797,9 @@ Crate path: `crate/server`
 | `trace` | `Request: request_context={:?} alg={:?} value_len={}` | `src/routes/azure_ekm/mod.rs` | - | ×2 in this file |
 | `trace` | `Certify: unique_identifier={:?}, request type={:?}, request value: {}` | `src/core/operations/certify/certify_op.rs` | - | - |
 | `trace` | `Decrypt: uid={:?}, data: {}` | `src/core/operations/decrypt.rs` | - | - |
+| `warn` | `[crl-refresh-cron] Failed to load CRL for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id` (CA certificate UID), `e` (database error) | The revoked-certificates check is skipped for this issuer until the next run. |
+| `warn` | `[crl-refresh-cron] Revocation check failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id` (CA certificate UID), `e` (error) | Comparing the stored CRL with the revoked certificates failed; retried at the next run. |
+| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})` | `src/cron.rs` | `issuer_id` (CA certificate UID), `refresh_reason` (`expires within <N>h` or `revoked certificates changed`) | Leader region only. |
 
 ### `cosmian_kms_server_database`
 
@@ -849,7 +853,7 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
-| `warn` | `The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node` | `src/stores/sql/mysql.rs` | - | - |
+| `warn` | `The database refuses GET_LOCK ({}): scheduled jobs use row locks in kms_cron_locks, which exclude only the KMS nodes connected to the same database node` | `src/stores/sql/mysql.rs` | `{}` (database error message) | Galera (Percona XtraDB Cluster, MariaDB Galera); logged once per process. |
 | `warn` | `Failed to release database migration lock` | `src/stores/migrate.rs` | - | - |
 | `warn` | `Failed to release Redis migration lock on drop` | `src/stores/redis/migrations/mod.rs` | - | - |
 | `warn` | `Interrupted database migration detected; resuming` | `src/stores/migrate.rs` | - | - |
@@ -858,6 +862,7 @@ Crate path: `crate/server_database`
 | `info` | `Applying database migration step` | `src/stores/migrate.rs` | - | - |
 | `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
+| `error` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | `role`, `user`, `error` | Security: audit event on every check of the user. Tampered record, or `ceremony_secret`/`ceremony_key_id` differing between regions. |
 
 ### `cosmian_kms_crypto`
 

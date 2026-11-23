@@ -5,16 +5,17 @@
 //! platform-specific default configuration path.
 //!
 //! The wizard covers:
-//! 1. Database
-//! 2. HTTP server
-//! 3. TLS / certificates  (optionally generates a self-signed PKI)
-//! 4. KMIP socket server
-//! 5. Authentication (API key, JWT/OIDC, client certificates)
-//! 6. HSM
-//! 7. Logging
-//! 8. Proxy
-//! 9. Advanced (workspace, key management, MS DKE, KMIP policy, Google CSE,
-//!    Azure EKM, AWS XKS, UI)
+//! 1. Deployment profile (decision tree of the high-availability guide)
+//! 2. Database
+//! 3. HTTP server
+//! 4. TLS / certificates  (optionally generates a self-signed PKI)
+//! 5. KMIP socket server
+//! 6. Authentication (API key, JWT/OIDC, client certificates)
+//! 7. HSM
+//! 8. Logging
+//! 9. Proxy
+//! 10. Advanced (workspace, key management, MS DKE, KMIP policy, Google CSE,
+//!     Azure EKM, AWS XKS, UI)
 
 use std::io::Write as _;
 
@@ -25,6 +26,7 @@ mod db_wizard;
 mod hsm_wizard;
 mod http_wizard;
 mod logging_wizard;
+mod profile_wizard;
 mod proxy_wizard;
 mod socket_wizard;
 #[cfg(test)]
@@ -115,22 +117,28 @@ pub fn run_configure_wizard() -> KResult<()> {
     )?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [1/9] Database ────────────────────────────────────────────────────────
-    writeln!(std::io::stdout().lock(), "[1/9] Database configuration")?;
-    writeln!(std::io::stdout().lock(), "──────────────────────────────")?;
-    let db = db_wizard::configure_db()?;
+    // ── [1/10] Deployment profile ─────────────────────────────────────────────
+    writeln!(std::io::stdout().lock(), "[1/10] Deployment profile")?;
+    writeln!(std::io::stdout().lock(), "──────────────────────────")?;
+    let (profile, region_role) = profile_wizard::configure_profile()?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [2/9] HTTP server ─────────────────────────────────────────────────────
-    writeln!(std::io::stdout().lock(), "[2/9] HTTP server configuration")?;
+    // ── [2/10] Database ───────────────────────────────────────────────────────
+    writeln!(std::io::stdout().lock(), "[2/10] Database configuration")?;
     writeln!(std::io::stdout().lock(), "──────────────────────────────")?;
-    let mut http = http_wizard::configure_http()?;
+    let db = db_wizard::configure_db(profile)?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [3/9] TLS / certificates ──────────────────────────────────────────────
+    // ── [3/10] HTTP server ────────────────────────────────────────────────────
+    writeln!(std::io::stdout().lock(), "[3/10] HTTP server configuration")?;
+    writeln!(std::io::stdout().lock(), "──────────────────────────────")?;
+    let mut http = http_wizard::configure_http(profile.is_multi_node())?;
+    writeln!(std::io::stdout().lock())?;
+
+    // ── [4/10] TLS / certificates ─────────────────────────────────────────────
     writeln!(
         std::io::stdout().lock(),
-        "[3/9] TLS / Certificate configuration"
+        "[4/10] TLS / Certificate configuration"
     )?;
     writeln!(
         std::io::stdout().lock(),
@@ -144,16 +152,17 @@ pub fn run_configure_wizard() -> KResult<()> {
     http.cors_allowed_origins = Some(http_wizard::default_cors_origins(scheme, http.port));
     writeln!(std::io::stdout().lock())?;
 
-    // ── [4/9] KMIP socket server ──────────────────────────────────────────────
+    // ── [5/10] KMIP socket server ─────────────────────────────────────────────
     writeln!(
         std::io::stdout().lock(),
-        "[4/9] KMIP socket server configuration"
+        "[5/10] KMIP socket server configuration"
     )?;
     writeln!(
         std::io::stdout().lock(),
         "───────────────────────────────────────"
     )?;
-    let socket_server = socket_wizard::configure_socket_server(has_clients_ca)?;
+    let socket_server =
+        socket_wizard::configure_socket_server(has_clients_ca, profile.is_multi_node())?;
 
     // The KMIP socket server authenticates clients exclusively via mTLS.
     // If it was just enabled but `clients_ca_cert_file` is not set, fix that now.
@@ -187,10 +196,10 @@ pub fn run_configure_wizard() -> KResult<()> {
     }
     writeln!(std::io::stdout().lock())?;
 
-    // ── [5/9] Authentication ──────────────────────────────────────────────────
+    // ── [6/10] Authentication ─────────────────────────────────────────────────
     writeln!(
         std::io::stdout().lock(),
-        "[5/9] Authentication configuration"
+        "[6/10] Authentication configuration"
     )?;
     writeln!(
         std::io::stdout().lock(),
@@ -200,10 +209,10 @@ pub fn run_configure_wizard() -> KResult<()> {
     let auth_result = auth_wizard::configure_auth(&mut http, &mut ui_config)?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [6/9] HSM ─────────────────────────────────────────────────────────────
+    // ── [7/10] HSM ────────────────────────────────────────────────────────────
     writeln!(
         std::io::stdout().lock(),
-        "[6/9] Hardware Security Module (HSM) configuration"
+        "[7/10] Hardware Security Module (HSM) configuration"
     )?;
     writeln!(
         std::io::stdout().lock(),
@@ -212,22 +221,22 @@ pub fn run_configure_wizard() -> KResult<()> {
     let hsm = hsm_wizard::configure_hsm()?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [7/9] Logging ─────────────────────────────────────────────────────────
-    writeln!(std::io::stdout().lock(), "[7/9] Logging configuration")?;
+    // ── [8/10] Logging ────────────────────────────────────────────────────────
+    writeln!(std::io::stdout().lock(), "[8/10] Logging configuration")?;
     writeln!(std::io::stdout().lock(), "────────────────────────────")?;
     let logging = logging_wizard::configure_logging()?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [8/9] Proxy ───────────────────────────────────────────────────────────
-    writeln!(std::io::stdout().lock(), "[8/9] Proxy configuration")?;
+    // ── [9/10] Proxy ──────────────────────────────────────────────────────────
+    writeln!(std::io::stdout().lock(), "[9/10] Proxy configuration")?;
     writeln!(std::io::stdout().lock(), "──────────────────────────")?;
     let proxy = proxy_wizard::configure_proxy()?;
     writeln!(std::io::stdout().lock())?;
 
-    // ── [9/9] Advanced ────────────────────────────────────────────────────────
+    // ── [10/10] Advanced ──────────────────────────────────────────────────────
     writeln!(
         std::io::stdout().lock(),
-        "[9/9] Advanced / miscellaneous configuration"
+        "[10/10] Advanced / miscellaneous configuration"
     )?;
     writeln!(
         std::io::stdout().lock(),
@@ -281,6 +290,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         templates: advanced.templates,
         default_username: auth_result.default_username,
         force_default_username: auth_result.force_default_username,
+        region_role,
         ..ClapConfig::default()
     };
 
@@ -336,6 +346,11 @@ pub fn run_configure_wizard() -> KResult<()> {
              to authenticate via mTLS.\n"
         )?;
     }
+
+    for note in profile_wizard::profile_notes(profile, region_role) {
+        writeln!(std::io::stdout().lock(), "  ℹ  {note}")?;
+    }
+    writeln!(std::io::stdout().lock())?;
 
     writeln!(std::io::stdout().lock(), "Start the server with:")?;
     writeln!(std::io::stdout().lock(), "  cosmian_kms -c {output_path}")?;

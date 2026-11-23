@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema has eight tables shared by all SQL backends, plus `kms_migration_lock` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
+The KMS object-store schema has eight tables shared by all SQL backends, plus `object_state_events` and `object_state_event_tombstones` on PostgreSQL, and `kms_migration_lock` and `kms_cron_locks` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -19,8 +19,11 @@ The KMS object-store schema has eight tables shared by all SQL backends, plus `k
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
 | `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
 | `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
+| `object_state_events`, `object_state_event_tombstones` | Insert-only object lifecycle log from which `objects.state` is derived (PostgreSQL only) |
 | `kms_migration_lock` | Startup migration coordination row (MySQL, MariaDB, and Percona XtraDB Cluster only) |
+| `kms_cron_locks` | Scheduled-job row locks (MySQL, MariaDB, and Percona XtraDB Cluster only, when `GET_LOCK` is refused) |
 
+Every PostgreSQL deployment, single- or multi-region, keeps the lifecycle state of objects in the two insert-only tables `object_state_events` and `object_state_event_tombstones`, created at startup, from which `ENABLE ALWAYS` triggers derive `objects.state`. In a multi-region active-active deployment they make the state converge across regions (see [Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr)).
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
 ```mermaid
@@ -44,13 +47,13 @@ erDiagram
         bigint version
     }
     READ_ACCESS {
-        string id FK
-        string userid
+        string id PK,FK
+        string userid PK
         string permissions
     }
     TAGS {
-        string id FK
-        string tag
+        string id PK,FK
+        string tag PK
     }
     CRLS {
         string issuer_id PK
@@ -64,6 +67,7 @@ erDiagram
         bigint count
     }
     CRYPTO_OFFICER_ACTIVATIONS {
+        int id PK
         timestamp activated_at
         text sealed_record
         timestamp revoked_at
@@ -118,6 +122,8 @@ To downgrade without restoring spent budgets:
 
 After upgrading again, the Total the earlier release decremented caps the remaining budget, so its consumption is kept.
 
+**Downgrade (MySQL).** SAFE. No storage change: an older node writes the state and the payload without the lifecycle join and the Destroyed guard, as before.
+
 ## read_access
 
 Stores the operations that a given user is allowed to perform on a given object.
@@ -129,9 +135,11 @@ Stores the operations that a given user is allowed to perform on a given object.
 | `permissions` | `json` | The operations granted to the user, serialized as JSON. |
 
 The pair (`id`, `userid`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, userid)`.
+In PostgreSQL (converted at startup) and MySQL (since 5.14.0), it is the composite `PRIMARY KEY (id, userid)` (providing valid `REPLICA IDENTITY` for logical replication); in SQLite it is declared `UNIQUE (id, userid)`.
 
 A secondary index `idx_read_access_userid` is created on `userid`.
+
+**Downgrade.** SAFE. The PostgreSQL primary key covers the columns of the previous unique constraint, and an older KMS always writes both columns. Its `ON CONFLICT (id, userid)` is served by the key.
 
 ## tags
 
@@ -143,9 +151,11 @@ Stores the tags attached to objects. Tags are used to locate objects by tag.
 | `tag` | `VARCHAR(255)` | A single tag. |
 
 The pair (`id`, `tag`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, tag)`.
+In PostgreSQL (converted at startup) and MySQL (since 5.14.0), it is the composite `PRIMARY KEY (id, tag)` (providing valid `REPLICA IDENTITY` for logical replication); in SQLite it is declared `UNIQUE (id, tag)`.
 
 A secondary index `idx_tags_tag_id` on (`tag`, `id`) supports Locate-by-tags lookups.
+
+**Downgrade.** SAFE. The PostgreSQL primary key covers the columns of the previous unique constraint, and an older KMS always writes both columns.
 
 ## parameters
 
@@ -165,7 +175,7 @@ Known parameters:
 | `attributes_jsonb_converted` | PostgreSQL-only marker recording that `objects.attributes` was converted to `jsonb`. |
 | `wrapping_key_id_backfilled` | One-time marker recording that the `objects.wrapping_key_id` backfill completed. |
 | `certificate_serial_tag_backfilled` | One-time marker recording that the `_serial=<HEX>` tag backfill for existing certificates completed. |
-| `kv_metadata_uid_key` | Hex-encoded 32-byte key, created on first use by the [KV secret store](../secret_backends.md#internal-record-identifiers) or the SSH CA/role API, from which the identifier of each KV path's metadata object (and of the SSH CA/role records) is derived. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
+| `kv_metadata_uid_key` | Hex-encoded 32-byte key initialized by the leader region at startup; followers only read it after replication. It derives internal identifiers for the [KV secret store](../secret_backends.md#internal-record-identifiers) and SSH CA/role records. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
 
 ## `kms_migration_lock`
 
@@ -174,6 +184,16 @@ Used on MySQL, MariaDB, and Percona XtraDB Cluster to serialize startup migratio
 | Column | Type | Description |
 | ------ | ---- | ----------- |
 | `id` | `TINYINT` | Primary key (contains a single coordination row `id = 1`). |
+
+## `kms_cron_locks`
+
+Used on MySQL, MariaDB, and Percona XtraDB Cluster when the server refuses `GET_LOCK` (Galera): a scheduled job holds its row `FOR UPDATE NOWAIT` in an open transaction. Created at startup (`CREATE TABLE IF NOT EXISTS`).
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `name` | `VARCHAR(128)` | Primary key: the job lock name. |
+
+**Downgrade.** An older KMS ignores this table; the only effect is that its scheduled jobs run on every node, as before this table existed.
 
 ## crypto_officer_activations
 
@@ -188,7 +208,61 @@ One row is added each time the Crypto Officer role is activated via a split-key 
 | `revoked_by` | `VARCHAR(255)` | The user who revoked the activation. |
 
 In MySQL, an additional `id INTEGER PRIMARY KEY AUTO_INCREMENT` column is added.
-In PostgreSQL and SQLite there is no explicit `id` column; the active activation is the latest row where `revoked_at IS NULL`.
+In PostgreSQL, an `id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY` column is added to provide valid `REPLICA IDENTITY` for logical replication.
+In SQLite there is no explicit `id` column; the active activation is the latest row where `revoked_at IS NULL`.
+
+**Downgrade.** SAFE. The PostgreSQL identity column `id` is filled automatically; an older KMS inserts with an explicit column list.
+
+## `object_state_events` and `object_state_event_tombstones`
+
+PostgreSQL only. Insert-only lifecycle log from which `objects.state` is derived by `ENABLE ALWAYS` triggers (see [State conflict resolution](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr)). Both tables have a UUID primary key and are never updated.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `event_id` | `UUID` | Primary key of the event. |
+| `object_id` | `VARCHAR(128)` | The `objects.id` the event applies to. |
+| `state` | `VARCHAR(32)` | The lifecycle state recorded. |
+| `object` | `VARCHAR` | For `Destroyed` events, the zeroized object JSON snapshot; otherwise `NULL`. |
+| `wrapping_key_id` | `VARCHAR(128)` | For `Destroyed` events, the wrapping key id snapshot; otherwise `NULL`. |
+| `recorded_at` | `TIMESTAMPTZ` | When the event was recorded. |
+
+`object_state_event_tombstones` holds only `event_id UUID PRIMARY KEY`: an event listed there no longer counts (used by backward transitions such as batch UNDO).
+
+Applying a lifecycle event or a tombstone also advances `objects.version`. Conditional writes using a snapshot from before that transition fail with a conflict, including when the event arrived through replication.
+
+**Downgrade.** DEGRADED. Release 5.29.0 predates the migration runner's newer-version check: it starts on this database. A binary with that check refuses startup only when the recorded database version exceeds its own version.
+
+With the lifecycle triggers installed, older nodes' direct state writes are replaced by the event-derived state. Activate, Revoke and Destroy therefore cannot change the state of objects with events. Destroy can still zeroize their payload.
+
+Stop all older nodes before starting this release. Do not use mixed-version rolling restarts. Repeat lifecycle operations served by older nodes after the cutover; startup cannot reconstruct transitions that the trigger suppressed.
+
+Older releases' deletes and `clear_database` leave events and tombstones behind. Startup purges these orphans and adds baseline events for event-less objects.
+
+It also records stored states that add information to the event join, preserving later phases and compromise status.
+
+### Deliberate PostgreSQL downgrade and return
+
+This procedure addresses the lifecycle triggers only; it does not establish compatibility of unrelated release changes.
+
+1. Stop every KMS node in every region, let replication catch up, and back up each database before modifying it.
+2. On each database, remove the lifecycle triggers below. Do not assume that DDL is replicated. Keep the event tables and their contents.
+
+    ```sql
+    BEGIN;
+    DROP TRIGGER IF EXISTS trg_objects_state_derive ON objects;
+    DROP TRIGGER IF EXISTS trg_object_state_events_apply ON object_state_events;
+    DROP TRIGGER IF EXISTS trg_object_state_event_tombstones_apply ON object_state_event_tombstones;
+    COMMIT;
+    ```
+
+3. Start the older release. This procedure does not bypass a newer-version refusal in a binary that implements that check.
+4. Before returning to this release, stop every older node again and let replication catch up. Startup reinstalls the triggers and appends missing state information from `objects`, including a Destroyed payload snapshot.
+
+**Limits.** Reconciliation preserves the join, not an arbitrary replacement: a state lowered by the older release (such as batch UNDO) cannot override surviving events. Do not delete and recreate an object with the same UID during the downgrade.
+
+If a UID is reused, surviving events can override the replacement object's state or payload. The older release's `clear_database` does not remove this risk. Use a tested backup/restore plan for these cases.
+
+The startup scan evaluates the surviving event join for every object. Its cost grows with the object and event counts; events are not compacted.
 
 ## `crls`
 
@@ -235,6 +309,10 @@ Keys held in an HSM are not counted here: the HSM module enforces the cap under 
 Policy. The Redis-with-Findex backend (non-FIPS builds only) keeps the count in
 `gcm_invocations::<uid>` keys instead of a table.
 
+**Multi-region.** Every region increments the count of a key, so the table is replicated with Spock delta-apply on
+`count` (each region's increment is added, not overwritten): see
+[Scheduled jobs and cluster coordination](./multi_region.md#scheduled-jobs-and-cluster-coordination).
+
 **Downgrade.** An older KMS ignores this table (and the Redis keys). It does not count its own
 AES-GCM invocations, so after upgrading again the count under-reports those invocations: rekey
 AES-GCM keys that were used heavily while downgraded. An older KMS also deletes keys without
@@ -255,6 +333,9 @@ next heartbeat.
 | `version` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | KMS package version reported by the process. |
 | `last_heartbeat` | `BIGINT` (PG/MySQL) / `INTEGER` (SQLite) | Last heartbeat as Unix seconds. |
 | `is_leader` | `BOOLEAN` (PG/MySQL) / `INTEGER` (SQLite, 0 or 1) | Whether this node is the displayed cluster leader. |
+
+In a multi-region active-active deployment each region keeps its own rows: remove the table from the replication set
+(see [Scheduled jobs and cluster coordination](./multi_region.md#scheduled-jobs-and-cluster-coordination)).
 
 ## Links between tables
 

@@ -354,15 +354,17 @@ async fn revert_inner(kms: &KMS, user: &UserId, record: &UndoRecord) -> KResult<
     }
     for snapshot in record.snapshots.iter().rev() {
         let owm = &snapshot.before;
+        // Reset the state first: on replicated PostgreSQL a Destroyed row keeps its zeroized
+        // payload (derived from the lifecycle events), so the restore must see a lower state.
+        operations.push(AtomicOperation::ResetState((
+            owm.id().to_owned(),
+            owm.state(),
+        )));
         operations.push(AtomicOperation::UpdateObject((
             owm.id().to_owned(),
             owm.object().clone(),
             owm.attributes().clone(),
             Some(snapshot.tags.clone()),
-        )));
-        operations.push(AtomicOperation::UpdateState((
-            owm.id().to_owned(),
-            owm.state(),
         )));
     }
     kms.database.atomic(user, &operations).await?;

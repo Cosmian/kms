@@ -604,7 +604,8 @@ impl RedisWithFindex {
                 db_object.attributes = Some(attributes.clone());
                 db_object.version += 1;
             }
-            AtomicOperation::UpdateState((uid, state)) => {
+            AtomicOperation::UpdateState((uid, state))
+            | AtomicOperation::ResetState((uid, state)) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
                 let Some(db_object) = entry.current.as_mut() else {
                     return Err(DbError::ItemNotFound(uid.clone()));
@@ -1088,6 +1089,10 @@ impl ObjectsStore for RedisWithFindex {
             .await?
             .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
         Ok(object.owner == *owner)
+    }
+
+    async fn get_parameter(&self, name: &'static str) -> InterfaceResult<Option<String>> {
+        Ok(self.objects_db.get_parameter(name).await?)
     }
 
     async fn get_or_insert_parameter(
