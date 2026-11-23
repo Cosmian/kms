@@ -1,6 +1,6 @@
 ---
 name: meta-security
-description: 'Full security-audit orchestrator (/security-review, /cryptography-review, /threat-model, /standards-review) per .github/skills/shared/orchestrator-contract.md (§6 inline or delegated; incremental skips on follow-ups).'
+description: 'Run a full KMS security audit before a release or major change. Use incremental mode only for an explicitly requested follow-up.'
 ---
 
 # Meta-Security — Comprehensive Security Audit
@@ -21,15 +21,7 @@ that file are mandatory for every sub-skill invoked below. Do not proceed until 
 
 ### Orchestration & Delegation
 
-Phases run inline or as delegated sub-agents when independent per `.github/skills/shared/orchestrator-contract.md` Section 6 (skills do not select a model, fix an agent count, or require delegation). The shared contract controls:
-
-- **Phase ordering** (Section 1: security audit phases 1–4)
-- **Delegation** (Section 6: optional sub-agent delegation when phases are independent, otherwise inline; no model selection)
-- **Finding ownership & deduplication** (Section 3: earliest executed phase owns overlapping findings)
-- **Unified report schema** (Section 4: inline report structure; `meta-security` emits its unified report inline rather than writing `SUMMARY.md`)
-- **Blocking criteria** (Section 5: go/no-go gates)
-
-This skill's steps below align with that contract. For orchestration rules and report format details, see `.github/skills/shared/orchestrator-contract.md`.
+Follow the [shared orchestrator contract](../shared/orchestrator-contract.md) for phase order, skip gates, delegation, finding ownership and verdicts.
 
 ## Step 1 — Determine Scope
 
@@ -145,48 +137,7 @@ Collect all findings. Record applicability and conformance gaps.
 
 ## Step 6 — Unified Report
 
-Output the unified report **inline** using the schema from `.github/skills/shared/orchestrator-contract.md` Section 4 (`meta-security` does not write a `SUMMARY.md` file).
-
-**Report structure** (adapted for security audit):
-
-```markdown
-# Meta-Security — <Scope> Report
-
-**Generated**: <ISO 8601 timestamp>
-**Scope**: <full workspace | path | specific changed files>
-**Mode**: <full | incremental>
-**Revision**: <commit SHA, plus dirty/untracked state>
-**Instructions applied**: <paths of matching `.github/instructions/*.instructions.md` files>
-**Skills selected**: <list>
-
-## Summary
-
-- **Total Findings**: N
-- **Critical**: N
-- **High**: N
-- **Medium**: N
-- **Low**: N
-- **Skipped Phases**: <list with evidence>
-- **Incomplete Phases**: <list with missing prerequisite>
-
-## Verdict
-
-**GO** / **NO-GO** (with reason)
-
-## Findings (ordered by phase)
-
-### Phase 1: Security Review [PASS | FAIL | SKIPPED | INCOMPLETE]
-...
-
-### Phase 2: Cryptography Review [PASS | FAIL | SKIPPED | INCOMPLETE]
-...
-
-### Phase 3: Threat Model [PASS | FAIL | SKIPPED | INCOMPLETE]
-...
-
-### Phase 4: Standards Review [PASS | FAIL | SKIPPED | INCOMPLETE]
-...
-```
+Output the [unified report](../shared/orchestrator-contract.md#4-unified-report-schema) inline. Do not write a report file.
 
 ## Step 7 — Blocking Criteria (per Orchestrator Contract Section 5)
 

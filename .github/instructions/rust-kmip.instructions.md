@@ -23,7 +23,7 @@ applyTo: 'crate/kmip/**/*.rs'
 - KMIP enumerations → Rust `#[repr(u32)] pub enum` annotated with `#[kmip_enum]` and `#[derive(KmipEnumSerialize, KmipEnumDeserialize, ...)]` (`crate/kmip-derive`).
 - KMIP structures → Rust `pub struct` with `#[derive(Serialize, Deserialize, ...)]` and `#[serde(rename_all = "PascalCase")]` (plus `#[serde(rename = "...")]` when the KMIP tag name contains acronyms like `PKCS11` or `IVCounterNonce`).
 - Optional fields → `Option<T>` with `#[serde(skip_serializing_if = "Option::is_none")]`.
-- KMIP `TextString` → `String`, `ByteString` → `Vec<u8>` or `Zeroizing<Vec<u8>>` for secrets.
+- KMIP `TextString` → `String`, `ByteString` → `Vec<u8>`, or `cosmian_kmip::SensitiveBytes` for secrets (see `rust-security.instructions.md` § Secret memory).
 
 ## Backward compatibility
 

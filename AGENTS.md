@@ -108,7 +108,6 @@ Start backends with `docker compose up -d`, then set:
 | `KMS_MYSQL_URL`    | `mysql://kms:kms@localhost:3306/kms`      |
 | `KMS_SQLITE_PATH`  | `data/shared`                             |
 
-> MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
 > `postgres-mtls` and `mysql-mtls` (profile `mtls`), and `jaeger` and `otel-collector` (profile `otel-test`), are not started by a bare `docker compose up -d`. Use `--profile <name>` or name the service, for example `docker compose up -d postgres-mtls`.
 
@@ -130,60 +129,7 @@ Do not ever commit without fixing pre-commit hook errors. Do not use git commit 
 
 ### Workspace layout
 
-```text
-crate/
-  access/           cosmian_kms_access         — access-control utilities
-  clients/
-    clap/           cosmian_kms_cli_actions    — CLI actions library (clap commands)
-    client/         cosmian_kms_client         — HTTP client library
-    client_utils/   cosmian_kms_client_utils   — shared client helpers
-    ckms/           ckms                       — CLI binary (subcommands live here)
-    cng/            cosmian_cng                — Windows CNG key storage provider
-    k8s/
-      plugin/             cosmian_kms_k8s_plugin       — Kubernetes KMS v2 provider plugin
-      plugin_proto/       cosmian_kms_k8s_plugin_proto — gRPC protobuf bindings for KMS v2 plugin
-      operator/           cosmian_kms_k8s_operator     — Kubernetes secret-injection operator
-      csi_provider/       cosmian_kms_csi_provider     — Secrets Store CSI Driver provider
-      csi_provider_proto/ cosmian_kms_csi_provider_proto — gRPC protobuf bindings for CSI provider
-    pkcs11/
-      module/       cosmian_pkcs11_module      — PKCS#11 module implementation
-      provider/     cosmian_pkcs11             — PKCS#11 provider binary
-    wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.5 + FIPS 3.1.2
-  hsm/
-    base_hsm/        cosmian_kms_base_hsm          — base HSM traits and common code
-    aws_cloudhsm/    aws_cloudhsm_pkcs11_loader    — AWS CloudHSM
-    azure_cloud_hsm/ azure_cloud_hsm_pkcs11_loader — Azure Cloud HSM
-    gcp_cloud_hsm/   gcp_cloud_hsm_pkcs11_loader   — GCP Cloud HSM
-    softhsm2/        softhsm2_pkcs11_loader        — SoftHSM2
-    kryoptic/        kryoptic_pkcs11_loader        — Kryoptic
-    utimaco/         utimaco_pkcs11_loader         — Utimaco
-    proteccio/       proteccio_pkcs11_loader       — Proteccio
-    crypt2pay/       crypt2pay_pkcs11_loader       — Crypt2Pay
-    idemia_sphere/   idemia_sphere_pkcs11_loader   — IDEMIA Sphere HSM
-    luna/            luna_pkcs11_loader            — Thales Luna HSM
-    smartcardhsm/    smartcardhsm_pkcs11_loader    — SmartCard HSM
-  interfaces/       cosmian_kms_interfaces     — Database/HSM traits
-  kmip/             cosmian_kmip               — KMIP 2.1 protocol types
-  kmip-derive/      kmip-derive                — proc-macros for KMIP serialisation
-  server/           cosmian_kms_server         — server binary + lib (main codebase)
-  server_database/  cosmian_kms_server_database — DB backends (SQLite, PostgreSQL, Redis-findex)
-  test_kms_server/  test_kms_server            — in-process test server helper
-
-.github/            CI workflows (.github/workflows/) and helper scripts
-.mise/              MISE tasks and scripts (single source of truth for all automation)
-cbom/               Cryptographic Bill of Materials (CBOM)
-documentation/docs/kms_clients/  CLI documentation (integrated into main docs)
-documentation/      mdBook documentation source
-kmip/               OASIS KMIP and PKCS#11 specifications (submodule)
-monitoring/         Grafana / Prometheus / OTLP monitoring stack
-nix/                Nix build expressions and expected vendor hashes
-pkg/                deb/rpm service files and configs
-resources/          Server config templates
-sbom/               Software Bill of Materials (SBOM)
-test_data/          Test fixtures (submodule)
-ui/                 Web UI source (React + Vite + Playwright E2E tests)
-```
+See the root [Cargo.toml](Cargo.toml) for workspace members and each crate's manifest for its package name. The [submodule declarations](.gitmodules) identify the specification and test-fixture checkouts: `kmip/` holds the specs; `crate/kmip/` holds Rust protocol code.
 
 ---
 
@@ -513,12 +459,7 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 
 #### UI actions structure
 
-`ui/src/actions/` — 17 feature modules mapping to KMIP operation groups:
-
-```text
-Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/ FPE/ Keys/
-MAC/ Objects/ Pgp/ PQC/ RSA/ RotationPolicy/ Secrets/ Symmetric/ Tokenize/
-```
+Follow the route in [App.tsx](ui/src/App.tsx) to its form in [ui/src/actions/](ui/src/actions/).
 
 Update `ui/tests/e2e/README.md` when adding or removing E2E tests.
 
@@ -534,23 +475,7 @@ mise run [task] --variant [fips|non-fips] [args]
 
 #### Test tasks (`mise run test:<group>:<name>` or `mise run test:<group>`)
 
-| Task                 | FIPS?  | Notes                                       |
-| -------------------- | ------ | ------------------------------------------- |
-| `db:sqlite`          | yes    | Default DB backend                          |
-| `db:psql`            | yes    | Requires PostgreSQL                         |
-| `db:mysql`           | yes    | Non-FIPS on PRs, both variants otherwise    |
-| `db:percona`         | yes    | Percona XtraDB                              |
-| `db:mariadb`         | yes    | MariaDB                                     |
-| `db:redis`           | **no** | Redis-findex (non-FIPS only)                |
-| `ui:wasm`            | yes    | WASM package build + tests                  |
-| `cloud:google-cse`   | yes    | Google Workspace CSE                        |
-| `cloud:gcp-cmek`     | yes    | GCP CMEK wrapping                           |
-| `cloud:xks`          | **no** | AWS XKS                                     |
-| `cloud:azure-ekm`    | **no** | Azure EKM                                   |
-| `obs:otel`           | yes    | OpenTelemetry metrics                       |
-| `hsm:<backend>`      | yes    | `softhsm2`, `utimaco`, `proteccio`, `kryoptic`, etc. (or `test:hsm`) |
-| `interop:pykmip`     | **no** | PyKMIP + Synology DSM                       |
-| `ui`                 | **no** | Playwright E2E orchestrator (`test:ui:*`)   |
+Read the [test task README](.mise/tasks/test/README.md) for flags and prerequisites, the task itself for supported variants, and [ci-paths.toml](.github/ci-paths.toml) for CI test units.
 
 ### 8.3 OpenSSL handling
 
@@ -561,7 +486,7 @@ At runtime, `init_openssl_providers()` in `crate/server/src/openssl_providers.rs
 - **FIPS**: loads the `fips` provider once via `OnceLock`.
 - **non-FIPS**: loads the `legacy` provider on top of the active `default` provider.
 
-Do not call `Provider::load` or `Provider::try_load` outside `openssl_providers.rs`.
+Production KMS server initialization must use `init_openssl_providers()` rather than call `Provider::load` or `Provider::try_load` directly. This rule does not apply to test setup.
 
 ---
 

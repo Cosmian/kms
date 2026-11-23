@@ -31,8 +31,7 @@ Group changes by their natural theme (feature area, integration, component).
 
 ## Step 3 — Write the entry with themed subsections
 
-Insert a new `## [X.Y.Z] - YYYY-MM-DD` section at the **top** of `CHANGELOG.md`
-(before the previous version entry).
+Draft the `## [X.Y.Z] - YYYY-MM-DD` section. Merge its contents into any existing draft as described in Step 7.
 
 Use this structure with **themed subsections** under each top-level category:
 
@@ -121,7 +120,7 @@ If the entry contains a `### 🔒 Security` section:
 
 ## Step 7 — Write the output
 
-Edit `CHANGELOG.md` in-place. Insert the new `## [X.Y.Z] - YYYY-MM-DD` section directly above the latest `## [A.B.C]` release heading (after the `# Changelog` preamble — no `## [Unreleased]` heading is required; if a draft `## [X.Y.Z]` entry already exists, replace it). Do **not** edit any older release entry, and do **not** create files in `CHANGELOG/`.
+Edit `CHANGELOG.md` in place. If a draft for `X.Y.Z` exists, merge into it and preserve existing notes, deduplicating overlaps. Otherwise, insert `## [X.Y.Z] - YYYY-MM-DD` above the latest published release and below `## [Unreleased]` if present. Leave `Unreleased` for the consolidation step to process. Do **not** edit older release entries or create files in `CHANGELOG/`.
 
 The root `CHANGELOG.md` is hand-maintained at release time.
 

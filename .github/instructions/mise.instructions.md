@@ -126,28 +126,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 ## Available shared libraries — reuse before writing new code
 
-| Library | What it provides |
-|---|---|
-| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm`, `wait_for_command`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
-| `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
-| `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
-| `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
-| `.mise/lib/nix_helpers.sh` | Nix shell invocation, hash lookup |
-| `.mise/lib/common.sh` (`skip_test`, `run_test_leaves`) | Test leaves: `skip_test "<reason>"` exits 77 (SKIP); a group `_default` runs its adjacent leaves with `run_test_leaves`: see § Test leaves |
-| `.mise/lib/package_build.sh` | Deb/RPM build helpers |
-| `.mise/lib/package_smoke.sh` | Smoke-test helpers for packages |
-| `.mise/lib/spire_test.sh` | SPIRE suite helpers: `spire_listener_pids`, `spire_port_listening`, `spire_wait_port_closed`, `spire_stop_port`, `spire_reset_state`, `spire_ensure_certs`, `spire_build_auth_verifier` |
-| `.mise/lib/softhsm2.sh` | SoftHSM2 token init/teardown |
-| `.mise/lib/k8s.sh` | Kubernetes helpers (helm, kubectl) |
-| `.mise/lib/bench_helpers.sh` | Benchmark setup helpers |
-| `.mise/lib/test_slots.sh` | Dynamic port-slot allocation |
-| `.mise/lib/multi_region_guards.sh` | Multi-region active-active PostgreSQL guards (source/config/live/behavioral) |
-| `.mise/lib/audit_e2e.sh` | Shared ckms/audit E2E helpers: `audit_ckms(_json/_fail)`, `audit_exercise_kmip_ops`, `audit_assert_events_jsonl` |
-| `.mise/lib/audit_compat.sh` | Shared OpenSearch/Splunk ephemeral container lifecycle and Python setup helpers for `test:obs:audit-*` |
-| `.mise/lib/kryoptic.sh` | Out-of-tree build and token setup helpers (`kryoptic_build_cdylib`, `kryoptic_setup`) for the Kryoptic PKCS#11 v3.0 test token |
-
-**Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
-free-port allocation, or SHA-256 computation — all three already exist.
+Check what the nearest related task sources, then search [.mise/lib/](../../.mise/lib/) before writing a helper. Reuse the existing port-wait, port-allocation and SHA-256 helpers. Do not add callers of the legacy `kms_write_config`; use a complete fixture per [rule 4.20](test-configs.instructions.md).
 
 ## Test leaves — `skip_test`, `run_test_leaves`
 

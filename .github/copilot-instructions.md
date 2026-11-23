@@ -55,17 +55,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 
 ## Key directories
 
-| Path | Contents |
-|------|----------|
-| `crate/server/` | Server binary and library (main codebase) |
-| `crate/kmip/` | KMIP 2.1 protocol types (`kmip/` submodule holds OASIS specs) |
-| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.5 + FIPS 3.1.2 |
-| `crate/clients/clap/` | CLI actions (clap commands) |
-| `crate/clients/ckms/` | CLI binary entry point |
-| `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
-| `ui/src/` | React 19 + Vite 7 + Ant Design 5 + Tailwind 4 web UI |
-| `ui/tests/e2e/` | Playwright E2E tests |
-| `.github/skills/` | Team-wide Copilot skills (slash commands) |
+See [Cargo.toml](../Cargo.toml) for workspace members and the [repository map](../AGENTS.md#3-repository-map) for implementation entry points.
 
 ---
 

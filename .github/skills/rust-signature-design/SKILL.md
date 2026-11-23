@@ -17,10 +17,10 @@ Companion to the "Refactor" step of the lint decision tree in
 | Kind | Definition | KMS example | Typical home |
 |---|---|---|---|
 | Entity state | Durable property of a domain object | `UniqueIdentifier`, `Algorithm`, object `State` | Field on the entity/request struct |
-| Operation state | Exists only for one call | `cascade`, `compromise_occurrence_date`, `ids_to_skip` in `recursively_revoke_key` (`crate/server/src/core/operations/revoke.rs:87-95`) | Operation input struct, built per call |
+| Operation state | Exists only for one call | `cascade`, `compromise_occurrence_date`, `ids_to_skip` in `recursively_revoke_key` ([revoke.rs](../../../crate/server/src/core/operations/revoke.rs)) | Operation input struct, built per call |
 | Environmental dependency | Service/collaborator needed to act | `kms: &KMS`, `user: &UserId` — in nearly every `core/operations/*.rs` handler | Keep explicit unless ≥3 collaborators travel together into a *new* struct — see Step 3, item 6 |
-| Derived value | Cheaply computable from another argument | `revoked_state`, computed from `revocation_reason` by `revocation_target_state()` (`revoke.rs:400`) | Compute inside the function; never accept both the source and its derivative |
-| Control parameter | Changes behavior | `clear_db_on_start: bool`, `disable_unwrapped_cache: bool` (`crate/server/src/config/params/server_params.rs:262,274`) | Named enum once ≥2 control bools form one configuration |
+| Derived value | Cheaply computable from another argument | `revoked_state`, computed from `revocation_reason` by `revocation_target_state()` ([revoke.rs](../../../crate/server/src/core/operations/revoke.rs)) | Compute inside the function; never accept both the source and its derivative |
+| Control parameter | Changes behavior | `clear_db_on_start: bool`, `disable_unwrapped_cache: bool` ([server_params.rs](../../../crate/server/src/config/params/server_params.rs)) | Named enum once ≥2 control bools form one configuration |
 
 ## Step 2 — Match against defect patterns
 

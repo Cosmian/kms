@@ -146,7 +146,7 @@ Flag any operation that accepts key sizes below these minimums without rejecting
 
 Review `crate/server/src/openssl_providers.rs` and `crate/crypto/build.rs`:
 
-- [ ] Does all production OpenSSL provider initialization go exclusively through `init_openssl_providers()` in `crate/server/src/openssl_providers.rs` (never ad-hoc `Provider::try_load()` or `Provider::load()` calls elsewhere)?
+- [ ] Does production KMS server initialization load providers through `init_openssl_providers()` in `crate/server/src/openssl_providers.rs`, without direct `Provider::try_load()` or `Provider::load()` calls? Test setup is outside this rule.
 - [ ] Is the FIPS provider loaded via `OnceLock` (single initialization) with `fips=yes` enforced and the `default` provider rejected (`enforce_fips_provider_only()`)?
 - [ ] Is the legacy provider loaded only when the `non-fips` feature is active?
 - [ ] Are `OPENSSL_MODULES` and `OPENSSL_CONF` compile-time defaults emitted by `crate/crypto/build.rs`?

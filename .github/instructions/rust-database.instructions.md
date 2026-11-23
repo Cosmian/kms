@@ -22,7 +22,7 @@ applyTo: 'crate/server_database/**/*.rs'
 
 - Use database transactions for multi-step operations (create + set permissions).
 - SQLite: use WAL mode for concurrent read access.
-- PostgreSQL: wrap multi-step key state transitions in explicit database transactions (`pgsql.rs` currently uses PostgreSQL's default `READ COMMITTED` isolation; use `SERIALIZABLE` or row-level locks when strict serialization is required).
+- PostgreSQL: use `SERIALIZABLE` isolation for key state transitions.
 
 ## Testing
 

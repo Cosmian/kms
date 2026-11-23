@@ -95,7 +95,7 @@ cargo test-fips           # workspace --lib unit tests (FIPS)
 cargo test-non-fips       # workspace --lib unit tests (non-FIPS)
 ```
 
-> `cargo test-fips` and `cargo test-non-fips` expand to `cargo test --lib --workspace` (`.cargo/config.toml`) and exercise library unit tests only — also run integration/binary suites (e.g. `cargo test -p ckms --features non-fips`, `cargo test -p test_kms_server --features non-fips`) for changed areas.
+Both Cargo aliases select library test targets only. For each affected area, also run the integration and binary tests that cover the change and record the suite and build variant. A non-FIPS run does not cover FIPS-specific behavior. The `ckms` integration suite runs only with `non-fips` (`cargo test -p ckms --features non-fips`).
 
 ## Step 8 — CHANGELOG completeness
 
@@ -109,10 +109,10 @@ supported algorithms, operator-visible error messages.
 
 Invoke `/kms-release-notes <version>` (substitute the actual semver).
 
-This writes the `## [<version>]` entry at the top of the root `CHANGELOG.md`,
-then runs `/kms-changelog consolidate <version>`, which merges every
-`CHANGELOG/*.md` into that entry and deletes the branch files. Review the entry
-before proceeding:
+This creates or updates the `## [<version>]` entry in the root `CHANGELOG.md`,
+then runs `/kms-changelog consolidate <version>` to merge the optional `Unreleased`
+notes for this release and the `CHANGELOG/*.md` entries. Consolidation verifies
+coverage before deleting the branch files. Review the entry before proceeding:
 
 - All Breaking Changes are documented with a migration guide.
 - Security section is present if any security fix was merged.

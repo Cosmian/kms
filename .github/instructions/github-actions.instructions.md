@@ -49,7 +49,7 @@ applyTo: '.github/workflows/**, .github/actions/**'
 
 ## SSH
 
-Never add `-o StrictHostKeyChecking=no` (or `'StrictHostKeyChecking no'`) to a new ssh/scp step. Pin the server key in `~/.ssh/known_hosts` from a repository secret or variable. If none exists for the host, stop and ask the user for the key — do not disable the check. One active occurrence in `.github/workflows/flamegraph.yml` (plus one commented-out line in `packaging-docker.yml`) is legacy: migrate when you touch the step.
+Never add `-o StrictHostKeyChecking=no` (or `'StrictHostKeyChecking no'`) to a new ssh/scp step. Pin the server key in `~/.ssh/known_hosts` from a repository secret or variable. If none exists for the host, stop and ask the user for the key; do not disable the check. Migrate existing steps that disable the check when you touch them.
 
 ## Caching and performance
 
