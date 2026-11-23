@@ -200,6 +200,7 @@ impl HSM for KeyPairHsm {
                 end_date: None,
                 rotate_name: None,
                 rotate_generation: None,
+                usage: None,
             }),
         )
     }

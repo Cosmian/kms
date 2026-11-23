@@ -31,7 +31,7 @@ use crate::{
     HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
     InterfaceError, InterfaceResult, KeyMaterial, KeyType, MacAlgorithm, MacKeyMetadata,
     ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
-    crypto_oracle::{EncryptedContent, KeyMetadata},
+    crypto_oracle::{EncryptedContent, KeyMetadata, KeyUsageFlags},
 };
 
 /// Map an `EcCurve` (HSM interface curve enum) to the corresponding KMIP `RecommendedCurve`.
@@ -352,6 +352,15 @@ impl ObjectsStore for HsmStore {
                 // Enrich attributes with keyset metadata from CKA_LABEL and CKA dates.
                 if let Ok(Some(meta)) = self.hsm.get_key_metadata(slot_id, key_id.as_bytes()).await
                 {
+                    // Usage mask from the PKCS#11 attributes; the hardcoded mask from
+                    // `to_object_with_metadata` is the fallback when the HSM does not expose them.
+                    let usage_mask = meta.usage.map(|u| usage_mask_from_flags(&meta.key_type, u));
+                    if let Some(mask) = usage_mask {
+                        owm.attributes_mut().cryptographic_usage_mask = Some(mask);
+                        if let Ok(key_attrs) = owm.object_mut().attributes_mut() {
+                            key_attrs.cryptographic_usage_mask = Some(mask);
+                        }
+                    }
                     let attrs = owm.attributes_mut();
                     attrs.rotate_name = meta.rotate_name;
                     attrs.rotate_generation = meta.rotate_generation;
@@ -1187,6 +1196,42 @@ fn rotation_from_dates(
     (days > 0).then(|| (start.midnight().assume_utc(), days * crate::SECS_PER_DAY))
 }
 
+/// Map PKCS#11 usage attributes to a KMIP usage mask for an AES or RSA key.
+///
+/// `CKA_SIGN`/`CKA_VERIFY` on a secret key mean MAC generation/verification.
+/// EC keys are not handled: their flags are never read.
+fn usage_mask_from_flags(key_type: &KeyType, flags: KeyUsageFlags) -> CryptographicUsageMask {
+    let is_aes = *key_type == KeyType::AesKey;
+    let mut mask = CryptographicUsageMask::empty();
+    for (attribute, bit) in [
+        (KeyUsageFlags::ENCRYPT, CryptographicUsageMask::Encrypt),
+        (KeyUsageFlags::DECRYPT, CryptographicUsageMask::Decrypt),
+        (KeyUsageFlags::WRAP, CryptographicUsageMask::WrapKey),
+        (KeyUsageFlags::UNWRAP, CryptographicUsageMask::UnwrapKey),
+        (
+            KeyUsageFlags::SIGN,
+            if is_aes {
+                CryptographicUsageMask::MACGenerate
+            } else {
+                CryptographicUsageMask::Sign
+            },
+        ),
+        (
+            KeyUsageFlags::VERIFY,
+            if is_aes {
+                CryptographicUsageMask::MACVerify
+            } else {
+                CryptographicUsageMask::Verify
+            },
+        ),
+    ] {
+        if flags.contains(attribute) {
+            mask |= bit;
+        }
+    }
+    mask
+}
+
 /// Build a metadata-only `Attributes` struct for a non-extractable (sensitive) HSM key.
 ///
 /// Used when `hsm.export()` fails with a sensitive-key error. The stub allows
@@ -1234,6 +1279,9 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
             ec_key_format_type(ObjectType::PublicKey),
         ),
     };
+    let usage_mask = meta
+        .usage
+        .map_or(usage_mask, |u| usage_mask_from_flags(&meta.key_type, u));
     let rotation = rotation_from_dates(meta.start_date, meta.end_date);
     Attributes {
         cryptographic_algorithm: Some(algorithm),
@@ -2031,27 +2079,29 @@ mod tests {
 
     use async_trait::async_trait;
     #[cfg(feature = "non-fips")]
-    use cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
-    use cosmian_kmip::kmip_2_1::{
-        extra::tagging::SYSTEM_TAG_SYMMETRIC_KEY,
-        kmip_attributes::Attributes,
-        kmip_objects::ObjectType,
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm, Name,
-            NameType, RecommendedCurve,
-        },
-    };
-    #[cfg(feature = "non-fips")]
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::Object,
         kmip_types::KeyFormatType,
     };
+    use cosmian_kmip::{
+        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_2_1::{
+            extra::tagging::SYSTEM_TAG_SYMMETRIC_KEY,
+            kmip_attributes::Attributes,
+            kmip_objects::ObjectType,
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm, Name,
+                NameType, RecommendedCurve,
+            },
+        },
+    };
     use zeroize::Zeroizing;
 
-    #[cfg(feature = "non-fips")]
-    use super::build_sensitive_stub_attributes;
-    use super::{build_sensitive_stub_object, check_basic_compatibility, to_object_with_metadata};
+    use super::{
+        build_sensitive_stub_attributes, build_sensitive_stub_object, check_basic_compatibility,
+        to_object_with_metadata, usage_mask_from_flags,
+    };
     #[cfg(feature = "non-fips")]
     use crate::EcPrivateKeyMaterial;
     use crate::{
@@ -2059,7 +2109,8 @@ mod tests {
         HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
         InterfaceError, InterfaceResult, KeyMaterial, KeyMetadata, KeyType, MacAlgorithm,
         MacKeyMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
-        crypto_oracle::EncryptedContent, hsm::HsmStore,
+        crypto_oracle::{EncryptedContent, KeyUsageFlags},
+        hsm::HsmStore,
     };
     type SigningAlgorithmResolver = Box<
         dyn for<'a> Fn(&'a SigningKeyMetadata) -> InterfaceResult<SigningAlgorithm>
@@ -2209,6 +2260,7 @@ mod tests {
             end_date: None,
             rotate_name: None,
             rotate_generation: None,
+            usage: None,
         }
     }
 
@@ -2615,6 +2667,7 @@ mod tests {
                 end_date: None,
                 rotate_name: None,
                 rotate_generation: None,
+                usage: None,
             }))
         });
 
@@ -2644,6 +2697,7 @@ mod tests {
                 end_date: None,
                 rotate_name: None,
                 rotate_generation: None,
+                usage: None,
             }))
         });
 
@@ -2660,6 +2714,81 @@ mod tests {
 
         assert_eq!(owm.attributes().sensitive, Some(true));
         assert_eq!(owm.attributes().object_type, Some(ObjectType::PrivateKey));
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_usage_mask_from_hsm_flags() {
+        let mut mock = MockHsm::new();
+        mock.expect_export().return_once(|_, _| {
+            Ok(Some(HsmObject::new(
+                KeyMaterial::AesKey(Zeroizing::new(vec![0; 32])),
+                "key".to_owned(),
+                HashSet::new(),
+            )))
+        });
+        mock.expect_get_key_metadata().return_once(|_, _| {
+            Ok(Some(KeyMetadata {
+                usage: Some(KeyUsageFlags::ENCRYPT | KeyUsageFlags::VERIFY),
+                ..test_metadata("key", HashSet::new())
+            }))
+        });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+        let Ok(Some(owm)) = store.retrieve("hsm::1::key").await else {
+            panic!("retrieve must return the exported key");
+        };
+        let expected = Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::MACVerify);
+        assert_eq!(owm.attributes().cryptographic_usage_mask, expected);
+        let Ok(key_attrs) = owm.object().attributes() else {
+            panic!("key block must carry attributes");
+        };
+        assert_eq!(key_attrs.cryptographic_usage_mask, expected);
+    }
+
+    #[test]
+    fn test_usage_mask_from_flags_rsa() {
+        let flags = KeyUsageFlags::DECRYPT | KeyUsageFlags::SIGN | KeyUsageFlags::UNWRAP;
+        assert_eq!(
+            usage_mask_from_flags(&KeyType::RsaPrivateKey, flags),
+            CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::Sign
+                | CryptographicUsageMask::UnwrapKey
+        );
+        assert_eq!(
+            usage_mask_from_flags(&KeyType::RsaPublicKey, KeyUsageFlags::empty()),
+            CryptographicUsageMask::empty()
+        );
+    }
+
+    #[test]
+    fn test_sensitive_stub_usage_mask_from_hsm_flags() {
+        let meta = KeyMetadata {
+            sensitive: true,
+            usage: Some(KeyUsageFlags::ENCRYPT | KeyUsageFlags::SIGN),
+            ..test_metadata("key", HashSet::new())
+        };
+        assert_eq!(
+            build_sensitive_stub_attributes(&meta).cryptographic_usage_mask,
+            Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::MACGenerate)
+        );
+    }
+
+    #[test]
+    fn test_sensitive_stub_usage_mask_falls_back_without_flags() {
+        let meta = KeyMetadata {
+            sensitive: true,
+            ..test_metadata("key", HashSet::new())
+        };
+        assert_eq!(
+            build_sensitive_stub_attributes(&meta).cryptographic_usage_mask,
+            Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::WrapKey
+                    | CryptographicUsageMask::UnwrapKey
+                    | CryptographicUsageMask::KeyAgreement
+            )
+        );
     }
 
     #[cfg(feature = "non-fips")]
@@ -2696,6 +2825,7 @@ mod tests {
             end_date: None,
             rotate_name: None,
             rotate_generation: None,
+            usage: None,
         };
 
         let attrs = build_sensitive_stub_attributes(&meta);
@@ -3019,6 +3149,7 @@ mod tests {
                 end_date: None,
                 rotate_name: None,
                 rotate_generation: None,
+                usage: None,
             };
             assert_eq!(build_sensitive_stub_object(&meta).object_type(), expected);
         }
@@ -3053,6 +3184,7 @@ mod characterization_tests {
             end_date: None,
             rotate_name: None,
             rotate_generation: None,
+            usage: None,
         }
     }
 

@@ -19,7 +19,7 @@ use std::{
 use cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, HSM, HashingAlgorithm, HsmObjectFilter, KeyMaterial, KeyType,
-    MacAlgorithm,
+    KeyUsageFlags, MacAlgorithm,
 };
 use cosmian_logger::{debug, info, log_init, trace, warn};
 use libloading::Library;
@@ -2046,6 +2046,16 @@ pub fn get_key_metadata(slot: &Arc<SlotManager>) -> HResult<()> {
     assert!(metadata.sensitive);
     assert_eq!(metadata.key_length_in_bits, 256);
     assert_eq!(metadata.id.as_str(), key_id.as_str());
+    // CKA_ENCRYPT/DECRYPT/WRAP/UNWRAP are set on KMS-generated AES keys; HSMs that do not
+    // expose the attributes report `None`.
+    if let Some(usage) = metadata.usage {
+        assert!(usage.contains(
+            KeyUsageFlags::ENCRYPT
+                | KeyUsageFlags::DECRYPT
+                | KeyUsageFlags::WRAP
+                | KeyUsageFlags::UNWRAP
+        ));
+    }
 
     // CKA_START_DATE / CKA_END_DATE round-trip (HSM key rotation scheduling)
     let start = time::Date::from_calendar_date(2030, time::Month::January, 2)
