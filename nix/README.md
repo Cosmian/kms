@@ -179,21 +179,17 @@ Every dependency (80+ Rust crates, OpenSSL, glibc) is pinned by cryptographic ha
 # nix/kms-server.nix
 cargoHash = "sha256-xyz789...";  # Locks ALL Cargo dependencies
 
-# OpenSSL note:
-# - KMS links against OpenSSL 3.6.5 (runtime/library)
-# - FIPS variants also ship the OpenSSL 3.5.9 FIPS provider + fipsmodule.cnf
+# OpenSSL note (versions and SHA-256: crate/crypto/openssl_versions.json, the single source of truth):
+# - KMS links against the "main" OpenSSL (runtime/library)
+# - FIPS variants also ship the CMVP-validated "fips" provider + fipsmodule.cnf
 openssl36 = opensslPkgs.callPackage ./openssl.nix {
    static = true;
-   version = "3.6.5";
+   opensslEntry = "main";
    enableLegacy = true;
-   srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
-   sha256SRI = "sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=";
-   expectedHash = "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
 };
 
 opensslFips = opensslPkgs.callPackage ./openssl.nix {
-   static = true;
-   version = "3.5.9";
+   static = true;  # opensslEntry defaults to "fips"
 };
 ```
 
@@ -251,7 +247,7 @@ All Linux builds (FIPS and non-FIPS) achieve bit-for-bit deterministic reproduci
    - `-C strip=symbols` — Strip all symbols
    - `-C symbol-mangling-version=v0` — Stable symbol mangling
    - `SOURCE_DATE_EPOCH` — Normalized embedded timestamps
-5. **Pinned OpenSSL 3.6.5 (runtime) + 3.5.9 (FIPS provider)**: Fetched by SRI hash (FIPS 140-3 certified)
+5. **Pinned OpenSSL 3.6.5 (runtime) + 3.5.9 (FIPS provider)**: Version and SHA-256 pinned in `crate/crypto/openssl_versions.json` (FIPS 140-3 certified)
    - Note: OpenSSL 3.5.9 is kept for the FIPS provider.
 6. **Sanitized binaries**: RPATH removed, interpreter fixed to avoid volatile store paths
 7. **No host-path leakage**: Build uses only `/build` and `/tmp` remap prefixes (no workspace paths in derivation)
@@ -299,7 +295,7 @@ Cargo/UI vendor hashes are committed in the repository and verified during build
 | Hash Type             | Purpose                                                 | Location                                                   | Example (x86_64-linux FIPS)                                        |
 | --------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
 | **Cargo vendor**      | Reproducible Rust dependencies                          | `nix/kms-server.nix`                                       | `sha256-NAy4vNoW7nkqJF263FkkEvAh1bMMDJkL0poxBzXFOO8=`              |
-| **OpenSSL sources**   | OpenSSL 3.6.5 (runtime) + OpenSSL 3.5.9 (FIPS provider) | `nix/kms-server.nix` + `nix/openssl.nix`                   | `sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=`              |
+| **OpenSSL sources**   | OpenSSL 3.6.5 (runtime) + OpenSSL 3.5.9 (FIPS provider) | `nix/kms-server.nix` + `nix/openssl.nix`                   | `crate/crypto/openssl_versions.json`           |
 | **Binary (FIPS)**     | Deterministic FIPS server executable                    | `nix/expected-hashes/cosmian-kms-server.fips.static-openssl.x86_64.linux.sha256`     | `528e0f2019769afb8016bb822f640b2b8b5c5711a0e13f59062c84f9b772bed6` |
 | **Binary (non-FIPS)** | Deterministic non-FIPS server executable                | `nix/expected-hashes/cosmian-kms-server.non-fips.static-openssl.x86_64.linux.sha256` | `a921942fd81bedca3438789be5580bde794d5569ce3e955f692d44391f99ff02` |
 
