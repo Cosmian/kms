@@ -33,6 +33,8 @@ PATCHED_FLOORS = {
 FORBIDDEN_RUNTIME = ('quinn', 'quinn-proto', 'quinn-udp')
 ADVISORY_ID = re.compile(r'^(RUSTSEC|GHSA|CVE)-')
 # `{p}|{f}` lines; `{p}` is `name vX.Y.Z` plus optional `(path)`/`(proc-macro)`, cargo appends ` (*)` to repeats.
+# CI sets CARGO_TERM_COLOR=always: drop SGR sequences before matching.
+ANSI = re.compile(r'\x1b\[[0-9;]*m')
 TREE_LINE = re.compile(
     r'^(?P<name>[^\s|]+) v(?P<version>[^\s|]+)(?: \([^)|]*\))*\|(?P<features>[^()]*?)(?: \(\*\))?$'
 )
@@ -138,7 +140,7 @@ def check_policy(root: Path) -> list[str]:
 
 def parse_tree(text: str) -> list[tuple[str, str, set[str]]]:
     packages = []
-    for line in text.splitlines():
+    for line in ANSI.sub('', text).splitlines():
         if not line.strip():
             continue
         match = TREE_LINE.match(line)

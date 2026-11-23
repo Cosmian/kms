@@ -38,6 +38,14 @@ def vex_statement(status='not_affected', purl='pkg:cargo/foo@1.0.0', **extra):
     return st
 
 
+class AnsiTreeTest(unittest.TestCase):
+    def test_colored_cargo_tree_output_is_parsed(self) -> None:
+        text = 'windows-sys v0.61.2|Win32,default \x1b[33m\x1b[2m(*)\x1b[39m\x1b[22m\n'
+        self.assertEqual(
+            cov.parse_tree(text), [('windows-sys', '0.61.2', {'Win32', 'default'})]
+        )
+
+
 class Workspace:
     """A throw-away repository root with the four files the checker reads."""
 

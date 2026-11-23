@@ -23,7 +23,7 @@ tree_args=()
 for variant in fips non-fips; do
   features=()
   if [ "${variant}" = "non-fips" ]; then features=(--features non-fips); fi
-  cargo tree --locked -p cosmian_kms_server -p ckms --target all --edges normal --prefix none \
+  cargo tree --locked --color never -p cosmian_kms_server -p ckms --target all --edges normal --prefix none \
     --format '{p}|{f}' ${features[@]+"${features[@]}"} >"${work}/${variant}.txt"
   tree_args+=(--production-tree "${work}/${variant}.txt")
 done
