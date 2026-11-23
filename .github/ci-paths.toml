@@ -252,7 +252,7 @@ files = '''
 | ^crate/server/src/tests/
 | ^\.mise/tasks/test/hsm/
 | ^\.mise/lib/(softhsm2|kryoptic|pkcs11_helpers)\.sh$
-| ^\.mise/scripts/test/(c2p_no_inotify\.c|pkcs11_fips_iv_shim\.c|pkcs11_gcm_iv_probe\.(c|py)|test_nix_helpers\.sh)$
+| ^\.mise/scripts/test/hsm/(c2p_no_inotify\.c|pkcs11_fips_iv_shim\.c|pkcs11_gcm_iv_probe\.(c|py)|test_nix_helpers\.sh)$
 '''
 variants = ["fips", "non-fips"]
 bench = {fips = "softhsm2 utimaco crypt2pay-simulator", non-fips = "softhsm2 utimaco crypt2pay-simulator kryoptic"}
@@ -456,7 +456,7 @@ files = '''
 | ^crate/server/src/tests/
 | ^\.mise/tasks/test/hsm/(idemia-sphere-simulator|other)$
 | ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
-| ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
+| ^\.mise/scripts/test/hsm/pkcs11_fips_iv_shim\.c$
 | ^\.github/reusable_scripts$
 '''
 setup = "windows"

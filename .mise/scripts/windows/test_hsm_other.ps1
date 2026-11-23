@@ -3,7 +3,7 @@
 #
 # Windows counterpart of .mise/tasks/test/hsm/other: SoftHSM2 (C:\SoftHSMv2, staged by
 # .github\reusable_scripts\prepare_idemia_hsm.ps1) sits behind the IV shim
-# (.mise\scripts\test\pkcs11_fips_iv_shim.c), which models who generates the AES-GCM IV:
+# (.mise\scripts\test\hsm\pkcs11_fips_iv_shim.c), which models who generates the AES-GCM IV:
 #
 #   -Fips (default build, OpenSSL FIPS provider = fips.dll)
 #       gen shim      the module generates every IV and refuses a caller IV: the KMS boots with an

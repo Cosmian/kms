@@ -42,7 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../../crate/hsm/base_hsm/tests/fixtures/pkcs11_fixture.h"
+#include "../../../../crate/hsm/base_hsm/tests/fixtures/pkcs11_fixture.h"
 
 #define CKM_AES_GCM 0x1087UL
 #define CKR_FUNCTION_NOT_SUPPORTED 0x54UL
