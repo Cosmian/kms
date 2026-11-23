@@ -13,7 +13,8 @@ use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EcPrivateKeyMaterial, EcPublicKeyMaterial, EncryptedContent,
     HashingAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial, KeyMetadata, KeyType,
     KeyType::{AesKey, EcPrivateKey, EcPublicKey, RsaPrivateKey, RsaPublicKey},
-    RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm, SigningKeyMetadata,
+    MacAlgorithm, RsaPrivateKeyMaterial, RsaPublicKeyMaterial, SigningAlgorithm,
+    SigningKeyMetadata,
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
@@ -26,14 +27,16 @@ use pkcs11_sys::{
     CKA_START_DATE, CKA_TOKEN, CKA_VALUE, CKA_VALUE_LEN, CKF_HKDF_SALT_DATA, CKF_HKDF_SALT_NULL,
     CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES, CKK_EC,
     CKK_EC_EDWARDS, CKK_EC_MONTGOMERY, CKK_GENERIC_SECRET, CKK_RSA, CKK_VENDOR_DEFINED,
-    CKM_AES_CBC, CKM_AES_GCM, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512,
-    CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS_PSS, CKM_SHA384, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
-    CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL, CKR_MECHANISM_INVALID,
-    CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SIGNATURE_INVALID,
-    CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
+    CKM_AES_CBC, CKM_AES_CMAC, CKM_AES_GCM, CKM_AES_GMAC, CKM_ECDSA, CKM_ECDSA_SHA256,
+    CKM_ECDSA_SHA384, CKM_ECDSA_SHA512, CKM_EDDSA, CKM_GENERIC_SECRET_KEY_GEN, CKM_HKDF_DERIVE,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP, CKM_RSA_PKCS_PSS, CKM_SHA_1, CKM_SHA_1_HMAC,
+    CKM_SHA1_RSA_PKCS, CKM_SHA3_224_HMAC, CKM_SHA3_256_HMAC, CKM_SHA3_384_HMAC, CKM_SHA3_512_HMAC,
+    CKM_SHA224_HMAC, CKM_SHA256, CKM_SHA256_HMAC, CKM_SHA256_RSA_PKCS, CKM_SHA256_RSA_PKCS_PSS,
+    CKM_SHA384, CKM_SHA384_HMAC, CKM_SHA384_RSA_PKCS, CKM_SHA384_RSA_PKCS_PSS, CKM_SHA512,
+    CKM_SHA512_HMAC, CKM_SHA512_RSA_PKCS, CKM_SHA512_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
+    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL,
+    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE, CKZ_DATA_SPECIFIED,
 };
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -43,7 +46,7 @@ use crate::{
     HError, HResult, ObjectHandlesCache, hsm_call,
     hsm_capabilities::{AesGcmCapabilities, HsmCapabilities},
     session::{
-        curve_byte_size, curve_from_der_oid, deserialize_tagged_label,
+        RsaOaepDigest, curve_byte_size, curve_from_der_oid, deserialize_tagged_label,
         message_context::{MessageMechanismSupport, OpenMessageContexts},
         serialize_tagged_label,
     },
@@ -54,6 +57,8 @@ const AES_BLOCK_SIZE: usize = 16;
 const AES_CBC_IV_LENGTH: usize = 16;
 const AES_GCM_IV_LENGTH: usize = 12;
 const AES_GCM_AUTH_TAG_LENGTH: usize = 16;
+/// Length in bytes of the IV that prefixes an AES-GMAC `MAC Data` (96-bit IV, NIST SP 800-38D).
+pub(crate) const AES_GMAC_IV_LENGTH: usize = AES_GCM_IV_LENGTH;
 
 /// Initial output capacity covers RSA-4096, ECDSA P-521, and Ed448 signatures.
 const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
@@ -73,6 +78,59 @@ fn generate_random_nonce<const T: usize>() -> HResult<[u8; T]> {
         .fill_public_bytes(&mut bytes)
         .map_err(|e| HError::Default(format!("Error generating random nonce: {e}")))?;
     Ok(bytes)
+}
+
+/// Validate a driver's returned length before accepting bytes from an output buffer.
+pub(super) fn checked_output_length(length: CK_ULONG, capacity: usize) -> HResult<usize> {
+    let length = usize::try_from(length)?;
+    if length > capacity {
+        return Err(HError::Default(format!(
+            "Invalid PKCS#11 output length: buffer {capacity}, got {length}"
+        )));
+    }
+    Ok(length)
+}
+
+/// `CKM_AES_GMAC` parameter (PKCS#11 v3.0 §2.13.4): a `CK_GCM_PARAMS` with the 12-byte IV, no AAD
+/// (the message is the `pData` of `C_Sign`/`C_Verify`) and a 128-bit tag. It points into `iv`,
+/// which must outlive the returned value.
+fn gmac_params(iv: &mut [u8; AES_GMAC_IV_LENGTH]) -> HResult<CK_AES_GCM_PARAMS> {
+    Ok(CK_AES_GCM_PARAMS {
+        pIv: iv.as_mut_ptr(),
+        ulIvLen: CK_ULONG::try_from(AES_GMAC_IV_LENGTH)?,
+        ulIvBits: CK_ULONG::try_from(AES_GMAC_IV_LENGTH * 8)?,
+        pAAD: ptr::null_mut(),
+        ulAADLen: 0,
+        ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+    })
+}
+
+/// `CKM_AES_GMAC` mechanism over `params`, which must outlive the returned value.
+fn gmac_mechanism(params: &mut CK_AES_GCM_PARAMS) -> HResult<CK_MECHANISM> {
+    Ok(CK_MECHANISM {
+        mechanism: CKM_AES_GMAC,
+        pParameter: ptr::from_mut(params).cast::<std::ffi::c_void>(),
+        ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+    })
+}
+
+/// PKCS#11 mechanism used to compute or verify a MAC with `algorithm`.
+///
+/// For `CKM_AES_GMAC` the IV is passed in the mechanism parameter, see [`gmac_params`].
+const fn mac_mechanism(algorithm: MacAlgorithm) -> CK_MECHANISM_TYPE {
+    match algorithm {
+        MacAlgorithm::HmacSha1 => CKM_SHA_1_HMAC,
+        MacAlgorithm::HmacSha224 => CKM_SHA224_HMAC,
+        MacAlgorithm::HmacSha256 => CKM_SHA256_HMAC,
+        MacAlgorithm::HmacSha384 => CKM_SHA384_HMAC,
+        MacAlgorithm::HmacSha512 => CKM_SHA512_HMAC,
+        MacAlgorithm::HmacSha3224 => CKM_SHA3_224_HMAC,
+        MacAlgorithm::HmacSha3256 => CKM_SHA3_256_HMAC,
+        MacAlgorithm::HmacSha3384 => CKM_SHA3_384_HMAC,
+        MacAlgorithm::HmacSha3512 => CKM_SHA3_512_HMAC,
+        MacAlgorithm::AesCmac => CKM_AES_CMAC,
+        MacAlgorithm::AesGmac => CKM_AES_GMAC,
+    }
 }
 
 /// Encryption algorithm supported by the HSM
@@ -180,9 +238,14 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
     }
 }
 
+/// A FIPS build refuses the RSA encryption schemes that are not approved (SHA-1 OAEP and
+/// PKCS#1 v1.5), like the server's own RSA code.
 #[cfg(not(feature = "non-fips"))]
 const fn is_encryption_algorithm_supported(algorithm: HsmEncryptionAlgorithm) -> bool {
-    !matches!(algorithm, HsmEncryptionAlgorithm::RsaOaepSha1)
+    !matches!(
+        algorithm,
+        HsmEncryptionAlgorithm::RsaOaepSha1 | HsmEncryptionAlgorithm::RsaPkcsV15
+    )
 }
 
 #[cfg(feature = "non-fips")]
@@ -190,10 +253,11 @@ const fn is_encryption_algorithm_supported(_: HsmEncryptionAlgorithm) -> bool {
     true
 }
 
-/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module.
+/// FIPS 140-3 IG C.H: GCM encryption IVs must be generated inside a validated module, so a FIPS
+/// build never sends a caller-chosen IV.
 #[cfg(not(feature = "non-fips"))]
-const fn caller_gcm_iv_allowed(c: &AesGcmCapabilities) -> bool {
-    c.supports_caller_iv && c.allows_caller_iv_in_fips
+const fn caller_gcm_iv_allowed(_: &AesGcmCapabilities) -> bool {
+    false
 }
 
 #[cfg(feature = "non-fips")]
@@ -916,7 +980,14 @@ impl Session {
             .as_deref()
             .is_none_or(|iv| iv.iter().all(|&b| b == 0))
         {
-            return Err(HError::Default(NO_GENERATED_GCM_IV.to_owned()));
+            return Err(HError::Default(format!(
+                "AES-GCM encryption needs an IV generated inside the HSM \
+                 (FIPS 140-3 IG C.H), and this HSM provided none ({NO_GENERATED_GCM_IV}). Use \
+                 a wrapping algorithm without IV that this HSM supports: \
+                 key_encryption_key_wrapping_algorithm = \"aes-key-wrap-padding\" (NIST SP \
+                 800-38F) or \"aes-key-wrap\" for an AES key encryption key (some HSMs cannot \
+                 wrap imported keys this way), or \"rsa-oaep\" with an RSA one"
+            )));
         }
         Ok(content)
     }
@@ -946,6 +1017,222 @@ impl Session {
         split_aes_gcm_output(nonce, plaintext.len(), &output)
     }
 
+    /// AES-GCM with an IV chosen outside the HSM, accepted only where the same policy
+    /// already allows a KMS-generated classic IV. The caller owns nonce uniqueness.
+    fn encrypt_aes_gcm_caller_iv(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+        iv: &[u8],
+    ) -> HResult<EncryptedContent> {
+        if !caller_gcm_iv_allowed(&self.hsm_capabilities().aes.gcm) {
+            return Err(HError::Default(
+                "Caller-supplied AES-GCM IVs are not accepted for this HSM profile and build; \
+                 the HSM must generate the IV"
+                    .to_owned(),
+            ));
+        }
+        let nonce: [u8; AES_GCM_IV_LENGTH] = iv.try_into().map_err(|_invalid_length| {
+            HError::Default(format!(
+                "Invalid AES-GCM IV length: expected {AES_GCM_IV_LENGTH}, got {}",
+                iv.len()
+            ))
+        })?;
+        if nonce.iter().all(|&byte| byte == 0) {
+            return Err(HError::Default(
+                "An all-zero AES-GCM IV is not accepted".to_owned(),
+            ));
+        }
+        let content = self.encrypt_aes_gcm_with_iv_buffer(key_handle, nonce, plaintext)?;
+        if content.iv.as_deref() != Some(nonce.as_slice()) {
+            return Err(HError::Default(
+                "The HSM changed the caller-supplied AES-GCM IV".to_owned(),
+            ));
+        }
+        Ok(content)
+    }
+
+    fn encrypt_aes_gcm(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+        iv_counter_nonce: Option<&[u8]>,
+    ) -> HResult<EncryptedContent> {
+        if let Some(iv) = iv_counter_nonce {
+            // The v3 message API generates its own IV, so it cannot honor a caller IV.
+            return self.encrypt_aes_gcm_caller_iv(key_handle, plaintext, iv);
+        }
+        if self.hsm_capabilities().aes.gcm.supports_message
+            && self.hsm().supports_message_encrypt()
+            && !self.message_aead_unsupported(false, CKM_AES_GCM)
+        {
+            match self.encrypt_message_aes_gcm(key_handle, &[], plaintext) {
+                Ok(content) => return Ok(content),
+                Err(error @ HError::OperationCleanup(_)) => return Err(error),
+                // Refused at init: remember it so later calls go straight to classic GCM.
+                Err(HError::MessageUnsupported(reason)) => {
+                    self.mark_message_aead_unsupported(false, CKM_AES_GCM);
+                    debug!(
+                        "PKCS#11 v3 message AES-GCM unsupported; using classic AES-GCM: {reason}"
+                    );
+                }
+                Err(message_error) => debug!(
+                    "PKCS#11 v3 message AES-GCM failed; trying classic AES-GCM: {message_error}"
+                ),
+            }
+        }
+        if caller_gcm_iv_allowed(&self.hsm_capabilities().aes.gcm) {
+            self.encrypt_aes_gcm_classic(key_handle, plaintext)
+        } else {
+            self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
+        }
+    }
+
+    fn encrypt_aes_cbc(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        plaintext: &[u8],
+        iv_counter_nonce: Option<&[u8]>,
+    ) -> HResult<EncryptedContent> {
+        let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
+            Some(iv) => iv.try_into().map_err(|_invalid_length| {
+                HError::Default(format!(
+                    "Invalid AES-CBC IV length: expected {AES_CBC_IV_LENGTH}, got {}",
+                    iv.len()
+                ))
+            })?,
+            None => generate_random_nonce::<AES_CBC_IV_LENGTH>()?,
+        };
+        if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size
+            && plaintext.len() > max_cbc_data_size
+        {
+            debug!("Performing multi round AES CBC encryption");
+            return self.encrypt_aes_cbc_multi_round(key_handle, iv, plaintext, max_cbc_data_size);
+        }
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(iv.len())?,
+        };
+        let mut padded_plaintext = Zeroizing::new(plaintext.to_vec());
+        Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
+        let ciphertext =
+            self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
+        Ok(EncryptedContent {
+            iv: Some(iv.to_vec()),
+            ciphertext, // no separate tag for CBC
+            tag: None,
+            cryptographic_algorithm: None,
+        })
+    }
+
+    fn decrypt_aes_cbc(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        ciphertext: &[u8],
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        if ciphertext.len() < AES_CBC_IV_LENGTH {
+            return Err(HError::Default("Invalid AES CBC ciphertext".to_owned()));
+        }
+        let mut iv: [u8; AES_CBC_IV_LENGTH] = ciphertext
+            .get(..AES_CBC_IV_LENGTH)
+            .ok_or_else(|| HError::Default("Failed to extract iv".to_owned()))?
+            .try_into()
+            .map_err(|e| HError::Default(format!("Invalid AES CBC IV: {e}")))?;
+        if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size
+            && ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH)
+        {
+            debug!("Performing multi round AES CBC decryption");
+            return self.decrypt_aes_cbc_multi_round(
+                key_handle,
+                &iv,
+                ciphertext
+                    .get(AES_CBC_IV_LENGTH..)
+                    .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?,
+                max_cbc_data_size,
+            );
+        }
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(iv.len())?,
+        };
+        let padded_plaintext = self.decrypt_with_mechanism(
+            key_handle,
+            &mut mechanism,
+            ciphertext
+                .get(AES_CBC_IV_LENGTH..)
+                .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?,
+        )?;
+        Self::pkcs7_unpad(padded_plaintext, AES_BLOCK_SIZE)
+    }
+
+    fn encrypt_rsa_oaep(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        digest: RsaOaepDigest,
+        plaintext: &[u8],
+    ) -> HResult<EncryptedContent> {
+        let (hash_alg, mgf) = match digest {
+            RsaOaepDigest::SHA1 => (CKM_SHA_1, CKG_MGF1_SHA1),
+            RsaOaepDigest::SHA256 => (CKM_SHA256, CKG_MGF1_SHA256),
+        };
+        // SoftHSM2 requires a non-null empty label; AWS CloudHSM requires NULL.
+        let mut oaep_label = 0_u8;
+        let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
+            (&raw mut oaep_label).cast::<std::ffi::c_void>()
+        } else {
+            ptr::null_mut()
+        };
+        let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+            hashAlg: hash_alg,
+            mgf,
+            source: CKZ_DATA_SPECIFIED,
+            pSourceData: source_data,
+            ulSourceDataLen: 0,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS_OAEP,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
+        };
+        Ok(EncryptedContent {
+            ciphertext: self.encrypt_with_mechanism(key_handle, &mut mechanism, plaintext)?,
+            ..Default::default()
+        })
+    }
+
+    fn decrypt_rsa_oaep(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        digest: RsaOaepDigest,
+        ciphertext: &[u8],
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        let (hash_alg, mgf) = match digest {
+            RsaOaepDigest::SHA1 => (CKM_SHA_1, CKG_MGF1_SHA1),
+            RsaOaepDigest::SHA256 => (CKM_SHA256, CKG_MGF1_SHA256),
+        };
+        let mut oaep_label = 0_u8;
+        let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
+            (&raw mut oaep_label).cast::<std::ffi::c_void>()
+        } else {
+            ptr::null_mut()
+        };
+        let mut params = CK_RSA_PKCS_OAEP_PARAMS {
+            hashAlg: hash_alg,
+            mgf,
+            source: CKZ_DATA_SPECIFIED,
+            pSourceData: source_data,
+            ulSourceDataLen: 0,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_RSA_PKCS_OAEP,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
+        };
+        self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
+    }
+
     /// Encrypt data using the specified key and algorithm
     pub fn encrypt(
         &self,
@@ -955,82 +1242,19 @@ impl Session {
         iv_counter_nonce: Option<&[u8]>,
     ) -> HResult<EncryptedContent> {
         if !is_encryption_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "{algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         Ok(match &algorithm {
             HsmEncryptionAlgorithm::AesGcm => {
-                if iv_counter_nonce.is_some() {
-                    return Err(HError::Default(
-                        "Caller-supplied AES-GCM IVs are not accepted by HSM encryption; \
-                         the HSM integration generates a fresh nonce"
-                            .to_owned(),
-                    ));
-                }
-                if self.hsm_capabilities().aes.gcm.supports_message
-                    && self.hsm().supports_message_encrypt()
-                {
-                    self.encrypt_message_aes_gcm(key_handle, &[], plaintext)?
-                } else if caller_gcm_iv_allowed(&self.hsm_capabilities().aes.gcm) {
-                    self.encrypt_aes_gcm_classic(key_handle, plaintext)?
-                } else {
-                    self.encrypt_aes_gcm_hsm_generated_iv(key_handle, plaintext)
-                        .map_err(|e| {
-                            if e.to_string() == NO_GENERATED_GCM_IV {
-                                HError::Default(format!(
-                                    "AES-GCM encryption needs an IV generated inside the HSM \
-                                     (FIPS 140-3 IG C.H), and this HSM provided none ({e}). Use \
-                                     AES key wrap instead: key_encryption_key_wrapping_algorithm \
-                                     = \"aes-key-wrap-padding\" (NIST SP 800-38F)"
-                                ))
-                            } else {
-                                e
-                            }
-                        })?
-                }
+                self.encrypt_aes_gcm(key_handle, plaintext, iv_counter_nonce)?
             }
             HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
                 return Err(aes_key_wrap_misrouted());
             }
             HsmEncryptionAlgorithm::AesCbc => {
-                let mut iv: [u8; AES_CBC_IV_LENGTH] = match iv_counter_nonce {
-                    Some(iv) => iv.try_into().map_err(|_invalid_length| {
-                        HError::Default(format!(
-                            "Invalid AES-CBC IV length: expected {AES_CBC_IV_LENGTH}, got {}",
-                            iv.len()
-                        ))
-                    })?,
-                    None => generate_random_nonce::<AES_CBC_IV_LENGTH>()?,
-                };
-                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size
-                    && plaintext.len() > max_cbc_data_size
-                {
-                    debug!("Performing multi round AES CBC encryption");
-                    return self.encrypt_aes_cbc_multi_round(
-                        key_handle,
-                        iv,
-                        plaintext,
-                        max_cbc_data_size,
-                    );
-                }
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_CBC,
-                    pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(iv.len())?,
-                };
-
-                let mut padded_plaintext = plaintext.to_vec();
-                Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
-                let ciphertext =
-                    self.encrypt_with_mechanism(key_handle, &mut mechanism, &padded_plaintext)?;
-
-                EncryptedContent {
-                    iv: Some(iv.to_vec()),
-                    ciphertext, // no separate tag for CBC
-                    tag: None,
-                    cryptographic_algorithm: None,
-                }
+                self.encrypt_aes_cbc(key_handle, plaintext, iv_counter_nonce)?
             }
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
                 let mut mechanism = CK_MECHANISM {
@@ -1048,66 +1272,66 @@ impl Session {
                 }
             }
             HsmEncryptionAlgorithm::RsaOaepSha256 => {
-                // Empty OAEP label: SoftHSM2 requires a non-null source pointer, AWS
-                // CloudHSM requires NULL (see `RsaCapabilities::oaep_requires_source_data_ptr`).
-                let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
-                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
-                } else {
-                    std::ptr::null_mut()
-                };
-                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
-                    hashAlg: CKM_SHA256,
-                    mgf: CKG_MGF1_SHA256,
-                    source: CKZ_DATA_SPECIFIED,
-                    pSourceData: source_data,
-                    ulSourceDataLen: 0,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(
-                        std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>(),
-                    )?,
-                };
-                EncryptedContent {
-                    ciphertext: self.encrypt_with_mechanism(
-                        key_handle,
-                        &mut mechanism,
-                        plaintext,
-                    )?,
-                    ..Default::default()
-                }
+                self.encrypt_rsa_oaep(key_handle, RsaOaepDigest::SHA256, plaintext)?
             }
             HsmEncryptionAlgorithm::RsaOaepSha1 => {
-                let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
-                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
-                } else {
-                    ptr::null_mut()
-                };
-                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
-                    hashAlg: CKM_SHA_1,
-                    mgf: CKG_MGF1_SHA1,
-                    source: CKZ_DATA_SPECIFIED,
-                    pSourceData: source_data,
-                    ulSourceDataLen: 0,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
-                };
-                EncryptedContent {
-                    ciphertext: self.encrypt_with_mechanism(
-                        key_handle,
-                        &mut mechanism,
-                        plaintext,
-                    )?,
-                    ..Default::default()
-                }
+                self.encrypt_rsa_oaep(key_handle, RsaOaepDigest::SHA1, plaintext)?
             }
         })
+    }
+
+    fn decrypt_aes_gcm(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        ciphertext: &[u8],
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        if ciphertext.len() < AES_GCM_IV_LENGTH + AES_GCM_AUTH_TAG_LENGTH {
+            return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
+        }
+        let (iv, encrypted) = ciphertext.split_at(AES_GCM_IV_LENGTH);
+        if self.hsm_capabilities().aes.gcm.supports_message
+            && self.hsm().supports_message_decrypt()
+            && !self.message_aead_unsupported(true, CKM_AES_GCM)
+        {
+            let (encrypted, tag) = encrypted.split_at(encrypted.len() - AES_GCM_AUTH_TAG_LENGTH);
+            match self.decrypt_message_aes_gcm(key_handle, &[], iv, tag, encrypted) {
+                // Refused at init, before any data was processed: classic GCM decrypts the
+                // same `iv || ciphertext || tag` layout (a v3 table of unsupported stubs).
+                Err(HError::MessageUnsupported(reason)) => {
+                    self.mark_message_aead_unsupported(true, CKM_AES_GCM);
+                    debug!(
+                        "PKCS#11 v3 message AES-GCM decrypt unsupported; using classic: {reason}"
+                    );
+                }
+                result => return result,
+            }
+        }
+        self.decrypt_aes_gcm_classic(key_handle, iv, encrypted)
+    }
+
+    fn decrypt_aes_gcm_classic(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        iv: &[u8],
+        encrypted: &[u8],
+    ) -> HResult<Zeroizing<Vec<u8>>> {
+        let mut nonce: [u8; AES_GCM_IV_LENGTH] = iv
+            .try_into()
+            .map_err(|e| HError::Default(format!("Invalid AES GCM nonce: {e}")))?;
+        let mut params = CK_AES_GCM_PARAMS {
+            pIv: nonce.as_mut_ptr(),
+            ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
+            ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
+            pAAD: ptr::null_mut(),
+            ulAADLen: 0,
+            ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
+        };
+        let mut mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_GCM,
+            pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
+            ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
+        };
+        self.decrypt_with_mechanism(key_handle, &mut mechanism, encrypted)
     }
 
     /// Decrypt data using the specified key and algorithm
@@ -1118,107 +1342,16 @@ impl Session {
         ciphertext: &[u8],
     ) -> HResult<Zeroizing<Vec<u8>>> {
         if !is_encryption_algorithm_supported(algorithm) {
-            return Err(HError::Default(
-                "RSA-OAEP with SHA-1 is unavailable in FIPS mode".to_owned(),
-            ));
+            return Err(HError::Default(format!(
+                "{algorithm:?} is unavailable in FIPS mode"
+            )));
         }
         match &algorithm {
-            HsmEncryptionAlgorithm::AesGcm => {
-                if ciphertext.len() < AES_GCM_IV_LENGTH + AES_GCM_AUTH_TAG_LENGTH {
-                    return Err(HError::Default("Invalid AES GCM ciphertext".to_owned()));
-                }
-                let iv = ciphertext
-                    .get(..AES_GCM_IV_LENGTH)
-                    .ok_or_else(|| HError::Default("Failed to extract nonce".to_owned()))?;
-                let encrypted = ciphertext
-                    .get(AES_GCM_IV_LENGTH..)
-                    .ok_or_else(|| HError::Default("Failed to extract ciphertext".to_owned()))?;
-                if self.hsm_capabilities().aes.gcm.supports_message
-                    && self.hsm().supports_message_decrypt()
-                {
-                    let split_at = encrypted
-                        .len()
-                        .checked_sub(AES_GCM_AUTH_TAG_LENGTH)
-                        .ok_or_else(|| HError::Default("Failed to extract GCM tag".to_owned()))?;
-                    return self.decrypt_message_aes_gcm(
-                        key_handle,
-                        &[],
-                        iv,
-                        encrypted.get(split_at..).ok_or_else(|| {
-                            HError::Default("Failed to extract GCM tag".to_owned())
-                        })?,
-                        encrypted.get(..split_at).ok_or_else(|| {
-                            HError::Default("Failed to extract ciphertext".to_owned())
-                        })?,
-                    );
-                }
-                let mut nonce: [u8; AES_GCM_IV_LENGTH] = iv
-                    .try_into()
-                    .map_err(|e| HError::Default(format!("Invalid AES GCM nonce: {e}")))?;
-                let mut params = CK_AES_GCM_PARAMS {
-                    pIv: nonce.as_mut_ptr(),
-                    ulIvLen: CK_ULONG::try_from(AES_GCM_IV_LENGTH)?,
-                    ulIvBits: CK_ULONG::try_from(AES_GCM_IV_LENGTH * 8)?,
-                    pAAD: ptr::null_mut(),
-                    ulAADLen: 0,
-                    ulTagBits: CK_ULONG::try_from(AES_GCM_AUTH_TAG_LENGTH * 8)?,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_GCM,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(size_of::<CK_AES_GCM_PARAMS>())?,
-                };
-                let plaintext = self.decrypt_with_mechanism(
-                    key_handle,
-                    &mut mechanism,
-                    ciphertext.get(AES_GCM_IV_LENGTH..).ok_or_else(|| {
-                        HError::Default("Failed to extract ciphertext".to_owned())
-                    })?,
-                )?;
-                Ok(plaintext)
-            }
+            HsmEncryptionAlgorithm::AesGcm => self.decrypt_aes_gcm(key_handle, ciphertext),
             HsmEncryptionAlgorithm::AesKeyWrap | HsmEncryptionAlgorithm::AesKeyWrapPad => {
                 Err(aes_key_wrap_misrouted())
             }
-            HsmEncryptionAlgorithm::AesCbc => {
-                if ciphertext.len() < AES_CBC_IV_LENGTH {
-                    return Err(HError::Default("Invalid AES CBC ciphertext".to_owned()));
-                }
-                let mut iv: [u8; AES_CBC_IV_LENGTH] = ciphertext
-                    .get(..AES_CBC_IV_LENGTH)
-                    .ok_or_else(|| HError::Default("Failed to extract iv".to_owned()))?
-                    .try_into()
-                    .map_err(|e| HError::Default(format!("Invalid AES CBC IV: {e}")))?;
-                if let Some(max_cbc_data_size) = self.hsm_capabilities().max_cbc_data_size
-                    && ciphertext.len() > (max_cbc_data_size + AES_CBC_IV_LENGTH)
-                {
-                    debug!("Performing multi round AES CBC decryption");
-                    return self.decrypt_aes_cbc_multi_round(
-                        key_handle,
-                        &iv,
-                        ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
-                            HError::Default("Failed to extract ciphertext".to_owned())
-                        })?,
-                        max_cbc_data_size,
-                    );
-                }
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_AES_CBC,
-                    pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(iv.len())?,
-                };
-
-                let padded_plaintext = self.decrypt_with_mechanism(
-                    key_handle,
-                    &mut mechanism,
-                    ciphertext.get(AES_CBC_IV_LENGTH..).ok_or_else(|| {
-                        HError::Default("Failed to extract ciphertext".to_owned())
-                    })?,
-                )?;
-
-                let plaintext = Self::pkcs7_unpad(padded_plaintext, AES_BLOCK_SIZE)?;
-                Ok(plaintext)
-            }
+            HsmEncryptionAlgorithm::AesCbc => self.decrypt_aes_cbc(key_handle, ciphertext),
             HsmEncryptionAlgorithm::RsaPkcsV15 => {
                 let mut mechanism = CK_MECHANISM {
                     mechanism: CKM_RSA_PKCS,
@@ -1228,50 +1361,10 @@ impl Session {
                 self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
             }
             HsmEncryptionAlgorithm::RsaOaepSha256 => {
-                let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
-                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
-                } else {
-                    std::ptr::null_mut()
-                };
-                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
-                    hashAlg: CKM_SHA256,
-                    mgf: CKG_MGF1_SHA256,
-                    source: CKZ_DATA_SPECIFIED,
-                    pSourceData: source_data,
-                    ulSourceDataLen: 0,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(
-                        std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>(),
-                    )?,
-                };
-                self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
+                self.decrypt_rsa_oaep(key_handle, RsaOaepDigest::SHA256, ciphertext)
             }
             HsmEncryptionAlgorithm::RsaOaepSha1 => {
-                let mut oaep_label = 0_u8;
-                let source_data = if self.hsm_capabilities().rsa.oaep_requires_source_data_ptr {
-                    (&raw mut oaep_label).cast::<std::ffi::c_void>()
-                } else {
-                    std::ptr::null_mut()
-                };
-                let mut params = CK_RSA_PKCS_OAEP_PARAMS {
-                    hashAlg: CKM_SHA_1,
-                    mgf: CKG_MGF1_SHA1,
-                    source: CKZ_DATA_SPECIFIED,
-                    pSourceData: source_data,
-                    ulSourceDataLen: 0,
-                };
-                let mut mechanism = CK_MECHANISM {
-                    mechanism: CKM_RSA_PKCS_OAEP,
-                    pParameter: (&raw mut params).cast::<std::ffi::c_void>(),
-                    ulParameterLen: CK_ULONG::try_from(
-                        std::mem::size_of::<CK_RSA_PKCS_OAEP_PARAMS>(),
-                    )?,
-                };
-                self.decrypt_with_mechanism(key_handle, &mut mechanism, ciphertext)
+                self.decrypt_rsa_oaep(key_handle, RsaOaepDigest::SHA1, ciphertext)
             }
         }
     }
@@ -1321,7 +1414,7 @@ impl Session {
                 "Round length must be multiple of block size (16)".to_owned(),
             ));
         }
-        let mut padded_plaintext = plaintext.to_vec();
+        let mut padded_plaintext = Zeroizing::new(plaintext.to_vec());
         Self::pkcs7_pad(&mut padded_plaintext, AES_BLOCK_SIZE)?;
         let mut round_iv = iv;
         let total_length = padded_plaintext.len();
@@ -1595,7 +1688,7 @@ impl Session {
             out.as_mut_ptr(),
             &raw mut out_len
         );
-        out.truncate(usize::try_from(out_len)?);
+        out.truncate(checked_output_length(out_len, out.len())?);
         ciphertext.extend_from_slice(&out);
         Ok(())
     }
@@ -1612,7 +1705,7 @@ impl Session {
             out.as_mut_ptr(),
             &raw mut out_len
         );
-        out.truncate(usize::try_from(out_len)?);
+        out.truncate(checked_output_length(out_len, out.len())?);
         ciphertext.extend_from_slice(&out);
         Ok(())
     }
@@ -1640,7 +1733,8 @@ impl Session {
             out.as_mut_ptr(),
             &raw mut out_len
         );
-        out.truncate(usize::try_from(out_len)?);
+        let length = checked_output_length(out_len, out.len())?;
+        out.truncate(length);
         plaintext.extend_from_slice(&out);
         Ok(())
     }
@@ -1657,7 +1751,8 @@ impl Session {
             out.as_mut_ptr(),
             &raw mut out_len
         );
-        out.truncate(usize::try_from(out_len)?);
+        let length = checked_output_length(out_len, out.len())?;
+        out.truncate(length);
         plaintext.extend_from_slice(&out);
         Ok(())
     }
@@ -1676,7 +1771,7 @@ impl Session {
         mechanism: &mut CK_MECHANISM,
         data: &[u8],
     ) -> HResult<Vec<u8>> {
-        let mut data = data.to_vec();
+        let mut data = Zeroizing::new(data.to_vec());
         hsm_call!(
             self.hsm,
             "Failed to initialize encryption",
@@ -1690,8 +1785,7 @@ impl Session {
         hsm_call!(
             self.hsm,
             format!(
-                "Failed to allocate encrypted data length. Data to encrypt is likely too big: {} \
-                 bytes. Error code",
+                "C_Encrypt failed while querying the encrypted data length for {} input bytes",
                 data.len()
             ),
             C_Encrypt,
@@ -1714,7 +1808,10 @@ impl Session {
             &raw mut encrypted_data_len
         );
 
-        encrypted_data.truncate(usize::try_from(encrypted_data_len)?);
+        encrypted_data.truncate(checked_output_length(
+            encrypted_data_len,
+            encrypted_data.len(),
+        )?);
         Ok(encrypted_data)
     }
 
@@ -1738,7 +1835,7 @@ impl Session {
         // issuing a second, null-output query. Some PKCS#11 providers treat that query
         // as an operation and return provider-specific errors; the real operation still
         // performs the mechanism's authentication or padding validation.
-        let mut decrypted_data = vec![0_u8; encrypted_data.len()];
+        let mut decrypted_data = Zeroizing::new(vec![0_u8; encrypted_data.len()]);
         let mut decrypted_data_len = CK_ULONG::try_from(decrypted_data.len())?;
         hsm_call!(
             self.hsm,
@@ -1751,8 +1848,9 @@ impl Session {
             &raw mut decrypted_data_len
         );
 
-        decrypted_data.truncate(usize::try_from(decrypted_data_len)?);
-        Ok(Zeroizing::new(decrypted_data))
+        let length = checked_output_length(decrypted_data_len, decrypted_data.len())?;
+        decrypted_data.truncate(length);
+        Ok(decrypted_data)
     }
 
     /// Sign data using the specified key and algorithm
@@ -2116,6 +2214,19 @@ impl Session {
         if let Some(signature) = self.try_sign_message(key_handle, mechanism, data)? {
             return Ok(signature);
         }
+        self.sign_with_classic_mechanism(key_handle, mechanism, data)
+    }
+
+    /// Signs with `C_SignInit`/`C_Sign` only, never through a persistent message context.
+    ///
+    /// Required for mechanisms whose parameter must change per operation (AES-GMAC's IV): a
+    /// message context binds its mechanism parameter at init and would replay it.
+    fn sign_with_classic_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
         self.end_message_operations();
         let mut data = data.to_vec();
         #[expect(
@@ -2258,6 +2369,77 @@ impl Session {
                 self.verify_with_simple_mechanism(key_handle, CKM_EDDSA, data, signature)
             }
         }
+    }
+
+    /// Compute a MAC over `data` with the symmetric key `key_handle` (`C_SignInit`/`C_Sign`).
+    ///
+    /// HMAC and AES-CMAC return the raw MAC. AES-GMAC returns `IV (12 bytes) || tag (16 bytes)`:
+    /// the IV is drawn from the KMS random source for every call, because the MAC request
+    /// carries no IV and a GMAC nonce must never repeat under one key.
+    ///
+    /// # Errors
+    /// Returns an error if the IV cannot be generated, the mechanism is not supported by the
+    /// token, or the HSM operation fails.
+    pub fn mac(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: MacAlgorithm,
+        data: &[u8],
+    ) -> HResult<Vec<u8>> {
+        if algorithm != MacAlgorithm::AesGmac {
+            return self.sign_with_simple_mechanism(key_handle, mac_mechanism(algorithm), data);
+        }
+        let mut iv = generate_random_nonce::<AES_GMAC_IV_LENGTH>()?;
+        let mut params = gmac_params(&mut iv)?;
+        let mut mechanism = gmac_mechanism(&mut params)?;
+        let tag = self.sign_with_classic_mechanism(key_handle, &mut mechanism, data)?;
+        if tag.len() != AES_GCM_AUTH_TAG_LENGTH {
+            return Err(HError::Default(format!(
+                "AES-GMAC: unexpected tag length: {}",
+                tag.len()
+            )));
+        }
+        let mut mac = Vec::with_capacity(iv.len() + tag.len());
+        mac.extend_from_slice(&iv);
+        mac.extend_from_slice(&tag);
+        Ok(mac)
+    }
+
+    /// Verify a MAC produced by [`Self::mac`] (`C_VerifyInit`/`C_Verify`); the comparison is
+    /// done by the HSM, not in software.
+    ///
+    /// For AES-GMAC `mac` is `IV (12 bytes) || tag (16 bytes)`. Returns `Ok(false)` for a MAC
+    /// that does not match (`CKR_SIGNATURE_INVALID` / `CKR_SIGNATURE_LEN_RANGE`).
+    ///
+    /// # Errors
+    /// Returns an error if an AES-GMAC `mac` is shorter than the IV, the mechanism is not
+    /// supported by the token, or the HSM operation fails.
+    pub fn verify_mac(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        algorithm: MacAlgorithm,
+        data: &[u8],
+        mac: &[u8],
+    ) -> HResult<bool> {
+        if algorithm != MacAlgorithm::AesGmac {
+            return self.verify_with_simple_mechanism(
+                key_handle,
+                mac_mechanism(algorithm),
+                data,
+                mac,
+            );
+        }
+        let (iv, tag) = mac.split_at_checked(AES_GMAC_IV_LENGTH).ok_or_else(|| {
+            HError::Default(format!(
+                "AES-GMAC MAC data must start with a {AES_GMAC_IV_LENGTH}-byte IV, got {} bytes",
+                mac.len()
+            ))
+        })?;
+        let mut iv = <[u8; AES_GMAC_IV_LENGTH]>::try_from(iv)
+            .map_err(|_invalid_length| HError::Default("Invalid AES-GMAC IV".to_owned()))?;
+        let mut params = gmac_params(&mut iv)?;
+        let mut mechanism = gmac_mechanism(&mut params)?;
+        self.verify_with_classic_mechanism(key_handle, &mut mechanism, data, tag)
     }
 
     /// Read `CKA_EC_PARAMS` for `key_handle` and decode it to the corresponding `EcCurve`
@@ -2439,6 +2621,18 @@ impl Session {
         if let Some(valid) = self.try_verify_message(key_handle, mechanism, data, signature)? {
             return Ok(valid);
         }
+        self.verify_with_classic_mechanism(key_handle, mechanism, data, signature)
+    }
+
+    /// Verifies with `C_VerifyInit`/`C_Verify` only, never through a persistent message
+    /// context (see [`Self::sign_with_classic_mechanism`]).
+    fn verify_with_classic_mechanism(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        mechanism: &mut CK_MECHANISM,
+        data: &[u8],
+        signature: &[u8],
+    ) -> HResult<bool> {
         self.end_message_operations();
         let mut data = data.to_vec();
         let mut signature = signature.to_vec();
@@ -3436,7 +3630,14 @@ impl Session {
     }
 
     /// Set `CKA_START_DATE` and/or `CKA_END_DATE` on a key object.
-    /// Passing `None` clears the attribute (sets to empty `CK_DATE`).
+    ///
+    /// Passing `None` clears the attribute. Tokens disagree on how an unset date is written: the
+    /// Utimaco simulator accepts the empty attribute (zero length, PKCS#11 "default empty") and
+    /// refuses an all-zero `CK_DATE` (`CKR_GENERAL_ERROR`). The empty form is tried first, the
+    /// zeroed `CK_DATE` second. Proteccio refuses both with `CKR_ATTRIBUTE_VALUE_INVALID`: when
+    /// both dates are cleared and every form got that code, the key is left with a zero-length
+    /// validity (`start == end == today`), which is never a rotation schedule. Any other failure
+    /// (lost session, missing handle, ...) is returned as is.
     pub fn set_key_dates(
         &self,
         key_handle: CK_OBJECT_HANDLE,
@@ -3450,34 +3651,82 @@ impl Session {
                     .to_owned(),
             ));
         }
-        let start_ck = start_date.map_or(
-            CK_DATE {
-                year: [0; 4],
-                month: [0; 2],
-                day: [0; 2],
-            },
-            Self::format_ck_date,
-        );
-        let end_ck = end_date.map_or(
-            CK_DATE {
-                year: [0; 4],
-                month: [0; 2],
-                day: [0; 2],
-            },
-            Self::format_ck_date,
-        );
+        let start_ck = start_date.map(Self::format_ck_date);
+        let end_ck = end_date.map(Self::format_ck_date);
+        let forms: &[bool] = if start_ck.is_some() && end_ck.is_some() {
+            &[false]
+        } else {
+            &[false, true]
+        };
+        let mut attempts = Vec::with_capacity(forms.len());
+        for &zeroed in forms {
+            let rv = self.set_key_dates_once(key_handle, start_ck, end_ck, zeroed)?;
+            if rv == CKR_OK {
+                return Ok(());
+            }
+            attempts.push((zeroed, rv));
+        }
+        if start_date.is_none()
+            && end_date.is_none()
+            && attempts
+                .iter()
+                .all(|&(_, rv)| rv == pkcs11_sys::CKR_ATTRIBUTE_VALUE_INVALID)
+        {
+            let today = Self::format_ck_date(time::OffsetDateTime::now_utc().date());
+            let rv = self.set_key_dates_once(key_handle, Some(today), Some(today), false)?;
+            if rv == CKR_OK {
+                return Ok(());
+            }
+            attempts.push((false, rv));
+        }
+        let attempts = attempts
+            .iter()
+            .map(|&(zeroed, rv)| {
+                format!(
+                    "{}={rv}",
+                    if zeroed {
+                        "zeroed CK_DATE"
+                    } else {
+                        "empty/set"
+                    }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(HError::Default(format!(
+            "Failed to set key dates for key handle: {key_handle} (start {start_date:?}, end \
+             {end_date:?}). Return code: {attempts}"
+        )))
+    }
+
+    /// One `C_SetAttributeValue` of both dates; an unset date is written as an all-zero
+    /// `CK_DATE` when `zeroed_unset`, as an empty attribute otherwise. Returns the PKCS#11 code.
+    fn set_key_dates_once(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        start_ck: Option<CK_DATE>,
+        end_ck: Option<CK_DATE>,
+        zeroed_unset: bool,
+    ) -> HResult<CK_RV> {
+        let zero = CK_DATE {
+            year: [0; 4],
+            month: [0; 2],
+            day: [0; 2],
+        };
+        let start_ck = start_ck.or_else(|| zeroed_unset.then_some(zero));
+        let end_ck = end_ck.or_else(|| zeroed_unset.then_some(zero));
+        let date_len = CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?;
+        let date_attribute = |type_, date: &Option<CK_DATE>| CK_ATTRIBUTE {
+            type_,
+            pValue: date.as_ref().map_or(ptr::null_mut(), |date| {
+                ptr::from_ref(date).cast_mut().cast()
+            }),
+            ulValueLen: if date.is_some() { date_len } else { 0 },
+        };
 
         let mut template = vec![
-            CK_ATTRIBUTE {
-                type_: CKA_START_DATE,
-                pValue: ptr::addr_of!(start_ck).cast_mut().cast(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
-            },
-            CK_ATTRIBUTE {
-                type_: CKA_END_DATE,
-                pValue: ptr::addr_of!(end_ck).cast_mut().cast(),
-                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
-            },
+            date_attribute(CKA_START_DATE, &start_ck),
+            date_attribute(CKA_END_DATE, &end_ck),
         ];
 
         #[expect(
@@ -3502,12 +3751,7 @@ impl Session {
                 ));
             }
         };
-        if rv != CKR_OK {
-            return Err(HError::Default(format!(
-                "Failed to set key dates for key handle: {key_handle}. Return code: {rv}"
-            )));
-        }
-        Ok(())
+        Ok(rv)
     }
 
     /// Parse keyset metadata from a `CKA_LABEL` value.
@@ -3931,20 +4175,25 @@ impl Session {
     /// # Returns
     /// * `Result<Option<Vec<u8>>>` - The key object id if the object exists
     ///
-    /// Reads `CKA_LABEL` first for public keys so paired keys can share `CKA_ID`; for
-    /// private and symmetric keys, reads `CKA_ID` first and falls back to `CKA_LABEL`.
-    /// For public keys read via `CKA_LABEL`, the `_pk` suffix is appended if missing.
+    /// A public key created by the KMS carries its id (`…_pk`) in `CKA_ID`, while its
+    /// `CKA_LABEL` may hold a keyset label (`name::generation::key_id`) once the key pair
+    /// has been re-keyed: `CKA_ID` is read first for those. Other public keys (externally
+    /// provisioned pairs that share the private key's `CKA_ID`) read `CKA_LABEL` first, so
+    /// paired keys can share `CKA_ID`; private and symmetric keys read `CKA_ID` first and
+    /// fall back to `CKA_LABEL`. For public keys read via `CKA_LABEL`, the `_pk` suffix is
+    /// appended if missing.
     pub fn get_object_id(&self, object_handle: CK_OBJECT_HANDLE) -> HResult<Option<Vec<u8>>> {
         let is_public_key = matches!(
             self.get_key_type(object_handle)?,
             Some(KeyType::RsaPublicKey | KeyType::EcPublicKey)
         );
-        let attr_types = if is_public_key {
-            [CKA_LABEL, CKA_ID]
+        // (attribute, accepted only when it ends with `_pk`)
+        let attempts = if is_public_key {
+            vec![(CKA_ID, true), (CKA_LABEL, false), (CKA_ID, false)]
         } else {
-            [CKA_ID, CKA_LABEL]
+            vec![(CKA_ID, false), (CKA_LABEL, false)]
         };
-        for attr_type in attr_types {
+        for (attr_type, requires_pk_suffix) in attempts {
             let mut template = [CK_ATTRIBUTE {
                 type_: attr_type,
                 pValue: ptr::null_mut(),
@@ -3972,7 +4221,7 @@ impl Session {
             {
                 continue;
             }
-            if id.is_empty() {
+            if id.is_empty() || (requires_pk_suffix && !id.ends_with(b"_pk")) {
                 continue;
             }
             let (decoded_id, _) = if attr_type == CKA_LABEL {
@@ -4070,16 +4319,71 @@ const NO_GENERATED_GCM_IV: &str =
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::panic_in_result_fn,
+        reason = "tests: a panic is the failure signal"
+    )]
+
     use super::*;
 
     #[test]
-    fn caller_gcm_iv_policy_development_token() {
-        let development_token = AesGcmCapabilities {
-            supports_caller_iv: true,
-            allows_caller_iv_in_fips: true,
-            ..Default::default()
-        };
-        assert!(caller_gcm_iv_allowed(&development_token));
+    fn mac_mechanism_maps_every_algorithm() {
+        for (algorithm, mechanism) in [
+            (MacAlgorithm::HmacSha1, CKM_SHA_1_HMAC),
+            (MacAlgorithm::HmacSha224, CKM_SHA224_HMAC),
+            (MacAlgorithm::HmacSha256, CKM_SHA256_HMAC),
+            (MacAlgorithm::HmacSha384, CKM_SHA384_HMAC),
+            (MacAlgorithm::HmacSha512, CKM_SHA512_HMAC),
+            (MacAlgorithm::HmacSha3224, CKM_SHA3_224_HMAC),
+            (MacAlgorithm::HmacSha3256, CKM_SHA3_256_HMAC),
+            (MacAlgorithm::HmacSha3384, CKM_SHA3_384_HMAC),
+            (MacAlgorithm::HmacSha3512, CKM_SHA3_512_HMAC),
+            (MacAlgorithm::AesCmac, CKM_AES_CMAC),
+            (MacAlgorithm::AesGmac, CKM_AES_GMAC),
+        ] {
+            assert_eq!(mac_mechanism(algorithm), mechanism, "{algorithm:?}");
+        }
+    }
+
+    /// `CKM_AES_GMAC` takes a `CK_GCM_PARAMS` (PKCS#11 v3.0 section 2.13.4), not a raw IV.
+    #[test]
+    fn gmac_mechanism_carries_gcm_params() {
+        let mut iv = [0x11_u8; AES_GMAC_IV_LENGTH];
+        let iv_ptr = iv.as_mut_ptr();
+        let mut params = gmac_params(&mut iv).unwrap();
+        let mechanism = gmac_mechanism(&mut params).unwrap();
+
+        // Copy the fields first: `CK_MECHANISM` and `CK_GCM_PARAMS` are packed on Windows and
+        // `assert_eq!` would take unaligned references to them.
+        let (mechanism_type, parameter_len, parameter_ptr) = (
+            mechanism.mechanism,
+            mechanism.ulParameterLen,
+            mechanism.pParameter,
+        );
+        let (p_iv, iv_len, iv_bits, tag_bits, p_aad, aad_len) = (
+            params.pIv,
+            params.ulIvLen,
+            params.ulIvBits,
+            params.ulTagBits,
+            params.pAAD,
+            params.ulAADLen,
+        );
+
+        assert_eq!(mechanism_type, CKM_AES_GMAC);
+        assert_eq!(
+            usize::try_from(parameter_len).unwrap(),
+            size_of::<CK_AES_GCM_PARAMS>()
+        );
+        assert_eq!(
+            parameter_ptr,
+            ptr::from_mut(&mut params).cast::<std::ffi::c_void>()
+        );
+        assert_eq!(p_iv, iv_ptr);
+        assert_eq!(iv_len, 12);
+        assert_eq!(iv_bits, 96);
+        assert_eq!(tag_bits, 128);
+        assert!(p_aad.is_null());
+        assert_eq!(aad_len, 0);
     }
 
     #[cfg(feature = "non-fips")]
@@ -4087,7 +4391,6 @@ mod tests {
     fn caller_gcm_iv_policy_production_non_fips() {
         let production = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(caller_gcm_iv_allowed(&production));
@@ -4098,7 +4401,6 @@ mod tests {
     fn caller_gcm_iv_policy_production_fips() {
         let production = AesGcmCapabilities {
             supports_caller_iv: true,
-            allows_caller_iv_in_fips: false,
             ..Default::default()
         };
         assert!(!caller_gcm_iv_allowed(&production));
@@ -4130,21 +4432,21 @@ mod tests {
         assert_eq!(split(&[ct.as_slice(), &tag, &[3_u8; 16]].concat()), None);
     }
 
-    /// Drives `Session::encrypt` against `tests/fixtures/fips_gcm_hsm.c`, an HSM in FIPS mode
-    /// that rejects any caller-chosen GCM nonce and returns the IV it generated through `pIv`.
-    fn fips_hsm_gcm_encrypt(
-        supports_caller_iv: bool,
-        fixture_args: &[&str],
-    ) -> HResult<EncryptedContent> {
+    fn gcm_fixture_session(gcm: AesGcmCapabilities, fixture_args: &[&str]) -> HResult<Session> {
         let hsm_lib = crate::hsm_lib::HsmLib::instantiate(&crate::test_fixtures::compile_fixture(
             "fips_gcm_hsm.c",
             fixture_args,
         )?)?;
-        let mut capabilities = crate::hsm_capabilities::HsmCapabilities::default();
-        capabilities.aes.gcm.supports_caller_iv = supports_caller_iv;
-        capabilities.aes.gcm.allows_caller_iv_in_fips = false;
-        capabilities.aes.gcm.supports_message = false;
-        crate::test_fixtures::fixture_session(hsm_lib, capabilities).encrypt(
+        let mut capabilities = HsmCapabilities::default();
+        capabilities.aes.gcm = gcm;
+        Ok(crate::test_fixtures::fixture_session(hsm_lib, capabilities))
+    }
+
+    fn fips_hsm_gcm_encrypt(
+        gcm: AesGcmCapabilities,
+        fixture_args: &[&str],
+    ) -> HResult<EncryptedContent> {
+        gcm_fixture_session(gcm, fixture_args)?.encrypt(
             1,
             HsmEncryptionAlgorithm::AesGcm,
             b"hello",
@@ -4152,54 +4454,474 @@ mod tests {
         )
     }
 
-    /// A profile without caller IV (AWS/Azure/GCP): the HSM-generated IV flow works in any
-    /// build against a FIPS-mode HSM and uses the IV it returns.
-    #[test]
-    fn gcm_encrypt_uses_the_iv_generated_by_a_fips_mode_hsm() {
-        let content = fips_hsm_gcm_encrypt(false, &[]).ok();
-        assert_eq!(
-            content
-                .as_ref()
-                .map(|c| (c.ciphertext.as_slice(), c.tag.as_deref())),
-            Some((
-                b"hello".map(|b| b ^ 0x42).as_slice(),
-                Some([0x7E_u8; 16].as_slice())
-            ))
-        );
-        let iv = content.and_then(|c| c.iv);
-        assert_eq!(iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
-        assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
+    fn assert_fixture_encryption(content: &EncryptedContent) {
+        assert_eq!(content.ciphertext, b"hello".map(|b| b ^ 0x42));
+        assert_eq!(content.tag.as_deref(), Some([0x7E_u8; 16].as_slice()));
+        assert_eq!(content.iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
+        assert_ne!(content.iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
     }
 
-    /// FIPS build + a profile that accepts caller IVs outside FIPS (every production HSM and
-    /// `hsm_model = "other"`): the nonce is left to the FIPS-mode HSM, which accepts it.
+    fn check_classic_gcm_policy(rows: &[(bool, bool)]) -> HResult<()> {
+        for &(supports_caller_iv, expect_caller_iv) in rows {
+            for supports_message in [false, true] {
+                let mut args = Vec::new();
+                if expect_caller_iv {
+                    args.push("-DEXPECT_CALLER_IV");
+                }
+                if supports_message {
+                    args.push("-DREQUIRE_V3_MESSAGE");
+                }
+                let content = fips_hsm_gcm_encrypt(
+                    AesGcmCapabilities {
+                        supports_caller_iv,
+                        supports_message,
+                    },
+                    &args,
+                )?;
+                assert_fixture_encryption(&content);
+                if !expect_caller_iv {
+                    assert_eq!(content.iv, Some((0xA1_u8..=0xAC).collect::<Vec<_>>()));
+                }
+            }
+        }
+        Ok(())
+    }
+
     #[cfg(not(feature = "non-fips"))]
     #[test]
-    fn fips_build_lets_a_fips_mode_hsm_generate_the_gcm_iv() {
-        let iv = fips_hsm_gcm_encrypt(true, &[]).ok().and_then(|c| c.iv);
-        assert_eq!(iv.as_ref().map(Vec::len), Some(AES_GCM_IV_LENGTH));
-        assert_ne!(iv, Some(vec![0_u8; AES_GCM_IV_LENGTH]));
+    fn classic_gcm_policy_fips() -> HResult<()> {
+        check_classic_gcm_policy(&[(false, false), (true, false)])
     }
 
-    /// Non-FIPS build + the same profile: the KMS picks the nonce, so a FIPS-mode HSM refuses
-    /// it (the reported SPHERE error). Documents why such an HSM needs the FIPS build.
     #[cfg(feature = "non-fips")]
     #[test]
-    fn non_fips_build_sends_a_caller_gcm_iv_that_a_fips_mode_hsm_refuses() {
-        assert!(matches!(
-            fips_hsm_gcm_encrypt(true, &[]),
-            Err(e) if e.to_string().contains("Failed to allocate encrypted data length")
-        ));
+    fn classic_gcm_policy_non_fips() -> HResult<()> {
+        check_classic_gcm_policy(&[(false, false), (true, true)])
     }
 
-    /// An HSM that must generate the IV but ignores the `pIv` buffer fails closed: the
-    /// all-zero IV is never returned.
     #[test]
-    fn gcm_encrypt_fails_closed_when_the_hsm_generates_no_iv() {
-        assert!(matches!(
-            fips_hsm_gcm_encrypt(false, &["-DIGNORE_IV_BUFFER"]),
-            Err(e) if e.to_string().contains("needs an IV generated inside the HSM")
-        ));
+    fn message_gcm_precedes_classic_iv_policy() -> HResult<()> {
+        for supports_caller_iv in [false, true] {
+            let content = fips_hsm_gcm_encrypt(
+                AesGcmCapabilities {
+                    supports_caller_iv,
+                    supports_message: true,
+                },
+                &["-DMESSAGE_SUCCESS"],
+            )?;
+            assert_fixture_encryption(&content);
+            assert_eq!(content.iv, Some((0xB0_u8..=0xBB).collect()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn message_gcm_requires_capability_and_complete_family() -> HResult<()> {
+        for (supports_message, args) in [
+            (false, vec!["-DMESSAGE_SUCCESS"]),
+            (true, vec!["-DNO_MESSAGE_ENCRYPT"]),
+            (true, vec!["-DMISSING_MESSAGE_ENCRYPT_FINAL"]),
+        ] {
+            let content = fips_hsm_gcm_encrypt(
+                AesGcmCapabilities {
+                    supports_caller_iv: false,
+                    supports_message,
+                },
+                &args,
+            )?;
+            assert_fixture_encryption(&content);
+            assert_eq!(content.iv, Some((0xA1_u8..=0xAC).collect()));
+        }
+        Ok(())
+    }
+
+    fn check_caller_iv_policy(rows: &[(bool, bool)]) -> HResult<()> {
+        for &(supports_caller_iv, accepted) in rows {
+            let gcm = AesGcmCapabilities {
+                supports_caller_iv,
+                supports_message: true,
+            };
+            let rejecting = gcm_fixture_session(gcm.clone(), &["-DREJECT_DRIVER_OPERATIONS"])?;
+            if accepted {
+                // Validation failures never reach the driver, and message mode never replaces the IV.
+                for (iv, message) in [
+                    (&[][..], "expected 12, got 0"),
+                    (&[7_u8; 11][..], "expected 12, got 11"),
+                    (&[7_u8; 13][..], "expected 12, got 13"),
+                    (&[0_u8; 12][..], "all-zero AES-GCM IV"),
+                ] {
+                    let error = rejecting
+                        .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(iv))
+                        .expect_err("invalid caller IV must be rejected");
+                    assert!(error.to_string().contains(message), "{error}");
+                }
+                let session =
+                    gcm_fixture_session(gcm, &["-DEXPECT_CALLER_IV", "-DMESSAGE_SUCCESS"])?;
+                let content =
+                    session.encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(&[7; 12]))?;
+                assert_fixture_encryption(&content);
+                assert_eq!(content.iv, Some(vec![7_u8; AES_GCM_IV_LENGTH]));
+            } else {
+                let error = rejecting
+                    .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(&[7; 12]))
+                    .expect_err("this profile/build must refuse a caller IV");
+                assert!(
+                    error
+                        .to_string()
+                        .contains("Caller-supplied AES-GCM IVs are not accepted")
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn caller_gcm_iv_policy_fips() -> HResult<()> {
+        check_caller_iv_policy(&[(false, false), (true, false)])
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn caller_gcm_iv_policy_non_fips() -> HResult<()> {
+        check_caller_iv_policy(&[(false, false), (true, true)])
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn caller_gcm_iv_driver_refusal_is_reported() -> HResult<()> {
+        // Without EXPECT_CALLER_IV the fixture models an HSM that refuses a nonzero IV.
+        let session = gcm_fixture_session(
+            AesGcmCapabilities {
+                supports_caller_iv: true,
+                supports_message: false,
+            },
+            &[],
+        )?;
+        let error = session
+            .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(&[7; 12]))
+            .expect_err("a nonzero IV is refused by this fixture mode");
+        assert!(error.to_string().contains("Return code: 113"));
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_encrypt_fails_closed_when_the_hsm_generates_no_iv() -> HResult<()> {
+        let session = gcm_fixture_session(
+            AesGcmCapabilities {
+                supports_caller_iv: false,
+                supports_message: false,
+            },
+            &["-DIGNORE_IV_BUFFER"],
+        )?;
+        let error = session
+            .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)
+            .expect_err("an all-zero generated IV must not be returned");
+        assert!(
+            error
+                .to_string()
+                .contains("AES-GCM encryption needs an IV generated inside the HSM")
+        );
+        Ok(())
+    }
+
+    fn fixture_gcm_frame(plaintext: &[u8]) -> Vec<u8> {
+        let mut frame: Vec<_> = (0x31_u8..=0x3C).collect();
+        frame.extend(plaintext.iter().map(|byte| byte ^ 0x42));
+        frame.extend([0x7E_u8; AES_GCM_AUTH_TAG_LENGTH]);
+        frame
+    }
+
+    fn decrypt_fixture_session(supports_message: bool, args: &[&str]) -> HResult<Session> {
+        gcm_fixture_session(
+            AesGcmCapabilities {
+                supports_caller_iv: false,
+                supports_message,
+            },
+            args,
+        )
+    }
+
+    #[test]
+    fn gcm_decrypt_uses_stored_iv_independently_of_encryption_policy() -> HResult<()> {
+        for (supports_message, args) in [
+            (false, vec![]),
+            (true, vec!["-DREQUIRE_MESSAGE_DECRYPT"]),
+            (false, vec!["-DMESSAGE_DECRYPT_FAILURE"]),
+            (true, vec!["-DNO_MESSAGE_DECRYPT"]),
+            (true, vec!["-DMISSING_MESSAGE_DECRYPT_FINAL"]),
+        ] {
+            let session = decrypt_fixture_session(supports_message, &args)?;
+            let plaintext = session.decrypt(
+                1,
+                HsmEncryptionAlgorithm::AesGcm,
+                &fixture_gcm_frame(b"hello"),
+            )?;
+            assert_eq!(plaintext.as_slice(), b"hello");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_decrypt_message_error_does_not_retry_classic() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_FAILURE"])?;
+        let frame = fixture_gcm_frame(b"hello");
+        let error = session
+            .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &frame)
+            .expect_err("message errors must propagate without retry");
+        assert!(error.to_string().contains("Return code: 5"));
+        // The same driver accepts this frame through classic GCM.
+        let classic = decrypt_fixture_session(false, &["-DMESSAGE_DECRYPT_FAILURE"])?;
+        assert_eq!(
+            classic
+                .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &frame)?
+                .as_slice(),
+            b"hello"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_decrypt_rejects_tampered_tags() -> HResult<()> {
+        for supports_message in [false, true] {
+            let session = decrypt_fixture_session(supports_message, &[])?;
+            let mut frame = fixture_gcm_frame(b"hello");
+            *frame.last_mut().expect("frame includes a tag") ^= 1;
+            let error = session
+                .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &frame)
+                .expect_err("unauthenticated plaintext must not be returned");
+            assert!(error.to_string().contains("Return code: 64"));
+        }
+        Ok(())
+    }
+
+    /// A driver that replaces the accepted caller IV must not have its output trusted.
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn caller_gcm_iv_replaced_by_the_driver_is_rejected() -> HResult<()> {
+        let gcm = AesGcmCapabilities {
+            supports_caller_iv: true,
+            supports_message: false,
+        };
+        let session = gcm_fixture_session(gcm, &["-DEXPECT_CALLER_IV", "-DOVERWRITE_CALLER_IV"])?;
+        let error = session
+            .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", Some(&[7; 12]))
+            .expect_err("a changed IV must be refused");
+        assert!(
+            error
+                .to_string()
+                .contains("changed the caller-supplied AES-GCM IV")
+        );
+        Ok(())
+    }
+
+    /// A refusal of the message API as unsupported is remembered per slot, so later calls use
+    /// classic GCM directly; other failures are never remembered.
+    #[test]
+    fn message_gcm_unsupported_is_remembered_only_for_unsupported_refusals() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_ENCRYPT_INIT_UNSUPPORTED"])?;
+        assert!(!session.message_aead_unsupported(false, CKM_AES_GCM));
+        session.encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)?;
+        assert!(session.message_aead_unsupported(false, CKM_AES_GCM));
+        assert!(!session.message_aead_unsupported(true, CKM_AES_GCM));
+
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_UNSUPPORTED"])?;
+        session.decrypt(
+            1,
+            HsmEncryptionAlgorithm::AesGcm,
+            &fixture_gcm_frame(b"hello"),
+        )?;
+        assert!(session.message_aead_unsupported(true, CKM_AES_GCM));
+
+        // A transient failure (not "unsupported") must not disable the message API.
+        let session = decrypt_fixture_session(true, &[])?;
+        session.encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)?;
+        assert!(!session.message_aead_unsupported(false, CKM_AES_GCM));
+        Ok(())
+    }
+
+    /// A v3 table whose decrypt entries are `CKR_FUNCTION_NOT_SUPPORTED` stubs must decrypt
+    /// through the classic API; any other init failure must not be retried.
+    #[test]
+    fn gcm_decrypt_falls_back_only_when_message_init_is_unsupported() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_UNSUPPORTED"])?;
+        assert_eq!(
+            session
+                .decrypt(
+                    1,
+                    HsmEncryptionAlgorithm::AesGcm,
+                    &fixture_gcm_frame(b"hello")
+                )?
+                .as_slice(),
+            b"hello"
+        );
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_DECRYPT_INIT_FAILURE"])?;
+        let error = session
+            .decrypt(
+                1,
+                HsmEncryptionAlgorithm::AesGcm,
+                &fixture_gcm_frame(b"hello"),
+            )
+            .expect_err("a hard init failure must not be masked by a classic retry");
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to initialize message-based decryption")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_decrypt_framing_boundaries() -> HResult<()> {
+        for supports_message in [false, true] {
+            let session =
+                decrypt_fixture_session(supports_message, &["-DREJECT_DRIVER_OPERATIONS"])?;
+            for length in 0..28 {
+                let error = session
+                    .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &vec![0; length])
+                    .expect_err("short GCM frames must be rejected before FFI");
+                assert!(error.to_string().contains("Invalid AES GCM ciphertext"));
+            }
+            let session = decrypt_fixture_session(supports_message, &[])?;
+            assert_eq!(
+                session
+                    .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &fixture_gcm_frame(b""))?
+                    .as_slice(),
+                b""
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_message_authentication_failure_leaves_session_usable() -> HResult<()> {
+        for args in [vec![], vec!["-DMESSAGE_DECRYPT_TERMINATES_ON_ERROR"]] {
+            let session = decrypt_fixture_session(true, &args)?;
+            let frame = fixture_gcm_frame(b"hello");
+            let mut tampered = frame.clone();
+            *tampered.last_mut().expect("frame contains a tag") ^= 1;
+            let error = session
+                .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &tampered)
+                .expect_err("tampered tag must not return plaintext");
+            assert!(error.to_string().contains("Return code: 64"));
+            assert_eq!(
+                session
+                    .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &frame)?
+                    .as_slice(),
+                b"hello"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_message_cleanup_failure_must_not_fall_back() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_FINAL_FAILURE"])?;
+        let error = session
+            .encrypt(1, HsmEncryptionAlgorithm::AesGcm, b"hello", None)
+            .expect_err("uncertain operation state must not fall back");
+        assert!(
+            error
+                .to_string()
+                .contains("Failed to finalize message-based encryption")
+        );
+        assert!(matches!(error, HError::OperationCleanup(_)));
+        let error = session
+            .decrypt(
+                1,
+                HsmEncryptionAlgorithm::AesGcm,
+                &fixture_gcm_frame(b"hello"),
+            )
+            .expect_err("failed finalization must not return plaintext");
+        assert!(matches!(error, HError::OperationCleanup(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_message_success_requires_generated_iv() -> HResult<()> {
+        let session = decrypt_fixture_session(true, &["-DMESSAGE_SUCCESS", "-DMESSAGE_ZERO_IV"])?;
+        let error = session
+            .encrypt_message_aes_gcm(1, &[], b"hello")
+            .expect_err("unchanged zero IV must be refused");
+        assert!(error.to_string().contains("did not generate an AES-GCM IV"));
+        Ok(())
+    }
+
+    #[test]
+    fn gcm_message_rejects_inconsistent_output_lengths() -> HResult<()> {
+        let session =
+            decrypt_fixture_session(true, &["-DMESSAGE_SUCCESS", "-DMESSAGE_BAD_LENGTH"])?;
+        let error = session
+            .encrypt_message_aes_gcm(1, &[], b"hello")
+            .expect_err("ciphertext must have the plaintext length");
+        assert!(error.to_string().contains("output length"));
+        let frame = fixture_gcm_frame(b"hello");
+        let error = session
+            .decrypt(1, HsmEncryptionAlgorithm::AesGcm, &frame)
+            .expect_err("plaintext must have the ciphertext length");
+        assert!(error.to_string().contains("output length"));
+        Ok(())
+    }
+
+    #[test]
+    fn classic_decrypt_rejects_output_length_beyond_buffer() -> HResult<()> {
+        let session = decrypt_fixture_session(false, &["-DCLASSIC_BAD_LENGTH"])?;
+        let error = session
+            .decrypt(
+                1,
+                HsmEncryptionAlgorithm::AesGcm,
+                &fixture_gcm_frame(b"hello"),
+            )
+            .expect_err("invalid provider output length must not return plaintext");
+        assert!(error.to_string().contains("output length"));
+        Ok(())
+    }
+
+    #[test]
+    fn key_wrap_dispatchers_reject_misrouting() -> HResult<()> {
+        let session = decrypt_fixture_session(false, &["-DREJECT_DRIVER_OPERATIONS"])?;
+        for algorithm in [
+            HsmEncryptionAlgorithm::AesKeyWrap,
+            HsmEncryptionAlgorithm::AesKeyWrapPad,
+        ] {
+            let encrypt = session
+                .encrypt(1, algorithm, b"hello", None)
+                .expect_err("key wrapping must use the dedicated API");
+            let decrypt = session
+                .decrypt(1, algorithm, b"hello")
+                .expect_err("key unwrapping must use the dedicated API");
+            for error in [encrypt, decrypt] {
+                assert_eq!(
+                    error.to_string(),
+                    "AES key wrap must go through Session::aes_key_wrap/aes_key_unwrap"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn unapproved_rsa_encryption_dispatchers_reject_before_driver_operation() -> HResult<()> {
+        let session = decrypt_fixture_session(false, &["-DREJECT_DRIVER_OPERATIONS"])?;
+        for algorithm in [
+            HsmEncryptionAlgorithm::RsaOaepSha1,
+            HsmEncryptionAlgorithm::RsaPkcsV15,
+        ] {
+            let encrypt = session
+                .encrypt(1, algorithm, b"hello", None)
+                .expect_err("unapproved RSA encryption is unavailable in FIPS");
+            let decrypt = session
+                .decrypt(1, algorithm, b"hello")
+                .expect_err("unapproved RSA decryption is unavailable in FIPS");
+            for error in [encrypt, decrypt] {
+                assert_eq!(
+                    error.to_string(),
+                    format!("{algorithm:?} is unavailable in FIPS mode")
+                );
+            }
+        }
+        Ok(())
     }
 
     #[test]

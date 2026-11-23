@@ -117,21 +117,6 @@ pub(crate) fn test_rsa_pkcs_oaep(ctx: &TestsContext) -> CosmianResult<()> {
         .is_err()
     );
 
-    // TODO: The Proteccio HSM only offers SH256 as hash function; maybe this test should be revisited
-    // // ... or another hash function
-    // assert!(
-    //     decrypt(
-    //         KSM_HSM_CLIENT_CONF,
-    //         output_file.to_str().unwrap(),
-    //         &private_key_id,
-    //         EncryptionAlgorithm::CkmRsaPkcsOaep,
-    //         Some(HashFn::Sha1),
-    //         Some(recovered_file.to_str().unwrap()),
-    //         None,
-    //     )
-    //     .is_err()
-    // );
-
     let original_content = read_bytes_from_file(&input_file)?;
     let recovered_content = read_bytes_from_file(&recovered_file)?;
     assert_eq!(original_content, recovered_content);

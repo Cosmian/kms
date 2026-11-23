@@ -7,9 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema is small and consists of six tables. The optional
-[PostgreSQL audit backend](#postgresql-audit-database) adds two more, `kms_audit_events` and
-`kms_audit_control`, in its own, separate database.
+The KMS object-store schema has eight tables shared by all SQL backends, plus `kms_migration_lock` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -19,6 +17,9 @@ The KMS object-store schema is small and consists of six tables. The optional
 | `tags` | Tags attached to objects, used by `Locate` |
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
+| `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
+| `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
+| `kms_migration_lock` | Startup migration coordination row (MySQL, MariaDB, and Percona XtraDB Cluster only) |
 
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
@@ -28,6 +29,7 @@ erDiagram
     OBJECTS ||--o{ TAGS : "tagged (tags.id = objects.id)"
     OBJECTS ||--o{ OBJECTS : "wraps (objects.wrapping_key_id = objects.id)"
     OBJECTS ||--o| CRLS : "signs (crls.issuer_id = objects.id)"
+    OBJECTS ||--o| GCM_INVOCATIONS : "counted (gcm_invocations.object_id = objects.id)"
     PARAMETERS {
         string name PK
         string value
@@ -39,6 +41,7 @@ erDiagram
         string state
         string owner
         string wrapping_key_id FK
+        bigint version
     }
     READ_ACCESS {
         string id FK
@@ -56,11 +59,21 @@ erDiagram
         string generated_at
         string next_update
     }
+    GCM_INVOCATIONS {
+        string object_id PK
+        bigint count
+    }
     CRYPTO_OFFICER_ACTIVATIONS {
         timestamp activated_at
         text sealed_record
         timestamp revoked_at
         varchar revoked_by
+    }
+    CLUSTER_NODES {
+        string node_id PK
+        string version
+        int last_heartbeat
+        boolean is_leader
     }
 ```
 
@@ -76,6 +89,7 @@ The central table. One row per KMIP object.
 | `state` | `VARCHAR(32)` | The KMIP lifecycle state of the object (for example `Active`, `Destroyed`). |
 | `owner` | `VARCHAR(255)` | The user identifier of the object's owner. |
 | `wrapping_key_id` | `VARCHAR(128)` | The UID of the key that wraps this object. Self-reference to `objects.id`. |
+| `version` | `BIGINT NOT NULL DEFAULT 0` (PG/MySQL) / `INTEGER NOT NULL DEFAULT 0` (SQLite) | Optimistic-lock counter, incremented on every write; key rotation commits only if the version it read is still current. |
 
 The following secondary indexes are created on `objects`:
 
@@ -90,6 +104,20 @@ The following secondary indexes are created on `objects`:
 
 Indexes are created at server startup. On an existing large database, the first start after an upgrade takes proportionally longer, and PostgreSQL blocks writes to `objects` while each new index builds.
 
+**Downgrade (Usage Limits).** The current release consumes the KMIP `Usage Limits` budget of an object by decrementing `UsageLimitsCount` and never changes `UsageLimitsTotal`, the configured budget; both are stored in the `attributes` column and in the key block attributes. The remaining budget is the smaller of the Count and the Total, or the Total when the Count is absent. Releases before it ignore the Count and decrement and enforce the Total only. After an upgrade, objects written by such a release therefore keep their remaining budget, including those carrying a stale Count above their decremented Total. The downgrade verdict is DEGRADED:
+
+- An earlier release grants every usage-limited object its full Total again, including objects the current release has exhausted, unless the procedure below runs first.
+- Mixed-version operation (an earlier release and the current release serving the same database, for example during a rolling restart) is not supported for usage-limited objects: the two releases cannot share one representation of the budget, and the earlier release ignores the consumption recorded by the current release.
+
+To downgrade without restoring spent budgets:
+
+1. Quiesce all writers: stop client traffic and every server instance except one current-release instance, reachable only by the administrator.
+2. For each object that carries a `UsageLimits` attribute, read it with `ckms attributes get --id <UID> --attribute UsageLimits` and compute the remaining budget: the smaller of `UsageLimitsCount` and `UsageLimitsTotal`, or `UsageLimitsTotal` when the Count is absent.
+3. As the object owner, or a user granted `ModifyAttribute` on the object, send a KMIP `ModifyAttribute` request whose `NewAttribute` is `UsageLimits` with the same `UsageLimitsUnit` and `UsageLimitsTotal` set to the remaining budget, as JSON TTLV to the `/kmip/2_1` endpoint (see [The JSON TTLV KMIP API](../../kmip_support/json_ttlv_api.md)). The server sets the Count to the new Total. `ckms attributes set` and `ckms attributes modify` cannot set `Usage Limits`.
+4. Verify with `ckms attributes get --id <UID> --attribute UsageLimits` that `UsageLimitsTotal` and `UsageLimitsCount` both equal the remaining budget, back up the database, stop the last current-release instance, then start the earlier release.
+
+After upgrading again, the Total the earlier release decremented caps the remaining budget, so its consumption is kept.
+
 ## read_access
 
 Stores the operations that a given user is allowed to perform on a given object.
@@ -101,7 +129,7 @@ Stores the operations that a given user is allowed to perform on a given object.
 | `permissions` | `json` | The operations granted to the user, serialized as JSON. |
 
 The pair (`id`, `userid`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, userid)`.
+In PostgreSQL and SQLite it is declared `UNIQUE (id, userid)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, userid)`.
 
 A secondary index `idx_read_access_userid` is created on `userid`.
 
@@ -115,7 +143,7 @@ Stores the tags attached to objects. Tags are used to locate objects by tag.
 | `tag` | `VARCHAR(255)` | A single tag. |
 
 The pair (`id`, `tag`) is unique.
-In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.13.0) it is the composite `PRIMARY KEY (id, tag)`.
+In PostgreSQL and SQLite it is declared `UNIQUE (id, tag)`; in MySQL (since 5.14.0) it is the composite `PRIMARY KEY (id, tag)`.
 
 A secondary index `idx_tags_tag_id` on (`tag`, `id`) supports Locate-by-tags lookups.
 
@@ -132,10 +160,20 @@ Known parameters:
 
 | `name` | Meaning |
 | ------ | ------- |
-| `db_state` | The database migration state: `ready` or `upgrading`. |
-| `db_version` | The version of the KMS software that last ran against this database. |
-| `wrapping_key_id_backfilled` | A one-time marker recording that the `objects.wrapping_key_id` backfill has completed. |
-| `certificate_serial_tag_backfilled` | A one-time marker recording that the `_serial=<HEX>` tag backfill for pre-existing certificates has completed. |
+| `db_state` | Database migration state (`"ready"` or `"upgrading"`). |
+| `db_version` | KMS version the database was last migrated to. |
+| `attributes_jsonb_converted` | PostgreSQL-only marker recording that `objects.attributes` was converted to `jsonb`. |
+| `wrapping_key_id_backfilled` | One-time marker recording that the `objects.wrapping_key_id` backfill completed. |
+| `certificate_serial_tag_backfilled` | One-time marker recording that the `_serial=<HEX>` tag backfill for existing certificates completed. |
+| `kv_metadata_uid_key` | Hex-encoded 32-byte key, created on first use by the [KV secret store](../secret_backends.md#internal-record-identifiers) or the SSH CA/role API, from which the identifier of each KV path's metadata object (and of the SSH CA/role records) is derived. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
+
+## `kms_migration_lock`
+
+Used on MySQL, MariaDB, and Percona XtraDB Cluster to serialize startup migrations across concurrently starting KMS instances.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `id` | `TINYINT` | Primary key (contains a single coordination row `id = 1`). |
 
 ## crypto_officer_activations
 
@@ -173,14 +211,61 @@ One row per CA certificate. The row is replaced atomically on every CRL regenera
 The Redis-with-Findex backend stores each CRL as a JSON value under the key
 `crl:<issuer_id>`.
 
+## `gcm_invocations`
+
+NIST SP 800-38D §8.3 allows at most 2^32 AES-GCM invocations with a random IV under one key.
+The server reserves each invocation in this table **before** encrypting, so a crash wastes an
+invocation and never lets one be used twice. It counts one per single-part `Encrypt`, one per
+multi-part `Encrypt` stream, one per item of a bulk `Encrypt`, one per AES-GCM `MAC` (GMAC) and
+one per software AES-GCM key wrap. Decryption is not counted.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `object_id` | `VARCHAR(128)` | Primary key. The UID of the AES key in the `objects` table. |
+| `count` | `BIGINT` | Invocations made so far, at most 4294967296 (2^32). |
+
+The row is independent of the object: counting does not change the object version, so it never
+conflicts with a `ReKey` or any other write to the key, and it is not visible through KMIP
+attributes. Once the cap is reached, `Encrypt`, `MAC` and wrapping with that key fail with
+`Permission_Denied`: rekey. Destroying or deleting the key deletes the row; a new key starts at 0.
+
+The count is per UID, not per key material: exporting a key and importing it again under another
+UID restarts the count. Keeping a key fresh is the operator's responsibility (SP 800-38D §8.1).
+Keys held in an HSM are not counted here: the HSM module enforces the cap under its Security
+Policy. The Redis-with-Findex backend (non-FIPS builds only) keeps the count in
+`gcm_invocations::<uid>` keys instead of a table.
+
+**Downgrade.** An older KMS ignores this table (and the Redis keys). It does not count its own
+AES-GCM invocations, so after upgrading again the count under-reports those invocations: rekey
+AES-GCM keys that were used heavily while downgraded. An older KMS also deletes keys without
+deleting their counters; the upgraded server removes counters whose object no longer exists at
+every startup. To remove the counters manually, run `DROP TABLE gcm_invocations;` (SQL) or
+`redis-cli --scan --pattern 'gcm_invocations::*' | xargs -r redis-cli DEL` (Redis).
+
+## `cluster_nodes`
+
+Stores one heartbeat per running KMS process. Each node refreshes its row every five seconds;
+rows older than fifteen seconds are pruned. One node is marked as leader for display; no work
+depends on it. Node IDs are regenerated on process restart, and stale rows are removed by the
+next heartbeat.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `node_id` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | Process-specific UUID and primary key. |
+| `version` | `VARCHAR(64)` (PG/MySQL) / `TEXT` (SQLite) | KMS package version reported by the process. |
+| `last_heartbeat` | `BIGINT` (PG/MySQL) / `INTEGER` (SQLite) | Last heartbeat as Unix seconds. |
+| `is_leader` | `BOOLEAN` (PG/MySQL) / `INTEGER` (SQLite, 0 or 1) | Whether this node is the displayed cluster leader. |
+
 ## Links between tables
 
 - `objects.id` is referenced by `read_access.id` and `tags.id`: one object can have many access rows and many tags.
 - `objects.wrapping_key_id` points to `objects.id`: a wrapping key is itself an object, and many objects can be wrapped by the same key.
 - `crls.issuer_id` logically references `objects.id` (the CA certificate): one CA has at most one current CRL row.
+- `gcm_invocations.object_id` logically references `objects.id` (an AES key): one key has at most one counter row.
 - `objects.owner` and `read_access.userid` hold user identifiers.
   Users are authenticated identities and are **not** stored in a dedicated table.
 - `parameters` and `crypto_officer_activations` are standalone and do not reference `objects`.
+- `cluster_nodes` is a standalone, ephemeral registry; it does not reference `objects`.
 
 These relationships are managed by the application layer (`crate/server_database/`) rather than database foreign-key constraints.
 

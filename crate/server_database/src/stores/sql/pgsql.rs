@@ -6,8 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -24,13 +24,14 @@ use tokio_postgres::types::{Json, ToSql};
 use uuid::Uuid;
 
 use crate::{
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
+            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
+            wait_for_migration_lock,
         },
         pgsql_queries,
         sql::{
@@ -375,14 +376,38 @@ macro_rules! get_pgsql_query {
 #[derive(Clone)]
 pub(crate) struct PgPool {
     pool: Pool,
+    lock_pool: Pool,
+}
+
+/// Dropping the detached client ends its session, which releases the advisory lock.
+pub(crate) struct PgMigrationLock {
+    _client: deadpool_postgres::ClientWrapper,
 }
 
 impl PgPool {
+    /// Do not expose connections until schema initialization and migrations have completed.
     pub(crate) async fn instantiate(
         connection_url: &str,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
+        Self::instantiate_at_version(
+            connection_url,
+            clear_database,
+            max_connections,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        .map(|(pool, _)| pool)
+    }
+
+    /// Explicit targets and applied steps make intermediate upgrades observable in scenario tests.
+    pub(crate) async fn instantiate_at_version(
+        connection_url: &str,
+        clear_database: bool,
+        max_connections: Option<u32>,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         let (url, tls) = prepare_pg_connection(connection_url)?;
 
         let mut cfg = PgConfig::new();
@@ -413,196 +438,109 @@ impl PgPool {
             ..Default::default()
         });
 
+        let mut lock_cfg = cfg.clone();
+        lock_cfg.pool = Some(deadpool_postgres::PoolConfig {
+            max_size: CRON_LOCK_CONNECTIONS,
+            ..Default::default()
+        });
         let pool = cfg
+            .create_pool(None, tls.clone())
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let lock_pool = lock_cfg
             .create_pool(None, tls)
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
 
-        let mut client = pool.get().await.map_err(DbError::from)?;
-        // Bootstrap schema if needed: create tables if they don't exist
-        let tmp_loader = Self { pool: pool.clone() };
-        for name in [
-            "create-table-parameters",
-            "create-table-objects",
-            "create-table-read_access",
-            "create-table-tags",
-            "create-table-crypto_officer_activations",
-            "create-table-crls",
-        ] {
-            let sql = tmp_loader.get_query(name)?;
-            client.batch_execute(sql).await.map_err(DbError::from)?;
-        }
-        // Ensure attributes column is jsonb (and convert if needed)
-        client
-            .batch_execute(
-                "ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;",
-            )
-            .await
-            .map_err(DbError::from)?;
-        // Add wrapping_key_id column if not present (idempotent).
-        client
-            .batch_execute(
-                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
-            )
-            .await
-            .map_err(DbError::from)?;
-        // Add activated_by column to crypto_officer_activations (idempotent).
-        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
-        client
-            .batch_execute(
-                "ALTER TABLE crypto_officer_activations \
-                 ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);",
-            )
-            .await
-            .map_err(DbError::from)?;
-        // Unique partial index: at most one active activation record per user.
-        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
-        client
-            .batch_execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active \
-                 ON crypto_officer_activations (activated_by) \
-                 WHERE revoked_at IS NULL;",
-            )
-            .await
-            .map_err(DbError::from)?;
-        // Create the read-path indexes (idempotent). PostgreSQL supports
-        // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
-        // They are built synchronously: on a large existing table, the first start
-        // after an upgrade blocks writes to `objects` while each new index builds.
-        for name in [
-            "create-index-objects-owner",
-            "create-index-objects-state",
-            "create-index-read_access-userid",
-            "create-index-objects-wrapping-key-id",
-            "create-index-tags-tag-id",
-            "create-index-objects-rotate-lookup",
-            "create-index-objects-rotate-auto",
-            "create-index-objects-type-state",
-        ] {
-            let sql = tmp_loader.get_query(name)?;
-            client.batch_execute(sql).await.map_err(DbError::from)?;
-        }
-        // One-time `wrapping_key_id` backfill for pre-existing objects, gated by a
-        // completion marker so the O(N) scan runs at most once per database. The
-        // scan, updates and marker share a transaction: an interrupted run leaves
-        // the marker unset and re-executes cleanly on the next boot.
-        let backfill_done = client
-            .query_opt(
-                get_pgsql_query!("select-parameter"),
-                &[&WRAPPING_KEY_BACKFILL_PARAM],
-            )
-            .await
-            .map_err(DbError::from)?
-            .map(|row| row.get::<usize, String>(0))
-            == Some("true".to_owned());
-        if !backfill_done {
-            let tx = client.transaction().await.map_err(DbError::from)?;
-            let update_stmt = tx
-                .prepare(get_pgsql_query!("update-wrapping-key-id"))
-                .await
-                .map_err(DbError::from)?;
-            let null_rows = tx
-                .query(get_pgsql_query!("select-objects-null-wrapping-key"), &[])
-                .await
-                .map_err(DbError::from)?;
-            for row in &null_rows {
-                let id: String = row.get(0);
-                let object_json: String = row.get(1);
-                match serde_json::from_str::<Object>(&object_json) {
-                    Ok(obj) => {
-                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                            tx.execute(&update_stmt, &[&wrapping_uid, &id])
-                                .await
-                                .map_err(DbError::from)?;
-                        }
-                    }
-                    Err(e) => tracing::warn!(
-                        uid = %id,
-                        error = %e,
-                        "wrapping_key_id backfill: skipping object that failed to deserialize"
-                    ),
-                }
-            }
-            tx.execute(
-                get_pgsql_query!("upsert-parameter"),
-                &[&WRAPPING_KEY_BACKFILL_PARAM, &"true"],
-            )
-            .await
-            .map_err(DbError::from)?;
-            tx.commit().await.map_err(DbError::from)?;
-        }
-        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
-        // existed, gated by a completion marker (same transactional shape as above).
-        let serial_backfill_done = client
-            .query_opt(
-                get_pgsql_query!("select-parameter"),
-                &[&CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-            )
-            .await
-            .map_err(DbError::from)?
-            .map(|row| row.get::<usize, String>(0))
-            == Some("true".to_owned());
-        if !serial_backfill_done {
-            let tx = client.transaction().await.map_err(DbError::from)?;
-            let missing_rows = tx
-                .query(
-                    get_pgsql_query!("select-certificates-missing-serial-tag"),
-                    &[],
-                )
-                .await
-                .map_err(DbError::from)?;
-            let insert_tag_stmt = tx
-                .prepare(get_pgsql_query!("insert-tags-if-absent"))
-                .await
-                .map_err(DbError::from)?;
-            for row in &missing_rows {
-                let id: String = row.get(0);
-                let object_json: String = row.get(1);
-                match serde_json::from_str::<Object>(&object_json) {
-                    Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&obj) {
-                            tx.execute(&insert_tag_stmt, &[&id, &tag])
-                                .await
-                                .map_err(DbError::from)?;
-                        }
-                    }
-                    Err(e) => tracing::warn!(
-                        uid = %id,
-                        error = %e,
-                        "serial tag backfill: skipping object that failed to deserialize"
-                    ),
-                }
-            }
-            tx.execute(
-                get_pgsql_query!("upsert-parameter"),
-                &[&CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, &"true"],
-            )
-            .await
-            .map_err(DbError::from)?;
-            tx.commit().await.map_err(DbError::from)?;
-        }
+        let pool = Self { pool, lock_pool };
+        let applied = pool.bootstrap(clear_database, target).await?;
+        Ok((pool, applied))
+    }
 
-        // Optionally clear any existing data (useful for tests)
-        if clear_database {
-            for name in [
-                // Remove dependent rows first to avoid potential constraints if present
-                "clean-table-read_access",
-                "clean-table-tags",
-                "clean-table-objects",
-                "clean-table-crls",
-            ] {
-                let sql = tmp_loader.get_query(name)?;
-                client.batch_execute(sql).await.map_err(DbError::from)?;
-            }
-            // Release the connection before requesting another one below — with a
-            // pool sized to a single connection, holding `client` here would
-            // self-deadlock the following `pg_get_client` calls.
-            drop(client);
-            let tmp = Self { pool: pool.clone() };
-            tmp.set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            tmp.set_db_state(DbState::Ready).await?;
+    /// Re-running the conversion on a `jsonb` column rebuilds every expression index on
+    /// `attributes` under an exclusive lock, so only a `json` column is converted.
+    async fn convert_attributes_to_jsonb(&self) -> DbResult<()> {
+        let client = pg_get_client(&self.pool).await?;
+        let is_jsonb: bool = client
+            .query_one(get_pgsql_query!("is-attributes-jsonb"), &[])
+            .await
+            .map_err(DbError::from)?
+            .try_get(0)
+            .map_err(DbError::from)?;
+        if !is_jsonb {
+            client
+                .batch_execute(get_pgsql_query!("alter-attributes-jsonb"))
+                .await
+                .map_err(DbError::from)?;
         }
-        Ok(Self { pool })
+        Ok(())
+    }
+
+    /// The scan and updates share a transaction, so an interrupted run leaves no partial backfill.
+    async fn backfill_wrapping_key_id(&self) -> DbResult<()> {
+        let mut client = pg_get_client(&self.pool).await?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        let update_stmt = tx
+            .prepare(get_pgsql_query!("update-wrapping-key-id"))
+            .await
+            .map_err(DbError::from)?;
+        let null_rows = tx
+            .query(get_pgsql_query!("select-objects-null-wrapping-key"), &[])
+            .await
+            .map_err(DbError::from)?;
+        for row in &null_rows {
+            let id: String = row.try_get(0).map_err(DbError::from)?;
+            let object_json: String = row.try_get(1).map_err(DbError::from)?;
+            match serde_json::from_str::<Object>(&object_json) {
+                Ok(obj) => {
+                    if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                        tx.execute(&update_stmt, &[&wrapping_uid, &id])
+                            .await
+                            .map_err(DbError::from)?;
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    uid = %id,
+                    error = %e,
+                    "wrapping_key_id backfill: skipping object that failed to deserialize"
+                ),
+            }
+        }
+        tx.commit().await.map_err(DbError::from)
+    }
+
+    /// Same transactional shape as the wrapping-key backfill.
+    async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let mut client = pg_get_client(&self.pool).await?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        let missing_rows = tx
+            .query(
+                get_pgsql_query!("select-certificates-missing-serial-tag"),
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?;
+        let insert_tag_stmt = tx
+            .prepare(get_pgsql_query!("insert-tags-if-absent"))
+            .await
+            .map_err(DbError::from)?;
+        for row in &missing_rows {
+            let id: String = row.try_get(0).map_err(DbError::from)?;
+            let object_json: String = row.try_get(1).map_err(DbError::from)?;
+            match serde_json::from_str::<Object>(&object_json) {
+                Ok(obj) => {
+                    if let Some(tag) = certificate_serial_tag(&id, &obj) {
+                        tx.execute(&insert_tag_stmt, &[&id, &tag])
+                            .await
+                            .map_err(DbError::from)?;
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    uid = %id,
+                    error = %e,
+                    "serial tag backfill: skipping object that failed to deserialize"
+                ),
+            }
+        }
+        tx.commit().await.map_err(DbError::from)
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
@@ -612,10 +550,98 @@ impl PgPool {
             .await
             .map_err(|e| DbError::DatabaseError(e.to_string()))?;
         client
-            .query_one("SELECT 1", &[])
+            .query_one(get_pgsql_query!("health-check"), &[])
             .await
             .map(|_| ())
             .map_err(|e| DbError::DatabaseError(e.to_string()))
+    }
+
+    pub(crate) async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        let client = self
+            .lock_pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let row = client
+            .query_one(get_pgsql_query!("try-cron-lock").as_str(), &[&lock_name])
+            .await
+            .map_err(DbError::from)?;
+        if row.get::<_, bool>(0) {
+            Ok(Some(Box::new(PgCronLock {
+                client: Some(client),
+                lock_name: lock_name.to_owned(),
+            })))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        if is_leader {
+            tx.execute(get_pgsql_query!("clear-cluster-leader").as_str(), &[])
+                .await
+                .map_err(DbError::from)?;
+        }
+        tx.execute(
+            get_pgsql_query!("upsert-cluster-node").as_str(),
+            &[&node_id, &version, &last_heartbeat, &is_leader],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)?;
+        // Outside the transaction: the leader's `clear-cluster-leader` locks every row, so a
+        // DELETE on stale rows inside the transaction could deadlock with another node's heartbeat.
+        client
+            .execute(
+                get_pgsql_query!("delete-stale-cluster-nodes").as_str(),
+                &[&stale_before],
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    pub(crate) async fn list_cluster_nodes(
+        &self,
+        minimum_heartbeat: i64,
+    ) -> DbResult<Vec<ClusterNode>> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let rows = client
+            .query(
+                get_pgsql_query!("select-live-cluster-nodes").as_str(),
+                &[&minimum_heartbeat],
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .iter()
+            .map(|row| ClusterNode {
+                node_id: row.get(0),
+                version: row.get(1),
+                last_heartbeat: row.get(2),
+                is_leader: row.get(3),
+            })
+            .collect())
     }
 
     /// Run a query built by the locate query builders and decode its
@@ -656,6 +682,46 @@ impl PgPool {
             }
             Ok(out)
         })
+    }
+}
+
+struct PgCronLock {
+    client: Option<deadpool_postgres::Object>,
+    lock_name: String,
+}
+
+// A session-level advisory lock outlives a pooled connection. If the job is cancelled or panics
+// before `release`, close the session instead of returning it to the pool still holding the lock.
+impl Drop for PgCronLock {
+    fn drop(&mut self) {
+        if let Some(client) = self.client.take() {
+            drop(deadpool_postgres::Object::take(client));
+        }
+    }
+}
+
+#[async_trait]
+impl ClusterLockGuard for PgCronLock {
+    async fn release(mut self: Box<Self>) -> DbResult<()> {
+        let Some(client) = self.client.as_ref() else {
+            return Ok(());
+        };
+        let row = client
+            .query_one(
+                get_pgsql_query!("release-cron-lock").as_str(),
+                &[&self.lock_name],
+            )
+            .await
+            .map_err(DbError::from)?;
+        if row.get::<_, bool>(0) {
+            // Unlocked cleanly: hand the connection back to the pool instead of closing it.
+            drop(self.client.take());
+            Ok(())
+        } else {
+            Err(DbError::DatabaseError(
+                "PostgreSQL cron advisory lock was not held during release".to_owned(),
+            ))
+        }
     }
 }
 
@@ -747,9 +813,11 @@ impl ObjectsStore for PgPool {
                 let state_str: String = row.get(4);
                 let state = State::try_from(state_str.as_str())
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
-                Ok(Some(ObjectWithMetadata::new(
-                    id, object, owner, state, attributes,
-                )))
+                let version: i64 = row.get(5);
+                Ok(Some(
+                    ObjectWithMetadata::new(id, object, owner, state, attributes)
+                        .with_version(u64::try_from(version).unwrap_or_default()),
+                ))
             } else {
                 Ok(None)
             }
@@ -931,17 +999,107 @@ impl ObjectsStore for PgPool {
                         }
                         uids.push(uid.clone());
                     }
-                    AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                    AtomicOperation::UpdateObject((uid, object, attributes, tags))
+                    | AtomicOperation::UpdateObjectIfVersion((uid, object, attributes, tags, _)) => {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attrs_param = Json(attributes);
                         let wrapping_key_id = object.wrapping_key_uid();
+                        if let AtomicOperation::UpdateObjectIfVersion((.., expected)) = op {
+                            let expected = i64::try_from(*expected)
+                                .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+                            let stmt = tx
+                                .prepare_cached(get_pgsql_query!(
+                                    "update-object-with-object-if-version"
+                                ))
+                                .await
+                                .map_err(DbError::from)?;
+                            let n = tx
+                                .execute(
+                                    &stmt,
+                                    &[
+                                        &object_json,
+                                        &attrs_param,
+                                        &wrapping_key_id,
+                                        &uid,
+                                        &expected,
+                                    ],
+                                )
+                                .await
+                                .map_err(DbError::from)?;
+                            if n == 0 {
+                                return Err(DbError::Conflict(format!(
+                                    "object '{uid}' was modified concurrently (expected version {expected})"
+                                )));
+                            }
+                        } else {
+                            let stmt = tx
+                                .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(
+                                &stmt,
+                                &[&object_json, &attrs_param, &wrapping_key_id, &uid],
+                            )
+                            .await
+                            .map_err(DbError::from)?;
+                        }
+                        if let Some(tags) = tags {
+                            let delete_stmt = tx
+                                .prepare_cached(get_pgsql_query!("delete-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            tx.execute(&delete_stmt, &[&uid])
+                                .await
+                                .map_err(DbError::from)?;
+                            let insert_stmt = tx
+                                .prepare_cached(get_pgsql_query!("insert-tags"))
+                                .await
+                                .map_err(DbError::from)?;
+                            for tag in tags {
+                                tx.execute(&insert_stmt, &[&uid, tag])
+                                    .await
+                                    .map_err(DbError::from)?;
+                            }
+                        }
+                        uids.push(uid.clone());
+                    }
+                    AtomicOperation::CompareAndSwapObject {
+                        uid,
+                        expected_version,
+                        object,
+                        attributes,
+                        tags,
+                    } => {
+                        let object_json = serde_json::to_string(object).map_err(DbError::from)?;
+                        let attrs_param = Json(attributes);
+                        let expected_version = i64::try_from(*expected_version)
+                            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+                        let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
-                            .prepare_cached(get_pgsql_query!("update-object-with-object"))
+                            .prepare_cached(get_pgsql_query!("update-object-if-owned-version"))
                             .await
                             .map_err(DbError::from)?;
-                        tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
+                        let destroyed_state = State::Destroyed.to_string();
+                        let destroyed_compromised_state = State::Destroyed_Compromised.to_string();
+                        let affected = tx
+                            .execute(
+                                &stmt,
+                                &[
+                                    &object_json,
+                                    &attrs_param,
+                                    &wrapping_key_id,
+                                    &uid,
+                                    &user,
+                                    &expected_version,
+                                    &destroyed_state,
+                                    &destroyed_compromised_state,
+                                ],
+                            )
                             .await
                             .map_err(DbError::from)?;
+                        if affected == 0 {
+                            return Err(DbError::Conflict(uid.clone()));
+                        }
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare_cached(get_pgsql_query!("delete-tags"))
@@ -1059,6 +1217,27 @@ impl ObjectsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(row.is_some())
+        })
+    }
+
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        pg_retry!(self.pool, |client| {
+            client
+                .execute(
+                    get_pgsql_query!("insert-parameter-if-absent"),
+                    &[&name, &value],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let row = client
+                .query_one(get_pgsql_query!("select-parameter"), &[&name])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(row.get::<usize, String>(0))
         })
     }
 
@@ -1266,6 +1445,38 @@ impl ObjectsStore for PgPool {
         })
     }
 
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        if invocations > GCM_MAX_INVOCATIONS {
+            return Ok(None);
+        }
+        // within the cap, so they fit an i64
+        let (invocations, max) = (invocations.cast_signed(), GCM_MAX_INVOCATIONS.cast_signed());
+        pg_retry!(self.pool, |client| {
+            let row = client
+                .query_opt(
+                    get_pgsql_query!("reserve-gcm-invocations"),
+                    &[&uid, &invocations, &max],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(row.map(|row| row.get::<_, i64>(0).cast_unsigned()))
+        })
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            client
+                .execute(get_pgsql_query!("delete-gcm-invocations"), &[&uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         pg_retry!(self.pool, |client| {
             // Filters on the ObjectType attribute; avoids parsing the object JSON.
@@ -1280,26 +1491,158 @@ impl ObjectsStore for PgPool {
 }
 
 #[async_trait(?Send)]
-impl Migrate for PgPool {
-    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+impl DbParameters for PgPool {
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+        let client = pg_get_client(&self.pool).await?;
+        let parameters_exist: bool = client
+            .query_one(get_pgsql_query!("has-table-parameters"), &[])
+            .await
+            .map_err(DbError::from)?
+            .try_get(0)
+            .map_err(DbError::from)?;
+        if !parameters_exist {
+            return Ok(None);
+        }
+        let row = client
+            .query_opt(get_pgsql_query!("select-parameter"), &[&name])
+            .await
+            .map_err(DbError::from)?;
+        row.map(|row| row.try_get(0).map_err(DbError::from))
+            .transpose()
+    }
+
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
         let client = pg_get_client(&self.pool).await?;
         let sql = get_pgsql_query!("upsert-parameter");
-        let state_json = serde_json::to_string(&state)?;
         client
-            .execute(sql, &[&"db_state", &state_json])
+            .execute(sql, &[&name, &value])
             .await
             .map_err(DbError::from)?;
         Ok(())
     }
+}
 
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
+#[async_trait(?Send)]
+impl Migrate for PgPool {
+    type MigrationLock = PgMigrationLock;
+
+    const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.0.0");
+    // SQL databases stopped recording `db_version` on normal startup in 5.15.0 (#646).
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.15.0");
+
+    async fn has_data(&self) -> DbResult<bool> {
         let client = pg_get_client(&self.pool).await?;
-        let sql = get_pgsql_query!("upsert-parameter");
+        Ok(client
+            .query_opt(get_pgsql_query!("has-objects"), &[])
+            .await
+            .map_err(DbError::from)?
+            .is_some())
+    }
+
+    async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
+        // Detached, so the pool slot is freed while the session (and the lock) lives on.
+        let client = deadpool_postgres::Object::take(pg_get_client(&self.pool).await?);
+        let lock_query = get_pgsql_query!("select-migration-advisory-lock");
+        wait_for_migration_lock(
+            "PostgreSQL advisory lock (1263358785, 2)",
+            MIGRATION_LOCK_TIMEOUT,
+            async || {
+                client
+                    .query_one(lock_query, &[])
+                    .await
+                    .and_then(|row| row.try_get(0))
+                    .map_err(DbError::from)
+            },
+        )
+        .await?;
+        Ok(PgMigrationLock { _client: client })
+    }
+
+    async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        let client = pg_get_client(&self.pool).await?;
+        // Bootstrap schema if needed: create tables if they don't exist
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+            "create-table-crypto_officer_activations",
+            "create-table-crls",
+            "create-table-gcm_invocations",
+            "create-table-cluster-nodes",
+        ] {
+            let sql = self.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Drop counters orphaned by an older KMS (downgrade then upgrade).
         client
-            .execute(sql, &[&"db_version", &version])
+            .batch_execute(self.get_query("purge-orphan-gcm-invocations")?)
             .await
             .map_err(DbError::from)?;
+        // Add wrapping_key_id column if not present (idempotent).
+        client
+            .batch_execute(self.get_query("add-column-wrapping-key-id")?)
+            .await
+            .map_err(DbError::from)?;
+        // Optimistic-locking version counter (idempotent).
+        client
+            .batch_execute(self.get_query("add-column-version")?)
+            .await
+            .map_err(DbError::from)?;
+        // Add activated_by column to crypto_officer_activations (idempotent).
+        // PostgreSQL supports ADD COLUMN IF NOT EXISTS since 9.6.
+        client
+            .batch_execute(self.get_query("add-column-co-activated-by")?)
+            .await
+            .map_err(DbError::from)?;
+        // Unique partial index: at most one active activation record per user.
+        // Prevents duplicate active records even under concurrent JoinSplitKey requests.
+        client
+            .batch_execute(self.get_query("create-unique-index-co-activations-active")?)
+            .await
+            .map_err(DbError::from)?;
+        // Create the read-path indexes (idempotent). PostgreSQL supports
+        // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        // They are built synchronously: on a large existing table, the first start
+        // after an upgrade blocks writes to `objects` while each new index builds.
+        for name in [
+            "create-index-objects-owner",
+            "create-index-objects-state",
+            "create-index-read_access-userid",
+            "create-index-objects-wrapping-key-id",
+            "create-index-tags-tag-id",
+            "create-index-objects-rotate-lookup",
+            "create-index-objects-rotate-auto",
+            "create-index-objects-type-state",
+        ] {
+            let sql = self.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Optionally clear any existing data (useful for tests)
+        if clear_database {
+            for name in [
+                // Remove dependent rows first to avoid potential constraints if present
+                "clean-table-read_access",
+                "clean-table-tags",
+                "clean-table-objects",
+                "clean-table-crls",
+                "clean-table-gcm_invocations",
+            ] {
+                let sql = self.get_query(name)?;
+                client.batch_execute(sql).await.map_err(DbError::from)?;
+            }
+        }
         Ok(())
+    }
+
+    async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
+        match step {
+            MigrationStep::AttributesJsonb => self.convert_attributes_to_jsonb().await,
+            MigrationStep::WrappingKeyIdBackfill => self.backfill_wrapping_key_id().await,
+            MigrationStep::CertificateSerialTagBackfill => {
+                self.backfill_certificate_serial_tags().await
+            }
+        }
     }
 }
 
@@ -1617,7 +1960,7 @@ impl PermissionsStore for PgPool {
     async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
         pg_retry!(self.pool, |client| {
             let rows = client
-                .query("SELECT MAX(crl_number) FROM crls", &[])
+                .query(get_pgsql_query!("select-max-crl-number"), &[])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             // MAX() returns one row; the value is NULL when the table is empty.
@@ -1998,11 +2341,12 @@ mod tests {
             .await
             .map_err(|e| e.to_string())?;
         tokio::spawn(connection);
+        let sql = pgsql_queries()
+            .map_err(|e| e.to_string())?
+            .get("select-pg-backend-ssl")
+            .ok_or_else(|| "select-pg-backend-ssl SQL query can't be found".to_owned())?;
         client
-            .query_one(
-                "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
-                &[],
-            )
+            .query_one(sql, &[])
             .await
             .map(|row| row.get(0))
             .map_err(|e| e.to_string())

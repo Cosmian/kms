@@ -25,10 +25,9 @@ cosmian_kms_crypto = { workspace = true }
 cosmian_logger = { workspace = true }
 der = { workspace = true, features = ["alloc", "oid", "std"] }
 hex = { workspace = true, features = ["std"] }
-log = { workspace = true, default-features = false }
 openssl = { workspace = true }
 pkcs11-sys = { workspace = true }
-strum_macros = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true }

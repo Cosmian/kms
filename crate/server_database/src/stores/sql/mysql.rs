@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -10,26 +11,27 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, InterfaceError, InterfaceResult, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
 use mysql_async::ClientIdentity;
-use mysql_async::{Pool, SslOpts, Transaction, prelude::*};
+use mysql_async::{Conn, Pool, SslOpts, Transaction, prelude::*};
 use rawsql::Loader;
 use serde_json::Value;
 use url::Url;
 use uuid::Uuid;
 
 use crate::{
+    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode, NoopClusterLockGuard},
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
     stores::{
         migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
+            DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
+            wait_for_migration_lock,
         },
         mysql_queries,
         sql::{
@@ -47,6 +49,52 @@ use crate::{
 
 // Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
 const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
+
+fn validate_client_identity_parameters(
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<()> {
+    if identity_path.is_none() && identity_password.is_some() {
+        return Err(DbError::DatabaseError(
+            "ssl-client-identity-password requires ssl-client-identity".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "non-fips")]
+fn configure_client_identity(
+    mut ssl_opts: SslOpts,
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<SslOpts> {
+    validate_client_identity_parameters(identity_path, identity_password)?;
+    if let Some(path) = identity_path {
+        let mut identity = ClientIdentity::new(PathBuf::from(path).into());
+        if let Some(password) = identity_password {
+            identity = identity.with_password(password.to_owned());
+        }
+        ssl_opts = ssl_opts.with_client_identity(Some(identity));
+    }
+    Ok(ssl_opts)
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn configure_client_identity(
+    ssl_opts: SslOpts,
+    identity_path: Option<&str>,
+    identity_password: Option<&str>,
+) -> DbResult<SslOpts> {
+    validate_client_identity_parameters(identity_path, identity_password)?;
+    if identity_path.is_some() || identity_password.is_some() {
+        return Err(DbError::DatabaseError(
+            "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure \
+             MySQL without client identity."
+                .to_owned(),
+        ));
+    }
+    Ok(ssl_opts)
+}
 
 fn is_mysql_deadlock(msg: &str) -> bool {
     // Match common forms from MySQL/MariaDB drivers and servers
@@ -91,9 +139,27 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
     let attributes: Attributes =
         serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
     let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
-    Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
-    ))
+    let version: u64 = row.get(5).context("missing version")?;
+    Ok(ObjectWithMetadata::new(id, object, owner, state, attributes).with_version(version))
+}
+
+/// MySQL error codes meaning "this column / key already exists" (`ER_DUP_FIELDNAME`, `ER_DUP_KEYNAME`).
+const MYSQL_ALREADY_EXISTS_CODES: [u16; 2] = [1060, 1061];
+
+/// Set once the "`GET_LOCK` refused" warning has been logged, so a refusing server does not flood
+/// the log at every cron tick.
+static GET_LOCK_REFUSED_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Run a schema-changing statement that MySQL cannot make `IF NOT EXISTS`. Several nodes may
+/// bootstrap the same fresh database at once: another node creating the column or index between
+/// our existence check and this statement is a success, not a failure.
+async fn ddl_if_missing(conn: &mut mysql_async::Conn, sql: &str) -> DbResult<()> {
+    match conn.query_drop(sql).await {
+        Err(mysql_async::Error::Server(e)) if MYSQL_ALREADY_EXISTS_CODES.contains(&e.code) => {
+            Ok(())
+        }
+        other => other.map_err(DbError::from),
+    }
 }
 
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
@@ -101,14 +167,39 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
 #[derive(Clone)]
 pub(crate) struct MySqlPool {
     pool: Pool,
+    lock_pool: Pool,
+}
+
+/// Dropping the dedicated connection disconnects it: the server rolls back the open
+/// transaction, which releases the lock row.
+pub(crate) struct MySqlMigrationLock {
+    _conn: Conn,
 }
 
 impl MySqlPool {
+    /// Do not expose connections until schema initialization and migrations have completed.
     pub(crate) async fn instantiate(
         connection_url: &str,
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
+        Self::instantiate_at_version(
+            connection_url,
+            clear_database,
+            max_connections,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await
+        .map(|(pool, _)| pool)
+    }
+
+    /// Explicit targets and applied steps make intermediate upgrades observable in scenario tests.
+    pub(crate) async fn instantiate_at_version(
+        connection_url: &str,
+        clear_database: bool,
+        max_connections: Option<u32>,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         // Parse URL for TLS parameters first
         let url = Url::parse(connection_url)
             .map_err(|e| DbError::DatabaseError(format!("Invalid MySQL URL: {e}")))?;
@@ -170,44 +261,17 @@ impl MySqlPool {
                         }
                     }
 
-                    // For mTLS client authentication:
-                    // In non-fips builds with native-tls backend, support PKCS12 identity via ssl-client-identity
-                    #[cfg(feature = "non-fips")]
-                    {
-                        if let Some(p12_path) = query_params
+                    ssl_opts = configure_client_identity(
+                        ssl_opts,
+                        query_params
                             .get("ssl-client-identity")
                             .or_else(|| query_params.get("ssl_client_identity"))
-                        {
-                            let password = query_params
-                                .get("ssl-client-identity-password")
-                                .or_else(|| query_params.get("ssl_client_identity_password"))
-                                .map(std::string::ToString::to_string);
-
-                            let mut identity =
-                                ClientIdentity::new(PathBuf::from(p12_path.as_ref()).into());
-                            if let Some(pass) = password {
-                                identity = identity.with_password(pass);
-                            }
-                            ssl_opts = ssl_opts.with_client_identity(Some(identity));
-                        }
-                    }
-                    // In FIPS builds, reject PKCS12 client identity parameters explicitly
-                    #[cfg(not(feature = "non-fips"))]
-                    {
-                        if query_params
-                            .get("ssl-client-identity")
-                            .or_else(|| query_params.get("ssl_client_identity"))
-                            .is_some()
-                            || query_params
-                                .get("ssl-client-identity-password")
-                                .or_else(|| query_params.get("ssl_client_identity_password"))
-                                .is_some()
-                        {
-                            return Err(DbError::DatabaseError(
-                                "PKCS12 client identity is prohibited in FIPS mode. Use non-FIPS mode or configure MySQL without client identity.".to_owned(),
-                            ));
-                        }
-                    }
+                            .map(AsRef::as_ref),
+                        query_params
+                            .get("ssl-client-identity-password")
+                            .or_else(|| query_params.get("ssl_client_identity_password"))
+                            .map(AsRef::as_ref),
+                    )?;
 
                     opts = mysql_async::OptsBuilder::from_opts(opts)
                         .ssl_opts(Some(ssl_opts))
@@ -235,217 +299,180 @@ impl MySqlPool {
             .and_then(|v| usize::try_from(v).ok())
             .unwrap_or(default_conns);
 
-        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts);
+        let mut opts_builder = mysql_async::OptsBuilder::from_opts(opts.clone());
         let pool_constraints = mysql_async::PoolConstraints::new(0, max_conns)
             .ok_or_else(|| DbError::DatabaseError("Invalid pool constraints".to_owned()))?;
         opts_builder = opts_builder
             .pool_opts(mysql_async::PoolOpts::default().with_constraints(pool_constraints));
 
+        let lock_pool_constraints = mysql_async::PoolConstraints::new(0, CRON_LOCK_CONNECTIONS)
+            .ok_or_else(|| DbError::DatabaseError("Invalid lock pool constraints".to_owned()))?;
+        let lock_opts = mysql_async::OptsBuilder::from_opts(opts)
+            .pool_opts(mysql_async::PoolOpts::default().with_constraints(lock_pool_constraints));
+        let lock_pool = Pool::new(lock_opts);
         let pool = Pool::new(opts_builder);
 
-        let queries = mysql_queries()?;
-        // Bootstrap: create tables if they don't exist
-        let mut conn = pool.get_conn().await.map_err(DbError::from)?;
-        for name in [
-            "create-table-parameters",
-            "create-table-objects",
-            "create-table-read_access",
-            "create-table-tags",
-            "create-table-crypto_officer_activations",
-            "create-table-crls",
-        ] {
-            let sql = queries
-                .get(name)
-                .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
-            conn.query_drop(sql).await.map_err(DbError::from)?;
-        }
+        let pool = Self { pool, lock_pool };
+        let applied = pool.bootstrap(clear_database, target).await?;
+        Ok((pool, applied))
+    }
 
-        // Optional: clear database content for tests to ensure isolation
-        if clear_database {
-            for name in [
-                "clean-table-objects",
-                "clean-table-read_access",
-                "clean-table-tags",
-                "clean-table-crls",
-            ] {
-                if let Some(sql) = queries.get(name) {
-                    conn.query_drop(sql).await.map_err(DbError::from)?;
-                }
-            }
-        }
-
-        // Add wrapping_key_id column if not present.
-        // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
-        // so we check with SHOW COLUMNS first.
-        let has_col_sql = queries.get("has-column-wrapping-key-id").ok_or_else(|| {
-            DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
-        })?;
-        let rows: Vec<mysql_async::Row> = conn.query(has_col_sql).await.map_err(DbError::from)?;
-        if rows.is_empty() {
-            let add_col = queries.get("add-column-wrapping-key-id").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: add-column-wrapping-key-id".to_owned())
-            })?;
-            conn.query_drop(add_col).await.map_err(DbError::from)?;
-        }
-
-        // Add activated_by column to crypto_officer_activations if not present.
-        // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
-        let has_co_col_sql = queries.get("has-column-co-activated-by").ok_or_else(|| {
-            DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
-        })?;
-        let co_col_rows: Vec<mysql_async::Row> =
-            conn.query(has_co_col_sql).await.map_err(DbError::from)?;
-        if co_col_rows.is_empty() {
-            let add_co_col = queries.get("add-column-co-activated-by").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: add-column-co-activated-by".to_owned())
-            })?;
-            conn.query_drop(add_co_col).await.map_err(DbError::from)?;
-        }
-        // Note: MySQL does not support partial (filtered) unique indexes.
-        // Uniqueness of active activations per user is enforced at the application
-        // layer in database_permissions.rs::activate_crypto_officer_ceremony, which
-        // revokes any existing active record for the same user before inserting.
-
-        // Ensure the read-path indexes exist. MySQL 8.0 has no
-        // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
-        let has_index_sql = queries
-            .get("has-index")
-            .ok_or_else(|| DbError::DatabaseError("Missing SQL query: has-index".to_owned()))?;
-        for (table, index_name, create_name) in [
-            ("objects", "idx_objects_owner", "create-index-objects-owner"),
-            ("objects", "idx_objects_state", "create-index-objects-state"),
-            (
-                "read_access",
-                "idx_read_access_userid",
-                "create-index-read_access-userid",
-            ),
-            (
-                "objects",
-                "idx_objects_wrapping_key_id",
-                "create-index-objects-wrapping-key-id",
-            ),
-            ("tags", "idx_tags_tag_id", "create-index-tags-tag-id"),
-        ] {
-            let existing: Vec<mysql_async::Row> = conn
-                .exec(has_index_sql, (table, index_name))
-                .await
-                .map_err(DbError::from)?;
-            if existing.is_empty() {
-                let create_sql = queries.get(create_name).ok_or_else(|| {
-                    DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
-                })?;
-                conn.query_drop(create_sql).await.map_err(DbError::from)?;
-            }
-        }
-
-        // One-time `wrapping_key_id` backfill, gated by a completion marker so the
-        // O(N) scan runs at most once per database instead of on every startup.
-        // MySQL has no transactional DDL, but the column is already ensured above;
-        // if the process dies mid-backfill the marker stays unset and the scan
-        // re-runs cleanly on the next boot.
-        let select_param = queries.get("select-parameter").ok_or_else(|| {
-            DbError::DatabaseError("Missing SQL query: select-parameter".to_owned())
-        })?;
-        let backfill_marker: Option<String> = conn
-            .exec_first(select_param, (WRAPPING_KEY_BACKFILL_PARAM,))
+    /// `MySQL` has no transactional DDL and the scan runs in autocommit: an interrupted run
+    /// leaves its marker unset, and the idempotent scan re-runs cleanly on the next start.
+    async fn backfill_wrapping_key_id(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let update_sql = get_mysql_query!("update-wrapping-key-id");
+        let null_rows: Vec<(String, String)> = conn
+            .query(get_mysql_query!("select-objects-null-wrapping-key"))
             .await
             .map_err(DbError::from)?;
-        if backfill_marker.as_deref() != Some("true") {
-            let select_sql = queries
-                .get("select-objects-null-wrapping-key")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: select-objects-null-wrapping-key".to_owned(),
-                    )
-                })?;
-            let update_sql = queries.get("update-wrapping-key-id").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: update-wrapping-key-id".to_owned())
-            })?;
-            let null_rows: Vec<(String, String)> =
-                conn.query(select_sql).await.map_err(DbError::from)?;
-            for (id, object_json) in &null_rows {
-                match serde_json::from_str::<Object>(object_json) {
-                    Ok(obj) => {
-                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                            conn.exec_drop(update_sql, (&wrapping_uid, id))
-                                .await
-                                .map_err(DbError::from)?;
-                        }
+        for (id, object_json) in &null_rows {
+            match serde_json::from_str::<Object>(object_json) {
+                Ok(obj) => {
+                    if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                        conn.exec_drop(update_sql, (&wrapping_uid, id))
+                            .await
+                            .map_err(DbError::from)?;
                     }
-                    Err(e) => warn!(
-                        "wrapping_key_id backfill: skipping object {id} that failed to \
-                         deserialize: {e}"
-                    ),
                 }
+                Err(e) => warn!(
+                    "wrapping_key_id backfill: skipping object {id} that failed to \
+                     deserialize: {e}"
+                ),
             }
-            let upsert_param = queries.get("upsert-parameter").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
-            })?;
-            conn.exec_drop(upsert_param, (WRAPPING_KEY_BACKFILL_PARAM, "true"))
-                .await
-                .map_err(DbError::from)?;
         }
+        Ok(())
+    }
 
-        // One-time `_serial=<HEX>` tag backfill for certificates stored before that tag
-        // existed, gated by a completion marker (same shape as above).
-        let serial_marker: Option<String> = conn
-            .exec_first(select_param, (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,))
+    /// Same autocommit shape as the wrapping-key backfill; `INSERT IGNORE` keeps it idempotent.
+    async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let insert_sql = get_mysql_query!("insert-tags-if-absent");
+        let missing_rows: Vec<(String, String)> = conn
+            .query(get_mysql_query!("select-certificates-missing-serial-tag"))
             .await
             .map_err(DbError::from)?;
-        if serial_marker.as_deref() != Some("true") {
-            let select_sql = queries
-                .get("select-certificates-missing-serial-tag")
-                .ok_or_else(|| {
-                    DbError::DatabaseError(
-                        "Missing SQL query: select-certificates-missing-serial-tag".to_owned(),
-                    )
-                })?;
-            let insert_sql = queries.get("insert-tags-if-absent").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: insert-tags-if-absent".to_owned())
-            })?;
-            let missing_rows: Vec<(String, String)> =
-                conn.query(select_sql).await.map_err(DbError::from)?;
-            for (id, object_json) in &missing_rows {
-                match serde_json::from_str::<Object>(object_json) {
-                    Ok(obj) => {
-                        if let Some(tag) = certificate_serial_tag(&obj) {
-                            conn.exec_drop(insert_sql, (id, &tag))
-                                .await
-                                .map_err(DbError::from)?;
-                        }
+        for (id, object_json) in &missing_rows {
+            match serde_json::from_str::<Object>(object_json) {
+                Ok(obj) => {
+                    if let Some(tag) = certificate_serial_tag(id, &obj) {
+                        conn.exec_drop(insert_sql, (id, &tag))
+                            .await
+                            .map_err(DbError::from)?;
                     }
-                    Err(e) => warn!(
-                        "serial tag backfill: skipping object {id} that failed to \
-                         deserialize: {e}"
-                    ),
                 }
+                Err(e) => warn!(
+                    "serial tag backfill: skipping object {id} that failed to \
+                     deserialize: {e}"
+                ),
             }
-            let upsert_param = queries.get("upsert-parameter").ok_or_else(|| {
-                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
-            })?;
-            conn.exec_drop(
-                upsert_param,
-                (CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, "true"),
-            )
-            .await
-            .map_err(DbError::from)?;
         }
-
-        let this = Self { pool };
-
-        // On clear or first boot, update metadata (non-fips only)
-        if clear_database {
-            this.set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            this.set_db_state(DbState::Ready).await?;
-        }
-
-        Ok(this)
+        Ok(())
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SELECT 1").await.map_err(DbError::from)
+        conn.query_drop(get_mysql_query!("health-check"))
+            .await
+            .map_err(DbError::from)
+    }
+
+    pub(crate) async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
+        // NULL (a GET_LOCK internal error) must not panic the row conversion.
+        let acquired: Option<Option<i64>> = match conn
+            .exec_first(get_mysql_query!("try-cron-lock"), (lock_name,))
+            .await
+        {
+            Ok(acquired) => acquired,
+            // Percona XtraDB Cluster refuses GET_LOCK in its default strict mode: run the job on
+            // every node, as with Redis, rather than on none.
+            Err(mysql_async::Error::Server(e))
+                if e.code == 1105 && e.message.contains("GET_LOCK") =>
+            {
+                if !GET_LOCK_REFUSED_WARNED.swap(true, Ordering::Relaxed) {
+                    warn!(
+                        "The database refuses GET_LOCK ({}): scheduled jobs are not coordinated and run on every node",
+                        e.message
+                    );
+                }
+                return Ok(Some(Box::new(NoopClusterLockGuard)));
+            }
+            Err(e) => return Err(DbError::from(e)),
+        };
+        match acquired.flatten() {
+            Some(1) => Ok(Some(Box::new(MySqlCronLock {
+                conn,
+                lock_name: lock_name.to_owned(),
+            }))),
+            Some(0) => Ok(None),
+            _ => Err(DbError::DatabaseError(
+                "MySQL GET_LOCK returned an unexpected result".to_owned(),
+            )),
+        }
+    }
+
+    pub(crate) async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let mut tx = conn
+            .start_transaction(mysql_async::TxOpts::default())
+            .await
+            .map_err(DbError::from)?;
+        if is_leader {
+            tx.query_drop(get_mysql_query!("clear-cluster-leader"))
+                .await
+                .map_err(DbError::from)?;
+        }
+        tx.exec_drop(
+            get_mysql_query!("upsert-cluster-node"),
+            (node_id, version, last_heartbeat, is_leader),
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)?;
+        // Outside the transaction: this full scan would otherwise wait on another node's row
+        // while holding ours, and two concurrent heartbeats would deadlock.
+        conn.exec_drop(
+            get_mysql_query!("delete-stale-cluster-nodes"),
+            (stale_before,),
+        )
+        .await
+        .map_err(DbError::from)
+    }
+
+    pub(crate) async fn list_cluster_nodes(
+        &self,
+        minimum_heartbeat: i64,
+    ) -> DbResult<Vec<ClusterNode>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let rows: Vec<(String, String, i64, i8)> = conn
+            .exec(
+                get_mysql_query!("select-live-cluster-nodes"),
+                (minimum_heartbeat,),
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(node_id, version, last_heartbeat, is_leader)| ClusterNode {
+                    node_id,
+                    version,
+                    last_heartbeat,
+                    is_leader: is_leader != 0,
+                },
+            )
+            .collect())
     }
 
     // Helper to obtain a pooled connection and configure session settings consistently
@@ -453,13 +480,37 @@ impl MySqlPool {
     // - Lock wait timeout: 10s (avoid long stalls under contention)
     async fn get_configured_conn(&self) -> DbResult<mysql_async::Conn> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
-        conn.query_drop("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        conn.query_drop(get_mysql_query!("set-session-isolation-read-committed"))
             .await
             .map_err(DbError::from)?;
-        conn.query_drop("SET SESSION innodb_lock_wait_timeout=10")
+        conn.query_drop(get_mysql_query!("set-session-lock-wait-timeout"))
             .await
             .map_err(DbError::from)?;
         Ok(conn)
+    }
+}
+
+struct MySqlCronLock {
+    conn: mysql_async::Conn,
+    lock_name: String,
+}
+
+#[async_trait]
+impl ClusterLockGuard for MySqlCronLock {
+    async fn release(mut self: Box<Self>) -> DbResult<()> {
+        // NULL (lock not held) must reach the error branch, not panic the row conversion.
+        let released: Option<Option<i64>> = self
+            .conn
+            .exec_first(get_mysql_query!("release-cron-lock"), (&self.lock_name,))
+            .await
+            .map_err(DbError::from)?;
+        if released.flatten() == Some(1) {
+            Ok(())
+        } else {
+            Err(DbError::DatabaseError(
+                "MySQL cron named lock was not held during release".to_owned(),
+            ))
+        }
     }
 }
 
@@ -582,7 +633,7 @@ impl ObjectsStore for MySqlPool {
             attributes: &Attributes,
             tags: Option<&HashSet<String>>,
         ) -> DbResult<()> {
-            update_object_(uid, object, attributes, tags, tx).await
+            update_object_(uid, object, attributes, tags, None, tx).await
         }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         for attempt in 0..max_retries {
@@ -784,6 +835,25 @@ impl ObjectsStore for MySqlPool {
         Ok(is_object_owned_by_(uid, owner, &self.pool).await?)
     }
 
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("insert-parameter-if-absent"),
+            (name, value),
+        )
+        .await
+        .map_err(DbError::from)?;
+        let stored: Option<String> = conn
+            .exec_first(get_mysql_query!("select-parameter"), (name,))
+            .await
+            .map_err(DbError::from)?;
+        Ok(stored.ok_or_else(|| DbError::DatabaseError(format!("parameter {name} not stored")))?)
+    }
+
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         Ok(list_uids_for_tags_(tags, &self.pool).await?)
     }
@@ -956,6 +1026,51 @@ impl ObjectsStore for MySqlPool {
         Ok(count.unwrap_or(0))
     }
 
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        if invocations > GCM_MAX_INVOCATIONS {
+            return Ok(None);
+        }
+        for attempt in 0..MYSQL_DEADLOCK_MAX_RETRIES {
+            let mut conn = self.get_configured_conn().await?;
+            let mut tx = conn
+                .start_transaction(mysql_async::TxOpts::default())
+                .await
+                .map_err(DbError::from)?;
+            let outcome = match reserve_gcm_invocations_(uid, invocations, &mut tx).await {
+                Ok(total) => tx.commit().await.map(|()| total).map_err(DbError::from),
+                Err(e) => {
+                    tx.rollback().await.map_err(DbError::from)?;
+                    Err(e)
+                }
+            };
+            match outcome {
+                Ok(total) => return Ok(total),
+                Err(DbError::SqlError(msg) | DbError::DatabaseError(msg))
+                    if is_mysql_deadlock(&msg) && attempt + 1 < MYSQL_DEADLOCK_MAX_RETRIES =>
+                {
+                    tokio::time::sleep(Duration::from_millis(mysql_deadlock_backoff_ms(attempt)))
+                        .await;
+                }
+                Err(e) => return Err(InterfaceError::from(e)),
+            }
+        }
+        Err(InterfaceError::from(DbError::DatabaseError(
+            "too much contention: too many attempts".to_owned(),
+        )))
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(get_mysql_query!("delete-gcm-invocations"), (uid,))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
         // Filters on the ObjectType attribute instead of parsing the full
@@ -969,24 +1084,224 @@ impl ObjectsStore for MySqlPool {
 }
 
 #[async_trait(?Send)]
-impl Migrate for MySqlPool {
-    async fn set_db_state(&self, state: DbState) -> DbResult<()> {
+impl DbParameters for MySqlPool {
+    async fn get_parameter(&self, name: &str) -> DbResult<Option<String>> {
+        let mut conn = self.get_configured_conn().await?;
+        if conn
+            .query_first::<mysql_async::Row, _>(get_mysql_query!("has-table-parameters"))
+            .await
+            .map_err(DbError::from)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        conn.exec_first(get_mysql_query!("select-parameter"), (name,))
+            .await
+            .map_err(DbError::from)
+    }
+
+    async fn set_parameter(&self, name: &str, value: &str) -> DbResult<()> {
         let mut conn = self.get_configured_conn().await?;
         let sql = get_mysql_query!("upsert-parameter");
-        let state_json = serde_json::to_string(&state)?;
-        conn.exec_drop(sql, ("db_state", state_json))
+        conn.exec_drop(sql, (name, value))
             .await
             .map_err(DbError::from)?;
         Ok(())
     }
+}
 
-    async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
-        let mut conn = self.get_configured_conn().await?;
-        let sql = get_mysql_query!("upsert-parameter");
-        conn.exec_drop(sql, ("db_version", version))
+#[async_trait(?Send)]
+impl Migrate for MySqlPool {
+    type MigrationLock = MySqlMigrationLock;
+
+    const MIN_RECORDED_VERSION: Option<&'static str> = Some("5.0.0");
+    // SQL databases stopped recording `db_version` on normal startup in 5.15.0 (#646).
+    const UNVERSIONED_BASELINE: Option<&'static str> = Some("5.15.0");
+
+    async fn has_data(&self) -> DbResult<bool> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        Ok(conn
+            .query_first::<mysql_async::Row, _>(get_mysql_query!("has-objects"))
+            .await
+            .map_err(DbError::from)?
+            .is_some())
+    }
+
+    async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
+        // Unpooled (same options, TLS included), so the pool slot is freed while the
+        // session (and the row lock) lives on.
+        let pooled = self.pool.get_conn().await.map_err(DbError::from)?;
+        let mut conn = Conn::new(pooled.opts().clone())
             .await
             .map_err(DbError::from)?;
+        drop(pooled);
+        conn.query_drop(get_mysql_query!("create-table-migration-lock"))
+            .await
+            .map_err(DbError::from)?;
+        let has_row = get_mysql_query!("has-migration-lock-row");
+        let insert_row = get_mysql_query!("insert-migration-lock-row");
+        let lock_row = get_mysql_query!("select-migration-lock");
+        wait_for_migration_lock(
+            "MySQL table kms_migration_lock",
+            MIGRATION_LOCK_TIMEOUT,
+            async || {
+                let attempt = async {
+                    // Only insert when a plain read misses the row: `INSERT IGNORE` on a row
+                    // another instance holds waits out `innodb_lock_wait_timeout`.
+                    if conn
+                        .query_first::<mysql_async::Row, _>(has_row)
+                        .await?
+                        .is_none()
+                    {
+                        conn.query_drop(insert_row).await?;
+                    }
+                    conn.query_drop("START TRANSACTION").await?;
+                    conn.query_first::<mysql_async::Row, _>(lock_row).await
+                }
+                .await;
+                match attempt {
+                    Ok(row) => Ok(row.is_some()),
+                    // ER_LOCK_NOWAIT (MySQL, Percona) or ER_LOCK_WAIT_TIMEOUT (MariaDB NOWAIT,
+                    // or a first-start insert racing another instance): held elsewhere.
+                    Err(mysql_async::Error::Server(e)) if matches!(e.code, 1205 | 3572) => {
+                        conn.query_drop("ROLLBACK").await.map_err(DbError::from)?;
+                        Ok(false)
+                    }
+                    Err(e) => Err(DbError::from(e)),
+                }
+            },
+        )
+        .await?;
+        Ok(MySqlMigrationLock { _conn: conn })
+    }
+
+    async fn ensure_schema(&self, clear_database: bool) -> DbResult<()> {
+        let queries = mysql_queries()?;
+        // Bootstrap: create tables if they don't exist
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        for name in [
+            "create-table-parameters",
+            "create-table-objects",
+            "create-table-read_access",
+            "create-table-tags",
+            "create-table-crypto_officer_activations",
+            "create-table-crls",
+            "create-table-gcm_invocations",
+            "create-table-cluster-nodes",
+        ] {
+            let sql = queries
+                .get(name)
+                .ok_or_else(|| DbError::DatabaseError(format!("Missing SQL query: {name}")))?;
+            conn.query_drop(sql).await.map_err(DbError::from)?;
+        }
+        // Drop counters orphaned by an older KMS (downgrade then upgrade).
+        let purge_sql = queries.get("purge-orphan-gcm-invocations").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: purge-orphan-gcm-invocations".to_owned())
+        })?;
+        conn.query_drop(purge_sql).await.map_err(DbError::from)?;
+
+        // Add wrapping_key_id column if not present.
+        // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
+        // so we check with SHOW COLUMNS first.
+        let has_col_sql = queries.get("has-column-wrapping-key-id").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
+        })?;
+        let rows: Vec<mysql_async::Row> = conn.query(has_col_sql).await.map_err(DbError::from)?;
+        if rows.is_empty() {
+            let add_col = queries.get("add-column-wrapping-key-id").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-wrapping-key-id".to_owned())
+            })?;
+            ddl_if_missing(&mut conn, add_col).await?;
+        }
+
+        // Add the optimistic-locking `version` column if not present (same reason as above).
+        let has_version_sql = queries.get("has-column-version").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-version".to_owned())
+        })?;
+        let rows: Vec<mysql_async::Row> =
+            conn.query(has_version_sql).await.map_err(DbError::from)?;
+        if rows.is_empty() {
+            let add_col = queries.get("add-column-version").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-version".to_owned())
+            })?;
+            ddl_if_missing(&mut conn, add_col).await?;
+        }
+
+        // Add activated_by column to crypto_officer_activations if not present.
+        // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS.
+        let has_co_col_sql = queries.get("has-column-co-activated-by").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: has-column-co-activated-by".to_owned())
+        })?;
+        let co_col_rows: Vec<mysql_async::Row> =
+            conn.query(has_co_col_sql).await.map_err(DbError::from)?;
+        if co_col_rows.is_empty() {
+            let add_co_col = queries.get("add-column-co-activated-by").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: add-column-co-activated-by".to_owned())
+            })?;
+            ddl_if_missing(&mut conn, add_co_col).await?;
+        }
+        // Note: MySQL does not support partial (filtered) unique indexes.
+        // Uniqueness of active activations per user is enforced at the application
+        // layer in database_permissions.rs::activate_crypto_officer_ceremony, which
+        // revokes any existing active record for the same user before inserting.
+
+        // Ensure the read-path indexes exist. MySQL 8.0 has no
+        // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
+        let has_index_sql = queries
+            .get("has-index")
+            .ok_or_else(|| DbError::DatabaseError("Missing SQL query: has-index".to_owned()))?;
+        for (table, index_name, create_name) in [
+            ("objects", "idx_objects_owner", "create-index-objects-owner"),
+            ("objects", "idx_objects_state", "create-index-objects-state"),
+            (
+                "read_access",
+                "idx_read_access_userid",
+                "create-index-read_access-userid",
+            ),
+            (
+                "objects",
+                "idx_objects_wrapping_key_id",
+                "create-index-objects-wrapping-key-id",
+            ),
+            ("tags", "idx_tags_tag_id", "create-index-tags-tag-id"),
+        ] {
+            let existing: Vec<mysql_async::Row> = conn
+                .exec(has_index_sql, (table, index_name))
+                .await
+                .map_err(DbError::from)?;
+            if existing.is_empty() {
+                let create_sql = queries.get(create_name).ok_or_else(|| {
+                    DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
+                })?;
+                ddl_if_missing(&mut conn, create_sql).await?;
+            }
+        }
+
+        // Optional: clear database content for tests to ensure isolation
+        if clear_database {
+            for name in [
+                "clean-table-objects",
+                "clean-table-read_access",
+                "clean-table-tags",
+                "clean-table-crls",
+                "clean-table-gcm_invocations",
+            ] {
+                if let Some(sql) = queries.get(name) {
+                    conn.query_drop(sql).await.map_err(DbError::from)?;
+                }
+            }
+        }
         Ok(())
+    }
+
+    async fn apply_step(&self, step: MigrationStep) -> DbResult<()> {
+        match step {
+            MigrationStep::AttributesJsonb => Ok(()),
+            MigrationStep::WrappingKeyIdBackfill => self.backfill_wrapping_key_id().await,
+            MigrationStep::CertificateSerialTagBackfill => {
+                self.backfill_certificate_serial_tags().await
+            }
+        }
     }
 }
 
@@ -1182,7 +1497,7 @@ impl PermissionsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         let row_opt: Option<mysql_async::Row> = conn
-            .exec_first("SELECT MAX(crl_number) FROM crls", ())
+            .exec_first(get_mysql_query!("select-max-crl-number"), ())
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         // MAX() returns one row; the value is NULL when the table is empty.
@@ -1256,11 +1571,14 @@ async fn retrieve_tags_(uid: &str, pool: &Pool) -> DbResult<HashSet<String>> {
     Ok(tags)
 }
 
+/// Update an object; when `expected_version` is set, only if the stored version matches,
+/// else `DbError::Conflict`.
 pub(super) async fn update_object_(
     uid: &str,
     object: &Object,
     attributes: &Attributes,
     tags: Option<&HashSet<String>>,
+    expected_version: Option<u64>,
     tx: &mut Transaction<'_>,
 ) -> DbResult<()> {
     let object_json = serde_json::to_string(object).map_err(|e| {
@@ -1273,12 +1591,28 @@ pub(super) async fn update_object_(
 
     let wrapping_key_id = object.wrapping_key_uid();
 
-    tx.exec_drop(
-        get_mysql_query!("update-object-with-object"),
-        (object_json, attributes_json, wrapping_key_id, uid),
-    )
-    .await
-    .map_err(DbError::from)?;
+    if let Some(version) = expected_version {
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object-if-version"),
+            (object_json, attributes_json, wrapping_key_id, uid, version),
+        )
+        .await
+        .map_err(DbError::from)?;
+        // The version is bumped on every successful write, so 0 affected rows means
+        // the stored version differs (or the object is gone).
+        if tx.affected_rows() == 0 {
+            return Err(DbError::Conflict(format!(
+                "object {uid} was modified concurrently (expected version {version})"
+            )));
+        }
+    } else {
+        tx.exec_drop(
+            get_mysql_query!("update-object-with-object"),
+            (object_json, attributes_json, wrapping_key_id, uid),
+        )
+        .await
+        .map_err(DbError::from)?;
+    }
 
     // Insert the new tags if any
     if let Some(tags) = tags {
@@ -1311,6 +1645,38 @@ pub(super) async fn update_state_(
     .map_err(DbError::from)?;
     trace!("Updated in DB: {uid}");
     Ok(())
+}
+
+/// Add `invocations` to the AES-GCM invocation count of `uid` under a row lock; `None` (nothing
+/// added) when the new count would exceed the cap.
+async fn reserve_gcm_invocations_(
+    uid: &str,
+    invocations: u64,
+    tx: &mut Transaction<'_>,
+) -> DbResult<Option<u64>> {
+    // the row must exist to be locked
+    tx.exec_drop(get_mysql_query!("init-gcm-invocations"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+    let current: i64 = tx
+        .exec_first(
+            get_mysql_query!("select-gcm-invocations-for-update"),
+            (uid,),
+        )
+        .await
+        .map_err(DbError::from)?
+        .unwrap_or_default();
+    let total = current.cast_unsigned() + invocations;
+    if total > GCM_MAX_INVOCATIONS {
+        return Ok(None);
+    }
+    tx.exec_drop(
+        get_mysql_query!("update-gcm-invocations"),
+        (invocations, uid),
+    )
+    .await
+    .map_err(DbError::from)?;
+    Ok(Some(total))
 }
 
 pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()> {
@@ -1660,8 +2026,67 @@ pub(super) async fn atomic_(
                 uids.push(uid.clone());
             }
             AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
+                if let Err(e) =
+                    update_object_(uid, object, attributes, tags.as_ref(), None, tx).await
+                {
                     db_bail!("update of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_version,
+                object,
+                attributes,
+                tags,
+            } => {
+                // The row lock taken here holds until the update below commits.
+                let row: Option<mysql_async::Row> = tx
+                    .exec_first(get_mysql_query!("select-object-for-update"), (uid,))
+                    .await
+                    .map_err(DbError::from)?;
+                let Some(row) = row else {
+                    return Err(DbError::Conflict(uid.clone()));
+                };
+                let existing_owner: String = row.get(3).context("missing owner")?;
+                let existing_state: String = row.get(4).context("missing state")?;
+                let existing_version: u64 = row.get(5).context("missing version")?;
+                // Same outcome as PostgreSQL/SQLite, where any mismatch matches no row.
+                if existing_owner != owner
+                    || existing_state == State::Destroyed.to_string()
+                    || existing_state == State::Destroyed_Compromised.to_string()
+                    || existing_version != *expected_version
+                {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                if let Err(e) =
+                    update_object_(uid, object, attributes, tags.as_ref(), None, tx).await
+                {
+                    db_bail!("compare-and-swap update of object {uid} failed: {e}");
+                }
+                uids.push(uid.clone());
+            }
+            AtomicOperation::UpdateObjectIfVersion((
+                uid,
+                object,
+                attributes,
+                tags,
+                expected_version,
+            )) => {
+                match update_object_(
+                    uid,
+                    object,
+                    attributes,
+                    tags.as_ref(),
+                    Some(*expected_version),
+                    tx,
+                )
+                .await
+                {
+                    Ok(()) => {}
+                    // Keep the typed conflict so callers can retry.
+                    Err(e @ DbError::Conflict(_)) => return Err(e),
+                    Err(e) => db_bail!("update of object {uid} failed: {e}"),
                 }
                 uids.push(uid.clone());
             }
@@ -1687,3 +2112,60 @@ pub(super) async fn atomic_(
 }
 
 // impl_sql_migrate!(MySqlPool, get_mysql_query);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `RELEASE_LOCK` returns NULL when the named lock no longer exists. That used to panic in the
+    /// row conversion (killing the cron thread); it must be reported as an error.
+    // docker run --name mysql --env MYSQL_DATABASE=kms --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
+    #[ignore = "Requires a running MySQL or MariaDB instance"]
+    #[tokio::test]
+    async fn test_db_mysql_release_of_vanished_cron_lock_is_an_error() {
+        let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
+        let pool = MySqlPool::instantiate(url, false, None)
+            .await
+            .expect("instantiate MySQL pool");
+        let queries = mysql_queries().expect("MySQL queries");
+        let name = format!("vanished-{}", Uuid::new_v4());
+
+        let mut conn = pool.lock_pool.get_conn().await.expect("lock connection");
+        let held: Option<Option<i64>> = match conn
+            .exec_first(queries["try-cron-lock"].as_str(), (name.as_str(),))
+            .await
+        {
+            Ok(held) => held,
+            // Percona XtraDB Cluster refuses GET_LOCK: there is no lock to vanish.
+            Err(mysql_async::Error::Server(e)) if e.code == 1105 => return,
+            Err(e) => panic!("take lock: {e}"),
+        };
+        assert_eq!(held.flatten(), Some(1));
+        // Drop the lock behind the guard's back: the later RELEASE_LOCK then answers NULL.
+        let dropped: Option<Option<i64>> = conn
+            .exec_first(queries["release-cron-lock"].as_str(), (name.as_str(),))
+            .await
+            .expect("drop lock");
+        assert_eq!(dropped.flatten(), Some(1));
+
+        let guard: Box<dyn ClusterLockGuard> = Box::new(MySqlCronLock {
+            conn,
+            lock_name: name,
+        });
+        guard
+            .release()
+            .await
+            .expect_err("releasing a vanished lock must be an error, not a panic");
+    }
+
+    #[test]
+    fn client_identity_password_requires_identity() -> DbResult<()> {
+        validate_client_identity_parameters(None, None)?;
+        if validate_client_identity_parameters(None, Some("password")).is_ok() {
+            return Err(DbError::DatabaseError(
+                "A client-identity password without an identity must be rejected".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}

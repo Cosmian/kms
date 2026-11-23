@@ -245,14 +245,14 @@ impl PrepareRequest {
                     if let Operation::Encrypt(enc) = &inner.request_payload
                         && let Some(aad) = &enc.authenticated_encryption_additional_data
                     {
-                        *pending_aad = Some(aad.clone());
+                        *pending_aad = Some(aad.clone().to_vec());
                     }
                 }
                 RequestMessageBatchItemVersioned::V14(inner) => {
                     if let Op14::Encrypt(enc) = &inner.request_payload
                         && let Some(aad) = &enc.authenticated_encryption_additional_data
                     {
-                        *pending_aad = Some(aad.clone());
+                        *pending_aad = Some(aad.clone().to_vec());
                     }
                 }
             }
@@ -310,7 +310,7 @@ impl PrepareRequest {
                         let desired = dec
                             .authenticated_encryption_additional_data
                             .as_ref()
-                            .and_then(|aad| artifacts_by_aad.get(aad))
+                            .and_then(|aad| artifacts_by_aad.get(&**aad))
                             .or(fallback_last);
                         if let Some((ciphertext, iv, tag)) = desired {
                             let needs_data = match &dec.data {
@@ -329,7 +329,7 @@ impl PrepareRequest {
                                 _ => false,
                             };
                             if needs_iv {
-                                dec.i_v_counter_nonce = Some(iv.clone());
+                                dec.i_v_counter_nonce = Some(iv.clone().into());
                             }
                             let needs_tag = match &dec.authenticated_encryption_tag {
                                 None => true,
@@ -338,7 +338,7 @@ impl PrepareRequest {
                                 _ => false,
                             };
                             if needs_tag {
-                                dec.authenticated_encryption_tag = Some(tag.clone());
+                                dec.authenticated_encryption_tag = Some(tag.clone().into());
                             }
                         }
                     }
@@ -348,7 +348,7 @@ impl PrepareRequest {
                         let desired = dec
                             .authenticated_encryption_additional_data
                             .as_ref()
-                            .and_then(|aad| artifacts_by_aad.get(aad))
+                            .and_then(|aad| artifacts_by_aad.get(&**aad))
                             .or(fallback_last);
                         if let Some((ciphertext, iv, tag)) = desired {
                             let needs_data = match &dec.data {
@@ -367,7 +367,7 @@ impl PrepareRequest {
                                 _ => false,
                             };
                             if needs_iv {
-                                dec.i_v_counter_nonce = Some(iv.clone());
+                                dec.i_v_counter_nonce = Some(iv.clone().into());
                             }
                             let needs_tag = match &dec.authenticated_encryption_tag {
                                 None => true,
@@ -376,7 +376,7 @@ impl PrepareRequest {
                                 _ => false,
                             };
                             if needs_tag {
-                                dec.authenticated_encryption_tag = Some(tag.clone());
+                                dec.authenticated_encryption_tag = Some(tag.clone().into());
                             }
                         }
                     }
@@ -1413,8 +1413,8 @@ mod injection_tests {
         // Pre-populate data (should NOT be overwritten), leave iv & tag empty placeholders
         let dec = Decrypt {
             data: Some(vec![9, 9, 9]),
-            i_v_counter_nonce: Some(Vec::new()),
-            authenticated_encryption_tag: Some(Vec::new()),
+            i_v_counter_nonce: Some(Vec::new().into()),
+            authenticated_encryption_tag: Some(Vec::new().into()),
             ..Default::default()
         };
         let mut req = build_request(dec);
@@ -1469,8 +1469,8 @@ mod injection_tests {
 
         let dec = Decrypt {
             data: Some(b"$DATA_25".to_vec()),
-            i_v_counter_nonce: Some(b"$IV_COUNTER_NONCE".to_vec()),
-            authenticated_encryption_tag: Some(b"$AUTHENTICATED_ENCRYPTION_TAG".to_vec()),
+            i_v_counter_nonce: Some(b"$IV_COUNTER_NONCE".to_vec().into()),
+            authenticated_encryption_tag: Some(b"$AUTHENTICATED_ENCRYPTION_TAG".to_vec().into()),
             ..Default::default()
         };
         let mut req = build_request(dec);

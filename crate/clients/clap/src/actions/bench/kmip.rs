@@ -28,6 +28,7 @@ use cosmian_kms_client::{
         },
     },
 };
+use cosmian_kms_crypto::crypto::is_fips_build;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -43,10 +44,10 @@ use super::helpers::{
 use super::{
     helpers::{
         HsmKeyLedger, aes_cbc_params, aes_gcm_params, aes_xts_params, create_rsa_kp,
-        create_sym_key, hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
-        rsa_kwp_params, rsa_oaep_params, rsa_oaep_sha1_params, try_create_ec_kp,
-        try_create_hsm_ec_kp, try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks,
-        with_fips_rsa_masks, with_private_key_uid,
+        create_sym_key, hsm_rsa_encrypt_variants, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
+        rsa_kwp_params, rsa_oaep_params, try_create_ec_kp, try_create_hsm_ec_kp,
+        try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks, with_fips_rsa_masks,
+        with_private_key_uid,
     },
     transport::{Transport, bench_message_id, bench_op, bench_op_id, timed_group},
     types::bench_ko,
@@ -138,7 +139,7 @@ pub(super) fn bench_encrypt_aes_gcm(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            data: Some(vec![1_u8; 64].into()),
             ..Default::default()
         };
 
@@ -161,7 +162,7 @@ pub(super) fn bench_encrypt_aes_gcm(
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(enc_resp.data.unwrap_or_default()),
+            data: Some(enc_resp.data.unwrap_or_default().to_vec()),
             i_v_counter_nonce: enc_resp.i_v_counter_nonce,
             authenticated_encryption_tag: enc_resp.authenticated_encryption_tag,
             ..Default::default()
@@ -206,7 +207,7 @@ pub(super) fn bench_encrypt_chacha20(
     let enc_req = Encrypt {
         unique_identifier: Some(key_id.clone()),
         cryptographic_parameters: Some(params.clone()),
-        data: Some(Zeroizing::new(vec![1_u8; 64])),
+        data: Some(vec![1_u8; 64].into()),
         ..Default::default()
     };
     bench_op(
@@ -224,7 +225,7 @@ pub(super) fn bench_encrypt_chacha20(
     let dec_req = Decrypt {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(params),
-        data: Some(enc_resp.data.unwrap_or_default()),
+        data: Some(enc_resp.data.unwrap_or_default().to_vec()),
         i_v_counter_nonce: enc_resp.i_v_counter_nonce,
         authenticated_encryption_tag: enc_resp.authenticated_encryption_tag,
         ..Default::default()
@@ -295,7 +296,7 @@ fn bench_rsa_encrypt_family(
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .context("pre-encrypt for decrypt")?;
-        let ct = enc_resp.data.unwrap_or_default();
+        let ct = enc_resp.data.unwrap_or_default().to_vec();
         let dec_req = Decrypt {
             unique_identifier: Some(priv_id),
             cryptographic_parameters: Some(params.clone()),
@@ -340,8 +341,8 @@ pub(super) fn bench_encrypt_aes_xts(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
-            i_v_counter_nonce: Some(vec![0_u8; 16]),
+            data: Some(vec![1_u8; 64].into()),
+            i_v_counter_nonce: Some(vec![0_u8; 16].into()),
             ..Default::default()
         };
 
@@ -368,7 +369,7 @@ pub(super) fn bench_encrypt_aes_xts(
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(enc_resp.data.unwrap_or_default()),
+            data: Some(enc_resp.data.unwrap_or_default().to_vec()),
             i_v_counter_nonce: enc_resp.i_v_counter_nonce,
             ..Default::default()
         };
@@ -409,7 +410,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id.clone()),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            data: Some(vec![1_u8; 64].into()),
             ..Default::default()
         };
 
@@ -435,7 +436,7 @@ pub(super) fn bench_encrypt_aes_gcm_siv(
         let dec_req = Decrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(params.clone()),
-            data: Some(enc_resp.data.unwrap_or_default()),
+            data: Some(enc_resp.data.unwrap_or_default().to_vec()),
             i_v_counter_nonce: enc_resp.i_v_counter_nonce,
             authenticated_encryption_tag: enc_resp.authenticated_encryption_tag,
             ..Default::default()
@@ -500,7 +501,7 @@ pub(super) fn bench_encrypt_ecies(
         let enc_resp = rt
             .block_on(client.encrypt(enc_req))
             .context("pre-encrypt for decrypt")?;
-        let ct = enc_resp.data.unwrap_or_default();
+        let ct = enc_resp.data.unwrap_or_default().to_vec();
         let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
         bench_op_id(
             &mut group,
@@ -555,7 +556,7 @@ pub(super) fn bench_encrypt_salsa(
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
         .context("pre-encrypt for decrypt")?;
-    let ct = enc_resp.data.unwrap_or_default();
+    let ct = enc_resp.data.unwrap_or_default().to_vec();
     let dec_req = decrypt_request(&priv_id.to_string(), None, ct, None, None, None);
     bench_op(
         &mut group,
@@ -669,7 +670,7 @@ pub(super) fn bench_encrypt_covercrypt(
     let enc_resp = rt
         .block_on(client.encrypt(enc_req))
         .context("pre-encrypt for decrypt")?;
-    let ct = enc_resp.data.unwrap_or_default();
+    let ct = enc_resp.data.unwrap_or_default().to_vec();
     let dec_req = decrypt_request(
         &usk_str,
         None,
@@ -1297,7 +1298,7 @@ fn bench_ec_sign(
     let sign_req = Sign {
         unique_identifier: Some(priv_id),
         cryptographic_parameters: sign_params.clone(),
-        data: Some(message.clone()),
+        data: Some(message.clone().into()),
         ..Default::default()
     };
     let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
@@ -1356,7 +1357,7 @@ fn bench_rsa_pss_sign(
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
             cryptographic_parameters: sign_params.clone(),
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
@@ -1422,7 +1423,7 @@ fn bench_pqc_sign(
         let sign_req = Sign {
             unique_identifier: Some(priv_id),
             cryptographic_parameters: None,
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         let Ok(sign_resp) = rt.block_on(client.sign(sign_req.clone())) else {
@@ -1482,17 +1483,6 @@ fn bench_pqc_sign(
 //   `digested_data`, exactly mirroring `ckms ec sign`'s own request
 //   construction; omitting `cryptographic_parameters` entirely also works,
 //   since the server then falls back to the key's own stored curve).
-// - `Verify` is NOT implemented for HSM-resident keys at all yet (any
-//   algorithm), so it is intentionally omitted (unlike the software
-//   `sign-verify` benches, which cover both directions).
-// - P-521 key creation is NOT covered: `crate/crypto/src/crypto/
-//   elliptic_curves/operation.rs` derives `cryptographic_length` from the
-//   generated private scalar's serialized byte length rather than the
-//   curve's nominal bit length, which can under-count P-521 (66-byte keys
-//   occasionally serialize to 65 bytes) and makes `HSM::create_keypair`
-//   reject the resulting length ("valid values are 224, 256, 384, 521") —
-//   reproduced 3/3 attempts in this environment. Pre-existing bug unrelated
-//   to this benchmark; tracked as a follow-up rather than fixed here.
 // - The bare (un-hashed) `SigningAlgorithm::RsaPkcsV15` variant — a raw
 //   `CKM_RSA_PKCS` sign over a caller-supplied `DigestInfo` blob — is not
 //   reachable via ordinary `Sign` KMIP requests (`from_kmip` always infers a
@@ -1518,21 +1508,27 @@ pub(super) fn bench_hsm_encrypt(
     let slug = transport.slug();
     let ledger = HsmKeyLedger::new();
 
-    // AES-GCM
-    if let Some(key_id) = try_create_hsm_sym_key(
-        rt,
-        client,
-        hsm_prefix,
-        "encrypt-aes-gcm-256",
-        256,
-        CryptographicAlgorithm::AES,
-        &ledger,
-    ) {
+    // AES-GCM. A FIPS build refuses it on an HSM that does not generate the IV itself
+    // (FIPS 140-3 IG C.H), as SoftHSM2 and Kryoptic do not.
+    if let Some(key_id) = (!is_fips_build())
+        .then(|| {
+            try_create_hsm_sym_key(
+                rt,
+                client,
+                hsm_prefix,
+                "encrypt-aes-gcm-256",
+                256,
+                CryptographicAlgorithm::AES,
+                &ledger,
+            )
+        })
+        .flatten()
+    {
         let mut group = timed_group(c, format!("{slug}/encrypt/hsm-aes-gcm"));
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
+            data: Some(vec![1_u8; 64].into()),
             ..Default::default()
         };
         bench_op(
@@ -1563,8 +1559,8 @@ pub(super) fn bench_hsm_encrypt(
         let enc_req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_cbc_params()),
-            data: Some(Zeroizing::new(vec![1_u8; 64])),
-            i_v_counter_nonce: Some(vec![0_u8; 16]),
+            data: Some(vec![1_u8; 64].into()),
+            i_v_counter_nonce: Some(vec![0_u8; 16].into()),
             ..Default::default()
         };
         bench_op(
@@ -1588,16 +1584,14 @@ pub(super) fn bench_hsm_encrypt(
     if let Some((pub_id, _priv_id)) =
         try_create_hsm_rsa_kp(rt, client, hsm_prefix, "encrypt-rsa-2048", 2048, &ledger)
     {
-        for (label, params) in [
-            ("hsm-rsa-oaep", rsa_oaep_params()),
-            ("hsm-rsa-oaep-sha1", rsa_oaep_sha1_params()),
-            ("hsm-rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
-        ] {
+        // A FIPS build keeps only RSA-OAEP-SHA256 (see `hsm_rsa_encrypt_variants`).
+        for (label, params) in hsm_rsa_encrypt_variants() {
+            let label = format!("hsm-{label}");
             let mut group = timed_group(c, format!("{slug}/encrypt/{label}"));
             let enc_req = Encrypt {
                 unique_identifier: Some(pub_id.clone()),
                 cryptographic_parameters: Some(params),
-                data: Some(Zeroizing::new(vec![1_u8; 64])),
+                data: Some(vec![1_u8; 64].into()),
                 ..Default::default()
             };
             bench_op(
@@ -1673,7 +1667,7 @@ pub(super) fn bench_hsm_sign_verify(
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
                 ..Default::default()
             }),
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         bench_op(
@@ -1723,7 +1717,7 @@ pub(super) fn bench_hsm_sign_verify(
             let sign_req = Sign {
                 unique_identifier: Some(priv_id.clone()),
                 cryptographic_parameters: Some(hsm_rsa_pkcs1v15_sign_params(dsa)),
-                data: Some(message.clone()),
+                data: Some(message.clone().into()),
                 ..Default::default()
             };
             bench_op(
@@ -1808,7 +1802,7 @@ pub(super) fn bench_hsm_sign_verify(
                 cryptographic_algorithm: Some(algorithm),
                 ..Default::default()
             }),
-            data: Some(message.clone()),
+            data: Some(message.clone().into()),
             ..Default::default()
         };
         let mut group = timed_group(c, format!("{slug}/sign-verify/hsm-{label}"));
@@ -2048,7 +2042,7 @@ pub(super) fn bench_batch_aes_bulk(
             let pre_resp = rt
                 .block_on(client.encrypt(req.clone()))
                 .context("pre-encrypt bulk request")?;
-            let ciphertext = pre_resp.data.unwrap_or_default();
+            let ciphertext = pre_resp.data.unwrap_or_default().to_vec();
             let dec_req =
                 decrypt_request(&key_str, None, ciphertext, None, None, Some(params.clone()));
 
@@ -2123,7 +2117,7 @@ pub(super) fn bench_batch_rsa_message(
         let pre_resp = rt
             .block_on(client.encrypt(pre_req))
             .context("pre-encrypt")?;
-        let ciphertext = pre_resp.data.unwrap_or_default();
+        let ciphertext = pre_resp.data.unwrap_or_default().to_vec();
 
         let rsa_batch_sizes: &[usize] = if sanity { &[1] } else { &[1, 10, 50, 100] };
         for n in rsa_batch_sizes.iter().copied() {

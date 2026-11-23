@@ -427,8 +427,30 @@ export VAULT_APPROLE_SECRET_ID="<secret_id>"
 ### 0. PKI CA key provisioning (prerequisite)
 
 Before SPIRE can sign its intermediate CA, the KMS must hold a CA key with the tag
-configured in `--vault-pki-ca-key-label` (default: `vault_pki_ca`). Create it once with
-the `ckms` CLI:
+configured in `--vault-pki-ca-key-label` (default: `vault_pki_ca`).
+
+When the Vault token verifier is the only authentication method, the KMS answers `401`
+to token-less requests, so `ckms` must authenticate as the server admin
+(`default_username`, e.g. `admin`) with an mTLS client certificate whose CN equals that
+name. Make the KMS trust the CA that signed it, then point `ckms` at the certificate:
+
+```toml
+# kms.toml
+default_username = "admin"
+
+[tls]
+clients_ca_cert_file = "/etc/cosmian/clients-ca.crt"   # CA that signed the admin client cert
+```
+
+```toml
+# ckms.toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+tls_client_pem_cert_path = "/etc/cosmian/admin.crt"   # CN=admin, extendedKeyUsage=clientAuth
+tls_client_pem_key_path  = "/etc/cosmian/admin.key"
+```
+
+Create the key once with the `ckms` CLI:
 
 ```bash
 # Generate a P-384 key pair and a self-signed root CA certificate in KMS.
@@ -517,7 +539,7 @@ human-readable string like `"spire-server"` (or, per tenant, `"spire-server-a"`/
    Issues token:  hvs.xxxxx   carrying   entity = "spire-server"   (the NAME, not the UUID)
 
 ③ KMS spire_token_middleware validates the token:
-     GET /auth/token/lookup-self  →  { data: { entity_id: "spire-server", ... } }
+     GET /v1/auth/token/lookup-self  →  { data: { entity_id: "spire-server", ... } }
 
 ④ KMS sets:  AuthenticatedUser { username: "spire-server" }
    → every KMS object created under this token is owned by "spire-server"
@@ -1100,26 +1122,9 @@ infrastructure without requiring any custom audit hook in the KMS or auth-verifi
 
 ---
 
-**Kubernetes Operator (recommended):**
-
-The [Cosmian KMS Kubernetes Operator](kubernetes/operator.md) is the recommended approach
-for Kubernetes deployments. It handles the full lifecycle declaratively — no imperative
-scripts, no image pinning, no RBAC for `kubectl` inside a Job:
-
-1. The Operator's `KMSSecret` custom resource calls `POST /auth/approle/role/{name}/secret-id`
-   on the auth-verifier on the configured schedule and materialises the result as a
-   Kubernetes `Secret`.
-2. An `AppRoleRotation` annotation on the SPIRE `Deployment` tells the Operator to trigger
-   a rolling restart automatically once the `Secret` is updated.
-3. The previous `secret_id_accessor` is archived in the Operator's own state for emergency
-   revocation.
-
-See [Cosmian KMS Kubernetes Operator — AppRole rotation](kubernetes/operator.md#approle-rotation)
-for the full configuration reference.
-
-> **Non-Kubernetes environments** (VMs, bare-metal): use the PAM-orchestrated pattern
-> described above, or a CI/CD pipeline step that calls `ckms vault approle generate-secret-id`
-> and injects the result before restarting the workload identity server process.
+**Non-PAM environments** (VMs, bare-metal, Kubernetes): use a CI/CD pipeline step that calls
+`ckms vault approle generate-secret-id` and injects the result before restarting the workload
+identity server process.
 
 #### List and delete roles
 

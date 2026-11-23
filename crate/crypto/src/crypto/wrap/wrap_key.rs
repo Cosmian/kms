@@ -35,7 +35,7 @@ use crate::{
         symmetric::{
             rfc3394::rfc3394_wrap,
             rfc5649::rfc5649_wrap,
-            symmetric_ciphers::{SymCipher, encrypt, random_nonce},
+            symmetric_ciphers::{SymCipher, aes_gcm_encrypt_generated_iv},
         },
         wrap::common::rsa_parameters,
     },
@@ -118,7 +118,9 @@ pub fn wrap_object_with_key(
 
     // update the key block with the wrapped key
     let object_key_block = object.key_block_mut()?;
-    object_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped_key)));
+    object_key_block.key_value = Some(KeyValue::ByteString(cosmian_kmip::SensitiveBytes::from(
+        wrapped_key,
+    )));
     let mut kwd = key_wrapping_specification.get_key_wrapping_data();
     // For symmetric wrapping keys, store the resolved block_cipher_mode in the
     // KeyWrappingData so the unwrap path knows which algorithm was actually used.
@@ -207,6 +209,9 @@ pub fn key_data_to_wrap(
             Object::SecretData(SecretData { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover secret data bytes ")?,
+            Object::SplitKey(SplitKey { key_block, .. }) => key_block
+                .key_bytes()
+                .context("cannot recover split key bytes ")?,
             Object::PrivateKey(PrivateKey { key_block })
             | Object::PublicKey(PublicKey { key_block })
                 if matches!(
@@ -222,6 +227,12 @@ pub fn key_data_to_wrap(
                 key_block
                     .key_bytes()
                     .context("cannot recover asymmetric key bytes ")?
+            }
+            Object::PGPKey(PGPKey { key_block, .. }) => {
+                // OpenPGP key material is an opaque packet sequence: wrap the stored bytes
+                key_block
+                    .key_bytes()
+                    .context("cannot recover OpenPGP key bytes ")?
             }
             Object::PrivateKey(..) => {
                 let pkey = kmip_private_key_to_openssl(object)?;
@@ -345,16 +356,9 @@ pub(super) fn wrap(
                             key_bytes.len(),
                         )?;
 
-                        let nonce = random_nonce(rng, aead)?;
-
-                        let (ct, authenticated_encryption_tag) = encrypt(
-                            aead,
-                            &key_bytes,
-                            &nonce,
-                            &[],
-                            key_to_wrap,
-                            Some(padding_method),
-                        )?;
+                        // the IV is drawn inside the OpenSSL provider (SP 800-38D §8.2.2)
+                        let (nonce, ct, authenticated_encryption_tag) =
+                            aes_gcm_encrypt_generated_iv(aead, &key_bytes, &[], key_to_wrap)?;
                         let mut ciphertext = Vec::with_capacity(
                             nonce.len() + ct.len() + authenticated_encryption_tag.len(),
                         );

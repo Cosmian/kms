@@ -33,14 +33,15 @@ let
   filteredSrc = mkFilteredSrc [ ];
 
   # CLI vendor hash depends on operating system AND (on macOS only) linkage mode.
-  # On Linux: static and dynamic produce identical vendor output → one shared file.
+  # On Linux: CLI and k8s binaries share nixpkgs 19.03 `fetchcargo`, which is name-independent
+  # → one shared file `cargo.vendor.linux.sha256`.
   # On macOS: static ≠ dynamic → linkage-specific files.
   cargoHash =
     let
       linkStr = if static then "static" else "dynamic";
       vendorFile =
         if pkgs.stdenv.isLinux then
-          ./expected-hashes/cli.vendor.linux.sha256
+          ./expected-hashes/cargo.vendor.linux.sha256
         else if pkgs.stdenv.isDarwin then
           ./expected-hashes + "/cli.vendor.${linkStr}.darwin.sha256"
         else

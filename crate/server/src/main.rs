@@ -197,7 +197,6 @@ async fn run() -> KResult<()> {
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
-    // TODO: For an unknown reason, this span never goes to OTLP
     let span = span!(tracing::Level::TRACE, "kms");
     let _guard = span.enter();
 
@@ -370,7 +369,6 @@ mod tests {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),
                 otlp: Some("http://localhost:4317".to_owned()),
                 quiet: false,
-                #[cfg(not(target_os = "windows"))]
                 log_to_syslog: false,
                 rolling_log_dir: Some(PathBuf::from("[rolling log dir]")),
                 rolling_log_name: Some("kms_log".to_owned()),
@@ -519,6 +517,11 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[kv]
+kv_enabled = false
+kv_mount = ""
+kv_ttl_check_interval_secs = 30
 
 [audit]
 enabled = false

@@ -8,7 +8,8 @@
 #   Colors & printing:  RED GREEN YELLOW BLUE NC, print_header/status/warning/error/success/info
 #   Environment:        kms_init_env, get_repo_root, require_cmd, has_cmd, has_env_vars,
 #                       docker_ready, ensure_macos_sdk_env, ensure_macos_frameworks_ldflags,
-#                       setup_test_logging, run_isolated, wait_for_port, compute_sha256
+#                       setup_test_logging, run_isolated, wait_for_command, wait_for_port,
+#                       compute_sha256
 #   Test helpers:       build_test_deps, run_db_tests, check_and_test_db
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
@@ -202,7 +203,7 @@ ensure_pnpm() {
   export COREPACK_DEFAULT_TO_LATEST=0
   run_isolated corepack enable --install-directory "${shim_dir}" pnpm
   export PATH="${shim_dir}:${PATH}"
-  (cd "$(get_repo_root)/ui" && run_isolated pnpm --version >/dev/null)
+  (cd "$(get_repo_root "$(pwd)")/ui" && run_isolated pnpm --version >/dev/null)
 }
 
 # Returns success only if every named environment variable is set and non-empty.
@@ -220,6 +221,21 @@ has_env_vars() {
 docker_ready() {
   has_cmd docker && docker info >/dev/null 2>&1
 }
+
+# Prints the image reference of a service of the root docker-compose.yml, the single source of
+# truth for test images (incl. the `images` profile catalog). Exits when it cannot be resolved.
+# Usage: compose_image <service>
+compose_image() {
+  local root image
+  # Anchored to this library (not the caller's cwd, which may be a temp dir or the test_data submodule).
+  root="${MISE_CONFIG_ROOT:-$(get_repo_root "$(dirname "${BASH_SOURCE[0]}")")}"
+  image="$(docker compose -f "${root}/docker-compose.yml" --profile '*' config --format json |
+    jq -r --arg s "$1" '.services[$s].image // empty')"
+  [ -n "${image}" ] || print_error "no image for service '$1' in ${root}/docker-compose.yml"
+  printf '%s\n' "${image}"
+}
+# Call as `VAR="$(compose_image svc)"` (a plain assignment) so that a failure stops the caller under `set -e`;
+# inside command arguments or heredocs the failure would be ignored and leave an empty image.
 
 get_repo_root() {
   local hint="${1:-$(pwd)}"
@@ -268,6 +284,19 @@ wait_for_port() {
   done
 }
 
+# Retry a command once per second until it succeeds or the timeout expires.
+wait_for_command() {
+  local timeout="$1"
+  shift
+  local start now
+  start=$(date +%s)
+  while ! "$@"; do
+    now=$(date +%s)
+    [ $((now - start)) -ge "${timeout}" ] && return 1
+    sleep 1
+  done
+}
+
 # Compute SHA-256 of a file (cross-platform)
 compute_sha256() {
   local file="$1"
@@ -291,6 +320,11 @@ build_test_deps() {
     cargo build -p cosmian_pkcs11 "${FEATURES_FLAG[@]}"
   fi
 }
+
+# Only the packages whose lib tests start the shared test server (dev-dependency on
+# `test_kms_server`) read KMS_TEST_DB / KMS_HSM_KEK (crate/test_kms_server/src/test_server.rs).
+# Re-derive the list with: grep -rl --include=Cargo.toml test_kms_server crate
+KMS_SHARED_SERVER_TEST_PACKAGES=(-p test_kms_server -p ckms -p cosmian_kms_cli_actions -p cosmian_pkcs11 -p cosmian_kms_k8s_plugin -p cosmian_cng)
 
 _run_workspace_tests() {
   local db="$1"
@@ -325,11 +359,7 @@ _run_workspace_tests() {
   else
     cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
       -- --ignored --nocapture "test_db_${db}" test_certificate_validate
-    # Only the packages whose lib tests start the shared test server (dev-dependency on
-    # `test_kms_server`) read KMS_TEST_DB (crate/test_kms_server/src/test_server.rs).
-    # Re-derive the list with: grep -rl --include=Cargo.toml test_kms_server crate
-    cargo test --lib -p test_kms_server -p ckms -p cosmian_kms_cli_actions -p cosmian_pkcs11 \
-      -p cosmian_kms_k8s_plugin -p cosmian_cng "${FEATURES_FLAG[@]}" -- --nocapture
+    cargo test --lib "${KMS_SHARED_SERVER_TEST_PACKAGES[@]}" "${FEATURES_FLAG[@]}" -- --nocapture
   fi
 }
 

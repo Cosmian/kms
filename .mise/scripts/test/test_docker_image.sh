@@ -15,6 +15,9 @@ source "${SCRIPT_DIR}/../../lib/test_slots.sh"
 COMPOSE_FILE=".mise/scripts/docker-compose.yml"
 export COMPOSE_FILE
 
+# shellcheck source=.mise/lib/common.sh
+source "${SCRIPT_DIR}/../../lib/common.sh"
+
 # KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker).
 # Accepted values: fips, non_fips
 : "${KMS_TLS_CONFIG_FLAVOR:?KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker)}"

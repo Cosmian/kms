@@ -49,10 +49,12 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `markdown.instructions.md` | `**/*.md` | README, CHANGELOG, skill/instruction docs |
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` | mdBook site (Diátaxis framework); sync rule 4.14 — documentation ⇔ mdBook ⇔ README |
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
-| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
-| `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, supported Markdown subset, no keyword ids, headless parse check |
+| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `docker-compose.yml`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
+| `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, label width limits (no right-edge clipping), supported Markdown subset, no keyword ids, mmdc render check |
 | `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
+| `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `.mise/tasks/test/README.md` is the only test-task doc: update the affected task entries and their Mermaid diagrams on every task or script change; sync rule 4.21 |
+| `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` | Sync rule 4.18 — upgrade, downgrade (N-1), round-trip and mixed-version rules for SQL / Redis-with-Findex / persisted KMIP serde changes |
 
 Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
@@ -73,7 +75,7 @@ cargo build --features non-fips      # non-FIPS: extra algorithms, PQC, Covercry
 cargo test-fips                      # test --lib --workspace
 cargo test-non-fips                  # test --lib --workspace --features non-fips
 cargo test -p cosmian_kms_server     # single crate
-cargo test -p ckms
+cargo test -p ckms --features non-fips   # integration tests compile only with non-fips; without it 0 tests run
 
 # ── Lint ─────────────────────────────────────────────────────────────────
 cargo clippy-all                     # clippy --workspace --all-targets --all-features -- -D warnings
@@ -262,6 +264,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Force-push is strictly forbidden**: agents must never force-push, under any circumstance — see "Force-push prohibition" below.
 - **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed — see .github/instructions/rust.instructions.md § Randomness.
 - **Regression test**: every bug fix ships a test that fails before the fix (or the commit message says why that is impossible) — see `rust.instructions.md` § Testing.
+- **CLI tests**: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
 - **Secrets**: compare in constant time, keep in `Zeroizing`, never log — see `rust-security.instructions.md`.
 - **Commit subjects**: conventional-commit type + a descriptive subject (`fix(server): reject MAC with wrong length`); never `fix: PR review`, `fix: commit`, `fix: last fixes`.
 
@@ -364,8 +367,9 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11, 4.19 |
 | New or bumped third-party dependency (crate, npm/Python/Go package, base image, action, installer) | 4.19 (+ 4.11 when a lock file changed) |
 | Test/script needs a KMS, Auth Verifier or ckms config | 4.20 |
+| Test task or `.mise/scripts/test/` script added, renamed, removed or changed | 4.21 |
 
-> **Full sub-rule checklists** (4.1–4.20) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.21) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
@@ -422,7 +426,7 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 
 | Invoke | When |
 |--------|------|
-| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure through review feedback; reports CI once, never waits for it, never merges |
+| `/issue-workflow` | **Given a GitHub issue** — deterministic issue → PR procedure: scope, plan, **user plan approval (the only interactive step)**, then automated implement through review feedback; reports CI once, never waits for it, never merges |
 | `/kms-pr-review` | Mandatory self-review (`AGENTS.md` §5.6) — auto-fixes confirmed findings, ≤ 2 cycles |
 | `/kms-pr-description` | Summarize the branch changes (What / Why / How / Tests / Docs) into the PR description via `gh pr edit` |
 | `/kms-adversarial-test` | **Before submitting a significant PR** — adversarial quality gate; run once for significant work (`AGENTS.md` §5.6.3), skip for trivial fixes |
@@ -437,7 +441,8 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 | `/kmip-compliance [op]` | When adding or modifying a KMIP operation |
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse or add a complete fixture in `test_data`; `audit` finds partial inline configs |
-| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms` |
+| `/kms-db-compat [base-ref]` | When a change touches `crate/server_database/`, `*.sql` or persisted KMIP types — upgrade/downgrade (N-1) verdict per change, SQLite proof in both directions |
+| `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag (mandatory: no clap action without `ckms` binary tests)** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms --features non-fips` |
 | `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then deletes them |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
@@ -515,7 +520,7 @@ All CI runs go through **MISE** via:
 mise run [task] --variant [fips|non-fips] [args]
 ```
 
-#### Test types (`nix.sh test <type>`)
+#### Test types (`mise run test:<group>:<name>`)
 
 | Type            | FIPS?  | Notes                                |
 | --------------- | ------ | ------------------------------------ |

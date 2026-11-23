@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
-    sync::Arc,
+    sync::{Arc, MutexGuard, PoisonError},
     time::Instant,
 };
 
@@ -10,10 +10,10 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, FindOptions, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
+    AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, ObjectHandle, ObjectWithMetadata,
+    ObjectsStore, UserId,
 };
 use time::Date;
-use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use crate::{
     Database,
@@ -25,6 +25,11 @@ use crate::{
 /// `"*"` is the internal sentinel under which the global `Create` right is stored
 /// (see `KMS::grant_access`).
 const RESERVED_UIDS: &[&str] = &["*"];
+
+/// AES-GCM invocations a node reserves in the store at once: one store write per block instead of
+/// one per encryption. The unused rest of a block is lost when the node stops, which only ever
+/// over-counts (at most `GCM_LEASE_BLOCK - 1` per key and node run), never lets an IV be reused.
+const GCM_LEASE_BLOCK: u64 = 4096;
 
 /// Reject `uid` if it is a reserved identifier (see [`RESERVED_UIDS`]).
 fn reject_reserved_uid(uid: &str) -> DbResult<()> {
@@ -48,7 +53,6 @@ fn reject_reserved_uid(uid: &str) -> DbResult<()> {
 /// - `unregister_object_store`: Unregister the default objects store or a store for a given prefix.
 /// - `get_object_store`: Retrieves the appropriate object store based on the prefix of the `uid`.
 /// - `filename`: Returns the filename of the database or `None` if not supported.
-/// - `migrate`: Migrates all the databases to the latest version.
 /// - `create`: Creates a new object in the database.
 /// - `retrieve_objects`: Retrieves objects from the database based on `uid` or tags.
 /// - `retrieve_object`: Retrieves a single object from the database.
@@ -293,6 +297,24 @@ impl Database {
             .map(Arc::unwrap_or_clone))
     }
 
+    /// Retrieve a single object straight from its object store, bypassing (and not
+    /// populating) the object cache.
+    ///
+    /// The cache revalidates a hit against the object's state and `sensitive` attribute only,
+    /// so on a multi-node deployment it can serve content another node has since replaced.
+    /// Use this for authorization records whose content, not only their state, must be
+    /// current on every request (e.g. the SSH roles).
+    pub async fn retrieve_object_uncached(
+        &self,
+        uid: &str,
+    ) -> DbResult<Option<ObjectWithMetadata>> {
+        self.record("retrieve", async move {
+            let db = self.get_object_store(uid).await?;
+            db.retrieve(uid).await.map_err(DbError::from)
+        })
+        .await
+    }
+
     /// Retrieve a cached object as `Arc<ObjectWithMetadata>` without deep-cloning.
     ///
     /// On cache hit this returns a cheap `Arc` pointer bump instead of the
@@ -406,9 +428,99 @@ impl Database {
             Ok(db.update_state(uid, state).await?)
         })
         .await?;
+        // Evict before the fallible counter cleanup: the state change is already committed.
         self.object_cache.invalidate(uid).await;
         self.rotate_name_cache.invalidate_member(uid, None);
+        if matches!(state, State::Destroyed | State::Destroyed_Compromised) {
+            self.unwrapped_cache.clear_cache(uid).await;
+            self.delete_gcm_invocations(uid).await?;
+        }
         Ok(())
+    }
+
+    fn gcm_leases(&self) -> MutexGuard<'_, HashMap<String, u64>> {
+        self.gcm_leases
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Reserve `invocations` AES-GCM (or GMAC) invocations with a random IV under the key `uid`
+    /// against the cap of NIST SP 800-38D §8.3.
+    ///
+    /// Call it before encrypting: a crash after the reservation wastes invocations, it never
+    /// lets one be used twice. Invocations are served from a per-node block of
+    /// `GCM_LEASE_BLOCK` leased from the store, so the store is written once per block.
+    ///
+    /// # Errors
+    /// `Permission_Denied` when the key would exceed [`GCM_MAX_INVOCATIONS`] invocations
+    pub async fn reserve_gcm_invocations(&self, uid: &str, invocations: u64) -> DbResult<()> {
+        let leased = {
+            let mut leases = self.gcm_leases();
+            let left = leases.get(uid).copied().unwrap_or(0);
+            if left >= invocations {
+                if let Some(entry) = leases.get_mut(uid) {
+                    *entry -= invocations;
+                }
+                return Ok(());
+            }
+            leases.remove(uid);
+            left
+        };
+        let missing = invocations - leased;
+        let reserved = self
+            .record("reserve_gcm_invocations", async move {
+                let db = self.get_object_store(uid).await?;
+                // Lease a whole block; near the cap, fall back to exactly what is missing.
+                if db
+                    .reserve_gcm_invocations(uid, missing.saturating_add(GCM_LEASE_BLOCK - 1))
+                    .await?
+                    .is_some()
+                {
+                    return Ok(Some(GCM_LEASE_BLOCK - 1));
+                }
+                Ok(db.reserve_gcm_invocations(uid, missing).await?.map(|_| 0))
+            })
+            .await;
+        let (extra, result) = match reserved {
+            Ok(Some(extra)) => (extra, Ok(())),
+            Ok(None) => (
+                leased,
+                Err(DbError::Kmip21Error(
+                    ErrorReason::Permission_Denied,
+                    format!(
+                        "AES-GCM invocation limit ({GCM_MAX_INVOCATIONS}) reached for {uid}: \
+                         rekey required (SP 800-38D §8.3)"
+                    ),
+                )),
+            ),
+            Err(e) => (leased, Err(e)),
+        };
+        // Add, never overwrite: a concurrent top-up keeps its own extra.
+        if extra > 0 {
+            let mut leases = self.gcm_leases();
+            let entry = leases.entry(uid.to_owned()).or_default();
+            *entry = entry.saturating_add(extra);
+        }
+        result
+    }
+
+    /// AES-GCM invocations handed out under the key `uid`: the store count minus what this node
+    /// still holds in its lease (the leases of other nodes count as handed out).
+    pub async fn gcm_invocations(&self, uid: &str) -> DbResult<u64> {
+        let stored = self
+            .get_object_store(uid)
+            .await?
+            .reserve_gcm_invocations(uid, 0)
+            .await?
+            .unwrap_or(0);
+        Ok(stored.saturating_sub(self.gcm_leases().get(uid).copied().unwrap_or(0)))
+    }
+
+    /// Forget the AES-GCM invocation count of a destroyed key.
+    async fn delete_gcm_invocations(&self, uid: &str) -> DbResult<()> {
+        self.gcm_leases().remove(uid);
+        let db = self.get_object_store(uid).await?;
+        Ok(db.delete_gcm_invocations(uid).await?)
     }
 
     /// Delete an object from the database.
@@ -418,10 +530,11 @@ impl Database {
             Ok(db.delete(uid).await?)
         })
         .await?;
+        // Evict before the fallible counter cleanup: the deletion is already committed.
         self.object_cache.invalidate(uid).await;
         self.unwrapped_cache.clear_cache(uid).await;
         self.rotate_name_cache.invalidate_member(uid, None);
-        Ok(())
+        self.delete_gcm_invocations(uid).await
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -429,6 +542,21 @@ impl Database {
         self.record("is_object_owned_by", async move {
             let db = self.get_object_store(uid).await?;
             Ok(db.is_object_owned_by(uid, owner).await?)
+        })
+        .await
+    }
+
+    /// Return the server-internal parameter `name` from the main database, storing `value`
+    /// first if it is absent. Concurrent callers all get the first stored value. Parameters are
+    /// not KMIP objects: no client operation can read or write them.
+    pub async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> DbResult<String> {
+        self.record("get_or_insert_parameter", async move {
+            let db = self.get_object_store("").await?;
+            Ok(db.get_or_insert_parameter(name, value).await?)
         })
         .await
     }
@@ -666,6 +794,16 @@ impl Database {
         generation: Option<i32>,
         owner: &UserId,
     ) -> DbResult<Vec<(String, Attributes)>> {
+        // HSM keysets belong to one routed store. Do not turn a failed scan into an empty
+        // keyset: callers use this result to refuse protection with retired generations.
+        if cosmian_kms_interfaces::ObjectHandle::from(name).is_hsm() {
+            return self
+                .get_object_store(name)
+                .await?
+                .find_by_rotate_name(name, generation, owner)
+                .await
+                .map_err(Into::into);
+        }
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
         for db in map.values() {
@@ -694,6 +832,7 @@ impl Database {
     pub async fn set_key_label(&self, uid: &str, label: &str) -> DbResult<()> {
         let store = self.get_object_store(uid).await?;
         store.set_key_label(uid, label).await?;
+        self.object_cache.invalidate(uid).await;
         // On HSM stores the label carries the keyset name and generation.
         self.rotate_name_cache.invalidate_member(uid, None);
         Ok(())
@@ -711,8 +850,9 @@ impl Database {
         let store = self.get_object_store(uid).await?;
         store
             .set_key_rotation_dates(uid, start_date, end_date)
-            .await
-            .map_err(Into::into)
+            .await?;
+        self.object_cache.invalidate(uid).await;
+        Ok(())
     }
 
     /// Perform an atomic set of operations on the database.
@@ -749,86 +889,112 @@ impl Database {
         };
         let first_uid = first_op.get_object_uid();
         let db = self.get_object_store(first_uid).await?;
-        let ids = self
+        let ids = match self
             .record("atomic", async move {
                 db.atomic(user, operations).await.map_err(DbError::from)
             })
-            .await?;
-        // invalidate of clear cache for all operations
+            .await
+        {
+            Ok(ids) => ids,
+            Err(error) => {
+                // A conflict makes every cached version stale; a failed compare-and-swap also
+                // invalidates its object so the caller's retry reads the stored content.
+                let conflict = matches!(error, DbError::Conflict(_));
+                for operation in operations {
+                    if conflict || matches!(operation, AtomicOperation::CompareAndSwapObject { .. })
+                    {
+                        self.object_cache
+                            .invalidate(operation.get_object_uid())
+                            .await;
+                    }
+                }
+                return Err(error);
+            }
+        };
+        // Every operation is committed: evict all of them before any fallible step, so one
+        // failure cannot leave a later operation cached. Report the first error afterwards.
+        let mut first_error = None;
         for op in operations {
-            match op {
+            let evicted = match op {
                 AtomicOperation::Create((uid, _owner, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
-                    self.unwrapped_cache.validate_cache(uid, object).await?;
                     if let Some(name) = attributes.rotate_name.as_deref() {
                         self.rotate_name_cache.invalidate_name(name);
                     }
+                    self.unwrapped_cache.validate_cache(uid, object).await
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, ..))
+                | AtomicOperation::UpdateObjectIfVersion((uid, object, attributes, ..))
                 | AtomicOperation::Upsert((uid, object, attributes, ..)) => {
                     self.object_cache.invalidate(uid).await;
-                    self.unwrapped_cache.validate_cache(uid, object).await?;
                     self.rotate_name_cache
                         .invalidate_member(uid, attributes.rotate_name.as_deref());
+                    self.unwrapped_cache.validate_cache(uid, object).await
                 }
-                AtomicOperation::Delete(uid) => {
+                AtomicOperation::CompareAndSwapObject {
+                    uid,
+                    object,
+                    attributes,
+                    ..
+                } => {
+                    self.object_cache.invalidate(uid).await;
+                    self.rotate_name_cache
+                        .invalidate_member(uid, attributes.rotate_name.as_deref());
+                    self.unwrapped_cache
+                        .validate_cache(uid, object.as_ref())
+                        .await
+                }
+                AtomicOperation::Delete(uid)
+                | AtomicOperation::UpdateState((
+                    uid,
+                    State::Destroyed | State::Destroyed_Compromised,
+                )) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
                     self.rotate_name_cache.invalidate_member(uid, None);
+                    Ok(())
                 }
                 AtomicOperation::UpdateState((uid, _)) => {
                     // Evict the stale object so the new lifecycle state is
                     // visible immediately on the next retrieve_object call.
                     self.object_cache.invalidate(uid).await;
                     self.rotate_name_cache.invalidate_member(uid, None);
+                    Ok(())
                 }
+            };
+            if let Err(error) = evicted {
+                first_error.get_or_insert(error);
             }
         }
-        Ok(ids)
+        for op in operations {
+            if let AtomicOperation::Delete(uid)
+            | AtomicOperation::UpdateState((
+                uid,
+                State::Destroyed | State::Destroyed_Compromised,
+            )) = op
+                && let Err(error) = self.delete_gcm_invocations(uid).await
+            {
+                first_error.get_or_insert(error);
+            }
+        }
+        first_error.map_or(Ok(ids), Err)
     }
 }
 
-/// Extract the X.509 serial number as an uppercase hex string from a KMS `Object`.
+/// Extract the X.509 serial number from a KMS `Object` (`None` if not a certificate or not valid DER).
 ///
-/// Returns `None` if the object is not a certificate or DER parsing fails.
-///
-/// The output **must** exactly match the hex string the OCSP crypto layer computes
-/// for the same certificate (`extract_serial_hex` in `cosmian_kms_crypto::openssl::ocsp`,
-/// which converts the request's `ASN1_INTEGER` via `BN_bn2hex`), or the `_serial=` tag
-/// silently fails to match a real, issued certificate. `BN_bn2hex` strips whole leading
-/// zero *bytes* (already true of
-/// `to_bytes_be()`'s minimal big-endian output) but always prints both hex digits of
-/// the remaining most-significant byte — so a serial such as `0x0A…` renders as `"0A…"`,
-/// not `"A…"`. Do **not** strip leading zero *characters* here: about 1-in-16 randomly
-/// generated serial numbers have a leading nibble of `0`, and naively trimming all
-/// leading `'0'` characters (rather than only whole zero bytes) desynchronises this
-/// hex string from the OCSP layer's for exactly those certificates.
+/// Returns the serial exactly as OpenSSL's `BN_bn2hex` prints it, so it matches the OCSP layer's serial tags.
 pub(crate) fn extract_serial_hex_from_object(object: &Object) -> Option<String> {
-    const UPPER_HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
-
     let cert_bytes = match object {
         Object::Certificate(c) => &c.certificate_value,
         _ => return None,
     };
-    // Use x509-parser to extract the serial number without depending on openssl here.
-    let (_, parsed) = X509Certificate::from_der(cert_bytes).ok()?;
-    // `to_bytes_be()` already yields the minimal big-endian representation (no leading
-    // zero bytes), matching the canonical form OpenSSL's BIGNUM uses internally.
-    let serial_bytes = parsed.serial.to_bytes_be();
-    // ...except for zero, which it yields as `[0]` while `BN_bn2hex` prints `"0"`.
-    if serial_bytes.iter().all(|byte| *byte == 0) {
-        return Some("0".to_owned());
-    }
-    serial_bytes.iter().try_fold(
-        String::with_capacity(serial_bytes.len().saturating_mul(2)),
-        |mut output, byte| {
-            let upper = UPPER_HEX_DIGITS.get(usize::from(*byte >> 4)).copied()?;
-            let lower = UPPER_HEX_DIGITS.get(usize::from(*byte & 0x0F)).copied()?;
-            output.push(char::from(upper));
-            output.push(char::from(lower));
-            Some(output)
-        },
-    )
+    let serial = openssl::x509::X509::from_der(cert_bytes)
+        .ok()?
+        .serial_number()
+        .to_bn()
+        .ok()?;
+    serial.to_hex_str().ok().map(|hex| hex.to_string())
 }
 
 #[cfg(test)]
@@ -840,6 +1006,7 @@ mod tests {
         time::Duration,
     };
 
+    use async_trait::async_trait;
     use cosmian_kmip::{
         kmip_0::kmip_types::{CertificateType, State},
         kmip_2_1::{
@@ -847,17 +1014,20 @@ mod tests {
             kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
         },
     };
-    use cosmian_kms_interfaces::{AtomicOperation, UserId};
+    use cosmian_kms_interfaces::{
+        AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore, UserId,
+    };
     use tempfile::TempDir;
+    use time::OffsetDateTime;
 
-    use super::{Database, Object, extract_serial_hex_from_object};
+    use super::{Database, GCM_LEASE_BLOCK, Object, extract_serial_hex_from_object};
     use crate::core::{
         DbMetricsRecorder, MainDbKind, MainDbParams, database_objects::reject_reserved_uid,
     };
 
-    async fn test_db() -> Database {
+    async fn test_db() -> (Database, TempDir) {
         let tmp = TempDir::new().expect("Failed to create temp dir");
-        Database::instantiate(
+        let db = Database::instantiate(
             &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(),
@@ -871,7 +1041,29 @@ mod tests {
             None,
         )
         .await
-        .expect("Failed to instantiate in-memory database")
+        .expect("Failed to instantiate test database");
+        (db, tmp)
+    }
+
+    /// AES-GCM invocations are leased from the store by block: 100 encryptions cost one store write,
+    /// and forgetting the key drops the lease.
+    #[tokio::test]
+    async fn test_gcm_invocations_are_leased_by_block() {
+        let (db, _tmp) = test_db().await;
+        let uid = "gcm-lease-key";
+        for _ in 0..100 {
+            db.reserve_gcm_invocations(uid, 1)
+                .await
+                .expect("reserve failed");
+        }
+        let store = db.get_object_store(uid).await.expect("no store");
+        assert_eq!(
+            store.reserve_gcm_invocations(uid, 0).await.expect("count"),
+            Some(GCM_LEASE_BLOCK)
+        );
+        assert_eq!(db.gcm_invocations(uid).await.expect("count"), 100);
+        db.delete_gcm_invocations(uid).await.expect("delete");
+        assert_eq!(db.gcm_invocations(uid).await.expect("count"), 0);
     }
 
     /// Direct unit coverage of the reserved-uid check (issue #909).
@@ -900,7 +1092,7 @@ mod tests {
     /// internal sentinel used to store the global `Create` right.
     #[tokio::test]
     async fn test_create_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -924,7 +1116,7 @@ mod tests {
     /// `Database::atomic` must refuse a `Create` operation targeting the reserved uid `"*"`.
     #[tokio::test]
     async fn test_atomic_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -947,7 +1139,7 @@ mod tests {
     /// `Database::atomic` with `AtomicOperation::Upsert` must refuse the reserved uid `"*"` (GHSA-pvw2-jxwc-95xq).
     #[tokio::test]
     async fn test_atomic_upsert_rejects_reserved_uid() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let key = test_key();
         let attributes = key.attributes().expect("key has attributes").clone();
@@ -1006,7 +1198,7 @@ mod tests {
     /// store (`None`) leaves no store for unprefixed UIDs.
     #[tokio::test]
     async fn test_unregister_object_store() {
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let default_store = db
             .get_object_store("plain-uid")
             .await
@@ -1240,7 +1432,7 @@ mod tests {
     async fn test_find_certificate_state_by_der_finds_known_certificate() {
         use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
 
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let der = cert_der_with_serial(&[0x11, 0x22, 0x33, 0x44]);
         let cert_object = Object::Certificate(Certificate {
@@ -1274,7 +1466,7 @@ mod tests {
     async fn test_find_certificate_state_by_der_returns_none_for_unknown_certificate() {
         use cosmian_kmip::kmip_2_1::kmip_objects::{Certificate, ObjectType};
 
-        let db = test_db().await;
+        let (db, _tmp) = test_db().await;
         let owner = UserId::from("owner@example.com");
         let known_der = cert_der_with_serial(&[0x55, 0x66, 0x77, 0x88]);
         let cert_object = Object::Certificate(Certificate {
@@ -1473,6 +1665,395 @@ mod tests {
             Some(true),
             "Node B must see sensitive attribute change from Node A after revalidation window"
         );
+    }
+
+    /// The object cache revalidates a hit against state and `sensitive` only, so content another
+    /// node replaced stays stale in it; `retrieve_object_uncached` must always see the new content.
+    #[tokio::test]
+    async fn test_uncached_retrieval_sees_content_replaced_by_another_node() {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let db_params = MainDbParams::Sqlite(tmp.path().to_path_buf(), None);
+        let mut nodes = Vec::new();
+        for _ in 0..2 {
+            nodes.push(
+                Database::instantiate(
+                    &db_params,
+                    false,
+                    HashMap::new(),
+                    crate::core::CacheParams {
+                        max_age: Duration::from_mins(15),
+                        max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                        max_ttl: None,
+                        disabled: false,
+                    },
+                    None,
+                    None,
+                )
+                .await
+                .expect("Failed to instantiate node"),
+            );
+        }
+        let node_b = nodes.pop().expect("node B");
+        let node_a = nodes.pop().expect("node A");
+
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+        let uid = node_a
+            .create(None, &owner, &key, &attributes, &HashSet::new())
+            .await
+            .expect("create key failed");
+
+        // Node B warms its cache with the original content.
+        let first = node_b
+            .retrieve_object_arc(&uid)
+            .await
+            .expect("retrieve on node B")
+            .expect("key must exist");
+        assert_eq!(
+            first
+                .object()
+                .key_block()
+                .expect("key block")
+                .key_bytes()
+                .expect("key bytes")
+                .as_slice(),
+            &[0_u8; 32]
+        );
+
+        // Node A replaces the content; state and `sensitive` are unchanged.
+        let replacement =
+            create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &[1_u8; 32], &attributes)
+                .expect("failed to build replacement key");
+        node_a
+            .update_object(&uid, &replacement, &attributes, None)
+            .await
+            .expect("Node A update_object failed");
+
+        // Even after the revalidation window, the cache keeps serving the old bytes ...
+        tokio::time::sleep(crate::core::object_cache::DEFAULT_REVALIDATION_INTERVAL).await;
+        let stale = node_b
+            .retrieve_object_arc(&uid)
+            .await
+            .expect("cached retrieve on node B")
+            .expect("key must exist");
+        assert_eq!(
+            stale
+                .object()
+                .key_block()
+                .expect("key block")
+                .key_bytes()
+                .expect("key bytes")
+                .as_slice(),
+            &[0_u8; 32],
+            "the cache is expected to serve stale content: that is why the uncached read exists"
+        );
+
+        // ... while the uncached read sees the replacement.
+        let fresh = node_b
+            .retrieve_object_uncached(&uid)
+            .await
+            .expect("uncached retrieve on node B")
+            .expect("key must exist");
+        assert_eq!(
+            fresh
+                .object()
+                .key_block()
+                .expect("key block")
+                .key_bytes()
+                .expect("key bytes")
+                .as_slice(),
+            &[1_u8; 32]
+        );
+    }
+
+    const INJECTED_GCM_FAILURE: &str = "injected gcm_invocations cleanup failure";
+
+    /// Delegates to the real default store, except that the AES-GCM counter cleanup fails.
+    struct FailingGcmCleanupStore(Arc<dyn ObjectsStore + Sync + Send>);
+
+    #[async_trait(?Send)]
+    impl ObjectsStore for FailingGcmCleanupStore {
+        async fn create(
+            &self,
+            uid: Option<String>,
+            owner: &UserId,
+            object: &Object,
+            attributes: &Attributes,
+            tags: &HashSet<String>,
+        ) -> InterfaceResult<String> {
+            self.0.create(uid, owner, object, attributes, tags).await
+        }
+
+        async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
+            self.0.retrieve(uid).await
+        }
+
+        async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
+            self.0.retrieve_tags(uid).await
+        }
+
+        async fn update_object(
+            &self,
+            uid: &str,
+            object: &Object,
+            attributes: &Attributes,
+            tags: Option<&HashSet<String>>,
+        ) -> InterfaceResult<()> {
+            self.0.update_object(uid, object, attributes, tags).await
+        }
+
+        async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+            self.0.update_state(uid, state).await
+        }
+
+        async fn delete(&self, uid: &str) -> InterfaceResult<()> {
+            self.0.delete(uid).await
+        }
+
+        async fn atomic(
+            &self,
+            user: &UserId,
+            operations: &[AtomicOperation],
+        ) -> InterfaceResult<Vec<String>> {
+            self.0.atomic(user, operations).await
+        }
+
+        async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
+            self.0.is_object_owned_by(uid, owner).await
+        }
+
+        async fn list_uids_for_tags(
+            &self,
+            tags: &HashSet<String>,
+        ) -> InterfaceResult<HashSet<String>> {
+            self.0.list_uids_for_tags(tags).await
+        }
+
+        async fn find(
+            &self,
+            researched_attributes: Option<&Attributes>,
+            state: Option<State>,
+            user: &UserId,
+            user_must_be_owner: bool,
+            vendor_id: &str,
+        ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+            self.0
+                .find(
+                    researched_attributes,
+                    state,
+                    user,
+                    user_must_be_owner,
+                    vendor_id,
+                )
+                .await
+        }
+
+        async fn find_wrapped_by(
+            &self,
+            wrapping_key_uid: &str,
+            user: &UserId,
+        ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+            self.0.find_wrapped_by(wrapping_key_uid, user).await
+        }
+
+        async fn find_due_for_rotation(
+            &self,
+            now: OffsetDateTime,
+        ) -> InterfaceResult<Vec<(String, String)>> {
+            self.0.find_due_for_rotation(now).await
+        }
+
+        async fn find_by_rotate_name(
+            &self,
+            name: &str,
+            generation: Option<i32>,
+            owner: &UserId,
+        ) -> InterfaceResult<Vec<(String, Attributes)>> {
+            self.0.find_by_rotate_name(name, generation, owner).await
+        }
+
+        async fn delete_gcm_invocations(&self, _uid: &str) -> InterfaceResult<()> {
+            Err(InterfaceError::Db(INJECTED_GCM_FAILURE.to_owned()))
+        }
+
+        async fn find_all(
+            &self,
+            researched_attributes: Option<&Attributes>,
+            state: Option<State>,
+            vendor_id: &str,
+        ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+            self.0
+                .find_all(researched_attributes, state, vendor_id)
+                .await
+        }
+    }
+
+    /// A database whose default store fails every AES-GCM counter cleanup. Cache entries
+    /// outlive the test, so an entry is only gone if the code under test evicted it.
+    async fn db_with_failing_gcm_cleanup() -> (TempDir, Database) {
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let db = Database::instantiate(
+            &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
+            false,
+            HashMap::new(),
+            crate::core::CacheParams {
+                max_age: Duration::from_mins(15),
+                max_size: NonZeroUsize::new(100).expect("100 is non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to instantiate database");
+        let real = db.get_object_store("").await.expect("default store");
+        db.register_objects_store("", Arc::new(FailingGcmCleanupStore(real)))
+            .await;
+        (tmp, db)
+    }
+
+    /// Create a key and warm its object, unwrapped (plaintext) and rotate-name cache entries.
+    async fn create_cached_key(db: &Database, owner: &UserId) -> (String, Object) {
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+        let uid = db
+            .create(None, owner, &key, &attributes, &HashSet::new())
+            .await
+            .expect("create key");
+        db.retrieve_object(&uid)
+            .await
+            .expect("retrieve key")
+            .expect("key exists");
+        let unwrapped =
+            create_symmetric_key_kmip_object(VENDOR_ID_COSMIAN, &[1_u8; 32], &attributes)
+                .expect("build unwrapped key");
+        db.unwrapped_cache
+            .insert(uid.clone(), &key, unwrapped)
+            .await
+            .expect("cache unwrapped key");
+        db.rotate_name_cache
+            .insert(&uid, None, owner, vec![(uid.clone(), attributes)])
+            .await;
+        assert!(db.object_cache.get(&uid).await.is_some());
+        assert!(
+            db.unwrapped_cache
+                .peek(&uid, &key)
+                .await
+                .expect("peek")
+                .is_some()
+        );
+        (uid, key)
+    }
+
+    /// The object and rotate-name cache entries of `uid` are gone.
+    async fn assert_object_evicted(db: &Database, uid: &str, owner: &UserId) {
+        assert!(
+            db.object_cache.get(uid).await.is_none(),
+            "object cache still holds {uid}"
+        );
+        assert!(
+            db.rotate_name_cache.get(uid, None, owner).await.is_none(),
+            "rotate-name cache still lists {uid}"
+        );
+    }
+
+    /// The object, rotate-name and unwrapped (plaintext key) cache entries of `uid` are gone.
+    async fn assert_evicted_with_secret(db: &Database, uid: &str, key: &Object, owner: &UserId) {
+        assert_object_evicted(db, uid, owner).await;
+        assert!(
+            db.unwrapped_cache
+                .peek(uid, key)
+                .await
+                .expect("peek")
+                .is_none(),
+            "unwrapped cache still holds the plaintext of {uid}"
+        );
+    }
+
+    fn assert_injected(result: crate::error::DbResult<impl std::fmt::Debug>) {
+        let err = result.expect_err("the injected counter cleanup failure must be reported");
+        assert!(
+            err.to_string().contains(INJECTED_GCM_FAILURE),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// A committed `delete` evicts every cache entry even when the counter cleanup fails.
+    #[tokio::test]
+    async fn test_delete_evicts_caches_when_gcm_cleanup_fails() {
+        let (_tmp, db) = db_with_failing_gcm_cleanup().await;
+        let owner = UserId::from("owner@example.com");
+        let (uid, key) = create_cached_key(&db, &owner).await;
+
+        assert_injected(db.delete(&uid).await);
+
+        assert_evicted_with_secret(&db, &uid, &key, &owner).await;
+        assert!(db.retrieve_object(&uid).await.expect("retrieve").is_none());
+    }
+
+    /// A committed destruction evicts every cache entry, including the plaintext key,
+    /// even when the counter cleanup fails.
+    #[tokio::test]
+    async fn test_destroy_state_evicts_caches_when_gcm_cleanup_fails() {
+        let (_tmp, db) = db_with_failing_gcm_cleanup().await;
+        let owner = UserId::from("owner@example.com");
+        let (uid, key) = create_cached_key(&db, &owner).await;
+
+        assert_injected(db.update_state(&uid, State::Destroyed).await);
+
+        assert_evicted_with_secret(&db, &uid, &key, &owner).await;
+        let stored = db
+            .retrieve_object(&uid)
+            .await
+            .expect("retrieve")
+            .expect("key exists");
+        assert_eq!(stored.state(), State::Destroyed);
+    }
+
+    /// A committed atomic batch evicts every operation, not only those before the first
+    /// failing counter cleanup.
+    #[tokio::test]
+    async fn test_atomic_evicts_all_operations_when_gcm_cleanup_fails() {
+        let (_tmp, db) = db_with_failing_gcm_cleanup().await;
+        let owner = UserId::from("owner@example.com");
+        let (deleted, deleted_key) = create_cached_key(&db, &owner).await;
+        let (destroyed, destroyed_key) = create_cached_key(&db, &owner).await;
+        let (deactivated, _) = create_cached_key(&db, &owner).await;
+
+        assert_injected(
+            db.atomic(
+                &owner,
+                &[
+                    AtomicOperation::Delete(deleted.clone()),
+                    AtomicOperation::UpdateState((destroyed.clone(), State::Destroyed_Compromised)),
+                    AtomicOperation::UpdateState((deactivated.clone(), State::Deactivated)),
+                ],
+            )
+            .await,
+        );
+
+        assert_evicted_with_secret(&db, &deleted, &deleted_key, &owner).await;
+        assert_evicted_with_secret(&db, &destroyed, &destroyed_key, &owner).await;
+        assert_object_evicted(&db, &deactivated, &owner).await;
+        assert!(
+            db.retrieve_object(&deleted)
+                .await
+                .expect("retrieve")
+                .is_none()
+        );
+        for (uid, state) in [
+            (&destroyed, State::Destroyed_Compromised),
+            (&deactivated, State::Deactivated),
+        ] {
+            let stored = db
+                .retrieve_object(uid)
+                .await
+                .expect("retrieve")
+                .expect("object exists");
+            assert_eq!(stored.state(), state, "stored state of {uid}");
+        }
     }
 }
 

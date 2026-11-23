@@ -7,7 +7,7 @@ pub(crate) mod permissions;
 use std::{
     collections::HashMap,
     num::NonZeroUsize,
-    sync::{Arc, atomic::AtomicU64},
+    sync::{Arc, OnceLock, atomic::AtomicU64},
 };
 
 // AWS CloudHSM's PKCS#11 client (Client SDK 5) supports Linux x86_64 and arm64, but not macOS.
@@ -30,6 +30,10 @@ use cosmian_logger::trace;
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
 #[cfg(target_os = "linux")]
 use gcp_cloud_hsm_pkcs11_loader::{GCP_CLOUD_HSM_PKCS11_LIB, GcpCloudHsm};
+// The Idemia SPHERE HSM simulator is a Windows DLL; the real HSM client library is
+// configured through `IDEMIA_SPHERE_PKCS11_LIB` on Linux and macOS.
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use idemia_sphere_pkcs11_loader::{IDEMIA_SPHERE_PKCS11_LIB, IdemiaSphere};
 // SoftHSM2 and SmartCardHSM are cross-platform (Linux x86_64, Linux aarch64, and macOS).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use kryoptic_pkcs11_loader::{KRYOPTIC_PKCS11_LIB, Kryoptic};
@@ -39,25 +43,34 @@ use luna_pkcs11_loader::{LUNA_PKCS11_LIB, Luna};
 use proteccio_pkcs11_loader::{PROTECCIO_PKCS11_LIB, Proteccio};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use smartcardhsm_pkcs11_loader::{SMARTCARDHSM_PKCS11_LIB, Smartcardhsm};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use softhsm2_pkcs11_loader::{OtherHsm, SOFTHSM2_PKCS11_LIB, Softhsm2};
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use tokio::sync::OnceCell;
-use tokio::sync::RwLock;
+use tokio::{
+    sync::{OnceCell, RwLock},
+    task::JoinHandle,
+};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
+use zeroize::Zeroizing;
+
+/// Database parameter holding the internal UID key; the KV-era name keeps existing KV UIDs.
+const INTERNAL_UID_KEY_PARAM: &str = "kv_metadata_uid_key";
+/// Length in bytes of the internal UID key.
+const INTERNAL_UID_KEY_LENGTH: usize = 32;
 
 #[cfg(target_os = "linux")]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 #[cfg(target_os = "macos")]
 const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
+#[cfg(target_os = "windows")]
+const OTHER_HSM_PKCS11_LIB: &str = "libkmshsm.dll";
 
 // Reuse HSM instances across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
 // same process for CLI tests exercising privileged & non-privileged endpoints.
 // Each element is `Arc<dyn HSM>` for one configured HSM instance, in the same
 // order as `ServerParams::hsm_instances`.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
 use crate::{
@@ -72,15 +85,21 @@ use crate::{
     error::KmsError,
     kms_bail,
     result::KResult,
-    routes::enrollment_guard::EnrollmentGuard,
+    routes::{enrollment_guard::EnrollmentGuard, health::HsmProbes},
 };
 
 /// Macro to instantiate an HSM with support for environment variable override.
 /// Returns an `Arc<dyn HSM + Send + Sync>` without touching any global state.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 macro_rules! instantiate_hsm_with_env {
     ($hsm_type:ty, $env_var:expr, $default_lib:expr, $hsm_name:expr, $slot_passwords:expr) => {{
         let lib_path = std::env::var($env_var).unwrap_or_else(|_| $default_lib.to_owned());
+        if lib_path.is_empty() {
+            return Err(KmsError::InvalidRequest(format!(
+                "The {} HSM has no default PKCS#11 library on this platform: set {}",
+                $hsm_name, $env_var
+            )));
+        }
         let hsm: Arc<dyn HSM + Send + Sync> = Arc::new(
             <$hsm_type>::instantiate(&lib_path, $slot_passwords).map_err(|e| {
                 KmsError::InvalidRequest(format!(
@@ -98,6 +117,16 @@ macro_rules! instantiate_hsm_with_env {
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 /// and other operations not part of KMIP, such as Google CSE or Microsoft DKE.
 pub struct KMS {
+    /// Process-specific identifier used by the cluster heartbeat.
+    pub(crate) node_id: String,
+
+    /// Probe state of the HSM slots checked by `GET /health`.
+    pub(crate) hsm_probes: HsmProbes,
+
+    /// Task running the KMIP socket server, set once it started (only when it is enabled).
+    /// `GET /health` reports the node `DEGRADED` when this task has ended.
+    pub(crate) socket_server_task: OnceLock<JoinHandle<()>>,
+
     /// The server parameters are built from the configuration file or command line arguments.
     pub(crate) params: Arc<ServerParams>,
 
@@ -124,6 +153,9 @@ pub struct KMS {
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
 
+    /// All configured HSM instances, in the same order as `params.hsm_instances`.
+    pub(crate) hsm_instances: Vec<Arc<dyn HSM + Send + Sync>>,
+
     /// Monotonically increasing CRL sequence counter (RFC 5280 §5.2.3).
     ///
     /// Seeded on startup from `max(unix_timestamp, db_max_crl_number + 1)` so
@@ -146,12 +178,50 @@ pub struct KMS {
 
     /// Constraints set by the KMIP Set Constraints operation (in memory only).
     pub(crate) constraints: ConstraintStore,
+
+    /// Server-wide key deriving internal, unguessable object UIDs; see [`KMS::internal_uid_key`].
+    internal_uid_key: OnceCell<Zeroizing<Vec<u8>>>,
 }
 
 impl KMS {
     /// Returns the vendor identification string used for KMIP `VendorAttribute` operations.
     pub(crate) fn vendor_id(&self) -> &str {
         &self.params.vendor_identification
+    }
+
+    /// The server-wide secret key from which internal records derive their UIDs (HMAC key).
+    ///
+    /// Generated once from the KMS RNG and stored in the database parameters table, which no
+    /// KMIP operation can read or write; the first stored value wins, so every instance and
+    /// replica sharing the database uses the same key. Cached in this instance after the first
+    /// call: later calls do no database or RNG work.
+    ///
+    /// # Errors
+    /// Fails if the RNG or the database fails, or if the stored value is not a 32-byte hex key.
+    pub(crate) async fn internal_uid_key(&self) -> KResult<&Zeroizing<Vec<u8>>> {
+        self.internal_uid_key
+            .get_or_try_init(|| async {
+                let mut candidate = Zeroizing::new([0_u8; INTERNAL_UID_KEY_LENGTH]);
+                self.rng
+                    .fill_bytes(&mut candidate[..])
+                    .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
+                let candidate_hex = Zeroizing::new(hex::encode(&candidate[..]));
+                let stored = Zeroizing::new(
+                    self.database
+                        .get_or_insert_parameter(INTERNAL_UID_KEY_PARAM, &candidate_hex)
+                        .await?,
+                );
+                let key = Zeroizing::new(hex::decode(stored.as_str()).map_err(|_e| {
+                    KmsError::ServerError("corrupt internal UID key parameter".to_owned())
+                })?);
+                if key.len() != INTERNAL_UID_KEY_LENGTH {
+                    return Err(KmsError::ServerError(
+                        "corrupt internal UID key parameter: expected 32 bytes".to_owned(),
+                    ));
+                }
+                Ok::<_, KmsError>(key)
+            })
+            .await
     }
 
     /// Instantiate a new KMS instance with the given server parameters.
@@ -264,8 +334,9 @@ impl KMS {
 
             let mut secret = [0_u8; CEREMONY_SECRET_LENGTH];
             secret.copy_from_slice(&raw_bytes);
-            let keys = Arc::new(CeremonyKeys::derive(&secret));
+            let keys = CeremonyKeys::derive(&secret);
             secret.fill(0);
+            let keys = Arc::new(keys?);
             database.set_ceremony_keys(keys);
             tracing::info!(
                 ceremony_key_id = %key_id,
@@ -336,11 +407,15 @@ impl KMS {
         let rng = Arc::new(KmsRng::new());
 
         Ok(Self {
+            node_id: uuid::Uuid::new_v4().to_string(),
+            hsm_probes: HsmProbes::default(),
+            socket_server_task: OnceLock::new(),
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
-            hsm: hsm_instances.into_iter().next(),
+            hsm: hsm_instances.first().cloned(),
+            hsm_instances,
             metrics,
             crl_counter,
             audit_store: Self::create_audit_store(&server_params).await?,
@@ -349,6 +424,7 @@ impl KMS {
             multi_part: MultiPartStore::default(),
             tickets: TicketStore::default(),
             constraints: ConstraintStore::default(),
+            internal_uid_key: OnceCell::new(),
         })
     }
 
@@ -490,10 +566,10 @@ impl KMS {
             return Ok(vec![]);
         }
 
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        kms_bail!("Fatal: HSMs are only supported on Linux and macOS");
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        kms_bail!("Fatal: HSMs are not supported on this platform");
 
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         {
             // Reuse pre-existing global instances when available (test-server reuse pattern).
             if let Some(existing) = GLOBAL_HSMS.get() {
@@ -511,7 +587,7 @@ impl KMS {
     }
 
     /// Instantiate a single HSM by model name.
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     fn instantiate_one_hsm(
         model: &str,
         slot_passwords: std::collections::HashMap<usize, Option<String>>,
@@ -541,6 +617,7 @@ impl KMS {
                 "Utimaco",
                 slot_passwords
             )),
+            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
             "softhsm2" => Ok(instantiate_hsm_with_env!(
                 Softhsm2,
                 "SOFTHSM2_PKCS11_LIB",
@@ -548,6 +625,7 @@ impl KMS {
                 "Softhsm2",
                 slot_passwords
             )),
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             "kryoptic" => Ok(instantiate_hsm_with_env!(
                 Kryoptic,
                 "KRYOPTIC_PKCS11_LIB",
@@ -555,6 +633,7 @@ impl KMS {
                 "Kryoptic",
                 slot_passwords
             )),
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             "smartcardhsm" => Ok(instantiate_hsm_with_env!(
                 Smartcardhsm,
                 "SMARTCARDHSM_PKCS11_LIB",
@@ -594,7 +673,7 @@ impl KMS {
                 "Luna",
                 slot_passwords
             )),
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
             "other" => Ok(instantiate_hsm_with_env!(
                 OtherHsm,
                 "OTHER_HSM_PKCS11_LIB",
@@ -602,10 +681,17 @@ impl KMS {
                 "Other",
                 slot_passwords
             )),
+            "idemia_sphere" => Ok(instantiate_hsm_with_env!(
+                IdemiaSphere,
+                "IDEMIA_SPHERE_PKCS11_LIB",
+                IDEMIA_SPHERE_PKCS11_LIB,
+                "Idemia SPHERE",
+                slot_passwords
+            )),
             _ => kms_bail!(
                 "Unsupported HSM model: {model}. Supported values: \
                  luna, proteccio, crypt2pay, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, \
-                 gcp_cloud_hsm, softhsm2, utimaco, kryoptic, other"
+                 gcp_cloud_hsm, softhsm2, utimaco, kryoptic, idemia_sphere, other"
             ),
         }
     }
@@ -730,5 +816,90 @@ mod tests {
             "the file backend must never be used as a fallback"
         );
         Ok(())
+    }
+
+    /// Test config whose `SQLite` database is the file `sqlite_path`.
+    fn config_with_sqlite(sqlite_path: &std::path::Path) -> crate::config::ClapConfig {
+        let mut conf = crate::tests::test_utils::https_clap_config();
+        conf.db.sqlite_path = sqlite_path.to_path_buf();
+        conf
+    }
+
+    /// The internal UID key is a 32-byte secret, initialised once per instance even under
+    /// concurrent first use, converges across instances sharing a database (replicas), survives
+    /// a restart and differs between databases.
+    #[tokio::test]
+    async fn internal_uid_key_is_stable_per_database() -> KResult<()> {
+        use crate::tests::test_utils::{test_kms, test_kms_with_config};
+
+        let dir = tempfile::TempDir::new().expect("temporary directory");
+        let path = dir.path().join("kms.sqlite");
+        let first = test_kms_with_config(config_with_sqlite(&path)).await?;
+        let replica = test_kms_with_config(config_with_sqlite(&path)).await?;
+
+        let key = {
+            let (a, b, c, r) = tokio::try_join!(
+                first.internal_uid_key(),
+                first.internal_uid_key(),
+                first.internal_uid_key(),
+                replica.internal_uid_key(),
+            )?;
+            assert_eq!(a.len(), INTERNAL_UID_KEY_LENGTH);
+            assert!(
+                a.iter().any(|byte| *byte != 0),
+                "the key must come from the RNG"
+            );
+            assert!(
+                std::ptr::eq(a, b) && std::ptr::eq(a, c),
+                "one instance must hold a single cached key"
+            );
+            assert_eq!(
+                a.as_slice(),
+                r.as_slice(),
+                "replicas must converge on one key"
+            );
+            assert!(std::ptr::eq(a, first.internal_uid_key().await?));
+            Zeroizing::new(a.to_vec())
+        };
+        drop(first);
+        drop(replica);
+
+        let restarted = test_kms_with_config(config_with_sqlite(&path)).await?;
+        assert_eq!(
+            restarted.internal_uid_key().await?.as_slice(),
+            key.as_slice(),
+            "a restart must keep the key, or every derived UID would change"
+        );
+        let other_database = test_kms().await?;
+        assert_ne!(
+            other_database.internal_uid_key().await?.as_slice(),
+            key.as_slice(),
+            "each database must have its own key"
+        );
+        Ok(())
+    }
+
+    /// Regression test: off Windows `idemia_sphere` has no default PKCS#11 library, so an unset
+    /// `IDEMIA_SPHERE_PKCS11_LIB` must be refused with a message naming the variable (not a raw
+    /// `dlopen` error).
+    #[cfg(not(target_os = "windows"))]
+    #[expect(
+        unsafe_code,
+        reason = "std::env::remove_var is unsafe in edition 2024; only this test touches this variable"
+    )]
+    #[test]
+    fn idemia_sphere_without_lib_path_names_the_env_var() {
+        // SAFETY: no other test reads or writes `IDEMIA_SPHERE_PKCS11_LIB`.
+        unsafe {
+            std::env::remove_var("IDEMIA_SPHERE_PKCS11_LIB");
+        }
+        let error = KMS::instantiate_one_hsm("idemia_sphere", std::collections::HashMap::new())
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(
+            error.contains("set IDEMIA_SPHERE_PKCS11_LIB"),
+            "unexpected error: {error}"
+        );
     }
 }

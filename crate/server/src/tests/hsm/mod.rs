@@ -39,7 +39,10 @@ use crate::{
     middlewares::UserId,
     result::KResult,
     tests::{
-        hsm::test_helpers::{get_hsm_model, get_hsm_password, get_hsm_slot_id},
+        hsm::test_helpers::{
+            get_hsm_model, get_hsm_password, get_hsm_slot_id, hsm_cannot_generate_gcm_iv,
+            hsm_rejects_raw_signing_mechanisms,
+        },
         test_utils::https_clap_config,
     },
 };
@@ -50,6 +53,7 @@ mod ec_dek;
 mod eddsa_sign;
 mod export_key_bytes;
 mod fake_hsm_authz;
+mod fake_hsm_rotation;
 #[cfg(feature = "non-fips")]
 mod hybrid_kem_dek;
 mod issues;
@@ -58,9 +62,12 @@ mod kek_wrap_modes;
 mod multi_hsm;
 mod non_extractable_key_bytes;
 mod permissions;
+mod rotation;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
+mod ssh_ca;
+mod sshd;
 mod sub_ca;
 mod symmetric_dek;
 pub(crate) mod test_helpers;
@@ -138,25 +145,53 @@ async fn test_hsm_all() {
         .await
         .unwrap();
 
-    info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
-    Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
+    // The sub-CA tests sign with an RSA HSM root through raw `CKM_RSA_PKCS`, and the EC sub-CA
+    // through raw `CKM_ECDSA`: a FIPS-mode token rejects both at use (it only accepts the
+    // hash-and-sign `CKM_ECDSA_SHA*` / `CKM_SHA*_RSA_PKCS` forms).
+    if hsm_rejects_raw_signing_mechanisms() {
+        info!(
+            "HSM: sub_ca and sub_ca_ec skipped (the token rejects raw CKM_RSA_PKCS and CKM_ECDSA in FIPS mode)"
+        );
+    } else {
+        info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
+        Box::pin(sub_ca::test_hsm_sub_ca()).await.unwrap();
 
-    info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
-    Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+        info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+    }
+
+    // Windows has no OpenSSH `sshd` (the test authenticates against a real `sshd -i`): a
+    // limitation of the host, not of the HSM.
+    #[cfg(not(target_os = "windows"))]
+    {
+        info!("HSM: ssh_ca (OpenSSH certificates signed by a non-extractable CA key)");
+        Box::pin(ssh_ca::test_hsm_ssh_ca()).await.unwrap();
+    }
 
     info!("HSM: permissions (32 scenarios)");
     Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 
     // SoftHSM2 2.6.1 rejects CKM_RSA_PKCS_OAEP with explicit mechanism parameters
-    // (CKR_ARGUMENTS_BAD), so the RSA-OAEP decrypt oracle cannot be exercised there.
-    if get_hsm_model().as_deref() == Some("softhsm2") {
-        info!("HSM: jose_decrypt skipped (SoftHSM2 does not support RSA-OAEP decrypt)");
+    // (CKR_ARGUMENTS_BAD), so the RSA-OAEP decrypt oracle cannot be exercised there. The Idemia
+    // HSM Simulator (SoftHSM2 2.7.0 backend) returns the same CKR_ARGUMENTS_BAD on C_DecryptInit.
+    if matches!(
+        get_hsm_model().as_deref(),
+        Some("softhsm2" | "idemia_sphere")
+    ) {
+        info!("HSM: jose_decrypt skipped (the backend does not support RSA-OAEP decrypt)");
     } else {
         info!("HSM: jose_decrypt");
         Box::pin(jose_decrypt::test_jose_hsm_decryption())
             .await
             .unwrap();
     }
+
+    // Last: it creates and removes its own keys, and its scheduler pass must not meet keys of
+    // other scenarios.
+    info!("HSM: keyset rotation (AES, RSA key pair, scheduler)");
+    Box::pin(rotation::test_hsm_keyset_rotation())
+        .await
+        .unwrap();
 }
 
 /// JOSE flow A against the HSM (runs standalone via `mise run test:hsm:jose`).
@@ -167,6 +202,24 @@ async fn test_hsm_jose() {
     Box::pin(jose_decrypt::test_jose_hsm_decryption())
         .await
         .unwrap();
+}
+
+/// Keyset rotation (re-key, retirement, scheduler) against the HSM, standalone.
+#[tokio::test]
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_keyset_rotation() {
+    log_init(option_env!("RUST_LOG"));
+    Box::pin(rotation::test_hsm_keyset_rotation())
+        .await
+        .unwrap();
+}
+
+/// SSH CA flow against the HSM, standalone.
+#[tokio::test]
+#[ignore = "Requires a working HSM setup"]
+async fn test_hsm_ssh_ca() {
+    log_init(option_env!("RUST_LOG"));
+    Box::pin(ssh_ca::test_hsm_ssh_ca()).await.unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
@@ -202,6 +255,8 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
             clap_config.hsm.hsm_model = "aws_cloudhsm".to_owned();
         } else if unwrapped_model == "azure_cloud_hsm" {
             clap_config.hsm.hsm_model = "azure_cloud_hsm".to_owned();
+        } else if unwrapped_model == "idemia_sphere" {
+            clap_config.hsm.hsm_model = "idemia_sphere".to_owned();
         } else if unwrapped_model == "other" {
             clap_config.hsm.hsm_model = "other".to_owned();
         } else {
@@ -214,6 +269,11 @@ fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
 
     if let Some(kek_id) = kek_id {
         clap_config.key_encryption_key = Some(as_hsm_uid!(clap_config.hsm.hsm_slot[0], kek_id));
+        if hsm_cannot_generate_gcm_iv() {
+            // The default KEK wrapping is AES-GCM, which this HSM cannot seal in a FIPS build.
+            clap_config.key_encryption_key_wrapping_algorithm =
+                Some("aes-key-wrap-padding".to_owned());
+        }
     }
 
     Ok(clap_config)

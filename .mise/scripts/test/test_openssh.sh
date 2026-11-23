@@ -37,7 +37,7 @@
 # [#1111]: https://github.com/Cosmian/kms/issues/1111
 #
 # Usage:
-#   bash .mise/scripts/nix.sh --variant non-fips test openssh
+#   mise run test:pkcs11:openssh --variant non-fips
 #   bash .mise/scripts/test/test_openssh.sh [--variant non-fips]
 set -euo pipefail
 set -x

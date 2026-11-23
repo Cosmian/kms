@@ -197,6 +197,14 @@ mod tests {
     use crate::audit::hash::verify_event;
 
     #[test]
+    fn only_success_result_is_successful() {
+        assert!(AuditResult::Success.is_success());
+        for message in ["", "Success", "403 Forbidden"] {
+            assert!(!AuditResult::Failure(message.to_owned()).is_success());
+        }
+    }
+
+    #[test]
     fn canonical_str_success() {
         assert_eq!(AuditResult::Success.as_canonical_str(), "Success");
     }
@@ -308,8 +316,12 @@ mod tests {
 
     #[test]
     fn audit_now_truncates_to_microseconds() {
+        let before = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let ts = audit_now();
+        let after = OffsetDateTime::now_utc().unix_timestamp_nanos();
         assert_eq!(ts.nanosecond() % 1_000, 0);
+        assert!(ts.unix_timestamp_nanos() >= before - before.rem_euclid(1_000));
+        assert!(ts.unix_timestamp_nanos() <= after);
     }
 
     #[test]

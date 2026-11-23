@@ -1,17 +1,41 @@
 ---
 name: Test MISE group
 
+# The one runner of every CI leg (see .github/ci-paths.toml): units with setup = nix run `mise run test:<suite>`;
+# every other unit runs its own composite action .github/actions/legs/<unit>/ (the db:* units also run legs/db).
+
 on:
   workflow_call:
     inputs:
       suite:
-        description: test:<suite> task to run (a .mise/tasks/test group, or a leaf for real HSMs)
+        description: unit of .github/ci-paths.toml (test:<suite> task to run, or a leg with its own steps below)
         required: true
         type: string
       variant:
-        description: fips or non-fips
-        required: true
+        description: fips or non-fips ('' for a unit without variants)
+        required: false
         type: string
+        default: ''
+      runner:
+        description: runner label (runs-on)
+        required: false
+        type: string
+        default: ubuntu-24.04
+      setup:
+        description: nix (Nix shell + mise), plain (mise only) or windows
+        required: false
+        type: string
+        default: nix
+      timeout:
+        description: job timeout-minutes
+        required: false
+        type: number
+        default: 360
+      environment:
+        description: GitHub deployment environment (approval gate), '' for none
+        required: false
+        type: string
+        default: ''
       skip:
         description: Space-separated <group>:<leaf> ids exported as TEST_SKIP_LEAVES
         required: false
@@ -19,11 +43,6 @@ on:
         default: ''
       bench:
         description: Space-separated HSM models benchmarked after the tests (never on pull requests)
-        required: false
-        type: string
-        default: ''
-      extra-env:
-        description: KEY=VALUE lines appended to GITHUB_ENV before the tests
         required: false
         type: string
         default: ''
@@ -49,11 +68,29 @@ on:
       PROTECCIO_SLOT: {required: false}
       CRYPT2PAY_PASSWORD: {required: false}
       OVPN_CONF: {required: false}
+      KMS_XKS_SSH_PRIVATE_KEY: {required: false}
+      KMS_XKS_SSH_KNOWN_HOSTS: {required: false}
+      KMS_XKS_SSH_USER: {required: false}
+      KMS_XKS_SIGV4_ACCESS_KEY_ID: {required: false}
+      KMS_XKS_SIGV4_SECRET_ACCESS_KEY: {required: false}
+      AWS_XKS_ACCESS_KEY_ID: {required: false}
+      AWS_XKS_SECRET_ACCESS_KEY: {required: false}
+      AWS_XKS_KEY_ARN: {required: false}
+      PAT_TOKEN: {required: false}
 
 jobs:
   test:
-    name: test:${{ inputs.suite }} - ${{ inputs.variant }}
-    runs-on: ubuntu-24.04
+    # Titles of the jobs these legs replaced; any other unit is `Test <suite> (<variant>)` (the caller row already shows
+    # the suite, variant and non-default runner).
+    name: >-
+      ${{ fromJSON(format('{{"no-nix":"No Nix - {0} - sqlite - {1}","cloud":"Test cloud ({1})","xks-remote":"AWS XKS — remote server","pki-macos":"Test
+      pki (macOS)","windows-cargo-test":"windows - cargo test","windows-ui":"windows - UI E2E tests","windows-cng-ksp":"windows - CNG KSP integration tests","windows-hsm-idemia":"windows
+      - HSM tests (Idemia SPHERE simulator, {1})","windows-est":"windows - EST interoperability tests","build-documentation":"Build documentation","forward-proxy":"forward
+      proxy","cargo-clippy":"Cargo clippy","cargo-machete":"Cargo machete","cargo-publish-dry-run":"Cargo publish - dry run"}}', inputs.runner, inputs.variant))[inputs.suite]
+      || format('Test {0}{1}', inputs.suite, inputs.variant != '' && format(' ({0})', inputs.variant) || '') }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
     env:
@@ -65,20 +102,32 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - uses: ./.github/actions/install-rust
+        if: inputs.setup != 'nix' || inputs.suite == 'xks-remote'
+
       - uses: ./.github/actions/cache-openssl-buildrs
+        if: inputs.setup != 'windows' && inputs.suite != 'cargo-machete' && inputs.suite != 'build-documentation'
         with:
-          variant: ${{ inputs.variant }}
+          variant: ${{ inputs.variant || 'non-fips' }}
 
       - uses: ./.github/actions/setup-nix-mise
+        if: inputs.setup == 'nix'
         with:
           cleanup-runner: 'true'
           dev-shell-cache: 'true'
 
-      - name: Export suite environment
-        if: inputs.extra-env != ''
-        env:
-          EXTRA_ENV: ${{ inputs.extra-env }}
-        run: printf '%s\n' "$EXTRA_ENV" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/install-mise
+        if: inputs.setup == 'plain'
+
+      - uses: ./.github/actions/windows-vs-ninja
+        if: inputs.setup == 'windows'
+
+      - name: Build static OpenSSL
+        if: inputs.setup == 'windows'
+        uses: ./.github/actions/build-static-openssl
+
+      - if: startsWith(inputs.suite, 'db:')
+        uses: ./.github/actions/legs/db
 
       - name: Docker login (Docker Hub)
         if: ${{ env.DOCKERHUB_USERNAME != '' }}
@@ -89,6 +138,7 @@ jobs:
 
       # An upstream leaf fails, never skips, when a secret it needs is empty: a green upstream job proves it ran.
       - name: Test
+        if: inputs.setup == 'nix' && inputs.suite != 'xks-remote'
         env:
           EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
           IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
@@ -137,3 +187,57 @@ jobs:
         run: |
           # shellcheck disable=SC2086 # BENCH is a space-separated model list
           for m in $BENCH; do mise run bench:hsm --delegated --hsm-model "$m" --variant "$VARIANT" -s; done
+
+      - if: inputs.suite == 'cargo-clippy'
+        uses: ./.github/actions/legs/cargo-clippy
+
+      - if: inputs.suite == 'cargo-machete'
+        uses: ./.github/actions/legs/cargo-machete
+
+      - if: inputs.suite == 'no-nix'
+        uses: ./.github/actions/legs/no-nix
+        with:
+          variant: ${{ inputs.variant }}
+
+      - if: inputs.suite == 'forward-proxy'
+        uses: ./.github/actions/legs/forward-proxy
+
+      - if: inputs.suite == 'build-documentation'
+        uses: ./.github/actions/legs/build-documentation
+        with:
+          public-docs-token: ${{ secrets.PAT_TOKEN }}
+
+      - if: inputs.suite == 'cargo-publish-dry-run'
+        uses: ./.github/actions/legs/cargo-publish-dry-run
+
+      - if: inputs.suite == 'xks-remote'
+        uses: ./.github/actions/legs/xks-remote
+        with:
+          ssh-private-key: ${{ secrets.KMS_XKS_SSH_PRIVATE_KEY }}
+          ssh-known-hosts: ${{ secrets.KMS_XKS_SSH_KNOWN_HOSTS }}
+          ssh-user: ${{ secrets.KMS_XKS_SSH_USER }}
+          sigv4-access-key-id: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
+          sigv4-secret-access-key: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.AWS_XKS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_XKS_SECRET_ACCESS_KEY }}
+          aws-key-arn: ${{ secrets.AWS_XKS_KEY_ARN }}
+
+      - if: inputs.suite == 'pki-macos'
+        uses: ./.github/actions/legs/pki-macos
+
+      - if: inputs.suite == 'windows-cargo-test'
+        uses: ./.github/actions/legs/windows-cargo-test
+
+      - if: inputs.suite == 'windows-ui'
+        uses: ./.github/actions/legs/windows-ui
+
+      - if: inputs.suite == 'windows-cng-ksp'
+        uses: ./.github/actions/legs/windows-cng-ksp
+
+      - if: inputs.suite == 'windows-hsm-idemia'
+        uses: ./.github/actions/legs/windows-hsm-idemia
+        with:
+          variant: ${{ inputs.variant }}
+
+      - if: inputs.suite == 'windows-est'
+        uses: ./.github/actions/legs/windows-est

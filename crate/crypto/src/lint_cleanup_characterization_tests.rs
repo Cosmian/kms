@@ -11,7 +11,6 @@ use openssl::{
     nid::Nid,
     pkey::PKey,
 };
-use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::crypto::anonymization::{NoiseGenerator, NumberAggregator, NumberScaler, WordMasker};
@@ -201,7 +200,7 @@ fn characterization_ecdsa_sign_verify_roundtrip() {
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(data.to_vec())),
+        data: Some(cosmian_kmip::SensitiveBytes::from(data.to_vec())),
         correlation_value: None,
         digested_data: None,
         final_indicator: None,

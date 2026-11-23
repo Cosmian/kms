@@ -3,6 +3,7 @@
 
 [advisories]
 # List of advisory IDs to ignore (extracted from deny.toml)
+# Every advisory exception here must have a matching statement in sbom/openvex.json.
 ignore = [
   # rsa 0.9 (Marvin) via jsonwebtoken and optional pgp; public-key operations only, see deny.toml
   "RUSTSEC-2023-0071",

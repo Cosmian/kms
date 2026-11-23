@@ -48,7 +48,7 @@ fn test_hsm_proteccio_all() -> HResult<()> {
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
     shared::rsa_pkcs_encrypt(&slot)?;
     shared::rsa_oaep_encrypt(&slot, RsaOaepDigest::SHA256)?;
-    shared::aes_gcm_encrypt(&slot)?;
+    shared::aes_gcm_encrypt_if_hsm_generates_iv(&slot)?;
     shared::aes_cbc_encrypt(&slot)?;
     shared::aes_cbc_multi_round(&slot)?;
     shared::rsa_pkcs_v15_sign(&slot)?;

@@ -49,7 +49,8 @@ if [ "${usage_combined:-false}" = "true" ] || [ -n "${TOKEN}" ]; then
   ln -sfn "${REPO_ROOT}" "${PUBLIC_DOCS_DIR}/kms"
 
   cd "${PUBLIC_DOCS_DIR}"
-  bash .github/scripts/build-staging.sh kms
+  # Never check external URLs (403/flaky): mdBook env override of the combined book's [output.linkcheck]
+  MDBOOK_OUTPUT__LINKCHECK__FOLLOW_WEB_LINKS=false bash .github/scripts/build-staging.sh kms
 
   print_success "Combined documentation built → ${PUBLIC_DOCS_DIR}/book/"
 fi

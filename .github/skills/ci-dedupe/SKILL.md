@@ -15,6 +15,7 @@ Find repeated step blocks across `.github/workflows/*.yml`, check whether an exi
 - `setup-nix` — installs Nix + warms the nix store (`extra-nix-config` input)
 - `install-mise` — installs `mise` for Linux/macOS (no inputs)
 - `docker-login-ghcr` — logs in to `ghcr.io` (`github-token` input)
+- `install-rust` — installs the Rust toolchain via dtolnay/rust-toolchain (no inputs); the version comes from rust-toolchain.toml
 
 ## Step 1 — Measure First
 

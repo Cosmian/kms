@@ -128,7 +128,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 | Library | What it provides |
 |---|---|
-| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
+| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm`, `wait_for_command`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
 | `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
 | `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
@@ -153,7 +153,7 @@ Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`
 - Prologue, in order: `source common.sh`, `source nix_helpers.sh` (only with `ensure_nix_shell` or `WITH_*`), `kms_init_env "${usage_variant:-<default>}" "${usage_link:-static}"`, `setup_test_logging`, `REPO_ROOT=` (only if used), gates (variant, OS, profile, env, local probes inside `if [ "${CI:-}" != true ]`, apt), `export WITH_*` + `ensure_nix_shell`, `docker compose up -d` (skip on failure). Snippets are listed in `.mise/tasks/test/README.md` § 1.
 - An upstream leaf (repository secrets) calls `print_error` before `skip_test` when `CI=true` and a secret is unset, so a green upstream CI leg proves it ran.
 - Never hand-roll a test aggregator: a group's `_default` is `run_test_leaves "$(dirname "$0")" <leaf>...`; add the new leaf to that list.
-- To run a leaf in CI, add its id to a leg of `.github/workflows/test_all.yml` (the leaf must declare `-v --variant`).
+- To run a leaf in CI, add it to its group's `_default` (the leaf must declare `-v --variant`); `.github/ci-paths.toml` decides which pull requests run the group.
 
 ## Aggregator tasks — collect failures, report at the end
 
@@ -287,6 +287,27 @@ Using `exec` is cleaner than `bash … && exit $?` and preserves the exit code.
 - Use `:-` for safe defaults: `"${KMS_PORT:-9998}"`.
 - Use `:=` to set-and-export defaults: `": ${REDIS_HOST:=127.0.0.1}"`.
 - Never `eval`; never construct commands via string concatenation.
+
+## Docker images in scripts
+
+Third-party images are defined only in the root `docker-compose.yml` (see `docker.instructions.md` § Third-party
+image catalog). In a task or script:
+
+- Look the image up with `compose_image <service>` and assign it to a variable **before** use:
+  `IMAGE="$(compose_image opensearch)"`, then `docker run … "${IMAGE}"` or `image: ${IMAGE}` in a heredoc. A
+  plain assignment stops the script under `set -e` if the lookup fails; `$(compose_image …)` inline in a
+  command argument or heredoc does not (the image would be empty). Look it up once, not inside a retry loop.
+- Keep an existing override variable by writing `X="${X:-$(compose_image svc)}"`.
+- Source `.mise/lib/common.sh` before the first `compose_image` call, and call it after the script's Docker
+  check. In a sourced library, resolve the image inside the function that needs it, not at load time.
+- A new image-only service goes in the `images` profile of the root `docker-compose.yml`; never hardcode a
+  `repo/name:tag` in `.mise/**` or `scripts/**`.
+- `.mise/scripts/docker-compose.yml` hardcodes its third-party images (`image: postgres:18`); keep them equal to
+  the root `docker-compose.yml` when you bump one. `saml_sso/docker-compose.yml` takes images from variables,
+  which the script that drives it sets from `compose_image`.
+- Not covered by the rule, leave them as they are: the KMS's own images (`DOCKER_IMAGE_NAME`, `${IMAGE_REF}`,
+  `local/*:e2e`, `ghcr.io/cosmian/kms-fips:${image_version}`), images derived from a pinned version
+  (`rust:${RUST_VERSION}-bookworm`, `alpine:${ALPINE_TAG}`), Dockerfile `FROM` lines, and GitHub workflows.
 
 ## Naming conventions
 

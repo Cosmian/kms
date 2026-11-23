@@ -3,7 +3,9 @@ mod error;
 pub mod kmip_0;
 pub mod kmip_1_4;
 pub mod kmip_2_1;
+mod len_display;
 mod safe_bigint;
+mod sensitive;
 mod time_utils;
 pub mod ttlv;
 
@@ -12,7 +14,9 @@ pub use cosmian_crypto_core::bytes_ser_de::{
 };
 pub use data_to_encrypt::DataToEncrypt;
 pub use error::{KmipError, result::KmipResultHelper};
+pub use len_display::{ByteLen, LenDisplay};
 pub use safe_bigint::SafeBigInt;
+pub use sensitive::{Sensitive, SensitiveBytes, SensitiveSize, SensitiveString};
 pub use time_utils::{creation_time, time_normalize};
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {

@@ -309,4 +309,25 @@ mod tests {
         );
         assert_eq!(openssl_wrapped_key, rfc5649_wrapped_key);
     }
+
+    #[test]
+    fn test_aes_kwp_official_vectors() {
+        setup_openssl_fips_provider();
+
+        for v in crate::kat_vectors::aes_kwp_vectors().unwrap() {
+            let unwrapped = rfc5649_unwrap(&v.ct, &v.key);
+            if v.valid {
+                assert_eq!(
+                    rfc5649_wrap(&v.pt, &v.key).unwrap(),
+                    v.ct,
+                    "{} ({})",
+                    v.id,
+                    v.source
+                );
+                assert_eq!(unwrapped.unwrap().to_vec(), v.pt, "{} ({})", v.id, v.source);
+            } else {
+                assert!(unwrapped.is_err(), "{} ({})", v.id, v.source);
+            }
+        }
+    }
 }

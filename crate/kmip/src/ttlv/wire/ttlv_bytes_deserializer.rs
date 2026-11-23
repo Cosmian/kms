@@ -453,6 +453,46 @@ mod tests {
     }
 
     #[test]
+    fn leaf_field_size_boundary() {
+        use std::io::{Read, repeat};
+
+        // Exercise the documented 64 MiB boundary independently of the guard constant.
+        let limit = 67_108_864_u32;
+        for kind in [
+            TtlvType::BigInteger,
+            TtlvType::TextString,
+            TtlvType::ByteString,
+        ] {
+            let kind = kind.to_byte();
+            for length in [limit, limit + 8] {
+                let mut header = vec![0x42, 0x00, 0x43, kind];
+                header.extend_from_slice(&length.to_be_bytes());
+                let input = header.as_slice().chain(repeat(0).take(u64::from(length)));
+                let result =
+                    TTLVBytesDeserializer::new(input).read_ttlv::<kmip_1_4::kmip_types::Tag>();
+                if length > limit {
+                    let error = result.unwrap_err();
+                    assert!(error.to_string().contains(&limit.to_string()));
+                } else {
+                    let (ttlv, consumed) = result.unwrap();
+                    let length = usize::try_from(length).unwrap();
+                    assert_eq!(consumed, length + 8);
+                    let value_len = match ttlv.value {
+                        TTLValue::BigInteger(value) => {
+                            assert_eq!(value, KmipBigInt::from(BigInt::from(0)));
+                            length
+                        }
+                        TTLValue::TextString(value) => value.len(),
+                        TTLValue::ByteString(value) => value.len(),
+                        _ => 0,
+                    };
+                    assert_eq!(value_len, length);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_item_limit_is_enforced() {
         let too_wide = TTLV {
             tag: kmip_1_4::kmip_types::Tag::Link.to_string().into(),

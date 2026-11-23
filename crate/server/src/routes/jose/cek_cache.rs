@@ -137,6 +137,19 @@ pub(crate) async fn peek_cek(
     cek
 }
 
+/// Single-flight guard for the RSA-OAEP unwrap of one JWE `encrypted_key`: hold it across
+/// unwrap + [`insert_cek`], then re-[`peek_cek`] after acquiring it. `None` when the cache is disabled.
+pub(crate) async fn lock_cek_miss(
+    kms: &KMS,
+    key_uid: &str,
+    encrypted_key_bytes: &[u8],
+) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    kms.database
+        .unwrapped_cache()
+        .lock_miss(&cek_cache_uid(key_uid, encrypted_key_bytes))
+        .await
+}
+
 /// Insert a successfully unwrapped CEK into the `UnwrappedCache`.
 ///
 /// `kmip_key_object` is the RSA key KMIP object used as the fingerprint source.

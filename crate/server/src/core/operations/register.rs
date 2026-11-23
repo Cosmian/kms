@@ -137,7 +137,6 @@ mod tests {
             kmip_types::{CryptographicAlgorithm, CryptographicParameters, Digest, KeyFormatType},
         },
     };
-    use zeroize::Zeroizing;
 
     use crate::{
         error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
@@ -240,7 +239,7 @@ mod tests {
                             key_format_type: KeyFormatType::Raw,
                             key_compression_type: None,
                             key_value: Some(KeyValue::Structure {
-                                key_material: KeyMaterial::ByteString(Zeroizing::new(key.clone())),
+                                key_material: KeyMaterial::ByteString(key.clone().into()),
                                 attributes: None,
                             }),
                             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -300,7 +299,6 @@ mod tests {
         use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
             Activate, Encrypt, MAC,
         };
-        use zeroize::Zeroizing;
 
         let kms = test_kms().await?;
         let owner = UserId::from("mdo-negative@example.com");
@@ -347,7 +345,7 @@ mod tests {
             .encrypt(
                 Encrypt {
                     unique_identifier: Some(uid.clone()),
-                    data: Some(Zeroizing::new(b"secret".to_vec())),
+                    data: Some(b"secret".to_vec().into()),
                     ..Encrypt::default()
                 },
                 &owner,

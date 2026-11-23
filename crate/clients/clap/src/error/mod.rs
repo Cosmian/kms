@@ -1,7 +1,5 @@
 use std::str::Utf8Error;
 
-#[cfg(test)]
-use assert_cmd::cargo::CargoError;
 use cosmian_config_utils::ConfigUtilsError;
 use cosmian_kms_client::{
     KmsClientError,
@@ -22,9 +20,6 @@ pub mod result;
 pub enum KmsCliError {
     #[error(transparent)]
     Base64(#[from] base64::DecodeError),
-    #[cfg(test)]
-    #[error(transparent)]
-    CargoError(#[from] CargoError),
     #[error("{0}")]
     Configuration(String),
     #[error("Conversion error: {0}")]

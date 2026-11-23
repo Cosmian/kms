@@ -2,9 +2,9 @@
 name: Nightly Packaging
 
 # Triggered nightly (schedule), manually, on tag pushes, or on push to
-# develop/main.  Bot commits from nix-update-hashes.yml and
-# update-log-index.yml carry [skip ci] so they do NOT re-trigger this
-# workflow.
+# develop/main.  Bot commits from nix-update-hashes.yml,
+# update-generated-docs.yml and package-and-commit-sbom.yml carry [skip ci]
+# so they do NOT re-trigger this workflow.
 
 on:
   push:
@@ -24,29 +24,34 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
-  # Non-tag refs (branches, schedule, workflow_dispatch):
+  # Non-tag refs (branches, schedule, workflow_dispatch), strictly in order:
   #   1. Recompute Nix vendor hashes on the current branch and commit them.
-  #   2. Sync log-reference.md with source call-sites and commit it.
-  #   3. Dispatch packaging.yml once both hash-update platform jobs have finished.
+  #   2. Regenerate docs, CBOM, licenses and log index and commit them.
+  #   3. Dispatch packaging.yml, wait for it, then retrieve and commit SBOMs.
   #
-  # Packaging is triggered by nix-update-hashes.yml (trigger_packaging=true)
-  # so this workflow does NOT call packaging.yml directly for the branch case.
+  # Packaging is dispatched by package-and-commit-sbom.yml, after all the
+  # generated-file commits, so the build includes them and runs only once.
   # ─────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/nix-update-hashes.yml
     with:
       ref: ${{ github.ref_name }}
-      trigger_packaging: true
+      trigger_packaging: false
     secrets: inherit
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Non-tag refs only: sync log-reference.md with source call-sites and
-  # commit the result (tag refs are already in sync via release.yml).
-  # ─────────────────────────────────────────────────────────────────────────
-  update-log-index:
+  update-generated-docs:
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
-    uses: ./.github/workflows/update-log-index.yml
+    needs: update-nix-hashes
+    uses: ./.github/workflows/update-generated-docs.yml
+    with:
+      ref: ${{ github.ref_name }}
+    secrets: inherit
+
+  package-and-commit-sbom:
+    if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
+    needs: [update-nix-hashes, update-generated-docs]
+    uses: ./.github/workflows/package-and-commit-sbom.yml
     with:
       ref: ${{ github.ref_name }}
     secrets: inherit
@@ -60,5 +65,3 @@ jobs:
     if: github.repository == 'Cosmian/kms' && startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
-    with:
-      toolchain: 1.99.1

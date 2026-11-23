@@ -215,7 +215,7 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
     - The KMS UI is available at `http://localhost:9998/ui`.
     - **Known limitations** on the Alpine packages (see the
-      [Alpine support note](../../../README.md#alpine-linux-musl) for details):
+      [Alpine support note](https://github.com/Cosmian/kms/blob/develop/README.md#alpine-linux-musl) for details):
         - HSM backends (Utimaco, Proteccio, SmartCard HSM, Crypt2Pay) are not supported —
           vendor PKCS#11 drivers are glibc-only.
         - non-FIPS: old PKCS#12/RC2 import is unsupported (musl's static libc cannot
@@ -293,3 +293,15 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     - The KMS UI is available at `http://localhost:9998/ui`
     - The server uses the configuration file located at `C:\Users\<username>\AppData\Local\Eviden KMS Server\kms.toml`
     - See the [server configuration](../configuration/server_configuration_file.md) for more information
+
+    A FIPS 140-3 server installer is also available:
+
+    ```sh
+    https://package.cosmian.com/kms/5.29.0/windows/x86_64/fips/static-openssl/cosmian-kms-server-fips-static-openssl_5.29.0_x86_64.exe
+    ```
+
+    It installs the same service and additionally ships the OpenSSL 3.1.2 FIPS provider under
+    `<install dir>\openssl`. The `CosmianKMS` service gets `OPENSSL_CONF`, `OPENSSL_MODULES` and
+    `OPENSSL_CONF_INCLUDE` in its own environment (no machine-wide variables are set). To run the
+    server from a console, use `<install dir>\openssl\cosmian_kms_fips.cmd -c <install dir>\kms.toml`
+    instead of `cosmian_kms`: the FIPS server refuses to start without the provider.

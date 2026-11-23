@@ -44,9 +44,7 @@ else
     kms-server-fips-static-openssl
     kms-server-non-fips-dynamic-openssl
     # Kubernetes binaries — Linux-only statically-linked derivations.
-    # Vendor hashes: k8s-plugin.vendor.linux.sha256,
-    #                k8s-operator.vendor.linux.sha256,
-    #                k8s-csi-provider.vendor.linux.sha256
+    # Vendor hash: cargo.vendor.linux.sha256 (shared with the Linux CLI)
     k8s-plugin-bin
     k8s-operator-bin
     k8s-csi-provider-bin
@@ -100,7 +98,7 @@ drv_to_hash_file() {
   fi
   if [[ "$drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
     if [[ "$OS" == "Linux" ]]; then
-      echo "$EXPECTED_DIR/cli.vendor.linux.sha256"
+      echo "$EXPECTED_DIR/cargo.vendor.linux.sha256"
       return
     fi
     local link="static"
@@ -115,22 +113,10 @@ drv_to_hash_file() {
     return
   fi
   # ── Kubernetes binaries — Linux-only ─────────────────────────────────────────
-  # pname = "kubernetes-kms-plugin" in nix/k8s-plugin.nix
-  if [[ "$drv_name" =~ kubernetes-kms-plugin.*vendor ]]; then
+  # k8s binaries (nix/k8s-plugin.nix, nix/k8s-binaries.nix) share the CLI's Linux vendor hash
+  if [[ "$drv_name" =~ (kubernetes-kms-plugin|cosmian-kms-operator|cosmian-kms-csi-provider).*vendor ]]; then
     [[ "$OS" != "Linux" ]] && echo "" && return
-    echo "$EXPECTED_DIR/k8s-plugin.vendor.linux.sha256"
-    return
-  fi
-  # pname = "cosmian-kms-operator" in nix/k8s-binaries.nix
-  if [[ "$drv_name" =~ cosmian-kms-operator.*vendor ]]; then
-    [[ "$OS" != "Linux" ]] && echo "" && return
-    echo "$EXPECTED_DIR/k8s-operator.vendor.linux.sha256"
-    return
-  fi
-  # pname = "cosmian-kms-csi-provider" in nix/k8s-binaries.nix
-  if [[ "$drv_name" =~ cosmian-kms-csi-provider.*vendor ]]; then
-    [[ "$OS" != "Linux" ]] && echo "" && return
-    echo "$EXPECTED_DIR/k8s-csi-provider.vendor.linux.sha256"
+    echo "$EXPECTED_DIR/cargo.vendor.linux.sha256"
     return
   fi
   echo ""

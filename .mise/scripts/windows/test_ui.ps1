@@ -13,7 +13,7 @@
 #
 # Prerequisite tools expected on PATH (installed by the CI workflow steps):
 #   • cargo / rustup  (with wasm32-unknown-unknown target)
-#   • wasm-pack       (cargo install wasm-pack --locked)
+#   • wasm-pack       (cargo install --locked wasm-pack@0.15.1)
 #   • pnpm            (corepack enable pnpm; version and sha512 pinned in ui/package.json)
 # =============================================================================
 
@@ -161,6 +161,7 @@ try {
         "--hostname", "127.0.0.1",
         "--port", "9998",
         "--vendor-identification", "test_vendor",
+        "--kv-enabled",
         "--cors-allowed-origins", "http://127.0.0.1:$PreviewPort"
     ) `
         -PassThru -NoNewWindow -WorkingDirectory $RepoRoot `

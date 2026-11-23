@@ -36,6 +36,8 @@ Run a domain skill only when the diff touches its area; skip it otherwise (token
 | `crate/crypto/`, `openssl_providers.rs`, algorithm or key-size choice | `/cryptography-review <paths>` |
 | `crate/server/src/middlewares/`, `routes/`, `core/operations/`, `crate/access/`, cloud-provider routes, parsing of untrusted input | `/security-review <paths>` |
 | `crate/kmip/`, `crate/server/src/core/operations/` | `/kmip-compliance <operation>` |
+| `crate/server_database/`, `*.sql`, persisted KMIP types (`crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_{attributes,objects,types}.rs`) | `/kms-db-compat` |
+| `crate/clients/clap/src/actions/` (new or changed subcommand, flag, accepted value or default) | `/ckms-subcommand-test` Step 0 coverage check: no change under `crate/clients/ckms/src/tests/` is a **High** structural finding (`S<n>`) |
 
 In PR mode, also run `/kms-sync-rules` on the PR diff (report-only) and add each unmet rule as an `S<n>` claim. In self-review mode it already ran (`AGENTS.md` §5 step 4). Never run `/meta-security` here (an audit orchestrator, not a diff gate).
 

@@ -4,7 +4,7 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 
 ## FIPS mode
 
-Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
+Run `mise run test:ui --variant fips` to execute the suite
 against a FIPS-mode KMS server. Six spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 
@@ -42,6 +42,12 @@ graph LR
     A --> C[Non-FIPS URLs redirect to /ui/locate]
     A --> D[MAC menu and pages stay reachable]
 ```
+
+## SSH and password utilities
+
+### ssh-password-flow
+
+Covers Web UI password generation (32-character alphanumeric value) and client-side role name validation. The SSH CA creation, signing-role creation and in-browser key generation followed by certificate signing need a server where the browser identity is a Crypto Officer; the test skips them on any other server, including the one `test_ui.sh` starts.
 
 ## Symmetric Keys
 
@@ -394,11 +400,12 @@ graph LR
     D -->|Wrong MAC| F[invalid]
 ```
 
-Covers HMAC-SHA256 and HMAC-SHA1 (issue #786). Tests include:
+Covers HMAC-SHA256 and HMAC-SHA1 (issue #786) and AES-CMAC (issue #1367). Tests include:
 
 - Navigation smoke tests for the compute and verify pages
 - HMAC-SHA256 compute returning `MAC (hex): <hex>`
 - HMAC-SHA1 compute
+- AES-CMAC compute (MAC type selector `AES-CMAC`) returning a 16-byte hex MAC
 - Error when key ID is missing
 - Compute → verify roundtrip returning `valid` (SHA256 and SHA1)
 - Wrong MAC → `invalid`
@@ -597,6 +604,18 @@ graph LR
     A[Create secret data] --> B[Export]
     B --> C[Import]
     C --> D[Revoke]
+    D --> E[Destroy]
+```
+
+### kv-secrets-flow
+
+Requires `[kv] kv_enabled = true`; `test_ui.sh` and `test_ui.ps1` enable it.
+
+```mermaid
+graph LR
+    A[Put secret] --> B[Get<br/>reveal values]
+    B --> C[List<br/>folders]
+    C --> D[Soft delete]
     D --> E[Destroy]
 ```
 

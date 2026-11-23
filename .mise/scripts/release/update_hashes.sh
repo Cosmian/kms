@@ -230,6 +230,8 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
           musl_variant="fips"
           [[ "$last_drv_name" == *musl-static* ]] && musl_variant="non-fips"
           target_file="$EXPECTED_DIR/cli.vendor.musl-${musl_variant}.sha256"
+        elif [[ "$last_drv_name" =~ (kubernetes-kms-plugin|cosmian-kms-operator|cosmian-kms-csi-provider).*vendor ]]; then
+          target_file="$EXPECTED_DIR/cargo.vendor.linux.sha256"
         # Cargo vendor derivations for CLI and server.
         # CLI vendor hash varies by linkage mode (static/dynamic) AND OS (linux/darwin).
         # Server vendor hash varies by linkage mode (static/dynamic), platform-stable.
@@ -242,7 +244,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
             cli_os="linux"
             { [[ "$JOB_NAME" == *"darwin"* ]] || [[ "$JOB_NAME" == *"macos"* ]]; } && cli_os="darwin"
             if [[ "$cli_os" == "linux" ]]; then
-              target_file="$EXPECTED_DIR/cli.vendor.linux.sha256"
+              target_file="$EXPECTED_DIR/cargo.vendor.linux.sha256"
             else
               target_file="$EXPECTED_DIR/cli.vendor.${cli_link}.${cli_os}.sha256"
             fi

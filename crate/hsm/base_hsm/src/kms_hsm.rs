@@ -37,7 +37,7 @@ use async_trait::async_trait;
 use cosmian_kms_interfaces::{
     CryptoAlgorithm, EcCurve, EncryptedContent, HSM, HsmKeyAlgorithm, HsmKeyPairIds,
     HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMetadata,
-    KeyType, SigningAlgorithm, SigningKeyMetadata,
+    KeyType, MacAlgorithm, MacKeyMetadata, SigningAlgorithm, SigningKeyMetadata,
 };
 use cosmian_logger::debug;
 use pkcs11_sys::CK_OBJECT_HANDLE;
@@ -45,7 +45,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     AesKeySize, BaseHsm, RsaKeySize, Session, SessionGuard, SlotManager,
-    base_hsm::aes_key_wrap_mechanism, hsm_capabilities::HsmProvider,
+    base_hsm::aes_key_wrap_mechanism, hsm_capabilities::HsmProvider, session::AES_GMAC_IV_LENGTH,
 };
 
 #[cfg(not(feature = "non-fips"))]
@@ -206,6 +206,17 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(self.get_available_slot_list()?)
     }
 
+    async fn check_slot(&self, slot_id: usize) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        tokio::task::spawn_blocking(move || {
+            slot.get_supported_mechanisms()
+                .map(|_| ())
+                .map_err(InterfaceError::from)
+        })
+        .await
+        .map_err(|e| InterfaceError::Default(format!("spawn_blocking error: {e}")))?
+    }
+
     async fn get_supported_algorithms(
         &self,
         slot_id: usize,
@@ -348,7 +359,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         iv_counter_nonce: &'a [u8],
     ) -> InterfaceResult<EncryptedContent> {
         let key_id = key_id.to_vec();
-        let data = data.to_vec();
+        let data = Zeroizing::new(data.to_vec());
         let iv_counter_nonce = iv_counter_nonce.to_vec();
         self.with_session(slot_id, false, move |slot, session| {
             let handle = session.get_object_handle(&key_id)?;
@@ -462,6 +473,66 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
             )?;
             let algorithm = resolve_algorithm(&metadata)?;
             Ok(session.verify(handle, algorithm.into(), &data, &signature)?)
+        })
+        .await
+    }
+
+    async fn mac_with_metadata(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        data: &[u8],
+    ) -> InterfaceResult<Vec<u8>> {
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        self.with_session(slot_id, true, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            let metadata =
+                cached_signing_metadata(session, handle, "MAC: key not found on the HSM")?;
+            let algorithm = resolve_algorithm(&MacKeyMetadata {
+                key_type: metadata.key_type,
+            })?;
+            Ok(session.mac(handle, algorithm, &data)?)
+        })
+        .await
+    }
+
+    async fn verify_mac_with_metadata(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        resolve_algorithm: Box<
+            dyn for<'a> Fn(&'a MacKeyMetadata) -> InterfaceResult<MacAlgorithm>
+                + Send
+                + Sync
+                + 'static,
+        >,
+        data: &[u8],
+        mac_data: &[u8],
+    ) -> InterfaceResult<bool> {
+        let key_id = key_id.to_vec();
+        let data = data.to_vec();
+        let mac_data = mac_data.to_vec();
+        self.with_session(slot_id, true, move |_, session| {
+            let handle = session.get_object_handle(&key_id)?;
+            let metadata =
+                cached_signing_metadata(session, handle, "MACVerify: key not found on the HSM")?;
+            let algorithm = resolve_algorithm(&MacKeyMetadata {
+                key_type: metadata.key_type,
+            })?;
+            if algorithm == MacAlgorithm::AesGmac && mac_data.len() < AES_GMAC_IV_LENGTH {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "AES-GMAC MAC data must start with a {AES_GMAC_IV_LENGTH}-byte IV, got {} bytes",
+                    mac_data.len()
+                )));
+            }
+            Ok(session.verify_mac(handle, algorithm, &data, &mac_data)?)
         })
         .await
     }

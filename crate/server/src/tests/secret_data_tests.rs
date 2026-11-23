@@ -243,7 +243,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(key_material.clone()),
+                key_material: KeyMaterial::ByteString(key_material.clone().into()),
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::SecretData),
                     unique_identifier: Some(secret_id.clone()),

@@ -18,8 +18,8 @@ use ckms::{
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
-                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
-                    RNGRetrieve, Revoke, Sign, SignatureVerify,
+                    Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, MAC, MACVerify,
+                    Query, RNGRetrieve, Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -30,17 +30,18 @@ use ckms::{
             },
         },
         cosmian_kms_client::{
-            ExportObjectParams, KmsClient, KmsClientConfig, batch_export_objects, export_object,
+            ExportObjectParams, KmsClient, KmsClientConfig, KmsClientError, batch_export_objects,
+            export_object,
         },
         cosmian_kms_crypto::crypto::KmsRng,
     },
 };
-use cosmian_logger::{debug, error, trace};
+use cosmian_logger::{debug, error, trace, warn};
 use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{
-        DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm, KeyAlgorithm,
-        MessageEncryptionOutput, SignatureAlgorithm,
+        AES_GMAC_TAG_SIZE, DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm,
+        KeyAlgorithm, MacAlgorithm, MacUsage, MessageEncryptionOutput, SignatureAlgorithm,
     },
 };
 use zeroize::Zeroizing;
@@ -191,6 +192,52 @@ pub(crate) fn get_kms_secret_data_objects(
     ))
 }
 
+/// Whether `error` is the server refusing to hand out one object (sensitive, non-extractable or
+/// not permitted), as opposed to a failure of the request itself (transport, TLS, 5xx, ...).
+///
+/// `batch_operations` flattens a failed batch item into `Default("Error: <reason> <message>")`;
+/// the reason is the KMIP `ErrorReason` name.
+fn is_export_denial(error: &KmsClientError) -> bool {
+    matches!(error, KmsClientError::Default(message)
+    if message.strip_prefix("Error: ").is_some_and(|rest| {
+        ["Sensitive", "Not_Extractable", "Permission_Denied"]
+            .iter()
+            .any(|reason| rest.starts_with(reason))
+    }))
+}
+
+/// Export `key_ids` in one batch; if the server denies one of them, retry id by id and skip the
+/// denied objects.
+///
+/// The batch is all-or-nothing: one non-exportable object (e.g. a sensitive key that another
+/// client or test process tagged identically on a shared database) must not hide the others.
+/// Any other error (unreachable server, expired token, missing object, ...) is returned as is, so
+/// callers never mistake a failure for an empty listing.
+pub(crate) async fn batch_export_skipping_denied(
+    kms_rest_client: &KmsClient,
+    key_ids: Vec<String>,
+    params: impl Fn() -> ExportObjectParams<'static>,
+) -> Pkcs11Result<Vec<(UniqueIdentifier, Object, Attributes)>> {
+    match batch_export_objects(kms_rest_client, key_ids.clone(), params()).await {
+        Ok(responses) => Ok(responses),
+        Err(batch_error) if is_export_denial(&batch_error) => {
+            warn!("batch export denied ({batch_error}); retrying object by object");
+            let mut responses = Vec::with_capacity(key_ids.len());
+            for id in key_ids {
+                match batch_export_objects(kms_rest_client, vec![id.clone()], params()).await {
+                    Ok(mut one) => responses.append(&mut one),
+                    Err(error) if is_export_denial(&error) => {
+                        warn!("skipping object {id}: {error}");
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Ok(responses)
+        }
+        Err(batch_error) => Err(batch_error.into()),
+    }
+}
+
 /// Locate and export only `Certificate` objects with the given tags.
 /// This adds an `ObjectType=Certificate` filter to the Locate request, preventing
 /// false matches with non-certificate objects (e.g. symmetric disk-encryption keys
@@ -227,12 +274,12 @@ async fn get_kms_certificate_objects_async(
         );
         return Ok(vec![]);
     }
-    let export_object_params = ExportObjectParams {
+    let responses = batch_export_skipping_denied(kms_rest_client, key_ids, || ExportObjectParams {
         unwrap: true,
         key_format_type: Some(KeyFormatType::X509),
         ..Default::default()
-    };
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    })
+    .await?;
     trace!(
         "get_kms_certificate_objects_async: found {} Certificate objects",
         responses.len()
@@ -267,12 +314,12 @@ async fn get_kms_secret_data_objects_async(
         );
         return Ok(vec![]);
     }
-    let export_object_params = ExportObjectParams {
+    let responses = batch_export_skipping_denied(kms_rest_client, key_ids, || ExportObjectParams {
         unwrap: true,
         key_format_type: Some(KeyFormatType::Raw),
         ..Default::default()
-    };
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    })
+    .await?;
     trace!(
         "get_kms_secret_data_objects_async: found {} SecretData objects",
         responses.len()
@@ -323,7 +370,7 @@ fn disk_encryption_label(
         .unwrap_or_else(|| fallback_id.to_owned())
 }
 
-async fn get_kms_disk_encryption_data_objects_async(
+pub(crate) async fn get_kms_disk_encryption_data_objects_async(
     kms_rest_client: &KmsClient,
     vendor_id: &str,
     disk_encryption_tag: &str,
@@ -346,12 +393,12 @@ async fn get_kms_disk_encryption_data_objects_async(
         );
         return Ok(vec![]);
     }
-    let export_object_params = ExportObjectParams {
+    let responses = batch_export_skipping_denied(kms_rest_client, key_ids, || ExportObjectParams {
         unwrap: true,
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Default::default()
-    };
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    })
+    .await?;
     trace!(
         "get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects",
         responses.len()
@@ -366,41 +413,6 @@ async fn get_kms_disk_encryption_data_objects_async(
         );
         results.push(KmsObject {
             remote_id: label,
-            object,
-            attributes,
-        });
-    }
-    Ok(results)
-}
-
-#[cfg(all(test, feature = "non-fips"))]
-pub(crate) async fn get_kms_objects_async(
-    kms_rest_client: &KmsClient,
-    vendor_id: &str,
-    tags: &[String],
-    key_format_type: Option<KeyFormatType>,
-) -> Pkcs11Result<Vec<KmsObject>> {
-    let key_ids = locate_objects(kms_rest_client, vendor_id, tags).await?;
-    let export_object_params = ExportObjectParams {
-        unwrap: true,
-        key_format_type,
-        ..Default::default()
-    };
-    if key_ids.is_empty() {
-        trace!(
-            "get_kms_objects_async: no objects found for tags: {:?}",
-            tags
-        );
-        return Ok(vec![]);
-    }
-
-    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
-    trace!("Found {} objects", responses.len());
-
-    let mut results = vec![];
-    for (id, object, attributes) in responses {
-        results.push(KmsObject {
-            remote_id: id.to_string(),
             object,
             attributes,
         });
@@ -489,6 +501,7 @@ pub(crate) fn kms_import_symmetric_key(
     key_length: usize,
     sensitive: bool,
     label: Option<&str>,
+    mac_usage: MacUsage,
 ) -> Pkcs11Result<KmsObject> {
     RUNTIME.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
@@ -497,6 +510,7 @@ pub(crate) fn kms_import_symmetric_key(
         key_length,
         sensitive,
         label,
+        mac_usage,
     ))
 }
 
@@ -543,6 +557,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
     key_length: usize,
     sensitive: bool,
     label: Option<&str>,
+    mac_usage: MacUsage,
 ) -> Pkcs11Result<KmsObject> {
     let cryptographic_algorithm = if algorithm == KeyAlgorithm::Aes256 {
         CryptographicAlgorithm::AES
@@ -564,17 +579,28 @@ pub(crate) async fn kms_import_symmetric_key_async(
 
     let cryptographic_length = Some(i32::try_from(key_length * 8)?);
 
+    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
+    // `CKA_SIGN` / `CKA_VERIFY` of the `C_GenerateKey` template grant the MAC usage bits. An HSM
+    // key is created with the server's default mask (no MAC bits), so it must not advertise them.
+    let mut usage_mask = CryptographicUsageMask::Encrypt
+        | CryptographicUsageMask::Decrypt
+        | CryptographicUsageMask::WrapKey
+        | CryptographicUsageMask::UnwrapKey
+        | CryptographicUsageMask::KeyAgreement;
+    if mac_usage.generate && !is_hsm_key {
+        usage_mask |= CryptographicUsageMask::MACGenerate;
+    }
+    if mac_usage.verify && !is_hsm_key {
+        usage_mask |= CryptographicUsageMask::MACVerify;
+    }
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(cryptographic_algorithm),
         cryptographic_length,
         cryptographic_parameters: None,
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
+        cryptographic_usage_mask: Some(usage_mask),
+        // Back-dated: the server activates an import only if its date is not in the future, so
+        // tolerate a client clock ahead of the KMS.
+        activation_date: Some(cosmian_kmip::time_normalize()? - std::time::Duration::from_secs(60)),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: label.map(|l| UniqueIdentifier::TextString(l.to_owned())),
@@ -588,14 +614,13 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::TransparentSymmetricKey { key },
+                key_material: KeyMaterial::TransparentSymmetricKey { key: key.into() },
                 attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_length,
             key_wrapping_data: None,
         },
     });
-    let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
     let remote_id = if is_hsm_key {
         let request = symmetric_key_create_request(
             vendor_id,
@@ -608,7 +633,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         )?;
         kms_rest_client.create(request).await?.unique_identifier
     } else {
-        let response = kms_rest_client
+        kms_rest_client
             .import(Import {
                 unique_identifier: label
                     .map(|l| UniqueIdentifier::TextString(l.to_owned()))
@@ -619,15 +644,8 @@ pub(crate) async fn kms_import_symmetric_key_async(
                 attributes: attributes.clone(),
                 object: object.clone(),
             })
-            .await?;
-
-        // Imported software keys start PreActive and must be activated before use.
-        kms_rest_client
-            .activate(Activate {
-                unique_identifier: response.unique_identifier.clone(),
-            })
-            .await?;
-        response.unique_identifier
+            .await?
+            .unique_identifier
     };
 
     let res = KmsObject {
@@ -670,7 +688,11 @@ pub(crate) async fn kms_import_object_async(
 
     let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
 
-    let mut attributes = Attributes::default();
+    let mut attributes = Attributes {
+        // Back-dated, see `kms_import_symmetric_key_async`.
+        activation_date: Some(cosmian_kmip::time_normalize()? - std::time::Duration::from_secs(60)),
+        ..Attributes::default()
+    };
     attributes.set_tags(vendor_id, tags)?;
 
     let object = Object::SecretData(SecretData {
@@ -679,7 +701,7 @@ pub(crate) async fn kms_import_object_async(
             cryptographic_length,
             key_format_type: KeyFormatType::Raw,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(secret_data_value)),
+                key_material: KeyMaterial::ByteString(secret_data_value.into()),
                 attributes: Some(Box::new(attributes.clone())),
             }),
             key_compression_type: None,
@@ -820,9 +842,9 @@ async fn kms_encrypt_async(
             encrypt_ctx.remote_object_id.clone(),
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
-        data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: encrypt_ctx.iv.clone(),
-        authenticated_encryption_additional_data: encrypt_ctx.aad.clone(),
+        data: Some(data.into()),
+        i_v_counter_nonce: encrypt_ctx.iv.clone().map(Into::into),
+        authenticated_encryption_additional_data: encrypt_ctx.aad.clone().map(Into::into),
         ..Default::default()
     };
     let response = kms_rest_client.encrypt(encryption_request).await?;
@@ -831,7 +853,7 @@ async fn kms_encrypt_async(
     })?;
     let (iv, tag) = if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
         let iv = match response.i_v_counter_nonce {
-            Some(iv) => iv,
+            Some(iv) => iv.to_vec(),
             None if require_generated_nonce => {
                 return Err(Pkcs11Error::ServerError(
                     "AES-GCM message encryption response does not contain a nonce".to_owned(),
@@ -844,13 +866,13 @@ async fn kms_encrypt_async(
                 "AES-GCM encryption response does not contain an authentication tag".to_owned(),
             )
         })?;
-        (iv, tag)
+        (iv, tag.to_vec())
     } else {
         (Vec::new(), Vec::new())
     };
     debug!("kms_encrypt_async: ciphertext_len: {}", ciphertext.len());
     Ok(MessageEncryptionOutput {
-        ciphertext,
+        ciphertext: ciphertext.to_vec(),
         iv,
         tag,
     })
@@ -929,13 +951,13 @@ pub(crate) async fn kms_decrypt_async(
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(ciphertext),
-        i_v_counter_nonce: decrypt_ctx.iv.clone(),
-        authenticated_encryption_additional_data: decrypt_ctx.aad.clone(),
-        authenticated_encryption_tag,
+        i_v_counter_nonce: decrypt_ctx.iv.clone().map(Into::into),
+        authenticated_encryption_additional_data: decrypt_ctx.aad.clone().map(Into::into),
+        authenticated_encryption_tag: authenticated_encryption_tag.map(Into::into),
         ..Default::default()
     };
     let response = kms_rest_client.decrypt(decryption_request).await?;
-    response.data.ok_or_else(|| {
+    response.data.map(Into::into).ok_or_else(|| {
         Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
     })
 }
@@ -1345,7 +1367,7 @@ pub(crate) async fn kms_sign_async(
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters,
-        data: data_bytes.map(zeroize::Zeroizing::new),
+        data: data_bytes.map(Into::into),
         digested_data: digested_data_bytes,
         correlation_value: None,
         init_indicator: None,
@@ -1448,6 +1470,85 @@ pub(crate) async fn kms_verify_async(
     }
 }
 
+/// KMIP `CryptographicParameters` selecting AES-CMAC (`block_cipher_mode = CMAC`) or AES-GMAC
+/// (`GCM`) on the KMIP `MAC` / `MACVerify` operations.
+fn aes_mac_parameters(block_cipher_mode: BlockCipherMode) -> CryptographicParameters {
+    CryptographicParameters {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        block_cipher_mode: Some(block_cipher_mode),
+        ..Default::default()
+    }
+}
+
+/// Computes the AES-CMAC or the AES-GMAC tag (PKCS#11 v3.0 §2.13.4) of `data` with the KMIP
+/// `MAC` operation. GMAC passes the caller's IV (the `IVCounterNonce` extension of `MAC`), so
+/// it runs as the OpenSSL provider's `GMAC`; the server answers `IV || tag` and the signature
+/// is the tag.
+pub(crate) fn kms_mac(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: MacAlgorithm,
+    data: &[u8],
+) -> Pkcs11Result<Vec<u8>> {
+    let (mode, iv) = match algorithm {
+        MacAlgorithm::AesCmac => (BlockCipherMode::CMAC, None),
+        MacAlgorithm::AesGmac { iv } => (BlockCipherMode::GCM, Some(iv.to_vec())),
+    };
+    let request = MAC {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters: Some(aes_mac_parameters(mode)),
+        data: Some(data.to_vec()),
+        i_v_counter_nonce: iv.map(Into::into),
+        ..Default::default()
+    };
+    let response = RUNTIME.block_on(kms_rest_client.mac(request))?;
+    let mac_data = response.mac_data.ok_or_else(|| {
+        Pkcs11Error::ServerError("MAC response does not contain MAC data".to_owned())
+    })?;
+    match algorithm {
+        MacAlgorithm::AesCmac => Ok(mac_data),
+        MacAlgorithm::AesGmac { iv } => match mac_data.strip_prefix(iv.as_slice()) {
+            Some(tag) if tag.len() == AES_GMAC_TAG_SIZE => Ok(tag.to_vec()),
+            _ => Err(Pkcs11Error::ServerError(format!(
+                "AES-GMAC: the KMS returned {} bytes, expected the IV and a {AES_GMAC_TAG_SIZE}-byte tag",
+                mac_data.len()
+            ))),
+        },
+    }
+}
+
+/// Verifies `mac` (the exact output of [`kms_mac`]) over `data` with KMIP `MACVerify`; anything
+/// but a valid MAC is [`Pkcs11Error::SignatureInvalid`]. For AES-GMAC the `MACData` is the
+/// caller's IV followed by the tag.
+pub(crate) fn kms_mac_verify(
+    kms_rest_client: &KmsClient,
+    unique_identifier: &str,
+    algorithm: MacAlgorithm,
+    data: &[u8],
+    mac: &[u8],
+) -> Pkcs11Result<()> {
+    let (mode, mac_data) = match algorithm {
+        MacAlgorithm::AesCmac => (BlockCipherMode::CMAC, mac.to_vec()),
+        MacAlgorithm::AesGmac { iv } => (BlockCipherMode::GCM, [iv.as_slice(), mac].concat()),
+    };
+    let request = MACVerify {
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
+        cryptographic_parameters: Some(aes_mac_parameters(mode)),
+        data: data.to_vec(),
+        mac_data,
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    let response = RUNTIME.block_on(kms_rest_client.mac_verify(request))?;
+    match response.validity_indicator {
+        Some(ValidityIndicator::Valid) => Ok(()),
+        Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
+            Err(Pkcs11Error::SignatureInvalid)
+        }
+    }
+}
+
 pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
@@ -1467,6 +1568,7 @@ pub(crate) async fn get_kms_object_attributes_async(
                 AttributeReference::Standard(Tag::CryptographicLength),
                 AttributeReference::Standard(Tag::ObjectType),
                 AttributeReference::Standard(Tag::CryptographicDomainParameters),
+                AttributeReference::Standard(Tag::CryptographicUsageMask),
             ]),
         })
         .await?;
@@ -1528,6 +1630,27 @@ pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_server_denials_are_skippable_export_errors() {
+        for reason in [
+            "Sensitive DENIED",
+            "Not_Extractable x",
+            "Permission_Denied x",
+        ] {
+            assert!(is_export_denial(&KmsClientError::Default(format!(
+                "Error: {reason}"
+            ))));
+        }
+        for error in [
+            KmsClientError::Default("Error: Item_Not_Found nope".to_owned()),
+            KmsClientError::Default("Error: General_Failure boom".to_owned()),
+            KmsClientError::RequestFailed("connection refused".to_owned()),
+            KmsClientError::Unauthorized("token expired".to_owned()),
+        ] {
+            assert!(!is_export_denial(&error), "{error} must surface");
+        }
+    }
 
     #[test]
     fn test_ecdsa_der_to_raw_p256() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,0 +1,11 @@
+- name: Wait for KMS health endpoint
+  ansible.builtin.uri:
+    url: "{{ kms_health_url }}"
+    method: GET
+    status_code: 200
+    validate_certs: "{{ kms_health_validate_certs }}"
+    return_content: true
+  register: kms_health_result
+  retries: "{{ kms_health_retries }}"
+  delay: "{{ kms_health_delay }}"
+  until: kms_health_result.status == 200

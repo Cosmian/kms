@@ -135,6 +135,14 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 `kms.keys.active.count` counts all **non-destroyed** key objects (SymmetricKey, PrivateKey,
 PublicKey, SplitKey) across all non-terminal states: PreActive, Active, Deactivated, Compromised.
 
+### Cluster
+
+| Metric              | Type  | Labels |
+| ------------------- | ----- | ------ |
+| `kms.cluster.nodes` | gauge | —      |
+
+`kms.cluster.nodes` is the number of nodes with a heartbeat in the last 15 s, refreshed every 5 s.
+
 ### Cache
 
 | Metric                       | Type    | Labels                |

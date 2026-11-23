@@ -241,10 +241,6 @@ The CI job exits 0 with the KMIP steps marked as `SKIPPED` when using the Commun
 # Local run (uses Community image by default)
 bash .mise/scripts/test/test_iris.sh --variant non-fips
 
-# With a licensed IRIS image (full KMIP test)
-IRIS_DOCKER_IMAGE=containers.intersystems.com/intersystems/iris:latest \
-bash .mise/scripts/test/test_iris.sh --variant non-fips
-
 # Via the Nix wrapper (matches CI exactly)
 mise run test:interop:iris --variant non-fips
 ```
@@ -253,10 +249,9 @@ mise run test:interop:iris --variant non-fips
 
 | Variable             | Default                                    | Purpose                                             |
 |----------------------|--------------------------------------------|-----------------------------------------------------|
-| `IRIS_DOCKER_IMAGE`  | `intersystemsdc/iris-community:latest`     | Override to use a licensed or ARM image             |
 | `IRIS_LICENSE_KEY`   | _(empty)_                                  | ISC license key injected as `ISC_PACKAGE_LICENSEKEY`|
 
-> On ARM hardware (Apple Silicon, AWS Graviton), use `intersystemsdc/iris-community-arm64:latest` or the script will automatically add `--platform linux/amd64` to run the x86-64 image via emulation.
+> On ARM hardware (Apple Silicon, AWS Graviton), the amd64-only Community image runs through emulation (`--platform linux/amd64`).
 
 ### GitHub Actions
 
@@ -269,7 +264,6 @@ for accessing enterprise IRIS images from the InterSystems Container Registry:
 | `ISC_DOCKER_USERNAME`      | Username for `containers.intersystems.com` |
 | `ISC_DOCKER_PASSWORD`      | Password for `containers.intersystems.com` |
 | `IRIS_LICENSE_KEY`         | License key for licensed IRIS images     |
-| `IRIS_DOCKER_IMAGE` (var)  | Repository variable to override the image |
 
 ---
 

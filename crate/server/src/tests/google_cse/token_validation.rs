@@ -701,7 +701,7 @@ async fn two_kacls(
             jwks: Arc::new(JwksManager {
                 uris: vec![LOCAL_KACLS_URL.to_owned()],
                 jwks: RwLock::new(HashMap::from([(LOCAL_KACLS_URL.to_owned(), jwks_a)])),
-                last_update: RwLock::new(Some(chrono::Utc::now())),
+                last_update: RwLock::new(Some(time::OffsetDateTime::now_utc())),
                 last_force_refresh: RwLock::new(None),
                 proxy_params: None,
                 accept_invalid_certs: false,

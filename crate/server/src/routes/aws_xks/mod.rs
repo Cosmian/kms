@@ -3,6 +3,7 @@ mod encrypt_decrypt;
 mod error;
 mod health_status;
 mod key_metadata;
+mod sigv4;
 mod sigv4_middleware;
 
 pub use aws_xks_config::AwsXksConfig;

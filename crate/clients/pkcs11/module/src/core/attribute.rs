@@ -33,7 +33,7 @@ use pkcs11_sys::{
     CKA_TOKEN, CKA_TRUSTED, CKA_UNIQUE_ID, CKA_UNWRAP, CKA_VALUE, CKA_VALUE_LEN, CKA_VERIFY,
     CKA_VERIFY_RECOVER, CKA_WRAP, CKC_X_509,
 };
-use strum_macros::Display;
+use strum::Display;
 
 use crate::{ModuleError, ModuleResult, not_null};
 
@@ -143,7 +143,7 @@ impl TryFrom<CK_ATTRIBUTE_TYPE> for AttributeType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum Attribute {
     AlwaysAuthenticate(bool),
     AlwaysSensitive(bool),
@@ -190,6 +190,61 @@ pub enum Attribute {
     Verify(bool),
     VerifyRecover(bool),
     Wrap(bool),
+}
+
+/// Byte-array attributes (`CKA_VALUE`, private-key components, ...) can hold key material,
+/// so only their length is printed, never their content.
+impl std::fmt::Debug for Attribute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.attribute_type().to_string();
+        let mut tuple = f.debug_tuple(&name);
+        match self {
+            Self::Application(v)
+            | Self::Coefficient(v)
+            | Self::EcParams(v)
+            | Self::EcPoint(v)
+            | Self::Exponent1(v)
+            | Self::Exponent2(v)
+            | Self::Id(v)
+            | Self::Issuer(v)
+            | Self::Modulus(v)
+            | Self::Modifiable(v)
+            | Self::Prime1(v)
+            | Self::Prime2(v)
+            | Self::PrivateExponent(v)
+            | Self::PublicExponent(v)
+            | Self::SerialNumber(v)
+            | Self::Subject(v)
+            | Self::UniqueId(v)
+            | Self::Value(v) => tuple.field(&format_args!("<{} bytes>", v.len())),
+            Self::AlwaysAuthenticate(v)
+            | Self::AlwaysSensitive(v)
+            | Self::Decrypt(v)
+            | Self::Derive(v)
+            | Self::Encrypt(v)
+            | Self::Extractable(v)
+            | Self::NeverExtractable(v)
+            | Self::Private(v)
+            | Self::Sensitive(v)
+            | Self::Sign(v)
+            | Self::SignRecover(v)
+            | Self::Token(v)
+            | Self::Trusted(v)
+            | Self::Unwrap(v)
+            | Self::Verify(v)
+            | Self::VerifyRecover(v)
+            | Self::Wrap(v) => tuple.field(v),
+            Self::CertificateCategory(v)
+            | Self::CertificateType(v)
+            | Self::Class(v)
+            | Self::KeyType(v)
+            | Self::ModulusBits(v)
+            | Self::ProfileId(v)
+            | Self::ValueLen(v) => tuple.field(v),
+            Self::Label(v) => tuple.field(v),
+        };
+        tuple.finish()
+    }
 }
 
 impl Attribute {
@@ -315,7 +370,7 @@ impl TryFrom<CK_ATTRIBUTE> for Attribute {
         } else {
             &[]
         };
-        trace!("Attribute::try_from: value: {val:?}");
+        trace!("Attribute::try_from: value: <{} bytes>", val.len());
 
         let attr = match attr_type {
             AttributeType::AlwaysAuthenticate => {
@@ -423,6 +478,10 @@ impl Attributes {
     get_attribute!(get_value_len, AttributeType::ValueLen, ValueLen, CK_ULONG);
 
     get_attribute!(get_sensitive, AttributeType::Sensitive, Sensitive, bool);
+
+    get_attribute!(get_sign, AttributeType::Sign, Sign, bool);
+
+    get_attribute!(get_verify, AttributeType::Verify, Verify, bool);
 
     #[must_use]
     pub fn get(&self, attribute_type: AttributeType) -> Option<&Attribute> {
@@ -535,5 +594,23 @@ mod characterization_tests {
     fn characterization_ensure_x509_or_none_other_attribute_value() {
         let attrs = Attributes::from(vec![Attribute::CertificateCategory(1)]);
         call_ensure_x509_or_none(&attrs).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::Attribute;
+
+    #[test]
+    fn key_material_attributes_print_only_their_length() {
+        let secret = b"SECRET-MARKER".to_vec();
+        for attr in [
+            Attribute::Value(secret.clone()),
+            Attribute::PrivateExponent(secret),
+        ] {
+            let out = format!("{attr:?} {attr:#?}");
+            assert!(!out.contains("SECRET") && !out.contains("83, 69"), "{out}");
+            assert!(out.contains("<13 bytes>"), "{out}");
+        }
     }
 }

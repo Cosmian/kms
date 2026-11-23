@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use chrono::Utc;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, StatefulSet},
@@ -180,7 +179,7 @@ async fn upsert_secret(
 /// Trigger a rolling restart for declared Deployments and `StatefulSets` by
 /// patching `spec.template.metadata.annotations` with the current timestamp.
 async fn restart_workloads(client: &Client, namespace: &str, owner: &KMSSecret) {
-    let now = chrono_now();
+    let now = rfc3339_now();
     restart_resource::<Deployment>(
         client,
         namespace,
@@ -243,7 +242,7 @@ async fn patch_status(
         ready: if error_msg.is_none() { "True" } else { "False" }.to_owned(),
         message: error_msg.map(ToOwned::to_owned),
         last_secret_hash: Some(hash.to_owned()),
-        last_sync_time: Some(chrono_now()),
+        last_sync_time: Some(rfc3339_now()),
     };
     let patch = serde_json::json!({ "status": status });
     if let Err(e) = api
@@ -259,12 +258,58 @@ fn refresh_duration(obj: &KMSSecret, default: Duration) -> Duration {
     obj.spec
         .refresh_interval
         .as_deref()
-        .and_then(|s| s.parse::<humantime::Duration>().ok())
-        .map_or(default, Into::into)
+        .and_then(parse_duration)
+        .unwrap_or(default)
 }
 
-fn chrono_now() -> String {
-    Utc::now().to_rfc3339()
+/// Parse a duration such as `30m`, `90s`, `1h30m` or `1h 30m`: one or more `<integer><unit>` groups
+/// separated by optional whitespace. Units: `ns`/`nsec`, `us`/`usec`, `ms`/`msec`,
+/// `s`/`sec`/`secs`/`second`/`seconds`, `m`/`min`/`mins`/`minute`/`minutes`,
+/// `h`/`hr`/`hrs`/`hour`/`hours`, `d`/`day`/`days`, `w`/`week`/`weeks`.
+///
+/// Returns `None` for an empty or malformed string, an unknown unit, or a duration that overflows.
+pub(crate) fn parse_duration(s: &str) -> Option<Duration> {
+    const NANOS_PER_SEC: u128 = 1_000_000_000;
+    let mut rest = s.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let mut total_nanos: u128 = 0;
+    while !rest.is_empty() {
+        let digits_end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        let (digits, after_digits) = rest.split_at(digits_end);
+        let value: u128 = digits.parse().ok()?;
+        let after_digits = after_digits.trim_start();
+        let unit_end = after_digits
+            .find(|c: char| !c.is_ascii_alphabetic())
+            .unwrap_or(after_digits.len());
+        let (unit, after_unit) = after_digits.split_at(unit_end);
+        let unit_nanos: u128 = match unit {
+            "ns" | "nsec" => 1,
+            "us" | "usec" => 1_000,
+            "ms" | "msec" => 1_000_000,
+            "s" | "sec" | "secs" | "second" | "seconds" => NANOS_PER_SEC,
+            "m" | "min" | "mins" | "minute" | "minutes" => 60 * NANOS_PER_SEC,
+            "h" | "hr" | "hrs" | "hour" | "hours" => 3_600 * NANOS_PER_SEC,
+            "d" | "day" | "days" => 86_400 * NANOS_PER_SEC,
+            "w" | "week" | "weeks" => 604_800 * NANOS_PER_SEC,
+            _ => return None,
+        };
+        total_nanos = total_nanos.checked_add(value.checked_mul(unit_nanos)?)?;
+        rest = after_unit.trim_start();
+    }
+    let secs = u64::try_from(total_nanos / NANOS_PER_SEC).ok()?;
+    let subsec_nanos = u32::try_from(total_nanos % NANOS_PER_SEC).ok()?;
+    Some(Duration::new(secs, subsec_nanos))
+}
+
+fn rfc3339_now() -> String {
+    // Rfc3339 formatting of now_utc() only fails for years > 9999.
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -332,5 +377,80 @@ mod characterization_tests {
         let err = OperatorError::Config("boom".to_owned());
         let action = error_policy(&secret(Some("5s")), &err, &ctx);
         assert_eq!(action, Action::requeue(Duration::from_secs(30)));
+    }
+}
+
+#[cfg(test)]
+mod parse_duration_tests {
+    use std::time::Duration;
+
+    use super::parse_duration;
+
+    #[test]
+    fn single_group() {
+        assert_eq!(parse_duration("30m"), Some(Duration::from_mins(30)));
+        assert_eq!(parse_duration("90s"), Some(Duration::from_secs(90)));
+        assert_eq!(parse_duration("1h"), Some(Duration::from_hours(1)));
+        assert_eq!(parse_duration("2days"), Some(Duration::from_hours(48)));
+        assert_eq!(parse_duration("1w"), Some(Duration::from_hours(168)));
+        assert_eq!(parse_duration("5 minutes"), Some(Duration::from_mins(5)));
+    }
+
+    #[test]
+    fn multiple_groups() {
+        assert_eq!(parse_duration("1h30m"), Some(Duration::from_mins(90)));
+        assert_eq!(parse_duration("1h 30m"), Some(Duration::from_mins(90)));
+        assert_eq!(
+            parse_duration(" 1d 2h 3m 4s "),
+            Some(Duration::from_secs(86_400 + 7_200 + 180 + 4))
+        );
+    }
+
+    #[test]
+    fn sub_second_units() {
+        assert_eq!(parse_duration("500ms"), Some(Duration::from_millis(500)));
+        assert_eq!(parse_duration("7us"), Some(Duration::from_micros(7)));
+        assert_eq!(parse_duration("9ns"), Some(Duration::from_nanos(9)));
+        assert_eq!(
+            parse_duration("1s500ms"),
+            Some(Duration::from_millis(1_500))
+        );
+    }
+
+    #[test]
+    fn zero() {
+        assert_eq!(parse_duration("0s"), Some(Duration::ZERO));
+        assert_eq!(parse_duration("0m 0s"), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn rejects_malformed_input() {
+        assert_eq!(parse_duration(""), None);
+        assert_eq!(parse_duration("   "), None);
+        assert_eq!(parse_duration("garbage"), None);
+        assert_eq!(parse_duration("10"), None);
+        assert_eq!(parse_duration("10x"), None);
+        assert_eq!(parse_duration("m"), None);
+        assert_eq!(parse_duration("h30m"), None);
+        assert_eq!(parse_duration("1h-30m"), None);
+        assert_eq!(parse_duration("1.5h"), None);
+        assert_eq!(parse_duration("-1h"), None);
+    }
+
+    #[test]
+    fn rejects_overflow() {
+        assert_eq!(parse_duration("18446744073709551616s"), None);
+        assert_eq!(
+            parse_duration("99999999999999999999999999999999999999w"),
+            None
+        );
+        assert_eq!(
+            parse_duration("999999999999999999999999999999999999999999s"),
+            None
+        );
+        assert_eq!(
+            parse_duration("18446744073709551615s"),
+            Some(Duration::from_secs(u64::MAX))
+        );
     }
 }

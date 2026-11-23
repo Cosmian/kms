@@ -28,7 +28,7 @@
 
 ## 1. Master Orchestrator
 
-Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one job per group in `.github/workflows/test_all.yml` (`mise run test:<group>`).
+Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one leg per group and variant in `.github/workflows/test_all.yml` (`test-suites`, `mise run test:<group>`).
 
 | Command | Effect |
 |---------|--------|
@@ -62,7 +62,7 @@ Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips o
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
 2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
-3. It then runs in CI with its group (`test-<group>` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
+3. It then runs in CI with its group (a unit of `.github/ci-paths.toml`, hence a leg of `test-suites` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
 
 ### Sequence Diagram
 
@@ -161,17 +161,20 @@ sequenceDiagram
 
 ## 3. HSM Backends
 
-**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`
+**Tasks:** `test:hsm:softhsm2`, `test:hsm:utimaco`, `test:hsm:proteccio`, `test:hsm:crypt2pay`, `test:hsm:luna`, `test:hsm:crypt2pay-simulator`, `test:hsm:idemia-sphere-simulator`
 **Orchestrator:** `test:hsm`
 **Matrix:** `test:hsm:matrix` (cross-product HSM × DB × variant; Linux includes `crypt2pay-simulator`)
 
 | Task | HSM Model | Platform | DB param |
 |------|-----------|----------|----------|
-| `softhsm2` | SoftHSM2 (software) | All | configurable |
-| `utimaco` | Utimaco simulator | Linux only | passthrough |
+| `softhsm2` | SoftHSM2 (software); the server `test_hsm_all` includes keyset rotation (re-key, retirement, all-generation processing; SoftHSM2 stores no key dates, so scheduling is asserted refused) | All | configurable |
+| `utimaco` | Utimaco simulator: loader tests, KMS startup with an HSM KEK and the server keyset rotation test, whose scheduler pass relies on the simulator storing `CKA_START_DATE` / `CKA_END_DATE` | Linux only | passthrough |
 | `proteccio` | Proteccio | Linux only | passthrough |
 | `crypt2pay` | Crypt2Pay | Linux only | passthrough |
 | `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
+| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: the `windows-hsm-idemia` leg of `test-group.yml`) | — |
+| `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All (Windows: `.mise/scripts/windows/test_hsm_other.ps1`) | — |
+| `nix-helpers` | nix-shell re-entry secret-handling regression test (no HSM) | All | — |
 | `luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
 
 ### Architecture Overview
@@ -225,12 +228,13 @@ sequenceDiagram
 
 ## 4. Cloud Provider Integrations
 
-**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
+**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:google-cse-remote`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
 
 | Task | Cloud | FIPS? | Credential requirement |
 |------|-------|-------|------------------------|
 | `azure-ekm` | Azure EKM | no | Nix shell; runs the plain + mTLS scripts against a local KMS |
 | `google-cse` | Google CSE | yes | OAuth client + service account key |
+| `google-cse-remote` | Google CSE (cse.cosmian.com, cse.test.cosmian.com) | no | Local only, skipped in CI: `~/.cosmian/cse.cosmian.com.toml` or `CKMS_CSE_CONF` (KMS OAuth `refresh_token` + `gmail_api_conf`) |
 | `gcp-cmek` | GCP CMEK wrapping | yes | Nix shell; `cargo test tests::gcp_cmek --ignored` against a local KMS |
 | `xks` | AWS XKS (local) | no | KMS build + SigV4 test script |
 | `xks-remote` | AWS XKS (remote) | no | Nix shell (`WITH_XKS=1`), `KMS_XKS_SIGV4_ACCESS_KEY_ID` / `KMS_XKS_SIGV4_SECRET_ACCESS_KEY`, no build |
@@ -342,6 +346,8 @@ sequenceDiagram
 
 After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18), `test:spire:kmip` (19) and `test:spire:vault-transit-seal` (20).
 
+Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin` = `default_username`, signed by the test CA; trusted via `[tls] clients_ca_cert_file` in `test_data/spire/config/kms.toml`), passed to `kms_write_ckms_conf`. With the Vault token verifier as the only auth method the KMS answers 401 to token-less requests, so the default-user fallback no longer applies.
+
 #### Architecture Overview
 
 ```mermaid
@@ -367,7 +373,7 @@ graph TB
     SSA --> |X.509-SVID + JWT-SVID| Mistral
     SBA --> |X.509-SVID + JWT-SVID| Mistral
     Mistral --> |mTLS + JWT-SVID| KMS3
-    CKMS --> |certify, provision| KMS3
+    CKMS -- "certify, provision<br/>mTLS admin" --> KMS3
 ```
 
 #### Sequence Diagram
@@ -457,7 +463,7 @@ sequenceDiagram
     CKMS->>CKMS: build KMS (no insecure feature), ckms, auth-verifier
     CKMS->>Auth: start auth-verifier on :8443
     CKMS->>K0: start KMS bootstrap
-    CKMS->>K0: certify vault_pki_ca_cert
+    CKMS->>K0: certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>Auth: provision AppRoles
     Auth-->>CKMS: ROLE_ID_A, SECRET_ID_A
     CKMS->>SP: docker compose up spire-server-a
@@ -593,7 +599,7 @@ graph TB
     end
 
     AuthVrf3 --> |AppRole provisioning| KMS6
-    CKMS4 --> |certify, keys create| KMS6
+    CKMS4 -- "certify, keys create<br/>mTLS admin" --> KMS6
     TestScript --> CKMS4
     TestScript --> AuthVrf3
 ```
@@ -614,7 +620,7 @@ sequenceDiagram
     Test->>Cargo: build ckms CLI
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -656,7 +662,7 @@ graph TB
     SP_Agt2 --> |SDS delivery| Envoy_D2
     Envoy_D2 --> |mTLS| Envoy_U2
     AuthVrf4 --> |AppRole provisioning| KMS7
-    CKMS5 --> |certify, provision| KMS7
+    CKMS5 -- "certify, provision<br/>mTLS admin" --> KMS7
     TestSDS2 --> |orchestrates| DockerCompose
 ```
 
@@ -678,7 +684,7 @@ sequenceDiagram
     Test->>Cargo: build KMS server, auth-verifier, ckms
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -724,6 +730,272 @@ sequenceDiagram
     Test->>Vault: docker restart
     Vault->>KMS: decrypt root key
     Test->>Vault: read KV secret
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal/rotate
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt v1 root key
+    Test->>KMS: DELETE /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker restart
+    Vault-->>Test: remains sealed
+```
+
+### `test:interop:openbao`
+
+**Description:** The real OpenBao CLI (`bao kv`, container image `ghcr.io/openbao/openbao`) against the KMS Vault KV v2-compatible secret store. Runs in both FIPS and non-FIPS variants and needs only Docker and no submodule. The KMS validates `X-Vault-Token` directly against a throw-away OpenBao dev server (two `userpass` logins, `alice` and `bob`, each mapped to its own entity) through OpenBao's own `/v1/auth/token/lookup-self`; no proxy sits in between.
+
+By default the KMS uses SQLite; CI also runs the scenario on PostgreSQL and MySQL through `test:db:openbao` (starts the `postgres` and `mysql` compose services in turn and sets `OPENBAO_DATABASE_URL`; `--db psql` or `--db mysql` runs only one). Set `OPENBAO_DATABASE_URL` (`postgresql://…` or `mysql://…`, e.g. `postgresql://kms:kms@127.0.0.1:5432/kms` after `docker compose up -d postgres`) to replay the whole scenario on that backend by hand; the scenario also checks the 219-character path limit.
+
+The CLI always prefixes requests with `/v1/`, writes with `PUT` and first calls `GET /v1/sys/internal/ui/mounts/<path>` to detect KV v2; the KMS serves the KV routes on both `/<kv_mount>` and `/v1/<kv_mount>` for that reason. The scenario ([`test_openbao_kv.sh`](../../scripts/test/openbao/test_openbao_kv.sh)) covers put/get, versioning (`-version=1`), nested `list`, metadata, soft delete (including retained older versions), hard delete (including older versions and path recreation), and the `options.ttl` sweep (`kv_ttl_check_interval_secs = 1`). Unit tests verify that users without grants cannot write, read metadata, delete, or discover paths through `list`; the CLI scenario also checks, against the authenticated KMS, that eight concurrent writes yield only 200 or 409 with one version per success, that an invalid token is rejected and that `bob` gets 403 on read, write and hard delete of `alice`'s secret.
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:interop:openbao"]
+        KMS7["Cosmian KMS<br/>kv_enabled"]
+    end
+
+    subgraph Docker["Docker"]
+        Bao["OpenBao CLI<br/>bao kv"]
+    end
+
+    Task --> KMS7
+    Bao --> |"PUT, GET on /v1/kv"| KMS7
+```
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Test as test:interop:openbao script
+    participant KMS as KMS (kv_enabled)
+    participant Bao as bao CLI container
+
+    Test->>KMS: start KMS with the kv section
+    Test->>Bao: bao kv put, get, list, delete
+    Bao->>KMS: GET /v1/sys/internal/ui/mounts (KV v2 detection)
+    KMS-->>Bao: type kv, options version 2
+    Bao->>KMS: PUT, GET /v1/kv/data and /v1/kv/metadata
+    KMS-->>Bao: versioned secrets
+    Test->>KMS: write with options.ttl, wait for sweep
+    KMS-->>Test: 404 after expiry
+```
+
+### `test:interop:openbao-auth-verifier`
+
+**Description:** The real OpenBao CLI against the KMS Vault KV v2-compatible store, with the Cosmian Auth Verifier (not OpenBao) issuing the tokens: the deployment with only the KMS and the Auth Verifier. Runs in both variants; needs Docker, `cargo` and the `authentication` submodule. The task builds and starts the Auth Verifier from [`test_data/configs/auth_verifier/vault_kv.toml`](../../../test_data/configs/auth_verifier/vault_kv.toml) (plain HTTP, SQLite, `vault_userpass_realm = "kv-users"`), provisions a realm, users `alice` and `bob` and an AppRole with `curl`, then starts the KMS with `vault_auth_verifier_url` set to it.
+
+Every login goes through the KMS, which forwards `/v1/auth/*` to the Auth Verifier: `bao login -method=userpass` for both users, a wrong password (must fail), `bao login <token>` (exercises `/v1/auth/token/lookup-self`) and `bao write auth/approle/login`. [`test_openbao_kv.sh`](../../scripts/test/openbao/test_openbao_kv.sh) then runs the KV scenario with the two userpass tokens, and the AppRole token puts and reads back a secret. The CLI runs through [`bao_cli.sh`](../../scripts/test/openbao/bao_cli.sh).
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:interop:openbao-auth-verifier"]
+        KMS["Cosmian KMS<br/>kv_enabled"]
+        AV["Auth Verifier<br/>vault_kv.toml"]
+    end
+
+    subgraph Docker["Docker"]
+        Bao["OpenBao CLI<br/>bao login, kv"]
+    end
+
+    Task --> |"provision realm, users, AppRole"| AV
+    Bao --> |"/v1/auth/* and /v1/kv"| KMS
+    KMS --> |"forward auth, lookup-self"| AV
+```
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Bao as bao CLI container
+    participant KMS as KMS (kv_enabled)
+    participant AV as Auth Verifier
+
+    Bao->>KMS: POST /v1/auth/userpass/login/alice
+    KMS->>AV: forwarded unchanged
+    AV-->>Bao: client_token
+    Bao->>KMS: PUT /v1/kv/data/app (X-Vault-Token)
+    KMS->>AV: GET /v1/auth/token/lookup-self
+    AV-->>KMS: entity_id userpass:kv-users:alice
+    KMS-->>Bao: 200
+```
+
+To run it by hand: `mise run test:interop:openbao-auth-verifier --variant non-fips`.
+
+### `test:interop:openbao-kmip`
+
+**Description:** OpenBao auto-unseal through the KMS binary KMIP listener: the reverse direction of `test:interop:openbao`, with OpenBao as a KMIP consumer. Runs in both variants and needs only Docker. The task generates a throw-away CA, a KMS server certificate and an OpenBao client certificate (`CN=openbao-seal`), starts the KMS with mTLS HTTPS and `[socket_server]` (KMIP over TCP/TLS), then creates and activates an AES-256 wrapping key as the OpenBao identity through `POST /kmip/2_1`. OpenBao (image `ghcr.io/openbao/openbao`, override with `BAO_IMAGE`) is configured with `seal "kmip"` (`endpoint`, `kms_key_id`, `client_cert`, `client_key`, `ca_cert`, `encrypt_alg = "AES_GCM"`).
+
+The scenario checks that `bao operator init` completes with seal type `kmip` (no software seal fallback), that OpenBao is unsealed, and that after a container restart it unseals itself again. OpenBao connects straight to the KMS KMIP socket. The KMS runs with `cosmian_kms_server=debug`, which logs each KMIP request's operation, protocol version, target key identifier, cryptographic algorithm and block cipher mode (never the data, the IV or key material). [`check_kmip_seal_audit.py`](../../scripts/test/openbao/check_kmip_seal_audit.py) reads only the KMS log and asserts that KMIP `Encrypt` and `Decrypt` were served for the `openbao-seal` client certificate identity only, and that the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode.
+
+In the `fips` variant the scenario cannot succeed by design: OpenBao picks the AES-GCM IV itself and ignores the one the server returns, and a FIPS KMS refuses a caller-supplied AES-GCM IV (FIPS 140-3 IG C.H). The task then asserts that `bao operator init` fails and that the KMS log holds that refusal for the `openbao-seal` identity, and stops before the unseal and audit steps.
+
+To run it by hand: `mise run test:interop:openbao-kmip --variant non-fips`. The KMS must listen with `[socket_server]` and `clients_ca_cert_file` set, and OpenBao must trust the CA that signed the KMS certificate (`server_name` must match a SAN of that certificate).
+
+HashiCorp Vault is deliberately not covered: it has no `seal "kmip"` stanza, so `BAO_IMAGE` must not be pointed at a Vault image. Its seals are the cloud KMS ones, `transit` (the KMS Transit emulation has no `encrypt`/`decrypt` routes) and Enterprise-only `pkcs11`; supporting Vault needs a different KMS integration, see [OpenBao and Eviden KMS](../../../documentation/docs/integrations/openbao.md#hashicorp-vault-is-not-supported-for-auto-unseal).
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:interop:openbao-kmip"]
+        KMS["Cosmian KMS<br/>mTLS HTTPS + socket_server"]
+        Audit["check_kmip_seal_audit.py"]
+    end
+
+    subgraph Docker["Docker"]
+        Bao["OpenBao<br/>seal kmip, AES_GCM"]
+    end
+
+    Task --> |"throw-away CA and certs"| KMS
+    Task --> |"POST /kmip/2_1 Create, Activate"| KMS
+    Bao --> |"KMIP over TCP/TLS<br/>Encrypt, Decrypt"| KMS
+    Audit --> |"reads KMS log"| KMS
+```
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Test as test:interop:openbao-kmip script
+    participant KMS as KMS (HTTPS + KMIP socket)
+    participant Bao as OpenBao container
+    participant Audit as check_kmip_seal_audit.py
+
+    Test->>KMS: start with mTLS and socket_server
+    Test->>KMS: POST /kmip/2_1 Create AES-256 (CN=openbao-seal)
+    Test->>KMS: POST /kmip/2_1 Activate
+    Test->>Bao: start with seal "kmip"
+    alt non-FIPS variant
+    Test->>Bao: bao operator init
+    Bao->>KMS: KMIP Encrypt (master key, AES-GCM)
+    KMS-->>Bao: wrapped key
+    Bao-->>Test: seal type kmip, unsealed
+    Test->>Bao: docker restart
+    Bao->>KMS: KMIP Decrypt
+    KMS-->>Bao: master key
+    Bao-->>Test: unsealed again
+    Test->>Audit: KMS debug log
+    Audit-->>Test: Encrypt and Decrypt by openbao-seal only, KMIP 1.4, AES-GCM, wrapping key
+    else FIPS variant
+        Test->>Bao: bao operator init
+        Bao->>KMS: KMIP Encrypt (caller-supplied AES-GCM IV)
+        KMS-->>Bao: Invalid_Field, IV refused in FIPS mode
+        Bao-->>Test: init fails
+        Test->>Test: grep the KMS log for the refusal by openbao-seal, then stop
+    end
+```
+
+### `test:interop:ssh-secrets`
+
+**Description:** Runs two scenarios one after the other, both variants, and reports every failure. The scripts keep their own names so each can also be run directly.
+
+1. SSH certificates ([`test_ssh_certificates.sh`](../../scripts/test/test_ssh_certificates.sh)): KMS-issued OpenSSH user certificates checked by a real, unprivileged `sshd` (`TrustedUserCAKeys`); needs `sshd` and `ssh-keygen` on the host. It creates an ECDSA P-256 CA and then an RSA-3072 CA with `ckms`, configures the CA and a role, and issues a 6-second certificate. It asserts that `ssh-keygen -L` parses the certificate and that its signing key is the published CA key; that `sshd` accepts it before expiry, refuses a principal different from the login and refuses it after expiry; and that a principal outside the role (401), a TTL above the role maximum (422) and an RSA-2048 subject key (422) are rejected. The HSM-resident CA path is covered by `tests::hsm::ssh_ca` in `test:hsm:softhsm2`.
+2. Secret rotation ([`test_secret_rotation.sh`](../../scripts/test/test_secret_rotation.sh)): database password rotation published to the KV store, run once per engine (`--db postgres`, `--db mysql`; the task runs both). Needs Docker (`postgres:16-alpine`, `mysql:8.4` and the OpenBao image used as token verifier, as in `test:interop:openbao`). The KMS side is identical for every engine: only the `db_*` helper functions at the top of the script differ. It generates a password with `POST /v1/secrets/password`, changes the account password, and writes it to KV. It asserts that the new password works, the old one is refused, and a KV consumer reads the new value. In a second scenario the KV write is refused (invalid token): the pending value is kept, the rotation is not reported complete, and publishing the same value again succeeds.
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:interop:ssh-secrets"]
+        KMS["Cosmian KMS<br/>SSH CA, KV, secrets"]
+        Ckms["ckms CLI"]
+        Sshd["unprivileged sshd<br/>TrustedUserCAKeys"]
+    end
+
+    subgraph Docker["Docker"]
+        Bao["OpenBao<br/>token verifier"]
+        PG["PostgreSQL 16"]
+        MY["MySQL 8.4"]
+    end
+
+    Task --> |"test_ssh_certificates.sh"| Ckms
+    Task --> |"test_secret_rotation.sh --db postgres, mysql"| KMS
+    Ckms --> KMS
+    Task --> |"ssh login with certificate"| Sshd
+    KMS --> |"X-Vault-Token lookup-self"| Bao
+    Task --> |"ALTER password"| PG
+    Task --> |"ALTER password"| MY
+```
+
+#### Sequence Diagram: SSH certificates
+
+```mermaid
+sequenceDiagram
+    participant Test as test_ssh_certificates.sh
+    participant KMS as KMS (mTLS, roles)
+    participant Keygen as ssh-keygen
+    participant Sshd as sshd (inetd mode)
+
+    loop EC P-256 CA, then RSA-3072 CA
+        Test->>KMS: ckms creates the CA key (owner)
+        Test->>KMS: PUT /v1/ssh/config/ca and PUT /v1/ssh/roles/developers
+        Test->>KMS: raw KMIP Sign with the CA key
+        KMS-->>Test: owner served, role user refused
+        Test->>KMS: GET /v1/ssh/public_key
+        KMS-->>Test: CA public key (sshd TrustedUserCAKeys)
+        Test->>KMS: POST /v1/ssh/sign/developers as a caller outside the role
+        KMS-->>Test: denied
+        Test->>KMS: POST /v1/ssh/sign/developers (role user, short TTL)
+        KMS-->>Test: signed_key
+        Test->>Keygen: ssh-keygen -L
+        Keygen-->>Test: principals, Key ID, signing CA = published CA
+        Test->>Sshd: login before expiry
+        Sshd-->>Test: accepted
+        Test->>KMS: sign for another allowed principal
+        Test->>Sshd: login with that certificate
+        Sshd-->>Test: refused
+        Test->>KMS: disallowed principal, TTL above max_ttl, RSA-2048 subject key
+        KMS-->>Test: 401, 422, 422
+        Test->>Sshd: login after expiry
+        Sshd-->>Test: refused
+    end
+    Test->>Test: no PRIVATE KEY in the KMS log
+```
+
+#### Sequence Diagram: secret rotation (per engine)
+
+```mermaid
+sequenceDiagram
+    participant Test as test_secret_rotation.sh
+    participant KMS as KMS (kv_enabled)
+    participant DB as PostgreSQL or MySQL
+    participant Bao as OpenBao (token verifier)
+    participant Cons as KV consumer
+
+    Test->>KMS: POST /v1/secrets/password (anonymous, invalid token)
+    KMS-->>Test: 401, 403
+    Test->>KMS: POST /v1/secrets/password (rotator)
+    KMS->>Bao: GET /v1/auth/token/lookup-self
+    KMS-->>Test: 200
+    Test->>KMS: write initial secret to KV (rotator)
+    Cons->>KMS: GET /v1/kv/data/path
+    KMS-->>Cons: refused (no grant yet)
+    Test->>KMS: grant Get on the metadata object to the consumer
+    Cons->>KMS: GET /v1/kv/data/path
+    KMS-->>Cons: initial password
+    Cons->>KMS: overwrite (also with expected_owner), soft-delete, hard-delete
+    KMS-->>Cons: all refused
+    Test->>KMS: generate a 32-character password
+    KMS-->>Test: new password (kept in a pending file)
+    Test->>DB: alter app_user password
+    Test->>KMS: POST /v1/kv/data/path (rotator)
+    KMS-->>Test: 200 (pending file removed)
+    Cons->>KMS: GET /v1/kv/data/path
+    KMS-->>Cons: new password
+    Test->>DB: login with new password, then with the old one
+    DB-->>Test: accepted, refused
+    Note over Test,KMS: Recovery: second rotation with an invalid KV token
+    Test->>DB: alter app_user password
+    Test->>KMS: POST /v1/kv/data/path (invalid token)
+    KMS-->>Test: refused, rotation not reported complete, pending file kept
+    Test->>KMS: publish the pending password again (rotator)
+    KMS-->>Test: 200, no second database change
 ```
 
 ---
@@ -881,6 +1153,26 @@ sequenceDiagram
 ### `test:obs:audit-opensearch` / `test:obs:audit-splunk`
 
 These take a pre-generated KMS JSONL audit file and verify full-field compatibility with the target SIEM backend.
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Host["Host / CI"]
+        Task["test:obs:audit-opensearch<br/>test:obs:audit-splunk"]
+        Fixture["test:obs:audit-fixture<br/>KMS + operations"]
+        Validate["validate_audit_compat.py"]
+    end
+
+    subgraph Docker["Docker"]
+        SIEM["OpenSearch or Splunk<br/>ephemeral container"]
+    end
+
+    Task --> |"JSONL file, generated if --file omitted"| Fixture
+    Task --> |"start"| SIEM
+    Task --> Validate
+    Validate --> |"index, search all fields"| SIEM
+```
 
 #### Sequence Diagram
 
@@ -1234,6 +1526,27 @@ graph TB
     CSI --> KMS_Pod
 ```
 
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Orch as test:k8s orchestrator
+    participant Leaf as leaf task
+    participant Cluster as Minikube cluster
+
+    loop plugin, plugin-mtls, operator, csi-provider, helm
+        Orch->>Leaf: run
+        alt kubectl, helm, minikube, openssl or cluster missing
+            Leaf-->>Orch: exit 77 (skipped with reason)
+        else prerequisites present
+            Leaf->>Cluster: deploy KMS and run the E2E scenario
+            Cluster-->>Leaf: result
+            Leaf-->>Orch: pass or fail (recorded, next leaf still runs)
+        end
+    end
+    Orch-->>Orch: fail if any leaf failed
+```
+
 ---
 
 ### `test:k8s:plugin`
@@ -1463,7 +1776,7 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:pkg:docker`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
 ### `test:pkg:docker`
 
@@ -1579,18 +1892,35 @@ sequenceDiagram
 
 **Description:** Generate ReKey and ReKeyKeyPair test vectors into `test_data/`.
 
+#### Architecture Overview
+
+```mermaid
+graph LR
+    Task["dev:vectors-rekey"] --> Gen["generate_rekey_vectors.sh"]
+    Gen --> Scratch["scratch dir<br/>mktemp"]
+    Scratch --> |"add only vectors that do not exist yet"| Vectors["test_data/vectors"]
+```
+
 #### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant Test as vectors-rekey script
-    participant Script2 as generate_rekey_vectors.sh
-    participant Data as test_data/
+    participant Task as vectors-rekey task
+    participant Gen as generate_rekey_vectors.sh
+    participant Scratch as scratch dir
+    participant Vectors as test_data/vectors
 
-    Test->>Script2: execute
-    Script2->>Data: write ReKey vectors
-    Script2->>Data: write ReKeyKeyPair vectors
-    Data-->>Test: files created
+    Task->>Gen: execute
+    Gen->>Scratch: write ReKey and ReKeyKeyPair vectors
+    loop each generated vector
+        Gen->>Vectors: exists?
+        alt missing
+            Gen->>Vectors: copy the new vector
+        else present
+            Gen-->>Gen: keep the curated vector untouched
+        end
+    end
+    Gen-->>Task: N added, M existing left untouched
 ```
 
 ---
@@ -1644,6 +1974,19 @@ sequenceDiagram
     Test->>Nginx: poll GET /health (up to 20 s)
     Nginx-->>Test: 200 (recovered)
 ```
+
+---
+
+### `test:upgrade-db` and `test:db:upgrade-sqlite`
+
+**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification.
+
+- `test:db:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
+- `test:upgrade-db` runs published release Docker images (`ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) against the candidate image (`--new-image` / `DOCKER_IMAGE_NAME`) across SQLite, PostgreSQL, MySQL, and (in `non-fips` mode) Redis-findex. When `--old-version nightly` is used, it tests `5.20.0`, the latest release (`N-1`), and 2 deterministic round-robin middle releases.
+
+Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS. `verify_db_upgrade.py seed` uses the same recipes for the deterministic `mig_*`/`bulk_*` set and seeded-random `rnd_*` layer, validates the old server, and writes one snapshot containing attributes, user tags, material digests, grants, Locate results, ciphertexts, signatures, and explicit optional-feature skips. `verify` checks the candidate and its restart; post-upgrade canary data is added to that snapshot without changing the pre-upgrade expectations. The old server then checks the untouched cold backup, including the canary's absence.
+
+`--seed` and `--random-count` retain reproducible population. A missing response field, malformed tag, transport failure, or HTTP 500 fails the gate rather than reducing coverage. The serial-tag API assertion remains SQL-only; Redis serial-tag backfills are covered by the Redis migration fixture tests in the following stack layer.
 
 ---
 

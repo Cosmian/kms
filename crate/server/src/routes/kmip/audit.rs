@@ -15,13 +15,15 @@ use std::borrow::Cow;
 use actix_web::{HttpMessage, HttpRequest};
 use cosmian_kms_access::audit::AuditResult;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, ResultStatusEnumeration},
+    kmip_0::kmip_types::{BlockCipherMode, ErrorReason, ResultStatusEnumeration},
     kmip_2_1::kmip_types::{CryptographicAlgorithm, OperationEnumeration},
     ttlv::{TTLV, TTLValue},
 };
+use cosmian_logger::debug;
 
 use crate::middlewares::{
     BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid, KmipOperationName,
+    UserId,
 };
 
 /// Reads the variant name of an enumeration field, tolerant of both TTLV wire encodings.
@@ -71,8 +73,33 @@ pub(super) fn extract_kmip_op_from_ttlv(ttlv: &TTLV) -> &str {
 /// Infallible: missing or unexpected structure yields `None` fields, never a panic.
 /// `result` is `None` until backfilled by `inject_batch_response_contexts`.
 pub(super) fn extract_batch_audit_contexts(ttlv: &TTLV) -> Vec<BatchItemAuditContext> {
-    let TTLValue::Structure(items) = &ttlv.value else {
-        return vec![];
+    batch_items(ttlv)
+        .map(|(op_name, payload)| {
+            let object_uid = payload
+                .and_then(|p| extract_object_uid(p, &op_name, false))
+                .map(str::to_owned);
+            let algorithm = payload
+                .and_then(|p| extract_algorithm(p, &op_name))
+                .map(Cow::into_owned);
+            BatchItemAuditContext {
+                operation: op_name.into_owned(),
+                object_uid,
+                algorithm,
+                result: None,
+            }
+        })
+        .collect()
+}
+
+/// The `BatchItem`s of a `RequestMessage` TTLV as (operation name, `RequestPayload`).
+///
+/// In a batch item the operation fields live under `RequestPayload`, so UID/algorithm
+/// extraction must descend into it rather than search the `BatchItem` directly (a single-op
+/// TTLV has them as direct children). Items without a readable operation are skipped.
+fn batch_items(ttlv: &TTLV) -> impl Iterator<Item = (Cow<'_, str>, Option<&TTLV>)> {
+    let items: &[TTLV] = match &ttlv.value {
+        TTLValue::Structure(items) => items,
+        _ => &[],
     };
     items
         .iter()
@@ -84,25 +111,113 @@ pub(super) fn extract_batch_audit_contexts(ttlv: &TTLV) -> Vec<BatchItemAuditCon
             let op_name = enum_field_name(fields, "Operation", |code| {
                 OperationEnumeration::from_repr(code).map(Into::into)
             })?;
-            // In a batch item the operation fields live under `RequestPayload`, so
-            // UID/algorithm extraction must descend into it rather than search the
-            // `BatchItem` directly (a single-op TTLV has them as direct children).
-            let payload = fields.iter().find(|f| f.tag == "RequestPayload");
-            let object_uid = payload
-                .and_then(|p| extract_object_uid(p, &op_name, false))
-                .map(str::to_owned);
-            let algorithm = payload
-                .and_then(|p| extract_algorithm(p, &op_name))
-                .map(Cow::into_owned);
-            Some(BatchItemAuditContext {
-                operation: op_name.into_owned(),
-                object_uid,
-                algorithm,
-                result: None,
-            })
+            Some((op_name, fields.iter().find(|f| f.tag == "RequestPayload")))
+        })
+}
+
+/// Operations of one request logged by [`log_request_details`]: a batch is capped so a huge
+/// message cannot flood the log.
+const MAX_LOGGED_OPERATIONS: usize = 10;
+
+/// The non-secret fields of one request operation, as shown by the debug log.
+///
+/// This is an allowlist: only the fields below are ever read, by tag name, from the payload.
+/// Everything else (data, IV, nonce, AAD, key material, credentials, a field added to KMIP
+/// tomorrow, ...) is never looked at, so it cannot reach the log.
+struct RequestDetails<'a> {
+    operation: Cow<'a, str>,
+    unique_identifier: Option<&'a str>,
+    algorithm: Option<Cow<'a, str>>,
+    block_cipher_mode: Option<Cow<'a, str>>,
+}
+
+impl<'a> RequestDetails<'a> {
+    fn new(operation: Cow<'a, str>, payload: Option<&'a TTLV>) -> Self {
+        Self {
+            unique_identifier: payload.and_then(|p| extract_object_uid(p, &operation, false)),
+            algorithm: payload.and_then(|p| extract_algorithm(p, &operation)),
+            block_cipher_mode: payload.and_then(extract_block_cipher_mode),
+            operation,
+        }
+    }
+}
+
+/// `CryptographicParameters → BlockCipherMode` of an operation payload (Encrypt, Decrypt, MAC,
+/// Sign, ...), tolerant of both TTLV wire encodings like [`enum_field_name`].
+fn extract_block_cipher_mode(payload: &TTLV) -> Option<Cow<'_, str>> {
+    let TTLValue::Structure(children) = &payload.value else {
+        return None;
+    };
+    let parameters = children
+        .iter()
+        .find(|c| c.tag == "CryptographicParameters")?;
+    let TTLValue::Structure(fields) = &parameters.value else {
+        return None;
+    };
+    enum_field_name(fields, "BlockCipherMode", |code| {
+        BlockCipherMode::from_repr(code).map(Into::into)
+    })
+}
+
+/// The operations of a request TTLV: every `BatchItem` of a `RequestMessage`, or the single
+/// operation itself.
+fn request_details(ttlv: &TTLV) -> Vec<RequestDetails<'_>> {
+    if ttlv.tag == "RequestMessage" {
+        batch_items(ttlv)
+            .take(MAX_LOGGED_OPERATIONS)
+            .map(|(operation, payload)| RequestDetails::new(operation, payload))
+            .collect()
+    } else {
+        vec![RequestDetails::new(Cow::Borrowed(&*ttlv.tag), Some(ttlv))]
+    }
+}
+
+/// Longest client-supplied value (characters) kept in a log line.
+const MAX_LOGGED_VALUE_CHARS: usize = 128;
+
+/// A client-supplied string made safe to put in a log line: truncated, with every control
+/// character, quote, backslash, non-ASCII character and space escaped, so it can neither forge
+/// a log line (`\n`) nor split into several tokens.
+fn loggable(value: &str) -> String {
+    value
+        .chars()
+        .take(MAX_LOGGED_VALUE_CHARS)
+        .flat_map(|c| {
+            if c == ' ' {
+                "\\x20".chars().collect::<Vec<_>>()
+            } else {
+                c.escape_default().collect()
+            }
         })
         .collect()
 }
+
+/// [`loggable`] of an optional value, `None` when absent.
+fn loggable_opt(value: Option<&str>) -> String {
+    value.map_or_else(|| "None".to_owned(), loggable)
+}
+
+/// Debug-logs what a client asked for, one line per operation: the protocol version, the target
+/// key, the algorithm and the block cipher mode. Lets a test prove them without a network tap.
+/// Only the [`RequestDetails`] allowlist is read: never the data, IV, nonce or any key material.
+/// The values come from the unvalidated request, so each one goes through [`loggable`].
+pub(super) fn log_request_details(ttlv: &TTLV, user: &UserId, major: i32, minor: i32) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    for details in request_details(ttlv) {
+        debug!(
+            user = user.as_str(),
+            "KMIP request [{}] protocol_version={major}.{minor} unique_identifier={} \
+             cryptographic_algorithm={} block_cipher_mode={}",
+            loggable(&details.operation),
+            loggable_opt(details.unique_identifier),
+            loggable_opt(details.algorithm.as_deref()),
+            loggable_opt(details.block_cipher_mode.as_deref()),
+        );
+    }
+}
+
 /// Depth-first search for the first `TTLV` node with the given tag.
 /// Used for response-side extraction where the layout is well-defined.
 fn find_ttlv_recursive<'a>(ttlv: &'a TTLV, tag: &str) -> Option<&'a TTLV> {
@@ -363,7 +478,10 @@ mod extraction_tests {
         KmipEnumerationVariant, TTLV, TTLValue,
     };
 
-    use super::{extract_algorithm, extract_object_uid, find_ttlv_recursive};
+    use super::{
+        MAX_LOGGED_OPERATIONS, MAX_LOGGED_VALUE_CHARS, extract_algorithm, extract_object_uid,
+        find_ttlv_recursive, loggable, loggable_opt, request_details,
+    };
 
     fn text(tag: &str, value: &str) -> TTLV {
         TTLV {
@@ -532,5 +650,102 @@ mod extraction_tests {
         use super::extract_batch_audit_contexts;
         let batch = structure("RequestMessage", vec![]);
         assert!(extract_batch_audit_contexts(&batch).is_empty());
+    }
+
+    /// An Encrypt batch item as the binary decoder produces it: enumerations carry only their
+    /// numeric code (AES = 3, GCM = 9), the key id is a direct child of the payload.
+    fn binary_encrypt_item(key_id: &str) -> TTLV {
+        let coded = |tag: &str, value: u32| TTLV {
+            tag: tag.to_owned().into(),
+            value: TTLValue::Enumeration(KmipEnumerationVariant {
+                value,
+                name: String::new().into(),
+            }),
+        };
+        structure(
+            "BatchItem",
+            vec![
+                coded("Operation", 0x1F),
+                structure(
+                    "RequestPayload",
+                    vec![
+                        text("UniqueIdentifier", key_id),
+                        structure(
+                            "CryptographicParameters",
+                            vec![
+                                coded("CryptographicAlgorithm", 3),
+                                coded("BlockCipherMode", 9),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )
+    }
+
+    /// The debug log shows the key, the algorithm and the mode of every operation, for named
+    /// (JSON) and numeric (binary) enumerations alike.
+    #[test]
+    fn request_details_report_key_algorithm_and_mode() {
+        let batch = structure("RequestMessage", vec![binary_encrypt_item("wrapping-key")]);
+        let details = request_details(&batch);
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].operation, "Encrypt");
+        assert_eq!(details[0].unique_identifier, Some("wrapping-key"));
+        assert_eq!(details[0].algorithm.as_deref(), Some("AES"));
+        assert_eq!(details[0].block_cipher_mode.as_deref(), Some("GCM"));
+
+        let single = structure(
+            "Decrypt",
+            vec![
+                text("UniqueIdentifier", "k2"),
+                structure(
+                    "CryptographicParameters",
+                    vec![
+                        enumv("CryptographicAlgorithm", "AES"),
+                        enumv("BlockCipherMode", "CBC"),
+                    ],
+                ),
+            ],
+        );
+        let details = request_details(&single);
+        assert_eq!(details[0].operation, "Decrypt");
+        assert_eq!(details[0].unique_identifier, Some("k2"));
+        assert_eq!(details[0].block_cipher_mode.as_deref(), Some("CBC"));
+    }
+
+    /// A batch is capped so one message cannot flood the log.
+    #[test]
+    fn request_details_are_capped() {
+        let items = (0..MAX_LOGGED_OPERATIONS + 5)
+            .map(|_| binary_encrypt_item("k"))
+            .collect();
+        assert_eq!(
+            request_details(&structure("RequestMessage", items)).len(),
+            MAX_LOGGED_OPERATIONS
+        );
+    }
+
+    /// A client-chosen key id or enum name must not forge a log line or split a token.
+    #[test]
+    fn loggable_escapes_line_breaks_quotes_and_spaces() {
+        let forged = "k\nKMIP request [Encrypt] user=\"openbao\"\r\t";
+        let shown = loggable(forged);
+        assert!(!shown.contains(['\n', '\r', '\t', ' ']), "{shown}");
+        assert_eq!(
+            shown,
+            "k\\nKMIP\\x20request\\x20[Encrypt]\\x20user=\\\"openbao\\\"\\r\\t"
+        );
+        assert_eq!(loggable("AES"), "AES");
+        assert_eq!(loggable_opt(None), "None");
+    }
+
+    /// A huge client-supplied value is truncated.
+    #[test]
+    fn loggable_truncates_long_values() {
+        assert_eq!(
+            loggable(&"a".repeat(MAX_LOGGED_VALUE_CHARS * 100)).len(),
+            MAX_LOGGED_VALUE_CHARS
+        );
     }
 }

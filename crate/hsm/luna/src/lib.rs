@@ -70,7 +70,6 @@ impl HsmProvider for LunaCapabilityProvider {
                 supports_sensitive_attribute: false,
                 key_wrap_pad_is_rfc5649: false,
                 gcm: AesGcmCapabilities {
-                    allows_caller_iv_in_fips: false,
                     // Luna exports the PKCS#11 3.0 message API but C_MessageEncryptInit fails
                     // for AES-GCM.
                     supports_message: false,

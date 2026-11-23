@@ -9,4 +9,4 @@
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
-run_test_leaves "$(dirname "$0")" mariadb mysql percona psql redis sqlite
+run_test_leaves "$(dirname "$0")" mariadb mysql openbao percona psql redis sqlite

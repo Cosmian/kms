@@ -7,7 +7,6 @@ use base64::{
     Engine,
     engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
 };
-use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -33,6 +32,7 @@ use openssl::{
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use url::Url;
 use zeroize::Zeroizing;
 
@@ -981,14 +981,14 @@ pub fn create_jwt(
     original_kacls_url: &str,
     resource_name: &str,
 ) -> KResult<String> {
-    let now = Utc::now();
+    let now = OffsetDateTime::now_utc();
     let claims = Claims {
         iss: current_kacls_url.to_owned(),
         aud: "kacls-migration".to_owned(),
         kacls_url: original_kacls_url.to_owned(),
         resource_name: resource_name.to_owned(),
-        iat: usize::try_from(now.timestamp())?,
-        exp: usize::try_from((now + Duration::minutes(60)).timestamp())?,
+        iat: usize::try_from(now.unix_timestamp())?,
+        exp: usize::try_from((now + time::Duration::minutes(60)).unix_timestamp())?,
     };
 
     let mut header = Header::new(Algorithm::RS256);
@@ -1218,19 +1218,19 @@ async fn cse_wrapped_key_decrypt(
             ..Default::default()
         }),
         data: Some(ciphertext),
-        i_v_counter_nonce: Some(iv_counter_nonce),
+        i_v_counter_nonce: Some(iv_counter_nonce.into()),
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
-        authenticated_encryption_tag: Some(authenticated_tag),
+        authenticated_encryption_additional_data: resource_name.map(Into::into),
+        authenticated_encryption_tag: Some(authenticated_tag.into()),
     };
     let key = decrypt(kms, decryption_request, &UserId::from(user.as_str())).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
-    Ok(data)
+    Ok(data.into_zeroizing())
 }
 
 /// Encrypt a key
@@ -1261,7 +1261,7 @@ async fn cse_key_encrypt(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: resource_name,
+        authenticated_encryption_additional_data: resource_name.map(Into::into),
     };
     let dek = encrypt(kms, encryption_request, &UserId::from(user.as_str())).await?;
 

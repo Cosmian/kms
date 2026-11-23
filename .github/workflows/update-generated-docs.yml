@@ -1,0 +1,139 @@
+---
+# Local reusable workflow — Update generated docs.
+#
+# Runs `mise run docs:sync-all` (server/ckms docs, KMIP tables, CBOM, log
+# index), regenerates the test vector README and `sbom/licenses.txt`, then
+# commits the result back to
+# `ref`. Mirrors nix-update-hashes.yml's checkout → run → commit-if-changed →
+# rebase → push flow.
+#
+# Callers / triggers
+# ──────────────────
+# nightly.yml — non-tag refs only (branches/schedule/workflow_dispatch); tag
+#               refs are already in sync via release.yml.
+# release.yml — Job: runs on the release branch after `prepare` (and after
+#               `update-nix-hashes`, to avoid two independent workflows
+#               pushing to the same release branch at once).
+
+name: Update generated docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          Branch to update (leave empty to use the dispatched branch).
+        required: false
+        type: string
+        default: ''
+      new_version:
+        description: >
+          Optional version string appended to the commit message (e.g. "5.20.0").
+        required: false
+        type: string
+        default: ''
+
+  workflow_call:
+    inputs:
+      ref:
+        description: >
+          Git ref (branch name) to check out and push the regenerated
+          files to.
+        required: true
+        type: string
+      new_version:
+        description: >
+          Optional version string appended to the commit message (e.g. "5.20.0").
+        required: false
+        type: string
+        default: ''
+    secrets:
+      PAT_TOKEN:
+        description: >
+          Personal Access Token with `repo` + `workflow` scopes.
+          Required so that the push re-triggers other workflows
+          (GITHUB_TOKEN cannot do this).
+        required: true
+
+jobs:
+  update-generated-docs:
+    name: Update generated docs
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref_name }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Regenerate all documentation
+        run: |
+          # generate_docs.sh is the single entry point for all auto-generated docs:
+          #   1. server_cli.md + server_configuration_file.md (--help / --print-default-config)
+          #   2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (ckms markdown)
+          #   3. KMIP support tables (README.md + kmip_support/support.md)
+          #   4. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
+          pip install cyclonedx-bom --quiet
+          mise run docs:sync-all
+
+      - name: Regenerate test vector README
+        run: |
+          # gen_vector_readme.py exits 1 both when it rewrote the README and on
+          # real errors (missing vectors dir, count mismatch). Only the success
+          # path prints the "✓" summary line, so require it on a non-zero exit.
+          rc=0
+          out=$(python3 .mise/scripts/docs/gen_vector_readme.py 2>&1) || rc=$?
+          echo "$out"
+          if [ "$rc" -ne 0 ] && ! grep -q '^✓' <<<"$out"; then
+            echo "ERROR: gen_vector_readme.py failed (exit $rc)" >&2
+            exit "$rc"
+          fi
+
+      - name: Install cargo-deny
+        run: cargo install --version 0.19.0 cargo-deny --locked
+
+      - name: Generate SBOM licenses list
+        run: cargo deny list -l crate | sed 's/\x1b\[[0-9;]*m//g' > sbom/licenses.txt
+
+      - name: Commit generated files
+        run: |
+          REF="${{ inputs.ref || github.ref_name }}"
+          # Explicit pathspec: never commit stray changes (e.g. a Cargo.lock
+          # touched by a non-`--locked` cargo build).
+          git add -- \
+            README.md \
+            cbom/cbom.cdx.json \
+            crate/server/kms_template.toml \
+            pkg/kms.toml \
+            sbom/licenses.txt \
+            documentation/docs/configuration/server_cli.md \
+            documentation/docs/configuration/server_configuration_file.md \
+            documentation/docs/configuration/log-reference.md \
+            documentation/docs/kms_clients/cli/main_commands.md \
+            documentation/docs/kms_clients/usage.md \
+            documentation/docs/kmip_support/support.md \
+            crate/test_kms_server/README.md
+          if git diff --cached --quiet; then
+            echo "Generated files are already up-to-date, nothing to commit."
+          else
+            MSG="docs: regenerate generated files"
+            if [ -n "${{ inputs.new_version }}" ]; then MSG="$MSG for ${{ inputs.new_version }}"; fi
+            # [skip ci] prevents push-triggered workflows (e.g. nightly.yml)
+            # from re-running on this automated commit and creating a loop.
+            git commit -m "$MSG [skip ci]"
+            # Pull after committing to avoid "index contains uncommitted
+            # changes" errors if another job pushed to the same ref meanwhile.
+            git pull --rebase origin "$REF"
+            git push origin "$REF"
+          fi

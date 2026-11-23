@@ -132,7 +132,21 @@ fn parse_x509_to_object(bytes: &[u8], format: &CertificateInputFormat) -> KmsCli
 
 impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Option<String>> {
-        trace!("{self:?}");
+        // never log `self`: it holds the PKCS#12 password
+        trace!(
+            "certificate_file: {:?}, certificate_id: {:?}, input_format: {:?}, \
+             private_key_id: {:?}, public_key_id: {:?}, issuer_certificate_id: {:?}, \
+             replace_existing: {}, tags: {:?}, key_usage: {:?}",
+            self.certificate_file,
+            self.certificate_id,
+            self.input_format,
+            self.private_key_id,
+            self.public_key_id,
+            self.issuer_certificate_id,
+            self.replace_existing,
+            self.tags,
+            self.key_usage
+        );
 
         // generate the leaf certificate attributes if links are specified
         let mut leaf_certificate_attributes = Some(Attributes {

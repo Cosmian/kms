@@ -4,7 +4,7 @@ use cosmian_logger::{log_init, reexport::tracing};
 use tempfile::TempDir;
 
 use self::{
-    database_tests::{crud, tx_and_list, upsert},
+    database_tests::{crud, get_or_insert_parameter, tx_and_list, upsert},
     find_attributes_test::find_attributes,
     json_access_test::json_access,
     owner_test::owner,
@@ -17,16 +17,17 @@ use crate::stores::RedisWithFindex;
 use crate::stores::additional_redis_findex_tests::{
     issue_940_repro::test_issue_940, test_active_key_count_counter,
     test_certificate_serial_tag_backfill, test_corner_case, test_live_count_counter,
-    test_migration_state_markers, test_objects_db, test_permissions_db, test_wrapped_by_backfill,
+    test_objects_db, test_permissions_db, test_protected_parameters, test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
     stores::{MySqlPool, PgPool, SqlitePool},
     tests::{
         database_tests::{
-            atomic, block_cipher_mode_migration_after_json_deserialization,
+            atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
-            find_with_options_test, wrapping_key_link_test,
+            find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
+            update_if_version_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -38,6 +39,10 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
+#[cfg(feature = "non-fips")]
+mod redis_migration_tests;
+mod sql_migration_tests;
+mod sqlite_migration_tests;
 mod tagging_tests;
 
 #[cfg(feature = "non-fips")]
@@ -86,6 +91,21 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     Ok(redis_findex)
 }
 
+/// Same Redis as `get_redis_with_findex` but with a fixed master key, so a second instance can
+/// reopen the database written by the first one.
+#[cfg(feature = "non-fips")]
+async fn get_redis_fixed_key(clear_database: bool) -> DbResult<RedisWithFindex> {
+    use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
+
+    use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
+    let redis_url = get_redis_url();
+    let redis_url = option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
+        &mut [7_u8; REDIS_WITH_FINDEX_MASTER_KEY_LENGTH],
+    );
+    RedisWithFindex::instantiate(redis_url, master_key, clear_database).await
+}
+
 #[ignore = "Requires a running Redis instance"]
 #[cfg(feature = "non-fips")]
 #[tokio::test]
@@ -99,7 +119,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_wrapped_by_backfill().await?;
     test_certificate_serial_tag_backfill().await?;
     Box::pin(test_issue_940()).await?;
-    test_migration_state_markers().await?;
+    test_protected_parameters().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
     owner(&get_redis_with_findex().await?).await?;
@@ -107,12 +127,21 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     Box::pin(tags(&get_redis_with_findex().await?, false)).await?;
     tx_and_list(&get_redis_with_findex().await?).await?;
     Box::pin(atomic(&get_redis_with_findex().await?)).await?;
+    Box::pin(compare_and_swap_test(&get_redis_with_findex().await?)).await?;
     upsert(&get_redis_with_findex().await?).await?;
     crud(&get_redis_with_findex().await?).await?;
+    get_or_insert_parameter(&get_redis_with_findex().await?).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
+    Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
+    gcm_invocations_test(&get_redis_with_findex().await?).await?;
+    gcm_invocations_orphan_purge_test(&get_redis_fixed_key(true).await?, || {
+        get_redis_fixed_key(false)
+    })
+    .await?;
+    Box::pin(redis_migration_tests::redis_migration_scenarios()).await?;
     Ok(())
 }
 
@@ -140,8 +169,10 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Box::pin(tags(&get_sqlite(&db_file).await?, true)).await?;
     tx_and_list(&get_sqlite(&db_file).await?).await?;
     Box::pin(atomic(&get_sqlite(&db_file).await?)).await?;
+    Box::pin(compare_and_swap_test(&get_sqlite(&db_file).await?)).await?;
     upsert(&get_sqlite(&db_file).await?).await?;
     crud(&get_sqlite(&db_file).await?).await?;
+    get_or_insert_parameter(&get_sqlite(&db_file).await?).await?;
     create_duplicate_uid_test(&get_sqlite(&db_file).await?).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
@@ -149,112 +180,17 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     count_non_destroyed_keys_test(&get_sqlite(&db_file).await?).await?;
     find_with_options_test(&get_sqlite(&db_file).await?).await?;
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
-    Ok(())
-}
-
-/// Faithful migration test: build a **legacy** `SQLite` database whose `objects`
-/// table predates the `wrapping_key_id` column, insert a wrapped object row by
-/// hand, then open it with the current [`SqlitePool`]. Opening must add the
-/// column, create its index and backfill the wrapping-key link so the object
-/// becomes discoverable through `find_wrapped_by`.
-#[tokio::test]
-async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
-    use std::collections::HashSet;
-
-    use cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
-        },
-    };
-    use cosmian_kms_interfaces::{ObjectsStore, UserId};
-    use uuid::Uuid;
-
-    log_init(Some("info"));
-    let dir = TempDir::new()?;
-    let db_file = dir.path().join("legacy_sqlite.db");
-
-    let owner = "legacy_owner";
-    let wrapping_key_uid = "legacy_wrapping_key";
-    let wrapped_uid = Uuid::new_v4().to_string();
-
-    // Serialize a wrapped object exactly as the database stores it.
-    let wrapped_obj: Object = serde_json::from_value(serde_json::json!({
-        "SymmetricKey": {
-            "KeyBlock": {
-                "KeyFormatType": "TransparentSymmetricKey",
-                "CryptographicAlgorithm": "AES",
-                "CryptographicLength": 256,
-                "KeyWrappingData": {
-                    "WrappingMethod": "Encrypt",
-                    "EncryptionKeyInformation": { "UniqueIdentifier": wrapping_key_uid },
-                    "EncodingOption": "TTLVEncoding"
-                }
-            }
-        }
-    }))
-    .map_err(|e| DbError::ServerError(format!("failed to build wrapped object: {e}")))?;
-    let object_json =
-        serde_json::to_string(&wrapped_obj).map_err(|e| DbError::ServerError(e.to_string()))?;
-    let attributes_json = serde_json::to_string(&Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        state: Some(State::Active),
-        ..Default::default()
+    Box::pin(update_if_version_test(&get_sqlite(&db_file).await?)).await?;
+    gcm_invocations_test(&get_sqlite(&db_file).await?).await?;
+    gcm_invocations_orphan_purge_test(&get_sqlite(&db_file).await?, || {
+        SqlitePool::instantiate(&db_file, false, None)
     })
-    .map_err(|e| DbError::ServerError(e.to_string()))?;
-
-    // ── Create a legacy-schema database (objects table WITHOUT wrapping_key_id) ──
-    {
-        let conn = rusqlite::Connection::open(&db_file)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-        conn.execute_batch(
-            "CREATE TABLE objects (
-                 id VARCHAR(128) PRIMARY KEY,
-                 object VARCHAR NOT NULL,
-                 attributes jsonb NOT NULL,
-                 state VARCHAR(32),
-                 owner VARCHAR(255)
-             );",
-        )
-        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-        conn.execute(
-            "INSERT INTO objects (id, object, attributes, state, owner) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![wrapped_uid, object_json, attributes_json, "Active", owner],
-        )
-        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    } // raw connection is dropped/closed here
-
-    // ── Open with the current backend → triggers the column add + backfill ──
-    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
-
-    // The pre-existing wrapped object must now be discoverable by its wrapping key.
-    let found = pool
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    let found_uids: HashSet<&str> = found.iter().map(|(uid, _, _)| uid.as_str()).collect();
-    if !found_uids.contains(wrapped_uid.as_str()) {
-        return Err(DbError::ServerError(format!(
-            "backfill migration: wrapped object '{wrapped_uid}' should be discoverable via \
-             find_wrapped_by after migration, got: {found_uids:?}"
-        )));
-    }
-
-    // Re-opening must be a no-op (marker set): the object stays discoverable.
-    let pool2 = SqlitePool::instantiate(&db_file, false, None).await?;
-    let found2 = pool2
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    if found2.iter().all(|(uid, _, _)| uid != &wrapped_uid) {
-        return Err(DbError::ServerError(
-            "backfill migration: wrapped object lost after re-opening the database".to_owned(),
-        ));
-    }
-
+    .await?;
     Ok(())
 }
 
 /// A certificate object with serial `0ABBCC` (hex).
+#[cfg(feature = "non-fips")]
 pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_objects::Object {
     use cosmian_kmip::{
         kmip_0::kmip_types::CertificateType,
@@ -287,76 +223,6 @@ pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_object
     })
 }
 
-/// A certificate stored before the `_serial=<HEX>` tag existed (it only carries `_cert`) gets
-/// the tag when the database is re-opened; the marker is recorded.
-#[tokio::test]
-async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
-    use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
-    use cosmian_kms_interfaces::ObjectsStore;
-
-    const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
-
-    log_init(Some("info"));
-    let dir = TempDir::new()?;
-    let db_file = dir.path().join("serial_tag_sqlite.db");
-    let db_err = |e: rusqlite::Error| DbError::DatabaseError(e.to_string());
-
-    let object = legacy_certificate_object();
-    let object_json =
-        serde_json::to_string(&object).map_err(|e| DbError::ServerError(e.to_string()))?;
-    let attributes_json = serde_json::to_string(&Attributes::default())
-        .map_err(|e| DbError::ServerError(e.to_string()))?;
-
-    // Create the schema, then drop the pool
-    drop(SqlitePool::instantiate(&db_file, true, None).await?);
-    // Seed a legacy certificate (`_cert` tag only) and clear the completion marker
-    {
-        let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
-        conn.execute(
-            "INSERT INTO objects (id, object, attributes, state, owner) \
-             VALUES ('legacy_cert', ?1, ?2, 'Active', 'legacy_owner')",
-            rusqlite::params![object_json, attributes_json],
-        )
-        .map_err(db_err)?;
-        conn.execute(
-            "INSERT INTO tags (id, tag) VALUES ('legacy_cert', '_cert')",
-            [],
-        )
-        .map_err(db_err)?;
-        conn.execute(
-            "DELETE FROM parameters WHERE name = ?1",
-            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-        )
-        .map_err(db_err)?;
-    }
-
-    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
-    let tags = pool.retrieve_tags("legacy_cert").await?;
-    let expected: std::collections::HashSet<String> =
-        ["_cert".to_owned(), "_serial=0ABBCC".to_owned()].into();
-    if tags != expected {
-        return Err(DbError::ServerError(format!(
-            "the backfill must add the serial tag, keeping the existing tags; got {tags:?}"
-        )));
-    }
-    drop(pool);
-
-    let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
-    let marker: String = conn
-        .query_row(
-            "SELECT value FROM parameters WHERE name = ?1",
-            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-            |row| row.get(0),
-        )
-        .map_err(db_err)?;
-    if marker != "true" {
-        return Err(DbError::ServerError(format!(
-            "serial tag backfill marker should be 'true', got '{marker}'"
-        )));
-    }
-    Ok(())
-}
-
 #[ignore = "Requires a running PostgreSQL instance"]
 #[tokio::test]
 pub(crate) async fn test_db_postgresql() -> DbResult<()> {
@@ -369,14 +235,27 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Box::pin(tags(&get_pgsql().await?, true)).await?;
     tx_and_list(&get_pgsql().await?).await?;
     Box::pin(atomic(&get_pgsql().await?)).await?;
+    Box::pin(compare_and_swap_test(&get_pgsql().await?)).await?;
     upsert(&get_pgsql().await?).await?;
     crud(&get_pgsql().await?).await?;
+    get_or_insert_parameter(&get_pgsql().await?).await?;
     list_uids_for_tags_test(&get_pgsql().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?).await?;
     find_due_for_rotation_test(&get_pgsql().await?).await?;
     count_non_destroyed_keys_test(&get_pgsql().await?).await?;
     find_with_options_test(&get_pgsql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
+    Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
+    gcm_invocations_test(&get_pgsql().await?).await?;
+    gcm_invocations_orphan_purge_test(&get_pgsql().await?, || async {
+        PgPool::instantiate(
+            option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms"),
+            false,
+            None,
+        )
+        .await
+    })
+    .await?;
     Ok(())
 }
 
@@ -540,13 +419,27 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     Box::pin(tags(&get_mysql().await?, true)).await?;
     tx_and_list(&get_mysql().await?).await?;
     Box::pin(atomic(&get_mysql().await?)).await?;
+    Box::pin(compare_and_swap_test(&get_mysql().await?)).await?;
     upsert(&get_mysql().await?).await?;
     crud(&get_mysql().await?).await?;
+    get_or_insert_parameter(&get_mysql().await?).await?;
     list_uids_for_tags_test(&get_mysql().await?).await?;
     find_with_options_test(&get_mysql().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?).await?;
     find_due_for_rotation_test(&get_mysql().await?).await?;
     count_non_destroyed_keys_test(&get_mysql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
+    Box::pin(update_if_version_test(&get_mysql().await?)).await?;
+    gcm_invocations_test(&get_mysql().await?).await?;
+    gcm_invocations_orphan_purge_test(&get_mysql().await?, || async {
+        MySqlPool::instantiate(
+            option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms"),
+            false,
+            None,
+        )
+        .await
+    })
+    .await?;
+    Box::pin(sql_migration_tests::mysql_migration_scenarios()).await?;
     Ok(())
 }

@@ -184,7 +184,7 @@ pub(crate) async fn test_derive_symmetric_key_pbkdf2() -> CosmianResult<()> {
             #[cfg(feature = "non-fips")]
             peer_public_key_id: None,
             derivation_method: "PBKDF2".to_owned(),
-            salt: Some("0123456789abcdef".to_owned()),
+            salt: Some("0123456789abcdef0123456789abcdef".to_owned()),
             iteration_count: 4096,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,
@@ -275,7 +275,7 @@ pub(crate) async fn test_derive_symmetric_key_different_lengths() -> CosmianResu
                 #[cfg(feature = "non-fips")]
                 peer_public_key_id: None,
                 derivation_method: "PBKDF2".to_owned(),
-                salt: Some("0123456789abcdef".to_owned()),
+                salt: Some("0123456789abcdef0123456789abcdef".to_owned()),
                 iteration_count: 4096,
                 initialization_vector: None,
                 digest_algorithm: CHashingAlgorithm::SHA256,
@@ -325,7 +325,7 @@ pub(crate) async fn test_derive_from_secret_data() -> CosmianResult<()> {
             #[cfg(feature = "non-fips")]
             peer_public_key_id: None,
             derivation_method: "PBKDF2".to_owned(),
-            salt: Some("0123456789abcdef".to_owned()),
+            salt: Some("0123456789abcdef0123456789abcdef".to_owned()),
             iteration_count: 4096,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,
@@ -377,7 +377,7 @@ pub(crate) async fn test_derive_key_different_algorithms() -> CosmianResult<()> 
                 #[cfg(feature = "non-fips")]
                 peer_public_key_id: None,
                 derivation_method: method.to_owned(),
-                salt: Some("0123456789abcdef".to_owned()),
+                salt: Some("0123456789abcdef0123456789abcdef".to_owned()),
                 iteration_count: 4096,
                 initialization_vector: None,
                 digest_algorithm: digest.clone(),
@@ -415,7 +415,7 @@ pub(crate) async fn test_derive_key_from_password() -> CosmianResult<()> {
             #[cfg(feature = "non-fips")]
             peer_public_key_id: None,
             derivation_method: "PBKDF2".to_owned(),
-            salt: Some("0123456789abcdef".to_owned()),
+            salt: Some("0123456789abcdef0123456789abcdef".to_owned()),
             iteration_count: 4096,
             initialization_vector: None,
             digest_algorithm: CHashingAlgorithm::SHA256,

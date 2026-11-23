@@ -36,9 +36,6 @@ pub enum KmsClientError {
     #[error("HTTP Client: {0}")]
     HttpClient(String),
 
-    #[error(transparent)]
-    PemError(#[from] pem::PemError),
-
     #[error("Ratls Error: {0}")]
     RatlsError(String),
 

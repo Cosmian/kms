@@ -152,6 +152,22 @@ debug1: have 1 keys from provider /usr/local/lib/libcosmian_pkcs11.so
 
 ---
 
+## Key expiry and revocation
+
+A plain SSH public key has no expiry date in the SSH protocol, and `sshd` does not consult the KMS. Two independent controls apply:
+
+- **On the server (`sshd`)**: OpenSSH 8.2 and later accept the `expiry-time="YYYYMMDD[HHMM[SS]]"` option in front of a key in `authorized_keys`. `sshd` compares it with its own clock at each authentication and refuses the key afterwards. The KMS does not write this option; add it yourself:
+
+  ```text
+  expiry-time="20271231" ecdsa-sha2-nistp256 AAAA…==
+  ```
+
+- **In the KMS**: the PKCS#11 provider sends each signature to the KMS as a KMIP `Sign`, and `Sign` is accepted only on an *Active* private key. A key that is revoked with `ckms ec keys revoke` or `ckms rsa keys revoke` (which makes it Deactivated, or Compromised for a compromise reason), or whose KMIP Deactivation Date has passed, can no longer sign: the key stays in `authorized_keys`, but the client cannot authenticate with it. A PreActive key signs only once its Activation Date is reached.
+
+Use `expiry-time` to bound the lifetime on the host side, and KMS key state to cut off a key everywhere at once. For short-lived access without editing `authorized_keys`, see [SSH certificates](ssh_certificates_and_secret_rotation.md#expiry-and-revocation).
+
+---
+
 ## Troubleshooting
 
 ### `no keys found` or authentication rejected

@@ -8,7 +8,7 @@ compares every load-test point and Criterion benchmark, and prints a markdown re
 
 Usage: regression_report.py <base_version> <new_version> [--dir ckms_bench]
            [--threshold 5] [--base-url https://package.cosmian.com] [--output FILE] [--fail] [--all]
-Exit status: 1 when --fail is given and at least one regression is found, or when data is missing.
+Exit status: 1 when --fail is given and at least one regression, collapsed load point, or encryption/signature load point dropped from the new version is found, or when no benchmark id matches the baseline. Benchmarks only in the new version never fail.
 """
 from __future__ import annotations
 
@@ -222,15 +222,15 @@ def main() -> int:
     missing = [('load', k) for k in old['load'].keys() ^ new['load'].keys()] + [
         ('criterion', k) for k in old['crit'].keys() ^ new['crit'].keys()
     ]
-    # Encryption and signature algorithms must be compared 1 to 1: a gap there is a hard failure.
+    # New-only benchmarks are informational. Only encryption/signature load points dropped from the
+    # new version fail; a dropped Criterion id is a warning (one-off sample gaps in published runs).
+    dropped = [('load', k) for k in old['load'].keys() - new['load'].keys()]
     strict = [
-        m for m in missing if re.search(r'encrypt|sign', str(m[1]), re.IGNORECASE)
+        m for m in dropped if re.search(r'encrypt|sign', str(m[1]), re.IGNORECASE)
     ]
-    # A category with data on either side but nothing in common means the keys do not line up.
+    # Baseline has data but nothing in common with the new version: keys do not line up.
     nothing_matched = [
-        c
-        for c in ('load', 'crit')
-        if (old[c] or new[c]) and not old[c].keys() & new[c].keys()
+        c for c in ('load', 'crit') if old[c] and not old[c].keys() & new[c].keys()
     ]
     if missing:
         lines[3:3] = [

@@ -5,10 +5,6 @@ name: Supply chain
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
 
 jobs:
   cargo-vet:
@@ -19,9 +15,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
+      - uses: ./.github/actions/install-rust
 
       - name: Install cargo-vet
         run: cargo install --locked cargo-vet@0.10.2
@@ -58,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .mise/scripts/kmip-go/go.mod
 
@@ -84,6 +78,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
+
+      # npm 10.9.9 (bundled with Node 22) throws EMISSINGSIGNATUREKEY in `npm audit signatures` when a
+      # package's attestations response has no keyed (publish) bundle: its pacote 19.0.2
+      # lib/registry.js:259 lacks the `attestationKeyIds.length > 0` guard that npm 11.11.0 has.
+      - name: Install npm 11
+        run: npm install -g npm@11.11.0
 
       - uses: ./.github/actions/install-mise
 

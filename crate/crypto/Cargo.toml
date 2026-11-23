@@ -26,7 +26,6 @@ non-fips = [
   "cosmian_crypto_core/blake",
   "cosmian_crypto_core/chacha",
   "cosmian_cover_crypt",
-  "dep:chrono",
   "dep:regex",
   "dep:rand",
   "dep:rand_chacha",
@@ -41,7 +40,6 @@ non-fips = [
 
 [dependencies]
 base64 = { workspace = true }
-chrono = { workspace = true, optional = true }
 cosmian_cover_crypt = { workspace = true, features = ["generic-kem"], optional = true }
 cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }
 cosmian_kmip = { workspace = true }
@@ -69,7 +67,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true, optional = true }
 thiserror = { workspace = true }
-time = { workspace = true }
+time = { workspace = true, features = ["formatting", "parsing", "macros"] }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
@@ -77,6 +75,7 @@ zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 [dev-dependencies]
 cosmian_logger = { workspace = true }
 ctor = { workspace = true }
+proptest = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 tempfile = { workspace = true }

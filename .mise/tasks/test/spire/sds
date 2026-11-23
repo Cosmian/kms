@@ -59,9 +59,10 @@ trap cleanup EXIT
 # ── Prerequisite check ─────────────────────────────────────────────────────────
 print_header "Prerequisite: Docker + Envoy image"
 require_cmd docker
-if ! docker image inspect envoyproxy/envoy:v1.32-latest >/dev/null 2>&1; then
-  print_status "Pulling envoyproxy/envoy:v1.32-latest..."
-  docker pull envoyproxy/envoy:v1.32-latest
+ENVOY_IMAGE="$(compose_image envoy-sds-upstream)"
+if ! docker image inspect "${ENVOY_IMAGE}" >/dev/null 2>&1; then
+  print_status "Pulling ${ENVOY_IMAGE}..."
+  docker pull "${ENVOY_IMAGE}"
 fi
 print_success "Docker and Envoy image available."
 
@@ -103,7 +104,7 @@ print_success "KMS ready (PID=${KMS_PID})."
 
 # ── Step 6: PKI CA key + AppRoles ─────────────────────────────────────────────
 print_header "Step 6: PKI CA key + AppRoles"
-CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key")"
 
 _VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
 cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'

@@ -5,8 +5,8 @@ standard KMIP operations:
 
 | KMIP operation   | Applies to                              | CLI command                      |
 | ---------------- | --------------------------------------- | -------------------------------- |
-| `Re-Key`         | Symmetric keys, secret data             | `ckms sym keys rekey`            |
-| `Re-Key Key Pair`| Asymmetric key pairs (RSA, EC, PQC, …)  | `ckms {rsa,ec,pqc} keys rekey`   |
+| `Re-Key`         | Symmetric keys, secret data             | `ckms sym keys re-key`           |
+| `Re-Key Key Pair`| Asymmetric key pairs (RSA, EC, PQC, …)  | `ckms {rsa,ec,pqc} keys re-key`  |
 | `ReCertify`      | X.509 certificates                      | `ckms certificates certify --certificate-id-to-re-certify` |
 
 On every rotation the server:
@@ -20,6 +20,9 @@ On every rotation the server:
 > **Auto-rotation** (scheduler-driven, policy-based) is covered separately in
 > [Auto-Rotation Policy](auto_rotation_policy.md).
 > **HSM key rotation** is covered in [HSM Key Rotation](hsm.md).
+> **Concurrent rotations** of the same object, and the `Conflict` error the
+> losing request receives, are explained in
+> [Concurrent Re-Key and Conflicts](concurrent_rekey.md).
 
 ---
 
@@ -120,11 +123,11 @@ request:
 
 ```bash
 # Create a key whose UID is the keyset name
-ckms sym keys create --key-id my-keyset --algorithm aes --length 256
-ckms sym keys set-rotation-policy --key-id my-keyset --name my-keyset
+ckms sym keys create --algorithm aes --number-of-bits 256 my-keyset
+ckms sym keys set-rotation-policy --key-id my-keyset --rotation-name my-keyset
 ```
 
-Attempting `set-rotation-policy --name X` on a SQL key whose UID is not `X`
+Attempting `set-rotation-policy --rotation-name X` on a SQL key whose UID is not `X`
 is rejected:
 
 ```text
@@ -158,14 +161,31 @@ A keyset can be referenced by name wherever a `UniqueIdentifier` is accepted
 
 **Encrypt / Sign** always resolves to the **latest** generation.
 
-**Decrypt / Verify** walks the chain newest-to-oldest until one generation
-succeeds, allowing ciphertexts encrypted with an older (now Deactivated) key
-to continue to decrypt after rotation.
+**Decrypt** by a bare name walks the chain newest-to-oldest until one
+generation succeeds, allowing ciphertexts encrypted with an older (now
+Deactivated) key to continue to decrypt after rotation.
+
+**Signature Verify / MAC Verify** by a bare name walks the chain
+newest-to-oldest until one generation answers `Valid`, so signatures and MACs
+made with an older generation still verify. When no generation verifies, the
+response is `Invalid`, not an error.
 
 > **`@latest` is a virtual alias.**  It is never stored in the database and
 > is never returned in a response.  `my-keyset` (bare name) also resolves to
 > the latest generation even though `my-keyset` is the literal UID of gen-0.
 > To access gen-0 explicitly, use `my-keyset@0` or `my-keyset@first`.
+
+#### Bare-name decryption and wrong-key detection
+
+The Decrypt chain walk relies on decryption failing with the wrong key. A Decrypt by a bare keyset name (SQL or HSM keyset) is therefore refused with `Feature_Not_Supported` when the mode used for a generation cannot detect a wrong key. The check runs for each generation tried, on its effective parameters: the request's cryptographic parameters when given, otherwise the parameters stored on that generation (SQL keys) or the default below (HSM keys).
+
+| Accepted for a bare keyset name | Refused for a bare keyset name |
+| --- | --- |
+| Block cipher modes GCM, GCM-SIV, CCM, AEAD; NIST key wrap (RFC 3394, RFC 5649) | Every other block cipher mode (CBC, ECB, CTR, XTS, …); RSA PKCS#1 v1.5 padding |
+
+A bare HSM keyset name with no cryptographic parameters in the request decrypts with AES-GCM (AES keys) or RSA-OAEP with SHA-256 (RSA keys), even when the token does not support these mechanisms; it never falls back to AES-CBC or RSA PKCS#1 v1.5.
+
+For a refused mode, address the generation explicitly (`my-keyset@N`). The reasoning is in [HSM keysets explained](hsm_keysets_explanation.md#why-bare-name-decryption-needs-wrong-key-detection).
 
 ### Non-latest guard
 
@@ -225,11 +245,11 @@ flowchart LR
 
 ```bash
 # Manual rotation of a SQL keyset key
-ckms sym keys rekey --key-id my-keyset
+ckms sym keys re-key --key-id my-keyset
 # Response: new UID = my-keyset@1
 
 # Manual rotation of a plain UUID key
-ckms sym keys rekey --key-id <KEY_UID>
+ckms sym keys re-key --key-id <KEY_UID>
 ```
 
 ---
@@ -242,13 +262,17 @@ dependants atomically.
 
 **What happens:**
 
-1. A new wrapping key is created and committed to the database (Phase 1).
+1. A new wrapping key is generated in memory; it is not yet visible to any client.
 2. **Every** key owned by the same user whose `WrappingKeyLink` points to the
    old wrapping key is fetched — regardless of its state (Active, Deactivated,
    Pre-Active, Compromised, …) — unwrapped in memory (plaintext never stored),
-   and re-wrapped with the new wrapping key (Phase 2).
+   and re-wrapped with the new wrapping key.
 3. Each wrapped key's `WrappingKeyLink` is updated to the new wrapping key UID.
 4. Standard rotation metadata is applied; old wrapping key → Deactivated.
+5. The new wrapping key, the retired old key and every re-wrapped dependant are
+   committed in **one atomic batch**. If the old wrapping key changed since it
+   was read, nothing is committed (see
+   [Concurrent Re-Key and Conflicts](concurrent_rekey.md)).
 
 > **No state filter on dependants.**  The server queries all keys with a
 > `wrapping_key_id` matching the rotated key, with no restriction on their
@@ -262,14 +286,14 @@ sequenceDiagram
     participant DB
 
     Client->>KMS: Re-Key(wrapping_key_uid)
-    KMS->>DB: Phase 1 — create new wrapping key (committed)
+    KMS->>KMS: generate new wrapping key (in memory)
     loop For each wrapped dependant
         KMS->>DB: retrieve wrapped key
         KMS->>KMS: unwrap with old wrapping key
         KMS->>KMS: re-wrap with new wrapping key
-        KMS->>DB: update WrappingKeyLink → new wrapping key UID
+        KMS->>KMS: set WrappingKeyLink → new wrapping key UID
     end
-    KMS->>DB: Phase 2 — retire old wrapping key (Deactivated, links set)
+    KMS->>DB: one atomic batch: create new wrapping key,<br/>retire old wrapping key if unchanged, update dependants
     KMS-->>Client: Re-KeyResponse(new_wrapping_key_uid)
 ```
 
@@ -332,8 +356,7 @@ sequenceDiagram
     KMS->>DB: retrieve private key
     KMS->>DB: retrieve linked public key (PublicKeyLink)
     KMS->>KMS: generate new key pair (same algorithm)
-    KMS->>DB: Phase 1 — store new private key + new public key
-    KMS->>DB: Phase 2 — retire old private key + public key (Deactivated, links)
+    KMS->>DB: one atomic batch: store new private key + new public key,<br/>retire old private key + public key if unchanged (Deactivated, links)
     KMS-->>Client: Re-Key Key PairResponse(new_sk_uid, new_pk_uid)
 ```
 
@@ -341,13 +364,13 @@ sequenceDiagram
 
 ```bash
 # EC key pair
-ckms ec keys rekey --key-id <PRIVATE_KEY_UID>
+ckms ec keys re-key --key-id <PRIVATE_KEY_UID>
 
 # RSA key pair
-ckms rsa keys rekey --key-id <PRIVATE_KEY_UID>
+ckms rsa keys re-key --key-id <PRIVATE_KEY_UID>
 
 # Post-quantum (ML-KEM, ML-DSA, SLH-DSA)
-ckms pqc keys rekey --key-id <PRIVATE_KEY_UID>
+ckms pqc keys re-key --key-id <PRIVATE_KEY_UID>
 ```
 
 ---
@@ -389,9 +412,7 @@ sequenceDiagram
     KMS->>DB: retrieve old certificate
     KMS->>KMS: resolve issuer + subject from old cert
     KMS->>KMS: build & sign new certificate (same key pair)
-    KMS->>DB: Phase 1 — store new cert (fresh UID)
-    KMS->>DB: Phase 2 — update old cert (ReplacementObjectLink)
-    KMS->>DB: Phase 2 — relink keys (CertificateLink → new cert)
+    KMS->>DB: one atomic batch: store new cert (fresh UID),<br/>update old cert (ReplacementObjectLink) if unchanged,<br/>relink keys (CertificateLink → new cert)
     KMS-->>Client: ReCertifyResponse(new_cert_uid)
 ```
 
@@ -465,7 +486,7 @@ flowchart TD
     subgraph "Re-Key dispatch"
         REQ["Re-Key / Re-Key Key Pair / ReCertify"] --> DISPATCH{"Object type?"}
         DISPATCH -->|SymmetricKey, no dependants| PLAIN["Plain rekey<br/>(new material, new UID)"]
-        DISPATCH -->|SymmetricKey, has WrappingKeyLink dependants| WRAP_K["Wrapping-key rotation<br/>(Phase 1 commit → Phase 2 re-wrap)"]
+        DISPATCH -->|SymmetricKey, has WrappingKeyLink dependants| WRAP_K["Wrapping-key rotation<br/>(re-wrap dependants in the same atomic commit)"]
         DISPATCH -->|SymmetricKey, is wrapped| WRAP_D["Wrapped-key rotation<br/>(unwrap → new material → re-wrap)"]
         DISPATCH -->|PrivateKey| ASYM["Re-Key Key Pair"]
         DISPATCH -->|Certificate| CERT["ReCertify<br/>(same key pair, new cert UID)"]
@@ -477,7 +498,7 @@ flowchart TD
 
 ## KMIP attribute changes on manual rotation
 
-When the user explicitly calls `Re-Key` (e.g. `ckms sym keys rekey`), the
+When the user explicitly calls `Re-Key` (e.g. `ckms sym keys re-key`), the
 following attributes are set on the old and new key:
 
 | Attribute                     | Old key                                                      | New key                                                        |
@@ -500,11 +521,11 @@ following attributes are set on the old and new key:
 > than blindly continuing the old schedule.
 >
 > ```bash
-> # After a manual rekey, re-arm the rotation policy on the new key:
+> # After a manual re-key, re-arm the rotation policy on the new key:
 > ckms sym keys set-rotation-policy \
 >     --key-id  <NEW_KEY_UID> \
 >     --interval 3600 \
->     --name    "my-keyset"
+>     --rotation-name "my-keyset"
 > ```
 
 ---

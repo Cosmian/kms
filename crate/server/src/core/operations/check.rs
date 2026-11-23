@@ -58,7 +58,7 @@ pub(crate) async fn check(kms: &KMS, request: Check, owner: &UserId) -> KResult<
             .attributes()
             .usage_limits
             .as_ref()
-            .is_some_and(|limits| count > limits.usage_limits_total)
+            .is_some_and(|limits| count > limits.remaining())
         {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Usage_Limit_Exceeded,

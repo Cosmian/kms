@@ -1,6 +1,6 @@
 use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializer};
 
-use crate::{error::KmipError, kmip_0::kmip_types::ErrorReason};
+use crate::{SensitiveBytes, error::KmipError, kmip_0::kmip_types::ErrorReason};
 
 /// Structure used to encrypt with Covercrypt or ECIES
 ///
@@ -15,10 +15,23 @@ use crate::{error::KmipError, kmip_0::kmip_types::ErrorReason};
 /// policy string in UTF8 encoded bytes 2. encryption policy string in UTF8
 /// encoded bytes 3. LEB128 unsigned length of additional metadata 4. additional
 /// metadata encrypted in the header by the DEM 5. plaintext data to encrypt
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(PartialEq, Eq, Default)]
 pub struct DataToEncrypt {
     pub encryption_policy: Option<String>,
-    pub plaintext: Vec<u8>,
+    pub plaintext: SensitiveBytes,
+}
+
+/// Never prints the plaintext: only its length.
+impl std::fmt::Debug for DataToEncrypt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataToEncrypt")
+            .field("encryption_policy", &self.encryption_policy)
+            .field(
+                "plaintext",
+                &format_args!("<{} bytes>", self.plaintext.len()),
+            )
+            .finish()
+    }
 }
 
 impl DataToEncrypt {
@@ -70,7 +83,7 @@ impl DataToEncrypt {
 
         Ok(Self {
             encryption_policy,
-            plaintext,
+            plaintext: plaintext.into(),
         })
     }
 }
@@ -85,7 +98,9 @@ mod tests {
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: Some("a && b".to_owned()),
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text à è ")
+                    .into_bytes()
+                    .into(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
@@ -95,7 +110,9 @@ mod tests {
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: Some("a && b".to_owned()),
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text à è ")
+                    .into_bytes()
+                    .into(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
@@ -105,7 +122,9 @@ mod tests {
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: None,
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text à è ")
+                    .into_bytes()
+                    .into(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
@@ -115,7 +134,9 @@ mod tests {
         {
             let data_to_encrypt = DataToEncrypt {
                 encryption_policy: None,
-                plaintext: String::from("this is a plain text à è ").into_bytes(),
+                plaintext: String::from("this is a plain text à è ")
+                    .into_bytes()
+                    .into(),
             };
             let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();

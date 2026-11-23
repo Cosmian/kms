@@ -1,0 +1,181 @@
+#!/usr/bin/env -S usage bash
+#MISE description="JOSE CEK switch under load: fixed-rate JWE decrypt + re-encrypt over N KMS servers sharing one HSM token, CEK changed mid-run; latency timeline, HSM unwrap counts, performance gate"
+#USAGE flag "-v --variant <v>"        env="BENCH_VARIANT"        default="non-fips"  help="FIPS variant" { choices "fips" "non-fips" }
+#USAGE flag "-l --link <l>"           env="BENCH_LINK"           default="static"    help="Linkage type" { choices "static" "dynamic" }
+#USAGE flag "-r --release"            env="BENCH_RELEASE"        default="true"      help="Build in release mode"
+#USAGE flag "-n --servers <n>"        env="BENCH_SERVERS"        default="2"         help="Number of KMS servers"
+#USAGE flag "-R --rate <r>"           env="BENCH_RATE"           default="2500"      help="Target JWE messages/s (decrypt + re-encrypt)"
+#USAGE flag "-t --time <t>"           env="BENCH_TIME"           default="60"        help="Measurement seconds"
+#USAGE flag "-S --switch-at <s>"      env="BENCH_SWITCH_AT"      default="20"        help="CEK switch, seconds into the measurement"
+#USAGE flag "-W --warmup <s>"         env="BENCH_WARMUP"         default="10"        help="Warmup seconds (fills each server's cache with CEK #0)"
+#USAGE flag "-w --workers <n>"        env="BENCH_WORKERS"        default="256"       help="Concurrent senders"
+#USAGE flag "-p --plaintext-size <b>" env="BENCH_PLAINTEXT_SIZE" default="256"       help="Plaintext bytes per message"
+#USAGE flag "-A --alg <a>"            env="BENCH_ALG"            default="RSA-OAEP"  help="JWE key-management algorithm" { choices "RSA-OAEP" "RSA-OAEP-256" }
+#USAGE flag "--hsm-model <m>"         env="BENCH_HSM_MODEL"      default="kryoptic"  help="HSM model holding the RSA key (SoftHSM2 is excluded: no RSA-OAEP with parameters)" { choices "kryoptic" "proteccio" "utimaco" "luna" "crypt2pay" "aws_cloudhsm" }
+#USAGE flag "-L --label <name>"       env="BENCH_LABEL"          default="run"       help="Run name in the report (e.g. before / after)"
+#USAGE flag "-s --sanity"             env="BENCH_SANITY"                             help="Debug build, 100 msg/s, 6 s, switch at 3 s, warmup 2 s, 16 workers; docs untouched"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+
+# ── Resolve BENCH_ variables from usage-parsed lowercase names ──────────────────────
+BENCH_VARIANT="${usage_variant:-non-fips}"
+BENCH_LINK="${usage_link:-static}"
+BENCH_RELEASE="${usage_release:-true}"
+BENCH_SERVERS="${usage_servers:-2}"
+BENCH_RATE="${usage_rate:-2500}"
+BENCH_TIME="${usage_time:-60}"
+BENCH_SWITCH_AT="${usage_switch_at:-20}"
+BENCH_WARMUP="${usage_warmup:-10}"
+BENCH_WORKERS="${usage_workers:-256}"
+BENCH_PLAINTEXT_SIZE="${usage_plaintext_size:-256}"
+BENCH_ALG="${usage_alg:-RSA-OAEP}"
+BENCH_HSM_MODEL="${usage_hsm_model:-kryoptic}"
+BENCH_LABEL="${usage_label:-run}"
+BENCH_SANITY="${usage_sanity:-}"
+
+kms_init_env "${BENCH_VARIANT}" "${BENCH_LINK}"
+print_header "Running JOSE CEK-switch benchmark (${VARIANT_NAME}, ${BENCH_SERVERS} KMS, ${BENCH_HSM_MODEL})"
+
+BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
+
+# --sanity only replaces values still at their default, so e.g. `--sanity --rate 100000` keeps its rate.
+if [ "${BENCH_SANITY}" = "true" ]; then
+  BUILD_MODE="debug"
+  [ "${BENCH_RATE}" = "2500" ] && BENCH_RATE=100
+  [ "${BENCH_TIME}" = "60" ] && BENCH_TIME=6
+  [ "${BENCH_SWITCH_AT}" = "20" ] && BENCH_SWITCH_AT=3
+  [ "${BENCH_WARMUP}" = "10" ] && BENCH_WARMUP=2
+  [ "${BENCH_WORKERS}" = "256" ] && BENCH_WORKERS=16
+fi
+
+TMP_DIR="$(mktemp -d /tmp/kms-bench-cek-switch-XXXXXX)"
+bench_register_cleanup
+CEK_PIDS=()
+cek_switch_stop_servers() {
+  local pid
+  for pid in ${CEK_PIDS[@]+"${CEK_PIDS[@]}"}; do
+    kill "${pid}" 2>/dev/null || true
+    wait "${pid}" 2>/dev/null || true
+  done
+  CEK_PIDS=()
+}
+trap 'cek_switch_stop_servers; _bench_cleanup' EXIT
+
+# Same sequence as bench:hsm: prepare the host for the HSM model, then build.
+export WITH_HSM=1
+[ "${KMS_SKIP_BUILD:-}" = "1" ] || ensure_nix_shell
+bench_prepare_hsm "${BENCH_HSM_MODEL}"
+bench_build_binaries "${BUILD_MODE}"
+bench_warn_cpu_scaling
+
+# One token shared by every server: HSM_SLOT_ID, _BENCH_HSM_PASSWORD and _BENCH_HSM_ENV_VARS.
+_bench_resolve_hsm_model_env "${BENCH_HSM_MODEL}" "${TMP_DIR}/hsm" "${BENCH_HSM_SLOT:-}" "${BENCH_HSM_PASSWORD:-}" bench_cek_switch
+
+# ── Servers ─────────────────────────────────────────────────────────────────────────
+URLS=()
+for i in $(seq 1 "${BENCH_SERVERS}"); do
+  work="${TMP_DIR}/kms${i}"
+  mkdir -p "${work}/kms-data"
+  cp "${MISE_CONFIG_ROOT}/test_data/configs/server/test/bench_jose_cek_switch.toml" "${work}/kms.toml"
+  port="$(kms_pick_free_port)"
+  set_toml_value "${work}/kms.toml" port "${port}"
+  set_toml_value "${work}/kms.toml" sqlite_path "\"${work}/kms-data\""
+  set_toml_value "${work}/kms.toml" hsm_model "\"${BENCH_HSM_MODEL}\""
+  set_toml_value "${work}/kms.toml" hsm_slot "[${HSM_SLOT_ID}]"
+  set_toml_value "${work}/kms.toml" hsm_password "[\"${_BENCH_HSM_PASSWORD}\"]"
+  echo "Starting KMS server ${i} on port ${port}..."
+  env \
+    ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
+    "${KMS_BIN}" --config "${work}/kms.toml" \
+    >"${work}/kms.log" 2>&1 &
+  CEK_PIDS+=("$!")
+  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "$!" "${work}/kms.log" 60
+  URLS+=("http://127.0.0.1:${port}")
+done
+
+# ── Keys ────────────────────────────────────────────────────────────────────────────
+# The RSA pair lives in the HSM: every server resolves hsm::<slot>::<id> there directly.
+RSA_SK="hsm::${HSM_SLOT_ID}::bench_cek_switch_$(date +%s)"
+RSA_PK="${RSA_SK}_pk"
+"${CKMS_BIN}" --url "${URLS[0]}" rsa keys create --size_in_bits 2048 --sensitive "${RSA_SK}"
+if [ "${BENCH_HSM_MODEL}" != "kryoptic" ]; then
+  # Real HSMs keep the keys: remove them on exit (Kryoptic tokens are deleted with TMP_DIR).
+  cek_switch_destroy_keys() {
+    local k
+    for k in "${RSA_SK}" "${RSA_PK}"; do
+      "${CKMS_BIN}" --url "${URLS[0]}" rsa keys destroy --key-id "${k}" --remove || print_warning "could not remove HSM key ${k}"
+    done
+  }
+  trap 'cek_switch_destroy_keys; cek_switch_stop_servers; _bench_cleanup' EXIT
+fi
+
+# Target AES key: same bytes on every server, each SQLite DB holds its own copy.
+AES_KID=bench_cek_switch_aes
+B64=$(python3 -c 'import base64,os;print(base64.b64encode(os.urandom(32)).decode())')
+for url in "${URLS[@]}"; do
+  "${CKMS_BIN}" --url "${url}" sym keys create --bytes-b64 "${B64}" "${AES_KID}"
+done
+
+# ── Run ─────────────────────────────────────────────────────────────────────────────
+RUN_ROOT="${CARGO_TARGET_DIR}/cek-switch/${BENCH_HSM_MODEL}"
+[ "${BENCH_SANITY}" = "true" ] && RUN_ROOT="${CARGO_TARGET_DIR}/cek-switch-sanity/${BENCH_HSM_MODEL}"
+RUN_DIR="${RUN_ROOT}/${BENCH_LABEL}"
+rm -rf "${RUN_DIR}"
+mkdir -p "${RUN_DIR}"
+export CRITERION_HOME="${RUN_DIR}"
+
+EXTRA_URLS=()
+for url in "${URLS[@]:1}"; do
+  EXTRA_URLS+=(--cek-switch-url "${url}")
+done
+"${CKMS_BIN}" --url "${URLS[0]}" bench --cek-switch \
+  ${EXTRA_URLS[@]+"${EXTRA_URLS[@]}"} \
+  --cek-switch-rsa-kid "${RSA_PK}" \
+  --cek-switch-aes-kid "${AES_KID}" \
+  --cek-switch-alg "${BENCH_ALG}" \
+  --cek-switch-rate "${BENCH_RATE}" \
+  --cek-switch-workers "${BENCH_WORKERS}" \
+  --cek-switch-at "${BENCH_SWITCH_AT}" \
+  --time "${BENCH_TIME}" \
+  --warmup-time "${BENCH_WARMUP}" \
+  --load-plaintext-size "${BENCH_PLAINTEXT_SIZE}"
+
+# ── Evidence ────────────────────────────────────────────────────────────────────────
+# One "JOSE CEK cached for <uid>" debug line per HSM unwrap (insert_cek).
+for i in $(seq 1 "${BENCH_SERVERS}"); do
+  grep -oE 'JOSE CEK cached for jose_cek_[0-9a-f]+' "${TMP_DIR}/kms${i}/kms.log" >"${RUN_DIR}/kms${i}.unwraps" || true
+done
+curl -sf "${URLS[0]}/version" >"${RUN_DIR}/version.txt" || true
+BENCH_MODE=cek-switch
+BENCH_PROTOCOL=jose
+BENCH_CONCURRENCY="${BENCH_WORKERS}"
+BENCH_COOLDOWN=0
+BENCH_COMMAND_USED="mise run bench:jose-cek-switch${usage_args:+ $usage_args}"
+bench_collect_env "${RUN_DIR}/env.json" "${BENCH_HSM_MODEL}"
+
+# ── Performance gate: computed before the report, enforced after it ─────────────────
+# Thresholds: the 2,500 JWE/s producer peak, no failed message, and a CEK switch the
+# system absorbs. No absolute latency threshold (none was given): latencies are reported.
+require_cmd jq "jq is required for the bench:jose-cek-switch performance gate"
+jq -r '
+  (if .rate_achieved < 0.95 * .rate_target then "achieved \(.rate_achieved|floor) msg/s < 95% of target \(.rate_target) msg/s (\(.unsent) unsent)" else empty end),
+  (.per_server[] | select(.errors > 0) | "\(.server): \(.errors) errors"),
+  (.per_server[0] | select(.recovery_ms == null) | "all: message latency did not recover within the measurement window after the CEK switch")
+' "${RUN_DIR}/cek_switch_summary.json" >"${RUN_DIR}/gate.txt"
+
+# ── Report ──────────────────────────────────────────────────────────────────────────
+OUT_DIR="${MISE_CONFIG_ROOT}/documentation/docs/benchmarks/ckms_bench_jose_cek_switch_${BENCH_HSM_MODEL}"
+[ "${BENCH_SANITY}" = "true" ] && OUT_DIR="${RUN_ROOT}"
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/bench/plot_cek_switch.py" "${OUT_DIR}" "${RUN_ROOT}"/*/
+
+# ── Gate enforcement ────────────────────────────────────────────────────────────────
+if [ -s "${RUN_DIR}/gate.txt" ]; then
+  while IFS= read -r line; do
+    print_warning "PERFORMANCE GATE FAILED: ${line}"
+  done <"${RUN_DIR}/gate.txt"
+  exit 1
+fi
+print_success "Performance gate passed: $(jq -r '"\(.rate_achieved|floor) msg/s (target \(.rate_target)), 0 errors, recovered \(.per_server[0].recovery_ms) ms after the CEK switch"' "${RUN_DIR}/cek_switch_summary.json")"

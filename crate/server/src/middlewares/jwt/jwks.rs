@@ -7,12 +7,12 @@
 use std::{collections::HashMap, sync::RwLock};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{DateTime, Duration, Utc};
 use cosmian_logger::trace;
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use reqwest::{Client, header::HeaderValue};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use time::{Duration, OffsetDateTime};
 
 use super::JwtConfig;
 use crate::{config::ProxyParams, error::KmsError, kms_bail, kms_error, result::KResult};
@@ -23,9 +23,9 @@ static REFRESH_INTERVAL: i64 = 60; // in secs
 pub struct JwksManager {
     pub(crate) uris: Vec<String>,
     pub(crate) jwks: RwLock<HashMap<String, JwkSet>>,
-    pub(crate) last_update: RwLock<Option<DateTime<Utc>>>,
+    pub(crate) last_update: RwLock<Option<OffsetDateTime>>,
     /// Tracks the last time `force_refresh` was actually executed, for cooldown.
-    pub(crate) last_force_refresh: RwLock<Option<DateTime<Utc>>>,
+    pub(crate) last_force_refresh: RwLock<Option<OffsetDateTime>>,
     pub(crate) proxy_params: Option<ProxyParams>,
     /// When `true`, the JWKS fetch client skips TLS certificate verification.
     /// Only set this for development/test environments (e.g. self-signed certs).
@@ -143,7 +143,7 @@ impl JwksManager {
             let mut last_force = self.last_force_refresh.write().map_err(|e| {
                 KmsError::ServerError(format!("cannot lock last_force_refresh: {e:?}"))
             })?;
-            let now = Utc::now();
+            let now = OffsetDateTime::now_utc();
             let can = last_force.is_none_or(|lf| (lf + Duration::seconds(5)) < now);
             if can {
                 *last_force = Some(now);
@@ -164,11 +164,12 @@ impl JwksManager {
             })?;
 
             let can_be_refreshed = force
-                || last_update
-                    .is_none_or(|lu| (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now());
+                || last_update.is_none_or(|lu| {
+                    (lu + Duration::seconds(REFRESH_INTERVAL)) < OffsetDateTime::now_utc()
+                });
 
             if can_be_refreshed {
-                *last_update = Some(Utc::now());
+                *last_update = Some(OffsetDateTime::now_utc());
             }
             can_be_refreshed
         };

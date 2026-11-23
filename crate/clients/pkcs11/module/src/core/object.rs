@@ -21,7 +21,6 @@ use std::sync::Arc;
 
 use cosmian_logger::debug;
 use der::{Encode, asn1::OctetStringRef};
-use log::error;
 use openssl::{
     bn::BigNumContext,
     ec::PointConversionForm,
@@ -32,6 +31,7 @@ use pkcs11_sys::{
     CK_CERTIFICATE_CATEGORY_UNSPECIFIED, CK_PROFILE_ID, CK_ULONG, CKC_X_509, CKO_CERTIFICATE,
     CKO_DATA, CKO_PRIVATE_KEY, CKO_PROFILE, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
 };
+use tracing::error;
 
 use crate::{
     ModuleError, ModuleResult,
@@ -207,9 +207,11 @@ fn sym_key_attribute(
         AttributeType::Private => Some(Attribute::Private(false)),
         // Oracle TDE requires CKA_SENSITIVE=TRUE for master keys
         AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
+        AttributeType::Sign => Some(Attribute::Sign(sym_key.can_generate_mac())),
         AttributeType::Token => Some(Attribute::Token(true)),
         // Oracle TDE requires CKA_UNWRAP=TRUE to verify master key usability
         AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
+        AttributeType::Verify => Some(Attribute::Verify(sym_key.can_verify_mac())),
         AttributeType::Value => Some(Attribute::Value(sym_key.raw_bytes()?.to_vec())),
         // Oracle TDE requires CKA_WRAP=TRUE to verify master key usability
         AttributeType::Wrap => Some(Attribute::Wrap(true)),
@@ -394,7 +396,6 @@ fn data_object_attribute(data: &dyn DataObject, type_: AttributeType) -> Option<
     match type_ {
         AttributeType::Class => Some(Attribute::Class(CKO_DATA)),
         AttributeType::Id => Some(Attribute::Id(data.remote_id().as_bytes().to_vec())),
-        // TODO(BGR) should we hold zeroizable values here?
         AttributeType::Value => Some(Attribute::Value(data.value().to_vec())),
         AttributeType::Application => Some(Attribute::Application(data.application())),
         AttributeType::Private => Some(Attribute::Private(true)),

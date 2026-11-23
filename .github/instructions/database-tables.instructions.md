@@ -69,6 +69,7 @@ and any backend-specific differences (e.g. MySQL AUTO_INCREMENT`id` column).
 - [ ] Is the Mermaid diagram still accurate?
 - [ ] Is the table count in the overview sentence correct?
 - [ ] Is the "Links between tables" section still accurate?
+- [ ] Downgrade behaviour of the change documented (`**Downgrade.**` paragraph) per `database-compatibility.instructions.md`?
 
 ## `rawsql` loader gotcha
 
@@ -86,3 +87,9 @@ with spaces. Two failure modes follow:
 
 Comments are safe only between two queries (after one query's closing `;`, before the
 next `-- name:` tag) — never inside a query's body.
+
+Two more pitfalls:
+
+- A query ends at the first line that ends with `;`. A multi-statement entry (e.g. several `PRAGMA`s)
+  must therefore sit on a single line, otherwise only its first statement is stored.
+- Query names must not contain the substring `name` either, since the tag parser strips it.

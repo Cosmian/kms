@@ -197,7 +197,6 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 return Err(de::Error::duplicate_field("RequestPayload"));
                             }
                             // we must have parsed the `operation` field before
-                            // TODO: handle the case where the keys are not in right order
                             let Some(operation) = &operation else {
                                 return Err(de::Error::missing_field("operation"));
                             };
@@ -636,7 +635,6 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 return Err(de::Error::duplicate_field("response_payload"));
                             }
                             // we must have parsed the `operation` field before
-                            // TODO: handle the case where the keys are not in right order
                             let Some(operation) = &operation else {
                                 return Err(de::Error::missing_field("operation"));
                             };

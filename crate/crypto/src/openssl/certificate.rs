@@ -7,8 +7,8 @@ use cosmian_kmip::{
 };
 use openssl::{
     asn1::{Asn1Object, Asn1OctetString},
+    hash::{MessageDigest, hash},
     nid::Nid,
-    sha::Sha1,
     x509::{X509, X509Extension, X509Name, X509NameBuilder},
 };
 use x509_parser::prelude::{FromDer, X509Certificate};
@@ -210,9 +210,9 @@ fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<
     } else {
         let pk = certificate.public_key()?;
         let spki_der = pk.public_key_to_der()?;
-        let mut sha1 = Sha1::default();
-        sha1.update(&spki_der);
-        sha1.finish().to_vec()
+        // SHA-1 only identifies the key (RFC 5280 §4.2.1.2), it is not relied on for collision
+        // resistance (NIST SP 800-131A r2 §9).
+        hash(MessageDigest::sha1(), &spki_der)?.to_vec()
     })
 }
 

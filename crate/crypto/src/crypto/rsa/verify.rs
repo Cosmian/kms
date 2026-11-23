@@ -227,3 +227,57 @@ pub fn rsa_verify(
         ValidityIndicator::Invalid
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kmip::{
+        kmip_0::kmip_types::PaddingMethod,
+        kmip_2_1::kmip_types::{CryptographicParameters, ValidityIndicator},
+    };
+    use openssl::{bn::BigNum, pkey::PKey, rsa::Rsa};
+
+    use super::rsa_verify;
+
+    /// RSA PKCS#1 v1.5 and RSASSA-PSS verification against Wycheproof and NIST ACVP vectors.
+    #[test]
+    fn test_rsa_verify_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        for g in crate::kat_vectors::rsa_verify_groups().unwrap() {
+            let pk = PKey::from_rsa(
+                Rsa::from_public_components(
+                    BigNum::from_slice(&g.n).unwrap(),
+                    BigNum::from_slice(&g.e).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let params = CryptographicParameters {
+                padding_method: g.pss.then_some(PaddingMethod::PSS),
+                hashing_algorithm: Some(g.hash),
+                mask_generator_hashing_algorithm: g.pss.then_some(g.hash),
+                ..Default::default()
+            };
+            for t in &g.tests {
+                let verdict = rsa_verify(&pk, &t.msg, &t.sig, &params, false);
+                if t.valid {
+                    assert_eq!(
+                        verdict.unwrap(),
+                        ValidityIndicator::Valid,
+                        "{} ({})",
+                        t.id,
+                        g.source
+                    );
+                } else {
+                    assert!(
+                        matches!(verdict, Err(_) | Ok(ValidityIndicator::Invalid)),
+                        "{} ({})",
+                        t.id,
+                        g.source
+                    );
+                }
+            }
+        }
+    }
+}

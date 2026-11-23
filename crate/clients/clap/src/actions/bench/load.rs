@@ -11,7 +11,8 @@ use cosmian_kms_client::{
     jose::{JoseEncReq, JoseSignReq, b64url},
     kmip_2_1::{
         extra::BulkData,
-        kmip_operations::{Encrypt, Operation, Sign},
+        kmip_objects::Object,
+        kmip_operations::{Encrypt, Get, Operation, Sign},
         kmip_types::{
             CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
             RecommendedCurve, UniqueIdentifier,
@@ -19,6 +20,7 @@ use cosmian_kms_client::{
         requests::{create_rsa_key_pair_request, encrypt_request, symmetric_key_create_request},
     },
 };
+use cosmian_kms_crypto::crypto::is_fips_build;
 use num_traits::ToPrimitive as _;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
@@ -29,12 +31,14 @@ use zeroize::Zeroizing;
 use super::jose::jose_try_create_okp_kp;
 use super::{
     helpers::{
-        HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key,
-        hsm_rsa_pkcs1v15_encrypt_params, hsm_rsa_pkcs1v15_sign_params, hsm_uid, rsa_oaep_params,
-        rsa_oaep_sha1_params, try_create_ec_kp, try_create_hsm_ec_kp, try_create_hsm_rsa_kp,
-        try_create_hsm_sym_key,
+        HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key, hsm_rsa_encrypt_variants,
+        hsm_rsa_pkcs1v15_sign_params, hsm_uid, try_create_ec_kp, try_create_hsm_ec_kp,
+        try_create_hsm_rsa_kp, try_create_hsm_sym_key,
     },
-    jose::{jose_create_sym_key, jose_try_create_ec_kp},
+    jose::{
+        jose_create_sym_key, jose_rsa_oaep_decrypt_body, jose_try_create_ec_kp,
+        jose_try_create_rsa_kp,
+    },
     output::criterion_home,
     transport::{make_wire_request, to_wire_bytes, wire_response_ok},
     types::{BenchMode, BenchProtocol},
@@ -93,6 +97,16 @@ enum PreparedLoadOp {
         url: String,
         body: Bytes,
     },
+    /// JOSE RSA-OAEP decrypt of a JWE rebuilt client-side on every call (new CEK and
+    /// `encrypted_key`), so the server's CEK cache never hits. Latency includes the
+    /// client-side build (RSA public wrap + AES-GCM, tens of µs).
+    JoseRsaOaepFreshDecrypt {
+        name: &'static str,
+        url: String,
+        kid: String,
+        public_key: Box<Object>,
+        plaintext: Vec<u8>,
+    },
     /// AES-256 symmetric key creation.  Cannot be pre-serialized because each
     /// invocation must allocate a distinct key object on the server.
     AesSymCreate { name: &'static str, vid: String },
@@ -118,6 +132,7 @@ impl PreparedLoadOp {
         match self {
             Self::PreSerialized { name, .. }
             | Self::PreSerializedBinary { name, .. }
+            | Self::JoseRsaOaepFreshDecrypt { name, .. }
             | Self::AesSymCreate { name, .. }
             | Self::HsmAesSymCreate { name, .. }
             | Self::HsmRsaKpCreate { name, .. } => name,
@@ -138,6 +153,7 @@ impl PreparedLoadOp {
             Self::HsmAesSymCreate { .. } | Self::HsmRsaKpCreate { .. } => Some(64),
             Self::PreSerialized { .. }
             | Self::PreSerializedBinary { .. }
+            | Self::JoseRsaOaepFreshDecrypt { .. }
             | Self::AesSymCreate { .. } => None,
         }
     }
@@ -164,6 +180,22 @@ impl PreparedLoadOp {
                 .post_bytes(url, body.clone(), "application/octet-stream")
                 .await
                 .is_ok_and(|resp| wire_response_ok(resp.bytes())),
+            Self::JoseRsaOaepFreshDecrypt {
+                url,
+                kid,
+                public_key,
+                plaintext,
+                ..
+            } => {
+                let Ok(body) = jose_rsa_oaep_decrypt_body(public_key, kid, plaintext) else {
+                    return false;
+                };
+                client
+                    .client
+                    .post_bytes(url, body, "application/json")
+                    .await
+                    .is_ok_and(|resp| resp.status.is_success())
+            }
             Self::AesSymCreate { vid, .. } => {
                 let Ok(req) = symmetric_key_create_request(
                     vid,
@@ -257,7 +289,7 @@ fn push_op(ops: &mut Vec<PreparedLoadOp>, op: KmsCliResult<PreparedLoadOp>) {
     }
 }
 
-fn load_percentile(sorted: &[f64], p: f64) -> f64 {
+pub(super) fn load_percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
     }
@@ -334,7 +366,7 @@ fn prepare_load_ops(
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+            data: Some(vec![1_u8; plaintext_size].into()),
             ..Default::default()
         };
         ops.push(preserialized_op(
@@ -364,7 +396,7 @@ fn prepare_load_ops(
                     digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(vec![0x42_u8; 32].into()),
                 ..Default::default()
             };
             ops.push(preserialized_op(
@@ -419,7 +451,7 @@ fn prepare_load_ops(
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+            data: Some(vec![1_u8; plaintext_size].into()),
             ..Default::default()
         };
         ops.push(preserialized_wire_op(
@@ -442,7 +474,7 @@ fn prepare_load_ops(
                     digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(vec![0x42_u8; 32].into()),
                 ..Default::default()
             };
             ops.push(preserialized_wire_op(
@@ -476,6 +508,7 @@ fn prepare_load_ops(
         } else {
             eprintln!("[load] JOSE A256GCM key creation failed, skipping JOSE encrypt load test");
         }
+        push_jose_rsa_oaep_decrypt_ops(rt, client, plaintext_size, &mut ops)?;
     }
 
     if run_jose && needs_sign {
@@ -519,7 +552,7 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
         // EdDSA based on the key's own cryptographic algorithm (Ed25519).
         let req = Sign {
             unique_identifier: Some(priv_id),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(vec![0x42_u8; 32].into()),
             ..Default::default()
         };
         push_op(
@@ -546,7 +579,7 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(vec![0x42_u8; 32].into()),
             ..Default::default()
         };
         push_op(
@@ -582,7 +615,7 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
     ) {
         let req = Sign {
             unique_identifier: Some(priv_id),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(vec![0x42_u8; 32].into()),
             ..Default::default()
         };
         push_op(
@@ -607,7 +640,7 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+            data: Some(vec![0x42_u8; 32].into()),
             ..Default::default()
         };
         push_op(
@@ -659,6 +692,50 @@ const fn push_jose_eddsa_sign_op(
     _client: &KmsClient,
     _ops: &mut Vec<PreparedLoadOp>,
 ) {
+}
+
+/// JOSE RSA-OAEP decrypt load ops: one replayed token (CEK cache hit when the cache is on) and
+/// one fresh token per call (always a CEK cache miss).
+fn push_jose_rsa_oaep_decrypt_ops(
+    rt: &Runtime,
+    client: &KmsClient,
+    plaintext_size: usize,
+    ops: &mut Vec<PreparedLoadOp>,
+) -> KmsCliResult<()> {
+    let Some((_priv_kid, pub_kid)) = jose_try_create_rsa_kp(rt, client, "RSA-OAEP-256", 2048)
+    else {
+        eprintln!(
+            "[load] JOSE RSA-OAEP-256 key creation failed, skipping JOSE RSA-OAEP decrypt load tests"
+        );
+        return Ok(());
+    };
+    let Ok(public_key) = rt.block_on(client.get(Get::new(
+        UniqueIdentifier::TextString(pub_kid.clone()),
+        false,
+        None,
+        None,
+    ))) else {
+        eprintln!(
+            "[load] JOSE RSA-OAEP-256 public key fetch failed, skipping JOSE RSA-OAEP decrypt load tests"
+        );
+        return Ok(());
+    };
+    let object = public_key.object;
+    let url = format!("{}/v1/crypto/decrypt", client.client.server_url);
+    let plaintext = vec![1_u8; plaintext_size];
+    ops.push(PreparedLoadOp::PreSerialized {
+        name: "jose/decrypt/rsa-oaep-cached",
+        url: url.clone(),
+        body: jose_rsa_oaep_decrypt_body(&object, &pub_kid, &plaintext)?,
+    });
+    ops.push(PreparedLoadOp::JoseRsaOaepFreshDecrypt {
+        name: "jose/decrypt/rsa-oaep-fresh",
+        url,
+        kid: pub_kid,
+        public_key: Box::new(object),
+        plaintext,
+    });
+    Ok(())
 }
 
 /// Prepare load-test operations for `--hsm`: keys are created with an
@@ -729,19 +806,26 @@ fn prepare_hsm_load_ops(
     }
 
     if needs_encrypt {
-        if let Some(key_id) = try_create_hsm_sym_key(
-            rt,
-            client,
-            hsm_prefix,
-            "load-encrypt-aes-gcm-256",
-            256,
-            CryptographicAlgorithm::AES,
-            ledger,
-        ) {
+        // A FIPS build refuses AES-GCM on an HSM that does not generate the IV itself
+        // (FIPS 140-3 IG C.H).
+        if let Some(key_id) = (!is_fips_build())
+            .then(|| {
+                try_create_hsm_sym_key(
+                    rt,
+                    client,
+                    hsm_prefix,
+                    "load-encrypt-aes-gcm-256",
+                    256,
+                    CryptographicAlgorithm::AES,
+                    ledger,
+                )
+            })
+            .flatten()
+        {
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_gcm_params()),
-                data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
+                data: Some(vec![1_u8; plaintext_size].into()),
                 ..Default::default()
             };
             if run_json {
@@ -763,15 +847,12 @@ fn prepare_hsm_load_ops(
             2048,
             ledger,
         ) {
-            for (label, params) in [
-                ("rsa-oaep", rsa_oaep_params()),
-                ("rsa-oaep-sha1", rsa_oaep_sha1_params()),
-                ("rsa-pkcs1v15", hsm_rsa_pkcs1v15_encrypt_params()),
-            ] {
+            // A FIPS build keeps only RSA-OAEP-SHA256 (see `hsm_rsa_encrypt_variants`).
+            for (label, params) in hsm_rsa_encrypt_variants() {
                 let req = Encrypt {
                     unique_identifier: Some(pub_id.clone()),
                     cryptographic_parameters: Some(params),
-                    data: Some(Zeroizing::new(vec![1_u8; plaintext_size.min(190)])),
+                    data: Some(vec![1_u8; plaintext_size.min(190)].into()),
                     ..Default::default()
                 };
                 if run_json {
@@ -799,8 +880,8 @@ fn prepare_hsm_load_ops(
             let req = Encrypt {
                 unique_identifier: Some(key_id),
                 cryptographic_parameters: Some(aes_cbc_params()),
-                data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
-                i_v_counter_nonce: Some(vec![0_u8; 16]),
+                data: Some(vec![1_u8; plaintext_size].into()),
+                i_v_counter_nonce: Some(vec![0_u8; 16].into()),
                 ..Default::default()
             };
             if run_json {
@@ -831,7 +912,7 @@ fn prepare_hsm_load_ops(
                     digital_signature_algorithm: Some(DigitalSignatureAlgorithm::RSASSAPSS),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(vec![0x42_u8; 32].into()),
                 ..Default::default()
             };
             if run_json {
@@ -876,7 +957,7 @@ fn prepare_hsm_load_ops(
                 let req = Sign {
                     unique_identifier: Some(priv_id.clone()),
                     cryptographic_parameters: Some(hsm_rsa_pkcs1v15_sign_params(dsa)),
-                    data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                    data: Some(vec![0x42_u8; 32].into()),
                     ..Default::default()
                 };
                 if run_json {
@@ -971,7 +1052,7 @@ fn push_hsm_eddsa_sign_ops(
                     cryptographic_algorithm: Some(algorithm),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+                data: Some(vec![0x42_u8; 32].into()),
                 ..Default::default()
             };
             if run_json {

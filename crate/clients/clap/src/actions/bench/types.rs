@@ -2,6 +2,8 @@ use std::cell::RefCell;
 
 use clap::{Parser, ValueEnum};
 
+use super::cek_switch::CekSwitchArgs;
+
 thread_local! {
     /// Benchmarks that were skipped (server does not support the algorithm).
     /// Only KO events need explicit tracking; OKs are read from criterion output.
@@ -281,4 +283,7 @@ pub struct BenchAction {
     /// config (`hsm_slot`) has registered.
     #[clap(long = "hsm-slot", default_value = "0")]
     pub(super) hsm_slot: usize,
+
+    #[clap(flatten)]
+    pub(super) cek_switch: CekSwitchArgs,
 }

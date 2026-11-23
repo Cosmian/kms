@@ -4,6 +4,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_attributes::Attributes,
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
             kmip_objects::{Object, ObjectType},
             kmip_types::{
@@ -197,8 +198,15 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
             a @ (CryptoAlgorithm::AesKeyWrap
             | CryptoAlgorithm::AesKeyWrapPad
             | CryptoAlgorithm::AesGcm),
-        ) => a,
-        // A KEK that does not exist yet keeps failing on first use, as before this check.
+        ) => {
+            // A KEK that does not exist yet (the bootstrap flow creates it after startup) keeps
+            // failing on first use, as before this check.
+            if oracle.get_key_type(kek).await.is_err() {
+                return Ok(());
+            }
+            a
+        }
+        // Same for the default algorithm.
         None if matches!(oracle.get_key_type(kek).await, Ok(Some(KeyType::AesKey))) => {
             CryptoAlgorithm::AesGcm
         }
@@ -225,7 +233,8 @@ pub(crate) async fn ensure_kek_wrapping(kms: &KMS) -> KResult<()> {
         return Err(KmsError::ServerError(format!(
             "key_encryption_key {kek}: AES-GCM wrapping failed on this HSM: {e1}. Set \
              key_encryption_key_wrapping_algorithm = \"aes-key-wrap-padding\" (NIST SP \
-             800-38F) or \"aes-key-wrap\""
+             800-38F) or \"aes-key-wrap\" if this HSM can wrap imported keys, or use an RSA \
+             key encryption key with \"rsa-oaep\""
         )));
     }
     if let Err(e2) = oracle.set_key_wrap(kek, true).await {
@@ -448,15 +457,42 @@ async fn wrap_using_kms(
         )));
     }
 
-    // If the wrapping key is itself wrapped, we must unwrap it first
-    let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
-        debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
-        let mut obj = wrapping_key.object().clone();
-        Box::pin(unwrap_stored_object(&mut obj, kms, user)).await?;
-        obj
-    } else {
-        wrapping_key.object().clone()
-    };
+    wrap_with_local_key(
+        object,
+        key_wrapping_specification,
+        kms,
+        user,
+        wrapping_key.object(),
+        wrapping_key.attributes(),
+    )
+    .await
+}
+
+/// Wrap with an already authorized, Active software key, including an unpublished replacement.
+///
+/// Callers must check ownership/grants and lifecycle state before calling this helper.
+pub(crate) async fn wrap_with_local_key(
+    object: &mut Object,
+    key_wrapping_specification: &KeyWrappingSpecification,
+    kms: &KMS,
+    user: &UserId,
+    wrapping_key: &Object,
+    wrapping_attributes: &Attributes,
+) -> KResult<()> {
+    let wrapping_key_uid = key_wrapping_specification
+        .encryption_key_information
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest("missing wrapping key identifier".to_owned()))?
+        .unique_identifier
+        .as_str()
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("wrapping key identifier is not a string".to_owned())
+        })?;
+    // If the wrapping key is itself wrapped, we must unwrap it first.
+    let mut wrapping_key_object = wrapping_key.clone();
+    if wrapping_key_object.is_wrapped() {
+        Box::pin(unwrap_stored_object(&mut wrapping_key_object, kms, user)).await?;
+    }
 
     // If unwrap produced a KeyValue::Structure without attributes, reattach attributes
     // from the ObjectWithMetadata (database) when available so lower-level crypto code
@@ -466,18 +502,14 @@ async fn wrap_using_kms(
         && attributes.is_none()
     {
         // copy object-with-metadata attributes into the unwrapped key value
-        let attrs = wrapping_key.attributes().clone();
+        let attrs = wrapping_attributes.clone();
         *attributes = Some(Box::new(attrs));
     }
 
     // Check usage mask for non Certificate objects (after potential unwrap)
     trace!("Checking usage mask for wrapping key {wrapping_key_uid}");
-    // TODO: certs attributes should be checked instead
     if wrapping_key_object.object_type() != ObjectType::Certificate {
-        if !wrapping_key
-            .attributes()
-            .is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
-        {
+        if !wrapping_attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey)? {
             return Err(KmsError::NotSupported(format!(
                 "The key: {wrapping_key_uid} is not meant to wrap keys"
             )));
@@ -491,6 +523,18 @@ async fn wrap_using_kms(
         key_wrapping_specification.get_encoding(),
         object.key_block()?.key_format_type
     );
+    // An AES-GCM wrap is one invocation of the KEK with a random IV (SP 800-38D §8.3).
+    if wrapping_key_object.object_type() == ObjectType::SymmetricKey
+        && key_wrapping_specification
+            .encryption_key_information
+            .as_ref()
+            .and_then(|info| info.cryptographic_parameters.as_ref())
+            .is_some_and(|cp| cp.block_cipher_mode == Some(BlockCipherMode::GCM))
+    {
+        kms.database
+            .reserve_gcm_invocations(wrapping_key_uid, 1)
+            .await?;
+    }
     // wrap the object
     wrap_object_with_key(
         object,

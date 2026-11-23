@@ -7,9 +7,11 @@
 use std::{env, fs};
 
 use assert_cmd::prelude::*;
+use cosmian_config_utils::ConfigUtils;
+use tempfile::TempDir;
 
 use crate::{
-    config::CKMS_CONF_ENV,
+    config::{CKMS_CONF_ENV, ClientConfig},
     tests::utils::{ckms_bin, recover_cmd_logs},
 };
 
@@ -199,5 +201,85 @@ server_url = "http://127.0.0.1:9998"
     assert!(
         stderr.contains("SPIRE Agent"),
         "error message should mention 'SPIRE Agent', got: {stderr}"
+    );
+}
+
+/// TOML for an `oauth2_conf` whose token endpoint is `token_url`, with an optional refresh token.
+fn oauth2_toml(token_url: &str, refresh_token: Option<&str>) -> String {
+    let refresh_line = refresh_token
+        .map(|rt| format!("refresh_token = \"{rt}\"\n"))
+        .unwrap_or_default();
+    format!(
+        r#"[http_config]
+server_url = "http://127.0.0.1:9998"
+
+[http_config.oauth2_conf]
+client_id = "cid"
+client_secret = "csecret"
+authorize_url = "http://127.0.0.1:1/authorize"
+token_url = "{token_url}"
+scopes = ["openid", "email", "offline_access"]
+{refresh_line}"#
+    )
+}
+
+/// `ckms login oauth --refresh` exchanges the saved refresh token without a browser, saves the
+/// returned token and keeps the refresh token when the identity provider does not rotate it.
+#[test]
+fn test_ckms_login_oauth_refresh_saves_access_token() {
+    let mock = test_kms_server::mock_gmail::start();
+    let dir = TempDir::new().unwrap();
+    let conf_path = dir.path().join("ckms.toml");
+    fs::write(
+        &conf_path,
+        oauth2_toml(&format!("{}/token", mock.base), Some("rt-1")),
+    )
+    .unwrap();
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .args(["login", "oauth", "--refresh"]);
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(output.status.success(), "{output:?}");
+
+    let conf = ClientConfig::from_toml(conf_path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        conf.kms_config.http_config.access_token.as_deref(),
+        Some("mock-token")
+    );
+    assert_eq!(
+        conf.kms_config
+            .http_config
+            .oauth2_conf
+            .and_then(|c| c.refresh_token)
+            .as_deref(),
+        Some("rt-1")
+    );
+
+    let requests = mock.requests.lock().unwrap().clone();
+    let [request] = requests.as_slice() else {
+        panic!("expected exactly one token request: {requests:?}");
+    };
+    assert_eq!(request.path, "/token");
+    assert!(request.body.contains("grant_type=refresh_token"));
+    assert!(request.body.contains("refresh_token=rt-1"));
+}
+
+/// `ckms login oauth --refresh` must fail, naming `refresh_token`, when none was saved.
+#[test]
+fn test_ckms_login_oauth_refresh_fails_without_refresh_token() {
+    let dir = TempDir::new().unwrap();
+    let conf_path = dir.path().join("ckms.toml");
+    fs::write(&conf_path, oauth2_toml("http://127.0.0.1:1/token", None)).unwrap();
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .args(["login", "oauth", "--refresh"]);
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(!output.status.success(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("needs `refresh_token` in oauth2_conf"),
+        "got: {stderr}"
     );
 }

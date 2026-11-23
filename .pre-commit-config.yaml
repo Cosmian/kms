@@ -8,7 +8,7 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 fail_fast: true
-exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|kmip/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/server/documentation/swagger-ui/swagger-ui-bundle.js|crate/server/documentation/swagger-ui/swagger-ui.css
+exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|kmip/|crate/kmip/src/ttlv/tests/pykmip/|crate/server/documentation/swagger-ui/swagger-ui-bundle.js|crate/server/documentation/swagger-ui/swagger-ui.css
 repos:
   # ═══════════════════════════════════════════════════════════════════════
   # 1. Commit message
@@ -251,6 +251,13 @@ repos:
         entry: '\bKMS::instantiate\('
         files: ^crate/server/src/.*\.rs$
         exclude: ^crate/server/src/(start_kms_server|core/kms/mod|tests/test_utils|tests/google_cse/server_setup)\.rs$
+
+      - id: no-committed-credentials
+        name: No committed provider credentials
+        description: 'Fails on well-known live-credential formats (AWS access key id, GitHub, Slack and Vault tokens). Use test_data fixtures or environment variables.'
+        language: pygrep
+        entry: '\b(AKIA(?!IOSFODNN7EXAMPLE\b)[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}|xox[abprs]-[A-Za-z0-9-]{10,}|hv[sbr]\.[A-Za-z0-9_-]{24,})\b'
+        exclude: ^(test_data/|ui/pnpm-lock\.yaml|Cargo\.lock|documentation/book/|review-)
 
       - id: pip-audit-lockfiles
         name: pip-audit on hash-pinned Python requirements

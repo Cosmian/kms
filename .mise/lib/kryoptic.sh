@@ -96,20 +96,32 @@ _kryoptic_ensure_repo_openssl() {
   # for FIPS, `openssl-non-fips-<version>-<os>-<arch>` for non-FIPS. The version is globbed so
   # this does not track the pinned OpenSSL version; os/arch are this host's (CARGO_CFG_TARGET_*),
   # because the target dir can also hold prefixes of other platforms (Docker builds on macOS).
-  local prefix candidates os arch
+  local prefix os arch
   os="$(uname -s | tr '[:upper:]' '[:lower:]')"
   [ "$os" = darwin ] && os=macos
   arch="$(uname -m)"
   [ "$arch" = arm64 ] && arch=aarch64
-  candidates=("${target_dir}"/openssl-non-fips-*-"${os}"-"${arch}")
-  prefix="${candidates[0]:-}"
-  if [ -z "$prefix" ] || [ ! -d "$prefix" ]; then
-    print_error "Could not locate this workspace's non-FIPS OpenSSL prefix under ${target_dir} \
-(expected a directory matching ${target_dir}/openssl-non-fips-*-${os}-${arch})"
+  # The newest prefix holding an openssl.pc (a stale prefix of an older OpenSSL may have none).
+  _kryoptic_find_prefix() {
+    local c
+    prefix=""
+    for c in "${target_dir}"/openssl-non-fips-*-"${os}"-"${arch}"; do
+      [ -f "${c}/lib/pkgconfig/openssl.pc" ] && prefix="$c"
+    done
+    return 0
+  }
+  _kryoptic_find_prefix
+  if [ -z "$prefix" ]; then
+    # Inside nix-shell build.rs reuses the Nix OpenSSL and builds no prefix: build it here,
+    # outside the Nix OpenSSL override, into the host target dir.
+    print_status "No usable OpenSSL prefix under ${target_dir}: building one (OPENSSL_DIR unset)"
+    (cd "$repo_root" && env -u OPENSSL_DIR CARGO_TARGET_DIR="$target_dir" \
+      cargo build -p cosmian_kms_crypto --features non-fips)
+    _kryoptic_find_prefix
   fi
-  if [ ! -f "${prefix}/lib/pkgconfig/openssl.pc" ]; then
-    print_error "No openssl.pc found under ${prefix}/lib/pkgconfig; this workspace's OpenSSL \
-build layout may have changed (see crate/crypto/build.rs)"
+  if [ -z "$prefix" ]; then
+    print_error "No openssl.pc found under ${target_dir}/openssl-non-fips-*-${os}-${arch}/lib/pkgconfig; \
+this workspace's OpenSSL build layout may have changed (see crate/crypto/build.rs)"
   fi
 
   # Our OpenSSL is built `no-shared` (static only, see crate/crypto/build.rs). Keep

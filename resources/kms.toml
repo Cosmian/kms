@@ -23,7 +23,7 @@ default_username = "admin"
 #   Configure with [[hsm_instances]] sections (one per device):
 #
 ## [[hsm_instances]]
-## hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | azure_cloud_hsm | gcp_cloud_hsm | kryoptic | other
+## hsm_model    = "softhsm2"           # luna | softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | aws_cloudhsm | azure_cloud_hsm | gcp_cloud_hsm | kryoptic | idemia_sphere | other
 ## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
 ## hsm_slot     = [0]                  # PKCS#11 slot indices
 ## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
@@ -136,6 +136,18 @@ hostname = "0.0.0.0"
 # default_validity_days = 90
 # subject_cn_regex = "[a-z0-9-]+\\.iot\\.example"
 # san_dns_regex = "[a-z0-9-]+\\.iot\\.example"
+
+[kv]
+# Enable the Vault KV v2-compatible `/<kv_mount>/` scope.
+#
+# Defaults to `false`.
+kv_enabled = false
+# KV mount name used by the `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*` routes.
+#
+# Mirrors `vault_transit_mount`/`vault_pki_mount`. Defaults to `"kv"`.
+kv_mount = ""
+# Interval, in seconds, between KV TTL-expiry sweeps (destroys secret versions whose `options.ttl` has elapsed). `0` disables the sweep. Defaults to `30`
+kv_ttl_check_interval_secs = 30
 
 [db]
 database_type = "redis-findex"

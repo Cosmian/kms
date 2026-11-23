@@ -10,7 +10,7 @@ DEVELOP_HASH="sha256-$(printf '%032d' 1 | base64 | tr -d '\n')"
 RELEASE_HASH="sha256-$(printf '%032d' 2 | base64 | tr -d '\n')"
 HASH_FILES=(
   server.vendor.static.sha256 server.vendor.dynamic.sha256
-  cli.vendor.linux.sha256 cli.vendor.static.darwin.sha256
+  cargo.vendor.linux.sha256 cli.vendor.static.darwin.sha256
   cli.vendor.dynamic.darwin.sha256 ui.vendor.fips.sha256
   ui.vendor.non-fips.sha256 ui.pnpm.linux.sha256
 )

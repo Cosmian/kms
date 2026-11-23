@@ -10,6 +10,11 @@ INSERT INTO parameters (name, value)
 VALUES (?, ?)
 ON DUPLICATE KEY UPDATE value=VALUES(value);
 
+-- name: insert-parameter-if-absent
+INSERT INTO parameters (name, value)
+VALUES (?, ?)
+ON DUPLICATE KEY UPDATE name = name;
+
 -- name: select-parameter
 SELECT value
 FROM parameters
@@ -20,6 +25,33 @@ DELETE
 FROM parameters
 WHERE name = ?;
 
+-- name: has-table-parameters
+SELECT 1
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'parameters';
+
+-- Startup migrations hold row 1 FOR UPDATE NOWAIT in a transaction on a dedicated connection.
+-- name: create-table-migration-lock
+CREATE TABLE IF NOT EXISTS kms_migration_lock
+(
+    id TINYINT NOT NULL PRIMARY KEY
+);
+
+-- name: has-migration-lock-row
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1;
+
+-- name: insert-migration-lock-row
+INSERT IGNORE INTO kms_migration_lock (id)
+VALUES (1);
+
+-- name: select-migration-lock
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1 FOR UPDATE NOWAIT;
+
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
@@ -29,7 +61,8 @@ CREATE TABLE IF NOT EXISTS objects
     attributes      json NOT NULL,
     state           VARCHAR(32),
     owner           VARCHAR(255),
-    wrapping_key_id VARCHAR(128)
+    wrapping_key_id VARCHAR(128),
+    version         BIGINT NOT NULL DEFAULT 0
 );
 
 -- name: add-column-attributes
@@ -44,6 +77,12 @@ SHOW COLUMNS FROM objects LIKE 'wrapping_key_id';
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
+
+-- name: has-column-version
+SHOW COLUMNS FROM objects LIKE 'version';
+
+-- name: add-column-version
+ALTER TABLE objects ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
 
 -- name: has-column-co-activated-by
 SHOW COLUMNS FROM crypto_officer_activations LIKE 'activated_by';
@@ -90,7 +129,7 @@ INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
 VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
 FROM objects
 WHERE objects.id = ?;
 
@@ -98,7 +137,7 @@ WHERE objects.id = ?;
 SELECT objects.state, objects.attributes FROM objects WHERE objects.id = ?;
 
 -- name: select-object-for-update
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
 FROM objects
 WHERE objects.id = ?
 FOR UPDATE;
@@ -107,12 +146,23 @@ FOR UPDATE;
 UPDATE objects
 SET object=?,
     attributes=?,
-    wrapping_key_id=?
+    wrapping_key_id=?,
+    version=version + 1
 WHERE id = ?;
+
+-- name: update-object-with-object-if-version
+UPDATE objects
+SET object=?,
+    attributes=?,
+    wrapping_key_id=?,
+    version=version + 1
+WHERE id = ?
+  AND version = ?;
 
 -- name: update-object-with-state
 UPDATE objects
-SET state=?
+SET state=?,
+    version=version + 1
 WHERE id = ?;
 
 -- name: delete-object
@@ -127,7 +177,8 @@ ON DUPLICATE KEY UPDATE object=VALUES(object),
                         attributes=VALUES(attributes),
                         state=VALUES(state),
                         owner=VALUES(owner),
-                        wrapping_key_id=VALUES(wrapping_key_id);
+                        wrapping_key_id=VALUES(wrapping_key_id),
+                        version=version + 1;
 
 -- name: select-user-accesses-for-object
 SELECT permissions
@@ -220,6 +271,9 @@ FROM objects
 LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
 WHERE (objects.owner = ? OR read_access.userid = ?)
   AND objects.wrapping_key_id = ?;
+
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
 
 -- name: select-objects-null-wrapping-key
 SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
@@ -315,3 +369,81 @@ SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
 
 -- name: list-crl-issuers
 SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;
+
+-- name: health-check
+SELECT 1;
+
+-- name: select-max-crl-number
+SELECT MAX(crl_number) FROM crls;
+
+-- name: set-session-isolation-read-committed
+SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- name: set-session-lock-wait-timeout
+SET SESSION innodb_lock_wait_timeout=10;
+
+-- ── AES-GCM invocation counter (NIST SP 800-38D §8.3) ──────────────────────────
+-- One row per key, apart from the objects table so that counting never changes an object's
+-- version. MySQL has no `RETURNING`: a reservation locks the row, checks the cap, then updates.
+
+-- name: create-table-gcm_invocations
+CREATE TABLE IF NOT EXISTS gcm_invocations
+(
+    object_id VARCHAR(128) NOT NULL PRIMARY KEY,
+    `count`   BIGINT       NOT NULL
+);
+
+-- name: clean-table-gcm_invocations
+DELETE FROM gcm_invocations;
+
+-- Explicit binary collation avoids ERROR 1267 when objects predates a server collation change.
+-- name: purge-orphan-gcm-invocations
+DELETE FROM gcm_invocations
+WHERE CONVERT(object_id USING utf8mb4) COLLATE utf8mb4_bin
+    NOT IN (SELECT CONVERT(id USING utf8mb4) COLLATE utf8mb4_bin FROM objects);
+
+-- name: init-gcm-invocations
+INSERT IGNORE INTO gcm_invocations (object_id, `count`) VALUES (?, 0);
+
+-- name: select-gcm-invocations-for-update
+SELECT `count` FROM gcm_invocations WHERE object_id = ? FOR UPDATE;
+
+-- name: update-gcm-invocations
+UPDATE gcm_invocations SET `count` = `count` + ? WHERE object_id = ?;
+
+-- name: delete-gcm-invocations
+DELETE FROM gcm_invocations WHERE object_id = ?;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64) NOT NULL PRIMARY KEY,
+    version         VARCHAR(64) NOT NULL,
+    last_heartbeat  BIGINT      NOT NULL,
+    is_leader       BOOLEAN     NOT NULL DEFAULT FALSE
+);
+
+-- name: clear-cluster-leader
+UPDATE cluster_nodes SET is_leader = FALSE;
+
+-- name: upsert-cluster-node
+INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader)
+VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+    version = VALUES(version),
+    last_heartbeat = VALUES(last_heartbeat),
+    is_leader = VALUES(is_leader);
+
+-- name: delete-stale-cluster-nodes
+DELETE FROM cluster_nodes WHERE last_heartbeat < ?;
+
+-- name: select-live-cluster-nodes
+SELECT node_id, version, last_heartbeat, is_leader
+FROM cluster_nodes WHERE last_heartbeat >= ? ORDER BY node_id;
+
+-- Named lock scoped to the current database (SHA2 hex = 64 chars, the GET_LOCK name limit).
+-- Returns 1 when acquired, 0 when held elsewhere, NULL on error.
+-- name: try-cron-lock
+SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256), 0);
+
+-- name: release-cron-lock
+SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256));

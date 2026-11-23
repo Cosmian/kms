@@ -4,12 +4,13 @@ name: Windows Build
 on:
   workflow_call:
     inputs:
-      toolchain:
-        required: true
-        type: string
       archive-name:
         required: true
         type: string
+      variant:
+        required: false
+        type: string
+        default: non-fips
     secrets:
       AZURE_TENANT_ID_POC:
         required: true
@@ -20,7 +21,7 @@ on:
 
 jobs:
   cargo-build:
-    name: ${{ inputs.archive-name }} - 2022-non-fips
+    name: ${{ inputs.archive-name }} - 2022-${{ inputs.variant }}
     runs-on: windows-2022
     steps:
       - name: Print ENV
@@ -30,10 +31,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          components: rustfmt, clippy
+      - uses: ./.github/actions/install-rust
 
       - name: Discover environment variables on Runner
         shell: pwsh
@@ -57,14 +55,22 @@ jobs:
       - name: Enable Corepack pnpm
         run: corepack enable pnpm
 
+      - name: Cache the OpenSSL FIPS provider
+        if: inputs.variant == 'fips'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\openssl-fips
+          key: openssl-fips-3.1.2-${{ runner.os }}-${{ hashFiles('.mise/scripts/windows/prepare_windows_fips_provider.ps1') }}
+
       - name: Build UI
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           . .\.mise\scripts\windows\windows_ui.ps1
-          Build-UI -Variant non-fips
+          Build-UI -Variant ${{ inputs.variant }}
 
       - name: Copy UI to server directory
+        if: inputs.variant == 'non-fips'
         shell: pwsh
         run: |
           if (Test-Path "crate\server\ui_non_fips") {
@@ -94,40 +100,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           . .\.mise\scripts\windows\cargo_build.ps1
-          BuildProject
-
-      - name: Rename installers to new convention
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          # Extract version from workspace Cargo.toml
-          $cargoToml = Get-Content -Raw "Cargo.toml"
-          $inWorkspace = $false
-          $version = ""
-          foreach ($line in $cargoToml -split "`n") {
-            if ($line -match '^\[workspace\.package\]') { $inWorkspace = $true; continue }
-            if ($inWorkspace -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
-            if ($inWorkspace -and $line -match '^\[') { break }
-          }
-          if (-not $version) { throw "Unable to parse version from Cargo.toml" }
-          $arch = "x86_64"
-
-          # Rename KMS server NSIS installer
-          # cargo-packager names it after the binary: cosmian_kms_{version}_{arch}-setup.exe
-          Get-ChildItem -Path "target/release" -Filter "cosmian_kms_*setup.exe" | ForEach-Object {
-            $newName = "cosmian-kms-server-non-fips-static-openssl_${version}_${arch}.exe"
-            $dest = Join-Path $_.DirectoryName $newName
-            Move-Item -Force $_.FullName $dest
-            Write-Host "Renamed $($_.Name) -> $newName"
-          }
-
-          # Rename ckms CLI NSIS installer
-          Get-ChildItem -Path "target/release" -Filter "ckms*setup.exe" | ForEach-Object {
-            $newName = "cosmian-kms-cli-non-fips-static-openssl_${version}_${arch}.exe"
-            $dest = Join-Path $_.DirectoryName $newName
-            Move-Item -Force $_.FullName $dest
-            Write-Host "Renamed $($_.Name) -> $newName"
-          }
+          BuildProject -Variant ${{ inputs.variant }}
+          # GitHub's pwsh wrapper propagates a stale $LASTEXITCODE otherwise.
+          exit 0
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -163,9 +138,14 @@ jobs:
     name: ${{ inputs.archive-name }} - test on clean env.
     runs-on: windows-2022
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ inputs.archive-name }}-release-signed
+          path: installers
 
       - name: List files recursively
         shell: pwsh
@@ -175,11 +155,12 @@ jobs:
         shell: pwsh
         run: |
           $executables = @(
-            Get-ChildItem -Recurse -Filter "cosmian-kms-server*.exe"
-            Get-ChildItem -Recurse -Filter "cosmian-kms-cli*.exe"
+            Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-server*.exe"
+            if ('${{ inputs.variant }}' -ne 'fips') { Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-cli*.exe" }
           )
-          if ($executables.Count -ne 2) {
-            Write-Error "Expected two signed Windows installers, found $($executables.Count)"
+          $expected = if ('${{ inputs.variant }}' -eq 'fips') { 1 } else { 2 }
+          if ($executables.Count -ne $expected) {
+            Write-Error "Expected $expected signed Windows installer(s), found $($executables.Count)"
             exit 1
           }
 
@@ -207,16 +188,28 @@ jobs:
           }
 
       - name: Launch binaries
+        shell: pwsh
         run: |
-          # Both artifacts are NSIS installers (not bare binaries), so we
+          # The artifacts are NSIS installers (not bare binaries), so we
           # verify they exist rather than trying to execute them with -V.
-          $serverExe = Get-ChildItem -Recurse -Filter "cosmian-kms-server*.exe" | Select-Object -First 1
+          $serverExe = Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-server*.exe" | Select-Object -First 1
           if ($null -eq $serverExe) { Write-Error "Server installer not found"; exit 1 }
           Write-Host "Server installer present: $($serverExe.FullName)"
 
-          $cliExe = Get-ChildItem -Recurse -Filter "cosmian-kms-cli*.exe" | Select-Object -First 1
-          if ($null -eq $cliExe) { Write-Error "CLI installer not found"; exit 1 }
-          Write-Host "CLI installer present: $($cliExe.FullName)"
+          if ('${{ inputs.variant }}' -ne 'fips') {
+            $cliExe = Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-cli*.exe" | Select-Object -First 1
+            if ($null -eq $cliExe) { Write-Error "CLI installer not found"; exit 1 }
+            Write-Host "CLI installer present: $($cliExe.FullName)"
+          }
+
+      # Real silent install, service start and uninstall (the windows-2022 runner is elevated).
+      # Not enabled for non-fips: existing publishing must not gain a new failure mode.
+      - name: Install and smoke-test the installer
+        if: inputs.variant == 'fips'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem installers -Recurse -Filter "cosmian-kms-server*.exe" | Select-Object -First 1
+          .\.mise\scripts\windows\test_windows_package.ps1 -Installer $installer.FullName -Variant fips
 
   publish-windows-release:
     name: ${{ inputs.archive-name }} - publish assets
@@ -249,10 +242,10 @@ jobs:
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
-          subdir: windows/x86_64/non-fips/static-openssl
+          subdir: windows/x86_64/${{ inputs.variant }}/static-openssl
           files: |
             **/cosmian-kms-server*.exe
-            **/cosmian-kms-cli*.exe
+            ${{ inputs.variant == 'non-fips' && '**/cosmian-kms-cli*.exe' || '' }}
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
@@ -260,5 +253,5 @@ jobs:
         with:
           files: |
             cosmian-kms-server*.exe
-            cosmian-kms-cli*.exe
+            ${{ inputs.variant == 'non-fips' && 'cosmian-kms-cli*.exe' || '' }}
             ./nix/signing-keys/cosmian-kms-public.asc

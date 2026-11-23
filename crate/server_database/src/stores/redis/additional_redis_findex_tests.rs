@@ -480,6 +480,41 @@ pub(crate) mod issue_940_repro {
         Ok(())
     }
 
+    /// Unconditional updates retain their established missing-object error after deletion.
+    pub(crate) async fn t9_unconditional_update_after_delete() -> DbResult<()> {
+        let (store, _) = clients(6).await?;
+        let case = tag_case(&store).await?;
+        let object = key(4)?;
+        store.delete(&case.uid).await?;
+        let expected_error = format!("Item not found: {}", case.uid);
+        let err = store
+            .atomic(
+                &case.owner,
+                &[AtomicOperation::UpdateObject((
+                    case.uid.clone(),
+                    object.clone(),
+                    object.attributes()?.clone(),
+                    None,
+                ))],
+            )
+            .await
+            .expect_err("unconditional atomic update must reject a deleted object");
+        assert!(
+            matches!(&err, cosmian_kms_interfaces::InterfaceError::Db(message) if message == &expected_error),
+            "unexpected missing-object error: {err}"
+        );
+        let err = store
+            .update_object(&case.uid, &object, object.attributes()?, None)
+            .await
+            .expect_err("standalone update must reject a deleted object");
+        assert!(
+            matches!(&err, cosmian_kms_interfaces::InterfaceError::Db(message) if message == &expected_error),
+            "unexpected missing-object error: {err}"
+        );
+        assert!(store.retrieve(&case.uid).await?.is_none());
+        Ok(())
+    }
+
     /// Run every #940 contract test; called from `test_db_redis_with_findex`.
     pub(crate) async fn test_issue_940() -> DbResult<()> {
         t1_removed_tag_must_not_select_existing_object().await?;
@@ -489,6 +524,7 @@ pub(crate) mod issue_940_repro {
         t5_delete_is_guarded_by_baseline().await?;
         Box::pin(t6_create_then_delete_in_one_batch()).await?;
         Box::pin(t8_standalone_mutators_are_cas_guarded()).await?;
+        Box::pin(t9_unconditional_update_after_delete()).await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_findex_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_stale_attribute_hit_is_filtered_out().await?;
         crate::stores::redis::redis_with_findex::tests::test_db_redis_interleaved_index_updates_keep_object_findable().await
@@ -1091,9 +1127,8 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
 ///
 /// Seeds a **legacy** wrapped object — stored directly via `object_upsert`, so it
 /// carries no `wrapped_by::` keyword, exactly like an object written before that
-/// index existed — clears the completion marker, then runs
-/// `backfill_wrapped_by_index` and asserts the object becomes discoverable
-/// through `find_wrapped_by` (used by key rotation).
+/// index existed — then runs `MigrationStep::WrappingKeyIdBackfill` and asserts the
+/// object becomes discoverable through `find_wrapped_by` (used by key rotation).
 pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     cosmian_logger::log_init(option_env!("RUST_LOG"));
     let mut rng = KmsRng::new().seeded_csrng()?;
@@ -1138,12 +1173,6 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
     // Store the object WITHOUT Findex indexing → simulates a pre-index legacy object.
     db.objects_db().object_upsert(uid, &dbo).await?;
 
-    // Clear the completion marker so the backfill actually runs.
-    redis::cmd("DEL")
-        .arg("wrapping_key_id_backfilled")
-        .query_async::<()>(&mut db.mgr.clone())
-        .await?;
-
     // Before backfill: the legacy object is invisible to find_wrapped_by (no keyword).
     let before = db
         .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
@@ -1153,8 +1182,12 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
         "legacy wrapped object must NOT be found before backfill"
     );
 
-    // Run the one-time backfill.
-    db.backfill_wrapped_by_index().await?;
+    // Run the migration step.
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::WrappingKeyIdBackfill,
+    )
+    .await?;
 
     // After backfill: the object is discoverable by its wrapping key.
     let after = db
@@ -1165,8 +1198,12 @@ pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
         "wrapped object must be discoverable after backfill, got: {after:?}"
     );
 
-    // Idempotency: re-running is a no-op (marker set) and keeps it discoverable.
-    db.backfill_wrapped_by_index().await?;
+    // Idempotency: re-running keeps it discoverable.
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::WrappingKeyIdBackfill,
+    )
+    .await?;
     let again = db
         .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
         .await?;
@@ -1198,18 +1235,17 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
         )
         .await?;
 
-    // Clear the completion marker so the backfill actually runs.
-    redis::cmd("DEL")
-        .arg("certificate_serial_tag_backfilled")
-        .query_async::<()>(&mut db.mgr.clone())
-        .await?;
     let serial_tag = HashSet::from(["_serial=0ABBCC".to_owned()]);
     assert!(
         !db.list_uids_for_tags(&serial_tag).await?.contains(&uid),
         "the legacy certificate must not be locatable by serial before the backfill"
     );
 
-    db.backfill_certificate_serial_tags().await?;
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::CertificateSerialTagBackfill,
+    )
+    .await?;
 
     assert!(db.retrieve_tags(&uid).await?.contains("_serial=0ABBCC"));
     assert!(
@@ -1221,12 +1257,12 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
         "the backfill must keep the existing tags"
     );
 
-    // Re-running with the marker cleared skips the already-tagged certificate.
-    redis::cmd("DEL")
-        .arg("certificate_serial_tag_backfilled")
-        .query_async::<()>(&mut db.mgr.clone())
-        .await?;
-    db.backfill_certificate_serial_tags().await?;
+    // Re-running skips the already-tagged certificate.
+    crate::stores::migrate::Migrate::apply_step(
+        &db,
+        crate::stores::migrate::MigrationStep::CertificateSerialTagBackfill,
+    )
+    .await?;
     assert_eq!(
         db.retrieve_tags(&uid).await?,
         HashSet::from(["_cert".to_owned(), "_serial=0ABBCC".to_owned()])
@@ -1236,73 +1272,69 @@ pub(crate) async fn test_certificate_serial_tag_backfill() -> DbResult<()> {
     Ok(())
 }
 
-/// Logical Redis database used by [`test_migration_state_markers`], kept apart from the
-/// default database (0) shared by the other Redis tests.
-const ISOLATED_REDIS_DB: u8 = 15;
+/// Logical Redis database used by [`test_protected_parameters`].
+const PARAMETERS_REDIS_DB: u8 = 7;
 
-/// Redis migration-state markers: a freshly initialised database records its version
-/// and a `ready` state; re-opening it is accepted, while a database whose recorded
-/// state is not `ready` (or that has no markers) is refused as legacy.
-pub(crate) async fn test_migration_state_markers() -> DbResult<()> {
-    use crate::stores::migrate::{DbState, Migrate as _};
+/// Fail if any Redis string value contains `plaintext`.
+async fn assert_not_stored_in_clear(mgr: &ConnectionManager, plaintext: &str) -> DbResult<()> {
+    let mut mgr = mgr.clone();
+    let keys: Vec<Vec<u8>> = mgr.keys("*").await?;
+    for key in keys {
+        let kind: String = redis::cmd("TYPE").arg(&key).query_async(&mut mgr).await?;
+        if kind != "string" {
+            continue;
+        }
+        let value: Vec<u8> = mgr.get(&key).await?;
+        assert!(
+            !value
+                .windows(plaintext.len())
+                .any(|window| window == plaintext.as_bytes()),
+            "Redis key {} holds a parameter value in clear",
+            String::from_utf8_lossy(&key)
+        );
+    }
+    Ok(())
+}
 
-    cosmian_logger::log_init(option_env!("RUST_LOG"));
+/// Server parameters are sealed under the database key in Redis: replicas converge on the
+/// first value, nothing is stored in clear, and a wrong master key fails closed instead of
+/// producing a new value.
+pub(crate) async fn test_protected_parameters() -> DbResult<()> {
+    let redis_url = format!("{}/{PARAMETERS_REDIS_DB}", get_redis_url());
     let mut rng = KmsRng::new().seeded_csrng()?;
-    // Use a dedicated logical Redis database: this test deliberately leaves the database in
-    // refused (non-ready / legacy) states, which must never leak into the default database
-    // shared with the other Redis tests and with later runs.
-    let redis_url = format!("{}/{ISOLATED_REDIS_DB}", get_redis_url());
     let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let first = RedisWithFindex::instantiate(&redis_url, master_key.clone(), true).await?;
+    let replica = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
+    let mut raw = first.mgr.clone();
 
-    let db = RedisWithFindex::instantiate(&redis_url, master_key.clone(), true).await?;
+    // New parameter written concurrently by two replicas: one value wins for both.
+    let name = "test_protected_parameter";
+    let candidates = ["candidate-a-5f0c2d9e7b", "candidate-b-81e4a6c3f2"];
+    let (a, b) = tokio::join!(
+        first.get_or_insert_parameter(name, candidates[0]),
+        replica.get_or_insert_parameter(name, candidates[1]),
+    );
+    let (stored, replica_value) = (a?, b?);
+    assert_eq!(stored, replica_value, "replicas must converge on one value");
+    assert!(candidates.contains(&stored.as_str()));
+    let restarted = RedisWithFindex::instantiate(&redis_url, master_key, false).await?;
     assert_eq!(
-        db.get_current_db_version().await?.as_deref(),
-        Some(env!("CARGO_PKG_VERSION"))
+        restarted.get_or_insert_parameter(name, "later").await?,
+        stored
     );
-    assert_eq!(db.get_db_state().await?, Some(DbState::Ready));
+    assert_not_stored_in_clear(&raw, &stored).await?;
+    let bare: Option<String> = raw.get(name).await?;
+    assert_eq!(bare, None, "no value may be stored under the bare name");
 
-    // Re-opening a ready database must succeed and keep the markers.
-    let reopened = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await?;
-    assert_eq!(reopened.get_db_state().await?, Some(DbState::Ready));
+    // Another master key cannot read the sealed value and does not replace it.
+    let other_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let intruder = RedisWithFindex::instantiate(&redis_url, other_key, false).await?;
+    intruder
+        .get_or_insert_parameter(name, "intruder")
+        .await
+        .expect_err("a wrong master key must not read or replace the parameter");
+    assert_eq!(first.get_or_insert_parameter(name, "again").await?, stored);
 
-    // A non-ready state makes the next start refuse the database.
-    reopened.set_db_state(DbState::Upgrading).await?;
-    assert_eq!(reopened.get_db_state().await?, Some(DbState::Upgrading));
-    let refused = RedisWithFindex::instantiate(&redis_url, master_key.clone(), false).await;
-    assert!(
-        matches!(&refused, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy")),
-        "database in 'upgrading' state must be refused, got: {:?}",
-        refused.map(|_| ())
-    );
-
-    // Version marker round-trip.
-    reopened.set_current_db_version("0.0.1-test").await?;
-    assert_eq!(
-        reopened.get_current_db_version().await?.as_deref(),
-        Some("0.0.1-test")
-    );
-
-    // A database without markers (non-empty, no version/state) is legacy and refused.
-    redis::cmd("DEL")
-        .arg("db_version")
-        .arg("db_state")
-        .query_async::<()>(&mut reopened.mgr.clone())
-        .await?;
-    redis::cmd("SET")
-        .arg("some_legacy_key")
-        .arg("v")
-        .query_async::<()>(&mut reopened.mgr.clone())
-        .await?;
-    let legacy = RedisWithFindex::instantiate(&redis_url, master_key, false).await;
-    assert!(
-        matches!(&legacy, Err(DbError::DatabaseError(msg)) if msg.contains("Legacy")),
-        "marker-less database must be refused, got: {:?}",
-        legacy.map(|_| ())
-    );
-
-    // Leave nothing behind: this test intentionally corrupts the migration markers.
-    redis::cmd("FLUSHDB")
-        .query_async::<()>(&mut reopened.mgr.clone())
-        .await?;
+    redis::cmd("FLUSHDB").query_async::<()>(&mut raw).await?;
     Ok(())
 }

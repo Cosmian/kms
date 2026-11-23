@@ -22,6 +22,7 @@ use crate::{
         },
         uid_utils::ObjectHandle,
     },
+    error::KmsError,
     middlewares::UserId,
     result::KResult,
 };
@@ -39,12 +40,15 @@ const WARNING_THRESHOLDS_DAYS: [i64; 3] = [1, 7, 30];
 /// then issues a `ReKey` or `ReKeyKeyPair` on behalf of the key owner.
 ///
 /// Each key is rotated independently: a failure on one key never blocks the others.
-/// HSM-resident keys (UID prefix `hsm::`) are skipped — the KMS cannot generate
-/// key material inside an HSM.
+/// A key whose rotation fails with `Conflict` (modified concurrently) is skipped without a metric;
+/// if it is still due, the next check rotates it.
+/// HSM-resident keys (UID prefix `hsm::`) are rotated on the HSM: AES keys via
+/// `C_GenerateKey`, key pairs via `C_GenerateKeyPair`; the scheduler acts as the HSM admin.
 ///
 /// # Metrics
 ///
-/// Increments the `kms.key.auto_rotation` `OTel` counter on each attempt, labeled
+/// Increments the `kms.key.auto_rotation` `OTel` counter on each rotation that succeeds or fails
+/// (a `Conflict` skip is not counted), labeled
 /// with `uid`, `algorithm`, and `outcome` (`"success"` / `"failure"`).
 pub(crate) async fn run_auto_rotation(kms: &KMS) {
     let now = time::OffsetDateTime::now_utc();
@@ -89,12 +93,6 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
 /// Errors are also logged as `warn!` here so the caller loop can continue.
 async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> KResult<()> {
     let uid = handle.as_str();
-    // HSM keys: the KMS cannot generate new key material inside an HSM
-    if handle.is_hsm() {
-        debug!("[auto-rotate] Skipping HSM key {uid}");
-        return Ok(());
-    }
-
     // Retrieve the object to determine its type, algorithm, and rotation policy.
     // We capture `old_interval` here so the replacement can be re-armed after rotation.
     let owm = match kms.database.retrieve_object_arc(uid).await {
@@ -116,7 +114,13 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         .map_or_else(|| "unknown".to_owned(), |a| format!("{a:?}"));
 
     // Capture the rotation policy before dispatching so we can re-arm the replacement.
-    let old_interval = owm.attributes().rotate_interval.filter(|&i| i > 0);
+    // The HSM re-key re-stamps CKA_START_DATE/CKA_END_DATE on the replacement itself;
+    // HsmStore::update_object cannot persist a re-armed policy.
+    let old_interval = if handle.is_hsm() {
+        None
+    } else {
+        owm.attributes().rotate_interval.filter(|&i| i > 0)
+    };
 
     // Dispatch to the appropriate KMIP rotation operation and return the new key's UID.
     let new_uid_result: KResult<String> = match object_type {
@@ -171,11 +175,34 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         }
     };
 
+    finish_rotation(kms, uid, owner, &algorithm, old_interval, new_uid_result).await
+}
+
+/// Log and count the outcome of a rotation, re-arming the replacement on success.
+async fn finish_rotation(
+    kms: &KMS,
+    uid: &str,
+    owner: &UserId,
+    algorithm: &str,
+    old_interval: Option<i64>,
+    new_uid_result: KResult<String>,
+) -> KResult<()> {
+    // The rotation commits against the key's version as read, so a concurrent write makes it
+    // fail with `Conflict` without persisting anything. If that write was another rotation,
+    // the key is now Deactivated and leaves `find_due_for_rotation`; otherwise it is still
+    // due and the next tick rotates it.
+    if let Err(KmsError::Conflict(msg)) = &new_uid_result {
+        info!(
+            "[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check"
+        );
+        return Ok(());
+    }
+
     match &new_uid_result {
         Ok(new_uid) => {
             info!("[auto-rotate] Key {uid} (owner={owner}, algo={algorithm}) rotated successfully");
             if let Some(ref m) = kms.metrics {
-                m.record_key_auto_rotation(uid, &algorithm, "success");
+                m.record_key_auto_rotation(uid, algorithm, "success");
             }
             // Re-arm the replacement key with the original rotation policy so that
             // auto-rotation continues indefinitely without operator intervention.
@@ -194,7 +221,7 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         Err(e) => {
             warn!("[auto-rotate] Failed to rotate key {uid} (owner={owner}): {e}");
             if let Some(ref m) = kms.metrics {
-                m.record_key_auto_rotation(uid, &algorithm, "failure");
+                m.record_key_auto_rotation(uid, algorithm, "failure");
             }
         }
     }
@@ -246,8 +273,6 @@ async fn rearm_rotation_policy(kms: &KMS, handle: ObjectHandle<'_>, interval: i6
 /// old UID is deactivated and disappears from future query results, so stale
 /// entries never cause problems.  On server restart the map is empty; at most one
 /// extra warning fires per key per restart, which is harmless.
-///
-/// Full notification delivery (SMTP, webhook) is wired in a follow-up PR.
 pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<String, i64>) {
     let now = time::OffsetDateTime::now_utc();
     let max_horizon = WARNING_THRESHOLDS_DAYS.iter().copied().max().unwrap_or(30);
@@ -263,11 +288,6 @@ pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<St
     };
 
     for (uid, owner) in &approaching {
-        // HSM keys are excluded from auto-rotation, skip warnings too
-        if ObjectHandle::from(uid).is_hsm() {
-            continue;
-        }
-
         let Ok(Some(owm)) = kms.database.retrieve_object_arc(uid).await else {
             continue;
         };
@@ -356,7 +376,7 @@ mod tests {
         cosmian_kms_crypto::crypto::KmsRng,
     };
 
-    use super::days_until_next_rotation;
+    use super::{days_until_next_rotation, finish_rotation};
     use crate::{
         core::operations::{
             auto_rotate::{dispatch_renewal_warnings, run_auto_rotation},
@@ -572,62 +592,6 @@ mod tests {
             replacement_linked,
             "original key must have a ReplacementObjectLink to the new key"
         );
-
-        Ok(())
-    }
-
-    /// Verify that `run_auto_rotation` skips HSM-resident keys (uid prefix `hsm::`).
-    #[tokio::test]
-    async fn test_auto_rotation_skips_hsm_keys() -> KResult<()> {
-        let kms = test_kms().await?;
-        let owner = UserId::from("auto_rotate_hsm_test@example.com");
-        let now = time::OffsetDateTime::now_utc();
-
-        // Store a key with an HSM-style UID (bypasses database-level HSM routing
-        // because no real HSM is configured; we just verify the scheduler skips it)
-        let hsm_uid = format!("hsm::softhsm2::0::{}", uuid::Uuid::new_v4());
-        let key_object = make_aes256_key();
-        let key_attrs = Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            state: Some(State::Active),
-            rotate_automatic: Some(true),
-            rotate_interval: Some(3600),
-            initial_date: Some(now - time::Duration::hours(2)),
-            ..Default::default()
-        };
-
-        // Create in the SQL store directly (the Database will route to the
-        // default SQL backend since the HSM routes are not configured in tests)
-        if kms
-            .database
-            .create(
-                Some(hsm_uid.clone()),
-                &owner,
-                &key_object,
-                &key_attrs,
-                &HashSet::new(),
-            )
-            .await
-            .is_ok()
-        {
-            // If the key was created, verify run_auto_rotation does NOT rotate it
-            run_auto_rotation(&kms).await;
-
-            let owm = kms
-                .database
-                .retrieve_object_arc(&hsm_uid)
-                .await
-                .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
-                .expect("HSM key must still exist");
-            // State must remain Active (not rotated, not deactivated)
-            assert_eq!(
-                owm.state(),
-                State::Active,
-                "HSM key must remain Active — scheduler must not rotate it"
-            );
-        }
-        // If create() rejected the HSM uid (routing error), the test trivially passes
-        // because there is nothing to be accidentally rotated.
 
         Ok(())
     }
@@ -1371,6 +1335,199 @@ mod tests {
             "gen-1 cert must have rotate_generation = 1"
         );
 
+        Ok(())
+    }
+
+    /// A `Conflict` (concurrent modification) is a skip, not a failure; any other error still
+    /// surfaces so the failure is logged and counted.
+    #[tokio::test]
+    async fn test_finish_rotation_skips_conflict_only() -> KResult<()> {
+        use crate::error::KmsError;
+
+        let kms = test_kms().await?;
+        let owner = UserId::from("owner");
+        let conflict = Err(KmsError::Conflict("stale version".to_owned()));
+        finish_rotation(&kms, "uid", &owner, "AES", None, conflict).await?;
+        let failure = Err(KmsError::ServerError("boom".to_owned()));
+        let result = finish_rotation(&kms, "uid", &owner, "AES", None, failure).await;
+        assert!(matches!(result, Err(KmsError::ServerError(_))));
+        Ok(())
+    }
+
+    // ── Certificates whose lifecycle dates elapsed before the renewal ─────────
+
+    /// Issue a self-signed EC certificate (and its key pair) owned by `owner`.
+    async fn certify_self_signed(kms: &crate::core::KMS, owner: &UserId) -> KResult<String> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            kmip_operations::Certify,
+            kmip_types::{CertificateAttributes, CryptographicDomainParameters, RecommendedCurve},
+        };
+
+        let certify_req = Certify {
+            attributes: Some(Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDSA),
+                cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                    recommended_curve: Some(RecommendedCurve::P256),
+                    ..CryptographicDomainParameters::default()
+                }),
+                activation_date: Some(time::OffsetDateTime::now_utc()),
+                certificate_attributes: Some(CertificateAttributes::parse_subject_line(
+                    "CN=elapsed-lifecycle-test",
+                )?),
+                ..Attributes::default()
+            }),
+            ..Certify::default()
+        };
+        Ok(kms
+            .certify(certify_req, owner)
+            .await?
+            .unique_identifier
+            .to_string())
+    }
+
+    /// Store `state` (column and attributes) on the certificate and apply `edit` to its
+    /// attributes, bypassing the lifecycle so the dates can be backdated.
+    async fn rewrite_certificate(
+        kms: &crate::core::KMS,
+        cert_id: &str,
+        state: State,
+        edit: impl FnOnce(&mut Attributes),
+    ) -> KResult<()> {
+        let owm = kms
+            .database
+            .retrieve_object(cert_id)
+            .await?
+            .expect("certificate must exist");
+        let mut attributes = owm.attributes().clone();
+        attributes.state = Some(state);
+        edit(&mut attributes);
+        kms.database
+            .update_object(cert_id, owm.object(), &attributes, None)
+            .await?;
+        kms.database.update_state(cert_id, state).await?;
+        Ok(())
+    }
+
+    /// Assert that `old_id` was renewed: it is Deactivated with a `ReplacementObjectLink` to a
+    /// persisted certificate whose `ReplacedObjectLink` points back. Returns the successor.
+    async fn assert_renewed(
+        kms: &crate::core::KMS,
+        old_id: &str,
+    ) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata>
+    {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+            kmip_objects::ObjectType, kmip_types::LinkType,
+        };
+
+        let old = kms
+            .database
+            .retrieve_object(old_id)
+            .await?
+            .expect("old certificate must still exist");
+        assert_eq!(old.state(), State::Deactivated, "old certificate {old_id}");
+        let new_id = old
+            .attributes()
+            .get_link(LinkType::ReplacementObjectLink)
+            .expect("old certificate must link its replacement")
+            .to_string();
+        let new = kms
+            .database
+            .retrieve_object(&new_id)
+            .await?
+            .expect("replacement certificate must be persisted");
+        assert_eq!(new.object().object_type(), ObjectType::Certificate);
+        assert_eq!(
+            new.attributes()
+                .get_link(LinkType::ReplacedObjectLink)
+                .map(|link| link.to_string()),
+            Some(old_id.to_owned()),
+            "replacement {new_id} must link the certificate it replaces"
+        );
+        Ok(new)
+    }
+
+    /// `ReCertify` renews a certificate whose Activation and/or Deactivation Date elapsed
+    /// before the request. Retrieval persists the automatic transition (bumping the stored
+    /// version); the renewal must commit against that write instead of conflicting with it.
+    #[tokio::test]
+    async fn test_recertify_after_elapsed_lifecycle_dates() -> KResult<()> {
+        use super::ReCertify;
+
+        let kms = test_kms().await?;
+        let owner = UserId::from("recertify_elapsed_dates@example.com");
+        let now = time::OffsetDateTime::now_utc();
+        // (stored state, Deactivation Date): activation elapsed → Active, then retired by the
+        // renewal; deactivation elapsed → Deactivated; both elapsed → Deactivated.
+        let cases = [
+            (State::PreActive, None),
+            (State::Active, Some(now - time::Duration::hours(1))),
+            (State::PreActive, Some(now - time::Duration::hours(1))),
+        ];
+        for (stored_state, deactivation_date) in cases {
+            let cert_id = certify_self_signed(&kms, &owner).await?;
+            rewrite_certificate(&kms, &cert_id, stored_state, |attributes| {
+                attributes.activation_date = Some(now - time::Duration::hours(2));
+                attributes.deactivation_date = deactivation_date;
+            })
+            .await?;
+
+            let new_id = kms
+                .recertify(
+                    ReCertify {
+                        unique_identifier: Some(UniqueIdentifier::TextString(cert_id.clone())),
+                        certificate_request_unique_identifier: None,
+                        offset: None,
+                        attributes: None,
+                        certificate_request_type: None,
+                        certificate_request_value: None,
+                        protection_storage_masks: None,
+                    },
+                    &owner,
+                )
+                .await?
+                .unique_identifier
+                .to_string();
+
+            let new = assert_renewed(&kms, &cert_id).await?;
+            assert_eq!(
+                new.id(),
+                new_id,
+                "{stored_state}: response names the successor"
+            );
+        }
+        Ok(())
+    }
+
+    /// The scheduler renews, on its first tick, a due Active certificate whose Deactivation
+    /// Date has elapsed (the renewal used to `Conflict` with the automatic deactivation it
+    /// triggered, and was skipped on every tick), and re-arms the successor's rotation policy.
+    #[tokio::test]
+    async fn test_auto_rotation_renews_certificate_with_elapsed_deactivation() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("auto_rotate_elapsed_deactivation@example.com");
+        let now = time::OffsetDateTime::now_utc();
+        let cert_id = certify_self_signed(&kms, &owner).await?;
+        rewrite_certificate(&kms, &cert_id, State::Active, |attributes| {
+            attributes.rotate_automatic = Some(true);
+            attributes.rotate_interval = Some(3600);
+            attributes.initial_date = Some(now - time::Duration::hours(2));
+            attributes.deactivation_date = Some(now - time::Duration::hours(1));
+        })
+        .await?;
+
+        run_auto_rotation(&kms).await;
+
+        let new = assert_renewed(&kms, &cert_id).await?;
+        assert_eq!(new.attributes().rotate_automatic, Some(true));
+        assert_eq!(new.attributes().rotate_interval, Some(3600));
+        let due = kms
+            .database
+            .find_due_for_rotation(time::OffsetDateTime::now_utc())
+            .await?;
+        assert!(
+            !due.iter().any(|(uid, _)| uid == &cert_id),
+            "the renewed certificate must leave the rotation schedule"
+        );
         Ok(())
     }
 }

@@ -1,4 +1,5 @@
 //! AES Key Wrap (RFC 3394) without padding (KW)  via rust-openssl.
+//!
 //! Please prefer using the RFC 5649, as it's the current standard. This implementation is only made available to comply with API that still support legacy encryption standards.
 //!
 //! Spec references:
@@ -205,5 +206,27 @@ mod tests {
         // Ciphertext not multiple of 8
         let c23 = [0x66_u8; 23];
         rfc3394_unwrap(&c23, &kek16).unwrap_err();
+    }
+
+    #[test]
+    fn test_aes_kw_official_vectors() {
+        #[cfg(not(feature = "non-fips"))]
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        for v in crate::kat_vectors::aes_kw_vectors().unwrap() {
+            let unwrapped = rfc3394_unwrap(&v.ct, &v.key);
+            if v.valid {
+                assert_eq!(
+                    rfc3394_wrap(&v.pt, &v.key).unwrap(),
+                    v.ct,
+                    "{} ({})",
+                    v.id,
+                    v.source
+                );
+                assert_eq!(unwrapped.unwrap().to_vec(), v.pt, "{} ({})", v.id, v.source);
+            } else {
+                assert!(unwrapped.is_err(), "{} ({})", v.id, v.source);
+            }
+        }
     }
 }

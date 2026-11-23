@@ -3,13 +3,11 @@ use std::{
     ops::Not,
 };
 
-use base64::{Engine, engine::general_purpose};
 use kmip_derive::{KmipEnumDeserialize, KmipEnumSerialize, kmip_enum};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
-use strum_macros::Display;
+use strum::Display;
 use time::OffsetDateTime;
-use zeroize::Zeroizing;
 
 use super::{
     kmip_attributes::{Attribute, Attributes},
@@ -26,7 +24,7 @@ use super::{
     },
 };
 use crate::{
-    Deserializer, Serializer,
+    Deserializer, SensitiveBytes, Serializer,
     error::KmipError,
     kmip_0::{
         kmip_data_structures::ValidationInformation,
@@ -37,49 +35,9 @@ use crate::{
         },
     },
     kmip_2_1::kmip_data_structures::{ProfileInformation, RNGParameters},
+    len_display::LenDisplay,
     ttlv::Interval,
 };
-
-/// Extension trait to add base64 display functionality to byte types
-pub(crate) trait Base64Display {
-    fn to_base64(&self) -> String;
-}
-
-impl Base64Display for Vec<u8> {
-    fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self)
-    }
-}
-
-impl Base64Display for &Vec<u8> {
-    fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self)
-    }
-}
-
-impl Base64Display for Zeroizing<Vec<u8>> {
-    fn to_base64(&self) -> String {
-        general_purpose::STANDARD.encode(self)
-    }
-}
-
-impl Base64Display for Option<Vec<u8>> {
-    fn to_base64(&self) -> String {
-        self.as_ref().map_or_else(
-            || "None".to_owned(),
-            |bytes| general_purpose::STANDARD.encode(bytes),
-        )
-    }
-}
-
-impl Base64Display for Option<Zeroizing<Vec<u8>>> {
-    fn to_base64(&self) -> String {
-        self.as_ref().map_or_else(
-            || "None".to_owned(),
-            |bytes| general_purpose::STANDARD.encode(bytes),
-        )
-    }
-}
 
 /// Implements `Display` for KMIP operation structs with required and optional fields.
 ///
@@ -89,8 +47,8 @@ impl Base64Display for Option<Zeroizing<Vec<u8>>> {
 ///     req field_name,       // required field (always displayed)
 ///     opt field_name,       // optional field (displayed only if Some)
 ///     req_debug field_name, // required field displayed with Debug
-///     req_b64 field_name,   // required field displayed as base64
-///     opt_b64 field_name,   // optional field displayed as base64 (skipped if None)
+///     req_len field_name,   // required byte string, only its length is displayed
+///     opt_len field_name,   // optional byte string, only its length is displayed (skipped if None)
 /// });
 /// ```
 macro_rules! impl_display {
@@ -114,12 +72,14 @@ macro_rules! impl_display {
     (@field $f:ident, $self:ident, req_debug, $field:ident) => {
         write!($f, concat!("  ", stringify!($field), ": {:?}"), $self.$field)?;
     };
-    (@field $f:ident, $self:ident, req_b64, $field:ident) => {
-        write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.to_base64())?;
+    // Byte strings (plaintext, ciphertext, IV, tag, MAC, signature, seed, ...) are never written
+    // to a string, so a `{request}` log line cannot leak them: only their length is shown.
+    (@field $f:ident, $self:ident, req_len, $field:ident) => {
+        write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.len_display())?;
     };
-    (@field $f:ident, $self:ident, opt_b64, $field:ident) => {
-        if $self.$field.is_some() {
-            write!($f, concat!("  ", stringify!($field), ": {}"), $self.$field.to_base64())?;
+    (@field $f:ident, $self:ident, opt_len, $field:ident) => {
+        if let Some(v) = &$self.$field {
+            write!($f, concat!("  ", stringify!($field), ": {}"), v.len_display())?;
         }
     };
 }
@@ -488,7 +448,7 @@ pub struct PKCS11 {
         alias = "PKCS_11InputParameters",
         alias = "Pkcs_11InputParameters"
     )]
-    pub pkcs11_input_parameters: Option<Vec<u8>>,
+    pub pkcs11_input_parameters: Option<SensitiveBytes>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         rename = "CorrelationValue",
@@ -508,12 +468,14 @@ impl Display for PKCS11 {
         write!(
             f,
             "  PKCS11InputParameters: {}",
-            self.pkcs11_input_parameters.to_base64()
+            self.pkcs11_input_parameters
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )?;
         write!(
             f,
             "  CorrelationValue: {}",
-            self.correlation_value.to_base64()
+            self.correlation_value.len_display()
         )?;
         write!(f, "}}")?;
         Ok(())
@@ -545,7 +507,7 @@ pub struct PKCS11Response {
         alias = "PKCS_11OutputParameters",
         alias = "Pkcs_11OutputParameters"
     )]
-    pub pkcs11_output_parameters: Option<Vec<u8>>,
+    pub pkcs11_output_parameters: Option<SensitiveBytes>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         rename = "PKCS11ReturnCode",
@@ -573,7 +535,9 @@ impl Display for PKCS11Response {
         write!(
             f,
             "  PKCS11OutputParameters: {}",
-            self.pkcs11_output_parameters.to_base64()
+            self.pkcs11_output_parameters
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), ToString::to_string)
         )?;
         if let Some(code) = &self.pkcs11_return_code {
             write!(f, "  PKCS11ReturnCode: {code:?}")?;
@@ -583,7 +547,7 @@ impl Display for PKCS11Response {
         write!(
             f,
             "  CorrelationValue: {}",
-            self.correlation_value.to_base64()
+            self.correlation_value.len_display()
         )?;
         write!(f, "}}")?;
         Ok(())
@@ -808,9 +772,9 @@ impl Display for LoginResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "LoginResponse {{ ticket_type: {}, ticket_value: <{} bytes> }}",
+            "LoginResponse {{ ticket_type: {}, ticket_value: {} }}",
             self.ticket.ticket_type,
-            self.ticket.ticket_value.len()
+            self.ticket.ticket_value.len_display()
         )
     }
 }
@@ -1105,7 +1069,7 @@ pub struct RNGRetrieveResponse {
     pub data: Vec<u8>,
 }
 
-impl_display!(RNGRetrieveResponse, "RNGRetrieveResponse", { req_b64 data });
+impl_display!(RNGRetrieveResponse, "RNGRetrieveResponse", { req_len data });
 
 /// `RNGSeed` operation
 ///
@@ -1118,7 +1082,7 @@ pub struct RNGSeed {
     pub data: Vec<u8>,
 }
 
-impl_display!(RNGSeed, "RNGSeed", { req_b64 data });
+impl_display!(RNGSeed, "RNGSeed", { req_len data });
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
@@ -1308,7 +1272,7 @@ pub struct Certify {
 impl_display!(Certify, "Certify", {
     opt unique_identifier,
     opt certificate_request_type,
-    opt_b64 certificate_request_value,
+    opt_len certificate_request_value,
     opt attributes,
     opt protection_storage_masks,
 });
@@ -1373,7 +1337,7 @@ impl_display!(ReCertify, "ReCertify", {
     opt unique_identifier,
     opt certificate_request_unique_identifier,
     opt certificate_request_type,
-    opt_b64 certificate_request_value,
+    opt_len certificate_request_value,
     opt offset,
     opt attributes,
     opt protection_storage_masks,
@@ -1524,7 +1488,7 @@ pub struct Decrypt {
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1547,7 +1511,7 @@ pub struct Decrypt {
     /// data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<SensitiveBytes>,
 
     /// Specifies the tag that will be needed to
     /// authenticate the decrypted data and
@@ -1556,19 +1520,19 @@ pub struct Decrypt {
     /// data MUST be supplied on the initial
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<SensitiveBytes>,
 }
 
 impl_display!(Decrypt, "Decrypt", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 i_v_counter_nonce,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt i_v_counter_nonce,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
-    opt_b64 authenticated_encryption_additional_data,
-    opt_b64 authenticated_encryption_tag,
+    opt authenticated_encryption_additional_data,
+    opt authenticated_encryption_tag,
 });
 
 /// When decrypting data with Cover Crypt we can have some
@@ -1585,7 +1549,7 @@ impl_display!(Decrypt, "Decrypt", {
 /// 3. data decrypted
 pub struct DecryptedData {
     pub metadata: Vec<u8>,
-    pub plaintext: Zeroizing<Vec<u8>>,
+    pub plaintext: SensitiveBytes,
 }
 
 impl TryInto<Vec<u8>> for DecryptedData {
@@ -1611,7 +1575,7 @@ impl TryFrom<&[u8]> for DecryptedData {
         let metadata = de.read_vec()?;
 
         // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize());
+        let plaintext = de.finalize().into();
 
         Ok(Self {
             metadata,
@@ -1629,7 +1593,7 @@ pub struct DecryptResponse {
     pub unique_identifier: UniqueIdentifier,
     /// The decrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing
@@ -1640,8 +1604,8 @@ pub struct DecryptResponse {
 
 impl_display!(DecryptResponse, "DecryptResponse", {
     req unique_identifier,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt data,
+    opt_len correlation_value,
 });
 
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -1871,12 +1835,12 @@ pub struct Encrypt {
 
     /// The data to be encrypted
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
 
     /// Specifies the existing stream or by-
     /// parts cryptographic operation (as
@@ -1897,18 +1861,18 @@ pub struct Encrypt {
     /// Tag. If supplied in multi-part encryption,
     /// this data MUST be supplied on the initial Encrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_additional_data: Option<Vec<u8>>,
+    pub authenticated_encryption_additional_data: Option<SensitiveBytes>,
 }
 
 impl_display!(Encrypt, "Encrypt", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 i_v_counter_nonce,
-    opt_b64 correlation_value,
+    opt data,
+    opt i_v_counter_nonce,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
-    opt_b64 authenticated_encryption_additional_data,
+    opt authenticated_encryption_additional_data,
 });
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -1918,9 +1882,10 @@ pub struct EncryptResponse {
     /// Cryptographic Object that was the key
     /// used for the encryption operation.
     pub unique_identifier: UniqueIdentifier,
-    /// The encrypted data (as a Byte String).
+    /// The encrypted data (as a Byte String). For a KEM encapsulation this carries the shared
+    /// secret, hence the redacting type.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<SensitiveBytes>,
     /// The value used if the Cryptographic
     /// Parameters specified Random IV and
     /// the IV/Counter/Nonce value was not
@@ -1928,7 +1893,7 @@ pub struct EncryptResponse {
     /// algorithm requires the provision of an
     /// IV/Counter/Nonce.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub i_v_counter_nonce: Option<Vec<u8>>,
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing
@@ -1942,15 +1907,15 @@ pub struct EncryptResponse {
     /// of the plaintext by an authenticated
     /// encryption cipher.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticated_encryption_tag: Option<Vec<u8>>,
+    pub authenticated_encryption_tag: Option<SensitiveBytes>,
 }
 
 impl_display!(EncryptResponse, "EncryptResponse", {
     req unique_identifier,
-    opt_b64 data,
-    opt_b64 i_v_counter_nonce,
-    opt_b64 correlation_value,
-    opt_b64 authenticated_encryption_tag,
+    opt_len data,
+    opt i_v_counter_nonce,
+    opt_len correlation_value,
+    opt authenticated_encryption_tag,
 });
 
 /// Export
@@ -2320,8 +2285,8 @@ pub struct Hash {
 
 impl_display!(Hash, "Hash", {
     req cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -2338,8 +2303,8 @@ pub struct HashResponse {
 }
 
 impl_display!(HashResponse, "HashResponse", {
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
 });
 
 /// `CreateSplitKey`
@@ -2651,6 +2616,10 @@ pub struct MAC {
     /// The data to be hashed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<u8>>,
+    /// Vendor extension (also a field of `Encrypt`): the initialization vector of an AES-GMAC.
+    /// KMIP 2.1 `MAC` has no IV field; when absent the server draws a random IV.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i_v_counter_nonce: Option<SensitiveBytes>,
     /// Specifies the existing stream or by-parts cryptographic operation (as returned from a previous call to this operation).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_value: Option<Vec<u8>>,
@@ -2665,8 +2634,9 @@ pub struct MAC {
 impl_display!(MAC, "Mac", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt i_v_counter_nonce,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -2687,8 +2657,8 @@ pub struct MACResponse {
 
 impl_display!(MACResponse, "MacResponse", {
     req unique_identifier,
-    opt_b64 mac_data,
-    opt_b64 correlation_value,
+    opt_len mac_data,
+    opt_len correlation_value,
 });
 
 /// MAC Verify (KMIP 2.1 §6.1.33, Table 262)
@@ -2720,9 +2690,9 @@ pub struct MACVerify {
 impl_display!(MACVerify, "MACVerify", {
     req unique_identifier,
     opt cryptographic_parameters,
-    req_b64 data,
-    req_b64 mac_data,
-    opt_b64 correlation_value,
+    req_len data,
+    req_len mac_data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -2743,7 +2713,7 @@ pub struct MACVerifyResponse {
 impl_display!(MACVerifyResponse, "MACVerifyResponse", {
     req unique_identifier,
     opt validity_indicator,
-    opt_b64 correlation_value,
+    opt_len correlation_value,
 });
 
 #[derive(Serialize, Deserialize, Default, PartialEq, Eq, Clone, Debug)]
@@ -3223,7 +3193,7 @@ impl Display for Validate {
                 write!(
                     f,
                     "  certificate: {}",
-                    certificate.certificate_value.to_base64()
+                    certificate.certificate_value.len_display()
                 )?;
             }
         }
@@ -3283,7 +3253,7 @@ pub struct Sign {
 
     /// The data to be signed
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<SensitiveBytes>,
 
     /// The digest of the data to be signed.
     /// Provided when the data has been pre-hashed.
@@ -3309,9 +3279,9 @@ pub struct Sign {
 impl_display!(Sign, "Sign", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 digested_data,
-    opt_b64 correlation_value,
+    opt data,
+    opt_len digested_data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -3336,8 +3306,8 @@ pub struct SignResponse {
 
 impl_display!(SignResponse, "SignResponse", {
     req unique_identifier,
-    opt_b64 signature_data,
-    opt_b64 correlation_value,
+    opt_len signature_data,
+    opt_len correlation_value,
 });
 
 /// Signature Verify operation request
@@ -3373,10 +3343,10 @@ pub struct SignatureVerify {
 impl_display!(SignatureVerify, "SignatureVerify", {
     opt unique_identifier,
     opt cryptographic_parameters,
-    opt_b64 data,
-    opt_b64 digested_data,
-    opt_b64 signature_data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len digested_data,
+    opt_len signature_data,
+    opt_len correlation_value,
     opt init_indicator,
     opt final_indicator,
 });
@@ -3401,14 +3371,225 @@ pub struct SignatureVerifyResponse {
 impl_display!(SignatureVerifyResponse, "SignatureVerifyResponse", {
     req unique_identifier,
     opt validity_indicator,
-    opt_b64 data,
-    opt_b64 correlation_value,
+    opt_len data,
+    opt_len correlation_value,
 });
 
 #[cfg(test)]
 mod tests {
-    use super::{Activate, PKCS11Function};
-    use crate::kmip_2_1::kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration};
+    use super::{Activate, Encrypt, PKCS11Function};
+    use crate::{
+        SensitiveBytes,
+        kmip_2_1::{
+            kmip_data_structures::DerivationParameters,
+            kmip_types::{UniqueIdentifier, UniqueIdentifierEnumeration},
+        },
+    };
+
+    /// Logging `{request}` must never write plaintext, IV, nonce or AAD: only their lengths.
+    #[test]
+    fn encrypt_display_shows_byte_lengths_not_content() {
+        let encrypt = Encrypt {
+            data: Some(SensitiveBytes::from(b"top-secret-plaintext".to_vec())),
+            i_v_counter_nonce: Some(b"secret-iv-12".to_vec().into()),
+            authenticated_encryption_additional_data: Some(b"secret-aad".to_vec().into()),
+            ..Encrypt::default()
+        };
+        let shown = encrypt.to_string();
+        assert!(shown.contains("data: <20 bytes>"), "{shown}");
+        assert!(shown.contains("i_v_counter_nonce: <12 bytes>"), "{shown}");
+        assert!(
+            shown.contains("authenticated_encryption_additional_data: <10 bytes>"),
+            "{shown}"
+        );
+        for leaked in ["secret", "plaintext", "dG9w", "c2VjcmV0"] {
+            assert!(!shown.contains(leaked), "{leaked} leaked in: {shown}");
+        }
+    }
+
+    /// The salt, IV and derivation data of a key derivation are secrets of the caller.
+    #[test]
+    fn derivation_parameters_display_hides_bytes() {
+        let shown = DerivationParameters {
+            initialization_vector: Some(b"SECRET-IV".to_vec().into()),
+            derivation_data: Some(SensitiveBytes::from(b"SECRET-DATA".to_vec())),
+            salt: Some(b"SECRET-SALT".to_vec().into()),
+            ..DerivationParameters::default()
+        }
+        .to_string();
+        for field in [
+            "initialization_vector: <9 bytes>",
+            "derivation_data: <11 bytes>",
+            "salt: <11 bytes>",
+        ] {
+            assert!(shown.contains(field), "{shown}");
+        }
+        assert!(!shown.contains("SECRET"), "{shown}");
+    }
+
+    /// No secret-bearing request may leak a secret through `Display` or `Debug`.
+    #[test]
+    fn secret_bearing_requests_never_leak_through_display_or_debug() {
+        use std::fmt::{Debug, Display};
+
+        use num_bigint_dig::BigInt;
+
+        use super::{Decrypt, DeriveKey, Import, PKCS11, PKCS11Response};
+        use crate::{
+            SafeBigInt,
+            kmip_0::kmip_types::{Authentication, Credential, CredentialType, CredentialValue},
+            kmip_2_1::{
+                kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, ObjectType, PrivateKey},
+                kmip_types::{DerivationMethod, KeyFormatType},
+            },
+        };
+
+        const MARKER: &[u8] = b"SECRET-MARKER";
+        let marker = || SensitiveBytes::from(MARKER.to_vec());
+        // A derived `BigInt` `Debug` prints decimal digits/limbs, never the marker text.
+        let decimal = BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, MARKER).to_string();
+        // Limb values as printed by a derived `Debug` of the same `BigInt`.
+        let limbs: Vec<String> = format!(
+            "{:?}",
+            BigInt::from_bytes_be(num_bigint_dig::Sign::Plus, MARKER)
+        )
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|t| t.len() > 6)
+        .map(ToOwned::to_owned)
+        .collect();
+        assert_ne!(limbs.len(), 0);
+        let byte_list = format!("{MARKER:?}");
+        let check = |what: &str, op: &dyn Debug, display: Option<&dyn Display>| {
+            let mut outputs = vec![format!("{op:?}")];
+            outputs.extend(display.map(ToString::to_string));
+            for out in outputs {
+                for leaked in [
+                    "SECRET-MARKER",
+                    &byte_list[1..byte_list.len() - 1],
+                    "U0VDUkVULU1BUktFUg",
+                    decimal.as_str(),
+                ]
+                .into_iter()
+                .chain(limbs.iter().map(String::as_str))
+                {
+                    assert!(!out.contains(leaked), "{what} leaks {leaked}: {out}");
+                }
+            }
+        };
+
+        let encrypt = Encrypt {
+            data: Some(marker()),
+            i_v_counter_nonce: Some(marker()),
+            authenticated_encryption_additional_data: Some(marker()),
+            ..Encrypt::default()
+        };
+        check("Encrypt", &encrypt, Some(&encrypt));
+
+        let decrypt = Decrypt {
+            i_v_counter_nonce: Some(marker()),
+            authenticated_encryption_additional_data: Some(marker()),
+            authenticated_encryption_tag: Some(marker()),
+            ..Decrypt::default()
+        };
+        check("Decrypt", &decrypt, Some(&decrypt));
+
+        let pkcs11 = PKCS11 {
+            pkcs11_interface: None,
+            pkcs11_function: Some(PKCS11Function::C_Login),
+            pkcs11_input_parameters: Some(marker()),
+            correlation_value: None,
+        };
+        check("PKCS11", &pkcs11, Some(&pkcs11));
+        let pkcs11_response = PKCS11Response {
+            pkcs11_function: Some(PKCS11Function::C_Login),
+            pkcs11_output_parameters: Some(marker()),
+            pkcs11_return_code: None,
+            pkcs11_interface: None,
+            correlation_value: None,
+        };
+        check("PKCS11Response", &pkcs11_response, Some(&pkcs11_response));
+
+        let derive_key = DeriveKey::new_single_base(
+            ObjectType::SymmetricKey,
+            UniqueIdentifier::TextString("base".to_owned()),
+            DerivationMethod::PBKDF2,
+            DerivationParameters {
+                initialization_vector: Some(marker()),
+                derivation_data: Some(marker()),
+                salt: Some(marker()),
+                ..DerivationParameters::default()
+            },
+            Attributes::default(),
+        );
+        check("DeriveKey", &derive_key, Some(&derive_key));
+
+        let private_key = Object::PrivateKey(PrivateKey {
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::TransparentRSAPrivateKey,
+                key_compression_type: None,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::TransparentRSAPrivateKey {
+                        modulus: Box::new(BigInt::from(3)),
+                        private_exponent: Some(Box::new(SafeBigInt::from_bytes_be(MARKER))),
+                        public_exponent: None,
+                        p: None,
+                        q: None,
+                        prime_exponent_p: None,
+                        prime_exponent_q: None,
+                        c_r_t_coefficient: None,
+                    },
+                    attributes: None,
+                }),
+                cryptographic_algorithm: None,
+                cryptographic_length: None,
+                key_wrapping_data: None,
+            },
+        });
+        let import = Import {
+            unique_identifier: UniqueIdentifier::TextString("k".to_owned()),
+            object_type: ObjectType::PrivateKey,
+            replace_existing: None,
+            key_wrap_type: None,
+            attributes: Attributes::default(),
+            object: private_key,
+        };
+        check("Import", &import, Some(&import));
+
+        let login = Authentication {
+            credential: vec![Credential {
+                credential_type: CredentialType::UsernameAndPassword,
+                credential_value: CredentialValue::UsernameAndPassword {
+                    username: "alice".to_owned(),
+                    password: Some("SECRET-MARKER".to_owned()),
+                },
+            }],
+        };
+        let login = Authentication {
+            credential: vec![
+                login.credential[0].clone(),
+                Credential {
+                    credential_type: CredentialType::OneTimePassword,
+                    credential_value: CredentialValue::OneTimePassword {
+                        username: "alice".to_owned(),
+                        password: Some("SECRET-MARKER".to_owned()),
+                        one_time_password: "SECRET-MARKER".to_owned(),
+                    },
+                },
+                Credential {
+                    credential_type: CredentialType::HashedPassword,
+                    credential_value: CredentialValue::HashedPassword {
+                        username: "alice".to_owned(),
+                        timestamp: 0,
+                        hashing_algorithm: None,
+                        hashed_password: MARKER.to_vec(),
+                    },
+                },
+            ],
+        };
+        check("Authentication", &login, None);
+    }
 
     /// KMIP 2.1 §11.38: codes are the 1-based offsets in `CK_FUNCTION_LIST_3_0`
     /// (`version` excluded): `C_Initialize`, `C_Finalize`, `C_GetInfo`, ...

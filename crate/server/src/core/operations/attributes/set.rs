@@ -60,7 +60,7 @@ fn hsm_base_uid(uid: &str) -> Option<String> {
 
 pub(crate) async fn set_attribute(
     kms: &KMS,
-    request: SetAttribute,
+    mut request: SetAttribute,
     user: &UserId,
 ) -> KResult<SetAttributeResponse> {
     debug!("SetAttribute request");
@@ -72,6 +72,10 @@ pub(crate) async fn set_attribute(
     check_read_only(request.new_attribute.tag(), KmipOperation::SetAttribute)?;
     check_rotate_name(&request.new_attribute, "SetAttribute")?;
     check_vendor_attribute(&request.new_attribute, KmipOperation::SetAttribute)?;
+    // KMIP 2.1 §4.59: clients set Total and Unit only; the server owns the Count.
+    if let Attribute::UsageLimits(limits) = &mut request.new_attribute {
+        limits.reset_count();
+    }
 
     let owm = Box::pin(retrieve_object_for_operation(
         object_handle,
@@ -122,7 +126,25 @@ pub(crate) async fn set_attribute(
                     "SetAttribute: rotate_offset is not supported for HSM keys".to_owned(),
                 ));
             }
+            // The HSM cannot store the flag: the CKA_START_DATE / CKA_END_DATE written by
+            // RotateInterval are the only scheduling signal.
+            Attribute::RotateAutomatic(_) => {
+                return Err(KmsError::NotSupported(
+                    "SetAttribute: rotate_automatic is not supported for HSM keys; set \
+                     RotateInterval > 0 to arm auto-rotation and RotateInterval 0 to disarm it"
+                        .to_owned(),
+                ));
+            }
             Attribute::RotateName(n) => (Some(n.clone()), None::<i64>),
+            Attribute::RotateInterval(n)
+                if *n > 0 && owm.object().object_type() == ObjectType::PublicKey =>
+            {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: set RotateInterval on the private key of HSM key pair '{}', \
+                     not on its public key",
+                    owm.id()
+                )));
+            }
             Attribute::RotateInterval(n) => (None::<String>, Some(*n)),
             _ => (None, None),
         }
@@ -287,6 +309,15 @@ pub(crate) async fn set_attribute(
             kms.database
                 .set_key_rotation_dates(&id, Some(today), Some(end_date))
                 .await?;
+            // Validity dates alone can belong to another PKCS#11 application. Mark this
+            // explicit scheduling request as KMS-managed, after the dates were written.
+            if attributes.rotate_name.is_none() {
+                let parsed = ObjectHandle::from(id.as_str()).hsm_parts()?;
+                let name = parsed.full_base_uid();
+                let label = format!("{name}::{}::{}@latest", parsed.generation, parsed.base_id);
+                kms.database.set_key_label(&id, &label).await?;
+                kms.database.invalidate_rotate_name_cache(&name);
+            }
         }
     }
 

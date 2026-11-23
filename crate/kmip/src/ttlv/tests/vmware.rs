@@ -1,7 +1,7 @@
 use cosmian_logger::{info, log_init};
-use zeroize::Zeroizing;
 
 use crate::{
+    SensitiveBytes,
     kmip_0::{
         self,
         kmip_messages::{
@@ -549,7 +549,7 @@ fn get() {
                     key_format_type: KeyFormatType::Raw,
                     key_compression_type: None,
                     key_value: Some(KeyValue::Structure {
-                        key_material: KeyMaterial::ByteString(Zeroizing::new(vec![
+                        key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![
                             28, 93, 157, 226, 168, 186, 247, 73, 3, 214, 98, 56, 37, 70, 192, 133,
                             237, 178, 254, 237, 12, 39, 148, 101, 57, 75, 65, 140, 199, 166, 19,
                             189,

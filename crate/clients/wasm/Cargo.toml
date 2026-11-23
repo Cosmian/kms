@@ -29,7 +29,6 @@ console_error_panic_hook = { workspace = true }
 cosmian_kms_client_utils = { workspace = true }
 getrandom = { workspace = true, features = ["js"], optional = true }
 js-sys = { workspace = true }
-pem = { workspace = true }
 serde = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 serde_json = { workspace = true }

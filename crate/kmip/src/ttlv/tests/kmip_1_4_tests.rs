@@ -1,9 +1,8 @@
 use cosmian_logger::{info, log_init};
 use num_bigint_dig::BigInt;
-use zeroize::Zeroizing;
 
 use crate::{
-    SafeBigInt,
+    SafeBigInt, SensitiveBytes,
     kmip_0::{
         kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned},
         kmip_types::{CredentialType, CredentialValue, CryptographicUsageMask},
@@ -73,7 +72,7 @@ fn test_object_raw() {
             key_format_type: KeyFormatType::Raw,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0x01, 0x02, 0x03])),
+                key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![0x01, 0x02, 0x03])),
                 attribute: None,
             }),
             cryptographic_algorithm: None,
@@ -114,7 +113,7 @@ fn test_object_structured_sym() {
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::new(vec![0x01, 0x02, 0x03]),
+                    key: SensitiveBytes::from(vec![0x01, 0x02, 0x03]),
                 },
                 attribute: None,
             }),
@@ -524,7 +523,7 @@ fn test_derive_key_1_4_single_identifier_round_trip() {
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             }),
-            salt: Some(b"salt".to_vec()),
+            salt: Some(b"salt".to_vec().into()),
             iteration_count: Some(10_000),
             ..DerivationParameters::default()
         }),

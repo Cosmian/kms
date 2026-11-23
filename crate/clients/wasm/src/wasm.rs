@@ -31,7 +31,10 @@ use cosmian_kms_client_utils::{
     reexport::cosmian_kmip::{
         kmip_0::{
             self,
-            kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, SecretDataType},
+            kmip_types::{
+                BlockCipherMode, CertificateType, HashingAlgorithm, RevocationReason,
+                RevocationReasonCode, SecretDataType,
+            },
         },
         kmip_2_1::{
             KmipOperation,
@@ -47,7 +50,7 @@ use cosmian_kms_client_utils::{
                 CreateResponse, CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute,
                 DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse,
                 EncryptResponse, ExportResponse, GetAttributes, GetAttributesResponse, Hash,
-                HashResponse, ImportResponse, JoinSplitKeyResponse, LocateResponse,
+                HashResponse, ImportResponse, JoinSplitKeyResponse, LocateResponse, MAC, MACVerify,
                 ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse, ReCertifyResponse,
                 ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, RevokeResponse,
                 SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
@@ -660,6 +663,7 @@ pub fn get_object_states() -> Result<JsValue, JsValue> {
 }
 
 /// Returns the list of delegable KMIP operations for the access-rights UI.
+///
 /// The `create` operation is excluded because it is handled separately
 /// (it applies to the wildcard object `*`, not to a specific object).
 #[wasm_bindgen]
@@ -1302,6 +1306,7 @@ wasm_response_parser!(parse_create_split_key_ttlv_response, CreateSplitKeyRespon
 wasm_response_parser!(parse_join_split_key_ttlv_response, JoinSplitKeyResponse);
 
 /// Create an Opaque Object (via Import) TTLV request.
+///
 /// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
 /// Wrapping key id can be provided to set the object wrapping attribute.
 #[wasm_bindgen]
@@ -2396,8 +2401,13 @@ pub fn parse_export_certificate_ttlv_response(
                 }
                 CertificateExportFormat::Pem => {
                     // save the pem to a file
-                    let pem = pem::Pem::new("CERTIFICATE", certificate_value.as_slice());
-                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                    let pem = x509_cert::der::pem::encode_string(
+                        "CERTIFICATE",
+                        x509_cert::der::pem::LineEnding::CRLF,
+                        certificate_value,
+                    )
+                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    JsValue::from(Uint8Array::from(pem.as_bytes()))
                 }
                 CertificateExportFormat::Pkcs12 => {
                     // PKCS12 is exported as a private key object
@@ -2416,8 +2426,13 @@ pub fn parse_export_certificate_ttlv_response(
                 }
                 CertificateExportFormat::Pkcs7 => {
                     // save the pem to a file
-                    let pem = pem::Pem::new(String::from("PKCS7"), certificate_value.as_slice());
-                    JsValue::from(Uint8Array::from(pem.to_string().as_bytes()))
+                    let pem = x509_cert::der::pem::encode_string(
+                        "PKCS7",
+                        x509_cert::der::pem::LineEnding::CRLF,
+                        certificate_value,
+                    )
+                    .map_err(|e| JsValue::from(e.to_string()))?;
+                    JsValue::from(Uint8Array::from(pem.as_bytes()))
                 }
             };
             Ok(data)
@@ -2653,6 +2668,7 @@ wasm_response_parser!(parse_re_certify_ttlv_response, ReCertifyResponse);
 // Attributes request
 
 /// Returns the canonical list of attribute key strings used to enrich KMIP Locate results.
+///
 /// Sourced from [`cosmian_kms_client_utils::attributes_utils::LOCATE_ENRICH_ATTRIBUTE_KEYS`] —
 /// single source of truth defined next to `parse_selected_attributes_flatten`.
 #[wasm_bindgen]
@@ -2876,8 +2892,6 @@ pub fn get_hash_algorithms() -> Result<JsValue, JsValue> {
 /// `SHA3224`, `SHA3256`, `SHA3384`, `SHA3512`.
 #[wasm_bindgen]
 pub fn hash_ttlv_request(data: &[u8], hashing_algorithm: &str) -> Result<JsValue, JsValue> {
-    use kmip_0::kmip_types::HashingAlgorithm;
-
     let algorithm = match hashing_algorithm {
         "SHA256" => HashingAlgorithm::SHA256,
         "SHA384" => HashingAlgorithm::SHA384,
@@ -2906,6 +2920,126 @@ pub fn hash_ttlv_request(data: &[u8], hashing_algorithm: &str) -> Result<JsValue
 }
 
 wasm_response_parser!(parse_hash_ttlv_response, HashResponse);
+
+/// MAC flavours the KMS supports, as `(value, label)`.
+const MAC_TYPES: [(&str, &str); 3] = [
+    ("HMAC", "HMAC"),
+    ("AES-CMAC", "AES-CMAC"),
+    ("AES-GMAC", "AES-GMAC"),
+];
+
+/// HMAC hash functions, as `(value, label, algorithm)`; the single source of the list and of the parsing.
+const MAC_HASHES: [(&str, &str, HashingAlgorithm); 9] = [
+    ("SHA1", "SHA-1", HashingAlgorithm::SHA1),
+    ("SHA224", "SHA-224", HashingAlgorithm::SHA224),
+    ("SHA256", "SHA-256", HashingAlgorithm::SHA256),
+    ("SHA384", "SHA-384", HashingAlgorithm::SHA384),
+    ("SHA512", "SHA-512", HashingAlgorithm::SHA512),
+    ("SHA3224", "SHA3-224", HashingAlgorithm::SHA3224),
+    ("SHA3256", "SHA3-256", HashingAlgorithm::SHA3256),
+    ("SHA3384", "SHA3-384", HashingAlgorithm::SHA3384),
+    ("SHA3512", "SHA3-512", HashingAlgorithm::SHA3512),
+];
+
+/// Returns the MAC types (`HMAC`, `AES-CMAC`, `AES-GMAC`) as `{ value, label }` options.
+#[wasm_bindgen]
+pub fn get_mac_types() -> Result<JsValue, JsValue> {
+    let options: Vec<AlgoOption> = MAC_TYPES
+        .iter()
+        .map(|&(value, label)| AlgoOption {
+            value: value.to_owned(),
+            label: label.to_owned(),
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&options).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the HMAC hashing algorithms as `{ value, label }` options.
+#[wasm_bindgen]
+pub fn get_mac_hashing_algorithms() -> Result<JsValue, JsValue> {
+    let options: Vec<AlgoOption> = MAC_HASHES
+        .iter()
+        .map(|&(value, label, _)| AlgoOption {
+            value: value.to_owned(),
+            label: label.to_owned(),
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&options).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// HMAC selects the hash; AES-CMAC and AES-GMAC select the AES block cipher mode and take no hash.
+fn mac_cryptographic_parameters(
+    mac_type: &str,
+    hashing_algorithm: Option<String>,
+) -> Result<CryptographicParameters, JsValue> {
+    let aes_mode = |mode| CryptographicParameters {
+        block_cipher_mode: Some(mode),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        ..CryptographicParameters::default()
+    };
+    match mac_type {
+        "HMAC" => {
+            let name = hashing_algorithm
+                .ok_or_else(|| JsValue::from("HMAC requires a hashing algorithm"))?;
+            let hash = MAC_HASHES
+                .iter()
+                .find(|&&(value, _, _)| value == name.as_str())
+                .map(|&(_, _, hash)| hash)
+                .ok_or_else(|| {
+                    JsValue::from(format!("Unsupported HMAC hashing algorithm: {name}"))
+                })?;
+            Ok(CryptographicParameters {
+                hashing_algorithm: Some(hash),
+                ..CryptographicParameters::default()
+            })
+        }
+        "AES-CMAC" => Ok(aes_mode(BlockCipherMode::CMAC)),
+        "AES-GMAC" => Ok(aes_mode(BlockCipherMode::GCM)),
+        other => Err(JsValue::from(format!("Unsupported MAC type: {other}"))),
+    }
+}
+
+/// Build a KMIP `MAC` TTLV request (single part).
+///
+/// `mac_type` is one of [`get_mac_types`]; `hashing_algorithm` one of
+/// [`get_mac_hashing_algorithms`], required by `HMAC` and omitted (`undefined`) for AES MACs.
+#[wasm_bindgen]
+pub fn mac_ttlv_request(
+    unique_identifier: &str,
+    data: &[u8],
+    mac_type: &str,
+    hashing_algorithm: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let request = MAC {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
+        cryptographic_parameters: Some(mac_cryptographic_parameters(mac_type, hashing_algorithm)?),
+        data: Some(data.to_vec()),
+        ..MAC::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `MACVerify` TTLV request (single part); `mac_data` is the MAC to check
+/// (for AES-GMAC, the IV followed by the tag).
+#[wasm_bindgen]
+pub fn mac_verify_ttlv_request(
+    unique_identifier: &str,
+    data: &[u8],
+    mac_data: &[u8],
+    mac_type: &str,
+    hashing_algorithm: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let request = MACVerify {
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
+        cryptographic_parameters: Some(mac_cryptographic_parameters(mac_type, hashing_algorithm)?),
+        data: data.to_vec(),
+        mac_data: mac_data.to_vec(),
+        correlation_value: None,
+        init_indicator: None,
+        final_indicator: None,
+    };
+    to_wasm_ttlv(&request)
+}
 
 /// Options for [`derive_key_ttlv_request`]; field names match the former positional parameters.
 #[derive(Deserialize, Serialize)]
@@ -2994,9 +3128,9 @@ pub fn derive_key_ttlv_request(
             hashing_algorithm: Some(hash_alg),
             ..CryptographicParameters::default()
         }),
-        initialization_vector,
+        initialization_vector: initialization_vector.map(Into::into),
         derivation_data: None,
-        salt: Some(salt),
+        salt: Some(salt.into()),
         iteration_count: Some(iteration_count),
     };
 

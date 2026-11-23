@@ -11,11 +11,14 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+        LenDisplay,
+        kmip_0::kmip_types::{
+            BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod, State,
+        },
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
-            kmip_objects::Object,
+            kmip_objects::{Object, ObjectType},
             kmip_operations::{Decrypt, DecryptResponse},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
@@ -76,6 +79,53 @@ impl CryptoOpSpec for DecryptOp {
 
     fn keyset_mode() -> KeysetMode {
         KeysetMode::TryEach
+    }
+
+    /// A keyset walk keeps the first key that decrypts: only modes that reject a wrong key
+    /// (authenticated encryption, key wrap, RSA OAEP) may walk. CBC/ECB/CTR/… or PKCS#1 v1.5
+    /// with a wrong key can return garbage as if it were the plaintext.
+    fn check_keyset_walk(owm: &ObjectWithMetadata, request: &Self::Request) -> KResult<()> {
+        let requested = request.cryptographic_parameters.as_ref();
+        let stored = owm.attributes().cryptographic_parameters.as_ref();
+        let algorithm = requested
+            .and_then(|cp| cp.cryptographic_algorithm)
+            .or_else(|| stored.and_then(|cp| cp.cryptographic_algorithm))
+            .or_else(|| owm.attributes().cryptographic_algorithm);
+        let mode = requested
+            .and_then(|cp| cp.block_cipher_mode)
+            .or_else(|| stored.and_then(|cp| cp.block_cipher_mode));
+        let padding = requested
+            .and_then(|cp| cp.padding_method)
+            .or_else(|| stored.and_then(|cp| cp.padding_method));
+        let authenticated_mode = mode.is_none_or(|mode| {
+            matches!(
+                mode,
+                BlockCipherMode::GCM
+                    | BlockCipherMode::GCMSIV
+                    | BlockCipherMode::CCM
+                    | BlockCipherMode::AEAD
+                    | BlockCipherMode::AESKeyWrapPadding
+                    | BlockCipherMode::NISTKeyWrap
+                    | BlockCipherMode::LegacyNISTKeyWrap
+            )
+        });
+        if authenticated_mode
+            && padding != Some(PaddingMethod::PKCS1v15)
+            && !matches!(
+                algorithm,
+                Some(CryptographicAlgorithm::ChaCha20 | CryptographicAlgorithm::FPE_FF1)
+            )
+        {
+            return Ok(());
+        }
+        Err(KmsError::Kmip21Error(
+            ErrorReason::Feature_Not_Supported,
+            format!(
+                "Decrypt: a keyset name can only be decrypted with an authenticated mode (AES \
+                 GCM, GCM-SIV, CCM, key wrap, RSA OAEP); address one generation (`name@N`) to \
+                 decrypt with {algorithm:?} / {mode:?} / {padding:?}"
+            ),
+        ))
     }
 
     /// Decrypt accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31:
@@ -170,61 +220,93 @@ impl CryptoOpSpec for DecryptOp {
         uid: &str,
         prefix: &str,
     ) -> KResult<Self::Response> {
-        reject_multi_part_for_oracle(
-            Self::OP_NAME,
-            Part::classify(
-                request.init_indicator,
-                request.final_indicator,
-                request.correlation_value.as_deref(),
-            )?,
-        )?;
-        let mut data = request
-            .i_v_counter_nonce
-            .as_ref()
-            .map_or(vec![], Clone::clone);
-        data.extend(
-            request
-                .data
-                .as_ref()
-                .ok_or_else(|| {
-                    KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-                })?
-                .clone(),
-        );
-        if let Some(tag) = &request.authenticated_encryption_tag {
-            data.extend(tag.iter().copied());
-        }
-        debug!(
-            "Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
-            data.len()
-        );
-        let cleartext = kms
-            .crypto_oracles
-            .read()
-            .await
-            .get(prefix)
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(format!(
-                    "Decrypt: unknown decryption oracle prefix: {prefix}"
-                ))
-            })?
-            .decrypt(
-                uid,
-                data.as_slice(),
-                request
-                    .cryptographic_parameters
-                    .as_ref()
-                    .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
-                    .transpose()?,
-                request.authenticated_encryption_additional_data.as_deref(),
-            )
-            .await?;
-        Ok(DecryptResponse {
-            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-            data: Some(cleartext),
-            correlation_value: request.correlation_value.clone(),
-        })
+        decrypt_with_oracle(kms, request, uid, prefix, None).await
     }
+
+    async fn execute_oracle_for_keyset(
+        kms: &KMS,
+        request: &Self::Request,
+        owm: &ObjectWithMetadata,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        // Never fall back to CBC / PKCS#1 v1.5 on tokens without GCM / OAEP support.
+        let default = match owm.object().object_type() {
+            ObjectType::SymmetricKey => CryptoAlgorithm::AesGcm,
+            ObjectType::PrivateKey => CryptoAlgorithm::RsaOaepSha256,
+            _ => {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Object_Type,
+                    "Decrypt: an HSM keyset requires an AES key or RSA private key".to_owned(),
+                ));
+            }
+        };
+        decrypt_with_oracle(kms, request, owm.id(), prefix, Some(default)).await
+    }
+}
+
+/// Decrypt on the token; a keyset walk supplies an authenticated default algorithm.
+async fn decrypt_with_oracle(
+    kms: &KMS,
+    request: &Decrypt,
+    uid: &str,
+    prefix: &str,
+    default: Option<CryptoAlgorithm>,
+) -> KResult<DecryptResponse> {
+    reject_multi_part_for_oracle(
+        "Decrypt",
+        Part::classify(
+            request.init_indicator,
+            request.final_indicator,
+            request.correlation_value.as_deref(),
+        )?,
+    )?;
+    let ciphertext = request.data.as_deref().ok_or_else(|| {
+        KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+    })?;
+    let nonce = request
+        .i_v_counter_nonce
+        .as_deref()
+        .map_or(&[][..], Vec::as_slice);
+    let tag = request
+        .authenticated_encryption_tag
+        .as_deref()
+        .map_or(&[][..], Vec::as_slice);
+    let mut data = Vec::with_capacity(nonce.len() + ciphertext.len() + tag.len());
+    data.extend_from_slice(nonce);
+    data.extend_from_slice(ciphertext);
+    data.extend_from_slice(tag);
+    let algorithm = request
+        .cryptographic_parameters
+        .as_ref()
+        .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
+        .transpose()?
+        .or(default);
+    debug!(
+        "Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
+        data.len()
+    );
+    let oracles = kms.crypto_oracles.read().await;
+    let oracle = oracles.get(prefix).ok_or_else(|| {
+        KmsError::InvalidRequest(format!(
+            "Decrypt: unknown decryption oracle prefix: {prefix}"
+        ))
+    })?;
+    let cleartext = oracle
+        .decrypt(
+            uid,
+            &data,
+            algorithm,
+            request
+                .authenticated_encryption_additional_data
+                .as_deref()
+                .map(Vec::as_slice),
+        )
+        .await?;
+    Ok(DecryptResponse {
+        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        data: Some(cleartext.into()),
+        correlation_value: request.correlation_value.clone(),
+    })
 }
 
 pub(crate) async fn decrypt(
@@ -233,9 +315,9 @@ pub(crate) async fn decrypt(
     user: &UserId,
 ) -> KResult<DecryptResponse> {
     trace!(
-        "Decrypt: uid={:?}, data_len={}",
+        "Decrypt: uid={:?}, data: {}",
         request.unique_identifier,
-        request.data.as_ref().map_or(0, Vec::len)
+        request.data.len_display()
     );
     Box::pin(kms.perform_crypto_operation::<DecryptOp>(request, user)).await
 }
@@ -262,7 +344,7 @@ fn decrypt_bulk(
             for mut ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(std::mem::take(&mut *ciphertext));
                 let response = decrypt_with_covercrypt(owm, &request)?;
-                plaintexts.push(response.data.unwrap_or_default());
+                plaintexts.push(response.data.unwrap_or_default().into_zeroizing());
             }
         }
 
@@ -276,7 +358,7 @@ fn decrypt_bulk(
             for mut ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
                 request.data = Some(std::mem::take(&mut *ciphertext));
                 let response = decrypt_with_private_key(owm, &request, server_params)?;
-                plaintexts.push(response.data.unwrap_or_default());
+                plaintexts.push(response.data.unwrap_or_default().into_zeroizing());
             }
         }
 
@@ -343,7 +425,7 @@ fn decrypt_bulk(
     );
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(BulkData::new(plaintexts).serialize()?),
+        data: Some(BulkData::new(plaintexts).serialize()?.into()),
         correlation_value: request.correlation_value.clone(),
     })
 }
@@ -381,7 +463,7 @@ fn decrypt_single(
             let key = kem_decaps(&dk_bytes, enc)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                data: Some(key),
+                data: Some(key.into()),
                 correlation_value: None,
             })
         }
@@ -420,7 +502,7 @@ fn decrypt_single(
                     let shared_secret = ml_kem_decapsulate(&priv_bytes, ciphertext)?;
                     return Ok(DecryptResponse {
                         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(Zeroizing::from(shared_secret)),
+                        data: Some(shared_secret.into()),
                         correlation_value: request.correlation_value.clone(),
                     });
                 }
@@ -440,7 +522,7 @@ fn decrypt_single(
                     let shared_secret = hybrid_kem_decapsulate(algo, &priv_bytes, ciphertext)?;
                     return Ok(DecryptResponse {
                         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                        data: Some(Zeroizing::from(shared_secret)),
+                        data: Some(shared_secret.into()),
                         correlation_value: request.correlation_value.clone(),
                     });
                 }
@@ -506,13 +588,16 @@ fn decrypt_single_with_symmetric_key(
         let plaintext = decrypt_fpe(
             key_block.key_bytes_ref()?,
             ciphertext,
-            request.authenticated_encryption_additional_data.as_deref(),
-            request.i_v_counter_nonce.as_deref(),
+            request
+                .authenticated_encryption_additional_data
+                .as_deref()
+                .map(Vec::as_slice),
+            request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
         )
         .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
         return Ok(Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-            data: Some(Zeroizing::from(plaintext)),
+            data: Some(plaintext.into()),
             correlation_value: request.correlation_value.clone(),
         }));
     }
@@ -528,31 +613,40 @@ fn decrypt_single_with_symmetric_key(
         key_bytes.len(),
         aead
     );
-    let nonce_storage = decryption_nonce(request.i_v_counter_nonce.as_deref(), aead)?;
+    let nonce_storage = decryption_nonce(
+        request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+        aead,
+    )?;
     let nonce: &[u8] = nonce_storage.as_ref();
     let aad = request
         .authenticated_encryption_additional_data
         .as_deref()
-        .unwrap_or(EMPTY_SLICE);
+        .map_or(EMPTY_SLICE, Vec::as_slice);
     let tag = if aead.tag_size() == 0 {
         EMPTY_SLICE
     } else {
         let tag = request
             .authenticated_encryption_tag
             .as_deref()
-            .unwrap_or(EMPTY_SLICE);
+            .map_or(EMPTY_SLICE, Vec::as_slice);
         check_decryption_tag(request.cryptographic_parameters.as_ref(), aead, tag)?;
         tag
     };
     let padding_method = padding_method(request.cryptographic_parameters.as_ref(), aead);
     if aead.nonce_size() == 0 {
         trace!(
-            "ciphertext (ECB): {ciphertext:?}, aad: {aad:?}, padding_method: {padding_method:?}"
+            "ciphertext (ECB): {} bytes, aad: {} bytes, padding_method: {padding_method:?}",
+            ciphertext.len(),
+            aad.len()
         );
     } else {
         trace!(
-            "ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?}, \
-             padding_method: {padding_method:?}"
+            "ciphertext: {} bytes, nonce: {} bytes, aad: {} bytes, tag: {} bytes, \
+             padding_method: {padding_method:?}",
+            ciphertext.len(),
+            nonce.len(),
+            aad.len(),
+            tag.len()
         );
     }
     let plaintext = sym_decrypt(
@@ -567,7 +661,7 @@ fn decrypt_single_with_symmetric_key(
     trace!("plaintext length: {} bytes", plaintext.len());
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(plaintext),
+        data: Some(plaintext.into()),
         correlation_value: request.correlation_value.clone(),
     }))
 }
@@ -674,7 +768,10 @@ fn decrypt_multi_part(
             }
             let (key_bytes, cipher) = get_aead_and_key(owm, request)?;
             ensure_multi_part_cipher(DecryptOp::OP_NAME, cipher)?;
-            let nonce = decryption_nonce(request.i_v_counter_nonce.as_deref(), cipher)?;
+            let nonce = decryption_nonce(
+                request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+                cipher,
+            )?;
             let padding = openssl_padding(padding_method(
                 request.cryptographic_parameters.as_ref(),
                 cipher,
@@ -682,7 +779,7 @@ fn decrypt_multi_part(
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_deref()
-                .unwrap_or(EMPTY_SLICE);
+                .map_or(EMPTY_SLICE, Vec::as_slice);
             let mut stream = cipher.stream_cipher(Mode::Decrypt, key_bytes, &nonce, aad)?;
             stream.set_padding(padding);
             Ok(DecryptState {
@@ -696,8 +793,11 @@ fn decrypt_multi_part(
             state.fixed.check(
                 DecryptOp::OP_NAME,
                 request.cryptographic_parameters.as_ref(),
-                request.i_v_counter_nonce.as_deref(),
-                request.authenticated_encryption_additional_data.as_deref(),
+                request.i_v_counter_nonce.as_deref().map(Vec::as_slice),
+                request
+                    .authenticated_encryption_additional_data
+                    .as_deref()
+                    .map(Vec::as_slice),
             )?;
             if let Some(tag) = &request.authenticated_encryption_tag {
                 if state.cipher.tag_size() > 0 {
@@ -707,7 +807,7 @@ fn decrypt_multi_part(
                         tag,
                     )?;
                 }
-                state.tag = Some(tag.clone());
+                state.tag = Some(tag.to_vec());
             }
             let mut output = Zeroizing::new(
                 state
@@ -733,7 +833,7 @@ fn decrypt_multi_part(
     )?;
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: (!data.is_empty()).then_some(data),
+        data: (!data.is_empty()).then_some(data.into()),
         correlation_value,
     })
 }
@@ -837,7 +937,7 @@ fn decrypt_with_private_key(
     };
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        data: Some(plaintext),
+        data: Some(plaintext.into()),
         correlation_value: request.correlation_value.clone(),
     })
 }
@@ -924,22 +1024,30 @@ fn decrypt_with_rsa(
     reason = "tests: a panic is the failure signal"
 )]
 mod tests {
-    use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{BlockCipherMode, ErrorReason},
-        kmip_2_1::{
-            extra::{
-                BulkData,
-                tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+    use cosmian_kms_server_database::reexport::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::{BlockCipherMode, ErrorReason, State},
+            kmip_2_1::{
+                extra::{
+                    BulkData,
+                    tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+                },
+                kmip_operations::{Decrypt, Encrypt, GetAttributes, ReKey},
+                kmip_types::{
+                    CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier, UsageLimits,
+                    UsageLimitsUnit,
+                },
+                requests::symmetric_key_create_request,
             },
-            kmip_operations::{Decrypt, Encrypt},
-            kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
-            requests::symmetric_key_create_request,
         },
+        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::caller_gcm_iv_allowed,
+        cosmian_kms_interfaces::GCM_MAX_INVOCATIONS,
     };
-    use zeroize::Zeroizing;
+    use futures::future::join_all;
 
     use crate::{
-        error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
+        core::KMS, error::KmsError, middlewares::UserId, result::KResult,
+        tests::test_utils::test_kms,
     };
 
     fn reason<T: std::fmt::Debug>(r: KResult<T>) -> Option<ErrorReason> {
@@ -970,8 +1078,8 @@ mod tests {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(tag_length, None)),
             data: Some(data.to_vec()),
-            i_v_counter_nonce: Some(iv.to_vec()),
-            authenticated_encryption_tag: tag.map(<[u8]>::to_vec),
+            i_v_counter_nonce: Some(iv.to_vec().into()),
+            authenticated_encryption_tag: tag.map(<[u8]>::to_vec).map(Into::into),
             ..Decrypt::default()
         }
     }
@@ -993,8 +1101,8 @@ mod tests {
         let encrypt = |data: Vec<u8>, iv: Option<Vec<u8>>, iv_length: Option<i32>| Encrypt {
             unique_identifier: Some(uid.clone()),
             cryptographic_parameters: Some(gcm(None, iv_length)),
-            data: Some(Zeroizing::new(data)),
-            i_v_counter_nonce: iv,
+            data: Some(data.into()),
+            i_v_counter_nonce: iv.map(Into::into),
             ..Encrypt::default()
         };
 
@@ -1043,7 +1151,7 @@ mod tests {
         let next = |aad: Option<Vec<u8>>| Decrypt {
             unique_identifier: Some(uid.clone()),
             correlation_value: Some(cv.clone()),
-            authenticated_encryption_additional_data: aad,
+            authenticated_encryption_additional_data: aad.map(Into::into),
             final_indicator: Some(true),
             ..Decrypt::default()
         };
@@ -1072,10 +1180,480 @@ mod tests {
                 "{bits}"
             );
         }
-        let enc = kms
+        let r = kms
             .encrypt(encrypt(b"m".to_vec(), None, Some(128)), &user)
+            .await;
+        if caller_gcm_iv_allowed() {
+            assert_eq!(r?.i_v_counter_nonce.unwrap().len(), 16);
+        } else {
+            // the FIPS provider only generates 96-bit IVs
+            assert_eq!(reason(r), Some(ErrorReason::Bad_Cryptographic_Parameters));
+        }
+        Ok(())
+    }
+
+    /// AES-GCM IVs are generated by the server (inside the FIPS module in a FIPS build, which
+    /// also refuses a caller-supplied one); the multi-part encryption returns the IV with the
+    /// first part that carries data, and every output decrypts.
+    #[tokio::test]
+    async fn test_gcm_iv_generation_policy() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        let uid = kms.create(create, &user).await?.unique_identifier;
+        let encrypt = |data: &[u8], iv: Option<Vec<u8>>| Encrypt {
+            unique_identifier: Some(uid.clone()),
+            cryptographic_parameters: Some(gcm(None, None)),
+            data: Some(data.to_vec().into()),
+            i_v_counter_nonce: iv.map(Into::into),
+            ..Encrypt::default()
+        };
+
+        // single part: a fresh 96-bit IV per call
+        let first = kms.encrypt(encrypt(b"message", None), &user).await?;
+        let second = kms.encrypt(encrypt(b"message", None), &user).await?;
+        let iv = first.i_v_counter_nonce.unwrap();
+        assert_eq!(iv.len(), 12);
+        assert_ne!(Some(&iv), second.i_v_counter_nonce.as_ref());
+        let tag = first.authenticated_encryption_tag.unwrap();
+        let plain = kms
+            .decrypt(
+                decrypt(&uid, &first.data.unwrap(), &iv, Some(&tag), None),
+                &user,
+            )
             .await?;
-        assert_eq!(enc.i_v_counter_nonce.unwrap().len(), 16);
+        assert_eq!(plain.data.unwrap().as_slice(), b"message");
+
+        // multi-part
+        let init = Encrypt {
+            init_indicator: Some(true),
+            ..encrypt(b"mess", None)
+        };
+        let part1 = kms.encrypt(init, &user).await?;
+        let iv = part1.i_v_counter_nonce.unwrap();
+        assert_eq!(iv.len(), 12);
+        let last = Encrypt {
+            correlation_value: part1.correlation_value,
+            final_indicator: Some(true),
+            ..encrypt(b"age", None)
+        };
+        let part2 = kms.encrypt(last, &user).await?;
+        assert!(part2.i_v_counter_nonce.is_none());
+        let ciphertext = [
+            part1.data.unwrap_or_default().to_vec(),
+            part2.data.unwrap_or_default().to_vec(),
+        ]
+        .concat();
+        let tag = part2.authenticated_encryption_tag.unwrap();
+        let plain = kms
+            .decrypt(decrypt(&uid, &ciphertext, &iv, Some(&tag), None), &user)
+            .await?;
+        assert_eq!(plain.data.unwrap().as_slice(), b"message");
+
+        if !caller_gcm_iv_allowed() {
+            for init_indicator in [None, Some(true)] {
+                let r = kms
+                    .encrypt(
+                        Encrypt {
+                            init_indicator,
+                            ..encrypt(b"message", Some(vec![7; 12]))
+                        },
+                        &user,
+                    )
+                    .await;
+                assert_eq!(reason(r), Some(ErrorReason::Invalid_Field));
+            }
+        }
+        Ok(())
+    }
+
+    /// A FIPS build seals AES-GCM with the full 16-byte tag only (SP 800-38D §5.2.1.2) and
+    /// decrypts only with the 96-bit IV the module generates; other builds keep the 12..16-byte
+    /// tag and any IV length.
+    #[tokio::test]
+    async fn test_fips_gcm_tag_and_iv_lengths() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let uid = gcm_key(&kms, &user).await?;
+        let id = UniqueIdentifier::TextString(uid.clone());
+
+        let mut request = gcm_encrypt(&uid, b"message");
+        request.cryptographic_parameters = Some(gcm(Some(12), None));
+        let r = kms.encrypt(request.clone(), &user).await;
+        let init = Encrypt {
+            init_indicator: Some(true),
+            ..request
+        };
+        let init = kms.encrypt(init, &user).await;
+        if caller_gcm_iv_allowed() {
+            assert_eq!(r?.authenticated_encryption_tag.unwrap().len(), 12);
+            init?;
+        } else {
+            assert_eq!(reason(r), Some(ErrorReason::Bad_Cryptographic_Parameters));
+            assert_eq!(
+                reason(init),
+                Some(ErrorReason::Bad_Cryptographic_Parameters)
+            );
+        }
+
+        let sealed = kms.encrypt(gcm_encrypt(&uid, b"message"), &user).await?;
+        assert_eq!(
+            sealed.authenticated_encryption_tag.as_ref().unwrap().len(),
+            16
+        );
+        let r = kms
+            .decrypt(
+                decrypt(
+                    &id,
+                    &sealed.data.unwrap(),
+                    &[7; 16],
+                    Some(&[0_u8; 16][..]),
+                    None,
+                ),
+                &user,
+            )
+            .await;
+        if !caller_gcm_iv_allowed() {
+            assert_eq!(reason(r), Some(ErrorReason::Invalid_Field));
+        }
+        Ok(())
+    }
+
+    async fn gcm_key(kms: &KMS, user: &UserId) -> KResult<String> {
+        let create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        Ok(kms
+            .create(create, user)
+            .await?
+            .unique_identifier
+            .to_string())
+    }
+
+    fn gcm_encrypt(uid: &str, data: &[u8]) -> Encrypt {
+        Encrypt {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
+            cryptographic_parameters: Some(gcm(None, None)),
+            data: Some(data.to_vec().into()),
+            ..Encrypt::default()
+        }
+    }
+
+    /// Every server-generated GCM IV is counted once per key (SP 800-38D §8.3): one per
+    /// single-part request, one per multi-part stream and one per bulk item.
+    #[tokio::test]
+    async fn test_gcm_invocations_are_counted() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let uid = gcm_key(&kms, &user).await?;
+        assert_gcm_invocations_counted(&kms, &user, &uid).await
+    }
+
+    /// A key stored wrapped is counted too: its cipher is only resolvable once unwrapped.
+    #[tokio::test]
+    async fn test_gcm_invocations_are_counted_for_wrapped_key() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let wrapping = gcm_key(&kms, &user).await?;
+        let create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            Some(&wrapping),
+        )?;
+        let uid = kms
+            .create(create, &user)
+            .await?
+            .unique_identifier
+            .to_string();
+        let stored = kms
+            .database
+            .retrieve_object(&uid)
+            .await?
+            .expect("key stored");
+        assert!(stored.object().is_wrapped());
+        assert_gcm_invocations_counted(&kms, &user, &uid).await
+    }
+
+    async fn assert_gcm_invocations_counted(kms: &KMS, user: &UserId, uid: &str) -> KResult<()> {
+        let total = || kms.database.gcm_invocations(uid);
+        assert_eq!(total().await?, 0);
+
+        let parallel = 16_u64;
+        for response in
+            join_all((0..parallel).map(|_| kms.encrypt(gcm_encrypt(uid, b"message"), user))).await
+        {
+            response?;
+        }
+        assert_eq!(total().await?, parallel);
+
+        let init = Encrypt {
+            init_indicator: Some(true),
+            ..gcm_encrypt(uid, b"mess")
+        };
+        let part = kms.encrypt(init, user).await?;
+        let last = Encrypt {
+            correlation_value: part.correlation_value,
+            final_indicator: Some(true),
+            ..gcm_encrypt(uid, b"age")
+        };
+        kms.encrypt(last, user).await?;
+        assert_eq!(total().await?, parallel + 1);
+
+        let bulk = BulkData::from(vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()])
+            .serialize()?
+            .to_vec();
+        kms.encrypt(gcm_encrypt(uid, &bulk), user).await?;
+        assert_eq!(total().await?, parallel + 4);
+
+        // decryption is not counted, and destroying the key forgets the count
+        let sealed = kms.encrypt(gcm_encrypt(uid, b"message"), user).await?;
+        let (ciphertext, iv, tag) = (
+            sealed.data.unwrap(),
+            sealed.i_v_counter_nonce.unwrap(),
+            sealed.authenticated_encryption_tag.unwrap(),
+        );
+        assert_eq!(total().await?, parallel + 5);
+        let id = UniqueIdentifier::TextString(uid.to_owned());
+        kms.decrypt(decrypt(&id, &ciphertext, &iv, Some(&tag), None), user)
+            .await?;
+        assert_eq!(total().await?, parallel + 5);
+        kms.database.update_state(uid, State::Destroyed).await?;
+        assert_eq!(total().await?, 0);
+        Ok(())
+    }
+
+    /// A key is refused once it has made 2^32 invocations, but its ciphertexts stay decryptable.
+    #[tokio::test]
+    async fn test_gcm_invocation_limit() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let uid = gcm_key(&kms, &user).await?;
+        let sealed = kms.encrypt(gcm_encrypt(&uid, b"message"), &user).await?;
+
+        kms.database
+            .reserve_gcm_invocations(&uid, GCM_MAX_INVOCATIONS - 2)
+            .await?;
+        // the last invocation is granted, the next one refused
+        kms.encrypt(gcm_encrypt(&uid, b"message"), &user).await?;
+        assert_eq!(
+            reason(kms.encrypt(gcm_encrypt(&uid, b"message"), &user).await),
+            Some(ErrorReason::Permission_Denied)
+        );
+        assert_eq!(
+            kms.database.gcm_invocations(&uid).await?,
+            GCM_MAX_INVOCATIONS
+        );
+        let id = UniqueIdentifier::TextString(uid.clone());
+        let plain = kms
+            .decrypt(
+                decrypt(
+                    &id,
+                    &sealed.data.unwrap(),
+                    &sealed.i_v_counter_nonce.unwrap(),
+                    sealed
+                        .authenticated_encryption_tag
+                        .as_deref()
+                        .map(Vec::as_slice),
+                    None,
+                ),
+                &user,
+            )
+            .await?;
+        assert_eq!(plain.data.unwrap().as_slice(), b"message");
+        Ok(())
+    }
+
+    /// Counting never writes the key object, so a `ReKey` is not made to conflict with the
+    /// encryptions running at the same time.
+    #[tokio::test]
+    async fn test_gcm_counting_does_not_conflict_with_rekey() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let uid = gcm_key(&kms, &user).await?;
+        let rekey = ReKey {
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+            ..ReKey::default()
+        };
+        let (rekeyed, encrypted) = tokio::join!(
+            kms.rekey(rekey, &user),
+            join_all((0..16).map(|_| kms.encrypt(gcm_encrypt(&uid, b"message"), &user)))
+        );
+        rekeyed?;
+        for response in encrypted {
+            if let Err(e) = response {
+                assert!(!matches!(e, KmsError::Conflict(_)), "{e:?}");
+            }
+        }
+        Ok(())
+    }
+
+    /// Usage Limits are reserved atomically before the operation: concurrent requests never
+    /// overrun the budget, the client Count is ignored and the Count (not the Total) is consumed.
+    #[tokio::test]
+    async fn test_usage_limits_are_consumed_atomically() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("user");
+        let mut create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        create.attributes.usage_limits = Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(999),
+            usage_limits_total: 4,
+        });
+        let uid = kms
+            .create(create, &user)
+            .await?
+            .unique_identifier
+            .to_string();
+
+        let results =
+            join_all((0..12).map(|_| kms.encrypt(gcm_encrypt(&uid, b"message"), &user))).await;
+        let succeeded = results.iter().filter(|r| r.is_ok()).count();
+        assert_eq!(succeeded, 4);
+        for result in results.into_iter().filter(Result::is_err) {
+            assert_eq!(reason(result), Some(ErrorReason::Permission_Denied));
+        }
+
+        // The view clients get must report the consumed Count too.
+        let reported = kms
+            .get_attributes(
+                GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    attribute_reference: None,
+                },
+                &user,
+            )
+            .await?;
+        assert_eq!(
+            reported
+                .attributes
+                .usage_limits
+                .map(|l| l.usage_limits_count),
+            Some(Some(0))
+        );
+
+        let stored = kms.database.retrieve_object(&uid).await?.unwrap();
+        assert_eq!(
+            stored.attributes().usage_limits,
+            Some(UsageLimits {
+                usage_limits_unit: UsageLimitsUnit::Object,
+                usage_limits_count: Some(0),
+                usage_limits_total: 4,
+            })
+        );
+        Ok(())
+    }
+
+    /// Stored CBC is subject to the same guard as a request parameter; an explicit
+    /// generation still decrypts it, and a request can override stored CBC with GCM.
+    #[tokio::test]
+    async fn test_sql_keyset_decrypt_refuses_unauthenticated_modes() -> KResult<()> {
+        let kms = test_kms().await?;
+        let user = UserId::from("keyset-cbc");
+        let name = format!("keyset-cbc-{}", uuid::Uuid::new_v4());
+        let cbc = CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            block_cipher_mode: Some(BlockCipherMode::CBC),
+            ..CryptographicParameters::default()
+        };
+        let mut create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        create.attributes.unique_identifier = Some(name.clone().into());
+        create.attributes.rotate_name = Some(name.clone());
+        create.attributes.cryptographic_parameters = Some(cbc.clone());
+        kms.create(create, &user).await?;
+        let encrypted = kms
+            .encrypt(
+                Encrypt {
+                    unique_identifier: Some(name.clone().into()),
+                    cryptographic_parameters: Some(cbc.clone()),
+                    data: Some(b"stored CBC before rotation".to_vec().into()),
+                    ..Encrypt::default()
+                },
+                &user,
+            )
+            .await?;
+        kms.rekey(
+            ReKey {
+                unique_identifier: Some(name.clone().into()),
+                ..ReKey::default()
+            },
+            &user,
+        )
+        .await?;
+
+        let cbc_request = Decrypt {
+            unique_identifier: Some(name.clone().into()),
+            data: encrypted.data.as_ref().map(|d| d.to_vec()),
+            i_v_counter_nonce: encrypted.i_v_counter_nonce.clone(),
+            ..Decrypt::default()
+        };
+        // No request parameters: the per-member stored CBC must not bypass the guard.
+        assert_eq!(
+            reason(kms.decrypt(cbc_request.clone(), &user).await),
+            Some(ErrorReason::Feature_Not_Supported)
+        );
+        let mut explicit = cbc_request;
+        explicit.unique_identifier = Some(format!("{name}@0").into());
+        let plaintext = kms.decrypt(explicit, &user).await?;
+        assert_eq!(
+            plaintext.data.as_deref().map(Vec::as_slice),
+            Some(&b"stored CBC before rotation"[..])
+        );
+
+        // Explicit GCM overrides stored CBC; the bare-name walk remains usable.
+        let encrypted = kms
+            .encrypt(gcm_encrypt(&name, b"authenticated"), &user)
+            .await?;
+        let plaintext = kms
+            .decrypt(
+                Decrypt {
+                    unique_identifier: Some(name.into()),
+                    data: encrypted.data.as_ref().map(|d| d.to_vec()),
+                    i_v_counter_nonce: encrypted.i_v_counter_nonce,
+                    authenticated_encryption_tag: encrypted.authenticated_encryption_tag,
+                    cryptographic_parameters: Some(gcm(None, None)),
+                    ..Decrypt::default()
+                },
+                &user,
+            )
+            .await?;
+        assert_eq!(
+            plaintext.data.as_deref().map(Vec::as_slice),
+            Some(&b"authenticated"[..])
+        );
         Ok(())
     }
 }

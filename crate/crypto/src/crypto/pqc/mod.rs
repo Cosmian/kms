@@ -614,7 +614,7 @@ fn create_pqc_key_pair(
         key_block: KeyBlock {
             key_format_type,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(private_key_der.clone()),
+                key_material: KeyMaterial::ByteString(private_key_der.clone().into()),
                 attributes: Some(Box::new(priv_attrs)),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -647,7 +647,9 @@ fn create_pqc_key_pair(
         key_block: KeyBlock {
             key_format_type,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(public_key_der.to_vec())),
+                key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
+                    public_key_der.to_vec(),
+                )),
                 attributes: Some(Box::new(pub_attrs)),
             }),
             cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -1024,5 +1026,80 @@ mod tests {
         assert!(!requests_fips_provider(b"xfips=yes"));
         assert!(!requests_fips_provider(b"xfips"));
         assert!(!requests_fips_provider(b""));
+    }
+
+    // ── Official known-answer vectors ────────────────────────────────────────
+
+    /// Seeded keygen must reproduce the ACVP raw public key and the expanded private key.
+    fn check_keygen_official_vectors(vectors: Vec<crate::kat_vectors::PqcKeygenVector>) {
+        for v in vectors {
+            let name = CString::new(v.parameter_set.as_str()).unwrap();
+            let key = pqc_keygen_seeded(&name, &v.seed, None).unwrap();
+            assert_eq!(
+                key.raw_public_key().unwrap(),
+                v.pk,
+                "{} ({}) pk",
+                v.id,
+                v.source
+            );
+            assert_eq!(
+                key.raw_private_key().unwrap(),
+                v.sk,
+                "{} ({}) sk",
+                v.id,
+                v.source
+            );
+        }
+    }
+
+    #[test]
+    fn test_ml_kem_keygen_official_vectors() {
+        check_keygen_official_vectors(crate::kat_vectors::ml_kem_keygen_vectors().unwrap());
+    }
+
+    #[test]
+    fn test_ml_dsa_keygen_official_vectors() {
+        check_keygen_official_vectors(crate::kat_vectors::ml_dsa_keygen_vectors().unwrap());
+    }
+
+    #[test]
+    fn test_ml_kem_decaps_official_vectors() {
+        for v in crate::kat_vectors::ml_kem_decaps_vectors().unwrap() {
+            let name = CString::new(v.parameter_set.as_str()).unwrap();
+            let key = pqc_keygen_seeded(&name, &v.seed, None).unwrap();
+            let decapsulated =
+                ml_kem::ml_kem_decapsulate(&key.private_key_to_pkcs8().unwrap(), &v.c);
+            if v.valid {
+                assert_eq!(decapsulated.unwrap(), v.k, "{} ({})", v.id, v.source);
+            } else {
+                decapsulated.unwrap_err();
+            }
+        }
+    }
+
+    /// `ml_dsa_verify` is also the SLH-DSA verifier (OpenSSL picks the algorithm from the key).
+    fn check_verify_official_vectors(groups: Vec<crate::kat_vectors::PqcVerifyGroup>) {
+        for g in groups {
+            let key = PKey::public_key_from_der(&g.public_key_spki).unwrap();
+            for t in g.tests {
+                let verified = ml_dsa::ml_dsa_verify(&key, &t.msg, &t.sig);
+                // An Err on an invalid record counts as rejected.
+                if t.valid {
+                    assert!(verified.unwrap(), "{} ({})", t.id, g.source);
+                } else {
+                    assert!(!verified.unwrap_or(false), "{} ({})", t.id, g.source);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_ml_dsa_verify_official_vectors() {
+        check_verify_official_vectors(crate::kat_vectors::ml_dsa_verify_groups().unwrap());
+    }
+
+    #[test]
+    fn test_slh_dsa_verify_official_vectors() {
+        check_verify_official_vectors(crate::kat_vectors::slh_dsa_verify_groups().unwrap());
     }
 }

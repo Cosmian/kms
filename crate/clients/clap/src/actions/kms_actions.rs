@@ -30,6 +30,7 @@ use crate::{
         elliptic_curves::EllipticCurveCommands,
         google::GoogleCommands,
         hash::HashAction,
+        kv::KvCommands,
         login::{LoginAction, LoginCredential},
         mac::MacCommands,
         opaque_object::OpaqueObjectCommands,
@@ -38,6 +39,7 @@ use crate::{
         rsa::RsaCommands,
         secret_data::SecretDataCommands,
         shared::LocateObjectsAction,
+        ssh::{PasswordAction, SshCommands},
         symmetric::SymmetricCommands,
         vault::VaultCommands,
         version::ServerVersionAction,
@@ -130,6 +132,14 @@ pub enum KmsActions {
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
     Google(GoogleCommands),
+    /// Read and write secrets in the Vault KV v2-compatible store.
+    #[command(subcommand)]
+    Kv(KvCommands),
+    /// Sign OpenSSH user certificates with a KMS-managed SSH CA.
+    #[command(subcommand)]
+    Ssh(SshCommands),
+    /// Generate a random password using the KMS.
+    Password(PasswordAction),
     Locate(LocateObjectsAction),
     Login(LoginAction),
     /// Logout from the Identity Provider.
@@ -198,6 +208,9 @@ impl KmsActions {
             }
             Self::Ec(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Google(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Kv(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Ssh(action) => Box::pin(action.process(&kms_rest_client)).await?,
+            Self::Password(action) => Box::pin(action.run(&kms_rest_client)).await?,
             Self::Locate(action) => {
                 Box::pin(action.run(kms_rest_client)).await?;
             }
@@ -205,6 +218,16 @@ impl KmsActions {
                 LoginCredential::AccessToken(token) => {
                     new_config.http_config.access_token = Some(token);
                     new_config.http_config.vault_token = None;
+                }
+                LoginCredential::OAuth(tokens) => {
+                    new_config.http_config.access_token = Some(tokens.token);
+                    new_config.http_config.vault_token = None;
+                    if let (Some(refresh_token), Some(oauth2_conf)) = (
+                        tokens.refresh_token,
+                        new_config.http_config.oauth2_conf.as_mut(),
+                    ) {
+                        oauth2_conf.refresh_token = Some(refresh_token);
+                    }
                 }
                 LoginCredential::VaultToken(token) => {
                     new_config.http_config.vault_token = Some(token);

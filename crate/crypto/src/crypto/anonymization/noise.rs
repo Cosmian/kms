@@ -1,10 +1,10 @@
-use chrono::{DateTime, TimeZone};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use rand_distr::{
     Distribution, Normal, StandardNormal, StandardUniform, Uniform, num_traits::Float,
 };
+use time::OffsetDateTime;
 
-use super::{AnoError, datetime_to_rfc3339};
+use super::{AnoError, date_helper::parse_rfc3339, datetime_to_rfc3339};
 use crate::crypto::{
     KmsRng,
     float_conv::{f64_to_i64_saturating, i64_to_f64},
@@ -260,14 +260,17 @@ impl NoiseGenerator<f64> {
     ///
     ///  The resulting noisy date string
     pub fn apply_on_date(&mut self, date_str: &str) -> Result<String, AnoError> {
-        let date = DateTime::parse_from_rfc3339(date_str).map_err(|e| {
-            AnoError::AnonymizationError(format!(
-                "invalid RFC3339 date '{date_str}': {e} (expected format: 2023-04-07T12:34:56+02:00)"
-            ))
-        })?;
-        let tz = date.timezone();
-        let date_unix = date.timestamp();
-        let noisy_date_unix = self.apply_on_int(date_unix);
-        datetime_to_rfc3339(tz.timestamp_opt(noisy_date_unix, 0), date_str)
+        let date = parse_rfc3339(date_str)?;
+        let offset = date.offset();
+        let noisy_date_unix = self.apply_on_int(date.unix_timestamp());
+        let noisy_date = OffsetDateTime::from_unix_timestamp(noisy_date_unix)
+            .map(|d| d.checked_to_offset(offset));
+        match noisy_date {
+            Ok(Some(d)) => datetime_to_rfc3339(Ok(d), date_str),
+            Ok(None) => Err(AnoError::AnonymizationError(format!(
+                "Could not apply method on date `{date_str}`."
+            ))),
+            Err(e) => datetime_to_rfc3339(Err(e), date_str),
+        }
     }
 }

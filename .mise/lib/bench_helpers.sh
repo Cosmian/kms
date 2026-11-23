@@ -275,6 +275,12 @@ bench_stop_server() {
   KMS_PID=""
 }
 
+# From rule://test-configs section 3: fails when the key is absent from the fixture.
+set_toml_value() { # <file> <key> <already-quoted-value>
+  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
+  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
 # Wait for a KMS server to accept HTTP requests, using curl flags appropriate for
 # optional TLS server/client verification. Exits 1 (like kms_wait_ready) on timeout.
 # Usage: bench_wait_ready_tls <url> <accept_invalid_certs> <ca_cert> <client_cert> <client_key> [<timeout_secs>]
@@ -336,9 +342,11 @@ _bench_cleanup() {
   local pid_file
   for pid_file in ${BENCH_VPN_PID_FILES[@]+"${BENCH_VPN_PID_FILES[@]}"}; do
     [ -f "${pid_file}" ] || continue
-    sudo kill "$(cat "${pid_file}")" 2>/dev/null || true
+    sudo kill -- "$(sudo cat "${pid_file}")" 2>/dev/null || true
     sudo rm -f "${pid_file}"
   done
+  # Private per-run directory holding the Crypt2Pay VPN pid and configuration files.
+  [ -n "${BENCH_VPN_DIR:-}" ] && rm -rf -- "${BENCH_VPN_DIR:?}"
   rm -rf "${TMP_DIR:-}"
 }
 
@@ -508,10 +516,20 @@ bench_start_server_hsm() {
 
   mkdir -p "$sqlite_path"
 
+  # The FIPS server never sends an AES-GCM IV to an HSM, so SoftHSM2 and Kryoptic (which do not
+  # generate it) wrap with AES key wrap with padding (NIST SP 800-38F) instead of the default.
+  local kek_wrapping=""
+  if [ "${BENCH_VARIANT:-non-fips}" = "fips" ]; then
+    case "${hsm_model}" in
+      softhsm2 | kryoptic) kek_wrapping='key_encryption_key_wrapping_algorithm = "aes-key-wrap-padding"' ;;
+    esac
+  fi
+
   # Write kms.toml with HSM + key_encryption_key.
   # The server will not start wrapping until the KEK is created (see below).
   cat >"${kms_conf}" <<EOF
 key_encryption_key = "${HSM_KEK_UID}"
+${kek_wrapping}
 
 hsm_model    = "${hsm_model}"
 hsm_admin    = ["admin"]
@@ -558,7 +576,7 @@ EOF
 }
 
 # Prepare the host once for HSM-resident benchmarks on <hsm_model>, reusing the
-# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm-<model>`
+# same .github/reusable_scripts/prepare_*.sh scripts as the `test:hsm:<model>`
 # tasks (library install, simulator start, VPN tunnel). Call it after
 # bench_register_cleanup so any VPN it opens is torn down on exit.
 #
@@ -606,7 +624,11 @@ bench_prepare_hsm() {
         (cd "${sim_dir}" && bash "${scripts_dir}/prepare_crypt2pay_simulator.sh")
         rm -rf "${sim_dir}"
       else
-        BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE:-/tmp/crypt2pay-openvpn.pid}")
+        # The pid file is root-owned and 0600; the private directory avoids a stale shared /tmp conf.
+        BENCH_VPN_DIR="$(mktemp -d)"
+        export CRYPT2PAY_OPENVPN_PID_FILE="${BENCH_VPN_DIR}/openvpn.pid"
+        export CRYPT2PAY_OPENVPN_CONF_FILE="${BENCH_VPN_DIR}/openvpn.conf"
+        BENCH_VPN_PID_FILES+=("${CRYPT2PAY_OPENVPN_PID_FILE}")
         bash "${scripts_dir}/prepare_crypt2pay.sh"
       fi
       ;;
@@ -858,6 +880,7 @@ PYEOF
 #   dlopen()-based Cryptoki C API benchmark. May be combined with is_hsm=true
 #   for PKCS#11 operations delegated to HSM-resident keys.
 #   BENCH_DOCS_SUFFIX (env, optional): appended to docs_subdir, e.g. "_hr" or "2_ed25519".
+#   BENCH_JOSE_CACHE_STATE (env, optional): "on"|"off"; renders the JOSE CEK cache report (bench:jose-cache).
 # Reads:  $CRITERION_HOME/load_*.json  (load tests)
 #         $CRITERION_HOME/criterion.json  (criterion benchmarks)
 # Writes: $CRITERION_HOME/reports/<version>/  data files + report.md + SVGs
@@ -925,6 +948,9 @@ bench_generate_report() {
   fi
   if [ "${is_pkcs11}" = "true" ]; then
     plot_args+=("--pkcs11")
+  fi
+  if [ -n "${BENCH_JOSE_CACHE_STATE:-}" ]; then
+    plot_args+=("--jose-cache" "${BENCH_JOSE_CACHE_STATE}")
   fi
   if [ -n "${BENCH_HSM_BACKEND:-}" ]; then
     plot_args+=("--hsm-backend" "${BENCH_HSM_BACKEND}")

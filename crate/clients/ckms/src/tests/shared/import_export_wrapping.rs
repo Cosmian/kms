@@ -291,9 +291,12 @@ fn test_import_export_wrap_private_key(
             );
         }
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
+        // The wrapped export carries the attributes embedded when the key was stored, in which
+        // Fresh is still true; `private_key` was read after a first export flipped it (KMIP 1.4
+        // §3.34). Compare the key material only.
         assert_eq!(
-            wrapped_private_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
+            wrapped_private_key.key_block()?.key_material()?,
+            private_key.key_block()?.key_material()?
         );
     }
 

@@ -260,6 +260,21 @@ sequenceDiagram
     CREATE TABLE test_tde (something CHAR(32) ENCRYPT);
     ```
 
+**Troubleshooting `ORA-28353: failed to open wallet`:**
+
+Earlier versions of `libcosmian_pkcs11` left the objects Oracle creates (`ORACLE.TDE.HSM.MK.*`,
+`ORACLE.SECURITY.KM.ENCRYPTION.*`, `DATA_OBJECT_SUPPORTED_IDEN`) in `PreActive` state, so they cannot be used.
+Upgrade the library, then activate the existing objects once:
+
+```bash
+ckms sym keys activate -k ORACLE.TDE.HSM.MK.<id>
+ckms secret-data activate -k ORACLE.SECURITY.KM.ENCRYPTION.<id>
+ckms secret-data activate -k DATA_OBJECT_SUPPORTED_IDEN
+```
+
+List the identifiers with `ckms locate --object-type SymmetricKey` and `ckms locate --object-type SecretData`,
+and check one with `ckms attributes get -i <id>` (`State` must be `Active`).
+
 #### Windows
 
 Oracle 26ai Free for Windows has two unfixed HSM/PKCS#11 issues that require workarounds

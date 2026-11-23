@@ -522,7 +522,7 @@ impl KMS {
                 key_format_type: KeyFormatType::Raw,
                 key_compression_type: None,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(secret_data),
+                    key_material: KeyMaterial::ByteString(secret_data.into()),
                     attributes: Some(Box::new(attributes.clone())),
                 }),
                 cryptographic_algorithm: None,

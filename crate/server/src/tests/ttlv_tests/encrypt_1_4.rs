@@ -67,12 +67,12 @@ pub(super) fn encrypt(
                         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                         ..Default::default()
                     }),
-                    data: Some(data.to_vec()),
+                    data: Some(data.to_vec().into()),
                     i_v_counter_nonce: None,
                     correlation_value: None,
                     init_indicator: None,
                     final_indicator: None,
-                    authenticated_encryption_additional_data: aad.map(Vec::from),
+                    authenticated_encryption_additional_data: aad.map(Vec::from).map(Into::into),
                 })),
                 message_extension: None,
             },
@@ -109,8 +109,12 @@ pub(super) fn encrypt(
     assert!(response.authenticated_encryption_tag.is_some());
 
     (
-        response.i_v_counter_nonce.clone().unwrap(),
-        response.data.clone().unwrap(),
-        response.authenticated_encryption_tag.clone().unwrap(),
+        response.i_v_counter_nonce.clone().unwrap().to_vec(),
+        response.data.clone().unwrap().to_vec(),
+        response
+            .authenticated_encryption_tag
+            .clone()
+            .unwrap()
+            .to_vec(),
     )
 }

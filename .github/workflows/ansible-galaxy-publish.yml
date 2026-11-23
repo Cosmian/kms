@@ -1,0 +1,51 @@
+name: Publish Ansible collection
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    if: startsWith(github.event.release.tag_name, 'ansible-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ansible
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install Ansible
+        run: python -m pip install ansible-core
+      - name: Set collection version from release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          RELEASE_VERSION="${RELEASE_TAG#ansible-v}"
+          python - "$RELEASE_VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+          if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version):
+              raise SystemExit("release tag must contain a semantic version")
+          galaxy = pathlib.Path("galaxy.yml")
+          text, replacements = re.subn(
+              r"(?m)^version: .+$", "version: " + version, galaxy.read_text(), count=1
+          )
+          if replacements != 1:
+              raise SystemExit("galaxy.yml must contain exactly one version field")
+          galaxy.write_text(text)
+          PY
+      - name: Build Galaxy artifact
+        run: ansible-galaxy collection build --force --output-path dist
+      - name: Publish to Ansible Galaxy
+        env:
+          GALAXY_API_KEY: ${{ secrets.GALAXY_API_KEY }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          test -n "$GALAXY_API_KEY"
+          RELEASE_VERSION="${RELEASE_TAG#ansible-v}"
+          ansible-galaxy collection publish --api-key "$GALAXY_API_KEY" "dist/cosmian-kms-${RELEASE_VERSION}.tar.gz"

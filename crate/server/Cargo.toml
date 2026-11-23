@@ -5,7 +5,6 @@ authors.workspace = true
 categories.workspace = true
 edition.workspace = true
 exclude = ["ui/", "ui_non_fips/", "cosmian-kms/", ".vscode/"]
-homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -56,6 +55,7 @@ non-fips = [
   "aws_cloudhsm_pkcs11_loader/non-fips",
   "azure_cloud_hsm_pkcs11_loader/non-fips",
   "crypt2pay_pkcs11_loader/non-fips",
+  "idemia_sphere_pkcs11_loader/non-fips",
   "luna_pkcs11_loader/non-fips",
   "proteccio_pkcs11_loader/non-fips",
   "smartcardhsm_pkcs11_loader/non-fips",
@@ -77,7 +77,6 @@ async-trait = { workspace = true }
 aws_cloudhsm_pkcs11_loader = { workspace = true }
 azure_cloud_hsm_pkcs11_loader = { workspace = true }
 base64 = { workspace = true }
-chrono = { workspace = true }
 clap = { workspace = true, features = [
   "help",
   "env",
@@ -103,6 +102,7 @@ gcp_cloud_hsm_pkcs11_loader = { workspace = true }
 governor = { workspace = true, features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+idemia_sphere_pkcs11_loader = { workspace = true }
 ipnet = { workspace = true, features = ["serde"] }
 jsonwebtoken = { workspace = true }
 kryoptic_pkcs11_loader = { workspace = true }
@@ -117,7 +117,6 @@ openssl-sys = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
-pem = { workspace = true }
 proteccio_pkcs11_loader = { workspace = true }
 regex = { workspace = true, features = ["std", "unicode-perl"] }
 reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
@@ -125,19 +124,18 @@ reqwest = { workspace = true, features = [ # Remove "default" which includes rus
   "native-tls",
   "socks",
 ] }
-scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
 serde_ignored = { workspace = true }
 serde_json = { workspace = true }
+ssh-key = { workspace = true }
 luna_pkcs11_loader = { workspace = true }
 smartcardhsm_pkcs11_loader = { workspace = true }
 softhsm2_pkcs11_loader = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
-time = { workspace = true, features = ["local-offset", "formatting"] }
+time = { workspace = true, features = ["local-offset", "formatting", "parsing", "macros"] }
 tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
-tower-service = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 utimaco_pkcs11_loader = { workspace = true }
@@ -153,16 +151,10 @@ windows-service = { workspace = true }
 actix-http = { workspace = true }
 cosmian_kms_client_utils = { workspace = true }
 cosmian_kms_interfaces = { workspace = true }
-native-tls = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing"] }
-pem = { workspace = true }
 serial_test = { workspace = true }
 tempfile = { workspace = true }
 tokio-postgres = { workspace = true }
-
-[build-dependencies]
-actix-http = { workspace = true }
-time = { workspace = true, features = ["local-offset", "formatting"] }
 
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING
@@ -463,6 +455,12 @@ target = "kms.toml"
 [[package.metadata.packager.resources]]
 src = "../../ui/dist"
 target = "ui/"
+
+# OpenSSL provider files: variant.txt for every installer; the FIPS installer also gets
+# ssl/, ossl-modules/ and cosmian_kms_fips.cmd (staged by cargo_build.ps1 New-PackageOpensslDir)
+[[package.metadata.packager.resources]]
+src = "../../target/windows-package-openssl"
+target = "openssl/"
 
 # NSIS-specific configuration
 [package.metadata.packager.nsis]

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -45,7 +47,7 @@ pub(crate) async fn create_user_decryption_key(
         })?
         .to_string();
 
-    for owm in kmip_server
+    for mut owm in kmip_server
         .database
         .retrieve_objects(ObjectHandle::from(&msk_handle))
         .await?
@@ -61,14 +63,19 @@ pub(crate) async fn create_user_decryption_key(
             continue;
         }
 
-        // The master key should have attributes
-        let Ok(attributes) = owm.object().attributes() else {
+        // The master key should be a CoverCrypt secret key. Read the format from the key block:
+        // a key wrapped at rest (server KEK) has no readable key-value attributes.
+        if owm.object().key_block().map(|kb| kb.key_format_type).ok()
+            != Some(KeyFormatType::CoverCryptSecretKey)
+        {
             continue;
-        };
+        }
 
-        // The master key should be a CoverCrypt secret key
-        if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
-            continue;
+        if owm.object().is_wrapped() {
+            let unwrapped = kmip_server
+                .get_unwrapped(owm.id(), owm.object(), owner)
+                .await?;
+            Arc::make_mut(&mut owm).set_object(unwrapped);
         }
 
         let access_policy =
@@ -128,7 +135,7 @@ fn create_user_decryption_key_(
 
     trace!("updated_master_secret_key_bytes len: {}", msk_bytes.len());
 
-    let msk_attributes = owm.object().attributes()?;
+    let msk_attributes = owm.attributes();
     let mpk_link = msk_attributes
         .get_link(LinkType::PublicKeyLink)
         .ok_or_else(|| {

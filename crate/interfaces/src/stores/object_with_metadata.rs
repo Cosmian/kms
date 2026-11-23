@@ -4,9 +4,7 @@ use cosmian_kmip::{
     KmipError,
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
     kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, UsageLimitsUnit},
+        kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
     },
     time_normalize,
 };
@@ -25,6 +23,8 @@ pub struct ObjectWithMetadata {
     owner: UserId,
     state: State,
     attributes: Attributes,
+    // optimistic-lock counter as read from the store; `None` if the store does not track it
+    version: Option<u64>,
 }
 
 impl ObjectWithMetadata {
@@ -42,7 +42,21 @@ impl ObjectWithMetadata {
             owner: owner.into(),
             state,
             attributes,
+            version: None,
         }
+    }
+
+    /// Set the version read from the store (see `AtomicOperation::UpdateObjectIfVersion`).
+    #[must_use]
+    pub const fn with_version(mut self, version: u64) -> Self {
+        self.version = Some(version);
+        self
+    }
+
+    /// The optimistic-lock version read from the store, if the store tracks one.
+    #[must_use]
+    pub const fn version(&self) -> Option<u64> {
+        self.version
     }
 
     #[must_use]
@@ -220,16 +234,10 @@ impl ObjectWithMetadata {
     /// Returns `true` when no `UsageLimits` are set or the budget is sufficient.
     #[must_use]
     pub fn has_usage_budget(&self, data_len: usize) -> bool {
-        let Some(ul) = self.attributes.usage_limits.as_ref() else {
-            return true;
-        };
-        match ul.usage_limits_unit {
-            UsageLimitsUnit::Byte => {
-                let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
-                ul.usage_limits_total >= needed
-            }
-            UsageLimitsUnit::Object => ul.usage_limits_total > 0,
-        }
+        self.attributes
+            .usage_limits
+            .as_ref()
+            .is_none_or(|limits| limits.allows(data_len))
     }
 
     // ─── Enforcement (error-returning) ───────────────────────────────────────
@@ -280,6 +288,7 @@ impl Display for ObjectWithMetadata {
 )]
 mod tests {
     use cosmian_kmip::{
+        SensitiveBytes,
         kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_attributes::Attributes,
@@ -290,7 +299,6 @@ mod tests {
         time_normalize,
     };
     use time::Duration;
-    use zeroize::Zeroizing;
 
     use super::ObjectWithMetadata;
 
@@ -300,7 +308,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
+                    key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![0_u8; 32])),
                     attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,
@@ -407,7 +415,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
+                    key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![0_u8; 32])),
                     attributes: Some(Box::new(kb_attrs)),
                 }),
                 key_compression_type: None,

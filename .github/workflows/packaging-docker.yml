@@ -3,18 +3,7 @@ name: Packaging - Docker
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
-        default: 1.99.1
   workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain to use (e.g., stable, nightly-YYYY-MM-DD)
-        required: true
-        type: string
-        default: 1.99.1
 
 jobs:
   nix-docker-image:
@@ -204,6 +193,22 @@ jobs:
           path: target/image-scan/${{ matrix.features }}/
           if-no-files-found: warn
 
+      - name: Run database upgrade gate
+        if: matrix.runner == 'ubuntu-24.04'
+        timeout-minutes: 45
+        env:
+          DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+        run: mise run test:upgrade-db --variant ${{ matrix.features }}
+
+      - name: Upload database upgrade failure artifacts
+        if: failure() && matrix.runner == 'ubuntu-24.04'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: db-upgrade-gate-${{ matrix.features }}-${{ steps.arch.outputs.arch }}
+          path: target/db-upgrade-gate/${{ matrix.features }}/
+          retention-days: 7
+          if-no-files-found: ignore
+
       # - name: Oracle TDE remote upgrade and smoke test
       #   if: matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
       #   env:
@@ -391,7 +396,7 @@ jobs:
   # Deploys the images built above (FIPS and non-FIPS) with the documented Helm values
   # (documentation/docs/hsm_support/<model>.md), so they are not built a second time. The vendor
   # libraries are x86_64 only, hence amd64. The HSMs refuse concurrent CI runs, hence the same
-  # per-HSM concurrency group as the `test-hsm-hardware` job of test_all.yml. Upstream repository only,
+  # per-HSM concurrency group as the `hsm:*` legs of test_all.yml. Upstream repository only,
   # never on pull requests (real HSMs: nightly, tag and dispatch runs).
 
   test-k8s-hsm:

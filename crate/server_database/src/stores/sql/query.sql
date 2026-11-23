@@ -14,8 +14,18 @@ INSERT INTO parameters (name,value) VALUES ($1, $2)
 -- name: select-parameter
 SELECT value FROM parameters WHERE name=$1;
 
+-- name: insert-parameter-if-absent
+INSERT INTO parameters (name,value) VALUES ($1, $2) ON CONFLICT(name) DO NOTHING;
+
 -- name: delete-parameter
 DELETE FROM parameters WHERE name=$1;
+
+-- name: has-table-parameters
+SELECT to_regclass('parameters') IS NOT NULL;
+
+-- 1263358785 is ASCII "KMSA" (audit schema bootstrap uses slot 1); slot 2 serializes startup migrations.
+-- name: select-migration-advisory-lock
+SELECT pg_try_advisory_lock(1263358785, 2);
 
 
 -- name: create-table-objects
@@ -34,6 +44,18 @@ SELECT attributes from objects;
 
 -- name: add-column-wrapping-key-id
 ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);
+
+-- name: add-column-version
+ALTER TABLE objects ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
+
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
+
+-- name: is-attributes-jsonb
+SELECT atttypid = 'jsonb'::regtype FROM pg_attribute WHERE attrelid = 'objects'::regclass AND attname = 'attributes';
+
+-- name: alter-attributes-jsonb
+ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (
@@ -66,7 +88,7 @@ DELETE FROM crls;
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, objects.version
         FROM objects
         WHERE objects.id=$1;
 
@@ -74,10 +96,17 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
 SELECT objects.state, objects.attributes FROM objects WHERE objects.id=$1;
 
 -- name: update-object-with-object
-UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3 WHERE id=$4;
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1 WHERE id=$4;
+
+-- name: update-object-with-object-if-version
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1 WHERE id=$4 AND version=$5;
+
+-- name: update-object-if-owned-version
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3, version=version+1
+WHERE id=$4 AND owner=$5 AND version=$6 AND state<>$7 AND state<>$8;
 
 -- name: update-object-with-state
-UPDATE objects SET state=$1 WHERE id=$2;
+UPDATE objects SET state=$1, version=version+1 WHERE id=$2;
 
 -- name: delete-object
 DELETE FROM objects WHERE id=$1;
@@ -85,7 +114,7 @@ DELETE FROM objects WHERE id=$1;
 -- name: upsert-object
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT(id)
-        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5, wrapping_key_id=$6
+        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5, wrapping_key_id=$6, version=objects.version+1
         WHERE objects.owner=$5;
 
 -- name: select-user-accesses-for-object
@@ -258,3 +287,82 @@ SELECT crl_der, generated_at FROM crls WHERE issuer_id = $1;
 
 -- name: list-crl-issuers
 SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;
+
+-- name: health-check
+SELECT 1;
+
+-- name: select-max-crl-number
+SELECT MAX(crl_number) FROM crls;
+
+-- name: alter-column-attributes-jsonb
+ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;
+
+-- name: add-column-co-activated-by
+ALTER TABLE crypto_officer_activations ADD COLUMN IF NOT EXISTS activated_by VARCHAR(255);
+
+-- name: create-unique-index-co-activations-active
+CREATE UNIQUE INDEX IF NOT EXISTS idx_co_activations_active
+        ON crypto_officer_activations (activated_by)
+        WHERE revoked_at IS NULL;
+
+-- name: select-pg-backend-ssl
+SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid();
+
+-- ── AES-GCM invocation counter (NIST SP 800-38D §8.3) ──────────────────────────
+-- One row per key, apart from the objects table so that counting never changes an object's
+-- version. `reserve-gcm-invocations` adds $2 to the count and returns the new count, or no row
+-- when the new count would exceed $3.
+
+-- name: create-table-gcm_invocations
+CREATE TABLE IF NOT EXISTS gcm_invocations (
+    object_id VARCHAR(128) NOT NULL PRIMARY KEY,
+    count     BIGINT       NOT NULL
+);
+
+-- name: clean-table-gcm_invocations
+DELETE FROM gcm_invocations;
+
+-- name: purge-orphan-gcm-invocations
+DELETE FROM gcm_invocations WHERE object_id NOT IN (SELECT id FROM objects);
+
+-- name: reserve-gcm-invocations
+INSERT INTO gcm_invocations (object_id, count) VALUES ($1, $2)
+ON CONFLICT (object_id) DO UPDATE SET count = gcm_invocations.count + $2
+WHERE gcm_invocations.count + $2 <= $3
+RETURNING count;
+
+-- name: delete-gcm-invocations
+DELETE FROM gcm_invocations WHERE object_id = $1;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64)  NOT NULL PRIMARY KEY,
+    version         VARCHAR(64)  NOT NULL,
+    last_heartbeat  BIGINT       NOT NULL,
+    is_leader       BOOLEAN      NOT NULL DEFAULT FALSE
+);
+
+-- name: clear-cluster-leader
+UPDATE cluster_nodes SET is_leader = FALSE;
+
+-- name: upsert-cluster-node
+INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (node_id) DO UPDATE SET
+    version = EXCLUDED.version,
+    last_heartbeat = EXCLUDED.last_heartbeat,
+    is_leader = EXCLUDED.is_leader;
+
+-- name: delete-stale-cluster-nodes
+DELETE FROM cluster_nodes WHERE last_heartbeat < $1;
+
+-- name: select-live-cluster-nodes
+SELECT node_id, version, last_heartbeat, is_leader
+FROM cluster_nodes WHERE last_heartbeat >= $1 ORDER BY node_id;
+
+-- Session-level advisory lock, scoped to the current database. Returns true when acquired.
+-- name: try-cron-lock
+SELECT pg_try_advisory_lock(hashtextextended(current_database() || ':' || $1, 0));
+
+-- name: release-cron-lock
+SELECT pg_advisory_unlock(hashtextextended(current_database() || ':' || $1, 0));

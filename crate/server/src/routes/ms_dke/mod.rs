@@ -5,7 +5,6 @@ use actix_web::{
     web::{Data, Json, Path},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
-use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{HashingAlgorithm, PaddingMethod},
@@ -18,6 +17,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use num_bigint_dig::BigInt;
 use serde::{Deserialize, Serialize};
+use time::{Duration, OffsetDateTime, macros::format_description};
 use url::Url;
 
 use crate::{
@@ -155,10 +155,13 @@ async fn internal_get_key(
         cache: DkePublicKeyCache {
             expiration: {
                 // make the key valid for one day
-                let now = Utc::now();
-                let later = now + Duration::days(1);
+                let later = OffsetDateTime::now_utc() + Duration::days(1);
 
-                later.format("%Y-%m-%dT%H:%M:%S").to_string()
+                later
+                    .format(format_description!(
+                        "[year]-[month]-[day]T[hour]:[minute]:[second]"
+                    ))
+                    .map_err(|e| kms_error!(e))?
             },
         },
     })
@@ -187,10 +190,14 @@ pub(crate) async fn decrypt(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
-    info!("Encrypted Data : {encrypted_data:?}",);
+    info!(
+        "Encrypted Data: alg={:?} value_len={}",
+        encrypted_data.alg,
+        encrypted_data.value.len()
+    );
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
-    trace!("POST /{key_name}/{key_id}/Decrypt {encrypted_data:?}");
+    trace!("POST /{key_name}/{key_id}/Decrypt");
     match internal_decrypt(&key_name, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),
@@ -240,8 +247,10 @@ fn big_int_to_u32(bu: &BigInt) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Utc};
     use num_bigint_dig::BigInt;
+    use time::{
+        OffsetDateTime, format_description::well_known::Rfc3339, macros::format_description,
+    };
 
     use crate::routes::ms_dke::big_int_to_u32;
 
@@ -262,10 +271,14 @@ mod tests {
 
     #[test]
     fn test_date_format() {
-        let date_time: DateTime<Utc> = "2020-11-21T21:15:55Z".parse().unwrap();
+        let date_time = OffsetDateTime::parse("2020-11-21T21:15:55Z", &Rfc3339).unwrap();
         assert_eq!(
             "2020-11-21T21:15:55",
-            date_time.format("%Y-%m-%dT%H:%M:%S").to_string()
+            date_time
+                .format(format_description!(
+                    "[year]-[month]-[day]T[hour]:[minute]:[second]"
+                ))
+                .unwrap()
         );
     }
 }

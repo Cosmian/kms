@@ -5,6 +5,10 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-060 — HSM ReKey revealed the existence and type of other users' HSM keys](#cosmian-2026-060--hsm-rekey-revealed-the-existence-and-type-of-other-users-hsm-keys)
+      - [COSMIAN-2026-059 — HSM keys addressed by their UID skipped the KMIP algorithm policy](#cosmian-2026-059--hsm-keys-addressed-by-their-uid-skipped-the-kmip-algorithm-policy)
+      - [COSMIAN-2026-058 — Retired HSM key generations remained usable for Encrypt, Sign and MAC](#cosmian-2026-058--retired-hsm-key-generations-remained-usable-for-encrypt-sign-and-mac)
+      - [COSMIAN-2026-057 — Decrypt by keyset name returned wrong-key output in unauthenticated modes](#cosmian-2026-057--decrypt-by-keyset-name-returned-wrong-key-output-in-unauthenticated-modes)
       - [COSMIAN-2026-056 — Get Attributes without a Unique Identifier selected another user's newest object](#cosmian-2026-056--get-attributes-without-a-unique-identifier-selected-another-users-newest-object)
       - [COSMIAN-2026-055 — Batch Undo could restore objects of another user](#cosmian-2026-055--batch-undo-could-restore-objects-of-another-user)
       - [COSMIAN-2026-054 — ReCertify authorized the issuer key as the certificate owner](#cosmian-2026-054--recertify-authorized-the-issuer-key-as-the-certificate-owner)
@@ -116,6 +120,84 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-060 — HSM ReKey revealed the existence and type of other users' HSM keys
+
+| Field      | Value                                                                                                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                                                              |
+| Published  | Pending                                                                                                                                                                          |
+| Affected   | from 5.25.0 before 6.0.0                                                                                                                                                         |
+| Fixed in   | 6.0.0                                                                                                                                                                            |
+| Found by   | PR review, 22 November 2026                                                                                                                                                      |
+| References | [COSMIAN-2026-037](#cosmian-2026-037--crypto-operations-reveal-the-existence-and-state-of-other-users-keys), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** The COSMIAN-2026-037 fix did not cover `ReKey` on HSM keys. A user allowed to create objects who sent `ReKey` for an HSM UID got a "not supported" error when the object was not an AES key, before any permission check, a permission error when it was an AES key they could not re-key, and a "not found" error when no such key existed.
+
+**Impact:** Such a user could test whether an HSM key ID exists on a slot and whether it is an AES key, without any grant on it. Key material and attributes were not exposed, and no key was rotated.
+
+**Mitigation:** Upgrade to 6.0.0. HSM `ReKey` and `ReKeyKeyPair` check the caller's ownership or `Rekey` grant before the object type, and a caller with no grant on the key gets the same `Item_Not_Found` as for a missing key; a missing key now returns `Item_Not_Found` and a wrong type `Invalid_Object_Type`. Regression tests: `hsm_rekey_by_a_non_owner_reveals_nothing` and `hsm_rekey_error_reasons` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+---
+
+#### COSMIAN-2026-059 — HSM keys addressed by their UID skipped the KMIP algorithm policy
+
+| Field      | Value                                                                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                     |
+| Published  | Pending                                                                                                                                      |
+| Affected   | from 5.16.0 before 6.0.0                                                                                                                     |
+| Fixed in   | 6.0.0                                                                                                                                        |
+| Found by   | PR review, 22 November 2026                                                                                                                  |
+| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression test](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** A crypto operation on an HSM key addressed by its own UID (any HSM key never re-keyed, or an explicit `name@N` generation) was routed to the HSM without checking the key's algorithm, length or curve against `[kmip.policy]`. Database keys and HSM keyset members resolved by keyset name were checked.
+
+**Impact:** A user holding a grant on an HSM key could use it for `Encrypt`, `Decrypt`, `Sign`, `MAC` and the verify operations although the configured algorithm policy forbids it, for example a key created on the token by another PKCS#11 application with a disallowed size or curve.
+
+**Mitigation:** Upgrade to 6.0.0. Every HSM key is checked against the algorithm policy, on its PKCS#11 metadata, before the HSM is called, however it is addressed. Regression test: `hsm_key_addressed_by_uid_obeys_algorithm_policy` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+---
+
+#### COSMIAN-2026-058 — Retired HSM key generations remained usable for Encrypt, Sign and MAC
+
+| Field      | Value                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                           |
+| Published  | Pending                                                                                                                                       |
+| Affected   | from 5.25.0 before 6.0.0                                                                                                                      |
+| Fixed in   | 6.0.0                                                                                                                                         |
+| Found by   | PR review, 22 November 2026                                                                                                                   |
+| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** `ReKey` of a database key moves the old key to `Deactivated` (KMIP 2.1 §4.57), which refuses it for protection. `ReKey` of an HSM key only marked the old generation as retired in its `CKA_LABEL`: PKCS#11 has no KMIP state, and the KMS sent an explicit generation UID (`name@N`) to the HSM without checking whether it was still the keyset head.
+
+**Impact:** After an HSM key was rotated, for example because it was suspected compromised or had reached the end of its cryptoperiod, any user still holding a grant on an older generation could keep encrypting, signing and computing MACs with it by its generation UID.
+
+**Mitigation:** Upgrade to 6.0.0. A generation that is not the head of its HSM keyset is treated as `Deactivated`: `Encrypt`, `Sign` and `MAC` with it fail with `Wrong_Key_Lifecycle_State`, while `Decrypt`, `Signature Verify` and `MAC Verify` still accept it. The head is read from the HSM on each protection operation, not from cached metadata, so a rotation made by another KMS node, or a keyset enrolled after its key was cached, also retires the old generation at once; an HSM failure during that check refuses the operation. The `name@first` / `name@0` addresses and the cached-metadata cases concern development code only. Regression tests: `protect_operations_use_only_the_keyset_head`, `cached_bare_and_latest_heads_cannot_protect_after_external_rotation`, `cached_hsm_protection_fails_closed_when_live_keyset_scan_fails` and `rsa_public_encrypt_checks_live_head_for_generated_public_key_ids` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+---
+
+#### COSMIAN-2026-057 — Decrypt by keyset name returned wrong-key output in unauthenticated modes
+
+| Field      | Value                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                      |
+| Published  | Pending                                                                                                                                       |
+| Affected   | from 5.25.0 before 6.0.0                                                                                                                      |
+| Fixed in   | 6.0.0                                                                                                                                         |
+| Found by   | PR review, 22 November 2026                                                                                                                   |
+| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** `Decrypt` addressed to the bare name of a rotated keyset tries each generation, newest first, and returns the first result that does not fail. Modes without an integrity check do not fail with a wrong key: AES ECB, CTR and XTS, ChaCha20 and FPE always return output, and AES CBC and RSA PKCS#1 v1.5 do whenever the decrypted padding happens to be well formed.
+
+**Impact:** Ciphertext produced with an older generation in one of these modes could be decrypted with a newer key and the garbage returned as the plaintext, with a success status. A client unwrapping a data key this way silently received a wrong key, and the data it then protected could be lost.
+
+**Mitigation:** Upgrade to 6.0.0. `Decrypt` by keyset name is refused with `Feature_Not_Supported` unless the request or stored parameters select a mode that rejects a wrong key (AES GCM, GCM-SIV, CCM, key wrap, RSA OAEP); address one generation (`name@N`) to decrypt in another mode. On HSM keysets, a member decrypted without request parameters uses AES-GCM or RSA-OAEP, never the token default, which falls back to AES CBC or RSA PKCS#1 v1.5 on tokens without GCM or OAEP. Regression tests: `keyset_decrypt_refuses_modes_that_cannot_detect_a_wrong_key` and `keyset_decrypt_defaults_never_fall_back_to_unauthenticated_token_algorithms` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+The released exposure was in SQL keysets. HSM keyset chain-walking is new on this branch. The SQL regression `test_sql_keyset_decrypt_refuses_unauthenticated_modes` in `crate/server/src/core/operations/decrypt.rs` covers inherited stored parameters, explicit-generation CBC decryption and a request overriding stored CBC with GCM.
+
+---
 
 #### COSMIAN-2026-056 — Get Attributes without a Unique Identifier selected another user's newest object
 
@@ -493,7 +575,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An authenticated user could test whether a UID or tag matches another user's key and learn its lifecycle state. Key material and attributes were not exposed.
 
-**Mitigation:** Upgrade to 5.29.0. The permission check now runs first and keys the caller has no grant on are reported exactly like missing keys. Regression test: `test_crypto_op_does_not_reveal_foreign_keys` in `crate/server/src/tests/security_regression.rs`.
+**Mitigation:** Upgrade to 5.29.0. The permission check now runs first and keys the caller has no grant on are reported exactly like missing keys. Regression test: `test_crypto_op_does_not_reveal_foreign_keys` in `crate/server/src/tests/security_regression.rs`. HSM `ReKey` was not covered by this fix: see COSMIAN-2026-060.
 
 ---
 
@@ -1460,6 +1542,10 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-060    | Low      | from 5.25.0 before 6.0.0                                                | 6.0.0    | HSM ReKey revealed the existence and type of other users' HSM keys                                  |
+| COSMIAN-2026-059    | Moderate | from 5.16.0 before 6.0.0                                                | 6.0.0    | HSM keys addressed by their UID skipped the KMIP algorithm policy                                   |
+| COSMIAN-2026-058    | Low      | from 5.25.0 before 6.0.0                                                | 6.0.0    | Retired HSM key generations remained usable for Encrypt, Sign and MAC                               |
+| COSMIAN-2026-057    | Moderate | from 5.25.0 before 6.0.0                                                | 6.0.0    | Decrypt by keyset name returned wrong-key output in unauthenticated modes                           |
 | COSMIAN-2026-056    | Moderate | before 6.0.0                                                            | 6.0.0    | Get Attributes without a Unique Identifier selected another user's newest object                    |
 | COSMIAN-2026-055    | Moderate | unreleased development code only (introduced and fixed before 6.0.0)    | 6.0.0    | Batch Undo could restore objects of another user                                                    |
 | COSMIAN-2026-054    | High     | before 6.0.0                                                            | 6.0.0    | ReCertify authorized the issuer key as the certificate owner                                        |

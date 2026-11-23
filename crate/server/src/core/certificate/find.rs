@@ -422,7 +422,6 @@ async fn find_link_in_public_key(
     kms: &KMS,
     user: &UserId,
 ) -> Result<LinkedObjectIdentifier, KmsError> {
-    // TODO: retrieve only the attributes when #88 is fixed
     let public_key_id = linked_id_str(public_key_id);
     let public_key_owm = Box::pin(retrieve_object_for_operation(
         ObjectHandle::from(&*public_key_id),

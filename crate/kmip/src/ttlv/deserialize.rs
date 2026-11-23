@@ -27,9 +27,12 @@ impl<'de> Deserialize<'de> for HexBytes {
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<HexBytes, E> {
-                hex::decode(v)
-                    .map(HexBytes)
-                    .map_err(|_e| E::custom(format!("Invalid value for a ByteString: {v}")))
+                hex::decode(v).map(HexBytes).map_err(|_e| {
+                    E::custom(format!(
+                        "Invalid value for a ByteString: not a hex string of {} chars",
+                        v.len()
+                    ))
+                })
             }
         }
         deserializer.deserialize_str(HexVisitor)
@@ -128,22 +131,28 @@ impl<'de> Deserialize<'de> for TTLV {
                                     if hex.get(0..2).ok_or_else(|| {
                                         de::Error::custom(format!(
                                             "visit_map: indexing slicing failed for BigInteger \
-                                             0..2: {hex}"
+                                             0..2 ({} chars)",
+                                            hex.len()
                                         ))
                                     })? != "0x"
                                     {
                                         return Err(de::Error::custom(format!(
-                                            "Invalid value for Mask: {hex}"
+                                            "Invalid value for Mask: missing 0x prefix ({} chars)",
+                                            hex.len()
                                         )));
                                     }
                                     let bytes = hex::decode(hex.get(2..).ok_or_else(|| {
                                         de::Error::custom(format!(
                                             "visit_map: indexing slicing failed for BigInteger \
-                                             2..: {hex}"
+                                             2.. ({} chars)",
+                                            hex.len()
                                         ))
                                     })?)
                                     .map_err(|_e| {
-                                        de::Error::custom(format!("Invalid value for Mask: {hex}"))
+                                        de::Error::custom(format!(
+                                            "Invalid value for Mask: not a hex string ({} chars)",
+                                            hex.len()
+                                        ))
                                     })?;
                                     // build the `KmipBigInt` using the bytes representation.
                                     let v = KmipBigInt::from_signed_bytes_be(bytes.as_slice());
@@ -349,7 +358,7 @@ impl<'de> Deserialize<'de> for KmipEnumerationVariant {
             where
                 E: de::Error,
             {
-                trace!("visit_str: {}", v);
+                trace!("visit_str: {} chars", v.len());
                 if v.starts_with("0x") {
                     let hex_string = v.get(2..).ok_or_else(|| {
                         de::Error::custom("Invalid hex string for enumeration value: {v}")

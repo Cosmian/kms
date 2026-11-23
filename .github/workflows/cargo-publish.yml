@@ -3,10 +3,6 @@ name: Cargo Publish Workspace
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
     secrets:
       token:
         required: true
@@ -20,7 +16,6 @@ jobs:
           submodules: recursive
 
       - name: Free Disk Space (Ubuntu)
-        if: github.event_name != 'pull_request'
         uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
           # This might remove tools that are actually needed,
@@ -37,7 +32,6 @@ jobs:
           swap-storage: true
 
       - uses: ./.github/actions/cleanup-runner
-        if: github.event_name != 'pull_request'
 
       - name: Dump context for debug
         uses: crazy-max/ghaction-dump-context@4d9eeaf15dd59aa4346919ea84a84ccf514b4db8 # v3
@@ -46,23 +40,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          components: rustfmt, clippy
-
-      - name: Publishing - dry run
-        if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
-        shell: bash
-        run: |
-          cargo publish --all-features --workspace --dry-run
-
-      # PRs skip the full compile: --no-verify still catches git/path deps without a version and bad metadata.
-      - name: Publishing - dry run (no compile)
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          cargo publish --workspace --dry-run --no-verify
+      - uses: ./.github/actions/install-rust
 
       - name: Publishing
         if: startsWith(github.ref, 'refs/tags/')

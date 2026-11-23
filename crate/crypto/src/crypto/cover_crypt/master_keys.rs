@@ -105,7 +105,7 @@ pub fn create_msk_object(
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(msk_bytes),
+                key_material: KeyMaterial::ByteString(msk_bytes.into()),
                 attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
@@ -147,7 +147,9 @@ fn create_mpk_object(
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
+                key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
+                    key.to_vec(),
+                )),
                 attributes: Some(Box::new(attributes)),
             }),
             cryptographic_length,
@@ -190,7 +192,7 @@ pub fn kmip_objects_from_cc_master_keypair(
 
     match key_material {
         KeyMaterial::ByteString(bytes) => {
-            *bytes = msk_bytes;
+            *bytes = msk_bytes.into();
             Ok(())
         }
         _ => Err(CryptoError::Kmip(
@@ -211,7 +213,7 @@ pub fn kmip_objects_from_cc_master_keypair(
 
     match key_material {
         KeyMaterial::ByteString(bytes) => {
-            *bytes = mpk_bytes;
+            *bytes = mpk_bytes.into();
             Ok(())
         }
         _ => Err(CryptoError::Kmip(

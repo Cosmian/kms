@@ -107,9 +107,9 @@ async fn encrypt_dir(
     let encrypt_req = Encrypt {
         unique_identifier: Some(UniqueIdentifier::TextString(kid)),
         cryptographic_parameters: Some(kmip_params),
-        data: Some(Zeroizing::new(plaintext)),
+        data: Some(plaintext.into()),
         i_v_counter_nonce: None,
-        authenticated_encryption_additional_data: Some(aad_bytes),
+        authenticated_encryption_additional_data: Some(aad_bytes.into()),
         ..Default::default()
     };
 
@@ -326,7 +326,7 @@ async fn encrypt_rsa_oaep(
     let aad_bytes = build_jwe_aad(&protected_b64, aad.as_deref())?;
 
     // Step 3: AES-GCM encrypt plaintext with the ephemeral CEK
-    let output = aes_gcm_encrypt(&cek, enc, plaintext, aad_bytes.as_ref(), &kms.rng)?;
+    let output = aes_gcm_encrypt(&cek, enc, plaintext, aad_bytes.as_ref())?;
 
     // CEK is Zeroizing — dropped automatically here
 

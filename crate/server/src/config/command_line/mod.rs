@@ -11,6 +11,7 @@ mod http_config;
 mod idp_auth_config;
 mod jwks_endpoint_config;
 mod kmip_policy_config;
+mod kv_config;
 mod logging;
 mod ocsp_config;
 mod proxy_config;
@@ -40,6 +41,7 @@ pub use jwks_endpoint_config::JwksEndpointConfig;
 pub use kmip_policy_config::{
     AesKeySize, KmipAllowlistsConfig, KmipPolicyConfig, KmipPolicyId, RsaKeySize,
 };
+pub use kv_config::KvConfig;
 pub use logging::{LoggingConfig, get_default_rolling_log_dir};
 pub use ocsp_config::{NoncePolicyConfig, OcspConfig};
 pub use proxy_config::ProxyConfig;

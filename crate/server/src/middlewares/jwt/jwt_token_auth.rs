@@ -523,7 +523,7 @@ mod real_validation {
     }
 
     fn now() -> i64 {
-        chrono::Utc::now().timestamp()
+        time::OffsetDateTime::now_utc().unix_timestamp()
     }
 
     fn valid_claims() -> Value {

@@ -13,6 +13,9 @@ use time::OffsetDateTime;
 
 use crate::{InterfaceResult, ObjectWithMetadata, UserId};
 
+/// Maximum number of AES-GCM invocations with a random IV under one key (NIST SP 800-38D §8.3).
+pub const GCM_MAX_INVOCATIONS: u64 = 1 << 32;
+
 /// An atomic operation on the objects database
 pub enum AtomicOperation {
     /// Create (uid, owner, object, attributes, tags) - the state will be active
@@ -21,6 +24,22 @@ pub enum AtomicOperation {
     Upsert((String, Object, Attributes, Option<HashSet<String>>, State)),
     /// Update the object (uid, object, attributes, tags) - the state will be not be updated
     UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
+    /// Replace an object's content only if the caller owns it, it is not destroyed and its
+    /// version still equals `expected_version` (the value read in
+    /// `ObjectWithMetadata::version`), preserving its state. Any mismatch fails the whole batch
+    /// with `InterfaceError::Conflict`; a success increments the version.
+    CompareAndSwapObject {
+        uid: String,
+        expected_version: u64,
+        object: Box<Object>,
+        attributes: Attributes,
+        tags: Option<HashSet<String>>,
+    },
+    /// Same as `UpdateObject` (uid, object, attributes, tags, `expected_version`), but applied only
+    /// if the stored object's version still equals `expected_version` (the value read in
+    /// `ObjectWithMetadata::version`). A mismatch fails the whole batch with `InterfaceError::Conflict`.
+    /// Every successful write to an object increments its version.
+    UpdateObjectIfVersion((String, Object, Attributes, Option<HashSet<String>>, u64)),
     /// Update the state (uid, state)
     UpdateState((String, State)),
     /// Delete (uid)
@@ -34,8 +53,10 @@ impl AtomicOperation {
             Self::Create((uid, _, _, _, _))
             | Self::Upsert((uid, _, _, _, _))
             | Self::UpdateObject((uid, _, _, _))
+            | Self::UpdateObjectIfVersion((uid, _, _, _, _))
             | Self::UpdateState((uid, _))
-            | Self::Delete(uid) => uid,
+            | Self::Delete(uid)
+            | Self::CompareAndSwapObject { uid, .. } => uid,
         }
     }
 
@@ -265,6 +286,22 @@ pub trait ObjectsStore {
         Ok(())
     }
 
+    /// Return the server-internal parameter `name`, storing `value` first if it is absent.
+    ///
+    /// The insert is atomic: concurrent callers, including other server replicas sharing the
+    /// database, all get the first stored value. Parameters are not KMIP objects, so no client
+    /// operation can read or write them. Stores that encrypt their data at rest (Redis-findex)
+    /// encrypt parameters too. Stores without a parameters table do not support it.
+    async fn get_or_insert_parameter(
+        &self,
+        _name: &'static str,
+        _value: &str,
+    ) -> InterfaceResult<String> {
+        Err(crate::InterfaceError::NotSupported(
+            "server parameters are not supported by this object store".to_owned(),
+        ))
+    }
+
     /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
     ///
     /// `start_date` and `end_date` are stored as `CKA_START_DATE` / `CKA_END_DATE`.
@@ -294,8 +331,7 @@ pub trait ObjectsStore {
     /// Adding a required method to this trait would force every backend
     /// (SQL, Redis, HSM stubs) to implement it in the same commit. The default
     /// lets backends compile immediately; each one should replace it with a
-    /// real implementation when ready. A `TODO` comment is added at each
-    /// call site that still uses the default.
+    /// real implementation when ready.
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
         warn!(
             "count_all_non_destroyed not implemented for this ObjectsStore backend — \
@@ -333,6 +369,28 @@ pub trait ObjectsStore {
     /// Called by the slow-path cron loop (every 5 minutes) to prevent counter
     /// drift from accumulating due to partial failures.
     async fn reconcile_counts(&self) -> InterfaceResult<()> {
+        Ok(())
+    }
+
+    /// Reserve `invocations` invocations of AES-GCM (or GMAC) with a random IV under the key `uid`
+    /// against the cap [`GCM_MAX_INVOCATIONS`] (NIST SP 800-38D §8.3).
+    ///
+    /// Returns the new total, or `None` when the reservation would exceed the cap, in which case
+    /// nothing is reserved. An `invocations` of 0 returns the current total.
+    ///
+    /// The count is kept apart from the object, so reserving never changes its version. The
+    /// default grants every reservation: a store that keeps no count leaves the cap to the module
+    /// holding the key (an HSM, under its Security Policy) or is not used in a FIPS build.
+    async fn reserve_gcm_invocations(
+        &self,
+        _uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        Ok(Some(invocations))
+    }
+
+    /// Forget the AES-GCM invocation count of the key `uid` (the key is destroyed).
+    async fn delete_gcm_invocations(&self, _uid: &str) -> InterfaceResult<()> {
         Ok(())
     }
 

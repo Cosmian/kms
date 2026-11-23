@@ -3,19 +3,26 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ckms::{
     config::{CKMS_CONF_ENV, ClientConfig},
     reexport::cosmian_kms_cli_actions::reexport::{
-        cosmian_kmip::kmip_2_1::{
-            extra::VENDOR_ID_COSMIAN,
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::{Object, PrivateKey},
-            kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
-            requests::{
-                self, create_ec_key_pair_request, create_rsa_key_pair_request,
-                create_symmetric_key_kmip_object, import_object_request,
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                extra::VENDOR_ID_COSMIAN,
+                kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, PrivateKey},
+                kmip_operations::GetAttributes,
+                kmip_types::{
+                    AttributeReference, CryptographicAlgorithm, KeyFormatType, RecommendedCurve,
+                    Tag, UniqueIdentifier,
+                },
+                requests::{
+                    self, create_ec_key_pair_request, create_rsa_key_pair_request,
+                    create_symmetric_key_kmip_object, import_object_request,
+                },
             },
         },
         cosmian_kms_client::{
-            KmsClient,
+            ExportObjectParams, KmsClient,
             reexport::cosmian_kms_client_utils::certificate_utils::{
                 CertificationSource, CertifyRequestParams, build_certify_request,
             },
@@ -25,13 +32,17 @@ use ckms::{
 use cosmian_config_utils::ConfigUtils;
 use cosmian_logger::{debug, log_init};
 use cosmian_pkcs11_module::{
+    ModuleError,
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
         C_GetAttributeValue, C_Initialize, C_Login, C_LoginUser, C_OpenSession,
         C_SetAttributeValue, SLOT_ID,
     },
     test_decrypt, test_encrypt,
-    traits::{Backend, KeyAlgorithm, SignatureAlgorithm, backend as registered_backend},
+    traits::{
+        AES_GMAC_IV_SIZE, Backend, KeyAlgorithm, MacAlgorithm, MacUsage, SignatureAlgorithm,
+        backend as registered_backend,
+    },
 };
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INTERFACE, CK_INVALID_HANDLE, CK_OBJECT_CLASS,
@@ -52,7 +63,11 @@ use crate::{
         COSMIAN_PKCS11_SSH_KEY_TAG, CliBackend,
     },
     error::{Pkcs11Error, result::Pkcs11Result},
-    kms_object::get_kms_objects_async,
+    kms_object::{
+        batch_export_skipping_denied, get_kms_disk_encryption_data_objects,
+        get_kms_disk_encryption_data_objects_async, kms_import_object_async,
+        kms_import_symmetric_key_async,
+    },
 };
 
 pub(crate) fn save_pkcs11_client_config() -> String {
@@ -164,7 +179,7 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(p12_bytes.to_vec())),
+                key_material: KeyMaterial::ByteString(p12_bytes.to_vec().into()),
                 attributes: None,
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required
@@ -201,13 +216,12 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
     let kms_rest_client = ctx.get_owner_client();
     create_keys(&kms_rest_client, COSMIAN_PKCS11_DISK_ENCRYPTION_TAG).await?;
 
-    // Export using default per-object format, since the tag may also match non-key objects
-    // (e.g. certificates) depending on other tests and server reuse.
-    let objects = get_kms_objects_async(
+    // Same listing as the provider: one non-exportable key carrying the tag (another test
+    // process on a shared database) must not hide the keys created above.
+    let objects = get_kms_disk_encryption_data_objects_async(
         &kms_rest_client,
         VENDOR_ID_COSMIAN,
-        &[COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned()],
-        None,
+        COSMIAN_PKCS11_DISK_ENCRYPTION_TAG,
     )
     .await?;
 
@@ -276,6 +290,108 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
     Ok(())
 }
 
+/// A sensitive key carrying the disk-encryption tag (another client, or another test process on
+/// a shared database) cannot be exported: it must not hide the exportable ones.
+#[test]
+#[serial]
+fn test_disk_encryption_listing_skips_non_exportable_keys() -> Result<(), Pkcs11Error> {
+    log_init(None);
+    let rt = tokio::runtime::Runtime::new()?;
+    let client = rt.block_on(async {
+        let client = start_default_test_kms_server().await.get_owner_client();
+        create_keys(&client, COSMIAN_PKCS11_DISK_ENCRYPTION_TAG).await?;
+        let sensitive = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            &[9; 16],
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                sensitive: Some(true),
+                ..Default::default()
+            },
+        )?;
+        client
+            .import(import_object_request(
+                VENDOR_ID_COSMIAN,
+                Some("sensitive-vol".to_owned()),
+                sensitive,
+                Some(Attributes {
+                    sensitive: Some(true),
+                    ..Default::default()
+                }),
+                false,
+                true,
+                [COSMIAN_PKCS11_DISK_ENCRYPTION_TAG, "sensitive-vol"],
+            )?)
+            .await?;
+        Ok::<_, Pkcs11Error>(client)
+    })?;
+
+    let labels: Vec<String> = get_kms_disk_encryption_data_objects(
+        &client,
+        VENDOR_ID_COSMIAN,
+        COSMIAN_PKCS11_DISK_ENCRYPTION_TAG,
+    )?
+    .into_iter()
+    .map(|o| o.remote_id)
+    .collect();
+    assert!(
+        labels.contains(&"vol1".to_owned()) && labels.contains(&"vol2".to_owned()),
+        "exportable keys must still be listed, got {labels:?}"
+    );
+
+    // A failure that is not a denial must surface, never become an empty listing.
+    let missing = rt.block_on(batch_export_skipping_denied(
+        &client,
+        vec!["no-such-object".to_owned()],
+        ExportObjectParams::default,
+    ));
+    assert!(missing.is_err(), "a missing object must be an error");
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn test_oracle_tde_objects_are_active_on_creation() -> Pkcs11Result<()> {
+    log_init(None);
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let client = ctx.get_owner_client();
+        let key = kms_import_symmetric_key_async(
+            &client,
+            VENDOR_ID_COSMIAN,
+            KeyAlgorithm::Aes256,
+            32,
+            true,
+            Some("ORACLE.TDE.HSM.MK.ACTIVE_ON_CREATION_TEST"),
+            MacUsage::default(),
+        )
+        .await?;
+        let data = kms_import_object_async(
+            &client,
+            VENDOR_ID_COSMIAN,
+            "ORACLE.SECURITY.KM.ENCRYPTION.ACTIVE_ON_CREATION_TEST",
+            b"oracle tde data object",
+        )
+        .await?;
+        for id in [key.remote_id, data.remote_id] {
+            let state = client
+                .get_attributes(GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
+                    attribute_reference: Some(vec![AttributeReference::Standard(Tag::State)]),
+                })
+                .await?
+                .attributes
+                .state;
+            assert_eq!(
+                state,
+                Some(State::Active),
+                "{id} must be Active right after creation"
+            );
+        }
+        Ok(())
+    })
+}
+
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[test]
@@ -332,6 +448,97 @@ fn test_generate_random_is_served_by_the_kms() -> Pkcs11Result<()> {
     assert_ne!(first, second, "two calls must not return the same bytes");
     // The two chunks of one call (65_536 + 4_464 bytes) must not be a repeat of each other.
     assert_ne!(first.get(..4_464), first.get(65_536..));
+    Ok(())
+}
+
+/// AES-CMAC and the PKCS#11 AES-GMAC (caller IV, tag only) through the provider backend against a
+/// live KMS: the tags are the standard ones, tampering is rejected, and both run as KMIP `MAC`, so
+/// they need the key's MAC Generate / MAC Verify usage bits.
+#[test]
+#[serial]
+fn test_aes_mac_against_the_kms() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::crypto::symmetric::mac::{
+        aes_cmac, aes_gmac,
+    };
+
+    let backend = initialize_backend()?;
+    let to_error = |e: &dyn std::fmt::Display| Pkcs11Error::Default(e.to_string());
+    let data = b"cosmian pkcs11 aes mac".to_vec();
+    let iv = [0x42_u8; AES_GMAC_IV_SIZE];
+    let gmac = MacAlgorithm::AesGmac { iv };
+
+    // A key generated with CKA_SIGN and CKA_VERIFY, and a default key (Encrypt bit, no MAC bits).
+    let mac_key = backend
+        .generate_key_with_mac_usage(
+            KeyAlgorithm::Aes256,
+            32,
+            false,
+            Some("test-aes-mac-1367-both"),
+            MacUsage {
+                generate: true,
+                verify: true,
+            },
+        )
+        .map_err(|e| to_error(&e))?;
+    let plain_key = backend
+        .generate_key(
+            KeyAlgorithm::Aes256,
+            32,
+            false,
+            Some("test-aes-mac-1367-plain"),
+        )
+        .map_err(|e| to_error(&e))?;
+
+    let id = mac_key.remote_id();
+    let key_bytes = mac_key.raw_bytes().map_err(|e| to_error(&e))?;
+    let expected = aes_gmac(&key_bytes, iv, &data).map_err(|e| to_error(&e))?;
+    let expected_tag = expected.get(AES_GMAC_IV_SIZE..).unwrap_or_default();
+
+    // GMAC: the signature is the 16-byte tag of the standard algorithm for the caller's IV.
+    let tag = backend.mac(id, gmac, &data).map_err(|e| to_error(&e))?;
+    assert_eq!(tag, expected_tag);
+    backend
+        .mac_verify(id, gmac, &data, &tag)
+        .map_err(|e| to_error(&e))?;
+
+    let mut flipped = tag.clone();
+    flipped[0] ^= 0xFF;
+    let other_iv = MacAlgorithm::AesGmac {
+        iv: [0x43; AES_GMAC_IV_SIZE],
+    };
+    for (algorithm, message, signature) in [
+        (gmac, data.as_slice(), flipped.as_slice()),
+        (other_iv, data.as_slice(), tag.as_slice()),
+        (gmac, b"another message".as_slice(), tag.as_slice()),
+    ] {
+        assert!(matches!(
+            backend.mac_verify(id, algorithm, message, signature),
+            Err(ModuleError::SignatureInvalid)
+        ));
+    }
+
+    // CMAC with the same key.
+    let expected = aes_cmac(&key_bytes, &data).map_err(|e| to_error(&e))?;
+
+    let tag = backend
+        .mac(id, MacAlgorithm::AesCmac, &data)
+        .map_err(|e| to_error(&e))?;
+    assert_eq!(tag, expected);
+    backend
+        .mac_verify(id, MacAlgorithm::AesCmac, &data, &tag)
+        .map_err(|e| to_error(&e))?;
+    let mut flipped = tag;
+    flipped[0] ^= 0xFF;
+    assert!(matches!(
+        backend.mac_verify(id, MacAlgorithm::AesCmac, &data, &flipped),
+        Err(ModuleError::SignatureInvalid)
+    ));
+    // Without the MAC bits neither CMAC nor GMAC is allowed.
+    for algorithm in [MacAlgorithm::AesCmac, gmac] {
+        backend
+            .mac(plain_key.remote_id(), algorithm, &data)
+            .unwrap_err();
+    }
     Ok(())
 }
 
@@ -1353,4 +1560,125 @@ fn find_profile_count(
     );
     assert_eq!(C_FindObjectsFinal(session), CKR_OK);
     Ok(count)
+}
+
+/// Import an AES key of known value, with the MAC Generate / MAC Verify usage bits; returns its UID.
+fn import_mac_kat_key(key: &[u8]) -> Pkcs11Result<String> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
+
+    // Never inside a backend call: the backend blocks on its own runtime.
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let client = KmsClient::new_with_config(ctx.owner_client_config.clone())?;
+        let object = create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            key,
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_usage_mask: Some(
+                    CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify,
+                ),
+                ..Default::default()
+            },
+        )?;
+        let request = import_object_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            object,
+            None,
+            false,
+            false,
+            ["pkcs11-kat-mac"],
+        )?;
+        Ok(client.import(request).await?.unique_identifier.to_string())
+    })
+}
+
+/// Official AES-CMAC (SP 800-38B) and AES-GMAC (IEEE 802.1AE) vectors through the provider and the
+/// KMS: known keys, known tags, tampering rejected.
+#[test]
+#[serial]
+fn test_aes_mac_known_answers_against_the_kms() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::kat_vectors::{
+        aes_cmac_vectors, aes_gmac_vectors,
+    };
+
+    let to_error = |e: &dyn std::fmt::Display| Pkcs11Error::Default(e.to_string());
+    let backend = initialize_backend()?;
+    let cmac = aes_cmac_vectors().map_err(|e| to_error(&e))?;
+    for id in [
+        "sp800-38b-aes128-ex2",
+        "sp800-38b-aes192-ex2",
+        "sp800-38b-aes256-ex2",
+    ] {
+        let v = cmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let uid = import_mac_kat_key(&v.key)?;
+        assert_eq!(
+            backend.mac(&uid, MacAlgorithm::AesCmac, &v.msg)?,
+            v.tag,
+            "{id}"
+        );
+        backend.mac_verify(&uid, MacAlgorithm::AesCmac, &v.msg, &v.tag)?;
+        let mut flipped = v.tag.clone();
+        flipped[0] ^= 0xFF;
+        assert!(
+            matches!(
+                backend.mac_verify(&uid, MacAlgorithm::AesCmac, &v.msg, &flipped),
+                Err(ModuleError::SignatureInvalid)
+            ),
+            "{id}"
+        );
+    }
+
+    let gmac = aes_gmac_vectors().map_err(|e| to_error(&e))?;
+    for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+        let v = gmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let algorithm = MacAlgorithm::AesGmac {
+            iv: v.iv[..].try_into().map_err(|e| to_error(&e))?,
+        };
+        let uid = import_mac_kat_key(&v.key)?;
+        backend.mac_verify(&uid, algorithm, &v.msg, &v.tag)?;
+        let mut flipped = v.tag.clone();
+        flipped[0] ^= 0xFF;
+        assert!(
+            matches!(
+                backend.mac_verify(&uid, algorithm, &v.msg, &flipped),
+                Err(ModuleError::SignatureInvalid)
+            ),
+            "{id}"
+        );
+    }
+    Ok(())
+}
+
+/// AES-GMAC generation with the caller's IV against the IEEE 802.1AE vectors.
+#[test]
+#[serial]
+fn test_aes_gmac_known_answer_with_caller_iv() -> Pkcs11Result<()> {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::kat_vectors::aes_gmac_vectors;
+
+    let backend = initialize_backend()?;
+    let gmac = aes_gmac_vectors().map_err(|e| Pkcs11Error::Default(e.to_string()))?;
+    for id in ["openssl-gmac-2", "openssl-gmac-3"] {
+        let v = gmac
+            .iter()
+            .find(|v| v.id == id)
+            .ok_or_else(|| Pkcs11Error::Default(format!("vector {id} not found")))?;
+        let iv = v.iv[..]
+            .try_into()
+            .map_err(|e: std::array::TryFromSliceError| Pkcs11Error::Default(e.to_string()))?;
+        let uid = import_mac_kat_key(&v.key)?;
+        assert_eq!(
+            backend.mac(&uid, MacAlgorithm::AesGmac { iv }, &v.msg)?,
+            v.tag,
+            "{id}"
+        );
+    }
+    Ok(())
 }

@@ -204,7 +204,7 @@ pub(super) fn recover_tags(
             ..
         }) = key_block.key_value.as_ref()
     {
-        return attributes.get_tags(vendor_id);
+        return without_system_tags(attributes.get_tags(vendor_id));
     }
     HashSet::new()
 }
@@ -257,6 +257,7 @@ pub(super) async fn process_symmetric_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
     // make sure we have a CryptographicAlgorithm set; default to AES
     if attributes.cryptographic_algorithm.is_none() {
@@ -442,14 +443,13 @@ pub(super) async fn process_public_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
 
     // If the key is not wrapped and has no generic OpenSSL/PKCS8 representation (CoverCrypt,
     // ConfigurableKEM, or a native hybrid KEM group), skip OpenSSL normalization and store it in
     // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
     // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
     // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
-    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
-    // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
@@ -585,8 +585,6 @@ pub(super) async fn process_private_key(
     // its original KeyFormatType. Encrypt/Decrypt dispatch on these formats directly from the
     // stored raw bytes (see core/operations/{encrypt,decrypt}.rs), so no PKCS8 form is needed or
     // possible: OpenSSL 3.6 cannot serialize X25519MLKEM768/X448MLKEM1024 to DER at all.
-    // TODO: remove CoverCrypt/ConfigurableKEM from this exception when support for SPKI is added
-    // TODO: https://github.com/Cosmian/cover_crypt/issues/118
     {
         let object_key_block = object.key_block()?;
         if object_key_block.key_wrapping_data.is_none()
@@ -648,6 +646,7 @@ pub(super) async fn process_private_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
 
     // Replace updated attributes in the object structure if the object is not wrapped.
@@ -1101,6 +1100,7 @@ pub(super) async fn process_secret_data(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
 
     // force the usage mask to unrestricted if not in FIPS mode
@@ -1183,6 +1183,7 @@ pub(super) async fn process_pgp_key(
     if attributes.always_sensitive.is_none() {
         attributes.initialize_always_sensitive();
     }
+    attributes.reset_usage_limits_count();
     attributes.initialize_never_extractable();
 
     if let Ok(key_block) = object.key_block_mut()
@@ -1255,6 +1256,35 @@ pub(super) fn process_opaque_object(
             user,
         )],
     ))
+}
+
+/// Tags embedded in an imported object's own attributes are client-controlled too.
+#[cfg(test)]
+mod recover_tags_tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::SecretDataType, kmip_2_1::requests::create_secret_data_kmip_object,
+    };
+
+    use super::*;
+
+    #[test]
+    fn embedded_system_tags_are_dropped() {
+        let mut attributes = Attributes::default();
+        attributes
+            .set_tags("cosmian", ["_kv::metadata", "_kv::meta::app/key", "mine"])
+            .expect("tags are settable");
+        let object = create_secret_data_kmip_object(
+            "cosmian",
+            b"secret",
+            SecretDataType::Password,
+            &attributes,
+        )
+        .expect("secret data object is built");
+        assert_eq!(
+            recover_tags("cosmian", &Attributes::default(), &object),
+            HashSet::from(["mine".to_owned()])
+        );
+    }
 }
 
 #[cfg(all(test, feature = "non-fips"))]

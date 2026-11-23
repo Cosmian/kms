@@ -483,6 +483,32 @@ impl HttpClient {
         .await
     }
 
+    /// Send an HTTP PUT request with a JSON body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn put_json<B: Serialize>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> HttpClientResult<HttpResponse> {
+        let json_bytes = serde_json::to_vec(body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize request body: {e}"))
+        })?;
+        let body = Bytes::from(json_bytes);
+
+        self.send(|| {
+            let builder = http::Request::builder()
+                .method("PUT")
+                .uri(url)
+                .header("Content-Type", "application/json");
+            self.apply_default_headers(builder)
+                .body(Full::new(body.clone()))
+                .map_err(|e| HttpClientError::Default(format!("Failed to build PUT request: {e}")))
+        })
+        .await
+    }
+
     /// Send an HTTP POST request with raw bytes and a specified content type.
     ///
     /// # Errors

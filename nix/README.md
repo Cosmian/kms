@@ -349,7 +349,7 @@ flowchart TB
     l1 --> l2 --> l3 --> l4 --> result
 ```
 
-**Update workflow** (automated with nix.sh update-hashes or standalone script):
+**Update workflow** (automated with `mise run release:nix-update-hashes` or standalone script):
 
 ```mermaid
 flowchart TB
@@ -390,7 +390,7 @@ nix-build -A kms-server-fips-static-openssl -o result-server-fips
 # Check the installCheckPhase output for the hash and update command
 ```
 
-The `update-hashes` command is integrated into the main `nix.sh` script for convenience.
+The update is also available as `mise run release:update-hashes`.
 
 ## Proving determinism locally
 
@@ -448,13 +448,13 @@ flowchart TB
         trigger["CI packaging job fails with fixed-output hash mismatch"]
         update_cmd["mise run release:update-hashes [RUN_ID]"]
         update_sh["update_hashes.sh<br/>• requires gh<br/>• downloads job logs<br/>• parses specified/got hashes"]
-        update_files["Updates nix/expected-hashes/<br/>• ui.vendor.*.sha256<br/>• server.vendor.{static,dynamic}.sha256<br/>• cli.vendor.linux.sha256<br/>• cli.vendor.{fips,non-fips}.darwin.sha256"]
+        update_files["Updates nix/expected-hashes/<br/>• ui.vendor.*.sha256<br/>• server.vendor.{static,dynamic}.sha256<br/>• cargo.vendor.linux.sha256<br/>• cli.vendor.{fips,non-fips}.darwin.sha256"]
         trigger --> update_cmd --> update_sh --> update_files
     end
 
     subgraph offline["OFFLINE BUILD (No Network - Repeatable)"]
         no_net["export NO_PREWARM=1, CARGO_NET_OFFLINE"]
-        pkg_cmd["bash nix.sh package deb/rpm/dmg"]
+        pkg_cmd["mise run package:deb/rpm/dmg"]
         check_cache{"result-server-<variant> exists?"}
         reuse["Reuse Binary (no rebuild)"]
         nix_build["Build from Nix Store Cache"]
@@ -655,7 +655,7 @@ The prewarm steps populate the following paths so packaging can run fully offlin
 
 This section documents the low-level helper scripts in `nix/scripts/` for building, packaging, and maintaining Cosmian KMS with Nix.
 
-> **⚠️ Note for Contributors**: These scripts are internal implementation details called by `.mise/scripts/nix.sh` (via `mise run`).
+> **⚠️ Note for Contributors**: These scripts are internal implementation details called by the `mise run` tasks.
 > For normal development and packaging workflows, use `mise run <task>` instead of calling these scripts directly.
 > See [.mise/scripts/README.md](../.mise/scripts/README.md) for the complete developer workflow guide.
 
@@ -663,7 +663,7 @@ This section documents the low-level helper scripts in `nix/scripts/` for buildi
 
 ```mermaid
 flowchart TB
-    nix_sh[".mise/scripts/nix.sh<br/>(Dispatcher, via `mise run`)"]
+    nix_sh["mise run tasks<br/>(.mise/tasks)"]
     build_sh["build.sh<br/>Core server compilation<br/>Static link OpenSSL 3.6.5<br/>Validates: hash, GLIBC ≤ 2.34, version"]
     pkg_sh["package_*.sh<br/>• package_deb.sh<br/>• package_rpm.sh<br/>• package_dmg.sh<br/>Common: package_common.sh"]
     utils_sh["Utilities<br/>• get_version.sh<br/>• update_hashes.sh<br/>• generate_sbom.sh<br/>• signing_key.sh"]

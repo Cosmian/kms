@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -19,19 +19,19 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectHandle, ObjectWithMetadata,
-    ObjectsStore, PermissionsStore, UserId,
+    AtomicOperation, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult, ObjectHandle,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, error, trace, warn};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
-use redis::aio::ConnectionManager;
+use redis::{Script, aio::ConnectionManager};
 use uuid::Uuid;
 
 use super::{
     FINDEX_KEY_LENGTH,
     objects_db::{
         ACTIVE_KEY_COUNT_KEY, DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject,
-        keywords_from_attributes,
+        SCAN_BATCH_HINT, keywords_from_attributes,
     },
     permissions::PermissionDB,
 };
@@ -40,10 +40,7 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{
-            CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM, DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM,
-            certificate_serial_tag,
-        },
+        migrate::{Migrate, MigrationStep, certificate_serial_tag},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::{AtomicScriptOutcome, ScriptOp},
@@ -54,6 +51,25 @@ use crate::{
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+
+/// Adds ARGV[1] to the AES-GCM invocation count in KEYS[1] unless the result exceeds ARGV[2];
+/// returns the new count, or nil (nothing reserved) when it would exceed the cap.
+/// Lua numbers are doubles, exact up to 2^53, so they hold the 2^32 cap.
+const RESERVE_GCM_INVOCATIONS_LUA: &str = "
+local total = tonumber(redis.call('GET', KEYS[1]) or '0') + tonumber(ARGV[1])
+if total > tonumber(ARGV[2]) then return false end
+redis.call('SET', KEYS[1], total)
+return total
+";
+
+static RESERVE_GCM_INVOCATIONS_SCRIPT: LazyLock<Script> =
+    LazyLock::new(|| Script::new(RESERVE_GCM_INVOCATIONS_LUA));
+
+const GCM_INVOCATIONS_KEY_PREFIX: &str = "gcm_invocations::";
+
+fn gcm_invocations_key(uid: &str) -> String {
+    format!("{GCM_INVOCATIONS_KEY_PREFIX}{uid}")
+}
 
 /// Returns `true` when an object's state counts toward the live-object total.
 ///
@@ -263,6 +279,22 @@ impl RedisWithFindex {
         master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         clear_database: bool,
     ) -> DbResult<Self> {
+        let (redis_with_findex, _applied) = Self::instantiate_at_version(
+            redis_url,
+            master_key,
+            clear_database,
+            env!("CARGO_PKG_VERSION"),
+        )
+        .await?;
+        Ok(redis_with_findex)
+    }
+
+    pub(crate) async fn instantiate_at_version(
+        redis_url: &str,
+        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        clear_database: bool,
+        target: &str,
+    ) -> DbResult<(Self, Vec<MigrationStep>)> {
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
@@ -280,18 +312,6 @@ impl RedisWithFindex {
         let findex = Arc::new(init_findex_redis(&master_key, redis_url).await?);
 
         let permission_db = PermissionDB::new(findex.clone());
-
-        if clear_database {
-            redis::cmd("FLUSHDB")
-                .query_async::<()>(&mut mgr.clone())
-                .await?;
-        }
-
-        let count: usize = redis::cmd("DBSIZE")
-            .query_async(&mut mgr.clone())
-            .await
-            .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
-        trace!("Redis DB size: {count}");
 
         // Derive ceremony key material from the master key.
         // Per-user ceremony record keys are computed at call time using this derivation key.
@@ -313,43 +333,51 @@ impl RedisWithFindex {
             ceremony_active_cos_key,
         };
 
-        if count == 0 {
-            debug!("Empty Redis database detected. Initializing a new database instance.");
-            redis_with_findex
-                .set_current_db_version(env!("CARGO_PKG_VERSION"))
-                .await?;
-            redis_with_findex.set_db_state(DbState::Ready).await?;
-        } else {
-            // Existing database detected. Accept databases that have our version/state markers;
-            // refuse truly legacy databases (no markers or non-ready state) since migrations were removed.
-            let db_version = redis_with_findex.get_current_db_version().await?;
-            let db_state = redis_with_findex.get_db_state().await?;
+        let applied = redis_with_findex.bootstrap(clear_database, target).await?;
+        Ok((redis_with_findex, applied))
+    }
 
-            match (db_version, db_state) {
-                (Some(version), Some(DbState::Ready)) => {
-                    debug!(
-                        "Existing Redis database detected (version {version}). Using current database."
-                    );
-                    // proceed without reinitialization
-                }
-                _ => {
-                    return Err(DbError::DatabaseError(
-                        "Legacy Redis/Findex migration support has been removed. \
-                        Please export your data from the legacy KMS and reimport into the current version."
-                            .to_owned(),
-                    ));
+    /// Delete AES-GCM invocation counters whose object no longer exists.
+    ///
+    /// An older KMS deletes keys without deleting their counters; a reused UID
+    /// would otherwise inherit the stale count.
+    pub(crate) async fn purge_orphan_gcm_invocations(&self) -> DbResult<()> {
+        let map_err = |e: redis::RedisError| {
+            DbError::DatabaseError(format!("Failed to purge AES-GCM invocation counters: {e}"))
+        };
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(format!("{GCM_INVOCATIONS_KEY_PREFIX}*"))
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(map_err)?;
+            for key in keys {
+                let uid = key
+                    .strip_prefix(GCM_INVOCATIONS_KEY_PREFIX)
+                    .unwrap_or(key.as_str());
+                let exists: u64 = redis::cmd("EXISTS")
+                    .arg(ObjectsDB::object_key(uid))
+                    .query_async(&mut self.mgr.clone())
+                    .await
+                    .map_err(map_err)?;
+                if exists == 0 {
+                    redis::cmd("DEL")
+                        .arg(&key)
+                        .query_async::<()>(&mut self.mgr.clone())
+                        .await
+                        .map_err(map_err)?;
                 }
             }
+            cursor = next_cursor;
+            if cursor == 0 {
+                return Ok(());
+            }
         }
-
-        // One-time backfill of the `wrapped_by::<uid>` Findex index for objects
-        // created before that index existed. Gated by a completion marker so the
-        // O(N) scan runs at most once per database (a fresh database has no
-        // objects, so this is a no-op that only writes the marker).
-        redis_with_findex.backfill_wrapped_by_index().await?;
-        Box::pin(redis_with_findex.backfill_certificate_serial_tags()).await?;
-
-        Ok(redis_with_findex)
     }
 
     /// Backfill the `wrapped_by::<uid>` Findex index for wrapped objects that
@@ -358,56 +386,25 @@ impl RedisWithFindex {
     /// `find_wrapped_by` (used by key rotation) relies on a `wrapped_by::<uid>`
     /// keyword that newer code writes at insert time. Objects stored by earlier
     /// versions lack it, so they would be invisible to rotation. This method
-    /// scans every object once, (re-)inserts the keyword for wrapped ones, and
-    /// records a `wrapping_key_id_backfilled` marker so the scan never re-runs.
-    /// Re-inserting an already-indexed keyword is idempotent.
+    /// scans every object once and (re-)inserts the keyword for wrapped ones.
+    /// Re-inserting an already-indexed keyword is idempotent; completion markers
+    /// are owned by the migration runner.
     pub(crate) async fn backfill_wrapped_by_index(&self) -> DbResult<()> {
-        let marker: Option<String> = redis::cmd("GET")
-            .arg(WRAPPING_KEY_BACKFILL_PARAM)
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to read wrapped_by backfill marker: {e}"))
-            })?;
-        if marker.as_deref() == Some("true") {
-            return Ok(());
-        }
-
         let wrapped = self.objects_db.scan_wrapped_objects().await?;
         for (uid, wrapping_key_uid) in wrapped {
             let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
             let indexed_uid = IndexedValue::from(uid.as_bytes());
             self.findex.insert(keyword, [indexed_uid]).await?;
         }
-
-        redis::cmd("SET")
-            .arg(WRAPPING_KEY_BACKFILL_PARAM)
-            .arg("true")
-            .query_async::<()>(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
-            })?;
         Ok(())
     }
 
     /// Add the `_serial=<HEX>` tag to certificates stored before that tag existed.
     ///
     /// Candidates come from the `_cert` Findex keyword. Updating the tags through the normal
-    /// atomic path re-indexes the Findex keywords. Gated by a completion marker so the scan runs
-    /// at most once per database; a failed update leaves the marker unset so the next boot retries.
+    /// atomic path re-indexes the Findex keywords. Completion markers are owned by the
+    /// migration runner.
     pub(crate) async fn backfill_certificate_serial_tags(&self) -> DbResult<()> {
-        let marker: Option<String> = redis::cmd("GET")
-            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
-            .query_async(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to read serial tag backfill marker: {e}"))
-            })?;
-        if marker.as_deref() == Some("true") {
-            return Ok(());
-        }
-
         let indexed_uids = self
             .findex
             .search(&Keyword::from(SYSTEM_TAG_CERTIFICATE.as_bytes()))
@@ -436,7 +433,7 @@ impl RedisWithFindex {
             {
                 continue;
             }
-            let Some(tag) = certificate_serial_tag(&db_object.object) else {
+            let Some(tag) = certificate_serial_tag(&uid, &db_object.object) else {
                 continue;
             };
             tags.insert(tag);
@@ -457,15 +454,6 @@ impl RedisWithFindex {
                 Err(e) => return Err(e),
             }
         }
-
-        redis::cmd("SET")
-            .arg(CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM)
-            .arg("true")
-            .query_async::<()>(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                DbError::DatabaseError(format!("Failed to set serial tag backfill marker: {e}"))
-            })?;
         Ok(())
     }
 
@@ -566,16 +554,55 @@ impl RedisWithFindex {
             AtomicOperation::Create(create) => Self::apply_create(user, create, attempt)?,
             AtomicOperation::Upsert(upsert) => self.apply_upsert(user, upsert, attempt).await?,
             AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                // State is unchanged by UpdateObject — no counter adjustment.
+                self.apply_update(attempt, uid, object, attributes, tags.as_ref(), None)
+                    .await?;
+            }
+            AtomicOperation::UpdateObjectIfVersion((
+                uid,
+                object,
+                attributes,
+                tags,
+                expected_version,
+            )) => {
+                self.apply_update(
+                    attempt,
+                    uid,
+                    object,
+                    attributes,
+                    tags.as_ref(),
+                    Some(*expected_version),
+                )
+                .await?;
+            }
+            AtomicOperation::CompareAndSwapObject {
+                uid,
+                expected_version,
+                object,
+                attributes,
+                tags,
+            } => {
+                let user = require_user(user)?;
                 let entry = self.touch(&mut attempt.uids, uid).await?;
                 let Some(db_object) = entry.current.as_mut() else {
-                    return Err(DbError::ItemNotFound(uid.clone()));
+                    return Err(DbError::Conflict(uid.clone()));
                 };
-                db_object.object = object.clone();
+                // Same outcome as PostgreSQL/SQLite, where any mismatch matches no row. A version
+                // mismatch is a hard conflict, never a retry (see `apply_update`).
+                if db_object.owner != user.as_str()
+                    || matches!(
+                        db_object.state,
+                        State::Destroyed | State::Destroyed_Compromised
+                    )
+                    || db_object.version != *expected_version
+                {
+                    return Err(DbError::Conflict(uid.clone()));
+                }
+                db_object.object = object.as_ref().clone();
                 if tags.is_some() {
                     db_object.tags.clone_from(tags);
                 }
                 db_object.attributes = Some(attributes.clone());
+                db_object.version += 1;
             }
             AtomicOperation::UpdateState((uid, state)) => {
                 let entry = self.touch(&mut attempt.uids, uid).await?;
@@ -586,6 +613,7 @@ impl RedisWithFindex {
                     i64::from(is_live(*state)) - i64::from(is_live(db_object.state));
                 let is_key = is_key_type(db_object.object_type);
                 db_object.state = *state;
+                db_object.version += 1;
                 attempt.add_live(liveness_change, is_key);
             }
             AtomicOperation::Delete(uid) => {
@@ -600,6 +628,47 @@ impl RedisWithFindex {
         Ok(())
     }
 
+    /// `UpdateObject` / `UpdateObjectIfVersion`. The version is checked against the
+    /// object loaded in this attempt; a mismatch is a hard `Conflict`, never a retry
+    /// (a retry would re-read the new version and silently overwrite the other writer).
+    async fn apply_update(
+        &self,
+        attempt: &mut Attempt,
+        uid: &str,
+        object: &Object,
+        attributes: &Attributes,
+        tags: Option<&HashSet<String>>,
+        expected_version: Option<u64>,
+    ) -> DbResult<()> {
+        // State is unchanged by an update — no counter adjustment.
+        let entry = self.touch(&mut attempt.uids, uid).await?;
+        let Some(db_object) = entry.current.as_mut() else {
+            return Err(expected_version.map_or_else(
+                || DbError::ItemNotFound(uid.to_owned()),
+                |expected| {
+                    DbError::Conflict(format!(
+                        "object {uid} was deleted concurrently (expected version {expected})"
+                    ))
+                },
+            ));
+        };
+        if let Some(expected) = expected_version
+            && db_object.version != expected
+        {
+            return Err(DbError::Conflict(format!(
+                "object {uid} was modified concurrently: expected version {expected}, found {}",
+                db_object.version
+            )));
+        }
+        db_object.object = object.clone();
+        if let Some(tags) = tags {
+            db_object.tags = Some(tags.clone());
+        }
+        db_object.attributes = Some(attributes.clone());
+        db_object.version += 1;
+        Ok(())
+    }
+
     fn apply_create(
         user: Option<&UserId>,
         (uid, _owner, object, attributes, tags): &(
@@ -611,7 +680,7 @@ impl RedisWithFindex {
         ),
         attempt: &mut Attempt,
     ) -> DbResult<()> {
-        let db_object = RedisDbObject::new(
+        let mut db_object = RedisDbObject::new(
             object.clone(),
             require_user(user)?.as_str().to_owned(),
             attributes.state.unwrap_or(State::PreActive),
@@ -630,7 +699,11 @@ impl RedisWithFindex {
                     format!("object {uid} already exists"),
                 ));
             }
-            Some(entry) => entry.current = Some(db_object),
+            Some(entry) => {
+                // Delete then Create in one batch: keep the version monotonic.
+                db_object.version = entry.baseline.as_ref().map_or(0, |b| b.version + 1);
+                entry.current = Some(db_object);
+            }
             None => {
                 attempt.uids.insert(
                     uid.clone(),
@@ -681,13 +754,14 @@ impl RedisWithFindex {
                 .and_then(|o| o.tags.clone())
                 .unwrap_or_default()
         });
-        let db_object = RedisDbObject::new(
+        let mut db_object = RedisDbObject::new(
             object.clone(),
             user.as_str().to_owned(),
             *state,
             Some(final_tags),
             attributes.clone(),
         );
+        db_object.version = old_obj.as_ref().map_or(0, |o| o.version + 1);
         let new_live = i64::from(is_live(*state));
         let is_key = is_key_type(db_object.object_type);
         entry.current = Some(db_object);
@@ -948,6 +1022,7 @@ impl ObjectsStore for RedisWithFindex {
                     o.state,
                     o.attributes.unwrap_or_default(),
                 )
+                .with_version(o.version)
             })
         })?)
     }
@@ -1015,13 +1090,20 @@ impl ObjectsStore for RedisWithFindex {
         Ok(object.owner == *owner)
     }
 
+    async fn get_or_insert_parameter(
+        &self,
+        name: &'static str,
+        value: &str,
+    ) -> InterfaceResult<String> {
+        Ok(self.objects_db.get_or_insert_parameter(name, value).await?)
+    }
+
     async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> InterfaceResult<HashSet<String>> {
         let tag_keywords = tags
             .iter()
             .map(|tag| Keyword::from(tag.as_bytes()))
             .collect::<HashSet<Keyword>>();
         // find the indexed values that match at least one of the tags
-        // TODO: upon release of `batch_findex`, use `batch_search` instead of `search`
         let mut uids_per_keyword = HashMap::with_capacity(tag_keywords.len());
         for keyword in &tag_keywords {
             let search_result = self
@@ -1398,6 +1480,32 @@ impl ObjectsStore for RedisWithFindex {
             count, ACTIVE_KEY_COUNT_KEY
         );
         Ok(count)
+    }
+
+    async fn reserve_gcm_invocations(
+        &self,
+        uid: &str,
+        invocations: u64,
+    ) -> InterfaceResult<Option<u64>> {
+        RESERVE_GCM_INVOCATIONS_SCRIPT
+            .key(gcm_invocations_key(uid))
+            .arg(invocations)
+            .arg(GCM_MAX_INVOCATIONS)
+            .invoke_async::<Option<u64>>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to reserve AES-GCM invocations: {e}"))
+            })
+    }
+
+    async fn delete_gcm_invocations(&self, uid: &str) -> InterfaceResult<()> {
+        redis::cmd("DEL")
+            .arg(gcm_invocations_key(uid))
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to delete AES-GCM invocations: {e}"))
+            })
     }
 
     /// Authoritative reconcile: recompute both Redis counter keys from a full

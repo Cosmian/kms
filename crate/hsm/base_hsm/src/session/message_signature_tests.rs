@@ -8,7 +8,7 @@ use std::{collections::HashMap, ffi::CString, os::raw::c_char, sync::Arc};
 
 #[cfg(unix)]
 use cosmian_kms_interfaces::EcCurve;
-use cosmian_kms_interfaces::HashingAlgorithm;
+use cosmian_kms_interfaces::{HashingAlgorithm, MacAlgorithm};
 use libloading::Library;
 use pkcs11_sys::CK_ULONG;
 #[cfg(unix)]
@@ -218,6 +218,40 @@ fn public_api_shares_the_context() -> HResult<()> {
         (c[SIGN_INIT_MSG], c[SIGN_MSG], c[SIGN_FINAL_MSG]),
         (1, 2, 1)
     );
+    Ok(())
+}
+
+/// HMAC/CMAC are stateless and share the message path; GMAC carries a per-operation IV, so it
+/// must use `C_VerifyInit`/`C_Verify` (a message context would bind and replay the first IV).
+#[test]
+fn mac_cmac_uses_message_path_and_gmac_bypasses_it() -> HResult<()> {
+    let (path, lib) = stub()?;
+    let session = session(&path, true)?;
+    assert_eq!(session.mac(1, MacAlgorithm::AesCmac, b"m")?, STUB_SIGNATURE);
+    assert!(session.verify_mac(1, MacAlgorithm::AesCmac, b"m", &STUB_SIGNATURE)?);
+    let c = counts(&lib)?;
+    assert_eq!(
+        (
+            c[SIGN_INIT_MSG],
+            c[SIGN_MSG],
+            c[VERIFY_INIT_MSG],
+            c[VERIFY_MSG]
+        ),
+        (1, 1, 1, 1)
+    );
+
+    let mut gmac = vec![0_u8; 12];
+    gmac.extend_from_slice(&STUB_SIGNATURE);
+    assert!(session.verify_mac(1, MacAlgorithm::AesGmac, b"m", &gmac)?);
+    let c = counts(&lib)?;
+    assert_eq!(
+        (c[VERIFY_INIT], c[VERIFY_MSG], c[VERIFY_FINAL_MSG]),
+        (1, 1, 1)
+    );
+
+    session
+        .verify_mac(1, MacAlgorithm::AesGmac, b"m", &[0_u8; 11])
+        .expect_err("AES-GMAC MAC data shorter than the IV must be rejected");
     Ok(())
 }
 

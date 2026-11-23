@@ -48,7 +48,6 @@ use crate::{
 /// from a client until the object is destroyed. After an object is destroyed,
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
-// TODO: there are 56 attributes in the specs. Only a handful are implemented here
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
@@ -489,6 +488,15 @@ impl Attributes {
     /// SHALL always have a value.
     pub fn initialize_always_sensitive(&mut self) -> &mut Self {
         self.always_sensitive = Some(self.sensitive == Some(true));
+        self
+    }
+
+    /// The server sets the Usage Limits Count to the Total when the attribute is created
+    /// (KMIP 2.1 §4.59: a client Count is ignored on object creation).
+    pub const fn reset_usage_limits_count(&mut self) -> &mut Self {
+        if let Some(limits) = self.usage_limits.as_mut() {
+            limits.reset_count();
+        }
         self
     }
 
@@ -2048,9 +2056,7 @@ impl Attributes {
             }
             new_attrs.activation_date = Some(activation_date);
         }
-        if let Some(usage_limits) = new_attrs.usage_limits.as_mut() {
-            usage_limits.usage_limits_count = Some(usage_limits.usage_limits_total);
-        }
+        new_attrs.reset_usage_limits_count();
 
         Ok(new_attrs)
     }

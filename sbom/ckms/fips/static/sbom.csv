@@ -1,0 +1,2 @@
+"name","pname","version","patches","system","out","outputs","store_path","cpe","purl","urls"
+"cosmian-kms-cli-5.29.0","cosmian-kms-cli","5.29.0","","x86_64-linux","/nix/store/6c68986a4py9ibwaapkbd7shfmd04s2x-cosmian-kms-cli-5.29.0","['/nix/store/6c68986a4py9ibwaapkbd7shfmd04s2x-cosmian-kms-cli-5.29.0']","/nix/store/mpb3kq8hhabm68y7znabz9mpx6if7s5g-cosmian-kms-cli-5.29.0.drv","cpe:2.3:a:cosmian-kms-cli:cosmian-kms-cli:5.29.0:*:*:*:*:*:*:*","pkg:nix/cosmian-kms-cli@5.29.0",""

@@ -399,8 +399,8 @@ async fn encrypt_impl(
             Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(key.uid.clone())),
                 cryptographic_parameters: Some(aes_gcm_parameters()),
-                data: Some(plaintext),
-                authenticated_encryption_additional_data: associated_data,
+                data: Some(plaintext.into()),
+                authenticated_encryption_additional_data: associated_data.map(Into::into),
                 ..Default::default()
             },
             &user,
@@ -486,9 +486,9 @@ async fn decrypt_impl(
                 unique_identifier: Some(UniqueIdentifier::TextString(key.uid.clone())),
                 cryptographic_parameters: Some(aes_gcm_parameters()),
                 data: Some(parsed.ciphertext),
-                i_v_counter_nonce: Some(parsed.nonce),
-                authenticated_encryption_additional_data: associated_data,
-                authenticated_encryption_tag: Some(parsed.tag),
+                i_v_counter_nonce: Some(parsed.nonce.into()),
+                authenticated_encryption_additional_data: associated_data.map(Into::into),
+                authenticated_encryption_tag: Some(parsed.tag.into()),
                 ..Default::default()
             },
             &user,

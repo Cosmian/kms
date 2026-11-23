@@ -28,7 +28,7 @@ use cosmian_logger::{debug, error, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
-use super::audit::{inject_audit_request, inject_response_uid};
+use super::audit::{inject_audit_request, inject_response_uid, log_request_details};
 use crate::{
     core::{
         KMS,
@@ -267,6 +267,7 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     let auth_method = kms.get_auth_method(&req_http);
     debug!(target: "kmip", user = user.as_str(), ?auth_method, tag = &*ttlv.tag, "POST /kmip/2_1. Request: {:?} {}", &*ttlv.tag, user);
+    log_request_details(&ttlv, &user, 2, 1);
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
@@ -421,6 +422,7 @@ async fn kmip_json_inner(
         tag = &*ttlv.tag,
         "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, &*ttlv.tag, user
     );
+    log_request_details(&ttlv, &user, major, minor);
 
     let op_name = inject_audit_request(&req_http, &ttlv);
 
@@ -606,6 +608,7 @@ async fn handle_ttlv_bytes_inner(
         tag = tag.as_ref(),
         "POST /kmip {}.{} Binary. Request: {:?} {}", major, minor, tag, user
     );
+    log_request_details(&ttlv, user, major, minor);
 
     let mut request_message = decode_request_message(&ttlv).map_err(|error| {
         let error_message = format!("Failed to parse RequestMessage: {error}");
@@ -1177,7 +1180,7 @@ fn perform_request_tweaks(request: &mut DecodedRequestMessage, major: i32, minor
                                      Authenticated Encryption Tag of length {len} from Data field"
                         );
                         let auth_tag = data.split_off(data.len() - len);
-                        decrypt.authenticated_encryption_tag = Some(auth_tag);
+                        decrypt.authenticated_encryption_tag = Some(auth_tag.into());
                     }
                 }
             }

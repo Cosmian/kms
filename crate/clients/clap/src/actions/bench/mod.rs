@@ -1,3 +1,4 @@
+pub(crate) mod cek_switch;
 mod clap;
 pub(crate) mod helpers;
 pub(crate) mod jose;

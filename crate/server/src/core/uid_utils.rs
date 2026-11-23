@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason, kmip_2_1::kmip_types::UniqueIdentifier,
+};
 pub(crate) use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectHandle;
 use cosmian_logger::trace;
 
@@ -132,6 +134,17 @@ fn looks_like_uuid(s: &str) -> bool {
     })
 }
 
+/// `true` when `identifier` addresses one keyset generation (`name@first`, `name@0`,
+/// `name@N`) rather than the keyset head (`name`, `name@latest`).
+pub(crate) fn addresses_one_generation(identifier: &str) -> bool {
+    matches!(
+        identifier
+            .rsplit_once('@')
+            .and_then(|(_, suffix)| parse_version_suffix(suffix)),
+        Some(KeysetVersion::First | KeysetVersion::Generation(_))
+    )
+}
+
 /// Try to parse an identifier as a keyset reference.
 ///
 /// A keyset reference is recognized when:
@@ -147,22 +160,27 @@ pub(crate) fn parse_keyset_identifier(identifier: &str) -> Option<KeysetRef> {
         return None;
     }
     // HSM UID handling:
-    // - With an `@N` generation suffix (e.g. `hsm::softhsm2::0::my-key@1`) → direct PKCS#11
-    //   key handle for a specific generation; never a keyset reference.
-    // - Without `@N` (plain base UID, e.g. `hsm::softhsm2::0::my-key`) → this IS the keyset
+    // - With an `@N` generation suffix, N >= 1 (e.g. `hsm::softhsm2::0::my-key@1`) → direct
+    //   PKCS#11 key handle for a specific generation; never a keyset reference.
+    // - With `@latest`, `@first` or `@0` → keyset reference on the part before `@`.
+    // - Without `@` (plain base UID, e.g. `hsm::softhsm2::0::my-key`) → this IS the keyset
     //   name (= rotate_name = full base UID). Treat it as a bare keyset reference so that:
     //     · Encrypt / Sign (`SingleLatest`) resolves to the current latest generation.
     //     · Decrypt / Verify (`TryEach`) chain-walks through all generations newest-to-oldest.
     if identifier.starts_with("hsm::") {
-        if identifier.contains('@') {
-            // Explicit `@N` → direct generation handle, not a keyset ref.
-            return None;
-        }
-        // Plain HSM base UID → bare keyset reference.
-        return Some(KeysetRef {
-            name: identifier.to_owned(),
-            version: KeysetVersion::Bare,
-        });
+        let Some(at_pos) = identifier.rfind('@') else {
+            return Some(KeysetRef {
+                name: identifier.to_owned(),
+                version: KeysetVersion::Bare,
+            });
+        };
+        return match parse_version_suffix(&identifier[at_pos + 1..]) {
+            Some(version @ (KeysetVersion::Latest | KeysetVersion::First)) => Some(KeysetRef {
+                name: identifier[..at_pos].to_owned(),
+                version,
+            }),
+            _ => None,
+        };
     }
 
     if let Some(at_pos) = identifier.rfind('@') {
@@ -263,6 +281,10 @@ pub(crate) async fn resolve_uid_or_keyset(
             // Bare name (or plain HSM base UID): no keyset members found → fall through
             // to direct object lookup. The key may simply have no rotate_name set yet.
             KeysetVersion::Bare => Ok(None),
+            _ if handle.is_hsm() => Err(KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("{op_name}: keyset '{handle}' not found or has no resolvable latest key"),
+            )),
             // Explicit versioned ref (`@latest`, `@N`, `@first`): not finding the keyset
             // is always a user error.
             _ => Err(KmsError::InvalidRequest(format!(
@@ -371,6 +393,19 @@ mod tests {
         assert!(parse_keyset_identifier("hsm::softhsm2::0::my-key@1").is_none());
         assert!(parse_keyset_identifier("hsm::softhsm2::0::my-key@2").is_none());
         assert!(parse_keyset_identifier("hsm::1667223158::vec_rk_fl@1").is_none());
+    }
+
+    #[test]
+    fn test_parse_hsm_latest_and_first_are_keysets() {
+        let latest = parse_keyset_identifier("hsm::softhsm2::0::k@latest").expect("should parse");
+        assert_eq!(latest.name, "hsm::softhsm2::0::k");
+        assert_eq!(latest.version, KeysetVersion::Latest);
+        for suffix in ["first", "0"] {
+            let r = parse_keyset_identifier(&format!("hsm::softhsm2::0::k@{suffix}"))
+                .expect("should parse");
+            assert_eq!(r.name, "hsm::softhsm2::0::k");
+            assert_eq!(r.version, KeysetVersion::First);
+        }
     }
 
     #[test]

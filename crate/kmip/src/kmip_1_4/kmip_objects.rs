@@ -16,6 +16,7 @@ use crate::{
     error::KmipError,
     kmip_0::kmip_types::{CertificateType, SecretDataType},
     kmip_2_1,
+    len_display::LenDisplay,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -301,6 +302,19 @@ impl<'de> Deserialize<'de> for Object {
     }
 }
 
+/// `Display` text of a key block: its format, algorithm and length. `KeyBlock`'s `Debug` would
+/// print the key bytes.
+fn key_block_summary(key_block: &KeyBlock) -> String {
+    format!(
+        "KeyBlock {{ key_format_type: {:?}, cryptographic_algorithm: {:?}, cryptographic_length: \
+         {:?} }}",
+        key_block.key_format_type,
+        key_block.cryptographic_algorithm,
+        key_block.cryptographic_length
+    )
+}
+
+/// Byte strings and key material are never displayed: only lengths and key block metadata.
 impl Display for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -310,8 +324,8 @@ impl Display for Object {
             }) => {
                 write!(
                     f,
-                    "Certificate(certificate_type: {certificate_type:?}, certificate_value: \
-                     {certificate_value:?})"
+                    "Certificate(certificate_type: {certificate_type:?}, certificate_value: {})",
+                    certificate_value.len_display()
                 )
             }
             Self::SecretData(SecretData {
@@ -320,7 +334,8 @@ impl Display for Object {
             }) => {
                 write!(
                     f,
-                    "SecretData(secret_data_type: {secret_data_type:?}, key_block: {key_block:?})"
+                    "SecretData(secret_data_type: {secret_data_type:?}, key_block: {})",
+                    key_block_summary(key_block)
                 )
             }
             Self::SplitKey(SplitKey {
@@ -335,18 +350,23 @@ impl Display for Object {
                     f,
                     "SplitKey(split_key_parts: {split_key_parts}, key_part_identifier: \
                      {key_part_identifier}, split_key_threshold: {split_key_threshold}, \
-                     split_key_method: {split_key_method:?}, key_block: {key_block:?}, prime \
-                     field size: {prime_field_size:?})"
+                     split_key_method: {split_key_method:?}, key_block: {}, prime \
+                     field size: {prime_field_size:?})",
+                    key_block_summary(key_block)
                 )
             }
             Self::SymmetricKey(SymmetricKey { key_block }) => {
-                write!(f, "SymmetricKey(key_block: {key_block:?})")
+                write!(
+                    f,
+                    "SymmetricKey(key_block: {})",
+                    key_block_summary(key_block)
+                )
             }
             Self::PrivateKey(PrivateKey { key_block }) => {
-                write!(f, "PrivateKey(key_block: {key_block:?})")
+                write!(f, "PrivateKey(key_block: {})", key_block_summary(key_block))
             }
             Self::PublicKey(PublicKey { key_block }) => {
-                write!(f, "PublicKey(key_block: {key_block:?})")
+                write!(f, "PublicKey(key_block: {})", key_block_summary(key_block))
             }
             Self::OpaqueObject(OpaqueObject {
                 opaque_data_type,
@@ -354,8 +374,8 @@ impl Display for Object {
             }) => {
                 write!(
                     f,
-                    "OpaqueObject(opaque_data_type: {opaque_data_type:?}, opaque_data_value: \
-                     {opaque_data_value:?})"
+                    "OpaqueObject(opaque_data_type: {opaque_data_type:?}, opaque_data_value: {})",
+                    opaque_data_value.len_display()
                 )
             }
             Self::PGPKey(PGPKey {
@@ -364,7 +384,8 @@ impl Display for Object {
             }) => {
                 write!(
                     f,
-                    "PGPKey(pgp_key_version: {pgp_key_version}, key_block: {key_block:?})"
+                    "PGPKey(pgp_key_version: {pgp_key_version}, key_block: {})",
+                    key_block_summary(key_block)
                 )
             }
         }
@@ -468,5 +489,24 @@ impl TryFrom<kmip_2_1::kmip_objects::Object> for Object {
                 ))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Object, OpaqueObject};
+    use crate::kmip_1_4::kmip_types::OpaqueDataType;
+
+    /// An opaque object can hold any secret: `Display` shows only its length.
+    #[test]
+    fn opaque_object_display_hides_bytes() {
+        let object = Object::OpaqueObject(OpaqueObject {
+            opaque_data_type: OpaqueDataType::Unknown,
+            opaque_data_value: b"SECRET-MARKER".to_vec(),
+        });
+        let shown = object.to_string();
+        assert!(shown.contains("opaque_data_value: <13 bytes>"), "{shown}");
+        assert!(!shown.contains("SECRET"), "{shown}");
+        assert!(!shown.contains("83, 69, 67"), "{shown}");
     }
 }

@@ -82,7 +82,7 @@ The `hsm-slot` and `hsm-password` parameters are the PKCS#11 slot id and CU logi
 The vendor library is a PKCS#11 v2.40 library, so the KMS adapts as follows (see [Algorithm support by model](algorithm_support.md) for the full matrix):
 
 - AES-GCM uses classic `C_EncryptInit` with an HSM-generated IV; caller-supplied IVs and the PKCS#11 v3.0 message-based functions are not available.
-- The firmware does not store `CKA_START_DATE` / `CKA_END_DATE`, so [HSM key auto-rotation](../kmip_support/key_rotation/hsm.md) is unavailable: the `x-rotate-interval` attribute is rejected.
+- The firmware does not store `CKA_START_DATE` / `CKA_END_DATE`, so [HSM key auto-rotation](../kmip_support/key_rotation/hsm_keysets_reference.md#hsm-model-support) is unavailable: the `x-rotate-interval` attribute is rejected.
 - `CKA_SENSITIVE` is not set explicitly when generating keys.
 - Only the NIST P-256 and P-384 curves are supported for sign/verify, and there is no EdDSA signing. Sign Recover and Verify Recover are not supported.
 - Objects are listed through `FindObjects` in pages of 64.

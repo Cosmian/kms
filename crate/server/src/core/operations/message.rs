@@ -45,6 +45,7 @@ impl std::fmt::Debug for BatchOperations<'_> {
             .finish()
     }
 }
+
 /// Maps internal operation failures to the KMIP result reason and message returned to clients.
 pub(crate) fn kmip_error_response_fields(error: &KmsError) -> (ErrorReason, String) {
     match error {

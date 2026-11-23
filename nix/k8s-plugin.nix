@@ -33,7 +33,7 @@ let
 
   cargoHash =
     let
-      vendorFile = ./expected-hashes/k8s-plugin.vendor.linux.sha256;
+      vendorFile = ./expected-hashes/cargo.vendor.linux.sha256;
       fallback = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     in
     if builtins.pathExists vendorFile then

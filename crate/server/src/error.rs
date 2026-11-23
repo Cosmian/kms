@@ -50,6 +50,10 @@ pub enum KmsError {
     #[error("Inconsistent operation: {0}")]
     InconsistentOperation(String),
 
+    // An optimistic-lock check failed: the resource was modified concurrently; retry
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     // Missing arguments in the request
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
@@ -261,10 +265,12 @@ impl From<InterfaceError> for KmsError {
                 Self::Kmip21Error(ErrorReason::Object_Already_Exists, msg)
             }
             InterfaceError::NotSupported(msg) => Self::NotSupported(msg),
+            InterfaceError::ItemNotFound(msg) => Self::ItemNotFound(msg),
             // Preserve the InvalidRequest variant (used by ObjectHandle::hsm_parts / TryFrom and
             // the object stores) instead of collapsing it into `Default`, which would drop the
             // variant and prefix the message with "Invalid Request: ".
             InterfaceError::InvalidRequest(msg) => Self::InvalidRequest(msg),
+            InterfaceError::Conflict(msg) => Self::Conflict(msg),
             other => Self::Default(other.to_string()),
         }
     }
@@ -280,6 +286,7 @@ impl From<DbError> for KmsError {
             DbError::Unauthorized(s) => Self::Unauthorized(s),
             // Preserve client-input errors (e.g. unsupported HSM key types)
             DbError::InvalidRequest(s) => Self::InvalidRequest(s),
+            DbError::Conflict(s) => Self::Conflict(s),
             // Wrap all other database errors
             other => Self::Database(other),
         }

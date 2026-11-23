@@ -5,8 +5,7 @@ set -ex
 #
 # Copy the Cosmian PKCS#11 library from the KMS Docker image.
 # The library is bundled inside the KMS Docker image (libcosmian_pkcs11.so).
-# DOCKER_IMAGE_NAME must be set (it is exported by nix.sh before calling
-# test_docker_image.sh when --test is passed to the docker subcommand).
+# DOCKER_IMAGE_NAME must be set (exported by the caller of test_docker_image.sh).
 #
 
 if [ -z "${DOCKER_IMAGE_NAME}" ]; then

@@ -421,7 +421,9 @@ def _make_cdx_component(comp: dict) -> dict:
     if comp['description']:
         cdx['description'] = comp['description']
     if comp['license']:
-        cdx['licenses'] = [{'license': {'id': comp['license']}}]
+        # Cargo `license` is an SPDX expression ("MIT OR Apache-2.0", legacy "MIT/Apache-2.0"),
+        # which CycloneDX only accepts under `expression`, never under `license.id`.
+        cdx['licenses'] = [{'expression': comp['license'].replace('/', ' OR ')}]
     if comp['authors']:
         cdx['supplier'] = {'name': comp['authors']}
     if comp['repository']:

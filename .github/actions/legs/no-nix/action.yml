@@ -1,0 +1,32 @@
+---
+name: Leg no-nix
+description: >
+  Plain cargo test of the workspace libraries, no Nix dev shell.
+
+inputs:
+  variant:
+    description: fips or non-fips
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # ── no-nix: plain `cargo test` (no Nix dev shell) on Linux x64/arm and macOS ──
+    - name: With cargo only
+      env:
+        VARIANT: ${{ inputs.variant }}
+      shell: bash
+      run: |
+        set -ex
+        if [ "$VARIANT" = "non-fips" ]; then
+          export FEATURES_FLAG="--features non-fips";
+          # Build the PKCS#11 cdylib so that `ckms pkcs11 verify` and
+          # integration tests can dynamically load it at runtime.
+          # `cargo test --lib` does not produce cdylib artifacts.
+          cargo build -p cosmian_pkcs11 --features non-fips
+        else
+          export FEATURES_FLAG="";
+        fi
+        # shellcheck disable=SC2086 # FEATURES_FLAG is an optional cargo flag
+        cargo test --workspace --lib $FEATURES_FLAG -- --nocapture

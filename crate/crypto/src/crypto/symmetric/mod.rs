@@ -1,3 +1,4 @@
+pub mod mac;
 pub mod symmetric_ciphers;
 
 pub mod rfc3394;

@@ -27,7 +27,6 @@ use openssl::{
     pkey::PKey,
     rsa::Rsa,
 };
-use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, KeyCreateRequest, KeyCreateResponse,
@@ -296,7 +295,7 @@ async fn generate_ec_key_pair(
         alg: alg.map(ToOwned::to_owned),
         crv: Some(crv.to_owned()),
         key_ops,
-        x: None, // TODO: retrieve from public key material in a follow-up
+        x: None,
         y: None,
         n: None,
         e: None,
@@ -388,7 +387,7 @@ async fn generate_rsa_key_pair(
         key_ops,
         x: None,
         y: None,
-        n: None, // TODO: retrieve from public key material in a follow-up
+        n: None,
         e: None,
     })
 }
@@ -475,7 +474,7 @@ async fn generate_okp_key_pair(
         alg: alg.map(ToOwned::to_owned),
         crv: Some(crv.to_owned()),
         key_ops,
-        x: None, // TODO: retrieve from public key material
+        x: None,
         y: None,
         n: None,
         e: None,
@@ -558,7 +557,7 @@ async fn import_symmetric_key(
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: Zeroizing::from(key_bytes),
+                    key: key_bytes.into(),
                 },
                 attributes: Some(Box::new(attributes.clone())),
             }),
@@ -608,7 +607,7 @@ fn spki_public_key_object(spki_der: Vec<u8>, attributes: Attributes) -> Object {
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(spki_der)),
+                key_material: KeyMaterial::ByteString(spki_der.into()),
                 attributes: Some(Box::new(attributes)),
             }),
             cryptographic_algorithm: None,
@@ -806,7 +805,7 @@ async fn import_ec_key(
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                key_material: KeyMaterial::ByteString(pkcs8_der.into()),
                 attributes: Some(Box::new(ec_attributes.clone())),
             }),
             cryptographic_algorithm: None,
@@ -947,7 +946,7 @@ async fn import_rsa_key(
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                key_material: KeyMaterial::ByteString(pkcs8_der.into()),
                 attributes: Some(Box::new(rsa_attributes.clone())),
             }),
             cryptographic_algorithm: None,
@@ -1197,7 +1196,7 @@ async fn import_okp_key(
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                key_material: KeyMaterial::ByteString(pkcs8_der.into()),
                 attributes: Some(Box::new(okp_attributes.clone())),
             }),
             cryptographic_algorithm: None,

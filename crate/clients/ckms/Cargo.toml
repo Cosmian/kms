@@ -42,8 +42,6 @@ clap = { workspace = true, features = ["help", "env", "std", "usage", "error-con
 cosmian_config_utils = { workspace = true }
 cosmian_kms_cli_actions = { workspace = true }
 cosmian_logger = { workspace = true }
-csv = { workspace = true }
-der = { workspace = true, features = ["pem"] }
 dialoguer = { workspace = true, features = ["fuzzy-select", "password", "editor"] }
 hex = { workspace = true }
 serde = { workspace = true }

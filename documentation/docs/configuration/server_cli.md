@@ -49,12 +49,13 @@ Options:
       --hsm-model <HSM_MODEL>
           The HSM model.
           `Thales Luna SA`, `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
-          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, and `Kryoptic`
+          `Smartcard HSM`, `AWS CloudHSM`, `Azure Cloud HSM`, `GCP Cloud HSM`, `SoftHSM2`, `Kryoptic`,
+          and `Idemia SPHERE`
           are natively supported.
           Other HSMs are supported too; specify `other` and check the documentation
 
           [default: proteccio]
-          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, gcp_cloud_hsm, kryoptic, other]
+          [possible values: luna, proteccio, crypt2pay, utimaco, softhsm2, smartcardhsm, aws_cloudhsm, azure_cloud_hsm, gcp_cloud_hsm, kryoptic, idemia_sphere, other]
 
       --hsm-admin <HSM_ADMIN>...
           List of KMS usernames that are granted HSM admin privileges.
@@ -532,7 +533,7 @@ Options:
           [env: KMS_LOG_QUIET=]
 
       --log-to-syslog
-          Log to syslog
+          Log to syslog (ignored on Windows, but accepted so that the shared `kms.toml` template loads)
 
           [env: KMS_LOG_TO_SYSLOG=]
 
@@ -793,7 +794,9 @@ Options:
           [env: KMS_VAULT_API_ENABLED=]
 
       --vault-auth-verifier-url <VAULT_AUTH_VERIFIER_URL>
-          Base URL of the auth-verifier server used to validate `X-Vault-Token` headers.
+          Base URL of the token verifier: a Cosmian Auth Verifier or an OpenBao/Vault server.
+
+          The KMS validates `X-Vault-Token` with `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` (logins) to `<url>/v1/auth/*`. With the Auth Verifier, requires the version that serves `/v1/auth/*`.
 
           Required when `vault_api_enabled = true`. Example: `https://auth.example.com`
 
@@ -847,6 +850,27 @@ Options:
           Set to `0` to disable caching. Defaults to `30`.
 
           [env: KMS_VAULT_TOKEN_CACHE_TTL_SECS=]
+          [default: 30]
+
+      --kv-enabled
+          Enable the Vault KV v2-compatible `/<kv_mount>/` scope.
+
+          Defaults to `false`.
+
+          [env: KMS_KV_ENABLED=]
+
+      --kv-mount <KV_MOUNT>
+          KV mount name used by the `/<kv_mount>/data/*` and `/<kv_mount>/metadata/*` routes.
+
+          Mirrors `vault_transit_mount`/`vault_pki_mount`. Defaults to `"kv"`.
+
+          [env: KMS_KV_MOUNT=]
+          [default: kv]
+
+      --kv-ttl-check-interval-secs <KV_TTL_CHECK_INTERVAL_SECS>
+          Interval, in seconds, between KV TTL-expiry sweeps (destroys secret versions whose `options.ttl` has elapsed). `0` disables the sweep. Defaults to `30`
+
+          [env: KMS_KV_TTL_CHECK_INTERVAL_SECS=]
           [default: 30]
 
       --audit-enable

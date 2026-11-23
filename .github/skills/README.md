@@ -72,7 +72,7 @@ Orchestrators delegate to or reuse specialist skills; they never repeat a whole 
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, plan, branch/stack, test-first implement, test, document, run `AGENTS.md` §5, commit, open the PR, report CI status once, handle review feedback (never waits for CI, never merges). |
+| **Issue Workflow** | `/issue-workflow <issue#>` | **Entry point for resolving a GitHub issue.** Scope, reproduce, plan, **user plan approval (the only interactive step)**, then automated branch/stack, test-first implement, test, document, run `AGENTS.md` §5, commit, open the PR, report CI status once, handle review feedback (never waits for CI, never merges). |
 
 ### Security
 
@@ -109,7 +109,7 @@ Orchestrators delegate to or reuse specialist skills; they never repeat a whole 
 | KMS Docs Verify | `/kms-docs-verify [all]` | Verify documentation claims (ckms commands, flags, KMS_* env vars, config keys, versions, links, nav, generated files) against the code; every hit is a candidate to fix or justify. |
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md`; `/kms-changelog consolidate <version>` merges all `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, regroups them and deletes them. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |
-| **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms`. |
+| **ckms Subcommand Tests** | `/ckms-subcommand-test` | **Run after adding any new `ckms` subcommand or flag; no clap action ships without `ckms` binary tests.** Generates the test file, writes helper functions, covers happy path + error cases + CO-gating, registers the module in `mod.rs`, and runs `cargo test -p ckms --features non-fips`. |
 | MISE | `/mise` | Create/modify MISE task and library Bash scripts following `.mise/` conventions. |
 
 ### Code Quality
@@ -135,6 +135,7 @@ Orchestrators delegate to or reuse specialist skills; they never repeat a whole 
 | Skill | Command | Description |
 |-------|---------|-------------|
 | **KMS PR Review** | `/kms-pr-review [PR#]` | Two-pass diff review; self-review mode auto-applies confirmed fixes (≤ 2 cycles); writes `review-YYYY-MM-DD/final.md`. |
+| KMS DB Compat | `/kms-db-compat [base-ref]` | Per-change upgrade / downgrade (N-1) / round-trip / mixed-version verdict for SQL, Redis-with-Findex and persisted KMIP type changes; runs the SQLite upgrade and swapped-role downgrade proof. |
 | KMS PR Description | `/kms-pr-description [PR#]` | Summarize the real branch diff into the PR description (What / Why / How / Tests / Docs) with `gh pr edit`; lists only tests actually run. |
 | KMS Adversarial Test | `/kms-adversarial-test` | Live adversarial quality gate against a running KMS; once for significant PRs. |
 

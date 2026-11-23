@@ -12,7 +12,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::symmetric_key_create_request,
     },
 };
-use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,
@@ -60,7 +59,7 @@ async fn test_encrypt_no_plaintext_in_traces() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(sensitive_plaintext.to_vec())),
+        data: Some(sensitive_plaintext.to_vec().into()),
         ..Default::default()
     };
 
@@ -101,14 +100,14 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(plaintext.to_vec())),
+                data: Some(plaintext.to_vec().into()),
                 ..Default::default()
             },
             &UserId::from("test_user"),
         )
         .await?;
 
-    let ciphertext = encrypt_response.data.unwrap();
+    let ciphertext = encrypt_response.data.unwrap().to_vec();
     let iv = encrypt_response.i_v_counter_nonce;
 
     // Decrypt with trace level logging active
@@ -207,6 +206,7 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
             ..Default::default()
         }),
         data: Some(message.to_vec()),
+        i_v_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
@@ -317,14 +317,14 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
                     cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                     ..Default::default()
                 }),
-                data: Some(Zeroizing::new(plaintext.to_vec())),
+                data: Some(plaintext.to_vec().into()),
                 ..Default::default()
             },
             &owner,
         )
         .await?;
 
-    let ciphertext = encrypt_response.data.unwrap();
+    let ciphertext = encrypt_response.data.unwrap().to_vec();
     let decrypt_response = kms
         .decrypt(
             Decrypt {
@@ -404,12 +404,12 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     clap_config_kek.key_encryption_key = Some(kek_id.to_string());
     let kms = test_kms_with_config(clap_config_kek).await?;
 
-    // Create an Ed25519 keypair with UsageLimits on the private key
+    // Create an EC P-256 keypair with UsageLimits on the private key
     let mut create_request = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
         None,
         EMPTY_TAGS,
-        RecommendedCurve::CURVEED25519,
+        RecommendedCurve::P256,
         false,
         None,
     )
@@ -441,13 +441,12 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
         .sign(
             Sign {
                 unique_identifier: Some(private_key_id.clone()),
-                cryptographic_parameters: Some(CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
-                    ..Default::default()
-                }),
-                data: Some(Zeroizing::new(
-                    b"Regression test: KEK wrapping must survive sign".to_vec(),
-                )),
+                cryptographic_parameters: None,
+                data: Some(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::SensitiveBytes::from(
+                        b"Regression test: KEK wrapping must survive sign".to_vec(),
+                    ),
+                ),
                 digested_data: None,
                 correlation_value: None,
                 init_indicator: None,
@@ -701,7 +700,7 @@ async fn test_crypto_op_does_not_reveal_foreign_keys() -> KResult<()> {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(b"probe".to_vec())),
+        data: Some(b"probe".to_vec().into()),
         ..Default::default()
     };
 
@@ -882,7 +881,7 @@ async fn test_request_work_limits() -> KResult<()> {
             base_key.clone(),
             DerivationMethod::PBKDF2,
             DerivationParameters {
-                salt: Some(b"limits salt".to_vec()),
+                salt: Some(b"limits salt".to_vec().into()),
                 iteration_count: Some(iteration_count),
                 ..DerivationParameters::default()
             },
@@ -1380,5 +1379,53 @@ async fn test_get_attributes_without_identifier_selects_nothing() -> KResult<()>
         .expect_err("no object may be selected implicitly");
     assert!(matches!(err, KmsError::UnsupportedPlaceholder), "{err:?}");
     assert!(!err.to_string().contains(&foreign_key.to_string()));
+    Ok(())
+}
+
+/// Regression test: the server owns the Usage Limits Count of a `ReKey` replacement. A Count
+/// sent in the request attributes is reset to the Total instead of granting a larger budget.
+///
+/// Guards: KMIP 2.1 §4.59 (Usage Limits Count is server-managed)
+#[tokio::test]
+async fn test_rekey_ignores_client_usage_limits_count() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_operations::ReKey,
+        kmip_types::{UsageLimits, UsageLimitsUnit},
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("rekey_usage_limits_owner@example.com");
+    let key = create_aes_key(&kms, owner.as_ref()).await?;
+    let response = kms
+        .rekey(
+            ReKey {
+                unique_identifier: Some(key),
+                attributes: Some(Attributes {
+                    usage_limits: Some(UsageLimits {
+                        usage_limits_unit: UsageLimitsUnit::Object,
+                        usage_limits_count: Some(1_000_000_000),
+                        usage_limits_total: 4,
+                    }),
+                    ..Attributes::default()
+                }),
+                ..ReKey::default()
+            },
+            &owner,
+        )
+        .await?;
+    let owm = kms
+        .database
+        .retrieve_object(&response.unique_identifier.to_string())
+        .await?
+        .expect("replacement key must be stored");
+    assert_eq!(
+        owm.attributes().usage_limits,
+        Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(4),
+            usage_limits_total: 4,
+        })
+    );
     Ok(())
 }

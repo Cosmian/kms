@@ -551,6 +551,15 @@ Section Install
   nsExec::ExecToLog 'sc failure "${SERVICENAME}" reset= 86400 actions= restart/5000/restart/10000//'
   Pop $0
 
+  ; FIPS installers ship the OpenSSL FIPS provider under $INSTDIR\openssl: give it to the service.
+  ${If} ${FileExists} "$INSTDIR\openssl\ssl\openssl.cnf"
+    nsExec::ExecToLog 'reg add "HKLM\SYSTEM\CurrentControlSet\Services\${SERVICENAME}" /v Environment /t REG_MULTI_SZ /s | /d "OPENSSL_CONF=$INSTDIR\openssl\ssl\openssl.cnf|OPENSSL_MODULES=$INSTDIR\openssl\ossl-modules|OPENSSL_CONF_INCLUDE=$INSTDIR\openssl\ssl" /f'
+    Pop $0
+    ${If} $0 != 0
+      DetailPrint "Warning: could not set the service environment (reg add returned $0)"
+    ${EndIf}
+  ${EndIf}
+
   ; Start the service
   nsExec::ExecToLog 'sc start "${SERVICENAME}"'
   Pop $0

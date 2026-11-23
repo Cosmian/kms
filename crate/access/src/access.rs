@@ -415,6 +415,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn crypto_officer_role_requires_membership_and_no_ceremony() {
+        for require_ceremony in [false, true] {
+            let config = CryptoOfficerConfig {
+                users: vec!["alice".to_owned(), "bob".to_owned()],
+                require_ceremony,
+                ..Default::default()
+            };
+            for user in ["alice", "bob", "unknown"] {
+                let expected = match (require_ceremony, user) {
+                    (false, "alice" | "bob") => Some(Role::CryptoOfficer),
+                    _ => None,
+                };
+                assert_eq!(
+                    config.role_for(user),
+                    expected,
+                    "ceremony={require_ceremony}, user={user}"
+                );
+            }
+            let empty = CryptoOfficerConfig {
+                require_ceremony,
+                ..Default::default()
+            };
+            assert_eq!(empty.role_for("alice"), None);
+        }
+    }
+
+    #[test]
+    fn crypto_officer_enforcement_depends_only_on_configured_users() {
+        for require_ceremony in [false, true] {
+            let mut config = CryptoOfficerConfig {
+                require_ceremony,
+                ..Default::default()
+            };
+            assert!(!config.is_configured());
+            config.users.push("alice".to_owned());
+            assert!(config.is_configured());
+        }
+    }
+
+    #[test]
+    fn crypto_officer_ceremony_requires_at_least_three_candidates() {
+        for require_ceremony in [false, true] {
+            for count in 0..=4 {
+                let config = CryptoOfficerConfig {
+                    users: (0..count).map(|i| format!("officer-{i}")).collect(),
+                    require_ceremony,
+                    ..Default::default()
+                };
+                let expected = if require_ceremony && count < 3 {
+                    Err(CryptoOfficerConfigError::InsufficientCandidates { count, minimum: 3 })
+                } else {
+                    Ok(())
+                };
+                assert_eq!(
+                    config.validate(),
+                    expected,
+                    "ceremony={require_ceremony}, candidates={count}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn role_decisions() {
         for (role, op, expected) in [
             (Role::Operator, Op::RNGSeed, Deny),

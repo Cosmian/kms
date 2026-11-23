@@ -20,7 +20,7 @@ source "${_SCRIPTS_COMMON_DIR}/../lib/common.sh"
 
 # ── Extras not present in lib/common.sh ──────────────────────────────────────
 
-# Unified nixpkgs pin consumed by nix.sh and any build script that sources
+# Unified nixpkgs pin consumed by any build script that sources
 # this file.  Set once here so every caller uses the same pinned tarball.
 export PIN_URL="${PIN_URL:-https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz}"
 export PINNED_NIXPKGS_URL="$PIN_URL" # backward-compatible alias
