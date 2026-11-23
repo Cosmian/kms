@@ -17,12 +17,13 @@ use std::{
     task::{Context, Poll},
 };
 
-use actix_session::SessionExt as _;
 use actix_web::{
     Error, HttpMessage, HttpResponse,
     body::{BoxBody, EitherBody, MessageBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
+    http::header::{HeaderValue, SET_COOKIE},
     middleware::Next,
+    web,
 };
 use cosmian_logger::{debug, trace, warn};
 use futures::{
@@ -31,7 +32,7 @@ use futures::{
 };
 
 use crate::middlewares::{
-    AuthMethod, AuthenticatedUser, UserId, is_not_forgeable_cross_origin,
+    AuthMethod, AuthenticatedUser, UiSessionCookie, is_not_forgeable_cross_origin,
     reject_reserved_service_identity,
 };
 
@@ -112,38 +113,43 @@ where
             });
         }
 
-        let session = req.get_session();
-        match session.get::<String>("user_id") {
-            Ok(Some(user_id)) => {
-                debug!("Session: authenticated user '{user_id}'");
-                let username = UserId::from(user_id);
-                match reject_reserved_service_identity(&username) {
-                    Ok(()) => {
-                        req.extensions_mut().insert(AuthenticatedUser {
-                            username,
-                            auth_method: AuthMethod::Session,
-                        });
-                    }
-                    Err(error) => {
-                        warn!(
-                            "Session: rejecting reserved service identity from stored \
-                             session user_id: {error}"
-                        );
-                        session.purge();
-                    }
+        // No codec registered (bare test apps): no session, nothing is authenticated.
+        let codec = req.app_data::<web::Data<UiSessionCookie>>().cloned();
+        let mut purge = None;
+        if let Some(username) = codec
+            .as_ref()
+            .and_then(|codec| codec.read(req.headers()))
+            .and_then(|session| session.user_id)
+        {
+            debug!("Session: authenticated user '{username}'");
+            match reject_reserved_service_identity(&username) {
+                Ok(()) => {
+                    req.extensions_mut().insert(AuthenticatedUser {
+                        username,
+                        auth_method: AuthMethod::Session,
+                    });
+                }
+                Err(error) => {
+                    warn!(
+                        "Session: rejecting reserved service identity from stored \
+                         session user_id: {error}"
+                    );
+                    purge = codec.map(|codec| codec.removal_cookie());
                 }
             }
-            Ok(None) => {
-                trace!("Session: no user_id in session, passing through");
-            }
-            Err(e) => {
-                // Corrupted or tampered cookie — treat as unauthenticated.
-                warn!("Session: failed to read user_id from session: {e:?}");
-            }
+        } else {
+            trace!("Session: no user_id in session, passing through");
         }
 
         Box::pin(async move {
-            let res = service.call(req).await?;
+            let mut res = service.call(req).await?;
+            if let Some(removal) = purge {
+                res.headers_mut().append(
+                    SET_COOKIE,
+                    HeaderValue::from_str(&removal)
+                        .map_err(actix_web::error::ErrorInternalServerError)?,
+                );
+            }
             Ok(res.map_into_left_body())
         })
     }

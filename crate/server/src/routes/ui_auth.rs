@@ -1,11 +1,8 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use actix_session::Session;
 use actix_web::{
-    HttpRequest, HttpResponse,
-    cookie::{Cookie, SameSite},
-    get,
-    http::header,
+    HttpRequest, HttpResponse, get,
+    http::header::{self, SET_COOKIE},
     post, web,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -21,9 +18,9 @@ use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
     middlewares::{
-        AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, UserId,
-        authenticate_auth_verifier_session_cookie, reject_reserved_service_identity,
-        validate_jwt_svid,
+        AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, UiSession, UiSessionCookie,
+        UserId, authenticate_auth_verifier_session_cookie, reject_reserved_service_identity,
+        request_cookie, validate_jwt_svid,
     },
 };
 
@@ -40,7 +37,7 @@ fn pkce_challenge_from_verifier(verifier: &str) -> String {
 
 #[get("/login_flow")]
 pub(crate) async fn login(
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
     kms: web::Data<Arc<KMS>>,
@@ -87,27 +84,27 @@ pub(crate) async fn login(
         .append_pair("code_challenge", &pkce_challenge)
         .append_pair("nonce", &nonce);
 
-    if let Err(e) = session.insert("pkce_verifier", &pkce_verifier) {
-        return HttpResponse::InternalServerError()
-            .body(format!("Failed to insert pkce_verifier: {e:?}"));
-    }
-    if let Err(e) = session.insert("csrf_token", &csrf_token) {
-        return HttpResponse::InternalServerError()
-            .body(format!("Failed to insert csrf_token: {e:?}"));
-    }
-    if let Err(e) = session.insert("nonce", &nonce) {
-        return HttpResponse::InternalServerError().body(format!("Failed to insert nonce: {e:?}"));
-    }
+    // A new login drops whatever the browser presented before: only these values are kept.
+    let session = UiSession {
+        pkce_verifier: Some(pkce_verifier),
+        csrf_token: Some(csrf_token),
+        nonce: Some(nonce),
+        user_id: None,
+    };
+    let Ok(set_cookie) = session_cookie.set_cookie(&session) else {
+        return HttpResponse::InternalServerError().body("Failed to create the session cookie");
+    };
 
     HttpResponse::Found()
         .append_header(("Location", auth_url.to_string()))
+        .insert_header((SET_COOKIE, set_cookie))
         .finish()
 }
 
 #[get("/callback")]
 pub(crate) async fn callback(
     req: HttpRequest,
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
@@ -122,39 +119,23 @@ pub(crate) async fn callback(
 
     // Retrieve stored values.
     // PKCE is mandatory for the UI login flow: the login_flow handler always generates
-    // and stores a verifier, so Ok(None) here means the session was lost or tampered.
-    let pkce_verifier = match session.get::<String>("pkce_verifier") {
-        Ok(Some(v)) => v,
-        Ok(None) => return HttpResponse::BadRequest().body("Missing PKCE verifier"),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve PKCE verifier: {e}"));
-        }
+    // and stores a verifier, so a missing value means the session was lost or tampered.
+    let stored = session_cookie.read(req.headers()).unwrap_or_default();
+    let Some(pkce_verifier) = stored.pkce_verifier else {
+        return HttpResponse::BadRequest().body("Missing PKCE verifier");
     };
-
-    let stored_csrf_token = match session.get::<String>("csrf_token") {
-        Ok(Some(csrf_token)) => Some(csrf_token),
-        Ok(None) => return HttpResponse::BadRequest().body("Missing CSRF token"),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve CSRF token: {e}"));
-        }
+    let Some(stored_csrf_token) = stored.csrf_token else {
+        return HttpResponse::BadRequest().body("Missing CSRF token");
     };
-
-    let stored_nonce = match session.get::<String>("nonce") {
-        Ok(Some(nonce)) => nonce,
-        Ok(None) => return HttpResponse::BadRequest().body("Missing nonce"),
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to retrieve nonce: {e}"));
-        }
+    let Some(stored_nonce) = stored.nonce else {
+        return HttpResponse::BadRequest().body("Missing nonce");
     };
 
     // Validate CSRF token
     let Some(received_csrf_token) = query.get("state") else {
         return HttpResponse::BadRequest().body("Missing state parameter");
     };
-    if Some(received_csrf_token) != stored_csrf_token.as_ref() {
+    if *received_csrf_token != stored_csrf_token {
         return HttpResponse::BadRequest().body("CSRF token mismatch");
     }
 
@@ -348,13 +329,14 @@ pub(crate) async fn callback(
             .json(serde_json::json!({ "error": format!("Forbidden user identity: {error}") }));
     }
 
-    if session.insert("user_id", &user_id).is_err() {
-        return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
-    }
+    // A brand-new cookie: the one-time PKCE verifier, state and nonce are not carried over.
+    let Some(set_cookie) = login_cookie(&session_cookie, user_id) else {
+        return session_store_failure();
+    };
 
     HttpResponse::Found()
         .append_header(("Location", "/ui/locate"))
+        .insert_header((SET_COOKIE, set_cookie))
         .finish()
 }
 
@@ -408,7 +390,7 @@ struct AuthVerifierLoginResponse {
 /// as the OIDC flow (`callback`, above).
 #[post("/login_as")]
 pub(crate) async fn login_as(
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     body: web::Json<AuthVerifierLoginRequest>,
     auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
 ) -> HttpResponse {
@@ -548,14 +530,15 @@ pub(crate) async fn login_as(
                 );
             }
 
-            if session.insert("user_id", &user_id).is_err() {
-                return HttpResponse::InternalServerError()
-                    .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
-            }
+            let Some(set_cookie) = login_cookie(&session_cookie, user_id) else {
+                return session_store_failure();
+            };
 
-            HttpResponse::Ok().json(AuthVerifierLoginResponse {
-                next_step: "Authenticated",
-            })
+            HttpResponse::Ok()
+                .insert_header((SET_COOKIE, set_cookie))
+                .json(AuthVerifierLoginResponse {
+                    next_step: "Authenticated",
+                })
         }
     }
 }
@@ -571,7 +554,7 @@ pub(crate) async fn login_as(
 /// like the OIDC `callback` and Auth Verifier `login_as` flows above.
 #[post("/login_svid")]
 pub(crate) async fn login_svid(
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     body: web::Json<JwtSvidLoginRequest>,
     jwt_configurations: web::Data<Arc<Vec<JwtConfig>>>,
 ) -> HttpResponse {
@@ -589,35 +572,37 @@ pub(crate) async fn login_svid(
         }
     };
 
-    // Issue a fresh session ID on login so a session ID planted before authentication
-    // (session fixation) never becomes an authenticated session.
-    session.renew();
-    if session.insert("user_id", &authenticated.username).is_err() {
-        return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
-    }
+    // Every login issues a brand-new sealed cookie and keeps nothing from a cookie presented
+    // before authentication, so session fixation is impossible.
+    let Some(set_cookie) = login_cookie(&session_cookie, authenticated.username) else {
+        return session_store_failure();
+    };
 
-    HttpResponse::Ok().json(serde_json::json!({ "next_step": "Authenticated" }))
+    HttpResponse::Ok()
+        .insert_header((SET_COOKIE, set_cookie))
+        .json(serde_json::json!({ "next_step": "Authenticated" }))
 }
 
 #[get("/whoami")]
 pub(crate) async fn whoami(
     req: HttpRequest,
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
 ) -> HttpResponse {
     // Same precedence as the API middlewares: the Auth Verifier cookie wins over the KMS session.
     if let Some(user_id) = auth_verifier_session_user(&req, &auth_verifier_runtime).await {
         return HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id }));
     }
-    match session.get::<String>("user_id") {
-        Ok(Some(user_id)) => HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id })),
-        Ok(None) => {
-            HttpResponse::Unauthorized().json(serde_json::json!({ "error": "No active session" }))
-        }
-        Err(_) => HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Failed to read session" })),
-    }
+    session_cookie
+        .read(req.headers())
+        .and_then(|s| s.user_id)
+        .map_or_else(
+            || {
+                HttpResponse::Unauthorized()
+                    .json(serde_json::json!({ "error": "No active session" }))
+            },
+            |user_id| HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id })),
+        )
 }
 
 /// The user of a valid Auth Verifier SAML session cookie, when SAML sign-on is enabled.
@@ -627,8 +612,8 @@ async fn auth_verifier_session_user(
 ) -> Option<UserId> {
     let realm = auth_verifier_runtime.config.saml_session_realm()?;
     let auth_verifier = auth_verifier_runtime.auth_verifier.as_ref()?;
-    let cookie = req.cookie(AUTH_VERIFIER_SESSION_COOKIE)?;
-    authenticate_auth_verifier_session_cookie(auth_verifier, cookie.value(), realm)
+    let cookie = request_cookie(req.headers(), AUTH_VERIFIER_SESSION_COOKIE)?;
+    authenticate_auth_verifier_session_cookie(auth_verifier, cookie, realm)
         .await
         .inspect_err(|e| debug!("Auth Verifier session cookie rejected: {e}"))
         .ok()
@@ -641,7 +626,7 @@ async fn auth_verifier_session_user(
 /// sets is sent back to the KMS. After sign-in the browser returns to the Web UI.
 #[get("/login_saml")]
 pub(crate) async fn login_saml(
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
@@ -653,10 +638,10 @@ pub(crate) async fn login_saml(
     match saml_login_url(kms_url.as_str(), realm) {
         Ok(url) => {
             // Drop any previous KMS session so it cannot outlive the SAML identity switch.
-            session.purge();
             HttpResponse::Found()
                 .insert_header((header::LOCATION, url.as_str()))
                 .insert_header((header::CACHE_CONTROL, "no-store"))
+                .insert_header((SET_COOKIE, session_cookie.removal_cookie()))
                 .finish()
         }
         Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
@@ -683,16 +668,15 @@ fn saml_login_url(kms_public_url: &str, realm: &str) -> Result<Url, String> {
 #[get("/logout")]
 pub(crate) async fn logout(
     req: HttpRequest,
-    session: Session,
+    session_cookie: web::Data<UiSessionCookie>,
     oidc_runtime: web::Data<OidcRuntimeConfig>,
     auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
-    session.purge();
-
     let mut response = HttpResponse::Found();
+    response.append_header((SET_COOKIE, session_cookie.removal_cookie()));
     if end_auth_verifier_session(&req, &auth_verifier_runtime).await {
-        response.cookie(expired_auth_verifier_session_cookie());
+        response.append_header((SET_COOKIE, expired_auth_verifier_session_cookie()));
     }
 
     // When no OIDC logout URL is configured (e.g. the session was established via the
@@ -705,13 +689,19 @@ pub(crate) async fn logout(
     let mut logout_url = match Url::parse(url) {
         Ok(parsed_url) => parsed_url,
         Err(e) => {
-            return HttpResponse::InternalServerError().body(format!("Invalid logout URL: {e}"));
+            return HttpResponse::InternalServerError()
+                .append_header((SET_COOKIE, session_cookie.removal_cookie()))
+                .body(format!("Invalid logout URL: {e}"));
         }
     };
 
     let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
-        None => return HttpResponse::InternalServerError().body("Client ID is missing"),
+        None => {
+            return HttpResponse::InternalServerError()
+                .append_header((SET_COOKIE, session_cookie.removal_cookie()))
+                .body("Client ID is missing");
+        }
     };
     let redirect_url = format!("{}/ui/login", kms_url.as_str());
 
@@ -744,7 +734,7 @@ async fn end_auth_verifier_session(
     {
         return false;
     }
-    let Some(cookie) = req.cookie(AUTH_VERIFIER_SESSION_COOKIE) else {
+    let Some(cookie) = request_cookie(req.headers(), AUTH_VERIFIER_SESSION_COOKIE) else {
         return false;
     };
     if let Err(e) = revoke_auth_verifier_session(
@@ -752,7 +742,7 @@ async fn end_auth_verifier_session(
         auth_verifier_runtime
             .config
             .auth_verifier_accept_invalid_certs,
-        cookie.value(),
+        cookie,
     )
     .await
     {
@@ -760,7 +750,7 @@ async fn end_auth_verifier_session(
     }
     // The session is gone (or the Auth Verifier unreachable): stop trusting it at once here.
     if let Some(auth_verifier) = &auth_verifier_runtime.auth_verifier {
-        auth_verifier.forget_session(cookie.value());
+        auth_verifier.forget_session(cookie);
     }
     true
 }
@@ -801,15 +791,26 @@ async fn revoke_auth_verifier_session(
 }
 
 /// Removal cookie for the Auth Verifier session; must match the name and path it was set with.
-fn expired_auth_verifier_session_cookie() -> Cookie<'static> {
-    let mut cookie = Cookie::build(AUTH_VERIFIER_SESSION_COOKIE, "")
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Strict)
-        .finish();
-    cookie.make_removal();
-    cookie
+fn expired_auth_verifier_session_cookie() -> String {
+    format!(
+        "{AUTH_VERIFIER_SESSION_COOKIE}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; \
+         Secure; HttpOnly; SameSite=Strict"
+    )
+}
+
+/// `Set-Cookie` value of a session holding only the authenticated `user_id`.
+fn login_cookie(session_cookie: &UiSessionCookie, user_id: UserId) -> Option<String> {
+    session_cookie
+        .set_cookie(&UiSession {
+            user_id: Some(user_id),
+            ..UiSession::default()
+        })
+        .ok()
+}
+
+fn session_store_failure() -> HttpResponse {
+    HttpResponse::InternalServerError()
+        .json(serde_json::json!({ "error": "Failed to store user_id in session" }))
 }
 
 #[get("/auth_method")]
@@ -846,7 +847,6 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 mod tests {
     use actix_web::{
         App,
-        cookie::Cookie,
         http::{StatusCode, header},
         test, web,
     };
@@ -855,8 +855,9 @@ mod tests {
     use crate::{
         config::{AuthVerifierConfig, AuthVerifierRuntimeConfig, OidcConfig, OidcRuntimeConfig},
         middlewares::{
-            AUTH_VERIFIER_SESSION_COOKIE,
+            AUTH_VERIFIER_SESSION_COOKIE, UiSession, UserId,
             auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier},
+            test_ui_session_cookie,
         },
     };
 
@@ -888,6 +889,7 @@ mod tests {
             App::new()
                 .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
                 .app_data(web::Data::new(KMS_URL.to_owned()))
+                .app_data(web::Data::new(test_ui_session_cookie()))
                 .service(login_saml),
         )
         .await;
@@ -913,6 +915,7 @@ mod tests {
             App::new()
                 .app_data(web::Data::new(saml_runtime(None).await))
                 .app_data(web::Data::new(KMS_URL.to_owned()))
+                .app_data(web::Data::new(test_ui_session_cookie()))
                 .service(login_saml),
         )
         .await;
@@ -931,12 +934,16 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(saml_runtime(saml_realm).await))
+                .app_data(web::Data::new(test_ui_session_cookie()))
                 .service(whoami),
         )
         .await;
         let req = test::TestRequest::get()
             .uri("/whoami")
-            .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token.to_owned()))
+            .insert_header((
+                header::COOKIE,
+                format!("{AUTH_VERIFIER_SESSION_COOKIE}={token}"),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         let status = resp.status();
@@ -968,14 +975,19 @@ mod tests {
         );
     }
 
-    /// The `_ea_` removal cookie set by `GET /logout` for a request carrying `token`, if any.
-    async fn logout_removal_cookie(
-        token: String,
-    ) -> Option<(
-        String,
-        Option<String>,
-        Option<actix_web::cookie::time::Duration>,
-    )> {
+    /// The `_ea_` removal `Set-Cookie` of `GET /logout` for a request carrying `token`, if any.
+    async fn logout_removal_cookie(token: String) -> Option<String> {
+        let resp = logout_response(Some(format!("{AUTH_VERIFIER_SESSION_COOKIE}={token}"))).await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        set_cookies(&resp)
+            .into_iter()
+            .find(|c| c.starts_with(&format!("{AUTH_VERIFIER_SESSION_COOKIE}=")))
+    }
+
+    /// `GET /logout` carrying the given `Cookie` header, if any.
+    async fn logout_response(
+        cookie: Option<String>,
+    ) -> actix_web::dev::ServiceResponse<impl actix_web::body::MessageBody> {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
@@ -984,39 +996,79 @@ mod tests {
                     discovered: None,
                 }))
                 .app_data(web::Data::new(KMS_URL.to_owned()))
+                .app_data(web::Data::new(test_ui_session_cookie()))
                 .service(logout),
         )
         .await;
-        let req = test::TestRequest::get()
-            .uri("/logout")
-            .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), StatusCode::FOUND);
-        resp.response()
-            .cookies()
-            .find(|c| c.name() == AUTH_VERIFIER_SESSION_COOKIE)
-            .map(|c| {
-                (
-                    c.value().to_owned(),
-                    c.path().map(str::to_owned),
-                    c.max_age(),
-                )
-            })
+        let mut req = test::TestRequest::get().uri("/logout");
+        if let Some(cookie) = cookie {
+            req = req.insert_header((header::COOKIE, cookie));
+        }
+        test::call_service(&app, req.to_request()).await
+    }
+
+    fn set_cookies<B>(resp: &actix_web::dev::ServiceResponse<B>) -> Vec<String> {
+        resp.headers()
+            .get_all(header::SET_COOKIE)
+            .filter_map(|v| v.to_str().ok())
+            .map(str::to_owned)
+            .collect()
     }
 
     #[actix_web::test]
     async fn logout_expires_auth_verifier_session_cookie() {
         let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
-        assert_eq!(
-            logout_removal_cookie(token).await,
-            Some((
-                String::new(),
-                Some("/".to_owned()),
-                Some(actix_web::cookie::time::Duration::ZERO)
-            )),
-            "logout must expire the Auth Verifier session cookie"
-        );
+        let removal = logout_removal_cookie(token)
+            .await
+            .expect("logout must expire the Auth Verifier session cookie");
+        assert!(removal.starts_with("_ea_=;"), "{removal}");
+        assert!(removal.contains("Path=/"), "{removal}");
+        assert!(removal.contains("Max-Age=0"), "{removal}");
+    }
+
+    #[actix_web::test]
+    async fn logout_expires_kms_session_cookie() {
+        let resp = logout_response(None).await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        let removal = set_cookies(&resp)
+            .into_iter()
+            .find(|c| c.starts_with("auth_session=;"))
+            .expect("logout must expire the KMS session cookie");
+        assert!(removal.contains("Max-Age=0"), "{removal}");
+    }
+
+    #[actix_web::test]
+    async fn whoami_resolves_user_from_kms_session_cookie() {
+        let session = UiSession {
+            user_id: Some(UserId::from("alice@example.com")),
+            ..UiSession::default()
+        };
+        let set_cookie = test_ui_session_cookie()
+            .set_cookie(&session)
+            .expect("session cookie");
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(None).await))
+                .app_data(web::Data::new(test_ui_session_cookie()))
+                .service(whoami),
+        )
+        .await;
+
+        let with_cookie = test::TestRequest::get()
+            .uri("/whoami")
+            .insert_header((
+                header::COOKIE,
+                set_cookie.split(';').next().expect("name=value").to_owned(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, with_cookie).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(body["user_id"], "alice@example.com");
+
+        let anonymous = test::TestRequest::get().uri("/whoami").to_request();
+        let resp = test::call_service(&app, anonymous).await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
     /// Logout must neither call the Auth Verifier nor expire cookies it cannot attribute to

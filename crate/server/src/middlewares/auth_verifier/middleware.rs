@@ -130,7 +130,6 @@ mod tests {
 
     use actix_web::{
         App, HttpMessage, HttpRequest, HttpResponse,
-        cookie::Cookie,
         http::{StatusCode, header},
         test, web,
     };
@@ -171,7 +170,10 @@ mod tests {
     }
 
     fn with_cookie(token: &str) -> test::TestRequest {
-        test::TestRequest::get().cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token.to_owned()))
+        test::TestRequest::get().insert_header((
+            header::COOKIE,
+            format!("{AUTH_VERIFIER_SESSION_COOKIE}={token}"),
+        ))
     }
 
     #[actix_web::test]
@@ -223,8 +225,10 @@ mod tests {
     async fn session_cookie_post_requires_non_safelisted_content_type() {
         let token = auth_verifier_token("alice@example.com", Some("kms-saml"));
         let post = |content_type: Option<&str>| {
-            let request = test::TestRequest::post()
-                .cookie(Cookie::new(AUTH_VERIFIER_SESSION_COOKIE, token.clone()));
+            let request = test::TestRequest::post().insert_header((
+                header::COOKIE,
+                format!("{AUTH_VERIFIER_SESSION_COOKIE}={token}"),
+            ));
             match content_type {
                 Some(value) => request.insert_header((header::CONTENT_TYPE, value)),
                 None => request,

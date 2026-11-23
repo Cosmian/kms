@@ -15,12 +15,9 @@ use std::{
 
 use actix_cors::Cors;
 use actix_files::Files;
-use actix_identity::IdentityMiddleware;
-use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer, Scope,
     body::MessageBody,
-    cookie::{Key, time::Duration},
     dev::{ServerHandle, ServiceFactory, ServiceRequest, ServiceResponse, Transform},
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
@@ -37,7 +34,10 @@ use cosmian_kms_server_database::reexport::{
         requests::{create_rsa_key_pair_request, import_object_request},
     },
     cosmian_kms_crypto::{
-        crypto::password_derivation::{FIPS_MIN_SALT_SIZE, derive_key_from_password},
+        crypto::{
+            password_derivation::{FIPS_MIN_SALT_SIZE, derive_key_from_password},
+            secret::Secret,
+        },
         openssl::kmip_private_key_to_openssl,
     },
 };
@@ -48,6 +48,7 @@ use openssl::{
 };
 use tokio::{runtime::Handle, try_join};
 use url::Url;
+use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::routes::tokenize;
@@ -61,7 +62,7 @@ use crate::{
     error::KmsError,
     middlewares::{
         AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig, SessionAuth,
-        SpireTokenCache, UserId, api_token_middleware, ensure_auth_middleware,
+        SpireTokenCache, UiSessionCookie, UserId, api_token_middleware, ensure_auth_middleware,
         extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
         reject_forgeable_session_mutation, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
@@ -734,12 +735,13 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 ///
 /// # Returns
 ///
-/// Returns a 64-byte `Key` suitable for actix-web session cookie encryption.
+/// Returns the 64-byte derived key; its first 32 bytes are the AES-256-GCM key of the UI
+/// session cookie (`UiSessionCookie`).
 ///
 /// # Errors
 ///
 /// Returns `KmsError` if key derivation fails.
-fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key> {
+fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Secret<64>> {
     // Version prefix allows for future algorithm changes
     const VERSION: &str = "v1";
 
@@ -766,11 +768,8 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
         })?;
 
     // Derive a 64-byte key from the public URL
-    let derived_key = derive_key_from_password::<64>(salt, public_url.as_bytes())
-        .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
-
-    // Convert the derived key to an actix-web Key
-    Ok(Key::from(derived_key.as_ref()))
+    derive_key_from_password::<64>(salt, public_url.as_bytes())
+        .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))
 }
 
 /// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
@@ -1305,8 +1304,13 @@ pub async fn prepare_kms_server(
     // - Otherwise: generate a random ephemeral key (secure but lost on restart).
     //   Operators who need persistent sessions or load-balanced deployments MUST set
     //   `ui_session_salt` (or KMS_UI_SESSION_SALT).
-    let secret_key: Key = if let Some(salt) = kms_server.params.ui.session_salt.as_deref() {
-        derive_session_key_from_url(&kms_public_url, salt)?
+    let mut session_key = Zeroizing::new([0_u8; 32]);
+    if let Some(salt) = kms_server.params.ui.session_salt.as_deref() {
+        let derived = derive_session_key_from_url(&kms_public_url, salt)?;
+        let (key, _) = derived.split_first_chunk::<32>().ok_or_else(|| {
+            KmsError::ServerError("derived session key is shorter than 32 bytes".to_owned())
+        })?;
+        session_key.copy_from_slice(key);
     } else {
         // No secret configured: generate a cryptographically random ephemeral key.
         // This is secure, but sessions will be invalidated on every server restart
@@ -1318,12 +1322,12 @@ pub async fn prepare_kms_server(
              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
              random secret value."
         );
-        let random_key_bytes = kms_server
+        kms_server
             .rng
-            .random_vec(64)
+            .fill_bytes(&mut *session_key)
             .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
-        Key::from(random_key_bytes.as_slice())
-    };
+    }
+    let ui_session_cookie = Data::new(UiSessionCookie::new(session_key, session_cookie_secure));
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -1419,19 +1423,7 @@ pub async fn prepare_kms_server(
                     .add(("X-Frame-Options", "DENY"))
                     .add(("Content-Security-Policy", "frame-ancestors 'none'")),
             )
-            .wrap(IdentityMiddleware::default())
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                    .cookie_path("/".to_owned())
-                    .cookie_http_only(true)
-                    .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::Lax)
-                    .cookie_secure(session_cookie_secure)
-                    .session_lifecycle(
-                        PersistentSession::default().session_ttl(Duration::hours(24)),
-                    )
-                    .build(),
-            )
+            .app_data(ui_session_cookie.clone())
             .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
             // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
             // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
@@ -2245,8 +2237,8 @@ mod tests {
         let key2 = derive_session_key_from_url(url2, salt).expect("Failed to derive key 2");
 
         // Extract the key bytes for comparison
-        let key1_bytes = key1.master();
-        let key2_bytes = key2.master();
+        let key1_bytes = &*key1;
+        let key2_bytes = &*key2;
 
         assert_eq!(
             key1_bytes, key2_bytes,
@@ -2255,7 +2247,7 @@ mod tests {
 
         // Different URL should generate different key
         let key3 = derive_session_key_from_url(url3, salt).expect("Failed to derive key 3");
-        let key3_bytes = key3.master();
+        let key3_bytes = &*key3;
 
         assert_ne!(
             key1_bytes, key3_bytes,
@@ -2265,7 +2257,7 @@ mod tests {
         // Different salt should generate different key
         let key4 =
             derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
-        let key4_bytes = key4.master();
+        let key4_bytes = &*key4;
 
         assert_ne!(
             key1_bytes, key4_bytes,
@@ -2293,8 +2285,7 @@ mod tests {
 
         // Should be deterministic
         assert_eq!(
-            key1.master(),
-            key2.master(),
+            &*key1, &*key2,
             "Keys with same URL and salt should be identical"
         );
     }
@@ -2540,31 +2531,34 @@ mod tests {
     /// Bodies are also checked to keep the Vault `errors` envelope on the real scope (S37).
     #[actix_web::test]
     async fn kv_scope_refuses_session_cookie_writes_without_json_content_type() {
-        use actix_session::Session;
         use actix_web::{
-            http::{StatusCode, header::CONTENT_TYPE},
+            http::{
+                StatusCode,
+                header::{CONTENT_TYPE, COOKIE, SET_COOKIE},
+            },
             test,
         };
 
-        async fn login(session: Session) -> HttpResponse {
-            session
-                .insert("user_id", "alice@example.com")
-                .expect("session insert");
-            HttpResponse::Ok().finish()
+        use crate::middlewares::{UiSession, test_ui_session_cookie};
+
+        async fn login(cookie: Data<UiSessionCookie>) -> HttpResponse {
+            let session = UiSession {
+                user_id: Some(UserId::from("alice@example.com")),
+                ..UiSession::default()
+            };
+            HttpResponse::Ok()
+                .insert_header((
+                    SET_COOKIE,
+                    cookie.set_cookie(&session).expect("session cookie"),
+                ))
+                .finish()
         }
 
         let auth = TestAuthStack::new(None).await;
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(auth.kms.clone()))
-                .wrap(
-                    SessionMiddleware::builder(
-                        CookieSessionStore::default(),
-                        Key::from(&[0x42_u8; 64]),
-                    )
-                    .cookie_secure(false)
-                    .build(),
-                )
+                .app_data(Data::new(test_ui_session_cookie()))
                 .route("/login", web::post().to(login))
                 .service(
                     kv_scope("/v1/kv", kv::configure_routes, false, &auth.stack())
@@ -2575,11 +2569,12 @@ mod tests {
         let login_response =
             test::call_service(&app, test::TestRequest::post().uri("/login").to_request()).await;
         let cookie = login_response
-            .response()
-            .cookies()
-            .next()
+            .headers()
+            .get(SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(';').next())
             .expect("session cookie")
-            .into_owned();
+            .to_owned();
         let body = r#"{"data":{"password":"hunter2"}}"#;
 
         for content_type in [
@@ -2590,7 +2585,7 @@ mod tests {
         ] {
             let mut forged = test::TestRequest::post()
                 .uri("/v1/kv/data/csrf")
-                .cookie(cookie.clone())
+                .insert_header((COOKIE, cookie.clone()))
                 .set_payload(body);
             if let Some(content_type) = content_type {
                 forged = forged.insert_header((CONTENT_TYPE, content_type));
@@ -2606,7 +2601,7 @@ mod tests {
         }
         let forged_delete = test::TestRequest::delete()
             .uri("/v1/kv/metadata/csrf")
-            .cookie(cookie.clone())
+            .insert_header((COOKIE, cookie.clone()))
             .insert_header((CONTENT_TYPE, "text/plain"))
             .to_request();
         assert_eq!(
@@ -2616,13 +2611,13 @@ mod tests {
         let read = || {
             test::TestRequest::get()
                 .uri("/v1/kv/data/csrf")
-                .cookie(cookie.clone())
+                .insert_header((COOKIE, cookie.clone()))
                 .to_request()
         };
 
         let malformed = test::TestRequest::post()
             .uri("/v1/kv/data/csrf")
-            .cookie(cookie.clone())
+            .insert_header((COOKIE, cookie.clone()))
             .insert_header((CONTENT_TYPE, "application/json"))
             .set_payload("{")
             .to_request();
@@ -2635,7 +2630,7 @@ mod tests {
         // above created the path.
         let json_write = test::TestRequest::post()
             .uri("/v1/kv/data/csrf")
-            .cookie(cookie.clone())
+            .insert_header((COOKIE, cookie.clone()))
             .insert_header((CONTENT_TYPE, "application/json; charset=utf-8"))
             .set_payload(r#"{"data":{"password":"hunter2"},"options":{"cas":0}}"#)
             .to_request();
@@ -2743,9 +2738,7 @@ mod characterization_tests {
     fn characterization_derive_session_key_from_url_golden() {
         let derived: Vec<String> = INPUTS
             .iter()
-            .map(|(url, salt)| {
-                hex::encode(derive_session_key_from_url(url, salt).unwrap().master())
-            })
+            .map(|(url, salt)| hex::encode(&*derive_session_key_from_url(url, salt).unwrap()))
             .collect();
         assert_eq!(derived, GOLDEN.to_vec());
     }
@@ -2755,8 +2748,8 @@ mod characterization_tests {
         let a = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
         let b = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
         let c = derive_session_key_from_url("https://kms.example.com", "salt-see").unwrap();
-        assert_eq!(a.master(), b.master());
-        assert_ne!(a.master(), c.master());
-        assert_eq!(a.master().len(), 64);
+        assert_eq!(&*a, &*b);
+        assert_ne!(&*a, &*c);
+        assert_eq!(a.len(), 64);
     }
 }
