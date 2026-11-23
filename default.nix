@@ -203,12 +203,12 @@ let
         rustc = rustToolchain;
       };
 
-  # Build OpenSSL 3.1.2 with nixpkgs 22.05 stdenv (glibc 2.34 for Rocky Linux 9)
+  # Build the OpenSSL 3.5.9 FIPS provider with nixpkgs 22.05 stdenv (glibc 2.34 for Rocky Linux 9)
   # Create both static and dynamic versions
-  openssl312-static = pkgs234.callPackage ./nix/openssl.nix { static = true; };
-  openssl312-dynamic = pkgs234.callPackage ./nix/openssl.nix { static = false; };
+  opensslFips-static = pkgs234.callPackage ./nix/openssl.nix { static = true; };
+  opensslFips-dynamic = pkgs234.callPackage ./nix/openssl.nix { static = false; };
   # Default to static for backward compatibility
-  openssl312 = openssl312-static;
+  opensslFips = opensslFips-static;
 
   # Build OpenSSL 3.6.5 with legacy provider for non-FIPS builds
   # Common parameters for both static and dynamic builds
@@ -223,8 +223,8 @@ let
   openssl36-dynamic = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = false; });
 
   # OpenSSL variants built against pkgs228 (glibc 2.28) for CLI binaries
-  openssl312-static-228 = pkgs228.callPackage ./nix/openssl.nix { static = true; };
-  openssl312-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix { static = false; };
+  opensslFips-static-228 = pkgs228.callPackage ./nix/openssl.nix { static = true; };
+  opensslFips-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix { static = false; };
   openssl36-static-228 = pkgs228.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
   openssl36-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix (
     openssl36Args // { static = false; }
@@ -307,7 +307,7 @@ let
       static ? true,
     }:
     pkgs.callPackage ./nix/kms-server.nix {
-      openssl312 = if static then openssl312-static else openssl312-dynamic;
+      opensslFips = if static then opensslFips-static else opensslFips-dynamic;
       openssl36 = if static then openssl36-static else openssl36-dynamic;
       inherit pkgs234;
       rustPlatform = rustPlatform190;
@@ -326,7 +326,7 @@ let
     }:
     pkgs.callPackage ./nix/cli.nix {
       # Use pkgs228 (glibc 2.28) so the CLI binary only requires GLIBC ≤ 2.28.
-      openssl312 = if static then openssl312-static-228 else openssl312-dynamic-228;
+      opensslFips = if static then opensslFips-static-228 else opensslFips-dynamic-228;
       openssl36 = if static then openssl36-static-228 else openssl36-dynamic-228;
       inherit pkgs228;
       rustPlatform = rustPlatform190_228;
@@ -389,7 +389,7 @@ let
     pkcs11LibDrv = kms-cli-fips-static-openssl;
     variant = "fips";
     version = kmsVersion;
-    opensslDrv = openssl312;
+    opensslDrv = opensslFips;
   };
 
   docker-image-non-fips = pkgsDocker.callPackage ./nix/docker.nix {
@@ -409,7 +409,7 @@ let
     features = [ ];
     static = true;
     openssl36 = openssl36-static-228;
-    openssl312 = openssl312-static-228;
+    opensslFips = opensslFips-static-228;
   };
 
   k8s-operator-bin = k8s-binaries.operator;
@@ -422,7 +422,7 @@ let
     features = [ ];
     static = true;
     openssl36 = openssl36-static-228;
-    openssl312 = openssl312-static-228;
+    opensslFips = opensslFips-static-228;
   };
 
   # Alpine-compatible musl builds packaged as .apk (server + CLI). See nix/kms-server-musl.nix
@@ -532,8 +532,8 @@ rec {
   # Kubernetes plugin binary (for deb/rpm packaging)
   inherit k8s-plugin-bin k8s-operator-bin k8s-csi-provider-bin;
 
-  # Export OpenSSL 3.1.2 FIPS derivations for tooling (packaging script)
-  inherit openssl312 openssl312-static openssl312-dynamic;
+  # Export OpenSSL 3.5.9 FIPS derivations for tooling (packaging script)
+  inherit opensslFips opensslFips-static opensslFips-dynamic;
 
   # Export OpenSSL 3.6.5 derivations (with legacy provider for non-FIPS)
   inherit openssl36-static openssl36-dynamic;

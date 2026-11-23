@@ -6,12 +6,12 @@
   coreutils,
   # Linkage mode: true for static libraries only, false for shared libraries
   static ? true,
-  # OpenSSL version to build (e.g. "3.6.5" or "3.1.2")
-  version ? "3.1.2",
+  # OpenSSL version to build (e.g. "3.6.5" or "3.5.9")
+  version ? "3.5.9",
   # Build the legacy provider module (needed for non-FIPS features)
   enableLegacy ? false,
   # Optional override for source URL and hashes. When not provided, defaults to Cosmian mirror
-  # and known hashes for 3.1.2. For other versions, callers should provide these.
+  # and known hashes for 3.5.9. For other versions, callers should provide these.
   srcUrl ? null,
   # SRI sha256 for fetchurl (e.g. "sha256-oM5p...")
   sha256SRI ? null,
@@ -37,10 +37,10 @@ let
   tarballName = "openssl-${version}.tar.gz";
   localTarball = ../resources/tarballs/${tarballName};
 
-  # Provide sensible defaults for 3.1.2 to preserve historical behavior.
+  # Provide sensible defaults for 3.5.9 (the FIPS provider version).
   defaultUrl = "https://package.cosmian.com/openssl/${tarballName}";
-  defaultExpectedHash = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"; # 3.1.2
-  defaultSRI = "sha256-oM5puLl+pqNblodSNapFO5Zro8uory3iNlfYtnZ9ZTk="; # 3.1.2
+  defaultExpectedHash = "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"; # 3.5.9
+  defaultSRI = "sha256-YD9WAuLu8A13+9Qp003NWCK7MBdXobyc2yTGcPHrhZo="; # 3.5.9
 
   url = if srcUrl != null then srcUrl else defaultUrl;
   sri = if sha256SRI != null then sha256SRI else defaultSRI;
@@ -64,7 +64,7 @@ let
       fetchurl {
         # Prefer Cosmian mirror for reliability; callers can override via srcUrl
         inherit url;
-        # SRI hash pinned by caller or defaults (3.1.2)
+        # SRI hash pinned by caller or defaults (3.5.9)
         sha256 = sri;
       };
 

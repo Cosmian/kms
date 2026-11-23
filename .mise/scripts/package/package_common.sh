@@ -144,7 +144,7 @@ prewarm_store() {
   local need_openssl=0
   if [ "$LINK" = "static" ]; then
     need_openssl=1
-    local openssl_link="$REPO_ROOT/result-openssl-312"
+    local openssl_link="$REPO_ROOT/result-openssl-fips"
     if [ -L "$openssl_link" ] && [ -d "$(readlink -f "$openssl_link")" ]; then need_openssl=0; fi
   fi
 
@@ -161,7 +161,7 @@ prewarm_store() {
     return
   fi
 
-  [ $need_openssl -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" -A openssl312 --no-out-link >/dev/null || echo "OpenSSL derivation already present"
+  [ $need_openssl -eq 1 ] && nix-build -I "nixpkgs=${PIN_URL}" -A opensslFips --no-out-link >/dev/null || echo "OpenSSL derivation already present"
 
   # Determine Nix attribute for server
   local server_attr
@@ -518,9 +518,9 @@ resolve_openssl_path() {
   if [ "$LINK" = "dynamic" ]; then
     OSSL_PATH="$REAL_SERVER/usr/local/cosmian"
   else
-    # Static builds rely on 3.1.2 for FIPS provider; stage from openssl312
-    local openssl_attr="openssl312-static"
-    local link="$REPO_ROOT/result-openssl-312"
+    # Static builds rely on the OpenSSL FIPS provider (3.5.9); stage from opensslFips
+    local openssl_attr="opensslFips-static"
+    local link="$REPO_ROOT/result-openssl-fips"
     if [ -L "$link" ] && [ -d "$(readlink -f "$link")" ]; then :; else
       rm -f "$link" 2>/dev/null || true
       nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" -A "$openssl_attr" -o "$link"

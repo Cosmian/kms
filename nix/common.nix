@@ -5,7 +5,7 @@
   pkgs234 ? pkgs, # nixpkgs 22.05 with glibc 2.34 (Rocky Linux 9 compatibility)
   lib ? pkgs.lib,
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   static ? true,
   features ? [ ],
 }:
@@ -29,16 +29,16 @@ let
         expectedHash = "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
       };
 
-  openssl312_ =
-    if openssl312 != null then
-      openssl312
+  opensslFips_ =
+    if opensslFips != null then
+      opensslFips
     else
       opensslPkgs.callPackage ./openssl.nix {
         inherit static;
-        version = "3.1.2";
+        version = "3.5.9";
       };
 
-  # Always link against OpenSSL 3.6.5; the FIPS provider (3.1.2) is loaded at runtime.
+  # Always link against OpenSSL 3.6.5; the FIPS provider (3.5.9) is loaded at runtime.
   opensslLink = openssl36_;
 
   srcRoot = ../.;
@@ -128,7 +128,7 @@ in
     baseVariant
     opensslPkgs
     openssl36_
-    openssl312_
+    opensslFips_
     opensslLink
     mkFilteredSrc
     buildInputs

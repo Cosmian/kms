@@ -9,7 +9,7 @@
   lib ? pkgsMusl.lib,
   # Optional external OpenSSL derivation overrides; if null, built from nix/openssl.nix.
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   rustPlatform ? pkgsMusl.rustPlatform,
   version,
   features ? [ ], # [ "non-fips" ] or []
@@ -45,7 +45,7 @@ let
     inherit
       lib
       openssl36
-      openssl312
+      opensslFips
       features
       ;
     static = true; # OpenSSL main library is always statically embedded (.a) here
@@ -54,7 +54,7 @@ let
     isFips
     baseVariant
     openssl36_
-    openssl312_
+    opensslFips_
     opensslLink
     mkFilteredSrc
     ;
@@ -257,8 +257,8 @@ rustPlatform.buildRustPackage rec {
 
     ${lib.optionalString isFips ''
       mkdir -p "$out/usr/local/cosmian/lib"
-      cp -r "${openssl312_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
-      cp -r "${openssl312_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
+      cp -r "${opensslFips_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+      cp -r "${opensslFips_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
     ''}
 
     ${lib.optionalString (!isFips && !muslCrtStatic) ''
@@ -280,7 +280,7 @@ rustPlatform.buildRustPackage rec {
     Version: ${version}
     Target: ${muslTriple}
     OpenSSL (link): ${opensslLink} (static)
-    ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.1.2 (usr/local/cosmian/lib)"}
+    ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.5.9 (usr/local/cosmian/lib)"}
     EOF
   '';
 

@@ -11,14 +11,14 @@ const OPENSSL_MAIN_SHA256: &str =
     "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
 
 // The FIPS provider MUST be built from a version holding a CMVP certificate (OpenSSL
-// `README-FIPS.md`). The newest validated OpenSSL FIPS Provider is 3.1.2 (FIPS 140-3,
-// NIST CMVP Certificate #4985), so it is built separately from the main 3.6.5 library
+// `README-FIPS.md`). The newest validated OpenSSL FIPS Provider is 3.5.9 (FIPS 140-3,
+// NIST CMVP Certificate #5586), so it is built separately from the main 3.6.5 library
 // and loaded at runtime, exactly as the Nix build does (`nix/common.nix`).
-const OPENSSL_FIPS_VERSION: &str = "3.1.2";
-const OPENSSL_FIPS_TARBALL: &str = "openssl-3.1.2.tar.gz";
-const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.1.2.tar.gz";
+const OPENSSL_FIPS_VERSION: &str = "3.5.9";
+const OPENSSL_FIPS_TARBALL: &str = "openssl-3.5.9.tar.gz";
+const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.5.9.tar.gz";
 const OPENSSL_FIPS_SHA256: &str =
-    "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539";
+    "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Normalize provider layout
     normalize_provider_layout(&main_prefix);
     if fips_mode {
-        // Build the CMVP-validated FIPS provider (3.1.2) in its own prefix, then copy
+        // Build the CMVP-validated FIPS provider (3.5.9) in its own prefix, then copy
         // `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` into the main prefix.
         let fips_prefix = target_dir.join(format!(
             "openssl-fips-provider-{OPENSSL_FIPS_VERSION}-{os}-{arch}"

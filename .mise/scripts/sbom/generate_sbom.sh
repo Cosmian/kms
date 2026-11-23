@@ -186,8 +186,8 @@ fi
 # Determine the derivation to analyze based on target
 case "$TARGET" in
   openssl_3_1_2)
-    DERIVATION="openssl312"
-    NIX_RESULT="$REPO_ROOT/result-openssl-312"
+    DERIVATION="opensslFips"
+    NIX_RESULT="$REPO_ROOT/result-openssl-fips"
     ;;
   openssl_3_6_5)
     DERIVATION="openssl36-static"

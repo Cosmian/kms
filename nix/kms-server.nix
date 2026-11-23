@@ -4,7 +4,7 @@
   lib ? pkgs.lib,
   # Optional external overrides; if null, will be constructed from nix/openssl.nix
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   # Provide a rustPlatform that uses the desired Rust (e.g., 1.97.0) but
   # links against pkgs234 (glibc 2.34) on Linux for Rocky Linux 9 compatibility.
   rustPlatform ? pkgs.rustPlatform,
@@ -23,7 +23,7 @@ let
       pkgs234
       lib
       openssl36
-      openssl312
+      opensslFips
       static
       features
       ;
@@ -32,7 +32,7 @@ let
     isFips
     baseVariant
     openssl36_
-    openssl312_
+    opensslFips_
     opensslLink
     mkFilteredSrc
     ;
@@ -294,9 +294,9 @@ rustPlatform.buildRustPackage rec {
 
     ${lib.optionalString isFips ''
       mkdir -p "$out/usr/local/cosmian/lib"
-      # Use OpenSSL 3.1.2 for FIPS provider and configs
-      cp -r "${openssl312_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
-      cp -r "${openssl312_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
+      # Use OpenSSL 3.5.9 for FIPS provider and configs
+      cp -r "${opensslFips_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
+      cp -r "${opensslFips_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
     ''}
 
     ${lib.optionalString (!isFips && static) ''
@@ -319,12 +319,12 @@ rustPlatform.buildRustPackage rec {
       ${lib.optionalString (!static) ''
         # Dynamic linkage variant: ship libssl and libcrypto
         mkdir -p "$out/usr/local/cosmian/lib"
-        # For FIPS dynamic builds, use OpenSSL 3.1.2 to match the FIPS provider version
+        # For FIPS dynamic builds, use OpenSSL 3.5.9 to match the FIPS provider version
         # For non-FIPS dynamic builds, use OpenSSL 3.6.5
         ${
           if isFips then
             ''
-              opensslSrc="${openssl312_}"
+              opensslSrc="${opensslFips_}"
             ''
           else
             ''
@@ -364,7 +364,7 @@ rustPlatform.buildRustPackage rec {
       KMS Server ${variant} (${if static then "static" else "dynamic"} OpenSSL)
       Version: ${version}
       OpenSSL (link): ${opensslLink}
-      ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.1.2 (usr/local/cosmian/lib)"}
+      ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.5.9 (usr/local/cosmian/lib)"}
       EOF
   '';
 
@@ -451,12 +451,12 @@ rustPlatform.buildRustPackage rec {
       + (
         if isFips then
           ''
-            # FIPS: tests use the 3.1.2 provider
-            export OPENSSL_DIR="${openssl312_}"
-            export OPENSSL_LIB_DIR="${openssl312_}/lib"
-            export OPENSSL_INCLUDE_DIR="${openssl312_}/include"
-            export OPENSSL_CONF="${openssl312_}/ssl/openssl.cnf"
-            export OPENSSL_MODULES="${openssl312_}/lib/ossl-modules"
+            # FIPS: tests use the 3.5.9 provider
+            export OPENSSL_DIR="${opensslFips_}"
+            export OPENSSL_LIB_DIR="${opensslFips_}/lib"
+            export OPENSSL_INCLUDE_DIR="${opensslFips_}/include"
+            export OPENSSL_CONF="${opensslFips_}/ssl/openssl.cnf"
+            export OPENSSL_MODULES="${opensslFips_}/lib/ossl-modules"
           ''
         else
           ''

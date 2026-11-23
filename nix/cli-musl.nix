@@ -4,7 +4,7 @@
   pkgsMusl,
   lib ? pkgsMusl.lib,
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   rustPlatform ? pkgsMusl.rustPlatform,
   version,
   features ? [ ],
@@ -20,7 +20,7 @@ let
     inherit
       lib
       openssl36
-      openssl312
+      opensslFips
       features
       ;
     static = true; # OpenSSL main library is always statically embedded (.a) here
