@@ -51,4 +51,4 @@ fi
 
 ensure_nix_shell
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_ui_auth.sh" --variant "${VARIANT}" --link "${LINK}"
+bash "${REPO_ROOT}/.mise/scripts/test/ui/test_ui_auth.sh" --variant "${VARIANT}" --link "${LINK}"

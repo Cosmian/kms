@@ -14,7 +14,7 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
  * Separate from `playwright.auth.config.ts` because it needs a different stack that the
  * `test:ui:auth` harness does not start: Keycloak (SAML IdP) + Auth Verifier (SAML build, `cargo run`) +
  * an HTTPS reverse proxy serving both and the KMS on ONE origin
- * (`.mise/scripts/test/saml_sso/stack.sh`, driven by `.mise/scripts/test/test_ui_saml.sh`).
+ * (`.mise/scripts/test/ui/saml_sso/stack.sh`, driven by `.mise/scripts/test/ui/test_ui_saml.sh`).
  *
  * The origin is `https://localhost:8443` with throw-away self-signed certificates, hence
  * `ignoreHTTPSErrors`.

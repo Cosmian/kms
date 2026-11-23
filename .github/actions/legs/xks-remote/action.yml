@@ -52,7 +52,7 @@ runs:
         KMS_XKS_SSH_USER: ${{ inputs.ssh-user }}
         KMS_BIN: target/release/cosmian_kms
       shell: bash
-      run: bash .mise/scripts/test/deploy_xks_remote.sh
+      run: bash .mise/scripts/test/cloud/deploy_xks_remote.sh
 
     - name: Run XKS tests against remote server
       env:
@@ -63,7 +63,7 @@ runs:
         KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ inputs.sigv4-secret-access-key }}
       shell: bash
       run: |
-        bash .mise/scripts/test/test_xks_remote.sh
+        bash .mise/scripts/test/cloud/test_xks_remote.sh
 
     - name: Run AWS KMS XKS end-to-end test
       env:
@@ -71,4 +71,4 @@ runs:
         AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
         AWS_XKS_KEY_ARN: ${{ inputs.aws-key-arn }}
       shell: bash
-      run: bash .mise/scripts/test/test_xks_aws_e2e.sh
+      run: bash .mise/scripts/test/cloud/test_xks_aws_e2e.sh

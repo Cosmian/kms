@@ -66,7 +66,7 @@ pub(crate) fn hsm_key_dates_support() -> Option<bool> {
 /// write an IV either, and a generic `hsm_model = "other"` library is assumed not to. These three
 /// are taken to generate the IV only when the build environment sets `HSM_GENERATES_GCM_IV`,
 /// i.e. when the PKCS#11 library is fronted by the IV shim
-/// (`.mise/scripts/test/pkcs11_fips_iv_shim.c`). Kryoptic generates it through the PKCS#11 v3
+/// (`.mise/scripts/test/hsm/pkcs11_fips_iv_shim.c`). Kryoptic generates it through the PKCS#11 v3
 /// message API, so it encrypts as usual, like the other HSMs.
 #[cfg(not(feature = "non-fips"))]
 pub(crate) fn hsm_cannot_generate_gcm_iv() -> bool {

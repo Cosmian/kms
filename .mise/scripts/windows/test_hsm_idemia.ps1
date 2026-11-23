@@ -8,7 +8,7 @@
 #   -Fips    SECURITY_LEVEL=FIPS, KMS built without `non-fips`, running against the OpenSSL FIPS
 #            provider (fips.dll, built by .mise\scripts\windows\prepare_windows_fips_provider.ps1).
 #            The simulator then offers no AES key wrap and does not generate AES-GCM IVs, so the
-#            KMS-side tests reach it through the IV shim (.mise\scripts\test\pkcs11_fips_iv_shim.c),
+#            KMS-side tests reach it through the IV shim (.mise\scripts\test\hsm\pkcs11_fips_iv_shim.c),
 #            which plays a FIPS module that generates the IV (see hsm_common.ps1 for why the shim
 #            also isolates the backend from the KMS's OPENSSL_CONF).
 #

@@ -8,7 +8,7 @@
 //!    (`admin` / `change_me`, realm `_`).
 //! 2. A KMS server with `[auth_verifier]` configured to point at server 1.
 //!
-//! Both servers are started by `.mise/scripts/test/test_ui_auth.sh`, which
+//! Both servers are started by `.mise/scripts/test/ui/test_ui_auth.sh`, which
 //! exports `PLAYWRIGHT_BASE_URL=http://localhost:<KMS_PORT>` and then calls:
 //! ```sh
 //! cargo test -p test_kms_server -- --ignored test_webui_login_via_auth_verifier
@@ -33,8 +33,8 @@
 /// 3. `GET /ui/whoami` → `{ "user_id": "admin" }`.
 ///
 /// Requires `PLAYWRIGHT_BASE_URL` to be set to the KMS base URL.
-/// Normally invoked by `.mise/scripts/test/test_ui_auth.sh`.
-#[ignore = "requires running KMS+auth-verifier; invoke via .mise/scripts/test/test_ui_auth.sh"]
+/// Normally invoked by `.mise/scripts/test/ui/test_ui_auth.sh`.
+#[ignore = "requires running KMS+auth-verifier; invoke via .mise/scripts/test/ui/test_ui_auth.sh"]
 #[tokio::test]
 async fn test_webui_login_via_auth_verifier() {
     let base_url = std::env::var("PLAYWRIGHT_BASE_URL")

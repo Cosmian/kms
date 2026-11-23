@@ -13,7 +13,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 print_header "Running independent PKCS#11 v2/v3 conformance suite (cosmian_pkcs11)"
 
 REPO_ROOT="$(get_repo_root)"
-bash "${REPO_ROOT}/.mise/scripts/test/test_pkcs11_conformance.sh" \
+bash "${REPO_ROOT}/.mise/scripts/test/pkcs11/test_pkcs11_conformance.sh" \
   --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
 
 print_success "PKCS#11 conformance suite completed"

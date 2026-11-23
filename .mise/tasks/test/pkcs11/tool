@@ -22,12 +22,12 @@ ensure_nix_shell
 
 print_header "Running HSM-KEK pkcs11-tool conformance tests"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_hsm_kek_pkcs11_comprehensive.sh" \
+bash "${REPO_ROOT}/.mise/scripts/test/pkcs11/test_hsm_kek_pkcs11_comprehensive.sh" \
   --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
 
 print_success "HSM-KEK pkcs11-tool conformance tests completed"
 print_header "Running pkcs11-check after HSM-KEK tests"
-bash "${REPO_ROOT}/.mise/scripts/test/test_pkcs11_check.sh" \
+bash "${REPO_ROOT}/.mise/scripts/test/pkcs11/test_pkcs11_check.sh" \
   --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}" \
   --marker "${usage_marker:-smoke}"
 

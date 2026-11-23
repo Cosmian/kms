@@ -37,7 +37,7 @@ server directly: key files, signatures and messages move between `gpg` and the c
 
 | Item | Support |
 |------|---------|
-| Interoperability suite | The `pgp_gnupg_tests` suite (24 tests) and `.mise/scripts/test/test_gnupg.sh` run against the `gpg` found in `PATH`. The repository does **not** pin or install a GnuPG version for it. |
+| Interoperability suite | The `pgp_gnupg_tests` suite (24 tests) and `.mise/scripts/test/pkcs11/test_gnupg.sh` run against the `gpg` found in `PATH`. The repository does **not** pin or install a GnuPG version for it. |
 | Last verified version | **GnuPG 2.5.18** (libgcrypt 1.12.1): all 24 tests pass. |
 | Minimum version | Not tested below the version above. Ed25519/Curve25519 keys (`eddsa`/`ecdh cv25519`) and `--pinentry-mode loopback`, which the commands on this page use, are GnuPG 2.1+ features, so older releases cannot follow them. |
 | `gnupg-pkcs11-scd` smartcard | Separate integration, see [GnuPG smartcard](smartcard.md). |
@@ -128,7 +128,7 @@ Secret-key imports must be unprotected.
 
 The KMS interoperates directly with GnuPG (`gpg`); see [Supported versions](#supported-versions-and-formats) for the
 versions covered. The commands below are the exact commands
-exercised by the `.mise/scripts/test/test_gnupg.sh` end-to-end suite.
+exercised by the `.mise/scripts/test/pkcs11/test_gnupg.sh` end-to-end suite.
 
 ### KMS → GnuPG
 

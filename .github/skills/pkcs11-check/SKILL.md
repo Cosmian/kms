@@ -30,7 +30,7 @@ pkcs11-check fetch-data all
 mise run test:pkcs11:tool --marker ""
 ```
 
-The pinned dependency is `.mise/scripts/test/requirements-pkcs11-check.txt` (`0.2.2`). The runner
+The pinned dependency is `.mise/scripts/test/pkcs11/requirements-pkcs11-check.txt` (`0.2.2`). The runner
 installs it in `target/pkcs11-check-venv` and does not modify the system Python environment.
 
 ## Reports

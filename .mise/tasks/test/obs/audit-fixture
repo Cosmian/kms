@@ -8,6 +8,6 @@ REPO_ROOT="$(get_repo_root)"
 # shellcheck disable=SC2154  # usage_output is set by the MISE USAGE framework
 OUTPUT="${usage_output}"
 
-bash "${REPO_ROOT}/.mise/scripts/test/generate_live_audit_fixture.sh" --output "${OUTPUT}"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/generate_live_audit_fixture.sh" --output "${OUTPUT}"
 
 print_success "Live audit fixture ready at ${OUTPUT}"

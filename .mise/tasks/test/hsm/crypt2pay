@@ -71,7 +71,7 @@ require_cmd cc
 # Disable the vendor's racy cross-process key watcher, as in the simulator task.
 C2P_SHIM_DIR="$(mktemp -d)"
 cc -shared -fPIC -O2 -o "${C2P_SHIM_DIR}/c2p_no_inotify.so" \
-  "${MISE_CONFIG_ROOT}/.mise/scripts/test/c2p_no_inotify.c"
+  "${MISE_CONFIG_ROOT}/.mise/scripts/test/hsm/c2p_no_inotify.c"
 
 # CRYPT2PAY_PKCS11_LIB matches the crate constant in crypt2pay_pkcs11_loader.
 # HSM_USER_PASSWORD is read by the Rust test harness.

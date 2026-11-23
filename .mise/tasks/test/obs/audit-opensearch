@@ -59,11 +59,11 @@ fi
 
 PYTHON_BIN=$(audit_compat_python "${REPO_ROOT}")
 
-"${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
+"${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/obs/validate_audit_compat.py" \
   --backend opensearch \
   --file "${AUDIT_FILE}" \
-  --fields-file "${REPO_ROOT}/.mise/scripts/test/fixtures/schemas/kms-audit-fields.json" \
-  --mapping-file "${REPO_ROOT}/.mise/scripts/test/fixtures/schemas/kms-audit-mapping.json" \
+  --fields-file "${REPO_ROOT}/.mise/scripts/test/obs/fixtures/schemas/kms-audit-fields.json" \
+  --mapping-file "${REPO_ROOT}/.mise/scripts/test/obs/fixtures/schemas/kms-audit-mapping.json" \
   --host "${OPENSEARCH_HOST}" \
   --port "${OPENSEARCH_PORT}"
 

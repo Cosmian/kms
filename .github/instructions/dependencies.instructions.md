@@ -67,14 +67,14 @@ Gates: CI job `npm-dependency-audit` (`.github/workflows/supply-chain.yml`), pre
 
 ## 4. Python (test and docs helpers)
 
-Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
+Lockfiles: `.mise/scripts/test/<group>/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
 
 - [ ] Prefer the standard library (`python.instructions.md`).
-- [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/requirements-jose.in`).
+- [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/interop/requirements-jose.in`).
 - [ ] Regenerate the `.txt` with the exact `pip-compile --generate-hashes …` command recorded in its header, from the repository root, under the Python version that header names; commit both files.
 - [ ] `pip-audit -r <file>.txt` reports no known vulnerability.
 - [ ] Test and docs scripts install with `pip install --require-hashes -r <file>.txt`, never `pip install <pkg>`.
-- [ ] A new lockfile: add it to the `for f in` list of the `python-dependency-audit` job and to `[files] extend-exclude` of `_typos.toml` (unless an existing entry already matches it). Outside `.mise/scripts/test/` and `.mise/scripts/docs/`, also add its directory to the `pip` entry of `.github/dependabot.yml` and widen the `files:` regex of the `pip-audit-lockfiles` hook and the `exclude:` regex of the `requirements-txt-fixer` hook in `.pre-commit-config.yaml`.
+- [ ] A new lockfile: add it to the `for f in` list of the `python-dependency-audit` job and to `[files] extend-exclude` of `_typos.toml` (unless an existing entry already matches it). Outside the `pip` directories already listed in `.github/dependabot.yml`, also add its directory to the `pip` entry of `.github/dependabot.yml` and widen the `files:` regex of the `pip-audit-lockfiles` hook and the `exclude:` regex of the `requirements-txt-fixer` hook in `.pre-commit-config.yaml`.
 
 ## 5. Go (`.mise/scripts/kmip-go`)
 

@@ -19,7 +19,7 @@ kms_init_env "${usage_variant:-fips}" "static"
 
 REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
 
-exec bash "${REPO_ROOT}/.mise/scripts/test/run_db_upgrade_gate.sh" \
+exec bash "${REPO_ROOT}/.mise/scripts/test/db/run_db_upgrade_gate.sh" \
   --variant "${VARIANT}" \
   --backend "${usage_backend:-all}" \
   --old-version "${usage_old_version:-nightly}" \

@@ -251,7 +251,7 @@ print_success "OpenBao unsealed again after the restart"
 
 # --- Audit: the KMS must have served KMIP Encrypt and Decrypt for the OpenBao client identity.
 print_status "Checking the KMS log..."
-python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/openbao/check_kmip_seal_audit.py" "${KMS_LOG}" \
+python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/interop/openbao/check_kmip_seal_audit.py" "${KMS_LOG}" \
   "${BAO_CLIENT_CN}" "${KEY_UID}"
 
 print_success "OpenBao KMIP seal integration test completed"

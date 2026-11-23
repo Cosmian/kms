@@ -21,6 +21,6 @@ ensure_nix_shell
 
 print_header "Running load-balancer shutdown test (${VARIANT_NAME})"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_lb_kms_shutdown.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/pkg/test_lb_kms_shutdown.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "Load-balancer tests completed"

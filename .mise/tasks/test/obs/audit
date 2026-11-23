@@ -15,6 +15,6 @@ REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
 print_header "Running audit log integration test (${VARIANT_NAME})"
 echo "Purpose: prove tamper-evident JSONL hash chain + HTTP audit middleware capture"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_audit_log.sh" --variant "${VARIANT}"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_audit_log.sh" --variant "${VARIANT}"
 
 print_success "Audit log integration test completed"

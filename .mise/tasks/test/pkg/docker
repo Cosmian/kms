@@ -20,6 +20,6 @@ print_header "Running Docker image tests (${VARIANT_NAME})"
 # which cipher suites / TLS modes to exercise. No guard lives in the bash script.
 export KMS_TLS_CONFIG_FLAVOR="${VARIANT//-/_}"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_docker_image.sh"
+bash "${REPO_ROOT}/.mise/scripts/test/pkg/test_docker_image.sh"
 
 print_success "Docker image tests completed"
