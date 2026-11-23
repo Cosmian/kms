@@ -5,7 +5,7 @@
     "derivation": "kms-cli-non-fips-static-openssl",
     "output_path": "/nix/store/9pw9rk4z2lpjkqda0lzrid7jwyxz8y7x-cosmian-kms-cli-5.29.0",
     "sbomnix_target": "/nix/store/9pw9rk4z2lpjkqda0lzrid7jwyxz8y7x-cosmian-kms-cli-5.29.0",
-    "timestamp": "2026-11-23T00:48:56Z",
+    "timestamp": "2026-11-23T03:09:14Z",
     "generator": {
       "tool": "sbomnix",
       "version": "v1.8.0"
