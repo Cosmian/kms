@@ -6,6 +6,7 @@ on:
   push:
     tags:
       - '**'
+      - '!ansible-v*' # collection releases are published by ansible-galaxy-publish.yml
   workflow_dispatch:
   pull_request:
   schedule:
