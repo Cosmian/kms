@@ -3,8 +3,8 @@
   "@id": "https://package.cosmian.com/kms/openvex/cosmian-kms",
   "author": "Cosmian KMS security team <tech@cosmian.com>",
   "role": "Document Creator",
-  "timestamp": "2026-11-23T12:00:00Z",
-  "version": 2,
+  "timestamp": "2026-11-23T12:30:00Z",
+  "version": 3,
   "tooling": "Hand-curated; checked by `mise run sbom:validate`. Bump version and timestamp on every change.",
   "statements": [
     {
@@ -25,10 +25,10 @@
     },
     {
       "vulnerability": { "name": "RUSTSEC-2026-0594", "aliases": ["GHSA-8wcq-xq25-7fhm"] },
-      "products": [{ "@id": "pkg:cargo/cookie@0.16.2" }, { "@id": "pkg:cargo/cookie@0.18.1" }],
+      "products": [{ "@id": "pkg:cargo/cookie@0.16.2" }],
       "status": "not_affected",
       "justification": "inline_mitigations_already_exist",
-      "impact_statement": "Scope: cookie 0.16.2 (actix-web 4, which requires ^0.16; no patched 0.16.x exists) and cookie 0.18.1 (reqwest cookie_store, client side, no private jar) as compiled into the Cosmian KMS server and ckms. The nonce reuse needs a process that calls fork() and then adds private cookies in more than one of the resulting processes. The server reaches PrivateJar::add through the actix-session CookieSessionStore but never forks (no fork or daemonize call in crate/), and it builds the cookie key with Key::from(...) instead of Key::generate(), one of the workarounds listed by the advisory."
+      "impact_statement": "Scope: cookie 0.16.2 (actix-web 4, which requires ^0.16; no patched 0.16.x exists) as compiled into the Cosmian KMS server and ckms. cookie 0.18.x (reqwest cookie_store) is locked at the patched 0.18.3. The nonce reuse needs a process that calls fork() and then adds private cookies in more than one of the resulting processes. The server reaches PrivateJar::add through the actix-session CookieSessionStore but never forks (no fork or daemonize call in crate/), and it builds the cookie key with Key::from(...) instead of Key::generate(), one of the workarounds listed by the advisory."
     }
   ]
 }
