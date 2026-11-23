@@ -35,6 +35,7 @@ test.describe("Auth Verifier server — Web UI login", () => {
 
     test("TC1 — happy path login", async ({ page }) => {
         await page.goto("/ui/");
+        expect((await page.request.get("/ui/config")).status()).toBe(401);
 
         // Lands on the login page with the Auth Verifier username/password form
         // (not the OIDC redirect button or the CERT "ACCESS KMS" button).
@@ -52,6 +53,12 @@ test.describe("Auth Verifier server — Web UI login", () => {
         // Header shows the session user + Logout button.
         await expect(page.getByTestId("session-user-tag")).toHaveText(VALID_USERNAME);
         await expect(page.getByTestId("logout-btn")).toBeVisible();
+        const config = await page.request.get("/ui/config");
+        expect(config.status()).toBe(200);
+        await expect(config.json()).resolves.toEqual({ kv: false, hsm: false, google_cse: false, crypto_officer: false });
+        await expect(page.getByTestId("menu-locate")).toBeVisible();
+        await expect(page.getByTestId("menu-kv-secrets")).toHaveCount(0);
+        await expect(page.getByTestId("menu-hsm-status")).toHaveCount(0);
     });
 
     test("TC1b — the session cookie is sealed, HttpOnly, SameSite=Lax and lives 24 hours", async ({ page, context }) => {

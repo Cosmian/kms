@@ -1,5 +1,5 @@
 import { DownloadOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { Alert, Button, Layout, Spin, Switch, Tag } from "antd";
+import { Alert, Button, Layout, Spin, Switch, Tag, Tooltip } from "antd";
 import React, { useCallback, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Link, Outlet } from "react-router-dom";
@@ -8,6 +8,7 @@ import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
 import Sidebar from "./Sidebar";
 import type { LayoutOutletContext } from "./NonFipsRoute";
+import { fetchUiConfig, type UiFeatures } from "../../utils/uiConfig";
 import LanguageSwitcher from "../common/LanguageSwitcher";
 import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "../../utils/utils";
 
@@ -30,6 +31,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const { t } = useTranslation("layout");
     const [downloadTarget, setDownloadTarget] = useState<string>();
     const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [uiConfig, setUiConfig] = useState<{ serverUrl: string; userId: typeof userId; features?: UiFeatures }>();
+    const features = uiConfig && uiConfig.serverUrl === serverUrl && uiConfig.userId === userId ? uiConfig.features : null;
+
+    useEffect(() => {
+        if (!serverUrl || (authMethod === "JWT" && !userId)) return;
+        let cancelled = false;
+        void fetchUiConfig(serverUrl).then((features) => {
+            if (!cancelled) setUiConfig({ serverUrl, userId, features });
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [authMethod, serverUrl, userId]);
 
     const normalizedServerHealth = (serverHealth ?? "").trim().toUpperCase();
     const isServerHealthy = normalizedServerHealth === "UP";
@@ -114,14 +128,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 <div className="flex items-center w-full h-full">
                     <Header isDarkMode={isDarkMode} serverInfo={serverInfo} />
                     {import.meta.env.VITE_DEV_MODE === "true" && (
-                        <Alert
-                            message={t("main.devUnrestricted")}
-                            type="info"
-                            showIcon
-                            closable
-                            className="py-0 px-3 text-sm leading-tight"
-                            style={{ display: "inline-flex", alignItems: "center", whiteSpace: "nowrap", marginLeft: "20px" }}
-                        />
+                        <Tooltip title={features === undefined ? t("main.devUiConfigUnavailable") : undefined}>
+                            <span className="ml-5 inline-flex whitespace-nowrap" data-testid="dev-mode-banner">
+                                <Alert
+                                    message={t("main.devUnrestricted")}
+                                    type="info"
+                                    showIcon
+                                    closable
+                                    className="py-0 px-3 text-sm leading-tight"
+                                />
+                            </span>
+                        </Tooltip>
                     )}
                     <div className="flex items-center h-full ml-auto" style={{ gap: "16px" }}>
                         <LanguageSwitcher />
@@ -172,7 +189,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             </Layout.Header>
 
             <Layout id="main-page" className="overflow-hidden" style={{ marginTop: 64, height: "calc(100vh - 64px)" }}>
-                <Sidebar isFips={isFips} isDarkMode={isDarkMode} />
+                <Sidebar isFips={isFips} isDarkMode={isDarkMode} features={features} />
                 <Layout id="main-center" className="flex flex-col overflow-hidden">
                     <Layout.Content id="main-content" className="flex-grow overflow-auto p-4">
                         {authMethod === "None" && (
@@ -203,7 +220,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 }
                             />
                         )}
-                        {loading ? <Spin size="large" /> : <Outlet context={{ isFips } satisfies LayoutOutletContext} />}
+                        {loading || features === null ? (
+                            <Spin size="large" />
+                        ) : (
+                            <Outlet context={{ isFips, features } satisfies LayoutOutletContext} />
+                        )}
                     </Layout.Content>
                     <Footer
                         version={(() => {

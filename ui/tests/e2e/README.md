@@ -587,6 +587,8 @@ ID are used to derive a shared secret (persisted as a Secret Data object).
 
 ## Other Flows
 
+`ui-config-menu.spec.ts` checks that optional menu items and direct links follow the KMS feature flags. It also covers the CSR HSM control and the Vite dev fallback when `/ui/config` is unavailable.
+
 ### opaque-flow
 
 ```mermaid

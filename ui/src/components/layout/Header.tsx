@@ -70,7 +70,7 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
                 </a>
             )}
             <h1 className="text-xl font-bold pl-10">{branding.logoAlt}</h1>
-            {instances.length > 0 ? (
+            {instances.length > 0 && (
                 <div className="ml-6 flex items-center gap-2">
                     <Select
                         value={selectedPrefix}
@@ -83,11 +83,6 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
                         popupMatchSelectWidth={false}
                     />
                 </div>
-            ) : (
-                serverInfo !== null &&
-                serverInfo !== undefined && (
-                    <span className="ml-6 text-gray-500 dark:text-gray-400 text-sm">{t("header.noHsmConfigured")}</span>
-                )
             )}
         </div>
     );

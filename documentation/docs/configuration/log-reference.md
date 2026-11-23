@@ -1537,6 +1537,7 @@ Crate path: `ui/src/`
 | `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
 | `error` | `Error loading EC algorithms from WASM:` | `actions/Secrets/SshCa.tsx` | - | - |
 | `error` | `Error loading MAC options from WASM:` | `actions/MAC/macParams.ts` | - | - |
+| `warn` | `Could not load UI configuration; retaining existing menu behavior` | `utils/uiConfig.ts` | - | - |
 
 ---
 
