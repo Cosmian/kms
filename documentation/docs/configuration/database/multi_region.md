@@ -186,7 +186,11 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
 - Set `region_role` once per region (`--region-role` or `KMS_REGION_ROLE`); never configure two leaders.
 - Do not enable `clear_database` on a multi-region node: the deletes replicate to every region.
 - Use identical `ceremony_secret` values in every region.
-- The leader initializes the shared KV/SSH identifier key (`kv_metadata_uid_key` in `parameters`) at startup. Followers only read the replicated value; until it arrives, KV and SSH CA/role requests return a retry error instead of creating a competing key. No leader-side API request is needed to bootstrap it. Existing deployments that already generated different keys in separate regions require operator reconciliation before enabling traffic; startup does not rewrite existing records.
+- The leader initializes the shared KV/SSH identifier key (`kv_metadata_uid_key` in `parameters`) at startup.
+  Followers only read the replicated value; until it arrives, KV and SSH CA/role requests return a retry error
+  instead of creating a competing key. No leader-side API request is needed to bootstrap it. Existing deployments
+  that already generated different keys in separate regions require operator reconciliation before enabling traffic;
+  startup does not rewrite existing records.
 - Check `GET /health?strict=true` of each region separately: a region's health is its own database, HSMs and KMIP
   socket server.
 - The validated topology is **two nodes**. In a three-node or larger full mesh, an `objects` update

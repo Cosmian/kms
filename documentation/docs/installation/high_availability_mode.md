@@ -360,7 +360,9 @@ The topology, what converges and how, the replication set to configure and the l
 
 ## Database availability
 
-In profiles 1 to 5, all nodes depend on one database: if it is down, no node can serve requests. In profile 6, this dependency is local to each region; another region can continue serving against its own database. Make each database highly available with the tools of your database:
+In profiles 1 to 5, all nodes depend on one database: if it is down, no node can serve requests. In profile 6, this
+dependency is local to each region; another region can continue serving against its own database. Make each
+database highly available with the tools of your database:
 
 - PostgreSQL: streaming replication with an HA manager such as Patroni or pg_auto_failover, or a managed multi-zone
   service;
