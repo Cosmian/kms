@@ -171,7 +171,8 @@ impl KMS {
             if has_explicit_gen || pinned {
                 return Err(hsm_key_not_found(uid, &full_base_uid));
             }
-            return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user, object_type)).await;
+            let fallback = self.hsm_keyset_fallback(uid, &full_base_uid, user, object_type);
+            return Box::pin(fallback).await;
         };
 
         // Per-object authorization, before anything about the key is disclosed: the caller
