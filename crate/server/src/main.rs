@@ -8,7 +8,6 @@ use cosmian_kms_server::{
 };
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
-use tracing::span;
 
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
@@ -196,9 +195,6 @@ async fn run() -> KResult<()> {
         log_to_file,
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
-
-    let span = span!(tracing::Level::TRACE, "kms");
-    let _guard = span.enter();
 
     let (ossl_version, ossl_dir, ossl_number) = safe_openssl_version_info();
     if ossl_number == 0 {
