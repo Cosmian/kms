@@ -279,9 +279,9 @@ packaging==26.3 \
     --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
     --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
     # via pytest
-pkcs11-check==0.2.3 \
-    --hash=sha256:58ac3451ae0dba207a48affa460309e4024c2ec7aefb04ef73062f420fdcffec \
-    --hash=sha256:694edf45fd634bddce16329ece68687870f9434ba815bd5fef90befa109bb412
+pkcs11-check==0.3.0 \
+    --hash=sha256:bc3b77b527537977c9f37a2eea34cf048b70a3f0da3512ca564ce079b3a064bd \
+    --hash=sha256:e1232481f0cf99f262a37cbed750ba67f82748592a465f4189b4613780ff2194
     # via -r requirements-pkcs11-check.in
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
