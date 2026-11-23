@@ -174,7 +174,7 @@ repos:
         args: [--pytest-test-first]
       - id: requirements-txt-fixer
         # `.txt` files are pip-compile --generate-hashes lockfiles: never reorder them.
-        exclude: ^\.mise/scripts/(test|docs)/requirements.*\.txt$
+        exclude: ^\.mise/scripts/(test(/[a-z0-9_-]+)?|docs)/requirements.*\.txt$
       - id: sort-simple-yaml
       - id: trailing-whitespace
         exclude: crate/crypto/src/openssl/x509_extensions.rs|documentation/docs/cli/main_commands.md|documentation/docs/configuration/server_cli.md
@@ -263,7 +263,7 @@ repos:
         name: pip-audit on hash-pinned Python requirements
         entry: bash -c 'for f in "$@"; do pip-audit -r "$f" || exit 1; done' --
         language: system
-        files: ^\.mise/scripts/(test|docs)/requirements.*\.txt$
+        files: ^\.mise/scripts/(test(/[a-z0-9_-]+)?|docs)/requirements.*\.txt$
         stages: [pre-push]
 
       - id: govulncheck

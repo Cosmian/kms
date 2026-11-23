@@ -51,6 +51,6 @@ PROBABLISTIC = "PROBABLISTIC"
 # (typos would "fix" the `flate2` crate name to `flat2`.)
 extend-exclude = [
   "supply-chain/",
-  ".mise/scripts/test/requirements-*.txt",
+  ".mise/scripts/test/**/requirements-*.txt",
   ".mise/scripts/docs/requirements.txt",
 ]
