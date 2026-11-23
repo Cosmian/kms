@@ -6,8 +6,8 @@ RECREATE_NGINX="${RECREATE_NGINX:-1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.mise/lib/test_slots.sh
-source "${SCRIPT_DIR}/../../lib/test_slots.sh"
-source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../../lib/test_slots.sh"
+source "${SCRIPT_DIR}/../../common.sh"
 ROOT_DIR="$(get_repo_root "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 

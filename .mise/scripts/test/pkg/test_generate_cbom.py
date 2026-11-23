@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 SCRIPT = ROOT / '.mise/scripts/sbom/generate_cbom.py'
 VALIDATOR = ROOT / '.mise/scripts/sbom/validate_cbom.py'
 PQC_MOD = ROOT / 'crate/crypto/src/crypto/pqc/mod.rs'

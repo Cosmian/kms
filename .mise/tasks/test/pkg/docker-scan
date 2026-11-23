@@ -10,5 +10,5 @@ kms_init_env "${usage_variant:-fips}" "static"
 
 print_header "Scanning Docker image (${VARIANT_NAME})"
 export DOCKER_IMAGE_NAME="${usage_image:-${DOCKER_IMAGE_NAME:-}}"
-bash "$(get_repo_root)/.mise/scripts/test/scan_docker_image.sh"
+bash "$(get_repo_root)/.mise/scripts/test/pkg/scan_docker_image.sh"
 print_success "Docker image scan passed"

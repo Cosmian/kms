@@ -11,7 +11,7 @@ import json
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 SCRIPT = ROOT / '.mise/scripts/sbom/enrich_sbom_authors.py'
 SCHEMA = ROOT / '.mise/scripts/sbom/schema/bom-1.6.schema.json'
 

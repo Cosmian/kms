@@ -8,7 +8,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # Port isolation: source test_slots.sh to compute slot-aware ports.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.mise/lib/test_slots.sh
-source "${SCRIPT_DIR}/../../lib/test_slots.sh"
+source "${SCRIPT_DIR}/../../../lib/test_slots.sh"
 
 # Single compose file containing all test stacks.
 # Path is relative to the repo root (the script's working directory).
@@ -16,7 +16,7 @@ COMPOSE_FILE=".mise/scripts/docker-compose.yml"
 export COMPOSE_FILE
 
 # shellcheck source=.mise/lib/common.sh
-source "${SCRIPT_DIR}/../../lib/common.sh"
+source "${SCRIPT_DIR}/../../../lib/common.sh"
 
 # KMS_TLS_CONFIG_FLAVOR must be set by the caller (mise task: test:pkg:docker).
 # Accepted values: fips, non_fips
@@ -255,8 +255,8 @@ echo "Running example compose test ($COMPOSE_FILE:kms-example)"
 docker compose -f "$COMPOSE_FILE" logs --tail=120 kms-example || true
 
 # === Load balancer shutdown behavior test ===
-echo "Running load balancer shutdown test (.mise/scripts/test/test_lb_kms_shutdown.sh)"
-bash .mise/scripts/test/test_lb_kms_shutdown.sh
+echo "Running load balancer shutdown test (.mise/scripts/test/pkg/test_lb_kms_shutdown.sh)"
+bash .mise/scripts/test/pkg/test_lb_kms_shutdown.sh
 
 # === Oracle TDE HSM test ===
 # Run Oracle Database + KMS side by side and verify that Oracle can use
