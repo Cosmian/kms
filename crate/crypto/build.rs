@@ -4,21 +4,48 @@ use std::{
     process::Command,
 };
 
-const OPENSSL_MAIN_VERSION: &str = "3.6.5";
-const OPENSSL_MAIN_TARBALL: &str = "openssl-3.6.5.tar.gz";
-const OPENSSL_MAIN_URL: &str = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
-const OPENSSL_MAIN_SHA256: &str =
-    "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
+/// Canonical OpenSSL versions and SHA-256, shared with the Nix build, the packaging scripts and CI.
+/// The newest CMVP-validated FIPS provider (`fips`) is built separately from the main library
+/// (`main`) and loaded at runtime, exactly as the Nix build does (`nix/common.nix`).
+const OPENSSL_VERSIONS: &str = include_str!("openssl_versions.json");
 
-// The FIPS provider MUST be built from a version holding a CMVP certificate (OpenSSL
-// `README-FIPS.md`). The newest validated OpenSSL FIPS Provider is 3.5.9 (FIPS 140-3,
-// NIST CMVP Certificate #5586), so it is built separately from the main 3.6.5 library
-// and loaded at runtime, exactly as the Nix build does (`nix/common.nix`).
-const OPENSSL_FIPS_VERSION: &str = "3.5.9";
-const OPENSSL_FIPS_TARBALL: &str = "openssl-3.5.9.tar.gz";
-const OPENSSL_FIPS_URL: &str = "https://package.cosmian.com/openssl/openssl-3.5.9.tar.gz";
-const OPENSSL_FIPS_SHA256: &str =
-    "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a";
+/// One entry of `openssl_versions.json` with its derived download coordinates.
+struct OpensslSource {
+    version: String,
+    tarball: String,
+    url: String,
+    sha256: String,
+}
+
+impl OpensslSource {
+    fn load(which: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let json: serde_json::Value = serde_json::from_str(OPENSSL_VERSIONS)?;
+        let field = |key: &str| -> Result<String, String> {
+            json.get(which)
+                .and_then(|entry| entry.get(key))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| format!("openssl_versions.json: missing {which}.{key}"))
+        };
+        let version = field("version")?;
+        let tarball = format!("openssl-{version}.tar.gz");
+        Ok(Self {
+            url: format!("https://package.cosmian.com/openssl/{tarball}"),
+            sha256: field("sha256")?,
+            tarball,
+            version,
+        })
+    }
+}
+
+/// Shared-library extension of the target (not the build host) OS.
+fn mod_ext() -> &'static str {
+    if env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "macos") {
+        "dylib"
+    } else {
+        "so"
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
@@ -26,6 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NON_FIPS");
     println!("cargo:rerun-if-env-changed=CFLAGS");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=openssl_versions.json");
 
     // Skip OpenSSL build on Windows
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -67,12 +95,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "unknown-arch".into());
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_else(|_| "unknown-os".into());
 
+    let main_src = OpensslSource::load("main")?;
     let main_prefix = if fips_mode {
-        target_dir.join(format!("openssl-{OPENSSL_MAIN_VERSION}-{os}-{arch}"))
+        target_dir.join(format!("openssl-{}-{os}-{arch}", main_src.version))
     } else {
-        target_dir.join(format!(
-            "openssl-non-fips-{OPENSSL_MAIN_VERSION}-{os}-{arch}"
-        ))
+        target_dir.join(format!("openssl-non-fips-{}-{os}-{arch}", main_src.version))
     };
     let out_dir_os = env::var_os("OUT_DIR").ok_or("OUT_DIR is not set")?;
     let out_dir = Path::new(&out_dir_os);
@@ -80,16 +107,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(fs::create_dir_all(&build_root));
     drop(fs::create_dir_all(&main_prefix));
 
-    // Build main OpenSSL (3.6.5) if not present. It never contains a FIPS provider built from
-    // the 3.6.5 sources: that provider is not CMVP-validated.
+    // Build the main OpenSSL if not present. It never contains a FIPS provider built from
+    // the main sources: that provider is not CMVP-validated.
     if !main_prefix.join("lib/libcrypto.a").exists() {
         drop(build_and_install_openssl(&OpensslBuildParams {
             workspace_root: &workspace_root,
             build_root: &build_root,
-            version: OPENSSL_MAIN_VERSION,
-            tarball: OPENSSL_MAIN_TARBALL,
-            url: OPENSSL_MAIN_URL,
-            sha256: OPENSSL_MAIN_SHA256,
+            version: &main_src.version,
+            tarball: &main_src.tarball,
+            url: &main_src.url,
+            sha256: &main_src.sha256,
             install_prefix: &main_prefix,
             enable_fips: false,
             enable_legacy: !fips_mode,
@@ -99,17 +126,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Normalize provider layout
     normalize_provider_layout(&main_prefix);
     if fips_mode {
-        // Build the CMVP-validated FIPS provider (3.5.9) in its own prefix, then copy
+        // Build the CMVP-validated FIPS provider in its own prefix, then copy
         // `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` into the main prefix.
+        let fips_src = OpensslSource::load("fips")?;
         let fips_prefix = target_dir.join(format!(
-            "openssl-fips-provider-{OPENSSL_FIPS_VERSION}-{os}-{arch}"
+            "openssl-fips-provider-{}-{os}-{arch}",
+            fips_src.version
         ));
         drop(fs::create_dir_all(&fips_prefix));
-        let mod_ext = if cfg!(target_os = "macos") {
-            "dylib"
-        } else {
-            "so"
-        };
+        let mod_ext = mod_ext();
         if !fips_prefix
             .join(format!("lib/ossl-modules/fips.{mod_ext}"))
             .exists()
@@ -120,10 +145,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             drop(build_and_install_openssl(&OpensslBuildParams {
                 workspace_root: &workspace_root,
                 build_root: &build_root,
-                version: OPENSSL_FIPS_VERSION,
-                tarball: OPENSSL_FIPS_TARBALL,
-                url: OPENSSL_FIPS_URL,
-                sha256: OPENSSL_FIPS_SHA256,
+                version: &fips_src.version,
+                tarball: &fips_src.tarball,
+                url: &fips_src.url,
+                sha256: &fips_src.sha256,
                 install_prefix: &fips_prefix,
                 enable_fips: true,
                 enable_legacy: false,
@@ -465,11 +490,7 @@ fn normalize_provider_layout(install_prefix: &Path) {
 fn integrate_assets_into_main(main_prefix: &Path, fipsprov_prefix: Option<&Path>) {
     drop(fs::create_dir_all(main_prefix.join("lib/ossl-modules")));
     drop(fs::create_dir_all(main_prefix.join("ssl")));
-    let mod_ext = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
+    let mod_ext = mod_ext();
     if let Some(fips_prefix) = fipsprov_prefix {
         drop(fs::copy(
             fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),

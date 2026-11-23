@@ -6,17 +6,11 @@
   coreutils,
   # Linkage mode: true for static libraries only, false for shared libraries
   static ? true,
-  # OpenSSL version to build (e.g. "3.6.5" or "3.5.9")
-  version ? "3.5.9",
+  # Which entry of crate/crypto/openssl_versions.json to build: "main" or "fips".
+  # Not named `which`: callPackage would inject nixpkgs' `which` package.
+  opensslEntry ? "fips",
   # Build the legacy provider module (needed for non-FIPS features)
   enableLegacy ? false,
-  # Optional override for source URL and hashes. When not provided, defaults to Cosmian mirror
-  # and known hashes for 3.5.9. For other versions, callers should provide these.
-  srcUrl ? null,
-  # SRI sha256 for fetchurl (e.g. "sha256-oM5p...")
-  sha256SRI ? null,
-  # Expected plain hex sha256 for validating local tarball in resources/tarballs
-  expectedHash ? null,
 }:
 
 # OpenSSL ${version} built with FIPS provider and fipsmodule.cnf generated.
@@ -34,17 +28,15 @@
 # use a stdenv with glibc 2.34 (Rocky Linux 9 compatibility).
 
 let
+  # Single source of truth for the OpenSSL versions and hashes (also read by build.rs,
+  # the packaging scripts and CI).
+  pinned =
+    (builtins.fromJSON (builtins.readFile ../crate/crypto/openssl_versions.json)).${opensslEntry};
+  inherit (pinned) version;
+  expected = pinned.sha256;
+
   tarballName = "openssl-${version}.tar.gz";
   localTarball = ../resources/tarballs/${tarballName};
-
-  # Provide sensible defaults for 3.5.9 (the FIPS provider version).
-  defaultUrl = "https://package.cosmian.com/openssl/${tarballName}";
-  defaultExpectedHash = "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"; # 3.5.9
-  defaultSRI = "sha256-YD9WAuLu8A13+9Qp003NWCK7MBdXobyc2yTGcPHrhZo="; # 3.5.9
-
-  url = if srcUrl != null then srcUrl else defaultUrl;
-  sri = if sha256SRI != null then sha256SRI else defaultSRI;
-  expected = if expectedHash != null then expectedHash else defaultExpectedHash;
 
   # Validate local tarball hash and select source
   opensslSrc =
@@ -62,10 +54,8 @@ let
       builtins.seq hashValidation localTarball
     else
       fetchurl {
-        # Prefer Cosmian mirror for reliability; callers can override via srcUrl
-        inherit url;
-        # SRI hash pinned by caller or defaults (3.5.9)
-        sha256 = sri;
+        url = "https://package.cosmian.com/openssl/${tarballName}";
+        sha256 = expected;
       };
 
   # Compute optimal make job count: (nCores - 1), minimum 1

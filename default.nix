@@ -203,32 +203,30 @@ let
         rustc = rustToolchain;
       };
 
-  # Build the OpenSSL 3.5.9 FIPS provider with nixpkgs 22.05 stdenv (glibc 2.34 for Rocky Linux 9)
-  # Create both static and dynamic versions
-  opensslFips-static = pkgs234.callPackage ./nix/openssl.nix { static = true; };
-  opensslFips-dynamic = pkgs234.callPackage ./nix/openssl.nix { static = false; };
+  # OpenSSL built with nixpkgs 22.05 stdenv (glibc 2.34 for Rocky Linux 9) or pkgs228 (glibc 2.28,
+  # CLI binaries). `opensslEntry` selects the entry of crate/crypto/openssl_versions.json:
+  # "fips" = CMVP-validated FIPS provider, "main" = library with legacy provider (non-FIPS).
+  mkOpenssl =
+    pkgsX: opensslEntry: static:
+    pkgsX.callPackage ./nix/openssl.nix (
+      {
+        inherit opensslEntry static;
+      }
+      // (if opensslEntry == "main" then { enableLegacy = true; } else { })
+    );
+
+  opensslFips-static = mkOpenssl pkgs234 "fips" true;
+  opensslFips-dynamic = mkOpenssl pkgs234 "fips" false;
   # Default to static for backward compatibility
   opensslFips = opensslFips-static;
 
-  # Build OpenSSL 3.6.5 with legacy provider for non-FIPS builds
-  # Common parameters for both static and dynamic builds
-  openssl36Args = {
-    version = "3.6.5";
-    enableLegacy = true;
-    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
-    sha256SRI = "sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=";
-    expectedHash = "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98";
-  };
-  openssl36-static = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
-  openssl36-dynamic = pkgs234.callPackage ./nix/openssl.nix (openssl36Args // { static = false; });
+  openssl36-static = mkOpenssl pkgs234 "main" true;
+  openssl36-dynamic = mkOpenssl pkgs234 "main" false;
 
-  # OpenSSL variants built against pkgs228 (glibc 2.28) for CLI binaries
-  opensslFips-static-228 = pkgs228.callPackage ./nix/openssl.nix { static = true; };
-  opensslFips-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix { static = false; };
-  openssl36-static-228 = pkgs228.callPackage ./nix/openssl.nix (openssl36Args // { static = true; });
-  openssl36-dynamic-228 = pkgs228.callPackage ./nix/openssl.nix (
-    openssl36Args // { static = false; }
-  );
+  opensslFips-static-228 = mkOpenssl pkgs228 "fips" true;
+  opensslFips-dynamic-228 = mkOpenssl pkgs228 "fips" false;
+  openssl36-static-228 = mkOpenssl pkgs228 "main" true;
+  openssl36-dynamic-228 = mkOpenssl pkgs228 "main" false;
 
   # Tool: cargo-generate-rpm (not available in some nixpkgs pins). Build it from crates.io.
   # Build cargo-generate-rpm with the same modern Rust toolchain (Cargo 1.90)

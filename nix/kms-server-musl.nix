@@ -57,6 +57,9 @@ let
     opensslFips_
     opensslLink
     mkFilteredSrc
+    opensslEnv
+    installFipsProvider
+    installNonFipsProviders
     ;
 
   libcTag = if muslCrtStatic then "musl-static" else "musl-dynamic";
@@ -107,8 +110,8 @@ let
     }
 
     # OpenSSL is always statically embedded in this build (no separate libssl/libcrypto.so).
-    strings "$BIN" | grep -q "OpenSSL 3.6.5" || {
-      echo "ERROR: Binary not statically linked against OpenSSL 3.6.5"; exit 1;
+    strings "$BIN" | grep -q "OpenSSL ${openssl36_.version}" || {
+      echo "ERROR: Binary not statically linked against OpenSSL ${openssl36_.version}"; exit 1;
     }
 
     # Run version check only for the fully static variant on a matching CPU
@@ -203,10 +206,12 @@ rustPlatform.buildRustPackage rec {
 
   buildInputs = [ opensslLink ];
 
-  OPENSSL_DIR = opensslLink;
-  OPENSSL_LIB_DIR = "${opensslLink}/lib";
-  OPENSSL_INCLUDE_DIR = "${opensslLink}/include";
-  OPENSSL_NO_VENDOR = 1;
+  inherit (opensslEnv)
+    OPENSSL_DIR
+    OPENSSL_LIB_DIR
+    OPENSSL_INCLUDE_DIR
+    OPENSSL_NO_VENDOR
+    ;
   OPENSSL_STATIC = "1";
 
   SOURCE_DATE_EPOCH = "1";
@@ -255,24 +260,13 @@ rustPlatform.buildRustPackage rec {
       cp -R "${ui}/dist/"* "$out/usr/local/cosmian/ui/dist/"
     ''}
 
-    ${lib.optionalString isFips ''
-      mkdir -p "$out/usr/local/cosmian/lib"
-      cp -r "${opensslFips_}/usr/local/cosmian/lib/ossl-modules" "$out/usr/local/cosmian/lib/"
-      cp -r "${opensslFips_}/usr/local/cosmian/lib/ssl" "$out/usr/local/cosmian/lib/"
-    ''}
+    ${lib.optionalString isFips installFipsProvider}
 
     ${lib.optionalString (!isFips && !muslCrtStatic) ''
       # Dynamic non-FIPS musl build only: ship the legacy provider module so it can be
       # dlopen'd (the fully static variant can never dlopen it — see muslCrtStatic doc
       # comment above — so it is intentionally omitted there).
-      mkdir -p "$out/usr/local/cosmian/lib/ossl-modules"
-      mkdir -p "$out/usr/local/cosmian/lib/ssl"
-      if [ -d "${openssl36_}/usr/local/cosmian/lib/ossl-modules" ]; then
-        cp -r "${openssl36_}/usr/local/cosmian/lib/ossl-modules/"* "$out/usr/local/cosmian/lib/ossl-modules/" 2>/dev/null || true
-      fi
-      if [ -f "${openssl36_}/usr/local/cosmian/lib/ssl/openssl.cnf" ]; then
-        cp "${openssl36_}/usr/local/cosmian/lib/ssl/openssl.cnf" "$out/usr/local/cosmian/lib/ssl/"
-      fi
+      ${installNonFipsProviders}
     ''}
 
     cat > "$out/bin/build-info.txt" <<EOF
@@ -280,7 +274,7 @@ rustPlatform.buildRustPackage rec {
     Version: ${version}
     Target: ${muslTriple}
     OpenSSL (link): ${opensslLink} (static)
-    ${lib.optionalString isFips "FIPS provider: from OpenSSL 3.5.9 (usr/local/cosmian/lib)"}
+    ${lib.optionalString isFips "FIPS provider: from OpenSSL ${opensslFips_.version} (usr/local/cosmian/lib)"}
     EOF
   '';
 

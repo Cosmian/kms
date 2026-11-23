@@ -59,44 +59,16 @@ let
       }
     else
       pkgs.rust-bin.stable.latest.default;
-  # Import FIPS OpenSSL 3.5.9 - will be used for FIPS builds
-  opensslFipsStatic = import ./nix/openssl.nix {
-    inherit (pkgs)
-      stdenv
-      lib
-      fetchurl
-      perl
-      coreutils
-      ;
-    static = true;
-  };
-  # Import non-FIPS OpenSSL 3.6.5 - will be used for non-FIPS builds
-  openssl360NonFips = import ./nix/openssl.nix {
-    inherit (pkgs)
-      stdenv
-      lib
-      fetchurl
-      perl
-      coreutils
-      ;
+  # FIPS provider build (CMVP-validated version) - used for FIPS builds
+  opensslFipsStatic = pkgs.callPackage ./nix/openssl.nix { static = true; };
+  # Main OpenSSL with legacy provider - used for non-FIPS builds
+  openssl360NonFips = pkgs.callPackage ./nix/openssl.nix {
+    opensslEntry = "main";
     static = false;
-    version = "3.6.5";
     enableLegacy = true;
-    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
-    sha256SRI = "sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=";
-    expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
   };
   # Shared (dynamic) build for components that require .so (e.g., SoftHSM2)
-  opensslFipsShared = import ./nix/openssl.nix {
-    inherit (pkgs)
-      stdenv
-      lib
-      fetchurl
-      perl
-      coreutils
-      ;
-    static = false;
-  };
+  opensslFipsShared = pkgs.callPackage ./nix/openssl.nix { static = false; };
   utimacoDrv = import ./nix/utimaco.nix {
     inherit pkgs;
     inherit (pkgs) lib;
