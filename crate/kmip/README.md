@@ -2,7 +2,7 @@
 
 Complete implementation of KMIP 1.0–2.1 protocol with TTLV binary and JSON serialization. Defines all KMIP objects, operations, attributes, and enumerations as Rust types.
 
-KMIP operation handlers in `cosmian_kms_server` deserialize requests from this crate and route them to operation implementations. See `crate/kmip/src/` for the full KMIP HTML spec reference.
+KMIP operation handlers in `cosmian_kms_server` deserialize requests from this crate and route them to operation implementations. See the repo-root `kmip/` submodule (for example `kmip/v2.1/kmip-spec-v2.1-os.html`; run `git submodule update --init kmip` if empty) for the full KMIP HTML spec reference.
 
 ## XML test vector parsing
 

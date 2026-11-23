@@ -11,11 +11,18 @@ Find repeated step blocks across `.github/workflows/*.yml`, check whether an exi
 
 `.github/actions/<name>/action.yml`, `runs: using: composite`, invoked as `uses: ./.github/actions/<name>`:
 
+- `build-static-openssl` — installs and caches static OpenSSL on Windows via `vcpkg` (`x64-windows-static`, no inputs)
+- `cache-openssl-buildrs` — caches the `target/openssl-*` prefixes built by `crate/crypto/build.rs` (`variant` input: `fips` or `non-fips`)
 - `cleanup-runner` — frees GH-hosted runner disk space (no inputs)
-- `setup-nix` — installs Nix + warms the nix store (`extra-nix-config` input)
-- `install-mise` — installs `mise` for Linux/macOS (no inputs)
 - `docker-login-ghcr` — logs in to `ghcr.io` (`github-token` input)
-- `install-rust` — installs the Rust toolchain via dtolnay/rust-toolchain (no inputs); the version comes from rust-toolchain.toml
+- `import-gpg-key` — imports the package-signing GPG private key (`gpg-private-key`, `passphrase` inputs)
+- `install-mise` — installs a pinned, checksum-verified `mise` binary for Linux/macOS (no inputs)
+- `install-rust` — installs the Rust toolchain pinned in `rust-toolchain.toml` via `dtolnay/rust-toolchain` (no inputs)
+- `push-package-cosmian` — uploads build artifacts to `package.cosmian.com` over SSH/SCP (`subdir`, `files`, `known-hosts` inputs; `remote-dir` output)
+- `setup-helm-minikube` — installs Helm and starts a Docker-backed Minikube cluster (no inputs)
+- `setup-nix` — installs Nix, warms the Nix store, and optionally restores the dev-shell closure (`extra-nix-config`, `dev-shell-cache` inputs)
+- `setup-nix-mise` — runs optional `cleanup-runner`, `setup-nix`, and `install-mise` in sequence (`cleanup-runner`, `extra-nix-config`, `dev-shell-cache` inputs)
+- `windows-vs-ninja` — puts Visual Studio's bundled Ninja (or pinned fallback) on `PATH` for `vcpkg` on Windows (no inputs)
 
 ## Step 1 — Measure First
 
@@ -29,7 +36,7 @@ rg -n "uses: \./\.github/actions/" .github/workflows
 # Spot workflows that hand-roll a step an existing composite action already covers,
 # or repeat a third-party action block (e.g. docker/login-action, actions/checkout)
 # with identical `with:` values across files
-rg -n "uses: docker/login-action|uses: actions/checkout@v7" .github/workflows -A4
+rg -n "uses: docker/login-action|uses: actions/checkout@" .github/workflows -A4
 ```
 
 Classify every exact-duplicate block (3+ lines, byte-identical `with:` values except matrix/job-scoped variables) found in 2+ places:

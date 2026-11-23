@@ -1,6 +1,6 @@
 ---
 name: pkcs11-check
-description: 'Run the external PKCS#11 battle-test suite (mise run test:pkcs11:tool) and interpret its report. Use when changing crate/clients/pkcs11/ (loader, module, provider), PKCS#11 MISE scripts, or provider configuration.'
+description: 'Run the external PKCS#11 battle-test suite (mise run test:pkcs11:tool) and interpret its report. Use when changing crate/clients/pkcs11/ (module, provider), PKCS#11 MISE scripts, or provider configuration.'
 ---
 
 PKCS#11 external battle-test workflow and report interpretation.
@@ -30,7 +30,7 @@ pkcs11-check fetch-data all
 mise run test:pkcs11:tool --marker ""
 ```
 
-The pinned dependency is `.mise/scripts/test/pkcs11/requirements-pkcs11-check.txt` (`0.2.2`). The runner
+The pinned dependency is `.mise/scripts/test/requirements-pkcs11-check.txt` (`0.2.3`). The runner
 installs it in `target/pkcs11-check-venv` and does not modify the system Python environment.
 
 ## Reports

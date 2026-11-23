@@ -77,7 +77,7 @@ Templates for every output file. Copy the skeleton, fill in `[FILL]` placeholder
 | ID | Component / Data Flow | Threat Type | Threat Description | Evidence | CVSS 4.0 | CWE | Status |
 |----|----------------------|-------------|-------------------|----------|----------|-----|--------|
 | T-001 | Auth middleware | Spoofing | [FILL] | `crate/server/src/middlewares/...` | [FILL] | CWE-287 | [Confirmed/Not confirmed/No evidence] |
-| T-002 | KMIP Get operation | Information Disclosure | [FILL] | `crate/server/src/core/operations/get.rs:L42` | [FILL] | CWE-284 | |
+| T-002 | KMIP Get operation | Information Disclosure | [FILL] | `crate/server/src/core/operations/get.rs:L22` → `export_get.rs:L145` (`retrieve_object_for_operation`) | [FILL] | CWE-284 | |
 | [FILL: additional rows] | | | | | | | |
 
 ## Threat Narrative
@@ -143,10 +143,13 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
 
 **Proposed Fix** (review before applying)
 
-    // Fixed code snippet
-    async fn get_object(uid: &str, caller: &UserId, db: &dyn Database) -> KResult<KmipObject> {
-        db.is_allowed(uid, caller, OperationType::Get).await?;
-        db.get(uid).await
+    // Fixed code snippet (illustrative; use retrieve_object_for_operation / user_has_permission)
+    async fn get_object(
+        object_handle: ObjectHandle<'_>,
+        kms: &KMS,
+        user: &UserId,
+    ) -> KResult<Arc<ObjectWithMetadata>> {
+        retrieve_object_for_operation(object_handle, KmipOperation::Get, kms, user).await
     }
 
 ---
@@ -213,10 +216,10 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
       "cwe": "CWE-284",
       "owasp": "A01:2025",
       "component": "KMIP operations",
-      "file": "crate/server/src/core/operations/get.rs",
-      "line": 42,
+      "file": "crate/server/src/core/operations/export_get.rs",
+      "line": 145,
       "status": "confirmed",
-      "evidence": "db.get() called without is_allowed() check"
+      "evidence": "Object retrieved without retrieve_object_for_operation() / user_has_permission() check (delegated from get.rs:L22)"
     }
   ],
   "summary": {

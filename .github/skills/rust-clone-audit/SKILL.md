@@ -14,15 +14,14 @@ clone-equivalent call appears. It does not scan for duplicated logic or judge pa
 
 Goal: identify and aggressively eliminate unnecessary cloning. Must not introduce `.clone()`
 merely to satisfy the borrow checker without first exhausting borrowing, lifetime, and
-ownership-transfer alternatives — the same rule the lint-suppression decision tree in
-[`rust.instructions.md`](../../instructions/rust.instructions.md) already applies to
-`clippy::redundant_clone` and `clippy::clone_on_copy`.
+ownership-transfer alternatives — matching the general zero-suppression decision tree in
+[`rust.instructions.md` § Clippy and lint suppression](../../instructions/rust.instructions.md#clippy-and-lint-suppression--zero-new-allow--expect-policy).
 
 ## Step 1 — Classify every clone-equivalent call
 
 | Kind | Call shape | Legitimate when | KMS example |
 | --- | --- | --- | --- |
-| Handle clone | `Arc::clone(&x)`, `Rc::clone(&x)`, `x.clone()` on `Arc`/`Rc` | Always — O(1) ref-count bump, not a data copy | `Arc::clone(&recorder.calls)` (`database_objects.rs:1131`), `Arc::clone(&barrier)` (`audit/pgsql.rs:2070`) |
+| Handle clone | `Arc::clone(&x)`, `Rc::clone(&x)`, `x.clone()` on `Arc`/`Rc` | Always — O(1) ref-count bump, not a data copy | `Arc::clone(&recorder.calls)` (`crate/server_database/src/core/database_objects.rs:1180`), `Arc::clone(&barrier)` (`crate/server_database/src/stores/audit/pgsql.rs:2071`) |
 | Thread/task move clone | `x.clone()` right before `tokio::spawn`/`thread::spawn(move \|\| ...)` | The spawned task outlives the current scope and needs its own owned copy | — |
 | Copy-type clone | `.clone()` on a `Copy` type (`u32`, `bool`, small enum) | Never needed — use the value directly or `.copied()`/`.cloned()` on an `Option`/`Iterator` | — |
 | Borrow-checker-dodge clone | `.clone()` added only to make an error disappear, with no owned-value requirement downstream | Never — restructure the borrow instead (see rust-unofficial/patterns, "Clone to satisfy the borrow checker") | — |

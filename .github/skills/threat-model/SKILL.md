@@ -23,7 +23,7 @@ Internet / Browser
   │
   ├──▶ [ KMS struct ]
   │       ├──▶ [ Database (SQLite / PostgreSQL / Redis-findex) ]  — Trust boundary: DB credentials
-  │       ├──▶ [ Crypto oracles (OpenSSL 3.6 FIPS) ]             — Trust boundary: process isolation
+  │       ├──▶ [ Crypto oracles (OpenSSL 3.1.2 FIPS provider; OpenSSL 3.6.5 main build) ] — Trust boundary: process isolation
   │       └──▶ [ HSM via PKCS#11 ] (optional)                    — Trust boundary: physical/network HSM
 
 Cloud provider routes (separate trust domains):

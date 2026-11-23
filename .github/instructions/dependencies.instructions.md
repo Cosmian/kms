@@ -103,7 +103,7 @@ Gate: pre-commit hook `github-actions-sha-pin`; Dependabot (`github-actions`) ke
 
 ## 8. Downloaded installers and binaries
 
-Gate: pre-commit hook `no-curl-pipe-shell` (workflows, actions, `.mise/`, `scripts/`).
+Gate: pre-commit hook `no-curl-pipe-shell` (workflows, actions, `.mise/`).
 
 - [ ] Download from an immutable, versioned URL (a release asset, never a "latest" endpoint) to a file, verify its SHA-256, then run it. Pattern: `.github/actions/install-mise/action.yml` (`sha256sum -c`); in mise scripts use `compute_sha256` from `.mise/lib/common.sh`.
 - [ ] Put the command that recomputes the hash in a comment next to it.

@@ -118,6 +118,6 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 - [ ] `crate/server/src/core/operations/dispatch.rs` — dispatch arm gated if needed
 - [ ] CLI actions — `#[cfg(feature = "non-fips")]` on module or function
 - [ ] WASM bindings — `#[cfg(feature = "non-fips")]` on exported function
-- [ ] UI — menu items/routes hidden when FIPS mode active (`FIPS_MODE` env var)
-- [ ] E2E tests — `test.skip(FIPS_MODE, "non-fips only")` in Playwright specs
+- [ ] UI — menu items hidden via the `isFips` option in `getMenuItems` (`ui/src/menuItems.tsx`) and routes guarded with `<NonFipsRoute />` (`ui/src/components/layout/NonFipsRoute.tsx`)
+- [ ] E2E tests — `test.skip(FIPS_MODE, "non-fips only")` with `const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true"` in Playwright specs
 - [ ] Test vectors — placed in `test_data/vectors/non-fips/` or runner gated with `#[cfg(feature = "non-fips")]`

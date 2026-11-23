@@ -17,10 +17,10 @@ Companion to the "Refactor" step of the lint decision tree in
 | Kind | Definition | KMS example | Typical home |
 |---|---|---|---|
 | Entity state | Durable property of a domain object | `UniqueIdentifier`, `Algorithm`, object `State` | Field on the entity/request struct |
-| Operation state | Exists only for one call | `cascade`, `compromise_occurrence_date`, `ids_to_skip` in `recursively_revoke_key` (`crate/server/src/core/operations/revoke.rs:80-89`) | Operation input struct, built per call |
-| Environmental dependency | Service/collaborator needed to act | `kms: &KMS`, `user: &UserId` — in nearly every `core/operations/*.rs` handler | Keep explicit unless ≥3 collaborators travel together into a *new* struct — see Step 3.5 |
-| Derived value | Cheaply computable from another argument | `revoked_state`, computed from `revocation_reason` by `revocation_target_state()` (`revoke.rs:381`) | Compute inside the function; never accept both the source and its derivative |
-| Control parameter | Changes behavior | `disable_unwrapped_cache: bool`, `clear_db_on_start: bool` (`crate/server_database/src/core/mod.rs:118-126`) | Named enum once ≥2 control bools form one configuration |
+| Operation state | Exists only for one call | `cascade`, `compromise_occurrence_date`, `ids_to_skip` in `recursively_revoke_key` (`crate/server/src/core/operations/revoke.rs:87-95`) | Operation input struct, built per call |
+| Environmental dependency | Service/collaborator needed to act | `kms: &KMS`, `user: &UserId` — in nearly every `core/operations/*.rs` handler | Keep explicit unless ≥3 collaborators travel together into a *new* struct — see Step 3, item 6 |
+| Derived value | Cheaply computable from another argument | `revoked_state`, computed from `revocation_reason` by `revocation_target_state()` (`revoke.rs:400`) | Compute inside the function; never accept both the source and its derivative |
+| Control parameter | Changes behavior | `clear_db_on_start: bool`, `disable_unwrapped_cache: bool` (`crate/server/src/config/params/server_params.rs:262,274`) | Named enum once ≥2 control bools form one configuration |
 
 ## Step 2 — Match against defect patterns
 
@@ -82,5 +82,5 @@ fn inner(req: &Request) -> KResult<()> { /* req.tenant_id always present */ }
 - Invent a generic `Params`/`Context`/`Data` struct with no domain meaning just to cut a parameter count.
 - Add a field to a `crate/kmip` wire struct for internal bookkeeping — KMIP structs are spec-bound.
 - Turn a required value into `Option<T>` to avoid updating a constructor.
-- Mass-refactor the `kms`/`user` pair across `core/operations/*.rs` into a new wrapper struct — that spread is already deliberate (Step 3.5); only touch it where a concrete defect (Step 2) drives the change.
+- Mass-refactor the `kms`/`user` pair across `core/operations/*.rs` into a new wrapper struct — that spread is already deliberate (Step 3, item 6); only touch it where a concrete defect (Step 2) drives the change.
 - Add `#[allow(clippy::too_many_arguments)]` / `#[expect]` on new code — never; see `rust.instructions.md` § Clippy and lint suppression.

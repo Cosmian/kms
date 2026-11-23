@@ -262,6 +262,7 @@ The `packaging-docker.yml` workflow tests the following combinations:
 | `test-k8s-kms-pod` (`test:k8s:kms-image`) | ✅ | ✅ | ✅ | ✅ |
 | `k8s-operator-image` (build + `test:k8s:operator-image`) | n/a | n/a | ✅ | ✅ |
 | `k8s-csi-provider-image` (build + `test:k8s:csi-provider-image`) | n/a | n/a | ✅ | ✅ |
+| `test-k8s-hsm` (`test:k8s:hsm` for `proteccio` and `crypt2pay`, non-PR upstream runs) | ✅ | ✅ | ✅ | n/a |
 | `nix-docker-manifest` (multi-arch manifest) | ✅ | ✅ | n/a | n/a |
 
 **All four combinations of `{fips, non-fips} × {amd64, arm64}` must remain covered.**

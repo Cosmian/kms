@@ -67,7 +67,7 @@ Flag any `// TODO: debug — remove before shipping` markers left in the codebas
 #### Authentication & Access Control
 
 - Missing authentication on sensitive Actix-web endpoints in `crate/server/src/routes/`
-- Broken object-level authorization: KMIP operations in `crate/server/src/core/operations/` that return or modify key material **without** calling the access-control check (typically `db.is_allowed(...)` or equivalent in `crate/access/`)
+- Broken object-level authorization: KMIP operations in `crate/server/src/core/operations/` that return or modify key material **without** calling the access-control check (`retrieve_object_for_operation` / `user_has_permission` in `crate/server/src/core/retrieve_object_utils.rs`, `check_role_permission` in `dispatch.rs`, or `crate/access/`)
     - Every operation that reads a `KmipObject` (Get, Export, Decrypt, Sign, MAC, Derive) must verify the caller owns or has been granted access to the key UID
     - `Locate` operations must filter results to objects the caller can access — not return global object lists
     - Wrap/Unwrap operations must verify access to both the wrapping key and the wrapped key
@@ -83,7 +83,7 @@ Review each file in `crate/server/src/core/operations/`:
 - Does the operation check access before performing a destructive action (Destroy, Revoke)?
 - Does `Locate` scope results to the authenticated user's owned + granted objects?
 - Are `Create`, `Register`, `Import` operations linking the new object to the authenticated user as owner?
-- Are there any code paths that can be reached without the `EnsureAuth` middleware being enforced?
+- Are there any code paths that can be reached without `ensure_auth_middleware` (`crate/server/src/middlewares/ensure_auth.rs`) being enforced?
 
 #### FIPS Feature Flag Consistency
 
@@ -104,7 +104,7 @@ Review each file in `crate/server/src/core/operations/`:
 - Use of deprecated algorithms: MD5, SHA1 for security-sensitive purposes
 - Hardcoded IVs or salts in `crate/crypto/src/`
 - Weak RNG: `rand::thread_rng()` used for key generation instead of `rand::rngs::OsRng`
-- OpenSSL provider init: verify `apply_openssl_dir_env_if_needed()` is called before any `Provider::try_load()`
+- OpenSSL provider init: verify OpenSSL providers are initialized exclusively via `init_openssl_providers()` in `crate/server/src/openssl_providers.rs` (never ad-hoc `Provider::try_load()` or `Provider::load()` calls elsewhere)
 
 #### UI / TypeScript
 

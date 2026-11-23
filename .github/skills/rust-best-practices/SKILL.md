@@ -34,8 +34,8 @@ cargo fmt --all
 cargo clippy-all
 cargo clippy --workspace --all-targets -- -D warnings   # FIPS default
 cargo test -p <crate> [<test_name>]
-cargo test-fips        # full FIPS workspace suite
-cargo test-non-fips    # full non-FIPS workspace suite
+cargo test-fips        # workspace --lib unit tests (FIPS; excludes integration/binary tests)
+cargo test-non-fips    # workspace --lib unit tests (non-FIPS; excludes integration/binary tests)
 ```
 
 - Fix a lint rather than silencing it. Suppression rules live in [`rust.instructions.md` § Clippy and lint suppression](../../instructions/rust.instructions.md#clippy-and-lint-suppression--zero-new-allow--expect-policy); do not restate or extend them here.

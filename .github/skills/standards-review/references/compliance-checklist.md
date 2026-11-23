@@ -20,7 +20,7 @@ This table is a reference for the `/standards-review` and `/cryptography-review`
 | AES-256-CTR | ✅ | ✅ | ✅ | ✅ | SP 800-38A |
 | AES-KW (128/256) | ✅ | ✅ | ✅ | ✅ | SP 800-38F, RFC 3394 |
 | AES-KWP (128/256) | ✅ | ✅ | ✅ | ✅ | SP 800-38F, RFC 5649 |
-| AES-XTS | ✅ (FIPS) | ✅ | ✅ | ✅ | SP 800-38E (non-fips in KMS) |
+| AES-XTS | ❌ (`non-fips` in KMS; SP 800-38E storage-only) | ✅ | ✅ | ✅ | SP 800-38E (`non-fips` in KMS) |
 | AES-ECB | ✅ (FIPS) | ❌ | ❌ | ⚠️ | SP 800-38A (not recommended) |
 | ChaCha20-Poly1305 | ❌ | ✅ | ✅ | — | RFC 8439 (non-fips in KMS) |
 | 3DES | ⚠️ Deprecated | ❌ | ❌ | ⚠️ Disallowed after 2023 | SP 800-67 r2 |
@@ -29,7 +29,7 @@ This table is a reference for the `/standards-review` and `/cryptography-review`
 
 | Algorithm | FIPS 140-3 | BSI TR-02102-1 (2024) | ANSSI (2021) | SP 800-131A r2 | Governing RFC/SP |
 |-----------|-----------|----------------------|--------------|----------------|------------------|
-| RSA-2048 (OAEP) | ✅ | ⚠️ Acceptable until 2028 | ✅ (until 2030) | ✅ | RFC 8017, SP 800-56B r2 |
+| RSA-2048 (OAEP) | ✅ | ⚠️ Legacy (ended 2023; ≥ 3000 bits since 2024) | ✅ (until 2030) | ✅ | RFC 8017, SP 800-56B r2 |
 | RSA-3072 (OAEP) | ✅ | ✅ | ✅ | ✅ | RFC 8017, SP 800-56B r2 |
 | RSA-4096 (OAEP) | ✅ | ✅ | ✅ | ✅ | RFC 8017, SP 800-56B r2 |
 | ECDH P-256 | ✅ | ✅ | ✅ | ✅ | SP 800-56A r3, RFC 5480 |
@@ -44,7 +44,7 @@ This table is a reference for the `/standards-review` and `/cryptography-review`
 
 | Algorithm | FIPS 140-3 | BSI TR-02102-1 (2024) | ANSSI (2021) | SP 800-131A r2 | Governing RFC/SP |
 |-----------|-----------|----------------------|--------------|----------------|------------------|
-| RSA-PSS 2048 | ✅ | ⚠️ Acceptable until 2028 | ✅ (until 2030) | ✅ | RFC 8017, FIPS 186-5 |
+| RSA-PSS 2048 | ✅ | ⚠️ Legacy (ended 2023; ≥ 3000 bits since 2024) | ✅ (until 2030) | ✅ | RFC 8017, FIPS 186-5 |
 | RSA-PSS 3072+ | ✅ | ✅ | ✅ | ✅ | RFC 8017, FIPS 186-5 |
 | RSA-PKCS1v15 2048+ | ✅ | ⚠️ PSS preferred | ✅ | ✅ | RFC 8017, FIPS 186-5 |
 | ECDSA P-256 | ✅ | ✅ | ✅ | ✅ | FIPS 186-5, RFC 6979 |
@@ -102,9 +102,13 @@ This table is a reference for the `/standards-review` and `/cryptography-review`
 
 | Algorithm | FIPS minimum | BSI minimum (2024) | ANSSI minimum (2021) | SP 800-131A r2 |
 |-----------|-------------|-------------------|---------------------|----------------|
-| RSA | 2048 bits | 3072 bits | 2048 bits | 2048 bits |
+| RSA | 2048 bits | 3000 bits (3072+ in practice; since 2024) | 2048 bits | 2048 bits |
 | EC | P-256 (256 bits) | P-256 (256 bits) | P-256 (256 bits) | P-256 |
 | AES | 128 bits | 128 bits | 128 bits | 128 bits |
 | HMAC key | 112 bits | 128 bits | 128 bits | 112 bits |
-| PBKDF2 iterations | 210,000 (OWASP) | 10,000 | 100,000 | — |
+| PBKDF2 iterations | ≥ 1,000 rec. (SP 800-132; no fixed high floor)* | 10,000 | 100,000 | — |
 | PBKDF2 salt | 128 bits (SP 800-132) | 128 bits | 128 bits | — |
+
+> *NIST SP 800-132 §5.2 sets no fixed high iteration floor (recommends ≥ 1,000 as a baseline). For password storage, follow [OWASP Password Storage][owasp-pw]: **600,000** (`PBKDF2-HMAC-SHA256`) or **220,000** (`PBKDF2-HMAC-SHA512`).
+
+[owasp-pw]: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2

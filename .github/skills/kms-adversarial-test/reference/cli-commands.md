@@ -21,30 +21,38 @@ cargo run -p ckms -- <subcommand> [args]
 
 ## Command tree
 
-| Command              | Subcommands                                                     | Feature gate |
-| -------------------- | --------------------------------------------------------------- | ------------ |
-| `ckms sym`           | `keys create`, `encrypt`, `decrypt`                             | —            |
-| `ckms rsa`           | `keys create-key-pair`, `encrypt`, `decrypt`, `sign`, `verify`  | —            |
-| `ckms ec`            | `keys create-key-pair`, `encrypt`, `decrypt`, `sign`, `verify`  | —            |
-| `ckms certificates`  | `certify`, `validate`, `encrypt`, `decrypt`, `export`, `import` | —            |
-| `ckms mac`           | `compute`, `verify`                                             | —            |
-| `ckms hash`          | (hash operations)                                               | —            |
-| `ckms derive-key`    | (key derivation)                                                | —            |
-| `ckms locate`        | (object search with filters)                                    | —            |
-| `ckms attributes`    | `get`, `set`, `modify`, `delete`                                | —            |
-| `ckms access-rights` | `grant`, `revoke`, `list`, `obtain`                             | —            |
-| `ckms rng`           | (random number generation)                                      | —            |
-| `ckms secret-data`   | (create, export, import)                                        | —            |
-| `ckms opaque-object` | (create, export, import)                                        | —            |
-| `ckms aws`           | (BYOK export/import)                                            | —            |
-| `ckms azure`         | (BYOK export/import)                                            | —            |
-| `ckms google`        | (CSE operations)                                                | —            |
-| `ckms server`        | `version`, `query`, `discover-versions`                         | —            |
-| `ckms bench`         | (performance benchmarks)                                        | —            |
-| `ckms cc`            | (Covercrypt operations)                                         | `non-fips`   |
-| `ckms fpe`           | `keys create`, `encrypt`, `decrypt`                             | `non-fips`   |
-| `ckms pqc`           | (ML-KEM, ML-DSA, SLH-DSA operations)                            | `non-fips`   |
-| `ckms tokenize`      | (hash, noise, mask, pattern, aggregate)                         | `non-fips`   |
+| Command              | Subcommands                                                                                         | Feature gate |
+| -------------------- | --------------------------------------------------------------------------------------------------- | ------------ |
+| `ckms sym`           | `keys` (`create`, `create-split-key`, `join-split-key`, `re-key`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt` | — |
+| `ckms rsa`           | `keys` (`create`, `re-key`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt`, `sign`, `sign-verify` | — |
+| `ckms ec`            | `keys` (`create`, `re-key`, `export`, `import`, `destroy`, …), `sign`, `sign-verify`; `encrypt`, `decrypt` (`non-fips`) | — |
+| `ckms certificates`  | `activate`, `certify`, `validate`, `encrypt`, `decrypt`, `export`, `import`, `revoke`, `destroy`, `generate-crl`, `generate-csr`, `set-rotation-policy` | — |
+| `ckms mac`           | `compute`, `verify`                                                                                 | —            |
+| `ckms hash`          | (hash operations)                                                                                   | —            |
+| `ckms derive-key`    | (key derivation)                                                                                    | —            |
+| `ckms locate`        | (object search with filters)                                                                        | —            |
+| `ckms attributes`    | `get`, `set`, `modify`, `delete`                                                                    | —            |
+| `ckms access-rights` | `grant`, `revoke`, `list`, `owned`, `obtained`, `crypto-officer`                                    | —            |
+| `ckms audit`         | `export`, `verify`                                                                                  | —            |
+| `ckms rng`           | `retrieve`, `seed`                                                                                  | —            |
+| `ckms secret-data`   | `create`, `export`, `import`, `wrap`, `unwrap`, `activate`, `revoke`, `destroy`                     | —            |
+| `ckms opaque-object` | `create`, `export`, `import`, `activate`, `revoke`, `destroy`                                       | —            |
+| `ckms kv`            | `put`, `get`, `list`, `delete`                                                                      | —            |
+| `ckms login`         | (authenticate and store token in `ckms.toml`)                                                       | —            |
+| `ckms logout`        | (clear stored credentials from `ckms.toml`)                                                         | —            |
+| `ckms aws`           | (BYOK export/import)                                                                                | —            |
+| `ckms azure`         | (BYOK export/import)                                                                                | —            |
+| `ckms google`        | `key-pairs`, `identities` (Google Workspace CSE)                                                    | —            |
+| `ckms cng`           | `register`, `unregister`, `status`, `list-keys`, `verify`                                           | —            |
+| `ckms pkcs11`        | `verify`, `capabilities`, `bench`                                                                   | —            |
+| `ckms vault`         | `approle`                                                                                           | —            |
+| `ckms server`        | `version`, `query`, `discover-versions`                                                             | —            |
+| `ckms bench`         | (performance benchmarks)                                                                            | —            |
+| `ckms cc`            | (Covercrypt operations)                                                                             | `non-fips`   |
+| `ckms fpe`           | `keys` (`create`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt`                           | `non-fips`   |
+| `ckms pgp`           | `keys` (`create`, `export`, `import`, `destroy`, …), `export`, `import`, `encrypt`, `decrypt`, `sign`, `sign-verify` | `non-fips` |
+| `ckms pqc`           | `keys` (`create`, `re-key`, `export`, `import`, `destroy`, …), `encrypt`, `decrypt`, `sign`, `sign-verify` | `non-fips` |
+| `ckms tokenize`      | `hash`, `noise`, `word-mask`, `word-tokenize`, `word-pattern-mask`, `aggregate-number`, `aggregate-date`, `scale-number` | `non-fips` |
 
 ---
 
@@ -78,6 +86,6 @@ KEY_ID=$(cargo run -p ckms --features non-fips -- sym keys create --algorithm ae
 cargo run -p ckms --features non-fips -- sym encrypt -k "$KEY_ID" test_data/plain.txt
 
 # Destroy → export should fail
-cargo run -p ckms --features non-fips -- objects destroy -k "$KEY_ID"
+cargo run -p ckms --features non-fips -- sym keys destroy -k "$KEY_ID"
 cargo run -p ckms --features non-fips -- sym keys export -k "$KEY_ID" /tmp/dead-key.json
 ```

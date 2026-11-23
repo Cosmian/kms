@@ -38,7 +38,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
 | `bash.instructions.md` | `**/*.sh` |
-| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` |
+| `mise.instructions.md` | `.mise/**, .github/reusable_scripts/**` |
 | `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` |
 | `toml.instructions.md` | `**/*.toml` |
 | `python.instructions.md` | `**/*.py` |
@@ -47,8 +47,6 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `nix.instructions.md` | `nix/**/*.nix` |
 | `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `docker-compose.yml`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/pkg/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` |
 | `mermaid.instructions.md` | `**/*.md` |
-| `rust-security.instructions.md` | `crate/**/*.rs` |
-| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` |
 | `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` |
 | `database-replication.instructions.md` | `crate/server_database/**`, `crate/interfaces/src/stores/**`, `**/*.sql` |
@@ -60,8 +58,8 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | Path | Contents |
 |------|----------|
 | `crate/server/` | Server binary and library (main codebase) |
-| `crate/kmip/` | KMIP 2.1 protocol types |
-| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.5 |
+| `crate/kmip/` | KMIP 2.1 protocol types (`kmip/` submodule holds OASIS specs) |
+| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.5 + FIPS 3.1.2 |
 | `crate/clients/clap/` | CLI actions (clap commands) |
 | `crate/clients/ckms/` | CLI binary entry point |
 | `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
@@ -79,11 +77,11 @@ cargo build --features non-fips      # non-FIPS: PQC, Covercrypt, AES-XTS
 cargo clippy-all                     # zero warnings required
 cargo fmt --all                      # apply formatting
 cargo test -p <crate>                # targeted test (preferred)
-cargo test-fips                      # full FIPS workspace test suite
-cargo test-non-fips                  # full non-FIPS workspace test suite
+cargo test-fips                      # workspace --lib unit tests (FIPS)
+cargo test-non-fips                  # workspace --lib unit tests (non-FIPS)
 ```
 
-No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.5.
+No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.5 plus the OpenSSL 3.1.2 FIPS module.
 
 ---
 

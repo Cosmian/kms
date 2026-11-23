@@ -10,28 +10,33 @@
 
 ## UI routes
 
-React SPA client-side routes under `/ui/`:
+React SPA client-side routes under `/ui/` (defined in `ui/src/App.tsx`):
 
-| Route                 | Feature                      | Non-FIPS only |
-| --------------------- | ---------------------------- | ------------- |
-| `/ui/locate`          | Object search and listing    | No            |
-| `/ui/sym/*`           | Symmetric key operations     | No            |
-| `/ui/rsa/*`           | RSA key operations           | No            |
-| `/ui/ec/*`            | EC key operations            | No            |
-| `/ui/certificates/*`  | Certificate lifecycle        | No            |
-| `/ui/mac/*`           | MAC compute/verify           | No            |
-| `/ui/derive-key/*`    | Key derivation               | No            |
-| `/ui/attributes/*`    | Object attributes management | No            |
-| `/ui/access-rights/*` | Access control               | No            |
-| `/ui/secret-data/*`   | Secret/sensitive data        | No            |
-| `/ui/opaque-object/*` | Opaque objects               | No            |
-| `/ui/aws/*`           | AWS BYOK                     | No            |
-| `/ui/azure/*`         | Azure BYOK                   | No            |
-| `/ui/google-cse/*`    | Google CSE                   | No            |
-| `/ui/cc/*`            | Covercrypt                   | Yes           |
-| `/ui/pqc/*`           | Post-Quantum Crypto          | Yes           |
-| `/ui/tokenize/*`      | Tokenization operations      | Yes           |
-| `/ui/login`           | Login page                   | No            |
+| Route                    | Feature                                                | Non-FIPS only     |
+| ------------------------ | ------------------------------------------------------ | ----------------- |
+| `/ui/locate`             | Object search and listing                              | No                |
+| `/ui/sym/*`              | Symmetric key operations                               | No                |
+| `/ui/rsa/*`              | RSA key operations                                     | No                |
+| `/ui/ec/*`               | EC key operations                                      | No                |
+| `/ui/certificates/*`     | Certificate lifecycle                                  | No                |
+| `/ui/mac/*`              | MAC compute/verify                                     | No                |
+| `/ui/rotation-policy/*`  | Key rotation policies (`sym`, `rsa`, `ec`, `pqc`)      | `pqc` sub-routes  |
+| `/ui/derive-key`         | Key derivation                                         | No                |
+| `/ui/attributes/*`       | Object attributes management                           | No                |
+| `/ui/access-rights/*`    | Access control & Crypto Officer role                   | No                |
+| `/ui/hsm-status`         | HSM instance and slot status                           | No                |
+| `/ui/kv-secrets`         | Vault KV v2 secrets store                              | No                |
+| `/ui/secret-data/*`      | Secret/sensitive data                                  | No                |
+| `/ui/opaque-object/*`    | Opaque objects                                         | No                |
+| `/ui/aws/*`              | AWS BYOK                                               | No                |
+| `/ui/azure/*`            | Azure BYOK                                             | No                |
+| `/ui/google-cse`         | Google CSE                                             | No                |
+| `/ui/cc/*`               | Covercrypt                                             | Yes               |
+| `/ui/fpe/*`              | Format Preserving Encryption                           | Yes               |
+| `/ui/pgp/*`              | OpenPGP key & crypto operations                        | Yes               |
+| `/ui/pqc/*`              | Post-Quantum Crypto                                    | Yes               |
+| `/ui/tokenize/*`         | Tokenization / anonymization operations                | Yes               |
+| `/ui/login`              | Login page                                             | No                |
 
 ---
 
@@ -39,22 +44,25 @@ React SPA client-side routes under `/ui/`:
 
 Each module in `ui/src/actions/` maps to a group of forms:
 
-| Module            | Forms                                                   | Description                  |
-| ----------------- | ------------------------------------------------------- | ---------------------------- |
-| `Access/`         | Grant, List, Obtained, Revoke                           | Access control management    |
-| `Attributes/`     | Delete, Get, Modify, Set                                | Object attribute CRUD        |
-| `Certificates/`   | Certify, Decrypt, Encrypt, Export, Import, Validate     | Certificate lifecycle        |
-| `CloudProviders/` | AWS export/import, Azure export/import, Google CMEK/CSE | Cloud integrations           |
-| `Covercrypt/`     | Encrypt, Decrypt, MasterKey, UserKey                    | Functional encryption        |
-| `EC/`             | CreateKeyPair, Encrypt, Decrypt, Sign, Verify           | Elliptic Curve ops           |
-| `FPE/`            | KeysCreate, Encrypt, Decrypt                            | Format Preserving Encryption |
-| `Keys/`           | CseInfo, DeriveKey, Export, Import, SymKeyCreate        | General key operations       |
-| `MAC/`            | Compute, Verify                                         | Message Authentication Code  |
-| `Objects/`        | Destroy, ListOwned, Revoke, OpaqueObject, SecretData    | Object lifecycle             |
-| `PQC/`            | Encapsulate, Decapsulate, Sign, Verify                  | Post-Quantum ops             |
-| `RSA/`            | CreateKeyPair, Encrypt, Decrypt, Sign, Verify           | RSA operations               |
-| `Symmetric/`      | Encrypt, Decrypt, Hash                                  | Symmetric encryption         |
-| `Tokenize/`       | Hash, Noise, WordMask, PatternMask, Aggregate           | Data anonymization           |
+| Module            | Forms                                                                                   | Description                         |
+| ----------------- | --------------------------------------------------------------------------------------- | ----------------------------------- |
+| `Access/`         | Grant, List, Obtained, Revoke, CryptoOfficerRole                                        | Access control & Crypto Officer     |
+| `Attributes/`     | Delete, Get, Modify, Set                                                                | Object attribute CRUD               |
+| `Certificates/`   | Certify, ReCertify, Decrypt, Encrypt, Export, Import, Validate, GenerateCrl, GenerateCsr | Certificate lifecycle              |
+| `CloudProviders/` | AWS export/import, Azure export/import                                                  | Cloud BYOK integrations             |
+| `Covercrypt/`     | Encrypt, Decrypt, MasterKey, UserKey                                                    | Functional encryption (`non-fips`)  |
+| `EC/`             | KeysCreate, Encrypt, Decrypt, Sign, Verify                                              | Elliptic Curve ops                  |
+| `FPE/`            | KeysCreate, Encrypt, Decrypt                                                            | Format Preserving Encryption (`non-fips`) |
+| `Keys/`           | CseInfo, DeriveKey, Export, Import, SplitKey, JoinSplitKey, SymKeysCreate               | General & split key operations      |
+| `MAC/`            | Compute, Verify                                                                         | Message Authentication Code         |
+| `Objects/`        | Activate, Destroy, HsmStatus, Owned, ReKey, Revoke, OpaqueObject, SecretDataCreate      | Object lifecycle & HSM status       |
+| `PQC/`            | KeysCreate, Encapsulate, Decapsulate, Sign, Verify                                      | Post-Quantum ops (`non-fips`)       |
+| `Pgp/`            | KeysCreate, Encrypt, Decrypt, Sign, Verify                                              | OpenPGP operations (`non-fips`)     |
+| `RSA/`            | KeysCreate, Encrypt, Decrypt, Sign, Verify                                              | RSA operations                      |
+| `RotationPolicy/` | GetRotationPolicy, SetRotationPolicy                                                    | Automatic key rotation policies     |
+| `Secrets/`        | KvSecrets                                                                               | Vault KV v2 secrets management      |
+| `Symmetric/`      | Encrypt, Decrypt, Hash                                                                  | Symmetric encryption & hashing      |
+| `Tokenize/`       | Hash, Noise, WordMask, WordTokenize, WordPatternMask, AggregateNumber, AggregateDate, ScaleNumber | Data anonymization (`non-fips`) |
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: meta-security
-description: 'Full security-audit orchestrator running /security-review, /cryptography-review, /threat-model, and /standards-review in canonical order per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Use before release or major changes; incremental skips only when explicitly requested for follow-ups.'
+description: 'Full security-audit orchestrator (/security-review, /cryptography-review, /threat-model, /standards-review) per .github/skills/shared/orchestrator-contract.md (§6 inline or delegated; incremental skips on follow-ups).'
 ---
 
 # Meta-Security — Comprehensive Security Audit
@@ -19,19 +19,17 @@ single unified go/no-go report. This is the most thorough security review availa
 Read `.github/skills/shared/anti-hallucination.md` **before any analysis**. All rules in
 that file are mandatory for every sub-skill invoked below. Do not proceed until you have read it.
 
-### Sub-Agent Routing
+### Orchestration & Delegation
 
-Phases run as sub-agents (contract §6); the orchestrator contract in
-`.github/skills/shared/orchestrator-contract.md` sections 1 and 6 control:
+Phases run inline or as delegated sub-agents when independent per `.github/skills/shared/orchestrator-contract.md` Section 6 (skills do not select a model, fix an agent count, or require delegation). The shared contract controls:
 
 - **Phase ordering** (Section 1: security audit phases 1–4)
-- **Sub-agent routing** (Section 6: `slow` model for judgment/reasoning phases)
-- **Overlap deduplication** (Section 3: report overlaps once under earliest phase)
-- **Unified report schema** (Section 4: SUMMARY.md structure)
+- **Delegation** (Section 6: optional sub-agent delegation when phases are independent, otherwise inline; no model selection)
+- **Finding ownership & deduplication** (Section 3: earliest executed phase owns overlapping findings)
+- **Unified report schema** (Section 4: inline report structure; `meta-security` emits its unified report inline rather than writing `SUMMARY.md`)
 - **Blocking criteria** (Section 5: go/no-go gates)
 
-This skill's manual steps below align with that contract. For orchestration rules and
-report format details, see the shared contract.
+This skill's steps below align with that contract. For orchestration rules and report format details, see `.github/skills/shared/orchestrator-contract.md`.
 
 ## Step 1 — Determine Scope
 
@@ -147,7 +145,7 @@ Collect all findings. Record applicability and conformance gaps.
 
 ## Step 6 — Unified Report
 
-Produce a report using the unified schema from `.github/skills/shared/orchestrator-contract.md` Section 4 (Unified Report Schema).
+Output the unified report **inline** using the schema from `.github/skills/shared/orchestrator-contract.md` Section 4 (`meta-security` does not write a `SUMMARY.md` file).
 
 **Report structure** (adapted for security audit):
 
@@ -157,6 +155,9 @@ Produce a report using the unified schema from `.github/skills/shared/orchestrat
 **Generated**: <ISO 8601 timestamp>
 **Scope**: <full workspace | path | specific changed files>
 **Mode**: <full | incremental>
+**Revision**: <commit SHA, plus dirty/untracked state>
+**Instructions applied**: <paths of matching `.github/instructions/*.instructions.md` files>
+**Skills selected**: <list>
 
 ## Summary
 
@@ -166,6 +167,7 @@ Produce a report using the unified schema from `.github/skills/shared/orchestrat
 - **Medium**: N
 - **Low**: N
 - **Skipped Phases**: <list with evidence>
+- **Incomplete Phases**: <list with missing prerequisite>
 
 ## Verdict
 
@@ -173,16 +175,16 @@ Produce a report using the unified schema from `.github/skills/shared/orchestrat
 
 ## Findings (ordered by phase)
 
-### Phase 1: Security Review [PASS | FAIL | SKIPPED]
+### Phase 1: Security Review [PASS | FAIL | SKIPPED | INCOMPLETE]
 ...
 
-### Phase 2: Cryptography Review [PASS | FAIL | SKIPPED]
+### Phase 2: Cryptography Review [PASS | FAIL | SKIPPED | INCOMPLETE]
 ...
 
-### Phase 3: Threat Model [PASS | FAIL | SKIPPED]
+### Phase 3: Threat Model [PASS | FAIL | SKIPPED | INCOMPLETE]
 ...
 
-### Phase 4: Standards Review [PASS | FAIL | SKIPPED]
+### Phase 4: Standards Review [PASS | FAIL | SKIPPED | INCOMPLETE]
 ...
 ```
 

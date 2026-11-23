@@ -159,10 +159,7 @@ ls CHANGELOG/*.md
 git log --oneline $(git describe --tags --abbrev=0)..HEAD
 ```
 
-Read **every** `CHANGELOG/*.md` file in full, plus the `## [Unreleased]` content and any existing `## [X.Y.Z]` entry
-of the root `CHANGELOG.md`. Keep a checklist of the source files; each must be accounted for before deleting anything.
-Use the `git log` PR numbers to link items and to spot merged work that has no branch file (add a bullet from the
-commit title only, and say so in the final report).
+Read **every** `CHANGELOG/*.md` file in full, plus any existing `## [X.Y.Z]` draft entry in the root `CHANGELOG.md` (which starts with `# Changelog`, its one-line preamble, and then the latest `## [A.B.C] - YYYY-MM-DD` release heading, with no `## [Unreleased]` heading required). Keep a checklist of the source files; each must be accounted for before deleting anything. Use the `git log` PR numbers to link items and to spot merged work that has no branch file (add a bullet from the commit title only, and say so in the final report).
 
 ## Step C2 — Summarize and regroup
 
@@ -183,8 +180,7 @@ commit title only, and say so in the final report).
 - Summarize: one bullet per user- or operator-observable change, imperative verb, type/flag/crate names, PR/issue link.
   Drop benchmark numbers, per-test names, step-by-step investigation notes and internal file paths that do not affect
   observable behaviour. Compress Refactor to one sentence per area and Testing to categories.
-- Do not invent facts: every claim must come from a branch file, the Unreleased section or a commit; mark anything
-  unverified in the final report.
+- Do not invent facts: every claim must come from a branch file, an existing draft release entry, or a commit; mark anything unverified in the final report.
 
 ## Step C3 — Security cross-check
 
@@ -204,9 +200,7 @@ and list in the final report the ones that look like real vulnerabilities, so th
 
 ## Step C4 — Write the root entry
 
-In `CHANGELOG.md`, replace the content between `## [Unreleased]` and the previous `## [A.B.C]` heading with an empty
-`## [Unreleased]` line followed by the `## [X.Y.Z] - YYYY-MM-DD` entry. If an `## [X.Y.Z]` entry already exists, merge
-into it instead of adding a second heading. Do not touch older entries.
+In `CHANGELOG.md`, insert the `## [X.Y.Z] - YYYY-MM-DD` section directly above the latest `## [A.B.C] - YYYY-MM-DD` release heading (right after the `# Changelog` preamble — no `## [Unreleased]` heading is required). If a draft `## [X.Y.Z]` entry already exists, merge into or replace it instead of adding a second heading. Do not touch older entries.
 
 ## Step C5 — Verify coverage, then delete
 

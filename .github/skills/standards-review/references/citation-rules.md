@@ -58,9 +58,9 @@ not found in grep), cite at **document level only**:
 When citing a standard's requirement:
 
 - **Exact quote**: wrap in quotation marks and cite source:
-  `"The signature algorithm MUST be one of..." — [RFC 5280], Section 4.1.1.2`
+  `"The signatureAlgorithm field contains the identifier for the cryptographic algorithm used by the CA to sign this certificate." — [RFC 5280], Section 4.1.1.2, "signatureAlgorithm"`
 - **Paraphrase**: explicitly label as paraphrase:
-  `[Paraphrase] RFC 5280 requires the signature algorithm to be from an approved list.`
+  `[Paraphrase] RFC 5280 Section 4.1.1.2 states that signatureAlgorithm identifies the cryptographic algorithm used by the CA to sign the certificate and must match tbsCertificate.signature.`
 
 Never present a paraphrase as if it were a direct quote.
 
@@ -105,7 +105,8 @@ recommends RSA-3072+):
 3. Note which standard takes precedence in the deployment context (if known)
 
 ```markdown
-**Multi-standard divergence**: RSA-2048 is approved by [FIPS 140-3] but deprecated
-by [BSI TR-02102-1] (2024) which recommends 3072+ bits. The applicable standard
-depends on the deployment jurisdiction.
+**Multi-standard divergence**: RSA-2048 is approved by [FIPS 140-3] / [FIPS 186-5],
+whereas [BSI TR-02102-1] (2024) requires ≥ 3000 bits (3072+ in practice) after the
+≥ 2000-bit transitional period ended in 2023. The applicable standard depends on the
+deployment jurisdiction.
 ```

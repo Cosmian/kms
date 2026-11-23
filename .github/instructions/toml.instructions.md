@@ -31,9 +31,9 @@ license = { workspace = true }
 
 Feature flags:
 
-- `non-fips` is the only non-default feature flag in this workspace.
-- `interop` and `insecure` are always-on test/dev features gated in the server crate only.
-- Never add a `default` feature that enables `non-fips`.
+- In `crate/server/Cargo.toml`, `default = ["interop"]`; `non-fips`, `insecure` (dev/test only), and `timeout` are opt-in non-default features.
+- Across library and client crates, `non-fips` is the main opt-in feature flag for non-approved algorithms and backends.
+- Never add a `default` feature that enables `non-fips` or `insecure`.
 
 ## `.cargo/config.toml`
 
@@ -53,7 +53,7 @@ Cargo aliases are defined here. When adding a new alias:
 ## `mise.toml` / `.mise.toml`
 
 - Task definitions that cannot live in `.mise/tasks/` (e.g., top-level aliases) go in `mise.toml`.
-- Always prefer file-based tasks (`.mise/tasks/*.sh`) over inline TOML tasks for anything non-trivial.
+- Always prefer file-based tasks (extensionless scripts under `.mise/tasks/<group>/<name>`) over inline TOML tasks for anything non-trivial.
 
 ## `lychee.toml`, `_typos.toml`
 

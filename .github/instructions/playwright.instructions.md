@@ -17,8 +17,8 @@ applyTo: 'ui/tests/e2e/**/*.ts'
 Ant Design Select renders options in a portal (outside the component DOM). Use the helpers from `ui/tests/e2e/helpers.ts`:
 
 ```typescript
-import { selectAntOption } from './helpers';
-await selectAntOption(page, 'testid-of-select', 'Option Label');
+import { selectOption } from './helpers';
+await selectOption(page, 'testid-of-select', 'Option Label');
 ```
 
 ## FIPS mode handling

@@ -1,7 +1,7 @@
 ---
 name: "MISE Task Conventions"
 description: "Best practices for writing MISE task scripts and shell libraries in the Eviden KMS project"
-applyTo: ".mise/**, scripts/**, .github/reusable_scripts/**"
+applyTo: ".mise/**, .github/reusable_scripts/**"
 ---
 
 # MISE task and library conventions
@@ -143,6 +143,8 @@ Never assume `common.sh` is already loaded; always guard the source.
 | `.mise/lib/test_slots.sh` | Dynamic port-slot allocation |
 | `.mise/lib/multi_region_guards.sh` | Multi-region active-active PostgreSQL guards (source/config/live/behavioral) |
 | `.mise/lib/audit_e2e.sh` | Shared ckms/audit E2E helpers: `audit_ckms(_json/_fail)`, `audit_exercise_kmip_ops`, `audit_assert_events_jsonl` |
+| `.mise/lib/audit_compat.sh` | Shared OpenSearch/Splunk ephemeral container lifecycle and Python setup helpers for `test:obs:audit-*` |
+| `.mise/lib/kryoptic.sh` | Out-of-tree build and token setup helpers (`kryoptic_build_cdylib`, `kryoptic_setup`) for the Kryoptic PKCS#11 v3.0 test token |
 
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
 free-port allocation, or SHA-256 computation — all three already exist.
@@ -302,7 +304,7 @@ image catalog). In a task or script:
 - Source `.mise/lib/common.sh` before the first `compose_image` call, and call it after the script's Docker
   check. In a sourced library, resolve the image inside the function that needs it, not at load time.
 - A new image-only service goes in the `images` profile of the root `docker-compose.yml`; never hardcode a
-  `repo/name:tag` in `.mise/**` or `scripts/**`.
+  `repo/name:tag` in `.mise/**`.
 - `.mise/scripts/docker-compose.yml` hardcodes its third-party images (`image: postgres:18`); keep them equal to
   the root `docker-compose.yml` when you bump one. `saml_sso/docker-compose.yml` takes images from variables,
   which the script that drives it sets from `compose_image`.

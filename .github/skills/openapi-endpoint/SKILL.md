@@ -78,22 +78,29 @@ pub mod my_module;
 
 In `crate/server/src/start_kms_server.rs`, find the correct `App` configuration block and add the scope.
 
-**Critical: Actix-web middleware is applied in LIFO order** (last `.wrap()` runs first on request). The standard stack is:
+**Critical: Actix-web middleware is applied in LIFO order** (last `.wrap()` runs first on incoming requests). Scopes that use the standard KMS native auth stack wire it via `wrap_native_auth` (which registers `ensure_auth_middleware` innermost, then `SessionAuth`, `api_token_middleware`, `AuthVerifier`, `jwt_auth_middleware`, `from_fn(tls_auth_fn)`, and `vault_token_optional_middleware` outermost among auth extractors), wrapped outside by `AuditMiddleware` and CORS:
 
 ```rust
-web::scope("/api/v1/my-endpoint")
-    .service(web::resource("").route(web::post().to(my_module::my_handler)))
-    .wrap(EnsureAuth::new(auth_is_configured))
-    // auth extractors added last (run first):
-    .wrap(Condition::new(use_api_token_auth, ApiTokenAuth::default()))
-    .wrap(Condition::new(use_cert_auth, SslAuth::default()))
-    .wrap(Condition::new(use_jwt_auth, JwtAuth::new(...)))
-    .wrap(Cors::default())  // outermost — handles preflight
+let my_scope = wrap_native_auth(
+    web::scope("/api/v1/my-endpoint"),
+    ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
+    &native_auth,
+)
+.wrap(AuditMiddleware::new(
+    kms_server_for_http.audit_store.clone(),
+    kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+    kms_server_for_http.params.audit_failure_mode.clone(),
+))
+.wrap(allowed_origins_cors(
+    &kms_server_for_http.params.cors_allowed_origins,
+))
+.service(my_module::my_handler);
+app = app.service(my_scope);
 ```
 
-For **public endpoints** (no auth required), omit the auth middleware chain and `EnsureAuth`.
+For **public endpoints** (no auth required), omit `wrap_native_auth` and `ensure_auth_middleware`.
 
-For **enterprise routes** (cloud providers) that use mTLS only, see `azure_ekm` scope for the pattern.
+For **enterprise routes** (cloud providers) that use mTLS only, see `azure_ekm_scope` (`ensure_auth_middleware(..., use_cert_auth)` + `from_fn(tls_auth_fn)` + `Cors::default()`).
 
 If the endpoint is non-FIPS-only, wrap the entire registration:
 

@@ -121,9 +121,7 @@ If the entry contains a `### 🔒 Security` section:
 
 ## Step 7 — Write the output
 
-Edit `CHANGELOG.md` in-place. Insert the new version entry before the previous
-`## [X.Y.Z]` heading, under an empty `## [Unreleased]` line. Do **not** edit any
-other entry, and do **not** create files in `CHANGELOG/`.
+Edit `CHANGELOG.md` in-place. Insert the new `## [X.Y.Z] - YYYY-MM-DD` section directly above the latest `## [A.B.C]` release heading (after the `# Changelog` preamble — no `## [Unreleased]` heading is required; if a draft `## [X.Y.Z]` entry already exists, replace it). Do **not** edit any older release entry, and do **not** create files in `CHANGELOG/`.
 
 The root `CHANGELOG.md` is hand-maintained at release time.
 

@@ -48,11 +48,11 @@ Never expose non-FIPS algorithms in the UI when running in FIPS mode.
 
 ## Actions structure
 
-`ui/src/actions/` contains 16 feature modules mapping to KMIP operation groups:
+`ui/src/actions/` contains 17 feature modules mapping to KMIP operation groups:
 
 ```text
 Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/ FPE/ Keys/
-MAC/ Objects/ Pgp/ PQC/ RSA/ RotationPolicy/ Symmetric/ Tokenize/
+MAC/ Objects/ Pgp/ PQC/ RSA/ RotationPolicy/ Secrets/ Symmetric/ Tokenize/
 ```
 
 > For deeper guidance on patterns and component structure, run `/react-ant-patterns`.

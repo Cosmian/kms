@@ -24,7 +24,7 @@ Rules for **new or modified** code. Legacy violations exist: when you touch one,
 ## 3. Logging
 
 - Never log, at any level (including `trace!`): key material, plaintext, ciphertext, MAC/signature bytes, passwords, tokens, raw TTLV/KMIP/HTTP bodies.
-- KMIP request/response `Display` impls print byte-string fields as `<N bytes>` (`req_len`/`opt_len` for byte-string fields still typed `Vec<u8>`, such as ciphertext, signatures, MACs and the `Hash`/`MAC`/`MACVerify`/`SignatureVerify`/`RNGRetrieveResponse` data; `Sensitive<T>` fields redact themselves) in `crate/kmip/src/kmip_2_1/kmip_operations.rs`: never format a whole request/response (`{request}`, `{response}`, `{:?}`) into a log line. Log operation name, unique identifier, lengths, outcome.
+- While `impl_display!` in `crate/kmip/src/kmip_2_1/kmip_operations.rs` prints only byte lengths for `req_len`/`opt_len` fields, `Debug` (`{:?}`) and serialized TTLV/JSON expose full payloads: never format `{:?}` or raw request/response bodies into a log line. Log operation name, unique identifier, lengths, outcome.
 - Use `cosmian_logger` macros. `dbg!`, `println!` and `eprintln!` are for `crate/clients/*` user output only, never libraries or the server.
 
 ## 4. No test-only behaviour in production paths
