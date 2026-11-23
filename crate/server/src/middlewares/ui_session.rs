@@ -16,7 +16,7 @@ use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-use crate::{middlewares::UserId, result::KResult};
+use crate::{error::KmsError, middlewares::UserId, result::KResult};
 
 /// Name of the KMS session cookie; also the AES-GCM AAD, binding a sealed value to this cookie.
 const UI_SESSION_COOKIE: &str = "auth_session";
@@ -34,7 +34,9 @@ const GCM_IV_LEN: usize = 12;
 const GCM_TAG_LEN: usize = 16;
 
 /// State kept in the session cookie.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Debug` is hand-written: the OIDC values of a login in progress must never reach a log.
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct UiSession {
     /// The authenticated user, once logged in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -48,6 +50,14 @@ pub(crate) struct UiSession {
     /// OIDC nonce of the login in progress.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) nonce: Option<String>,
+}
+
+impl std::fmt::Debug for UiSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiSession")
+            .field("user_id", &self.user_id)
+            .finish_non_exhaustive()
+    }
 }
 
 /// The sealed payload: the session and its expiry (Unix seconds).
@@ -117,7 +127,14 @@ impl UiSessionCookie {
         raw.extend_from_slice(&iv);
         raw.extend_from_slice(&ciphertext);
         raw.extend_from_slice(&tag);
-        Ok(URL_SAFE_NO_PAD.encode(raw))
+        let value = URL_SAFE_NO_PAD.encode(raw);
+        // `open` refuses longer values: never issue a cookie the next request cannot use.
+        if value.len() > MAX_COOKIE_VALUE_LEN {
+            return Err(KmsError::ServerError(
+                "the UI session cookie exceeds the maximum size".to_owned(),
+            ));
+        }
+        Ok(value)
     }
 
     /// Inverse of [`Self::seal`]; the error is a static reason, never the cookie content.
@@ -267,6 +284,17 @@ mod tests {
         let a = codec.set_cookie(&alice()).expect("set_cookie");
         let b = codec.set_cookie(&alice()).expect("set_cookie");
         assert_ne!(value_of(&a), value_of(&b));
+    }
+
+    #[test]
+    fn a_cookie_the_reader_would_refuse_is_never_issued() {
+        let huge = UiSession {
+            user_id: Some(UserId::from("a".repeat(5000))),
+            ..UiSession::default()
+        };
+        test_ui_session_cookie()
+            .set_cookie(&huge)
+            .expect_err("an oversized cookie must be refused");
     }
 
     #[test]
