@@ -347,7 +347,9 @@ required_metrics=(
 )
 prom_output=$(curl -sf "http://127.0.0.1:${OTEL_PROM_PORT}/metrics" 2>/dev/null || echo "")
 for m in "${required_metrics[@]}"; do
-  if echo "${prom_output}" | grep -q "^${m}"; then
+  # Here-string, not a pipe: `grep -q` exits at the first match and, under pipefail, the SIGPIPE
+  # of `echo` on a large scrape reported a present metric as missing.
+  if grep -q "^${m}" <<<"${prom_output}"; then
     echo "    Found metric: ${m}"
   else
     echo "ERROR: Required metric '${m}' not found on OTel Prometheus endpoint." >&2
