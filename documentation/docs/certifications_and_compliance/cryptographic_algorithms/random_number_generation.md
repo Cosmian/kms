@@ -147,6 +147,7 @@ Documented exceptions:
 | OpenPGP key generation, encryption, signing (seed of the `pgp` PRG) | `crypto/openpgp/mod.rs` |
 | JOSE CEK/IV; AWS XKS IV | `routes/jose/`, `routes/aws_xks/encrypt_decrypt/encrypt_.rs` |
 | UI login PKCE verifier, CSRF token, nonce; ephemeral session cookie key | `routes/ui_auth.rs`, `start_kms_server.rs` |
+| UI session cookie AES-256-GCM IV (generated inside the OpenSSL provider by `aes_gcm_encrypt_generated_iv`, not by `KmsRng`) | `middlewares/ui_session.rs` |
 | Redis object nonces; ceremony-record nonces | `server_database/src/stores/redis/objects_db.rs`, `server_database/src/ceremony_keys.rs` |
 | PKCS#11 `C_GenerateRandom`, provider-generated symmetric key bytes | `clients/pkcs11/module` (`Backend::generate_random`), `clients/pkcs11/provider` |
 | KMIP `RNGRetrieve` | `core/operations/rng_retrieve.rs` |
