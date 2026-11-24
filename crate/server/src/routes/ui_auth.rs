@@ -1154,7 +1154,10 @@ mod tests {
         let resp =
             test::call_service(&app, test::TestRequest::get().uri("/logout").to_request()).await;
         assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
-        assert!(set_cookies(&resp).is_empty(), "GET must not clear any cookie");
+        assert!(
+            set_cookies(&resp).is_empty(),
+            "GET must not clear any cookie"
+        );
         assert_eq!(logout_response(None).await.status(), StatusCode::FOUND);
     }
 

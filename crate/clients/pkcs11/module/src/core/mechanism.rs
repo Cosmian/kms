@@ -186,7 +186,10 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
     match mechanism.mechanism {
         CKM_AES_KEY_GEN => Ok(Mechanism::AesKeyGen),
         CKM_AES_CBC_PAD | CKM_AES_CBC => {
-            not_null!(mechanism.pParameter, "parse_mechanism: CKM_AES_CBC pParameter");
+            not_null!(
+                mechanism.pParameter,
+                "parse_mechanism: CKM_AES_CBC pParameter"
+            );
             if usize::try_from(mechanism.ulParameterLen)? != AES_IV_SIZE {
                 return Err(ModuleError::BadArguments(format!(
                     "AES IV size incorrect. {AES_IV_SIZE} bytes expected"

@@ -137,7 +137,8 @@ async fn test_root_redirects_to_ui() {
 #[tokio::test]
 async fn test_version_hides_openssl_build() {
     let app = test_utils::test_app(None).await;
-    let response = test::call_service(&app, test::TestRequest::get().uri("/version").to_request()).await;
+    let response =
+        test::call_service(&app, test::TestRequest::get().uri("/version").to_request()).await;
     assert_eq!(response.status(), StatusCode::OK);
     let version: String = test::read_body_json(response).await;
     let flavour = if cfg!(feature = "non-fips") {
