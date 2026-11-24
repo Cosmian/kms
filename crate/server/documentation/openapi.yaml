@@ -3992,6 +3992,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/XksErrorReply'
+        '413': &xksBodyTooLarge
+          description: Request body larger than 2 MiB, rejected before SigV4 verification (plain-text body)
 
   /aws/kms/xks/v1/keys/{key_id}/metadata:
     post:
@@ -4031,6 +4033,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/XksErrorReply'
+        '413': *xksBodyTooLarge
 
   /aws/kms/xks/v1/keys/{key_id}/encrypt:
     post:
@@ -4069,6 +4072,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/XksErrorReply'
+        '413': *xksBodyTooLarge
 
   /aws/kms/xks/v1/keys/{key_id}/decrypt:
     post:
@@ -4107,6 +4111,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/XksErrorReply'
+        '413': *xksBodyTooLarge
 
   # ── Azure EKM ────────────────────────────────────────────────────────────────
 

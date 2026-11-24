@@ -40,9 +40,13 @@ use crate::{
 
 const XKS_SIGV4_ALLOWED_MISMATCH_MINUTES: i64 = 5;
 
+/// Largest `/aws` request body, read before `SigV4` authentication. Equal to the scope's JSON
+/// extractor limit: XKS requests are a few KiB (4300-byte plaintext, 8192-byte AAD, base64).
+pub(crate) const MAX_XKS_REQUEST_BODY: usize = 2 * 1024 * 1024;
+
 /// Bounds the number of concurrent `SigV4` verification tasks running on the Tokio blocking
 /// thread pool. Each unauthenticated XKS request can trigger CPU-heavy canonicalization and
-/// hashing of a request body up to 64 MB; without a bound, an attacker could submit an
+/// hashing of a request body up to `MAX_XKS_REQUEST_BODY`; without a bound, an attacker could submit an
 /// unbounded number of such requests and exhaust CPU and blocking-pool capacity (CWE-400:
 /// Uncontrolled Resource Consumption). The previous synchronous verification path was
 /// implicitly bounded by the number of Actix worker threads — this preserves an equivalent
@@ -158,19 +162,12 @@ where
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
 
-            let body_bytes: Bytes = body
-                .map(Result::unwrap_or_default)
-                .fold(BytesMut::new(), |mut acc, chunk| async move {
-                    acc.extend_from_slice(&chunk);
-                    acc
-                })
-                .await
-                .freeze();
+            let body_bytes = read_bounded_body(body, MAX_XKS_REQUEST_BODY).await?;
 
             let http_request = to_http_request(&actix_web_http_request, body_bytes.clone())?;
 
             // Canonicalization and body hashing run synchronously and scale with the request body
-            // size (up to 64 MB for XKS), so running them directly on the Actix worker would let
+            // size (up to `MAX_XKS_REQUEST_BODY`), so running them directly on the Actix worker would let
             // a burst of large concurrent requests starve all HTTP workers (CWE-400). Offload the
             // whole verification to the blocking thread pool.
             //
@@ -231,6 +228,23 @@ fn authentication_failed_error(message: impl Into<String>) -> Error {
         errorMessage: Some(message.into()),
     }
     .into()
+}
+
+/// Read the raw request body, failing as soon as it would exceed `limit` bytes (CWE-770).
+async fn read_bounded_body(mut body: Payload, limit: usize) -> Result<Bytes, Error> {
+    let mut bytes = BytesMut::new();
+    while let Some(chunk) = body.next().await {
+        let chunk = chunk.map_err(|e| {
+            actix_web::error::ErrorBadRequest(format!("Failed to read the request body: {e}"))
+        })?;
+        if bytes.len().saturating_add(chunk.len()) > limit {
+            return Err(actix_web::error::ErrorPayloadTooLarge(format!(
+                "AWS XKS request body exceeds {limit} bytes"
+            )));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes.freeze())
 }
 
 fn enforce_sigv4_request_freshness<B>(
@@ -502,5 +516,60 @@ mod tests {
         });
 
         assert!(matches!(result, Ok(Ok(Ok(())))));
+    }
+
+    fn stream_payload(chunks: Vec<Result<Bytes, actix_web::error::PayloadError>>) -> Payload {
+        let stream: Pin<Box<dyn futures::Stream<Item = Result<Bytes, actix_web::error::PayloadError>>>> =
+            Box::pin(futures::stream::iter(chunks));
+        Payload::from(stream)
+    }
+
+    fn status_of(result: Result<Bytes, Error>) -> Option<actix_web::http::StatusCode> {
+        result.err().map(|e| e.as_response_error().status_code())
+    }
+
+    #[tokio::test]
+    async fn read_bounded_body_rejects_oversized_body() {
+        let body = Payload::from(Bytes::from(vec![0_u8; MAX_XKS_REQUEST_BODY + 1]));
+        assert_eq!(
+            status_of(read_bounded_body(body, MAX_XKS_REQUEST_BODY).await),
+            Some(actix_web::http::StatusCode::PAYLOAD_TOO_LARGE)
+        );
+    }
+
+    #[tokio::test]
+    async fn read_bounded_body_stops_before_reading_past_limit() {
+        // The stream errors after the limit is crossed: a 413 (not a 400) proves that the stream
+        // is no longer consumed once the cap is exceeded.
+        let body = stream_payload(vec![
+            Ok(Bytes::from_static(&[0; 8])),
+            Ok(Bytes::from_static(&[0; 8])),
+            Err(actix_web::error::PayloadError::Incomplete(None)),
+        ]);
+        assert_eq!(
+            status_of(read_bounded_body(body, 10).await),
+            Some(actix_web::http::StatusCode::PAYLOAD_TOO_LARGE)
+        );
+    }
+
+    #[tokio::test]
+    async fn read_bounded_body_propagates_stream_errors() {
+        let body = stream_payload(vec![
+            Ok(Bytes::from_static(b"ab")),
+            Err(actix_web::error::PayloadError::Incomplete(None)),
+        ]);
+        assert_eq!(
+            status_of(read_bounded_body(body, 10).await),
+            Some(actix_web::http::StatusCode::BAD_REQUEST)
+        );
+    }
+
+    #[tokio::test]
+    async fn read_bounded_body_accepts_body_at_limit() {
+        let body = Payload::from(Bytes::from_static(b"0123456789"));
+        assert!(matches!(
+            read_bounded_body(body, 10).await,
+            Ok(bytes) if bytes == Bytes::from_static(b"0123456789")
+        ));
     }
 }

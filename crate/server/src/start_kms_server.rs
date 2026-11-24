@@ -1557,7 +1557,11 @@ pub async fn prepare_kms_server(
         if enable_aws_xks {
             // The scope for the AWS XKS (External Key Store) endpoints served from /aws
             let aws_xks_scope = web::scope("/aws")
-                .app_data(web::JsonConfig::default().error_handler(|err, req| aws_xks::xks_json_error_handler(&err, req)))
+                .app_data(
+                    web::JsonConfig::default()
+                        .limit(aws_xks::MAX_XKS_REQUEST_BODY)
+                        .error_handler(|err, req| aws_xks::xks_json_error_handler(&err, req)),
+                )
                 .wrap(Cors::permissive())
                 .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
                 .service(aws_xks::get_health_status)
