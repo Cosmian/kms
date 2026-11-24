@@ -134,8 +134,17 @@ if (-not (Test-Path -LiteralPath $fipsDll)) {
 }
 # `install_fips` wrote the pedantic fipsmodule.cnf: regenerate it with the `fipsinstall` defaults.
 # The build-tree openssl.exe is static (no-shared); `install_fips` installs no binary.
-& (Join-Path $srcRoot "apps\openssl.exe") fipsinstall -self_test_oninstall -module $fipsDll -out $fipsModuleCnf
-if ($LASTEXITCODE -ne 0) { throw "openssl fipsinstall failed with exit code $LASTEXITCODE" }
+# Ignore an inherited OPENSSL_CONF / OPENSSL_MODULES: they could load another provider or module path.
+$savedConf = $env:OPENSSL_CONF; $savedModules = $env:OPENSSL_MODULES
+Remove-Item Env:OPENSSL_CONF, Env:OPENSSL_MODULES -ErrorAction SilentlyContinue
+try {
+    & (Join-Path $srcRoot "apps\openssl.exe") fipsinstall -self_test_oninstall -module $fipsDll -out $fipsModuleCnf
+    $fipsExit = $LASTEXITCODE
+} finally {
+    if ($null -ne $savedConf) { $env:OPENSSL_CONF = $savedConf }
+    if ($null -ne $savedModules) { $env:OPENSSL_MODULES = $savedModules }
+}
+if ($fipsExit -ne 0) { throw "openssl fipsinstall failed with exit code $fipsExit" }
 if (-not (Test-Path -LiteralPath $fipsModuleCnf)) { throw "$fipsModuleCnf was not produced by 'openssl fipsinstall'" }
 if (-not (Test-Path -LiteralPath $opensslCnf)) { throw "$opensslCnf was not installed" }
 
