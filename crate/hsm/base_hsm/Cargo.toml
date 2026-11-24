@@ -33,7 +33,7 @@ pkcs11-sys = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
 
@@ -57,3 +57,4 @@ non-fips = ["cosmian_kms_interfaces/non-fips"]
 # fast, deterministic, and offline — without depending on Kryoptic itself
 # (exercised end-to-end by `crate/hsm/kryoptic` via `mise run test:hsm:kryoptic`).
 cc = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
