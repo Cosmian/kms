@@ -718,7 +718,7 @@ fn saml_login_url(kms_public_url: &str, realm: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-#[get("/logout")]
+#[post("/logout")]
 pub(crate) async fn logout(
     req: HttpRequest,
     session_cookie: web::Data<UiSessionCookie>,
@@ -1098,7 +1098,7 @@ mod tests {
         );
     }
 
-    /// The `_ea_` removal `Set-Cookie` of `GET /logout` for a request carrying `token`, if any.
+    /// The `_ea_` removal `Set-Cookie` of `POST /logout` for a request carrying `token`, if any.
     async fn logout_removal_cookie(token: String) -> Option<String> {
         let resp = logout_response(Some(format!("{AUTH_VERIFIER_SESSION_COOKIE}={token}"))).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
@@ -1116,7 +1116,7 @@ mod tests {
         }
     }
 
-    /// `GET /logout` carrying the given `Cookie` header, if any.
+    /// `POST /logout` carrying the given `Cookie` header, if any.
     async fn logout_response(
         cookie: Option<String>,
     ) -> actix_web::dev::ServiceResponse<impl actix_web::body::MessageBody> {
@@ -1129,11 +1129,33 @@ mod tests {
                 .service(logout),
         )
         .await;
-        let mut req = test::TestRequest::get().uri("/logout");
+        let mut req = test::TestRequest::post().uri("/logout");
         if let Some(cookie) = cookie {
             req = req.insert_header((header::COOKIE, cookie));
         }
         test::call_service(&app, req.to_request()).await
+    }
+
+    /// Logout changes state (it drops the session), so a `GET` (link, image, prefetch) must not
+    /// reach it.
+    ///
+    /// Guards: #1500 R-16
+    #[actix_web::test]
+    async fn test_ui_logout_rejects_get() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
+                .app_data(web::Data::new(default_oidc_runtime()))
+                .app_data(web::Data::new(KMS_URL.to_owned()))
+                .app_data(web::Data::new(test_ui_session_cookie()))
+                .service(logout),
+        )
+        .await;
+        let resp =
+            test::call_service(&app, test::TestRequest::get().uri("/logout").to_request()).await;
+        assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert!(set_cookies(&resp).is_empty(), "GET must not clear any cookie");
+        assert_eq!(logout_response(None).await.status(), StatusCode::FOUND);
     }
 
     fn set_cookies<B>(resp: &actix_web::dev::ServiceResponse<B>) -> Vec<String> {

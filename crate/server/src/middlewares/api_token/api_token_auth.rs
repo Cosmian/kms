@@ -64,11 +64,12 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
     // Check if API token authentication is configured
     trace!("Token authentication using this API token ID: {api_token_id}");
 
+    // Parse the Authorization header first: a request without a Bearer token is rejected before
+    // any database read, so unauthenticated requests cannot trigger key lookups.
+    let token_part = extract_bearer_token(req)?;
+
     // Get the stored API token
     let api_token = get_api_token(kms_server, api_token_id).await?;
-
-    // Extract the token from the Authorization header
-    let token_part = extract_bearer_token(req)?;
 
     trace!(
         "[api_token_auth] Authorization header received (length: {} chars)",
@@ -98,5 +99,36 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
         Err(KmsError::Unauthorized(
             "Client and server authentication tokens mismatch".to_owned(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::test::TestRequest;
+
+    use super::handle_api_token;
+    use crate::{
+        error::KmsError,
+        tests::test_utils::{https_clap_config, test_kms_with_config},
+    };
+
+    /// A request without a Bearer token is refused with 401 before the API token key is read:
+    /// with an `api_token_id` that matches no object, the error is still `Unauthorized`.
+    #[tokio::test]
+    async fn api_token_missing_header_skips_db() {
+        let mut config = https_clap_config();
+        config.http.api_token_id = Some("no-such-api-token-key".to_owned());
+        let kms = test_kms_with_config(config).await.unwrap();
+
+        let request = TestRequest::default().to_srv_request();
+        let err = handle_api_token(&kms, &request).await.unwrap_err();
+        assert!(matches!(err, KmsError::Unauthorized(_)), "{err:?}");
+
+        // With a Bearer token, the missing key is looked up and reported.
+        let request = TestRequest::default()
+            .insert_header(("Authorization", "Bearer abc"))
+            .to_srv_request();
+        let err = handle_api_token(&kms, &request).await.unwrap_err();
+        assert!(!matches!(err, KmsError::Unauthorized(_)), "{err:?}");
     }
 }

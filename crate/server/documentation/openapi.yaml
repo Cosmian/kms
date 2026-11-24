@@ -4730,7 +4730,7 @@ paths:
           description: UI configuration route is not mounted
 
   /ui/logout:
-    get:
+    post:
       tags: [UI Auth]
       summary: Logout
       description: >-
