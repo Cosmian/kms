@@ -37,7 +37,7 @@ The full list of changes is in the release notes.
 ## Packages
 
 - **Debian and RPM packages**: the post-remove script of 5.29.0 and earlier stops and disables `cosmian_kms.service` during an upgrade. The 6.0 packages record whether the service was enabled and running before the upgrade, restore both afterwards (the service restarts on the new binary), and no longer disable it on upgrade; a fresh install still leaves the service stopped. `/etc/cosmian/kms.toml` is kept, with a timestamped copy next to it in `/etc/cosmian/`. The packaged `kms.toml` template of 6.0 sets `region_role` and a `[kv]` section; merge any new key you need by hand.
-- **Windows installer**: `kms.toml`, `data` and `logs` are kept, whether the installer runs silently, interactively with "uninstall before installing", or without uninstalling. The new default configuration is written to `kms.toml.new` next to `kms.toml`; merge new keys by hand. 5.29.0 and earlier replaced `kms.toml` by the template and, with "uninstall before installing", deleted `data` and `logs`: take a backup before upgrading from those versions.
+- **Windows installer**: `kms.toml`, `data` and `logs` are kept, whether the installer runs silently, interactively with "uninstall before installing", or without uninstalling. The new default configuration is written to `kms.toml.new` next to `kms.toml`; merge new keys by hand. The installers of 5.29.0 and earlier replaced `kms.toml` by the template and, with "uninstall before installing", deleted `data` and `logs`. The 6.0 installer saves and restores them around the old uninstaller; as a precaution (that interactive path has no automated test), keep a copy of `kms.toml` and the `data` directory before running it.
 
 ## FIPS builds
 
@@ -52,7 +52,7 @@ A 6.0 FIPS build enforces more of the FIPS 140-3 rules than 5.29.0:
 
 ## Server configuration
 
-With `vault_api_enabled = true` and `vault_auth_verifier_url` as the only authentication method, a request without credentials is now rejected on every scope (5.29.0 ran it as `default_username`). Give such clients a Vault token (`X-Vault-Token`), or configure another authentication method, for example an mTLS client certificate.
+With `vault_api_enabled = true` and `vault_auth_verifier_url` (both in the `[vault]` table of `kms.toml`) as the only authentication method, a request without credentials is now rejected on every scope (5.29.0 ran it as `default_username`). Give such clients a Vault token (`X-Vault-Token`), or configure another authentication method, for example an mTLS client certificate.
 
 ## Downgrading
 
