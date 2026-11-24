@@ -678,10 +678,10 @@ sign_packages() {
   local keys_dir="$REPO_ROOT/nix/signing-keys"
   local key_id_file="$keys_dir/key-id.txt"
 
-  # Determine if signing is required. Default: required in CI, optional locally.
-  # Force signing by setting REQUIRE_SIGNING=1
+  # Determine if signing is required. Default: optional (build jobs hold no signing secret).
+  # The isolated sign jobs force signing with REQUIRE_SIGNING=1 (.mise/scripts/package/sign_artifacts.sh).
   local require_signing="0"
-  if [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ]; then
+  if [ "${REQUIRE_SIGNING:-}" = "1" ]; then
     require_signing="1"
   fi
 
@@ -689,7 +689,7 @@ sign_packages() {
   if [ ! -f "$key_id_file" ]; then
     if [ "$require_signing" = "1" ]; then
       echo "ERROR: No signing key found at $key_id_file" >&2
-      echo "Package signing is mandatory (CI or REQUIRE_SIGNING=1)." >&2
+      echo "Package signing is mandatory (REQUIRE_SIGNING=1)." >&2
       echo "Generate a signing key with: bash nix/scripts/generate_signing_key.sh" >&2
       exit 1
     else
@@ -715,7 +715,7 @@ sign_packages() {
   if [ -z "${GPG_SIGNING_KEY_PASSPHRASE:-}" ]; then
     if [ "$require_signing" = "1" ]; then
       echo "ERROR: GPG_SIGNING_KEY_PASSPHRASE environment variable is not set" >&2
-      echo "Package signing is mandatory (CI or REQUIRE_SIGNING=1)." >&2
+      echo "Package signing is mandatory (REQUIRE_SIGNING=1)." >&2
       exit 1
     else
       echo "Signing skipped: GPG_SIGNING_KEY_PASSPHRASE not set (set REQUIRE_SIGNING=1 to enforce)"

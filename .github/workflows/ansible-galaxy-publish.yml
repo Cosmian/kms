@@ -6,6 +6,8 @@ on:
 
 jobs:
   publish:
+    permissions:
+      contents: read
     if: startsWith(github.event.release.tag_name, 'ansible-v')
     runs-on: ubuntu-latest
     defaults:

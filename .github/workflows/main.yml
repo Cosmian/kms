@@ -59,13 +59,19 @@ jobs:
           esac
 
   cargo-deny:
+    permissions:
+      contents: read
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@9079c7a06025e1373a9be950fd94a36464ded0b9 # develop
     name: Security Audit
 
   supply-chain:
+    permissions:
+      contents: read
     uses: ./.github/workflows/supply-chain.yml
 
   test: # Every CI unit as a leg of one matrix (PRs, tags and the nightly schedule / manual dispatch)
+    permissions:
+      contents: read
     needs: changes
     if: needs.changes.outputs.suites-matrix != '[]'
     uses: ./.github/workflows/test_all.yml
@@ -74,6 +80,8 @@ jobs:
       suites-matrix: ${{ needs.changes.outputs.suites-matrix }}
 
   public_documentation:
+    permissions:
+      contents: read
     if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
 

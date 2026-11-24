@@ -12,6 +12,8 @@ jobs:
   packages-test:
     name: In Docker ${{ matrix.container }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     container:
       image: ${{ matrix.container }}
       # Authenticated Docker Hub pull (200/6h instead of 100/6h per IP). Requires the
@@ -40,22 +42,22 @@ jobs:
       - name: Download package artifacts (fips/static)
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: fips_static_${{ matrix.runner }}-release
+          name: fips_static_${{ matrix.runner }}-release-signed
 
       - name: Download package artifacts (fips/dynamic)
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: fips_dynamic_${{ matrix.runner }}-release
+          name: fips_dynamic_${{ matrix.runner }}-release-signed
 
       - name: Download package artifacts (non-fips/static)
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: non-fips_static_${{ matrix.runner }}-release
+          name: non-fips_static_${{ matrix.runner }}-release-signed
 
       - name: Download package artifacts (non-fips/dynamic)
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: non-fips_dynamic_${{ matrix.runner }}-release
+          name: non-fips_dynamic_${{ matrix.runner }}-release-signed
 
       - name: List downloaded artifacts
         run: find .
@@ -186,6 +188,8 @@ jobs:
   systemd-packages-test:
     name: Use GH runners ${{ matrix.features }}-${{ matrix.link }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -201,7 +205,7 @@ jobs:
       - name: Download package artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+          name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release-signed
 
       - name: List downloaded artifacts
         run: find .

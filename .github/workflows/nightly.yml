@@ -34,6 +34,8 @@ jobs:
   # generated-file commits, so the build includes them and runs only once.
   # ─────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
+    permissions:
+      contents: read
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/nix-update-hashes.yml
     with:
@@ -42,6 +44,8 @@ jobs:
     secrets: inherit
 
   update-generated-docs:
+    permissions:
+      contents: read
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
     needs: update-nix-hashes
     uses: ./.github/workflows/update-generated-docs.yml
@@ -50,6 +54,8 @@ jobs:
     secrets: inherit
 
   package-and-commit-sbom:
+    permissions:
+      contents: read
     if: github.repository == 'Cosmian/kms' && !startsWith(github.ref, 'refs/tags/')
     needs: [update-nix-hashes, update-generated-docs]
     uses: ./.github/workflows/package-and-commit-sbom.yml
@@ -63,6 +69,10 @@ jobs:
   #   and go straight to packaging.
   # ─────────────────────────────────────────────────────────────────────────
   packaging:
+    permissions:
+      contents: write # union of the called jobs: GitHub Release assets, k8s chart
+      packages: write
+      id-token: write # cosign keyless signing
     if: github.repository == 'Cosmian/kms' && startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/packaging.yml
     secrets: inherit

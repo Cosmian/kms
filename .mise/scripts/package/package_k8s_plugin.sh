@@ -92,9 +92,9 @@ sign_package() {
   local keys_dir="$REPO_ROOT/nix/signing-keys"
   local key_id_file="$keys_dir/key-id.txt"
 
-  # Signing is mandatory in CI; can be forced locally with REQUIRE_SIGNING=1
+  # Signing is mandatory only in the isolated sign jobs (REQUIRE_SIGNING=1); build jobs hold no key
   local require_signing="0"
-  if [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ]; then
+  if [ "${REQUIRE_SIGNING:-}" = "1" ]; then
     require_signing="1"
   fi
 

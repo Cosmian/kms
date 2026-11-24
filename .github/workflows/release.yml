@@ -325,6 +325,8 @@ jobs:
   # See that file for the full hash-file split by platform and idempotency notes.
   # ─────────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
+    permissions:
+      contents: read
     name: Update Nix vendor hashes
     needs: prepare
     uses: ./.github/workflows/nix-update-hashes.yml
@@ -346,6 +348,8 @@ jobs:
   # race in the common case).
   # ─────────────────────────────────────────────────────────────────────────────
   update-generated-docs:
+    permissions:
+      contents: read
     name: Update generated docs
     needs: [prepare, update-nix-hashes]
     uses: ./.github/workflows/update-generated-docs.yml
@@ -363,6 +367,8 @@ jobs:
   #   package.cosmian.com/kms/last_build/release/<new_version>/sbom/
   # ─────────────────────────────────────────────────────────────────────────────
   package-and-commit-sbom:
+    permissions:
+      contents: read
     name: Package & commit SBOM
     needs: [prepare, update-nix-hashes, update-generated-docs]
     uses: ./.github/workflows/package-and-commit-sbom.yml

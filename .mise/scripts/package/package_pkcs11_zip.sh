@@ -161,7 +161,7 @@ _sign_zip() {
   local key_id_file="$keys_dir/key-id.txt"
 
   local require_signing="0"
-  if [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ]; then require_signing="1"; fi
+  if [ "${REQUIRE_SIGNING:-}" = "1" ]; then require_signing="1"; fi
 
   if [ ! -f "$key_id_file" ]; then
     if [ "$require_signing" = "1" ]; then

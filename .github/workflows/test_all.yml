@@ -83,6 +83,8 @@ jobs:
   # lists runs locally only. The `secrets:` table scopes each secret to its legs (cloud, XKS and HSM credentials never
   # reach the JS toolchain of `ui` or the interop legs).
   test-suites:
+    permissions:
+      contents: read
     name: ${{ matrix.suite }}${{ matrix.variant != '' && format(' ({0})', matrix.variant) || '' }}${{ matrix.runner != 'ubuntu-24.04' && format(' [{0}]',
       matrix.runner) || '' }}
     needs:
@@ -144,6 +146,8 @@ jobs:
 
   # Real publish, tags only (cargo-publish-dry-run is a leg of `test-suites`).
   cargo-publish:
+    permissions:
+      contents: read
     needs:
       - test-suites
     # A skipped dependency (no legs) must not skip it, but any failed or cancelled dependency blocks it.

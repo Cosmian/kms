@@ -760,6 +760,81 @@ class PublisherTest(unittest.TestCase):
         )
 
 
+class WorkflowHygieneTest(unittest.TestCase):
+    """Static checks of .github/workflows and .github/actions (standard library only, no YAML parser)."""
+
+    WORKFLOWS = sorted((REPO / '.github' / 'workflows').glob('*.yml'))
+    ACTIONS = sorted((REPO / '.github' / 'actions').rglob('action.yml'))
+
+    @staticmethod
+    def jobs(path: Path) -> dict[str, str]:
+        """Job name -> text of its body (two-space job keys under the top-level `jobs:`)."""
+        lines = path.read_text().splitlines()
+        if 'jobs:' not in lines:
+            return {}
+        found: dict[str, list[str]] = {}
+        current: list[str] | None = None
+        for line in lines[lines.index('jobs:') + 1 :]:
+            key = re.match(r'^  ([A-Za-z0-9_-]+):\s*(#.*)?$', line)
+            if key:
+                current = found.setdefault(key.group(1), [])
+            elif current is not None:
+                current.append(line)
+        return {name: '\n'.join(body) for name, body in found.items()}
+
+    @staticmethod
+    def run_blocks(path: Path) -> list[tuple[int, str]]:
+        """(line number, text) of every `run:` script, single-line or block scalar."""
+        lines = path.read_text().splitlines()
+        blocks: list[tuple[int, str]] = []
+        i = 0
+        while i < len(lines):
+            m = re.match(r'^(\s*)(- )?run:\s*(.*)$', lines[i])
+            if not m:
+                i += 1
+                continue
+            indent = len(m.group(1)) + (2 if m.group(2) else 0)
+            body = [] if m.group(3) in ('', '|', '|-', '|+', '>', '>-', '>+') else [m.group(3)]
+            j = i + 1
+            while j < len(lines) and (
+                not lines[j].strip() or len(lines[j]) - len(lines[j].lstrip()) > indent
+            ):
+                body.append(lines[j])
+                j += 1
+            blocks.append((i + 1, '\n'.join(body)))
+            i = j
+        return blocks
+
+    def test_every_job_declares_permissions(self) -> None:
+        missing = [
+            f'{wf.name}:{job}'
+            for wf in self.WORKFLOWS
+            for job, body in self.jobs(wf).items()
+            if not re.search(r'^    permissions:', body, re.MULTILINE)
+        ]
+        self.assertEqual(missing, [], 'jobs without a job-level `permissions:`')
+
+    def test_package_build_jobs_hold_no_signing_secret(self) -> None:
+        offenders = [
+            f'{wf.name}:{job}'
+            for wf in self.WORKFLOWS
+            for job, body in self.jobs(wf).items()
+            if re.search(r'mise run package:', body)
+            and re.search(r'GPG_SIGNING_KEY|import-gpg-key', body)
+        ]
+        self.assertEqual(offenders, [], 'package build jobs must not hold the signing key (sign in a sign job)')
+
+    def test_no_input_interpolation_in_run(self) -> None:
+        expression = re.compile(r'\$\{\{\s*(inputs|github\.event\.inputs)\.')
+        offenders = [
+            f'{path.relative_to(REPO)}:{line}'
+            for path in self.WORKFLOWS + self.ACTIONS
+            for line, text in self.run_blocks(path)
+            if expression.search(text)
+        ]
+        self.assertEqual(offenders, [], 'pass inputs through `env:` instead of expanding them inside `run:`')
+
+
 if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == '--probe':
         sys.exit(run_probe(Path(sys.argv[2])))
