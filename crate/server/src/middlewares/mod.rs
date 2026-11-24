@@ -1,7 +1,7 @@
 mod audit;
 pub(crate) use audit::{
     AuditMiddleware, BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid,
-    KmipOperationName, forwarded_for, resolve_client_ip,
+    KmipOperationName, enqueue_socket_events, forwarded_for, resolve_client_ip,
 };
 
 mod tls_auth;
@@ -133,6 +133,8 @@ pub(crate) enum AuthMethod {
     Session,
     /// No authentication configured; `default_username` injected
     DefaultUser,
+    /// AWS XKS SigV4-signed request; runs as the reserved XKS service identity
+    Sigv4,
 }
 
 /// Represents an authenticated user

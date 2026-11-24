@@ -143,47 +143,54 @@ fn cse_response<T: Serialize>(result: KResult<T>) -> HttpResponse {
 
 #[post("/digest")]
 pub(crate) async fn digest(
+    req_http: HttpRequest,
     request: Json<DigestRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("digest", request, cse_config);
-    cse_response(operations::digest(request, &cse_config, &kms).await)
+    cse_response(operations::digest(&req_http, request, &cse_config, &kms).await)
 }
 
 #[post("/privilegedprivatekeydecrypt")]
 pub(crate) async fn privileged_private_key_decrypt(
+    req_http: HttpRequest,
     request: Json<PrivilegedPrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) =
         prepare_post_params("privilegedprivatekeydecrypt", request, cse_config);
-    cse_response(operations::privileged_private_key_decrypt(request, &cse_config, &kms).await)
+    cse_response(
+        operations::privileged_private_key_decrypt(&req_http, request, &cse_config, &kms).await,
+    )
 }
 
 #[post("/privilegedunwrap")]
 pub(crate) async fn privileged_unwrap(
+    req_http: HttpRequest,
     request: Json<PrivilegedUnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privilegedunwrap", request, cse_config);
-    cse_response(operations::privileged_unwrap(request, &cse_config, &kms).await)
+    cse_response(operations::privileged_unwrap(&req_http, request, &cse_config, &kms).await)
 }
 
 #[post("/privilegedwrap")]
 pub(crate) async fn privileged_wrap(
+    req_http: HttpRequest,
     request: Json<PrivilegedWrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privilegedwrap", request, cse_config);
-    cse_response(operations::privileged_wrap(request, &cse_config, &kms).await)
+    cse_response(operations::privileged_wrap(&req_http, request, &cse_config, &kms).await)
 }
 
 #[post("/rewrap")]
 pub(crate) async fn rewrap(
+    req_http: HttpRequest,
     request: Json<RewrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
@@ -197,7 +204,9 @@ pub(crate) async fn rewrap(
     };
 
     let google_cse_kacls_url = format!("{base_url}/google_cse");
-    cse_response(operations::rewrap(request, &google_cse_kacls_url, &cse_config, &kms).await)
+    cse_response(
+        operations::rewrap(&req_http, request, &google_cse_kacls_url, &cse_config, &kms).await,
+    )
 }
 
 #[derive(Deserialize, Debug)]
@@ -223,12 +232,13 @@ pub(crate) async fn wrapprivatekey(
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/wrap")]
 pub(crate) async fn wrap(
+    req_http: HttpRequest,
     request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("wrap", request, cse_config);
-    cse_response(operations::wrap(request, &cse_config, &kms).await)
+    cse_response(operations::wrap(&req_http, request, &cse_config, &kms).await)
 }
 
 /// Decrypt the Data Encryption Key (DEK) and associated data.
@@ -237,12 +247,13 @@ pub(crate) async fn wrap(
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/unwrap")]
 pub(crate) async fn unwrap(
+    req_http: HttpRequest,
     request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("unwrap", request, cse_config);
-    cse_response(operations::unwrap(request, &cse_config, &kms).await)
+    cse_response(operations::unwrap(&req_http, request, &cse_config, &kms).await)
 }
 
 /// Unwraps a wrapped private key and then signs the digest provided by the client.
@@ -250,12 +261,13 @@ pub(crate) async fn unwrap(
 /// See [doc](https://developers.google.com/workspace/cse/reference/private-key-sign)
 #[post("/privatekeysign")]
 pub(crate) async fn private_key_sign(
+    req_http: HttpRequest,
     request: Json<operations::PrivateKeySignRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privatekeysign", request, cse_config);
-    cse_response(operations::private_key_sign(request, &cse_config, &kms).await)
+    cse_response(operations::private_key_sign(&req_http, request, &cse_config, &kms).await)
 }
 
 /// Unwraps a wrapped private key and then decrypts the content encryption key that is encrypted to the public key.
@@ -263,12 +275,13 @@ pub(crate) async fn private_key_sign(
 /// See [doc](https://developers.google.com/workspace/cse/reference/private-key-decrypt)
 #[post("/privatekeydecrypt")]
 pub(crate) async fn private_key_decrypt(
+    req_http: HttpRequest,
     request: Json<operations::PrivateKeyDecryptRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let (request, cse_config) = prepare_post_params("privatekeydecrypt", request, cse_config);
-    cse_response(operations::private_key_decrypt(request, &cse_config, &kms).await)
+    cse_response(operations::private_key_decrypt(&req_http, request, &cse_config, &kms).await)
 }
 
 #[post("/delegate")]

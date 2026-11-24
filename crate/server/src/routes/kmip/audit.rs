@@ -380,17 +380,80 @@ pub(super) fn inject_audit_request(req: &HttpRequest, ttlv: &TTLV) -> String {
     op_name.to_owned()
 }
 
-/// Backfills `KmipObjectUid` from the response TTLV for `Create` / `CreateKeyPair`,
-/// where the UID is server-generated and absent from the request.
-///
-/// For **batch** requests (`KmipBatchOperations` present), iterates the `BatchItem`
-/// children of the `ResponseMessage` and per-item backfills:
+/// Iterates the `BatchItem` children of a `ResponseMessage` and per-item backfills:
 /// * `object_uid` for `Create`/`CreateKeyPair` items (server-generated UID)
 /// * `result` from the item's `ResultStatus`/`ResultReason`
 ///
 /// Correlation is by position (index). When `BatchErrorContinuationOption` is used,
 /// the server may omit failed items from the response — in that case trailing items
 /// will not be backfilled. `UniqueBatchItemID` correlation is a future improvement.
+pub(super) fn backfill_batch_results(items: &mut [BatchItemAuditContext], response_ttlv: &TTLV) {
+    let TTLValue::Structure(children) = &response_ttlv.value else {
+        return;
+    };
+    let response_items = children.iter().filter(|c| c.tag == "BatchItem");
+    for (ctx, resp_item) in items.iter_mut().zip(response_items) {
+        let TTLValue::Structure(fields) = &resp_item.value else {
+            continue;
+        };
+        // Backfill UID for Create/CreateKeyPair from response
+        if ctx.object_uid.is_none() {
+            if ctx.operation == "Create" {
+                ctx.object_uid = find_ttlv_recursive(resp_item, "UniqueIdentifier").and_then(|t| {
+                    if let TTLValue::TextString(s) = &t.value {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                });
+            } else if ctx.operation == "CreateKeyPair" {
+                ctx.object_uid = find_ttlv_recursive(resp_item, "PrivateKeyUniqueIdentifier")
+                    .or_else(|| find_ttlv_recursive(resp_item, "UniqueIdentifier"))
+                    .or_else(|| find_ttlv_recursive(resp_item, "PublicKeyUniqueIdentifier"))
+                    .and_then(|t| {
+                        if let TTLValue::TextString(s) = &t.value {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    });
+            }
+        }
+        // Backfill per-item result from ResultStatus/ResultReason
+        let result_status = enum_field_name(fields, "ResultStatus", |code| {
+            ResultStatusEnumeration::from_repr(code).map(Into::into)
+        });
+        ctx.result = match result_status.as_deref() {
+            Some("Success" | "OperationPending" | "OperationUndone") => Some(AuditResult::Success),
+            Some(status) => {
+                let reason = enum_field_name(fields, "ResultReason", |code| {
+                    ErrorReason::from_repr(code).map(Into::into)
+                })
+                .map(Cow::into_owned)
+                .or_else(|| {
+                    fields
+                        .iter()
+                        .find(|f| f.tag == "ResultMessage")
+                        .and_then(|f| {
+                            if let TTLValue::TextString(s) = &f.value {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                })
+                .unwrap_or_else(|| status.to_owned());
+                Some(AuditResult::Failure(reason))
+            }
+            None => None,
+        };
+    }
+}
+
+/// Backfills `KmipObjectUid` from the response TTLV for `Create` / `CreateKeyPair`,
+/// where the UID is server-generated and absent from the request.
+///
+/// For **batch** requests (`KmipBatchOperations` present), see [`backfill_batch_results`].
 pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_name: &str) {
     // Batch path
     if op_name == "RequestMessage" {
@@ -398,69 +461,7 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
         let Some(batch_ops) = ext.get_mut::<KmipBatchOperations>() else {
             return;
         };
-        let TTLValue::Structure(children) = &response_ttlv.value else {
-            return;
-        };
-        let response_items = children.iter().filter(|c| c.tag == "BatchItem");
-        for (ctx, resp_item) in batch_ops.0.iter_mut().zip(response_items) {
-            let TTLValue::Structure(fields) = &resp_item.value else {
-                continue;
-            };
-            // Backfill UID for Create/CreateKeyPair from response
-            if ctx.object_uid.is_none() {
-                if ctx.operation == "Create" {
-                    ctx.object_uid =
-                        find_ttlv_recursive(resp_item, "UniqueIdentifier").and_then(|t| {
-                            if let TTLValue::TextString(s) = &t.value {
-                                Some(s.clone())
-                            } else {
-                                None
-                            }
-                        });
-                } else if ctx.operation == "CreateKeyPair" {
-                    ctx.object_uid = find_ttlv_recursive(resp_item, "PrivateKeyUniqueIdentifier")
-                        .or_else(|| find_ttlv_recursive(resp_item, "UniqueIdentifier"))
-                        .or_else(|| find_ttlv_recursive(resp_item, "PublicKeyUniqueIdentifier"))
-                        .and_then(|t| {
-                            if let TTLValue::TextString(s) = &t.value {
-                                Some(s.clone())
-                            } else {
-                                None
-                            }
-                        });
-                }
-            }
-            // Backfill per-item result from ResultStatus/ResultReason
-            let result_status = enum_field_name(fields, "ResultStatus", |code| {
-                ResultStatusEnumeration::from_repr(code).map(Into::into)
-            });
-            ctx.result = match result_status.as_deref() {
-                Some("Success" | "OperationPending" | "OperationUndone") => {
-                    Some(AuditResult::Success)
-                }
-                Some(status) => {
-                    let reason = enum_field_name(fields, "ResultReason", |code| {
-                        ErrorReason::from_repr(code).map(Into::into)
-                    })
-                    .map(Cow::into_owned)
-                    .or_else(|| {
-                        fields
-                            .iter()
-                            .find(|f| f.tag == "ResultMessage")
-                            .and_then(|f| {
-                                if let TTLValue::TextString(s) = &f.value {
-                                    Some(s.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                    })
-                    .unwrap_or_else(|| status.to_owned());
-                    Some(AuditResult::Failure(reason))
-                }
-                None => None,
-            };
-        }
+        backfill_batch_results(&mut batch_ops.0, response_ttlv);
         return;
     }
 

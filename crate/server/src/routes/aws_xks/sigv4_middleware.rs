@@ -16,7 +16,7 @@ use std::{
 };
 
 use actix_web::{
-    Error,
+    Error, HttpMessage,
     body::{BoxBody, EitherBody},
     dev::{Payload, Service, ServiceRequest, ServiceResponse, Transform},
     web::{Bytes, BytesMut},
@@ -32,7 +32,9 @@ use url::form_urlencoded;
 
 use crate::{
     core::KMS,
+    middlewares::{AuthMethod, AuthenticatedUser, UserId},
     routes::aws_xks::{
+        AWS_XKS_SERVICE_USER,
         error::{XksErrorName, XksErrorReply},
         sigv4::{parse_sigv4_timestamp, verify_sigv4_request},
     },
@@ -162,58 +164,79 @@ where
             })?;
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
+            let verified = async {
+                let body_bytes = read_bounded_body(body, MAX_XKS_REQUEST_BODY).await?;
 
-            let body_bytes = read_bounded_body(body, MAX_XKS_REQUEST_BODY).await?;
+                let http_request = to_http_request(&actix_web_http_request, body_bytes.clone())?;
 
-            let http_request = to_http_request(&actix_web_http_request, body_bytes.clone())?;
-
-            // Canonicalization and body hashing run synchronously and scale with the request body
-            // size (up to `MAX_XKS_REQUEST_BODY`), so running them directly on the Actix worker
-            // would let a burst of large concurrent requests starve all HTTP workers (CWE-400).
-            // Offload the whole verification to the blocking thread pool.
-            //
-            // Bound the number of concurrent verification tasks with a semaphore: an
-            // unauthenticated caller could otherwise submit an unbounded number of large signed
-            // (or invalid) requests and exhaust CPU/blocking-pool capacity even though each
-            // individual task is offloaded (CWE-400).
-            //
-            // Acquire the permit *before* capturing `server_timestamp`: a request queued behind
-            // the semaphore under load could otherwise be freshness-checked and signature-
-            // validated against a timestamp captured well before its turn to run, letting it pass
-            // the 5-minute anti-replay window using stale wall-clock time (CWE-367-style
-            // time-of-check/time-of-use gap that weakens the replay control). Capturing the
-            // timestamp only after the permit is granted ties both checks to the actual
-            // processing time.
-            let permit = SIGV4_VERIFICATION_PERMITS
-                .acquire()
-                .await
-                .map_err(|error| {
-                    xks_internal_error(format!(
-                        "SigV4 verification semaphore unexpectedly closed: {error}"
-                    ))
-                })?;
-
-            let server_timestamp = OffsetDateTime::now_utc();
-
-            // 5-minute XKS anti-replay window (CWE-294).
-            enforce_sigv4_request_freshness(&http_request, server_timestamp)?;
-
-            let sigv4_result =
-                tokio::task::spawn_blocking(move || verify_sigv4_request(&http_request, &params))
+                // Canonicalization and body hashing run synchronously and scale with the request body
+                // size (up to `MAX_XKS_REQUEST_BODY`), so running them directly on the Actix worker would let
+                // a burst of large concurrent requests starve all HTTP workers (CWE-400). Offload the
+                // whole verification to the blocking thread pool.
+                //
+                // Bound the number of concurrent verification tasks with a semaphore: an
+                // unauthenticated caller could otherwise submit an unbounded number of large signed
+                // (or invalid) requests and exhaust CPU/blocking-pool capacity even though each
+                // individual task is offloaded (CWE-400).
+                //
+                // Acquire the permit *before* capturing `server_timestamp`: a request queued behind
+                // the semaphore under load could otherwise be freshness-checked and signature-
+                // validated against a timestamp captured well before its turn to run, letting it pass
+                // the 5-minute anti-replay window using stale wall-clock time (CWE-367-style
+                // time-of-check/time-of-use gap that weakens the replay control). Capturing the
+                // timestamp only after the permit is granted ties both checks to the actual
+                // processing time.
+                let permit = SIGV4_VERIFICATION_PERMITS
+                    .acquire()
                     .await
-                    .map_err(|join_err| {
+                    .map_err(|error| {
                         xks_internal_error(format!(
-                            "SigV4 verification task panicked: {join_err}"
+                            "SigV4 verification semaphore unexpectedly closed: {error}"
                         ))
                     })?;
-            drop(permit);
 
-            if let Err(sigv4_err) = sigv4_result {
-                tracing::warn!("SigV4 failure: {sigv4_err}");
-                return Err(authentication_failed_error(format!(
-                    "Signature v4 verification failed: {sigv4_err}"
-                )));
+                let server_timestamp = OffsetDateTime::now_utc();
+
+                // 5-minute XKS anti-replay window (CWE-294).
+                enforce_sigv4_request_freshness(&http_request, server_timestamp)?;
+
+                let sigv4_result = tokio::task::spawn_blocking(move || {
+                    verify_sigv4_request(&http_request, &params)
+                })
+                .await
+                .map_err(|join_err| {
+                    xks_internal_error(format!("SigV4 verification task panicked: {join_err}"))
+                })?;
+                drop(permit);
+
+                if let Err(sigv4_err) = sigv4_result {
+                    tracing::warn!("SigV4 failure: {sigv4_err}");
+                    return Err(authentication_failed_error(format!(
+                        "Signature v4 verification failed: {sigv4_err}"
+                    )));
+                }
+
+                // Audit principal: SigV4-signed requests run as the reserved XKS service identity.
+                actix_web_http_request
+                    .extensions_mut()
+                    .insert(AuthenticatedUser {
+                        username: UserId::from(AWS_XKS_SERVICE_USER),
+                        auth_method: AuthMethod::Sigv4,
+                    });
+                Ok::<Bytes, Error>(body_bytes)
             }
+            .await;
+            // Refusals are answered here (not as `Err`) so that outer middlewares, such as audit,
+            // still see the response.
+            let body_bytes = match verified {
+                Ok(body_bytes) => body_bytes,
+                Err(e) => {
+                    return Ok(
+                        ServiceResponse::new(actix_web_http_request, e.error_response())
+                            .map_into_right_body(),
+                    );
+                }
+            };
 
             // rebuild request with body_bytes and forward to next service
             let req = ServiceRequest::from_parts(actix_web_http_request, Payload::from(body_bytes));

@@ -50,11 +50,12 @@ use futures::{
     future::{Ready, ok},
 };
 use ipnet::IpNet;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
     config::AuditFailureMode,
-    core::audit::AuditStore,
+    core::{KMS, audit::AuditStore},
     middlewares::AuthenticatedUser,
     routes::internal_error_response,
 };
@@ -180,24 +181,7 @@ where
                 .extensions_mut()
                 .remove::<KmipBatchOperations>()
                 .map(|batch_ops| {
-                    batch_ops
-                        .0
-                        .into_iter()
-                        .map(|ctx| {
-                            let item_result = ctx
-                                .result
-                                .unwrap_or_else(|| missing_batch_item_result(status));
-                            AuditEventDraft::build(
-                                &req_ctx,
-                                OperationAuditContext {
-                                    operation: ctx.operation,
-                                    object_uid: ctx.object_uid,
-                                    algorithm: ctx.algorithm,
-                                },
-                                item_result,
-                            )
-                        })
-                        .collect()
+                    batch_item_drafts(&req_ctx, batch_ops.0, &missing_batch_item_result(status))
                 });
 
             if let Some(drafts) = batch_drafts {
@@ -217,12 +201,26 @@ where
             }
 
             // Single-op path
+            // Route-pattern fallback names provider routes (`POST /ms_dke/{key_name}/decrypt`)
+            // and recovers the key from the path, like `jose::audit`.
+            let pattern_op = res
+                .request()
+                .match_pattern()
+                .map(|p| format!("{} {p}", res.request().method()));
+            let path_uid = {
+                let info = res.request().match_info();
+                info.get("key_id")
+                    .or_else(|| info.get("key_name"))
+                    .map(str::to_owned)
+            };
             let (final_operation, object_uid, algorithm) = {
                 let mut ext = res.request().extensions_mut();
                 (
                     ext.remove::<KmipOperationName>()
-                        .map_or(default_operation, |k| k.0),
-                    ext.remove::<KmipObjectUid>().map(|k| k.0),
+                        .map(|k| k.0)
+                        .or(pattern_op)
+                        .unwrap_or(default_operation),
+                    ext.remove::<KmipObjectUid>().map(|k| k.0).or(path_uid),
                     ext.remove::<KmipAlgorithm>().map(|k| k.0),
                 )
             };
@@ -259,6 +257,57 @@ where
             Ok(res.map_into_left_body())
         })
     }
+}
+
+/// One draft per KMIP batch item, all sharing `req_ctx`; items never backfilled get `missing`.
+fn batch_item_drafts(
+    req_ctx: &RequestAuditContext,
+    items: Vec<BatchItemAuditContext>,
+    missing: &AuditResult,
+) -> Vec<AuditEventDraft> {
+    items
+        .into_iter()
+        .map(|ctx| {
+            AuditEventDraft::build(
+                req_ctx,
+                OperationAuditContext {
+                    operation: ctx.operation,
+                    object_uid: ctx.object_uid,
+                    algorithm: ctx.algorithm,
+                },
+                ctx.result.unwrap_or_else(|| missing.clone()),
+            )
+        })
+        .collect()
+}
+
+/// Queues one event per KMIP batch item of a socket-server request (no Actix middleware runs
+/// there). `user` is `None` when the client was not authenticated. Returns `false` when
+/// `--audit-failure-mode reject` requires refusing the response; `true` when audit is disabled.
+pub(crate) fn enqueue_socket_events(
+    kms: &KMS,
+    user: Option<&str>,
+    client_ip: Option<&str>,
+    timestamp: OffsetDateTime,
+    start: Instant,
+    items: Vec<BatchItemAuditContext>,
+) -> bool {
+    let Some(store) = &kms.audit_store else {
+        return true;
+    };
+    let req_ctx = RequestAuditContext {
+        timestamp,
+        user: user.unwrap_or(UNAUTHENTICATED).to_owned(),
+        client_ip: client_ip.map(str::to_owned),
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        request_id: Some(Uuid::new_v4()),
+    };
+    let queued = store.enqueue(batch_item_drafts(
+        &req_ctx,
+        items,
+        &AuditResult::Failure("item not present in response".to_owned()),
+    ));
+    queued || kms.params.audit_failure_mode != AuditFailureMode::Reject
 }
 
 /// Determines the audit result for a batch item that `inject_response_uid` never

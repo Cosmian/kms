@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use actix_web::{
     HttpRequest, HttpResponse,
@@ -6,6 +6,7 @@ use actix_web::{
     post,
     web::{Bytes, Data},
 };
+use cosmian_kms_access::audit::audit_now;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         self, KmipResultHelper,
@@ -28,7 +29,10 @@ use cosmian_logger::{debug, error, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
-use super::audit::{inject_audit_request, inject_response_uid, log_request_details};
+use super::audit::{
+    backfill_batch_results, extract_batch_audit_contexts, inject_audit_request,
+    inject_response_uid, log_request_details,
+};
 use crate::{
     core::{
         KMS,
@@ -38,7 +42,7 @@ use crate::{
         },
     },
     error::KmsError,
-    middlewares::UserId,
+    middlewares::{BatchItemAuditContext, UserId, enqueue_socket_events},
     result::KResult,
 };
 
@@ -460,16 +464,7 @@ pub(crate) async fn kmip_binary(
 
     // Best-effort decode, done once: the request TTLV feeds both the audit hooks
     // and request processing.
-    let request_ttlv = TTLV::find_version(body.as_ref())
-        .ok()
-        .and_then(|(major, _minor)| {
-            let flavor = if major == 1 {
-                KmipFlavor::Kmip1
-            } else {
-                KmipFlavor::Kmip2
-            };
-            TTLV::from_bytes(body.as_ref(), flavor).ok()
-        });
+    let request_ttlv = decode_request_ttlv(body.as_ref());
     let op_name = request_ttlv
         .as_ref()
         .map(|ttlv| inject_audit_request(&req_http, ttlv));
@@ -486,11 +481,64 @@ pub(crate) async fn kmip_binary(
         .body(response_bytes)
 }
 
-/// Handle KMIP requests in TTLV binary format
-pub(crate) async fn handle_ttlv_bytes(user: &UserId, ttlv_bytes: &[u8], kms: &Arc<KMS>) -> Vec<u8> {
-    handle_ttlv_bytes_parsed(user, ttlv_bytes, None, kms)
-        .await
-        .0
+/// Best-effort decode of a binary KMIP request, `None` when it is not valid TTLV.
+fn decode_request_ttlv(bytes: &[u8]) -> Option<TTLV> {
+    let (major, _minor) = TTLV::find_version(bytes).ok()?;
+    let flavor = if major == 1 {
+        KmipFlavor::Kmip1
+    } else {
+        KmipFlavor::Kmip2
+    };
+    TTLV::from_bytes(bytes, flavor).ok()
+}
+
+/// Handle KMIP requests in TTLV binary format: socket server entry point; audits the request.
+///
+/// `client_ip` is the peer address of the TLS connection. In `--audit-failure-mode reject`,
+/// the response is replaced by an error when the audit event cannot be queued.
+pub(crate) async fn handle_ttlv_bytes(
+    user: &UserId,
+    client_ip: Option<&str>,
+    ttlv_bytes: &[u8],
+    kms: &Arc<KMS>,
+) -> Vec<u8> {
+    if kms.audit_store.is_none() {
+        return handle_ttlv_bytes_parsed(user, ttlv_bytes, None, kms)
+            .await
+            .0;
+    }
+    let timestamp = audit_now();
+    let start = Instant::now();
+    let request_ttlv = decode_request_ttlv(ttlv_bytes);
+    let mut items = request_ttlv
+        .as_ref()
+        .map(extract_batch_audit_contexts)
+        .unwrap_or_default();
+    if items.is_empty() {
+        // Undecodable request: recorded from the error response's item.
+        items.push(BatchItemAuditContext {
+            operation: "RequestMessage".to_owned(),
+            object_uid: None,
+            algorithm: None,
+            result: None,
+        });
+    }
+    let (bytes, response_ttlv) =
+        handle_ttlv_bytes_parsed(user, ttlv_bytes, request_ttlv, kms).await;
+    if let Some(response_ttlv) = &response_ttlv {
+        backfill_batch_results(&mut items, response_ttlv);
+    }
+    if enqueue_socket_events(kms, Some(user.as_str()), client_ip, timestamp, start, items) {
+        return bytes;
+    }
+    let (major, minor) = TTLV::find_version(ttlv_bytes).unwrap_or((2, 1));
+    error_response_bytes(
+        major,
+        minor,
+        &KmsError::ServerError("the audit event could not be recorded".to_owned()),
+        None,
+    )
+    .0
 }
 
 /// Handle KMIP requests in TTLV binary format.
