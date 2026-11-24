@@ -69,8 +69,9 @@ services:
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
     volumes:
-      # A config file ignores env variables: the unauthenticated opt-in lives in the fixture.
-      - ../../test_data/configs/server/test/docker_with_conf.toml:/etc/cosmian/kms.toml:ro
+      # Temporary copy of pkg/kms.toml with the unauthenticated opt-in (see test_docker_image.sh);
+      # the fallback only serves tools that merely parse this file.
+      - ${KMS_WITH_CONF_TOML:-../../pkg/kms.toml}:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
         published: ${KMS_SLOT_KMS_CONF_PORT:-11098}
