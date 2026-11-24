@@ -238,6 +238,9 @@ pub async fn handle_google_cse_rsa_keypair(
     Ok(())
 }
 
+/// Server parameter set once [`migrate_aws_xks_key_access`] has completed.
+const AWS_XKS_KEY_ACCESS_MIGRATED_PARAM: &str = "aws_xks_key_access_migrated";
+
 /// One-time, idempotent migration that grants the reserved AWS XKS service identity access
 /// to XKS keys created by earlier KMS versions.
 ///
@@ -251,8 +254,10 @@ pub async fn handle_google_cse_rsa_keypair(
 /// without the reserved identity grant. Ownership is deliberately left untouched:
 /// operators keep full administrative control of the keys.
 ///
-/// The grant is additive and safe to re-run on every startup: `CreateKey` applies the same
-/// grant for new keys, and re-granting existing permissions is a no-op.
+/// The migration runs once per database: its completion is recorded in the server parameter
+/// [`AWS_XKS_KEY_ACCESS_MIGRATED_PARAM`], so that tagging an object `aws-xks` later does not
+/// get it re-granted at every restart. `CreateKey` applies the same grant for new keys, and
+/// re-granting existing permissions is a no-op.
 ///
 /// # Errors
 ///
@@ -263,6 +268,14 @@ pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult
     // `grant_access` refuses to let an owner grant themselves, and the owner already has
     // every right, so there is nothing to do.
     if default_username == AWS_XKS_SERVICE_USER {
+        return Ok(());
+    }
+    if kms_server
+        .database
+        .get_parameter(AWS_XKS_KEY_ACCESS_MIGRATED_PARAM)
+        .await?
+        .is_some()
+    {
         return Ok(());
     }
 
@@ -324,6 +337,13 @@ pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult
              identity `{AWS_XKS_SERVICE_USER}`"
         );
     }
+
+    // Recorded only after a complete run: an error above returns first, so a partial run is
+    // retried. Later `aws-xks` tags are never re-granted (a user could tag any object).
+    kms_server
+        .database
+        .get_or_insert_parameter(AWS_XKS_KEY_ACCESS_MIGRATED_PARAM, "true")
+        .await?;
 
     Ok(())
 }
@@ -1286,10 +1306,10 @@ pub async fn prepare_kms_server(
         validate_aws_xks_reserved_identity_config(&kms_server.params)?;
         // Grant the reserved XKS service identity usage on XKS keys created by earlier
         // versions. Run on a dedicated background thread with its own current-thread
-        // runtime instead of blocking HTTP server startup: the migration has no durable
-        // completion marker and scans every tagged key serially, so an installation with
-        // many XKS keys would otherwise incur a repeated, unbounded startup delay on every
-        // restart. A dedicated thread is required because the store traits are `?Send`
+        // runtime instead of blocking HTTP server startup: the migration scans every tagged
+        // key serially on its first run (it is then recorded as done), so an installation with
+        // many XKS keys would otherwise incur an unbounded startup delay on that run. A
+        // dedicated thread is required because the store traits are `?Send`
         // (see `PermissionsStore`/`ObjectsStore`), so the migration future cannot be
         // spawned onto the main multi-threaded runtime. The migration is additive and
         // idempotent (see `migrate_aws_xks_key_access`), so running it concurrently with
