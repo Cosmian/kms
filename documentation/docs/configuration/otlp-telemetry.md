@@ -24,8 +24,10 @@ To enable OTLP export, set the collector URL via one of:
 KMS_OTLP_URL="http://localhost:4317"
 ```
 
-By default, OTLP uses **gRPC on port 4317** with TLS. For local development with a
-plaintext HTTP collector, also set `--otlp-allow-insecure`:
+By default, OTLP uses **gRPC on port 4317**. TLS transport is not compiled into this build, so
+`https://` endpoints are rejected at startup: point the server at an `http://` endpoint on a
+local or sidecar OpenTelemetry Collector (with `--otlp-allow-insecure`) and let the collector
+forward over TLS:
 
 ```toml
 [logging]
