@@ -48,20 +48,26 @@ echo "Replacing binary and restarting service ..."
 # Single-quoted heredoc delimiter prevents client-side expansion; REMOTE_BIN
 # is set by `env` on the remote side. Back up the currently-deployed binary
 # first so a failed deployment can be rolled back below.
-# A server started from a configuration file ignores environment variables, and without
-# authentication on a non-loopback address it refuses to start unless the file carries
-# `insecure_allow_unauthenticated = true` under `[http]` (issue #1486). This shared XKS test
-# host is such a server (SigV4 on the XKS routes only). The configuration file is the one the
-# unit uses (`-c`/`--config` in ExecStart, else COSMIAN_KMS_CONF); the deployment fails early
-# when it cannot be found. The opt-in is added (tagged, unless the file already has the key)
-# only for the start of the new binary. The original file is restored once the server is
-# healthy, or on rollback, because binaries without this setting reject the unknown key.
-# The temporary opt-in can be dropped once every deployable branch has the setting and the
-# operator keeps it in the host configuration.
-# The remote script prints the resolved configuration path on stdout (nothing else does).
+# Without any authentication method on a non-loopback address the new binary refuses to start
+# unless the setting `insecure_allow_unauthenticated` is on (issue #1486). The shared XKS test
+# host is such a server (SigV4 on the XKS routes only). The deployment mimics the server's own
+# configuration lookup: `-c`/`--config` in ExecStart, else COSMIAN_KMS_CONF if that file
+# exists, else /etc/cosmian/kms.toml if it exists (`KMS_XKS_REMOTE_CONF` overrides all).
+#  - A configuration file ignores environment variables: the key is added to it (tagged, unless
+#    the file already has it) and the original file is restored once the server is healthy or
+#    on rollback.
+#  - With no configuration file, the server reads its environment: a systemd drop-in sets
+#    KMS_INSECURE_ALLOW_UNAUTHENTICATED, and is removed the same way.
+# Either way the host is left as found, because binaries without the setting reject the TOML
+# key. This can be dropped once every deployable branch has the setting and the operator keeps
+# it in the host configuration.
+# The remote script prints the resolved configuration path (`-` for the drop-in mode) on
+# stdout; nothing else does. The Actions log is public: no unit argument, environment value or
+# file content is ever printed.
+KMS_XKS_DROPIN=/etc/systemd/system/cosmian_kms.service.d/zz-xks-deploy-optin.conf
 # shellcheck disable=SC2087
 KMS_XKS_REMOTE_CONF="$(
-  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" CONF_OVERRIDE="${KMS_XKS_REMOTE_CONF:-}" bash <<'REMOTE_SCRIPT'
+  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" CONF_OVERRIDE="${KMS_XKS_REMOTE_CONF:-}" DROPIN="${KMS_XKS_DROPIN}" bash <<'REMOTE_SCRIPT'
 set -euo pipefail
 tag='# added by deploy_xks_remote.sh'
 conf="$CONF_OVERRIDE"
@@ -69,38 +75,38 @@ if [ -z "$conf" ]; then
   conf="$(systemctl show -p ExecStart --value cosmian_kms | grep -oE -- '(-c|--config)[ =][^ ;]+' | head -n1 | sed -E 's/^(-c|--config)[ =]//')" || true
 fi
 if [ -z "$conf" ]; then
-  conf="$(systemctl show -p Environment --value cosmian_kms | tr ' ' '\n' | sed -n 's/^COSMIAN_KMS_CONF=//p' | head -n1)" || true
+  env_conf="$(systemctl show -p Environment --value cosmian_kms | tr ' ' '\n' | sed -n 's/^COSMIAN_KMS_CONF=//p' | head -n1)" || true
+  if [ -n "$env_conf" ] && sudo test -f "$env_conf"; then
+    conf="$env_conf"
+  elif sudo test -f /etc/cosmian/kms.toml; then
+    conf=/etc/cosmian/kms.toml
+  fi
 fi
-if [ -z "$conf" ]; then
-  # The server itself falls back to this path when neither -c nor COSMIAN_KMS_CONF is set.
-  conf=/etc/cosmian/kms.toml
-fi
-if ! sudo test -f "$conf"; then
-  echo "ERROR: cannot find the cosmian_kms configuration file (ExecStart -c, COSMIAN_KMS_CONF, /etc/cosmian/kms.toml or KMS_XKS_REMOTE_CONF): '${conf}'" >&2
-  # The Actions log is public: print no unit argument, environment value or file content.
-  {
-    echo "--- diagnostics (no values)"
-    echo "sudo -n true: $(sudo -n true 2>&1 && echo ok)"
-    echo "Environment variable names: $(systemctl show -p Environment --value cosmian_kms | tr ' ' '\n' | cut -d= -f1 | tr '\n' ' ')"
-    sudo -n ls -ld "$(dirname "$conf")" "$conf" 2>&1 || true
-    ls -ld "$(dirname "$conf")" "$conf" 2>&1 || true
-  } >&2
+if [ -n "$conf" ] && ! sudo test -f "$conf"; then
+  echo "ERROR: the configuration file given by the unit or KMS_XKS_REMOTE_CONF does not exist: '${conf}'" >&2
   exit 1
 fi
 if [ -f "$REMOTE_BIN" ]; then
   sudo cp -f "$REMOTE_BIN" "${REMOTE_BIN}.bak"
 fi
-# Drop an opt-in a cancelled run left behind (tagged lines only), then keep a pristine backup.
-sudo rm -f "${conf}.bak"
-sudo sed -i "\|${tag}\$|d" "$conf"
-if ! sudo grep -q '^insecure_allow_unauthenticated' "$conf"; then
-  sudo cp -f "$conf" "${conf}.bak"
-  line="insecure_allow_unauthenticated = true ${tag}"
-  if sudo grep -q '^\[http\]' "$conf"; then
-    sudo sed -i "/^\[http\]/a ${line}" "$conf"
-  else
-    printf '\n[http]\n%s\n' "$line" | sudo tee -a "$conf" >/dev/null
+if [ -n "$conf" ]; then
+  # Drop an opt-in a cancelled run left behind (tagged lines only), then keep a pristine backup.
+  sudo rm -f "${conf}.bak"
+  sudo sed -i "\|${tag}\$|d" "$conf"
+  if ! sudo grep -q '^insecure_allow_unauthenticated' "$conf"; then
+    sudo cp -f "$conf" "${conf}.bak"
+    line="insecure_allow_unauthenticated = true ${tag}"
+    if sudo grep -q '^\[http\]' "$conf"; then
+      sudo sed -i "/^\[http\]/a ${line}" "$conf"
+    else
+      printf '\n[http]\n%s\n' "$line" | sudo tee -a "$conf" >/dev/null
+    fi
   fi
+else
+  conf=-
+  sudo mkdir -p "$(dirname "$DROPIN")"
+  printf '[Service]\nEnvironment=KMS_INSECURE_ALLOW_UNAUTHENTICATED=true\n' | sudo tee "$DROPIN" >/dev/null
+  sudo systemctl daemon-reload
 fi
 sudo systemctl stop cosmian_kms
 sudo mv /tmp/cosmian_kms_deploy "$REMOTE_BIN"
@@ -116,9 +122,12 @@ REMOTE_SCRIPT
 rollback_deployment() {
   echo "Rolling back to the previous binary ..." >&2
   # shellcheck disable=SC2087
-  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" bash <<'ROLLBACK_SCRIPT'
+  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" DROPIN="${KMS_XKS_DROPIN}" bash <<'ROLLBACK_SCRIPT'
 set -euo pipefail
-if sudo test -f "${REMOTE_CONF}.bak"; then
+if [ "$REMOTE_CONF" = "-" ]; then
+  sudo rm -f "$DROPIN"
+  sudo systemctl daemon-reload
+elif sudo test -f "${REMOTE_CONF}.bak"; then
   sudo mv -f "${REMOTE_CONF}.bak" "$REMOTE_CONF"
 fi
 if [ -f "${REMOTE_BIN}.bak" ]; then
@@ -133,13 +142,16 @@ fi
 ROLLBACK_SCRIPT
 }
 
-# The opt-in key is unknown to every other binary (`deny_unknown_fields`): once the server runs,
-# put the original config back so a later deployment of another branch can still parse it.
+# The opt-in is unknown to binaries without this setting (`deny_unknown_fields` for the TOML key):
+# once the server runs, put the host back as it was so a later deployment of another branch works.
 restore_remote_conf() {
   # shellcheck disable=SC2087
-  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" bash <<'RESTORE_SCRIPT'
+  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" DROPIN="${KMS_XKS_DROPIN}" bash <<'RESTORE_SCRIPT'
 set -euo pipefail
-if sudo test -f "${REMOTE_CONF}.bak"; then
+if [ "$REMOTE_CONF" = "-" ]; then
+  sudo rm -f "$DROPIN"
+  sudo systemctl daemon-reload
+elif sudo test -f "${REMOTE_CONF}.bak"; then
   sudo mv -f "${REMOTE_CONF}.bak" "$REMOTE_CONF"
 fi
 RESTORE_SCRIPT
