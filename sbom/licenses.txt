@@ -2,13 +2,11 @@ actix-codec@0.5.2 (2): MIT, Apache-2.0
 actix-cors@0.6.5 (2): MIT, Apache-2.0
 actix-files@0.7.4 (2): MIT, Apache-2.0
 actix-http@3.21.3 (2): MIT, Apache-2.0
-actix-identity@0.6.0 (2): MIT, Apache-2.0
 actix-macros@0.2.4 (2): MIT, Apache-2.0
 actix-router@0.5.4 (2): MIT, Apache-2.0
 actix-rt@2.15.0 (2): MIT, Apache-2.0
 actix-server@2.10.0 (2): MIT, Apache-2.0
 actix-service@2.0.3 (2): MIT, Apache-2.0
-actix-session@0.8.0 (2): MIT, Apache-2.0
 actix-tls@3.6.1 (2): MIT, Apache-2.0
 actix-utils@3.0.1 (2): MIT, Apache-2.0
 actix-web@4.18.2 (2): MIT, Apache-2.0
@@ -53,7 +51,6 @@ axum-server@0.8.0 (1): MIT
 azure_cloud_hsm_pkcs11_loader@5.29.0 (1): BUSL-1.1
 backon@1.6.0 (1): Apache-2.0
 base16ct@0.2.0 (2): Apache-2.0, MIT
-base64@0.20.0 (2): MIT, Apache-2.0
 base64@0.21.7 (2): MIT, Apache-2.0
 base64@0.22.1 (2): MIT, Apache-2.0
 base64@0.23.1 (2): MIT, Apache-2.0
@@ -94,8 +91,7 @@ const-random@0.1.18 (2): MIT, Apache-2.0
 const-random-macro@0.1.16 (2): MIT, Apache-2.0
 convert_case@0.10.0 (1): MIT
 convert_case@0.4.0 (1): MIT
-cookie@0.16.2 (2): MIT, Apache-2.0
-cookie@0.18.1 (2): MIT, Apache-2.0
+cookie@0.18.3 (2): MIT, Apache-2.0
 cookie_store@0.22.1 (2): MIT, Apache-2.0
 core-foundation@0.10.1 (2): MIT, Apache-2.0
 core-foundation-sys@0.8.7 (2): MIT, Apache-2.0
@@ -428,7 +424,7 @@ rusqlite@0.41.1 (1): MIT
 rust-ini@0.21.3 (1): MIT
 rustc_version@0.4.1 (2): MIT, Apache-2.0
 rusticata-macros@4.1.0 (2): MIT, Apache-2.0
-rustix@1.1.4 (3): Apache-2.0 WITH LLVM-exception, Apache-2.0, MIT
+rustix@1.1.6 (3): Apache-2.0 WITH LLVM-exception, Apache-2.0, MIT
 rustls@0.23.46 (3): Apache-2.0, ISC, MIT
 rustls-native-certs@0.8.4 (3): Apache-2.0, ISC, MIT
 rustls-pki-types@1.15.1 (2): MIT, Apache-2.0
