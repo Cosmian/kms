@@ -1,4 +1,8 @@
-use std::{io::Write as _, path::PathBuf};
+use std::{
+    fs,
+    io::Write as _,
+    path::{Path, PathBuf},
+};
 
 use cosmian_config_utils::{ConfigUtils, location};
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{KmsClientConfig, create_private_file};
@@ -61,11 +65,46 @@ impl ClientConfig {
             "Saving configuration to: {}",
             conf_path_buf.display()
         )?;
-        // `to_toml` truncates in place, so the file keeps this owner-only mode.
-        drop(create_private_file(&conf_path_buf)?);
-        Ok(self.to_toml(conf_path_buf.to_str().ok_or_else(|| {
+        self.save_to(&conf_path_buf)
+    }
+
+    /// Write the configuration to `path`, readable by its owner only (0600 on Unix).
+    ///
+    /// The TOML is written to an owner-only temporary file next to `path`, then renamed over it:
+    /// the file is never truncated, left empty or briefly readable by others, and the previous
+    /// content survives any failure.
+    ///
+    /// # Errors
+    /// Return an error if the configuration cannot be serialized or written.
+    pub(crate) fn save_to(&self, path: &Path) -> Result<(), CosmianError> {
+        let mut tmp_name = path
+            .file_name()
+            .map(std::ffi::OsString::from)
+            .ok_or_else(|| {
+                CosmianError::Default(format!("Invalid configuration path: {}", path.display()))
+            })?;
+        tmp_name.push(format!(".{}.tmp", std::process::id()));
+        let tmp = path.with_file_name(tmp_name);
+        let tmp_str = tmp.to_str().ok_or_else(|| {
             CosmianError::Default("Unable to convert the configuration path to a string".to_owned())
-        })?)?)
+        })?;
+        // `to_toml` truncates in place, so the temporary file keeps this owner-only mode.
+        drop(create_private_file(&tmp)?);
+        let written = self
+            .to_toml(tmp_str)
+            .map_err(CosmianError::from)
+            .and_then(|()| {
+                fs::rename(&tmp, path).map_err(|e| {
+                    CosmianError::Default(format!(
+                        "Unable to replace the configuration file {}: {e}",
+                        path.display()
+                    ))
+                })
+            });
+        if written.is_err() {
+            drop(fs::remove_file(&tmp));
+        }
+        written
     }
 }
 
@@ -250,5 +289,41 @@ mod tests {
             "unknown key in [http_config] must be rejected"
         );
         drop(std::fs::remove_file(tmp_str));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_to_is_owner_only_and_leaves_no_temp_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ckms.toml");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let config = ClientConfig::default();
+        config.save_to(&path).unwrap();
+
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            ClientConfig::from_toml(path.to_str().unwrap()).unwrap(),
+            config
+        );
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn test_save_to_failure_keeps_target_and_removes_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // a directory cannot be replaced by a file: the rename fails
+        let path = dir.path().join("ckms.toml");
+        fs::create_dir(&path).unwrap();
+
+        assert!(ClientConfig::default().save_to(&path).is_err());
+        assert!(path.is_dir());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }

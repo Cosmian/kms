@@ -1,11 +1,10 @@
 use std::{io::Write as _, path::PathBuf};
 
 use clap::{CommandFactory, Parser, Subcommand};
-use cosmian_config_utils::ConfigUtils;
 use cosmian_kms_cli_actions::{
     actions::kms_actions::KmsActions,
     reexport::cosmian_kms_client::{
-        GmailApiConf, KmsClient, create_private_file,
+        GmailApiConf, KmsClient,
         reexport::cosmian_http_client::{HttpClientConfig, ProxyParams},
     },
 };
@@ -590,14 +589,8 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
         "\nWriting configuration to default path: {}",
         default_path.display()
     )?;
-    // `to_toml` truncates in place, so the file keeps this owner-only mode.
-    drop(create_private_file(&default_path)?);
     config
-        .to_toml(
-            default_path
-                .to_str()
-                .ok_or_else(|| cli_error!("Invalid default path encoding"))?,
-        )
+        .save_to(&default_path)
         .map_err(|e| cli_error!("Failed to write configuration: {e}"))?;
 
     info!("Configuration saved at {}", default_path.display());
