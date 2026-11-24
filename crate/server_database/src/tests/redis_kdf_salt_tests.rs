@@ -87,6 +87,62 @@ pub(super) async fn test_redis_legacy_db_keeps_legacy_salt() -> DbResult<()> {
     Ok(())
 }
 
+/// A database that is not empty never gets a random salt, whatever it holds: here a single
+/// metadata key, then a single unrelated key (a lost salt must not switch a database to a new key).
+pub(super) async fn test_redis_non_empty_db_without_salt_uses_legacy_salt() -> DbResult<()> {
+    for existing_key in ["db_version", "c:00ff", "do::anything"] {
+        let (url, mut mgr) = empty_database().await?;
+        redis::cmd("SET")
+            .arg(existing_key)
+            .arg("x")
+            .query_async::<()>(&mut mgr)
+            .await?;
+        let key = redis_master_key_for_database(&url, PASSWORD).await?;
+        db_ensure!(
+            stored_salt(&mut mgr).await? == LEGACY_SALT,
+            "a database holding `{existing_key}` must record the legacy salt"
+        );
+        db_ensure!(
+            key.to_bytes() == redis_master_key_from_password(PASSWORD)?.to_bytes(),
+            "a database holding `{existing_key}` must derive the legacy key"
+        );
+    }
+    Ok(())
+}
+
+/// Instances starting at the same time on an empty database all end with the same salt.
+pub(super) async fn test_redis_concurrent_instantiate_converges() -> DbResult<()> {
+    let (url, mut mgr) = empty_database().await?;
+    let mut set = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let url = url.clone();
+        set.spawn(async move {
+            redis_master_key_for_database(&url, PASSWORD)
+                .await
+                .map(|k| k.to_bytes())
+        });
+    }
+    let mut keys = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        keys.push(joined.map_err(|e| crate::error::DbError::DatabaseError(e.to_string()))??);
+    }
+    let (first, rest) = keys
+        .split_first()
+        .ok_or_else(|| crate::error::DbError::DatabaseError("no key derived".to_owned()))?;
+    db_ensure!(
+        rest.iter().all(|k| k == first),
+        "concurrent instances derived different keys"
+    );
+    let salt: [u8; 16] = stored_salt(&mut mgr).await?.try_into().map_err(|_e| {
+        crate::error::DbError::DatabaseError("stored salt is not 16 bytes".to_owned())
+    })?;
+    db_ensure!(
+        *first == redis_master_key_from_password_with_salt(PASSWORD, &salt)?.to_bytes(),
+        "the converged key must match the stored salt"
+    );
+    Ok(())
+}
+
 /// Clearing the database keeps its salt: the key held in memory still matches it.
 pub(super) async fn test_redis_clear_keeps_salt() -> DbResult<()> {
     let (url, mut mgr) = empty_database().await?;

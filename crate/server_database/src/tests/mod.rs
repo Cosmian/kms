@@ -151,6 +151,8 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     redis_kdf_salt_tests::test_redis_fresh_db_uses_random_salt().await?;
     redis_kdf_salt_tests::test_redis_legacy_db_keeps_legacy_salt().await?;
     redis_kdf_salt_tests::test_redis_clear_keeps_salt().await?;
+    redis_kdf_salt_tests::test_redis_non_empty_db_without_salt_uses_legacy_salt().await?;
+    redis_kdf_salt_tests::test_redis_concurrent_instantiate_converges().await?;
     Box::pin(redis_migration_tests::redis_migration_scenarios()).await?;
     Ok(())
 }
