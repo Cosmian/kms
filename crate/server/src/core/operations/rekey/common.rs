@@ -285,8 +285,16 @@ impl KMS {
         let result = if let Some(key) = new_key {
             if key.attributes.state == Some(State::Active) {
                 // The replacement belongs to the caller and is not published until the batch commits.
-                wrap_with_local_key(dep_object, &spec, self, owner, &key.object, &key.attributes)
-                    .await
+                wrap_with_local_key(
+                    dep_object,
+                    &spec,
+                    self,
+                    owner,
+                    &key.object,
+                    &key.attributes,
+                    owner.as_str(),
+                )
+                .await
             } else {
                 Err(KmsError::NotSupported(format!(
                     "The wrapping key {new_uid} is not active"
