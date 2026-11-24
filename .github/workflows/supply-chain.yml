@@ -1,7 +1,8 @@
 ---
 name: Supply chain
 
-# Dependency audits: Rust (cargo vet), Python (pip-audit), Go (govulncheck), UI (npm audit).
+# Dependency audits: Rust (cargo vet), Python (pip-audit), Go (govulncheck), UI (npm audit), and the
+# release-security gate (advisory coverage of the lock file / shipped graph, credential isolation, restricted upload).
 
 on:
   workflow_call:
@@ -97,3 +98,36 @@ jobs:
           else
             mise run audit:npm
           fi
+
+  # Not gated by changed paths: a lock file, workflow or script change anywhere can reopen #1498.
+  release-security:
+    name: Supply chain — release security (#1498)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-rust
+
+      - uses: ./.github/actions/install-mise
+
+      # sshd + rrsync (rsync package) back the restricted-upload integration tests.
+      - name: Install sshd and rsync
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openssh-server rsync
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit@0.23.0
+
+      - name: Negative tests (credential isolation, restricted upload, advisory coverage)
+        env:
+          REQUIRE_SSH_TESTS: '1'
+        run: mise run dev:ci-security
+
+      - name: Advisory coverage of Cargo.lock and the shipped dependency graphs
+        run: mise run sbom:check-advisories

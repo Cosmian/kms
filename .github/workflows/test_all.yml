@@ -150,5 +150,3 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
     uses: ./.github/workflows/cargo-publish.yml
-    secrets:
-      token: ${{ secrets.CRATES_IO }}

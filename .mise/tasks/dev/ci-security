@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Run the release-security regression tests: credential isolation, restricted package upload, advisory coverage"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+PYTHON="$(pick_python312)"
+print_header "Release security tests (#1498)"
+for t in test_release_security test_package_upload test_advisory_coverage; do
+  "${PYTHON}" -m unittest discover -s "${REPO_ROOT}/.mise/scripts/dev" -p "${t}.py" -v
+done
+print_success "Release security tests passed"

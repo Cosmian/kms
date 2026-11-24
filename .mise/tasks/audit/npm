@@ -96,7 +96,9 @@ run_step "osv-scanner" osv_gate
 run_isolated pnpm audit --prod || print_warning "pnpm audit --prod found advisories (informational: the osv-scanner step decides)"
 # npm audit signatures needs node_modules; --ignore-scripts keeps the install inert.
 run_step "pnpm install (no scripts)" run_isolated pnpm install --frozen-lockfile --ignore-scripts
-run_step "npm audit signatures" run_isolated npm audit signatures
+# Two sockets, not npm's 15: from the CI runners the registry answers a burst of attestation requests with a plain-text
+# "OK" body ("invalid json response body ... FETCH_ERROR") on a different package each run, which npm does not retry.
+run_step "npm audit signatures" run_isolated env NPM_CONFIG_MAXSOCKETS=2 npm audit signatures
 
 if [ ${#FAILED[@]} -gt 0 ]; then
   print_error "npm supply-chain audit failed: ${FAILED[*]}"
