@@ -137,10 +137,10 @@ pub fn rsa_verify(
                     Ok(verified) => Ok(verified),
                     Err(err) => {
                         error!(
-                            "Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                            "Error verifying digest ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}",
                             signature_algorithm,
-                            hex::encode_upper(signature),
-                            hex::encode_upper(data)
+                            signature.len(),
+                            data.len()
                         );
                         Ok(false)
                     }
@@ -153,10 +153,10 @@ pub fn rsa_verify(
                     Ok(verified) => Ok(verified),
                     Err(err) => {
                         error!(
-                            "Error verifying raw ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                            "Error verifying raw ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}",
                             signature_algorithm,
-                            hex::encode_upper(signature),
-                            hex::encode_upper(data)
+                            signature.len(),
+                            data.len()
                         );
                         Ok(false)
                     }
@@ -194,10 +194,10 @@ pub fn rsa_verify(
                 Ok(verified) => verified,
                 Err(err) => {
                     error!(
-                        "Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                        "Error verifying digest ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}",
                         signature_algorithm,
-                        hex::encode_upper(signature),
-                        hex::encode_upper(data)
+                        signature.len(),
+                        data.len()
                     );
                     false
                 }
@@ -210,10 +210,10 @@ pub fn rsa_verify(
                 Ok(verified) => verified,
                 Err(err) => {
                     error!(
-                        "Error verifying ({:?}) signature: {:?}, data: {:?}, error: {err:?}",
+                        "Error verifying ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}",
                         signature_algorithm,
-                        hex::encode_upper(signature),
-                        hex::encode_upper(data)
+                        signature.len(),
+                        data.len()
                     );
                     false
                 }
@@ -279,5 +279,83 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use std::{
+        fmt::{Debug, Write as _},
+        sync::{Arc, Mutex},
+    };
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm},
+    };
+    use cosmian_logger::reexport::tracing::{
+        self, Event, Metadata,
+        field::{Field, Visit},
+        span::{Attributes, Id, Record},
+    };
+    use openssl::{pkey::PKey, rsa::Rsa};
+
+    use super::rsa_verify;
+
+    /// Collects every event field, formatted as `tracing` would record it.
+    struct Capture(Arc<Mutex<String>>);
+
+    struct Fields<'a>(&'a mut String);
+
+    impl Visit for Fields<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+            let _ = write!(self.0, "{}={value:?} ", field.name());
+        }
+    }
+
+    impl tracing::Subscriber for Capture {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _span: &Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            if let Ok(mut out) = self.0.lock() {
+                event.record(&mut Fields(&mut out));
+                out.push('\n');
+            }
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    #[test]
+    fn verify_error_log_has_no_signature_bytes() {
+        let rsa = Rsa::generate(2048).unwrap();
+        let public_key = PKey::public_key_from_pem(&rsa.public_key_to_pem().unwrap()).unwrap();
+        let params = CryptographicParameters {
+            digital_signature_algorithm: Some(DigitalSignatureAlgorithm::SHA256WithRSAEncryption),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        };
+        let out = Arc::new(Mutex::new(String::new()));
+        // wrong signature length: OpenSSL reports an error rather than a mismatch
+        let verdict = tracing::subscriber::with_default(Capture(out.clone()), || {
+            rsa_verify(&public_key, &[0xCD; 32], &[0xAB; 10], &params, true)
+        });
+        assert!(verdict.is_ok(), "{verdict:?}");
+        let logs = out.lock().map(|l| l.clone()).unwrap_or_default();
+        assert!(!logs.contains("ABABAB"), "signature bytes logged: {logs}");
+        assert!(!logs.contains("CDCDCD"), "data bytes logged: {logs}");
+        assert!(logs.contains("10 bytes"), "no length log: {logs}");
     }
 }

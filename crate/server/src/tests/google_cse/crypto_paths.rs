@@ -738,3 +738,23 @@ async fn privileged_unwrap_wrong_resource_name() {
     let reply = post_json_raw(&app, unwrap("res-b"), "/google_cse/privilegedunwrap").await;
     assert_failed(&reply, "");
 }
+
+/// A FIPS build must refuse SHA-1 RSA signatures on `privatekeysign`.
+#[cfg(not(feature = "non-fips"))]
+#[tokio::test]
+async fn private_key_sign_sha1_rejected_on_fips_build() {
+    let app = app().await;
+    let rsa = Rsa::generate(2048).unwrap();
+    let wrapped = wrap_bytes(&app, &rsa.private_key_to_der().unwrap()).await;
+    let digest = hash(MessageDigest::sha1(), b"message").unwrap();
+
+    for algorithm in ["SHA1withRSA", "SHA1withRSA/PSS"] {
+        let reply = post_json_raw(
+            &app,
+            sign_request(algorithm, &digest, wrapped.clone()),
+            "/google_cse/privatekeysign",
+        )
+        .await;
+        assert_failed(&reply, "SHA-1");
+    }
+}

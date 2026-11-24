@@ -44,6 +44,13 @@ pub fn sign_rsa_digest_with_algorithm(
     digest_b64: &str,
     rsa_pss_salt_length: Option<i32>,
 ) -> CryptoResult<Vec<u8>> {
+    // Refuse before loading the key: SHA-1 signatures are forbidden in FIPS builds.
+    if !sha1_signatures_allowed() && matches!(algorithm, "SHA1withRSA" | "SHA1withRSA/PSS") {
+        return Err(CryptoError::NotSupported(
+            "SHA-1 RSA signatures are not allowed in FIPS mode".to_owned(),
+        ));
+    }
+
     // Validate the DER is a loadable private key (accept PKCS#8). If it fails, try PKCS#1.
     let private_key = match PKey::private_key_from_der(raw_private_key) {
         Ok(key) => key,
@@ -581,6 +588,28 @@ mod tests {
                 "{} ({})",
                 v.id,
                 v.source
+            );
+        }
+    }
+}
+
+#[cfg(all(test, not(feature = "non-fips")))]
+mod fips_tests {
+    use base64::{Engine, engine::general_purpose};
+    use openssl::rsa::Rsa;
+
+    use super::sign_rsa_digest_with_algorithm;
+    use crate::CryptoError;
+
+    #[test]
+    fn sign_rsa_digest_sha1_rejected_in_fips() {
+        let der = Rsa::generate(2048).unwrap().private_key_to_der().unwrap();
+        let digest = general_purpose::STANDARD.encode([0_u8; 20]);
+        for algorithm in ["SHA1withRSA", "SHA1withRSA/PSS"] {
+            let err = sign_rsa_digest_with_algorithm(&der, algorithm, &digest, None).unwrap_err();
+            assert!(
+                matches!(&err, CryptoError::NotSupported(m) if m.contains("SHA-1")),
+                "{algorithm}: {err:?}"
             );
         }
     }
