@@ -155,6 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }));
         }
         normalize_provider_layout(&fips_prefix);
+        write_fipsmodule_cnf(&fips_prefix, mod_ext)?;
         integrate_assets_into_main(&main_prefix, Some(&fips_prefix));
         // Always re-patch openssl.cnf to use the local fipsmodule.cnf path.
         // This is needed when the nix build has overwritten openssl.cnf with the
@@ -465,6 +466,30 @@ fn build_and_install_openssl(params: &OpensslBuildParams) -> Result<(), String> 
     }
 
     Ok(())
+}
+
+/// Write `ssl/fipsmodule.cnf` with the `openssl fipsinstall` defaults, as the Nix release
+/// packages do. `make install_fips` writes the pedantic config of `util/mk-fipsmodule-cnf.pl`
+/// (every key check enabled), which refuses short HMAC/KDF keys and other inputs the
+/// released provider accepts. Also migrates existing pedantic trees: a config that already
+/// contains `hmac-key-check = 0` is left untouched, so the self-test runs once per tree.
+fn write_fipsmodule_cnf(fips_prefix: &Path, mod_ext: &str) -> Result<(), String> {
+    let cnf = fips_prefix.join("ssl/fipsmodule.cnf");
+    if fs::read_to_string(&cnf).is_ok_and(|c| c.contains("hmac-key-check = 0")) {
+        return Ok(());
+    }
+    run_cmd(
+        Command::new(fips_prefix.join("bin/openssl"))
+            .env_remove("OPENSSL_CONF")
+            .env_remove("OPENSSL_MODULES")
+            .arg("fipsinstall")
+            .arg("-self_test_oninstall")
+            .arg("-module")
+            .arg(fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")))
+            .arg("-out")
+            .arg(&cnf),
+        "openssl fipsinstall",
+    )
 }
 
 fn normalize_provider_layout(install_prefix: &Path) {
