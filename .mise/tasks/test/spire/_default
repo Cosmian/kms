@@ -468,8 +468,8 @@ fi
 
 # ── Step 14: Scenario 10 — KMS with a bad PKI CA key label fails fast ──────────
 # Start a SECOND, throwaway KMS on port 9997 whose PKI CA label points at a key
-# that does not exist. A sign-intermediate call must fail cleanly (5xx) with a
-# message naming the missing label — never hang or panic.
+# that does not exist. A sign-intermediate call must fail cleanly (generic 5xx, the missing
+# label logged under the response's request id) — never hang or panic.
 print_status "Scenario 10: second KMS with an invalid PKI CA key label..."
 BAD_KMS_LOG="/tmp/kms-spire-badca.log"
 BAD_KMS_CONF="/tmp/kms-spire-badca.toml"
@@ -508,13 +508,20 @@ S10_STATUS=$(curl -s -o "${S10_BODY_FILE}" -w "%{http_code}" --cacert "${TEST_DA
 S10_BODY=$(cat "${S10_BODY_FILE}")
 kill "${BAD_KMS_PID}" 2>/dev/null || true
 wait "${BAD_KMS_PID}" 2>/dev/null || true
+# A 5xx body is generic ("Internal Server Error (request id: <uuid>)"): the detail naming the
+# missing label is only in the server log, under that request id.
+S10_REQ_ID=$(echo "${S10_BODY}" | grep -oE 'request id: [0-9a-f-]{36}' | head -1 | cut -d' ' -f3 || true)
+S10_LOGGED=false
+if [[ -n "${S10_REQ_ID}" ]] && grep -F "${S10_REQ_ID}" "${BAD_KMS_LOG}" | grep -qF "${BAD_CA_LABEL}"; then
+  S10_LOGGED=true
+fi
 rm -f "${BAD_KMS_CONF}" "${BAD_KMS_LOG}" "${S10_CSR_KEY}" "${S10_CSR_PEM}" "${S10_BODY_FILE}"
 rm -f /tmp/kms-spire-test-badca* 2>/dev/null || true
 
-if [[ "${S10_STATUS}" =~ ^5[0-9][0-9]$ ]] && echo "${S10_BODY}" | grep -q "${BAD_CA_LABEL}"; then
-  print_success "Scenario 10: bad CA label rejected cleanly (HTTP ${S10_STATUS}, names missing label)."
+if [[ "${S10_STATUS}" =~ ^5[0-9][0-9]$ ]] && [[ "${S10_LOGGED}" == "true" ]] && ! echo "${S10_BODY}" | grep -q "${BAD_CA_LABEL}"; then
+  print_success "Scenario 10: bad CA label rejected cleanly (HTTP ${S10_STATUS}, generic body, label logged under request id ${S10_REQ_ID})."
 else
-  print_error "Scenario 10: expected 5xx naming '${BAD_CA_LABEL}', got HTTP ${S10_STATUS}. Body: ${S10_BODY:0:300}"
+  print_error "Scenario 10: expected a generic 5xx whose request id logs '${BAD_CA_LABEL}', got HTTP ${S10_STATUS}, logged=${S10_LOGGED}. Body: ${S10_BODY:0:300}"
 fi
 
 # ── Step 15: Scenario 2 — auth-verifier outage → clean 502 (run LAST) ──────────
