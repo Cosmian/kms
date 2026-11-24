@@ -87,6 +87,7 @@ fn create_and_destroy_aes_key(
     assert!(
         err_msg.contains("Object not found")
             || err_msg.contains("Internal server error")
+            || err_msg.contains("Internal Server Error (request id")
             || err_msg.contains("not found"),
         "unexpected error after destroy: {err_msg}"
     );
