@@ -663,7 +663,7 @@ pub async fn private_key_decrypt(
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("allocation_size: {allocation_size}");
-    let mut dek = vec![0_u8; allocation_size];
+    let mut dek = Zeroizing::new(vec![0_u8; allocation_size]);
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
     debug!("exiting with success: decrypt_size: {decrypt_size}");
@@ -988,7 +988,7 @@ pub async fn privileged_private_key_decrypt(
     }
     let allocation_size = ctx.decrypt(&encrypted_dek, None)?;
     debug!("allocation_size: {allocation_size}");
-    let mut dek = vec![0_u8; allocation_size];
+    let mut dek = Zeroizing::new(vec![0_u8; allocation_size]);
     let decrypt_size = ctx.decrypt(&encrypted_dek, Some(&mut *dek))?;
 
     debug!("exiting with success: decrypt_size: {decrypt_size}");
