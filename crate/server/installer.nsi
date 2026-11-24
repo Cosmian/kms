@@ -134,6 +134,8 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; 4. Custom page to ask user if he wants to reinstall/uninstall
 ;    only if a previous installation was detected
 Var ReinstallPageCheck
+; Directory holding the kms.toml, data and logs saved before the old uninstaller runs
+Var UpgradeBackupDir
 Page custom PageReinstall PageLeaveReinstall
 Function PageReinstall
   ; Uninstall previous WiX installation if exists.
@@ -252,6 +254,33 @@ Function PageReinstallUpdateSelection
     StrCpy $ReinstallPageCheck 2
   ${EndIf}
 FunctionEnd
+; Stop the service and wait (max 30 s) until it is stopped or absent; abort when it does not stop.
+; Clobbers $0-$2.
+!macro WaitServiceStopped
+  nsExec::ExecToLog 'sc stop "${SERVICENAME}"'
+  Pop $0
+  StrCpy $1 0
+  ${Do}
+    nsExec::ExecToStack 'sc query "${SERVICENAME}"'
+    Pop $0
+    Pop $2
+    ${If} $0 = 1060 ; ERROR_SERVICE_DOES_NOT_EXIST
+      ${ExitDo}
+    ${EndIf}
+    nsExec::ExecToStack 'cmd /c sc query "${SERVICENAME}" | find "STOPPED"'
+    Pop $0
+    Pop $2
+    ${If} $0 = 0
+      ${ExitDo}
+    ${EndIf}
+    ${If} $1 >= 30
+      MessageBox MB_ICONSTOP "The Cosmian KMS service did not stop. Nothing was uninstalled."
+      Abort
+    ${EndIf}
+    IntOp $1 $1 + 1
+    Sleep 1000
+  ${Loop}
+!macroend
 Function PageLeaveReinstall
   ${NSD_GetState} $R2 $R1
 
@@ -274,6 +303,32 @@ Function PageLeaveReinstall
     ${Else}
       ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
       ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
+      ; The old uninstaller deletes kms.toml, data and logs: save them first. Stop the service
+      ; (bounded wait) so the SQLite database and its -wal/-shm files are not copied live.
+      !insertmacro WaitServiceStopped
+      StrCpy $UpgradeBackupDir "$4.upgrade-backup"
+      RMDir /r "$UpgradeBackupDir"
+      CreateDirectory "$UpgradeBackupDir"
+      ClearErrors
+      ${If} ${FileExists} "$4\kms.toml"
+        CopyFiles /SILENT "$4\kms.toml" "$UpgradeBackupDir"
+      ${EndIf}
+      ${If} ${FileExists} "$4\data\*.*"
+        CreateDirectory "$UpgradeBackupDir\data"
+        CopyFiles /SILENT "$4\data\*.*" "$UpgradeBackupDir\data"
+      ${EndIf}
+      ${If} ${FileExists} "$4\logs\*.*"
+        CreateDirectory "$UpgradeBackupDir\logs"
+        CopyFiles /SILENT "$4\logs\*.*" "$UpgradeBackupDir\logs"
+      ${EndIf}
+      ${If} ${Errors}
+        RMDir /r "$UpgradeBackupDir"
+        StrCpy $UpgradeBackupDir ""
+        nsExec::ExecToLog 'sc start "${SERVICENAME}"'
+        Pop $0
+        MessageBox MB_ICONSTOP "Cannot back up kms.toml, data and logs before upgrading. Nothing was uninstalled."
+        Abort
+      ${EndIf}
       ExecWait '$R1 /P _?=$4' $0
     ${EndIf}
 
@@ -283,6 +338,18 @@ Function PageLeaveReinstall
 
     ${If} $0 <> 0
     ${OrIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
+      ; Exit code 1: the user aborted before anything was deleted, drop the copy and restart the
+      ; service. Any other failure may have deleted part of the install: keep the copy.
+      ${If} $UpgradeBackupDir != ""
+        ${If} $0 = 1
+          RMDir /r "$UpgradeBackupDir"
+          nsExec::ExecToLog 'sc start "${SERVICENAME}"'
+          Pop $3 ; keep the uninstaller exit code in $0
+        ${Else}
+          MessageBox MB_ICONEXCLAMATION "Your kms.toml, data and logs were saved in $UpgradeBackupDir before the failed uninstall."
+        ${EndIf}
+        StrCpy $UpgradeBackupDir ""
+      ${EndIf}
       ${If} $0 = 1 ; User aborted uninstaller?
         StrCmp $R5 "2" 0 +2 ; Is the existing install the same version?
           Quit ; ...yes, already installed, we are done
@@ -487,6 +554,26 @@ Section Install
   ; Stop existing service before upgrading
   !insertmacro StopAndDeleteService
 
+  ; Interactive upgrade: put back the kms.toml, data and logs saved before the old uninstaller
+  ; deleted them (see PageLeaveReinstall). The copy is dropped only when fully restored.
+  ${If} $UpgradeBackupDir != ""
+  ${AndIf} ${FileExists} "$UpgradeBackupDir\*.*"
+    ClearErrors
+    CopyFiles /SILENT "$UpgradeBackupDir\*.*" "$INSTDIR"
+    ${If} ${Errors}
+      DetailPrint "Could not restore the saved kms.toml, data and logs; they remain in $UpgradeBackupDir"
+    ${Else}
+      RMDir /r "$UpgradeBackupDir"
+    ${EndIf}
+  ${EndIf}
+
+  ; Keep the operator's kms.toml: the packaged template must not overwrite it. A leftover
+  ; kms.toml.keep (interrupted install) holds the real config and is never overwritten.
+  ${If} ${FileExists} "$INSTDIR\kms.toml"
+  ${AndIfNot} ${FileExists} "$INSTDIR\kms.toml.keep"
+    Rename "$INSTDIR\kms.toml" "$INSTDIR\kms.toml.keep"
+  ${EndIf}
+
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
 
@@ -499,6 +586,13 @@ Section Install
   {{#each resources}}
     File /a "/oname={{this}}" "{{@key}}"
   {{/each}}
+
+  ${If} ${FileExists} "$INSTDIR\kms.toml.keep"
+    Delete "$INSTDIR\kms.toml.new"
+    Rename "$INSTDIR\kms.toml" "$INSTDIR\kms.toml.new"
+    Rename "$INSTDIR\kms.toml.keep" "$INSTDIR\kms.toml"
+    DetailPrint "Existing kms.toml kept; the new default configuration is in $INSTDIR\kms.toml.new"
+  ${EndIf}
 
   ; Copy external binaries
   {{#each binaries}}
@@ -684,6 +778,8 @@ Section Uninstall
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
+  Delete "$INSTDIR\kms.toml.new"
+  Delete "$INSTDIR\kms.toml.keep"
 
   {{#each resources_dirs}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
