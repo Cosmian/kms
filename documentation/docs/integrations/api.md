@@ -126,7 +126,7 @@ Supported authentication methods include:
 - **API Tokens (`api_token`)**: Validates static pre-shared bearer tokens corresponding to symmetric key objects stored in the KMS database.
 - **SPIRE App-Tokens (`spire_token`)**: Validates `X-Vault-Token` headers for HashiCorp Vault-compatible Zero-Trust integrations.
 - **AWS SigV4 (`Sigv4MWare`)**: Authenticates AWS KMS requests on the `/aws` scope using AWS Signature Version 4 HMAC signatures.
-- **Web UI Sessions (`SessionAuth`)**: Uses an encrypted, `HttpOnly`, `SameSite=Lax` cookie (`auth_session`) with a 24-hour lifetime.
+- **Web UI Sessions (`SessionAuth`)**: Uses an `HttpOnly`, `SameSite=Lax` cookie (`auth_session`) sealed with AES-256-GCM (key derived from `ui_session_salt`, or random per process when it is unset). The 24-hour lifetime is enforced by the server, not only by the browser `Max-Age`.
 
 #### Fail-Closed Enforcement (`EnsureAuth`)
 

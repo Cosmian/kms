@@ -96,7 +96,7 @@ agent edits a matching path. This table is a rule-number → instruction-file in
 | 4.8 | Non-FIPS gating across the stack | heuristic: `#[cfg(feature = "non-fips")]` diff, not a path | kept in this skill — see below |
 | 4.9 | Auth middleware consistency | `crate/server/src/middlewares/**`, `crate/server/src/config/wizard/auth_wizard.rs` | `middlewares.instructions.md` |
 | 4.10 | Test vectors: directory → runner → README | `test_data/vectors/**`, `crate/test_kms_server/**` | `test-vectors.instructions.md` |
-| 4.11 | Nix vendor hashes ⇔ lock files | `Cargo.lock`, `ui/pnpm-lock.yaml` | `lockfile-hashes.instructions.md` |
+| 4.11 | Nix vendor hashes: not renewed in PRs (nightly build does it) | `Cargo.lock`, `ui/pnpm-lock.yaml` | `lockfile-hashes.instructions.md` |
 | 4.12 | Cloud provider integrations | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/**` | `cloud-providers.instructions.md` |
 | 4.13 | HSM backend support | `crate/hsm/**` | `hsm.instructions.md` |
 | 4.14 | Documentation ⇔ mdBook ⇔ README | `documentation/**`, `README.md` | `docs.instructions.md` |

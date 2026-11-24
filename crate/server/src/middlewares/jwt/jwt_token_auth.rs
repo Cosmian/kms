@@ -1,13 +1,12 @@
 //! JWT Authentication Middleware
 //!
 //! This module handles JWT-based authentication for the KMS server.
-//! It extracts and validates JWT tokens from the Authorization header
-//! or from an Identity service, then processes the claims to authenticate users.
+//! It extracts and validates JWT tokens from the Authorization header,
+//! then processes the claims to authenticate users.
 
 use std::sync::Arc;
 
-use actix_identity::Identity;
-use actix_web::{FromRequest, dev::ServiceRequest, http::header};
+use actix_web::{dev::ServiceRequest, http::header};
 use cosmian_logger::{debug, trace, warn};
 
 use super::UserClaim;
@@ -210,17 +209,12 @@ pub(super) async fn handle_jwt(
 ) -> KResult<AuthenticatedUser> {
     trace!("JWT Authentication...");
 
-    // Extract identity from either the Identity service or the Authorization header
-    let identity_from_header: Option<String> = Identity::extract(req.request())
-        .into_inner()
-        .ok()
-        .map(|identity| identity.id().unwrap_or_default());
-    let identity: &str = identity_from_header.as_deref().unwrap_or_else(|| {
-        req.headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or_default()
-    });
+    // The identity is the bearer token of the Authorization header
+    let identity: &str = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or_default();
     // Try to extract and validate the user claim
     let mut private_claim = extract_user_claim(&configs, identity);
 

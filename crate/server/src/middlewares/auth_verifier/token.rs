@@ -33,7 +33,7 @@ use crate::{
     error::KmsError,
     middlewares::{
         AuthMethod, AuthenticatedUser, JwksManager, JwtTokenHeaders, UserId, extract_bearer_token,
-        is_not_forgeable_cross_origin, reject_reserved_service_identity,
+        is_not_forgeable_cross_origin, reject_reserved_service_identity, request_cookie,
     },
     result::KResult,
 };
@@ -83,7 +83,7 @@ pub(super) async fn handle_auth_verifier(
         Err(e) => {
             let (Some(realm), Some(cookie)) = (
                 session_cookie_realm,
-                req.cookie(AUTH_VERIFIER_SESSION_COOKIE),
+                request_cookie(req.headers(), AUTH_VERIFIER_SESSION_COOKIE),
             ) else {
                 return Err(KmsError::Unauthorized(format!("Auth Verifier: {e}")));
             };
@@ -95,12 +95,8 @@ pub(super) async fn handle_auth_verifier(
                 ));
             }
             return Ok(AuthenticatedUser {
-                username: authenticate_auth_verifier_session_cookie(
-                    auth_verifier,
-                    cookie.value(),
-                    realm,
-                )
-                .await?,
+                username: authenticate_auth_verifier_session_cookie(auth_verifier, cookie, realm)
+                    .await?,
                 auth_method: AuthMethod::AuthVerifierSession,
             });
         }

@@ -487,7 +487,6 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set              rate_limit_per_second in the server config for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `Session: failed to read user_id from session: {e:?}` | `src/middlewares/session_auth.rs` | `e` | - |
 | `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
 | `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` | - |
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | - |
@@ -503,7 +502,6 @@ Crate path: `crate/server`
 | `debug` | `OIDC: authorization_endpoint={authorization_endpoint}` | `src/start_kms_server.rs` | `authorization_endpoint` | - |
 | `debug` | `OIDC: jwks_uri={jwks_uri}` | `src/start_kms_server.rs` | `jwks_uri` | - |
 | `debug` | `OIDC: token_endpoint={token_endpoint}` | `src/start_kms_server.rs` | `token_endpoint` | - |
-| `debug` | `Session: authenticated user '{user_id}'` | `src/middlewares/session_auth.rs` | `user_id` | - |
 | `debug` | `Session: request already authenticated, skipping` | `src/middlewares/session_auth.rs` | - | - |
 | `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
 | `debug` | `vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')` | `src/routes/spire/pki.rs` | `days`, `ttl_str` | - |
@@ -800,6 +798,8 @@ Crate path: `crate/server`
 | `warn` | `[crl-refresh-cron] Failed to load CRL for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id` (CA certificate UID), `e` (database error) | The revoked-certificates check is skipped for this issuer until the next run. |
 | `warn` | `[crl-refresh-cron] Revocation check failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id` (CA certificate UID), `e` (error) | Comparing the stored CRL with the revoked certificates failed; retried at the next run. |
 | `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})` | `src/cron.rs` | `issuer_id` (CA certificate UID), `refresh_reason` (`expires within <N>h` or `revoked certificates changed`) | Leader region only. |
+| `debug` | `Session: authenticated user '{username}'` | `src/middlewares/session_auth.rs` | `username` | - |
+| `debug` | `UI session cookie rejected: {reason}` | `src/middlewares/ui_session.rs` | `reason` | - |
 
 ### `cosmian_kms_server_database`
 

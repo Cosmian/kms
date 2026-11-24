@@ -68,10 +68,8 @@ interop = ["cosmian_kms_server_database/interop"]
 [dependencies]
 actix-cors = { workspace = true }
 actix-files = { workspace = true }
-actix-identity = { workspace = true }
-actix-session = { workspace = true, features = ["cookie-session"] }
 actix-tls = { workspace = true }
-actix-web = { workspace = true, features = ["cookies", "macros", "openssl"] }
+actix-web = { workspace = true, features = ["macros", "openssl"] }
 async-recursion = { workspace = true }
 async-trait = { workspace = true }
 aws_cloudhsm_pkcs11_loader = { workspace = true }
