@@ -176,7 +176,8 @@ pub async fn ckms_main() -> CosmianResult<()> {
         return audit_action.process().map_err(Into::into);
     }
 
-    let mut config = ClientConfig::load(cli.conf_path.clone())?;
+    let mut saved_config = ClientConfig::load(cli.conf_path.clone())?;
+    let mut config = saved_config.clone();
 
     // Handle KMS configuration
     if let Some(url) = cli.url.clone() {
@@ -189,6 +190,14 @@ pub async fn ckms_main() -> CosmianResult<()> {
 
     update_headers_config(&mut config, &cli.headers);
     update_proxy_config(&mut config, &cli.proxy)?;
+
+    if config.kms_config.http_config.accept_invalid_certs {
+        writeln!(
+            std::io::stderr().lock(),
+            "WARNING: TLS certificate verification of the KMS server is disabled \
+             (accept_invalid_certs)"
+        )?;
+    }
 
     trace!("Configuration: {config:#?}");
 
@@ -206,9 +215,19 @@ pub async fn ckms_main() -> CosmianResult<()> {
         }
         CliCommands::Kms(kms_actions) => {
             let new_kms_config = Box::pin(kms_actions.process(kms_rest_client)).await?;
+            // Only Login/Logout change the config: persist their credentials, never the
+            // one-off command-line overrides.
             if config.kms_config != new_kms_config {
-                config.kms_config = new_kms_config;
-                config.save(cli.conf_path.clone())?;
+                let saved = &mut saved_config.kms_config.http_config;
+                let new = new_kms_config.http_config;
+                saved.access_token = new.access_token;
+                saved.vault_token = new.vault_token;
+                if let (Some(saved_oauth), Some(new_oauth)) =
+                    (saved.oauth2_conf.as_mut(), new.oauth2_conf)
+                {
+                    saved_oauth.refresh_token = new_oauth.refresh_token;
+                }
+                saved_config.save(cli.conf_path.clone())?;
             }
         }
     }

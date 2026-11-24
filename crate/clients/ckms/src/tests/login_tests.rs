@@ -292,6 +292,49 @@ fn test_ckms_login_saves_config_owner_only() {
     assert_eq!(mode & 0o777, 0o600);
 }
 
+/// `ckms login` persists the obtained tokens only: one-off `--url`, `--accept-invalid-certs`,
+/// `--header` and `--proxy-*` flags are never written to `ckms.toml`.
+#[test]
+fn test_ckms_login_does_not_persist_transport_overrides() {
+    let mock = test_kms_server::mock_gmail::start();
+    let dir = TempDir::new().unwrap();
+    let conf_path = dir.path().join("ckms.toml");
+    fs::write(
+        &conf_path,
+        oauth2_toml(&format!("{}/token", mock.base), Some("rt-1")),
+    )
+    .unwrap();
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path).args([
+        "--accept-invalid-certs",
+        "--url",
+        "https://override.invalid:1234",
+        "--header",
+        "x-one-off: 1",
+        "--proxy-url",
+        "http://127.0.0.1:3128",
+        "login",
+        "oauth",
+        "--refresh",
+    ]);
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("certificate verification"), "got: {stderr}");
+
+    let kms_config = ClientConfig::from_toml(conf_path.to_str().unwrap())
+        .unwrap()
+        .kms_config;
+    assert!(kms_config.print_json.is_none());
+    let http_config = kms_config.http_config;
+    assert_eq!(http_config.access_token.as_deref(), Some("mock-token"));
+    assert_eq!(http_config.server_url, "http://127.0.0.1:9998");
+    assert!(!http_config.accept_invalid_certs);
+    assert!(http_config.custom_headers.is_none());
+    assert!(http_config.proxy_params.is_none());
+}
+
 /// `ckms login oauth --refresh` must fail, naming `refresh_token`, when none was saved.
 #[test]
 fn test_ckms_login_oauth_refresh_fails_without_refresh_token() {
