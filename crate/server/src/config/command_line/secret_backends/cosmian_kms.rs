@@ -28,9 +28,13 @@ impl CosmianKmsBackend {
 
     /// Determine http/https scheme and default port from host string.
     fn server_url(&self, host_port: &str) -> String {
-        let is_local = host_port.starts_with("localhost")
-            || host_port.starts_with("127.0.0.1")
-            || host_port.starts_with("[::1]");
+        // Exact host match: a prefix test would treat `localhost.evil.com` as loopback.
+        let host = host_port.strip_prefix('[').map_or_else(
+            || host_port.split(':').next().unwrap_or(host_port),
+            |bracketed| bracketed.split(']').next().unwrap_or(bracketed),
+        );
+        let is_local =
+            host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1";
         let scheme = if is_local || self.insecure_certs {
             "http"
         } else {
@@ -127,5 +131,31 @@ impl SecretBackend for CosmianKmsBackend {
                 .fetch_object(&server_url, &object_id, &uri_owned)
                 .await
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CosmianKmsBackend;
+
+    #[test]
+    fn server_url_loopback_exact_match() {
+        let backend = CosmianKmsBackend {
+            token: None,
+            insecure_certs: false,
+        };
+        assert_eq!(
+            backend.server_url("localhost:9998"),
+            "http://localhost:9998"
+        );
+        assert_eq!(backend.server_url("[::1]:9998"), "http://[::1]:9998");
+        assert_eq!(
+            backend.server_url("localhost.evil.com:9998"),
+            "https://localhost.evil.com:9998"
+        );
+        assert_eq!(
+            backend.server_url("127.0.0.1.attacker.com"),
+            "https://127.0.0.1.attacker.com:9998"
+        );
     }
 }
