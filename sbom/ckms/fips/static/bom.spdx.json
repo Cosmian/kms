@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SPDXRef-nix-store-13cxi7576ghfnvaxdn7f3pjyxlil7g1i-cosmian-kms-cli-5.29.0.drv",
-  "documentNamespace": "sbomnix://a8bfa9c1-7a88-432c-9bf7-f1ee89e0adab",
+  "documentNamespace": "sbomnix://670340e8-c3bd-43d2-ad33-208f08e7b8f1",
   "creationInfo": {
-    "created": "2026-11-23T21:23:11.990468+00:00",
+    "created": "2026-11-24T02:51:12.091795+00:00",
     "creators": [
       "Tool: sbomnix-1.8.0+g30c95eb"
     ]
