@@ -110,7 +110,8 @@ Host ${PACKAGE_HOST}
 EOF
 
 # --mkpath creates the version/subdir tree; no --delete, no --protect-args (rrsync rejects it).
-rsync -rt --mkpath --chmod=D755,F644 --timeout=300 \
+# -O: never set directory mtimes, which would fail (EPERM, exit 23) in existing directories this account does not own.
+rsync -rtO --mkpath --chmod=D755,F644 --timeout=300 \
   -e "ssh -F ${ssh_dir}/config" \
   -- "${sources[@]}" "${PACKAGE_USER}@${PACKAGE_HOST}:${relative_dir}/"
 
