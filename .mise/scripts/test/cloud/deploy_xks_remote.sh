@@ -11,6 +11,7 @@
 # Optional:
 #   KMS_XKS_HOST             — server hostname (default: aws-xks-kms.cosmian.dev)
 #   KMS_XKS_REMOTE_BIN       — remote path for the binary (default: /usr/sbin/cosmian_kms)
+#   KMS_XKS_REMOTE_CONF      — remote server configuration file (default: /etc/cosmian/kms.toml)
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -23,6 +24,7 @@ source "${SCRIPT_DIR}/../../common.sh"
 
 KMS_XKS_HOST="${KMS_XKS_HOST:-aws-xks-kms.cosmian.dev}"
 KMS_XKS_REMOTE_BIN="${KMS_XKS_REMOTE_BIN:-/usr/sbin/cosmian_kms}"
+KMS_XKS_REMOTE_CONF="${KMS_XKS_REMOTE_CONF:-/etc/cosmian/kms.toml}"
 
 SSH_DIR="$(mktemp -d)"
 # shellcheck disable=SC2064
@@ -47,11 +49,30 @@ echo "Replacing binary and restarting service ..."
 # Single-quoted heredoc delimiter prevents client-side expansion; REMOTE_BIN
 # is set by `env` on the remote side. Back up the currently-deployed binary
 # first so a failed deployment can be rolled back below.
+# A server started from a configuration file ignores environment variables, and without
+# authentication on a non-loopback address it refuses to start unless the file carries
+# `insecure_allow_unauthenticated = true` under `[http]` (issue #1486). This shared XKS test
+# host is such a server (SigV4 on the XKS routes only): the opt-in is added to its config only
+# for the start of the new binary. The original config is restored once the server is healthy,
+# or on rollback, because binaries without this setting reject the unknown key.
 # shellcheck disable=SC2087
-ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" bash <<'REMOTE_SCRIPT'
+ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" bash <<'REMOTE_SCRIPT'
 set -euo pipefail
 if [ -f "$REMOTE_BIN" ]; then
   sudo cp -f "$REMOTE_BIN" "${REMOTE_BIN}.bak"
+fi
+# Drop a key a cancelled run may have left behind, then keep a pristine backup of the config.
+sudo rm -f "${REMOTE_CONF}.bak"
+if sudo test -f "$REMOTE_CONF"; then
+  sudo sed -i '/^insecure_allow_unauthenticated/d' "$REMOTE_CONF"
+  sudo cp -f "$REMOTE_CONF" "${REMOTE_CONF}.bak"
+  if sudo grep -q '^\[http\]' "$REMOTE_CONF"; then
+    sudo sed -i '/^\[http\]/a insecure_allow_unauthenticated = true' "$REMOTE_CONF"
+  else
+    printf '\n[http]\ninsecure_allow_unauthenticated = true\n' | sudo tee -a "$REMOTE_CONF" >/dev/null
+  fi
+else
+  echo "WARNING: $REMOTE_CONF not found on the host; the service must opt in by other means." >&2
 fi
 sudo systemctl stop cosmian_kms
 sudo mv /tmp/cosmian_kms_deploy "$REMOTE_BIN"
@@ -65,8 +86,11 @@ REMOTE_SCRIPT
 rollback_deployment() {
   echo "Rolling back to the previous binary ..." >&2
   # shellcheck disable=SC2087
-  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" bash <<'ROLLBACK_SCRIPT'
+  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" bash <<'ROLLBACK_SCRIPT'
 set -euo pipefail
+if sudo test -f "${REMOTE_CONF}.bak"; then
+  sudo mv -f "${REMOTE_CONF}.bak" "$REMOTE_CONF"
+fi
 if [ -f "${REMOTE_BIN}.bak" ]; then
   sudo systemctl stop cosmian_kms || true
   sudo mv -f "${REMOTE_BIN}.bak" "$REMOTE_BIN"
@@ -77,6 +101,18 @@ else
   echo "No backup binary found; cannot roll back automatically." >&2
 fi
 ROLLBACK_SCRIPT
+}
+
+# The opt-in key is unknown to every other binary (`deny_unknown_fields`): once the server runs,
+# put the original config back so a later deployment of another branch can still parse it.
+restore_remote_conf() {
+  # shellcheck disable=SC2087
+  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" bash <<'RESTORE_SCRIPT'
+set -euo pipefail
+if sudo test -f "${REMOTE_CONF}.bak"; then
+  sudo mv -f "${REMOTE_CONF}.bak" "$REMOTE_CONF"
+fi
+RESTORE_SCRIPT
 }
 
 # Wait for HTTPS endpoint to respond with the expected KMIP validation error.
@@ -95,6 +131,7 @@ for _ in $(seq 1 60); do
     "https://${KMS_XKS_HOST}/kmip/2_1" 2>/dev/null || true)
   if [[ "${http_code}" == "${EXPECTED_HTTP_CODE}" ]]; then
     echo "Server ready (HTTP ${http_code})."
+    restore_remote_conf
     exit 0
   fi
   if [[ "${http_code}" =~ ^[0-9]{3}$ ]]; then
