@@ -24,11 +24,6 @@ on:
 
   workflow_dispatch:
 
-permissions:
-  contents: write  # push to gh-pages branch + create GitHub Release assets
-  pages: write     # update GitHub Pages
-  id-token: write  # needed for pages deployment
-
 jobs:
   # ── Build the k8s binaries + ckms via Nix ONCE, share with every E2E job ─────
   build-k8s-bins:
@@ -286,7 +281,6 @@ jobs:
       - name: Sign packages
         run: bash .mise/scripts/package/sign_artifacts.sh "${RUNNER_TEMP}/a"
         env:
-          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
       - name: Upload signed k8s plugin packages
