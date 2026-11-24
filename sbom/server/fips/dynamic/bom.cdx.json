@@ -20401,7 +20401,7 @@
       "name": "wyz",
       "version": "0.5.1",
       "purl": "pkg:cargo/wyz@0.5.1",
-      "description": "myrrlyn’s utility collection",
+      "description": "myrrlyn's utility collection",
       "licenses": [
         {
           "expression": "MIT"

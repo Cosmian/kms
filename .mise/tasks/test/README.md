@@ -428,7 +428,7 @@ sequenceDiagram
 
 **Description:** SPIRE + Mistral client full integration (non-FIPS only). Multi-tenant topology with two independent SPIRE deployments against the same KMS.
 
-After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
+After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18), `test:spire:kmip` (19) and `test:spire:vault-transit-seal` (20).
 
 Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin` = `default_username`, signed by the test CA; trusted via `[tls] clients_ca_cert_file` in `test_data/spire/config/kms.toml`), passed to `kms_write_ckms_conf`. With the Vault token verifier as the only auth method the KMS answers 401 to token-less requests, so the default-user fallback no longer applies.
 
@@ -793,6 +793,34 @@ sequenceDiagram
 ```
 
 ---
+
+### `test:spire:vault-transit-seal`
+
+**Description:** HashiCorp Vault OSS (Docker, `hashicorp/vault:1.21` pinned by digest) auto-unseals with `seal "transit"` against the KMS Transit engine (`/v1/transit/encrypt|decrypt`). Non-FIPS only. Checks init + unseal, auto-unseal after restart (KV secret readable), auto-unseal after KMS key rotation, and that Vault stays sealed once the KMS key is deleted. See `documentation/docs/integrations/hashicorp_vault_auto_unseal.md`.
+
+```mermaid
+sequenceDiagram
+    participant Test as vault-transit-seal
+    participant AV as auth-verifier :8443
+    participant KMS as KMS :9998
+    participant Vault as Vault OSS<br/>(dynamic host port)
+
+    Test->>AV: ckms vault approle create-role vault-seal
+    Test->>KMS: POST /v1/auth/approle/login
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker run (seal "transit")
+    Test->>Vault: PUT /v1/sys/init
+    Vault->>KMS: encrypt root key
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt root key
+    Test->>Vault: read KV secret
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal/rotate
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt v1 root key
+    Test->>KMS: DELETE /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker restart
+    Vault-->>Test: remains sealed
+```
 
 ### `test:interop:openbao`
 
