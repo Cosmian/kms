@@ -6,6 +6,13 @@ JSONL file, or a PostgreSQL database for a fleet of instances. See
 [Audit events](./audit-events.md) for the fields every event carries.
 
 Audit logging is disabled by default: no backend is started until the feature is enabled.
+The server logs a `SECURITY:` warning at startup when audit logging is disabled.
+
+### Covered transports
+
+- Recorded: KMIP over HTTP (`/kmip`, `/kmip/2_1`), the KMIP socket server, `/v1/crypto`, KV,
+  `/google_cse`, `/ms_dke`, `/aws` (user `[aws-xks-service]`) and `/azureekm`.
+- Not recorded: `/tokenize`, the Vault transit, PKI and auth scopes, `/ui` and `/health`.
 
 ---
 

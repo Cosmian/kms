@@ -39,7 +39,6 @@ Crate path: `crate/server`
 | `error` | `Authentication method configured, but no authentication provided` | `src/middlewares/ensure_auth.rs` | - | Returns 401. Check middleware stack - auth is configured but no bearer/cert/API-token was sent. |
 | `error` | `AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set` | `src/routes/aws_xks/sigv4_middleware.rs` | - | Server misconfiguration - enable XKS routes only when `aws_xks_params` is set. |
 | `error` | `Error handling socket client: {}` | `src/socket_server.rs` | - | Unix socket handler crashed. The server continues running. |
-| `error` | `Failed to open index.html: {e:?}` | `src/start_kms_server.rs` | `e`: caught error | UI not served - verify `ui_index_html_folder` points to a built UI artifact. |
 | `error` | `Socket server failed to acquire write lock for stop request: {}` | `src/socket_server.rs` | - | Internal threading issue on shutdown. Server may need SIGTERM if it hangs. |
 | `error` | `Socket server failed to connect to itself: {}` | `src/socket_server.rs` | - | Internal stop-signal socket unreachable. Port may be in use by another process. |
 | `error` | `Socket server failed to get local address for stop signal` | `src/socket_server.rs` | - | Network/IPC failure. Check connectivity and port availability. |
@@ -47,7 +46,6 @@ Crate path: `crate/server`
 | `error` | `Socket server stop signal contained error: {}` | `src/socket_server.rs` | - | Stop channel returned an error. Inspect the formatted error value. |
 | `error` | `Windows service failed: {e}` | `src/windows_service.rs` | `e`: caught error | Fatal Windows service error. Check Windows Event Log for the full stack trace. |
 | `error` | `{:?} {} 401 unauthorized: Client and server authentication tokens mismatch` | `src/middlewares/api_token/api_token_auth.rs` | - | API token mismatch - rotate the `kms_api_token_id` / `kms_api_token` config values. |
-| `error` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | Unhandled HTTP error response emitted to the client. |
 | `error` | `{}` | `src/start_kms_server.rs` | - | Catch-all error log. Inspect the formatted value for the actual error. |
 | `warn` | `Activate: object {} is already Active, rejecting` | `src/core/operations/activate.rs` | - | - |
 | `warn` | `AWS XKS create: key {uid} already exists (ignoring creation).` | `src/routes/aws_xks/key_metadata.rs` | `uid`: KMIP object UID | - |
@@ -454,7 +452,6 @@ Crate path: `crate/server`
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `warn` | `CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed normal permission check on {id} for {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `user`, `id`, `operation_type` | - |
 | `info` | `GET /access/crypto_officer/status {user}` | `src/routes/access.rs` | `user` | - |
-| `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip/handlers.rs` | `e` | - |
 | `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
 | `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
 | `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
@@ -482,7 +479,6 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set              rate_limit_per_second in the server config for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
 | `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` | - |
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
@@ -581,8 +577,6 @@ Crate path: `crate/server`
 | `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/store.rs` | - | Channel closed; `enqueue` silently drops the event |
 | `debug` | `AuditFileStore: resuming at id={next_id}, prev_hash={}` | `src/core/audit/recovery.rs` | `next_id`, `prev_hash` | `prev_hash` is truncated to its first 8 bytes (hex) |
 | `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/writer.rs` | - | Graceful shutdown complete |
-| `error` | `audit: event not queued — rejecting response (reject mode)` | `src/middlewares/audit/mod.rs` | - | Audit failure in reject mode: single event failed to queue (channel full or closed). HTTP response is 503 ServiceUnavailable. |
-| `error` | `audit: event(s) not queued — rejecting response (reject mode)` | `src/middlewares/audit/mod.rs` | - | Audit failure in reject mode: batch request (one or more events) failed to queue. HTTP response is 503 ServiceUnavailable. |
 | `error` | `AuditFileStore: audit log lock {} held by another instance ({e}) —                          buffering events until it is released` | `src/core/audit/file_sink.rs` | `e`: lock acquisition error | Normal in HA deployments: another KMS instance holds the audit log lock. Events buffered (up to channel capacity) and file open will retry periodically. |
 | `error` | `AuditFileStore: sealed corrupted audit log as {} (reason={}, sha256={sha256_hex},          size={size}, claimed_last_id={claimed_last_id:?}, failure_offset={failure_offset}) —          starting a fresh chain` | `src/core/audit/recovery.rs` | `sha256_hex`: SHA256 of sealed file<br>`size`: file size in bytes<br>`claimed_last_id`: last event ID if readable<br>`failure_offset`: byte offset where corruption detected | **Security:** Corrupted log sealed as forensic evidence with RFC3339 timestamp. New chain started at id=0 (`audit:reanchor` event). Offline verification: run `ckms audit verify` on the live log (or its containing directory) — it cross-checks the sealed file's SHA-256 through the live log's reanchor event; running it directly on the sealed file fails chain verification instead, since the sealed file is an intentionally broken chain. |
 | `error` | `AuditFileStore: torn write recovered — discarded {bytes_discarded} byte(s) at offset          {discard_offset} (process likely killed mid-write); resuming chain at id={next_id}` | `src/core/audit/recovery.rs` | `bytes_discarded`: incomplete bytes dropped<br>`discard_offset`: offset in file<br>`next_id`: resuming event ID | Process killed mid-write (crash/SIGKILL). Incomplete event discarded; hash chain preserved. |
@@ -663,7 +657,6 @@ Crate path: `crate/server`
 | `debug` | `enrollment: issued certificate {uid} (serial {serial_hex}) from CA {ca_uid}` | `src/routes/enrollment.rs` | `uid`, `serial_hex`, `ca_uid` | - |
 | `trace` | `RNGSeed: {} bytes` | `src/core/operations/rng_seed.rs` | - | - |
 | `warn` | `` enrollment: CA `{ca_uid}` could not be used by `{ENROLLMENT_SERVICE_USER}`: {error}. The CA owner must grant it `certify` on the CA certificate and private key (and `decrypt` on the wrapping key if the CA key is wrapped, and `create` when Crypto Officers are configured). `` | `src/routes/enrollment.rs` | `ca_uid`, `ENROLLMENT_SERVICE_USER`, `error` | - |
-| `error` | `` SCEP: the enrollment CA `{ca_uid}` cannot be used: {e} `` | `src/routes/scep/pki_operation.rs` | `ca_uid`, `e` | Server-side detail only: the client gets a fixed HTTP 500 without CA identifiers. |
 | `warn` | `enrollment: CA certificate not found: {ca_uid}` | `src/routes/enrollment.rs` | `ca_uid` | - |
 | `warn` | `enrollment: the CA private key {} is not Active` | `src/routes/enrollment.rs` | key uid | Logged only; the enrollment error carries no UID. |
 | `warn` | `SCEP request {} from {client} rejected: {reason} (messageType={message_type})` | `src/routes/scep/pki_operation.rs` | `client`, `reason`, `message_type` | Counts toward the enrollment lockout. |
@@ -758,7 +751,6 @@ Crate path: `crate/server`
 | `warn` | `Failed to persist automatic transition of object {} to {target}: {e}` | `src/core/retrieve_object_utils.rs` | `target`, `e` | - |
 | `info` | `[auto-rotate] Key {uid} was modified concurrently ({msg}); skipped until the next check` | `src/core/operations/auto_rotate.rs` | `uid`, `msg` | - |
 | `trace` | `Auto-transitioning object {} from {effective_state} to {target}` | `src/core/retrieve_object_utils.rs` | `effective_state`, `target` | - |
-| `error` | `KV API internal error: {detail}` | `src/routes/kv/error.rs` | `detail` | - |
 | `error` | `SSH_CERTIFICATE_ISSUED: SSH certificate signed by the KMS CA` | `src/routes/ssh/mod.rs` | - | - |
 | `warn` | `[kv-ttl-cron] cannot expire KV version object {uid}: {error}` | `src/routes/kv/metadata.rs` | `uid`, `error` | - |
 | `warn` | `[kv-ttl-cron] sweep failed: {e}` | `src/cron.rs` | `e` | - |
@@ -815,6 +807,8 @@ Crate path: `crate/server`
 | `warn` | `failed to bind dependant {dep_uid} to its row: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
 | `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping and are not bound to their database row. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `info` | `bound {bound} stored objects to their row` | `src/core/wrapping/wrap.rs` | `bound` | - |
+| `error` | `{status} [request id: {request_id}] - {detail}` | `src/routes/mod.rs` | `status`: 5xx HTTP status<br>`request_id`: UUID also returned to the client in `X-Request-Id` and in the response body<br>`detail`: full internal error, never sent to the client | Look up a client-reported request id here to find the cause of a 5xx. |
+| `warn` | `SECURITY: audit logging is disabled: KMIP (HTTP and socket) and provider requests are not recorded. Enable it with --audit-enable (KMS_AUDIT_ENABLE) for production deployments.` | `src/start_kms_server.rs` | - | Enable audit logging for production deployments, see [Audit logging](./audit-logs.md). |
 
 ### `cosmian_kms_server_database`
 
