@@ -18,17 +18,22 @@ use crate::{
     kmip_0::kmip_types::{Authentication, Credential, CredentialType, CredentialValue},
     kmip_1_4::{
         kmip_attributes::Attribute as Attribute14,
-        kmip_data_structures::EncryptionKeyInformation as EncryptionKeyInformation14,
-        kmip_types::{Link as Link14, LinkType as LinkType14},
+        kmip_data_structures::{
+            DerivationParameters as DerivationParameters14,
+            EncryptionKeyInformation as EncryptionKeyInformation14, KeyMaterial as KeyMaterial14,
+        },
+        kmip_objects::{Object as Object14, OpaqueObject as OpaqueObject14},
+        kmip_operations::{Operation as Operation14, RNGSeed as RNGSeed14},
+        kmip_types::{Link as Link14, LinkType as LinkType14, OpaqueDataType as OpaqueDataType14},
     },
     kmip_2_1::{
         extra::BulkData,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, PrivateKey},
-        kmip_operations::{Decrypt, Encrypt},
+        kmip_objects::{Object, OpaqueObject, PrivateKey},
+        kmip_operations::{Decrypt, Encrypt, Operation, RNGSeed},
         kmip_types::{
             EncryptionKeyInformation, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            UniqueIdentifier,
+            OpaqueDataType, UniqueIdentifier,
         },
     },
     ttlv::{KmipBigInt, KmipEnumerationVariant, TTLV, TTLValue, from_ttlv, to_ttlv},
@@ -382,4 +387,79 @@ fn pkcs12_password_in_encryption_key_information_is_redacted() {
         drop(from_ttlv::<EncryptionKeyInformation>(&ttlv).unwrap());
     });
     assert_no_marker("EKI deserializer traces", &logs);
+}
+
+/// `OpaqueObject` (1.4 and 2.1) and the 2.1 `RNGSeed` print their length only in `Debug`; wire
+/// format and 1.4 <-> 2.1 conversions are unchanged.
+#[test]
+fn kmip_opaque_object_and_rng_seed_debug_print_lengths_only() {
+    let m = MARKER.as_bytes().to_vec();
+
+    let o14 = OpaqueObject14 {
+        opaque_data_type: OpaqueDataType14::Unknown,
+        opaque_data_value: m.clone(),
+    };
+    assert_no_marker("1.4 OpaqueObject Debug", &format!("{o14:?} {o14:#?}"));
+    assert_no_marker(
+        "1.4 Object Debug",
+        &format!("{:?}", Object14::OpaqueObject(o14.clone())),
+    );
+    assert!(format!("{o14:?}").contains("<13 bytes>"));
+
+    let o21 = OpaqueObject {
+        opaque_data_type: OpaqueDataType::Unknown,
+        opaque_data_value: m.clone(),
+    };
+    assert_no_marker("2.1 OpaqueObject Debug", &format!("{o21:?} {o21:#?}"));
+    assert_no_marker(
+        "2.1 Object Debug",
+        &format!("{:?}", Object::OpaqueObject(o21.clone())),
+    );
+    assert!(format!("{o21:?}").contains("<13 bytes>"));
+
+    assert_eq!(OpaqueObject::from(o14.clone()), o21);
+    assert_eq!(OpaqueObject14::try_from(o21.clone()).unwrap(), o14);
+
+    let mut ttlv = None;
+    let logs = captured_logs(|| ttlv = Some(to_ttlv(&o21).unwrap()));
+    assert_no_marker("2.1 OpaqueObject serializer traces", &logs);
+    let ttlv = ttlv.unwrap();
+    assert_no_marker("2.1 OpaqueObject TTLV Debug", &format!("{ttlv:?}"));
+    assert_eq!(from_ttlv::<OpaqueObject>(&ttlv).unwrap(), o21);
+
+    let mut ttlv = None;
+    let logs = captured_logs(|| ttlv = Some(to_ttlv(&o14).unwrap()));
+    assert_no_marker("1.4 OpaqueObject serializer traces", &logs);
+    let ttlv = ttlv.unwrap();
+    assert_no_marker("1.4 OpaqueObject TTLV Debug", &format!("{ttlv:?}"));
+    assert_eq!(from_ttlv::<OpaqueObject14>(&ttlv).unwrap(), o14);
+
+    let seed = RNGSeed { data: m.clone() };
+    assert_no_marker("RNGSeed Debug", &format!("{seed:?} {seed:#?}"));
+    assert_no_marker(
+        "RNGSeed Operation Debug",
+        &format!("{:?}", Operation::RNGSeed(seed.clone())),
+    );
+    assert!(format!("{seed:?}").contains("<13 bytes>"));
+    assert_eq!(
+        from_ttlv::<RNGSeed>(&to_ttlv(&seed).unwrap()).unwrap(),
+        seed
+    );
+
+    assert_no_marker(
+        "1.4 RNGSeed Operation Debug",
+        &format!("{:?}", Operation14::RNGSeed(RNGSeed14 { data: m.clone() })),
+    );
+
+    let derivation = DerivationParameters14 {
+        derivation_data: Some(SensitiveBytes::from(m.clone())),
+        initialization_vector: Some(SensitiveBytes::from(m.clone())),
+        salt: Some(SensitiveBytes::from(m.clone())),
+        ..Default::default()
+    };
+    assert_no_marker("1.4 DerivationParameters Debug", &format!("{derivation:?}"));
+    let material = KeyMaterial14::TransparentSymmetricKey {
+        key: SensitiveBytes::from(m),
+    };
+    assert_no_marker("1.4 KeyMaterial Debug", &format!("{material:?}"));
 }
