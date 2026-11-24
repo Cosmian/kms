@@ -257,6 +257,13 @@ impl KMS {
                     server_params.hsm_instances.len()
                 ))
             })?;
+            if inst.admin.iter().any(|a| a == "*") {
+                cosmian_logger::warn!(
+                    "HSM instance '{}': hsm_admin \"*\" grants HSM administration to every \
+                     authenticated user",
+                    inst.prefix
+                );
+            }
             let hsm_store = HsmStore::new(
                 hsm_arc.clone(),
                 &inst.admin,
