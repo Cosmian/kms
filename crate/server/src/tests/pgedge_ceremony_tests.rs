@@ -7,7 +7,7 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use crate::{
-    config::{ClapConfig, MainDBConfig, RegionRole, ServerParams},
+    config::{ClapConfig, MainDBConfig, RegionRole},
     core::{KMS, operations::perform_crypto_officer_ceremony_activation},
     middlewares::UserId,
     result::KResult,
@@ -38,9 +38,7 @@ async fn make_pgedge_ceremony_kms(
     config.roles.crypto_officer_users = Some(co_users);
     config.roles.crypto_officer_require_ceremony = true;
     config.roles.ceremony_secret = Some(ceremony_secret.to_owned());
-    Ok(Arc::new(
-        KMS::instantiate(Arc::new(ServerParams::try_from(config)?)).await?,
-    ))
+    crate::tests::test_utils::test_kms_with_config(config).await
 }
 
 /// Poll until `kms.is_crypto_officer(user)` returns `expected`, or time out.
