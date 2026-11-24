@@ -2257,6 +2257,8 @@ where
 {
     log_init(None);
     let runtime = tokio::runtime::Builder::new_current_thread()
+        // the HSM session-permit wait uses `tokio::time::timeout`
+        .enable_time()
         .build()
         .map_err(|e| HError::Default(e.to_string()))?;
     let valid_key_id_0 = test_object_id();
