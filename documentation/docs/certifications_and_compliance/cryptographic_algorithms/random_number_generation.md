@@ -308,7 +308,7 @@ text is not reproduced here.
 
 Mapping each entropy/FIPS-relevant requirement to Eviden KMS's current code:
 
-- **RS2 — not met.** `pqc` (`crate/crypto/src/crypto/mod.rs` lines 25-26) is gated entirely behind
+- **RS2 — not met.** `pqc` (`crate/crypto/src/crypto/mod.rs`) is gated entirely behind
   `#[cfg(feature = "non-fips")]` and is absent from every FIPS-mode build. RS2 cannot be attempted in Eviden's
   default build configuration because the PQC code does not exist in that build at all.
 - **RS4 — not met, two independent gaps:**
