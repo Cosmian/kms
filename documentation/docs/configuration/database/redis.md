@@ -59,7 +59,7 @@ It is the database selected to [run the Eviden KMS in the cloud or any other zer
 ## How encryption keys are derived
 
 1. A **master password** is provided at startup (`redis_master_password`).
-2. A 32-byte **master key** is derived from the password using **Argon2** (salt `rediswithfindex_`).
+2. A 32-byte **master key** is derived from the password using **Argon2** with a 16-byte salt stored in the database (`kms_kdf_salt`): random for a database created by this version, the legacy fixed salt `rediswithfindex_` for a database created by an older version.
 3. A **database key** is derived from the master key (salt `db`) and is used to encrypt the object and permission data with AES-256-GCM.
 4. The master key is also used by the Findex encryption layer to encrypt the searchable indexes.
 
@@ -78,10 +78,11 @@ sequenceDiagram
     participant Redis as Redis Server (Remote / Untrusted)
 
     Note over KMS,Redis: Startup & In-Memory Key Derivation
-    KMS->>KMS: Derive Master Key via Argon2 (salt: rediswithfindex_)
-    KMS->>KMS: Derive Database Key via Master Key (AES-256-GCM)
     KMS->>Redis: TCP / TLS Connect & AUTH
     Redis-->>KMS: Connection established
+    KMS->>Redis: Read (or create) the KDF salt (kms_kdf_salt)
+    KMS->>KMS: Derive Master Key via Argon2 (salt: kms_kdf_salt)
+    KMS->>KMS: Derive Database Key via Master Key (AES-256-GCM)
     KMS->>Redis: Check metadata keys (db_state, db_version)
     Redis-->>KMS: State: ready
 
@@ -120,9 +121,12 @@ Instead it stores:
 | Ceremony records | Encrypted records under key names obfuscated with the master key |
 | Server parameters | AES-256-GCM encrypted under the database key at `kms::parameter::<name>` (e.g. the KV/SSH identifier key); the first value written wins across replicas |
 | Web UI session revocations | `ui_session_revoked:<sid>` keys with a time-to-live equal to the session's remaining lifetime |
+| KDF salt | `kms_kdf_salt`: 16 non-secret random bytes, the salt of the master-key derivation (see above); not removed when the database is cleared |
 
 ## Migration
 
 Redis-with-Findex databases created on KMS `5.12.0` or later upgrade in place at server startup. Databases created before `5.12.0` are refused at startup and must be exported from the old KMS and imported into a fresh Redis database on the new release.
+
+**Downgrade.** A database that already holds data keeps the legacy fixed salt (recorded in `kms_kdf_salt` on first start), so it can still be opened by an older KMS. A database created empty by this version uses a random salt: an older KMS derives a different master key from the same password and cannot read it. Do not roll a database created by this version back to an older release.
 
 For full upgrade procedures and multi-instance startup behavior, see [Database Migrations](../../installation/upgrading/database_migrations.md).

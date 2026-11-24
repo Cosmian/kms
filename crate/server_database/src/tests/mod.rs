@@ -41,6 +41,8 @@ mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
 #[cfg(feature = "non-fips")]
+mod redis_kdf_salt_tests;
+#[cfg(feature = "non-fips")]
 mod redis_migration_tests;
 mod sql_migration_tests;
 mod sqlite_migration_tests;
@@ -146,6 +148,9 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     .await?;
     crate::stores::redis::redis_with_findex::tests::test_db_redis_revoked_ceremony_record_is_tombstoned()
         .await?;
+    redis_kdf_salt_tests::test_redis_fresh_db_uses_random_salt().await?;
+    redis_kdf_salt_tests::test_redis_legacy_db_keeps_legacy_salt().await?;
+    redis_kdf_salt_tests::test_redis_clear_keeps_salt().await?;
     Box::pin(redis_migration_tests::redis_migration_scenarios()).await?;
     Ok(())
 }

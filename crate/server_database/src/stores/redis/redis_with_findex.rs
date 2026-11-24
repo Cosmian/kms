@@ -15,7 +15,7 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_crypto::{
-    crypto::password_derivation::derive_key_from_password,
+    crypto::{KmsRng, password_derivation::derive_key_from_password},
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
@@ -95,12 +95,20 @@ const fn is_key_type(object_type: ObjectType) -> bool {
     )
 }
 
-/// Derive a Redis Master Key from a password
-pub fn redis_master_key_from_password(
+/// Byte length of the master-password KDF salt.
+const REDIS_KDF_SALT_LENGTH: usize = 16;
+
+/// Redis key holding the (non-secret) salt of the master-password KDF, 16 raw bytes.
+/// Plain key, not an encrypted parameter: it is needed to derive the key that decrypts those.
+pub(crate) const REDIS_KDF_SALT_KEY: &str = "kms_kdf_salt";
+
+/// Derive a Redis Master Key from a password and a salt
+pub(crate) fn redis_master_key_from_password_with_salt(
     master_password: &str,
+    salt: &[u8; REDIS_KDF_SALT_LENGTH],
 ) -> DbResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
     let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
-        REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT,
+        salt,
         master_password.as_bytes(),
     )?;
 
@@ -108,6 +116,81 @@ pub fn redis_master_key_from_password(
         SymmetricKey::try_from_slice(&output_key_material)?;
 
     Ok(master_secret_key)
+}
+
+/// Derive a Redis Master Key from a password with the legacy fixed salt (databases created
+/// before the per-database salt).
+pub fn redis_master_key_from_password(
+    master_password: &str,
+) -> DbResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
+    redis_master_key_from_password_with_salt(
+        master_password,
+        REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT,
+    )
+}
+
+/// Read the KDF salt stored in the database, if any.
+async fn read_kdf_salt(
+    mgr: &mut ConnectionManager,
+) -> DbResult<Option<[u8; REDIS_KDF_SALT_LENGTH]>> {
+    let stored: Option<Vec<u8>> = redis::cmd("GET")
+        .arg(REDIS_KDF_SALT_KEY)
+        .query_async(mgr)
+        .await
+        .map_err(|e| DbError::DatabaseError(format!("Failed to read the Redis KDF salt: {e}")))?;
+    stored
+        .map(|bytes| {
+            <[u8; REDIS_KDF_SALT_LENGTH]>::try_from(bytes.as_slice()).map_err(|_e| {
+                DbError::DatabaseError(format!(
+                    "The Redis KDF salt '{REDIS_KDF_SALT_KEY}' must be {REDIS_KDF_SALT_LENGTH} \
+                     bytes, got {}",
+                    bytes.len()
+                ))
+            })
+        })
+        .transpose()
+}
+
+/// Derive the master key of the database at `redis_url` from `password`.
+///
+/// The salt is stored in the database (`kms_kdf_salt`). A database created by an older KMS
+/// (it holds data but no salt) keeps the legacy fixed salt, which is then recorded; an empty
+/// database gets a random salt. Concurrent instances converge on the first salt written.
+pub(crate) async fn redis_master_key_for_database(
+    redis_url: &str,
+    password: &str,
+) -> DbResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
+    let mut mgr = ConnectionManager::new(redis::Client::open(redis_url)?).await?;
+    let salt = if let Some(salt) = read_kdf_salt(&mut mgr).await? {
+        salt
+    } else {
+        let dbsize: usize = redis::cmd("DBSIZE")
+            .query_async(&mut mgr)
+            .await
+            .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
+        let mut candidate = *REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT;
+        if dbsize == 0 {
+            KmsRng::new().fill_public_bytes(&mut candidate)?;
+        }
+        let written: Option<String> = redis::cmd("SET")
+            .arg(REDIS_KDF_SALT_KEY)
+            .arg(&candidate[..])
+            .arg("NX")
+            .query_async(&mut mgr)
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to write the Redis KDF salt: {e}"))
+            })?;
+        if written.is_some() {
+            candidate
+        } else {
+            // another instance won the race
+            read_kdf_salt(&mut mgr).await?.ok_or_else(|| {
+                DbError::DatabaseError("The Redis KDF salt disappeared during startup".to_owned())
+            })?
+        }
+    };
+    redis_master_key_from_password_with_salt(password, &salt)
 }
 
 fn intersect_all_refs<'a>(sets: &'a Vec<HashSet<&'a IndexedValue>>) -> HashSet<&'a IndexedValue> {
