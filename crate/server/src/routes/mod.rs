@@ -117,16 +117,16 @@ impl actix_web::error::ResponseError for KmsError {
     }
 }
 
-/// Get the KMS version
+/// Get the KMS version. The route is public: it reports the FIPS flavour (a documented property)
+/// but not the OpenSSL build string.
 ///
 /// Registered by `start_kms_server::public_endpoints`, which makes it readable by the Web UI
 /// when it is served from another origin.
 pub(crate) async fn get_version(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(&req));
     Ok(Json(format!(
-        "{} ({}-{})",
+        "{} ({})",
         crate_version!().to_owned(),
-        openssl::version::version(),
         if cfg!(feature = "non-fips") {
             "non-FIPS"
         } else {
