@@ -430,7 +430,8 @@ pub(crate) async fn login_as(
 ) -> HttpResponse {
     // Bounds the limiter's per-username keys: a longer name is never a real account.
     if body.username.len() > MAX_LOGIN_USERNAME_BYTES {
-        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Username too long" }));
+        let error = serde_json::json!({ "error": "Username too long" });
+        return HttpResponse::BadRequest().json(error);
     }
     // Every attempt is counted, before any credential is relayed upstream.
     let client_ip = limiter.client_ip(&req);
