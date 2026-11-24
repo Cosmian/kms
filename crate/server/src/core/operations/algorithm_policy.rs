@@ -7,11 +7,11 @@ use cosmian_kms_server_database::reexport::{
         },
         kmip_2_1::{
             kmip_attributes::Attributes,
-            kmip_data_structures::KeyMaterial,
+            kmip_data_structures::{KeyMaterial, KeyWrappingSpecification},
             kmip_objects::ObjectType,
             kmip_operations::{
-                Create, CreateKeyPair, DeriveKey, Export, Hash, MAC, MACVerify, Operation, Sign,
-                SignatureVerify,
+                Create, CreateKeyPair, DeriveKey, Export, Get, Hash, MAC, MACVerify, Operation,
+                Sign, SignatureVerify,
             },
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
@@ -92,6 +92,7 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
         Op::Import => Operation::Import(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Import, "Import")?)),
         Op::Register => Operation::Register(Box::new(deserialize_op!(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Register, "Register")?)),
         Op::Export => Operation::Export(deserialize_op!(Export, "Export")?),
+        Op::Get => Operation::Get(deserialize_op!(Get, "Get")?),
         // For other operations, request-time algorithm policy doesn't apply.
         _ => return Ok(()),
     };
@@ -128,7 +129,12 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_request(
         Operation::DeriveKey(req) => validate_derive_key(req, &wl),
         Operation::Import(req) => validate_attributes(&req.attributes, &wl),
         Operation::Register(req) => validate_attributes(&req.attributes, &wl),
-        Operation::Export(req) => validate_export(req, &wl),
+        Operation::Export(req) => {
+            validate_key_wrapping_specification(req.key_wrapping_specification.as_ref(), &wl)
+        }
+        Operation::Get(req) => {
+            validate_key_wrapping_specification(req.key_wrapping_specification.as_ref(), &wl)
+        }
 
         // Rekey operations operate on existing objects; enforcement is done on retrieved keys and
         // on the Create/Import paths they invoke. Set/Modify/Add/DeleteAttribute do not carry
@@ -332,11 +338,14 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_csr(
         .map_err(|e| wrap_policy_error(e, "Certify", "denied by algorithm policy"))
 }
 
-fn validate_export(req: &Export, wl: &KmipWhitelists) -> KResult<()> {
-    // Export may declare a Key Wrapping Specification with embedded CryptographicParameters.
-    // Those parameters represent algorithm choices made by the caller and must be validated
-    // against the configured allowlists.
-    if let Some(spec) = &req.key_wrapping_specification
+/// Export and Get may declare a Key Wrapping Specification with embedded `CryptographicParameters`.
+/// Those parameters represent algorithm choices made by the caller and must be validated
+/// against the configured allowlists.
+fn validate_key_wrapping_specification(
+    spec: Option<&KeyWrappingSpecification>,
+    wl: &KmipWhitelists,
+) -> KResult<()> {
+    if let Some(spec) = spec
         && let Some(eki) = &spec.encryption_key_information
         && let Some(cp) = &eki.cryptographic_parameters
     {
