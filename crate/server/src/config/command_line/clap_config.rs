@@ -895,6 +895,53 @@ impl fmt::Debug for ClapConfig {
     }
 }
 
+/// Command-line flags that carry a secret; the same value is available from the matching
+/// `KMS_*` environment variable and from the configuration file, which `ps` does not show.
+const SECRET_FLAGS: [&str; 11] = [
+    "--hsm-password",
+    "--ceremony-secret",
+    "--proxy-basic-auth-password",
+    "--proxy-custom-auth-header",
+    "--redis-master-password",
+    "--est-bootstrap-password",
+    "--scep-challenge-password",
+    "--tls-p12-password",
+    "--ui-session-salt",
+    "--ui-oidc-client-secret",
+    "--google-cse-migration-key",
+];
+
+/// Command-line flags whose value is a connection string, secret only when it holds credentials.
+const CONNECTION_STRING_FLAGS: [&str; 2] = ["--database-url", "--audit-postgres-url"];
+
+/// The secret-bearing flags (see [`SECRET_FLAGS`]) present in `args`, as `--flag value` or
+/// `--flag=value`, plus the connection-string flags whose value embeds credentials. Values are
+/// never returned, so the result can be logged.
+pub fn secret_flags_on_command_line(
+    args: impl IntoIterator<Item = std::ffi::OsString>,
+) -> Vec<&'static str> {
+    let args: Vec<String> = args
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let mut found = Vec::new();
+    for (index, arg) in args.iter().enumerate() {
+        let (flag, inline_value) = arg
+            .split_once('=')
+            .map_or((arg.as_str(), None), |(flag, value)| (flag, Some(value)));
+        if let Some(secret_flag) = SECRET_FLAGS.iter().find(|secret| **secret == flag) {
+            found.push(*secret_flag);
+        } else if let Some(url_flag) = CONNECTION_STRING_FLAGS.iter().find(|url| **url == flag) {
+            let value = inline_value.or_else(|| args.get(index + 1).map(String::as_str));
+            if value.is_some_and(|v| cosmian_kms_server_database::redact_connection_string(v) != v)
+            {
+                found.push(*url_flag);
+            }
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     //! Configuration precedence tests
@@ -1364,5 +1411,37 @@ mod tests {
         let debug = format!("{conf:#?}");
         assert!(!debug.contains("xks-secret-value"), "{debug}");
         assert!(debug.contains("aws_xks_sigv4_secret_access_key"), "{debug}");
+    }
+
+    #[test]
+    fn secret_flags_on_command_line_detects_flags() {
+        let args = |v: &[&str]| v.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
+        assert_eq!(
+            super::secret_flags_on_command_line(args(&[
+                "kms",
+                "--hsm-password=x",
+                "--ceremony-secret",
+                "y",
+                "--port",
+                "1"
+            ])),
+            ["--hsm-password", "--ceremony-secret"]
+        );
+        // Connection strings are flagged only when they embed credentials.
+        assert_eq!(
+            super::secret_flags_on_command_line(args(&[
+                "kms",
+                "--database-url",
+                "postgresql://kms:pw@db:5432/kms"
+            ])),
+            ["--database-url"]
+        );
+        assert_eq!(
+            super::secret_flags_on_command_line(args(&[
+                "kms",
+                "--database-url=postgresql://db:5432/kms"
+            ])),
+            Vec::<&str>::new()
+        );
     }
 }
