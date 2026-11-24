@@ -367,7 +367,7 @@ jobs:
     name: Helm chart E2E (minikube)
     runs-on: ubuntu-24.04
     permissions:
-      contents: read # the workflow-level token grants write for publishing
+      contents: read
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
