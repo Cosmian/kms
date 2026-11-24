@@ -273,11 +273,13 @@ exporters:
 
 ### Security Best Practices
 
-1. **Use TLS for OTLP transport**:
+1. **Forward over TLS from a local collector**: the server has no OTLP TLS transport (`https://` endpoints are
+   rejected at startup), so point it at a collector on the same host or pod and let the collector export over TLS:
 
 ```toml
 [logging]
-otlp = "https://collector.example.com:4317"
+otlp = "http://localhost:4317"
+otlp_allow_insecure = true
 ```
 
 1. **Authentication**: Configure API keys in OTLP Collector:
@@ -297,7 +299,8 @@ Deploy multiple OTLP Collectors with load balancing:
 
 ```toml
 [logging]
-otlp = "https://otlp-lb.example.com:4317"
+otlp = "http://otlp-lb.internal:4317" # private network only; requires otlp_allow_insecure = true
+otlp_allow_insecure = true
 ```
 
 ## Troubleshooting

@@ -26,6 +26,7 @@ services:
       - '9998'
       - --otlp
       - http://otel-collector:4317
+      - --otlp-allow-insecure # plaintext gRPC on the private compose network only
       - --enable-metering
     ports:
       - 9998:9998
