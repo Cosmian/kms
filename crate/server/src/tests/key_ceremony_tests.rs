@@ -2451,3 +2451,42 @@ async fn test_ceremony_verification_fails_secure_on_ceremony_keys_mismatch() -> 
     );
     Ok(())
 }
+
+/// Under a global `require_ceremony`, only CO candidates (and the `default_username`
+/// provisioning identity) get a ceremony split: a user who merely holds the `Create` right gets
+/// an ordinary split that they own, and cannot route a key they know through the ceremony.
+///
+/// Guards: #1500 R-04
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_global_ceremony_non_candidate_split_is_ordinary() -> KResult<()> {
+    let candidates = ["alice@example.com", "carol@example.com", "dave@example.com"];
+    let mallory = "mallory@example.com";
+    let kms = ceremony_kms(candidates.iter().map(|c| (*c).to_owned()).collect()).await?;
+
+    // Mallory holds the global `Create` grant that `enforce_create_permission` accepts.
+    kms.database
+        .grant_operations(
+            "*",
+            &UserId::from(mallory),
+            std::collections::HashSet::from([KmipOperation::Create]),
+        )
+        .await?;
+
+    let key_uid = create_key(&kms, mallory).await?;
+    let share_uids = Box::pin(split_key(&kms, mallory, &key_uid, 3)).await?;
+    assert_eq!(share_uids.len(), 3);
+    for share_uid in &share_uids {
+        let owm = kms
+            .database
+            .retrieve_object(share_uid)
+            .await?
+            .ok_or_else(|| KmsError::ItemNotFound(share_uid.clone()))?;
+        assert_eq!(owm.owner(), mallory, "an ordinary split keeps the shares");
+    }
+    assert!(
+        kms.database.retrieve_object(&key_uid).await?.is_some(),
+        "an ordinary split does not destroy the source key"
+    );
+    Ok(())
+}
