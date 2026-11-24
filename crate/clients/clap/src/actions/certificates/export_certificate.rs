@@ -13,6 +13,7 @@ use cosmian_kms_client::{
         CertificateExportFormat, prepare_certificate_export_elements,
     },
     write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
+    write_private_bytes_to_file,
 };
 use cosmian_logger::trace;
 
@@ -155,7 +156,7 @@ impl ExportCertificateAction {
             Object::PrivateKey(PrivateKey { key_block }) => {
                 let p12_bytes = key_block.pkcs_der_bytes()?.to_vec();
                 // save it to a file
-                write_bytes_to_file(&p12_bytes, &self.certificate_file)?;
+                write_private_bytes_to_file(&p12_bytes, &self.certificate_file)?;
             }
             _ => {
                 cli_bail!(

@@ -259,6 +259,9 @@ When running `ckms login`:
 3. The browser redirects to a local endpoint (<http://localhost:17899/authorization>)
 4. The CLI captures the token and saves it in your configuration file
 
+`ckms.toml`, exported keys and decrypted files are written readable by their owner only (mode 0600
+on Linux/macOS; an existing file is reset to 0600).
+
 ## Corporate Network / Forward Proxy
 
 When the KMS CLI is used inside a corporate network, the system HTTP proxy may intercept

@@ -1,7 +1,7 @@
 use std::{io::Write as _, path::PathBuf};
 
 use cosmian_config_utils::{ConfigUtils, location};
-use cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClientConfig;
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{KmsClientConfig, create_private_file};
 use cosmian_logger::debug;
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,8 @@ impl ClientConfig {
             "Saving configuration to: {}",
             conf_path_buf.display()
         )?;
-
+        // `to_toml` truncates in place, so the file keeps this owner-only mode.
+        drop(create_private_file(&conf_path_buf)?);
         Ok(self.to_toml(conf_path_buf.to_str().ok_or_else(|| {
             CosmianError::Default("Unable to convert the configuration path to a string".to_owned())
         })?)?)

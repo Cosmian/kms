@@ -5,7 +5,7 @@ use cosmian_config_utils::ConfigUtils;
 use cosmian_kms_cli_actions::{
     actions::kms_actions::KmsActions,
     reexport::cosmian_kms_client::{
-        GmailApiConf, KmsClient,
+        GmailApiConf, KmsClient, create_private_file,
         reexport::cosmian_http_client::{HttpClientConfig, ProxyParams},
     },
 };
@@ -571,6 +571,8 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
         "\nWriting configuration to default path: {}",
         default_path.display()
     )?;
+    // `to_toml` truncates in place, so the file keeps this owner-only mode.
+    drop(create_private_file(&default_path)?);
     config
         .to_toml(
             default_path

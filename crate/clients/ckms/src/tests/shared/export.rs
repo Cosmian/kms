@@ -185,6 +185,41 @@ pub(crate) async fn test_export_sym() -> CosmianResult<()> {
     Ok(())
 }
 
+/// Exported key files are readable by their owner only, whether new or pre-existing.
+#[cfg(unix)]
+#[tokio::test]
+pub(crate) async fn test_export_key_files_are_owner_only() -> CosmianResult<()> {
+    use std::{fs, fs::Permissions, os::unix::fs::PermissionsExt};
+
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    let ctx = start_default_test_kms_server().await;
+    let owner_client_conf_path = owner_config(ctx);
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
+
+    let existing = tmp_path.join("existing.json");
+    fs::write(&existing, b"old")?;
+    fs::set_permissions(&existing, Permissions::from_mode(0o644))?;
+
+    for (file, key_format) in [
+        ("new.json", None),
+        ("new.raw", Some(ExportKeyFormat::Raw)),
+        ("existing.json", None),
+    ] {
+        export_key(ExportKeyParams {
+            cli_conf_path: owner_client_conf_path.clone(),
+            sub_command: "sym".to_owned(),
+            key_id: key_id.clone(),
+            key_file: tmp_path.join(file).to_str().unwrap().to_owned(),
+            key_format,
+            ..Default::default()
+        })?;
+        let mode = fs::metadata(tmp_path.join(file))?.permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "{file}");
+    }
+    Ok(())
+}
+
 #[tokio::test]
 pub(crate) async fn test_export_sym_allow_revoked() -> CosmianResult<()> {
     // create a temp dir

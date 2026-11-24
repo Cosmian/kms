@@ -6,7 +6,7 @@ use std::{
 
 use clap::Parser;
 use cosmian_kms_client::{
-    ExportObjectParams, KmsClient, export_object,
+    ExportObjectParams, KmsClient, create_private_file, export_object,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyValue, KeyWrappingData},
@@ -141,8 +141,7 @@ impl DecryptAction {
             .clone()
             .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
 
-        let mut output_file =
-            File::create(&output_file_name).context("Fail to write the plaintext file")?;
+        let mut output_file = create_private_file(&output_file_name)?;
 
         if let Some(key_encryption_algorithm) = self.key_encryption_algorithm {
             self.client_side_decrypt_with_file(

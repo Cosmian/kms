@@ -13,7 +13,7 @@ use cosmian_kms_client::{
         ExportKeyFormat, WrappingAlgorithm, der_to_pem, openpgp_key_to_binary,
         prepare_key_export_elements,
     },
-    write_bytes_to_file, write_kmip_object_to_file,
+    write_kmip_object_to_file, write_private_bytes_to_file,
 };
 
 use super::get_key_uid;
@@ -168,13 +168,13 @@ impl ExportSecretDataOrKeyAction {
             let base64_key = base64::engine::general_purpose::STANDARD
                 .encode(get_object_bytes(&object)?)
                 .to_lowercase();
-            write_bytes_to_file(base64_key.as_bytes(), &self.key_file)?;
+            write_private_bytes_to_file(base64_key.as_bytes(), &self.key_file)?;
         } else if matches!(
             &self.export_format,
             ExportKeyFormat::PgpSecretBinary | ExportKeyFormat::PgpPublicBinary
         ) {
             let bytes = openpgp_key_to_binary(&get_object_bytes(&object)?)?;
-            write_bytes_to_file(bytes.as_slice(), &self.key_file)?;
+            write_private_bytes_to_file(bytes.as_slice(), &self.key_file)?;
         } else {
             // export the bytes only
             let bytes = {
@@ -191,7 +191,7 @@ impl ExportSecretDataOrKeyAction {
                 }
                 bytes
             };
-            write_bytes_to_file(&bytes, &self.key_file)?;
+            write_private_bytes_to_file(&bytes, &self.key_file)?;
         }
 
         let stdout = format!(

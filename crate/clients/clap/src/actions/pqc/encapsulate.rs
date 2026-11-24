@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kms_client::{KmsClient, kmip_2_1::requests::encrypt_request};
+use cosmian_kms_client::{KmsClient, create_private_file, kmip_2_1::requests::encrypt_request};
 use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
 
 use crate::{
@@ -61,8 +61,7 @@ impl EncapsulateAction {
             .with_context(|| "failed to write the encapsulation file")?;
 
         let session_key_file = output_file.with_extension("key");
-        let mut key_buffer = File::create(&session_key_file)
-            .with_context(|| "failed to write the shared secret file")?;
+        let mut key_buffer = create_private_file(&session_key_file)?;
         key_buffer
             .write_all(&shared_secret)
             .with_context(|| "failed to write the shared secret file")?;

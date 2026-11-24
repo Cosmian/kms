@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::{Parser, ValueEnum};
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{KmsClient, write_private_bytes_to_file};
 use serde::Serialize;
 
 pub use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
@@ -158,7 +158,7 @@ fn normalize_input_bytes(mut data: Vec<u8>, data_type: FpeDataType) -> Vec<u8> {
 
 pub(crate) fn write_output_bytes(output_file: Option<&PathBuf>, output: &[u8]) -> KmsCliResult<()> {
     if let Some(output_file) = output_file {
-        fs::write(output_file, output)?;
+        write_private_bytes_to_file(output, output_file)?;
     } else {
         std::io::stdout().write_all(output)?;
         std::io::stdout().flush()?;

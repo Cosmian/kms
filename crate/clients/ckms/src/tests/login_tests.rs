@@ -265,6 +265,33 @@ fn test_ckms_login_oauth_refresh_saves_access_token() {
     assert!(request.body.contains("refresh_token=rt-1"));
 }
 
+/// `ckms login` rewrites `ckms.toml` readable by its owner only, even when the file existed with a
+/// wider mode.
+#[cfg(unix)]
+#[test]
+fn test_ckms_login_saves_config_owner_only() {
+    use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+
+    let mock = test_kms_server::mock_gmail::start();
+    let dir = TempDir::new().unwrap();
+    let conf_path = dir.path().join("ckms.toml");
+    fs::write(
+        &conf_path,
+        oauth2_toml(&format!("{}/token", mock.base), Some("rt-1")),
+    )
+    .unwrap();
+    fs::set_permissions(&conf_path, Permissions::from_mode(0o644)).unwrap();
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .args(["login", "oauth", "--refresh"]);
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(output.status.success(), "{output:?}");
+
+    let mode = fs::metadata(&conf_path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+}
+
 /// `ckms login oauth --refresh` must fail, naming `refresh_token`, when none was saved.
 #[test]
 fn test_ckms_login_oauth_refresh_fails_without_refresh_token() {

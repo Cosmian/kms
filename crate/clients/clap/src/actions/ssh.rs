@@ -13,7 +13,7 @@ use std::{fs::OpenOptions, io::Write, path::Path};
 use clap::{Args, Subcommand};
 use cosmian_kms_client::{
     KmsClient, kmip_2_1::requests::create_ec_key_pair_request,
-    reexport::cosmian_kms_client_utils::create_utils::Curve,
+    reexport::cosmian_kms_client_utils::create_utils::Curve, restrict_to_owner,
 };
 use openssl::{
     bn::BigNumContext,
@@ -361,17 +361,6 @@ fn write_new_file(path: &Path, contents: &[u8], private: bool) -> KmsCliResult<(
     file.write_all(contents)
         .with_context(|| format!("writing {}", path.display()))
 }
-
-#[cfg(unix)]
-fn restrict_to_owner(options: &mut OpenOptions, private: bool) {
-    use std::os::unix::fs::OpenOptionsExt;
-    if private {
-        options.mode(0o600);
-    }
-}
-
-#[cfg(not(unix))]
-fn restrict_to_owner(_options: &mut OpenOptions, _private: bool) {}
 
 /// A new ECDSA P-256 key pair: the private key as a PEM (accepted by `ssh -i`) and the public
 /// key in OpenSSH format.
