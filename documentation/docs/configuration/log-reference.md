@@ -609,7 +609,7 @@ Crate path: `crate/server`
 | `warn` | `JWT-SVID for {sub} rejected: missing or empty 'aud' claim` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID of the rejected SVID | Possible cross-service SVID replay attempt |
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
-| `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | ×2 in this file |
 | `trace` | `import pgp_key: uid={}` | `src/core/operations/import.rs` | - | - |
 | `error` | `AuditFileStore: audit sink failed to resume ({e}) — audit logging is disabled for this process` | `src/core/audit/store.rs` | `e` | Only reachable if the recovered log file's metadata cannot be `stat`'d at all (lock acquisition and recovery/open faults retry indefinitely and never reach here). The writer task exits and audit logging stays off for the rest of the process lifetime — it is not retried. |
 | `error` | `AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped` | `src/core/audit/file_sink.rs` | `id`: sentinel event ID<br>`e`: I/O error | A torn-write-recovered or reanchor sentinel written during recovery (before the writer task exists) failed to persist; the chain does not advance past this `id` and the sentinel is dropped. |
@@ -800,6 +800,11 @@ Crate path: `crate/server`
 | `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})` | `src/cron.rs` | `issuer_id` (CA certificate UID), `refresh_reason` (`expires within <N>h` or `revoked certificates changed`) | Leader region only. |
 | `debug` | `Session: authenticated user '{username}'` | `src/middlewares/session_auth.rs` | `username` | - |
 | `debug` | `UI session cookie rejected: {reason}` | `src/middlewares/ui_session.rs` | `reason` | - |
+| `debug` | `vault transit: created {AES256_GCM96} key '{name}' version {version}` | `src/routes/spire/transit_encryption.rs` | `AES256_GCM96`, `name`, `version` | - |
+| `debug` | `vault transit: decryption failed: {reason}` | `src/routes/spire/transit_encryption.rs` | `reason` | - |
+| `trace` | `{} vault transit decrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
+| `trace` | `{} vault transit encrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
+| `trace` | `{} vault transit keys/{name}/rotate` | `src/routes/spire/transit_encryption.rs` | `name` | - |
 
 ### `cosmian_kms_server_database`
 
