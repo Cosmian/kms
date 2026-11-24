@@ -1651,6 +1651,11 @@ impl Migrate for PgPool {
             .batch_execute(self.get_query("purge-orphan-gcm-invocations")?)
             .await
             .map_err(DbError::from)?;
+        // Erase the sealed record of ceremony activations revoked by an older KMS.
+        client
+            .batch_execute(self.get_query("tombstone-revoked-crypto-officer-activations")?)
+            .await
+            .map_err(DbError::from)?;
         // Add wrapping_key_id column if not present (idempotent).
         client
             .batch_execute(self.get_query("add-column-wrapping-key-id")?)

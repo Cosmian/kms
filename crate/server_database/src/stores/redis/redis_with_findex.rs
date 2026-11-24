@@ -967,6 +967,12 @@ impl RedisWithFindex {
                     "revoked_by".to_owned(),
                     serde_json::Value::String(revoked_by.to_owned()),
                 );
+                // Erase the sealed record: a revoked ceremony must not be revivable by
+                // clearing `revoked_at`.
+                obj.insert(
+                    "sealed".to_owned(),
+                    serde_json::Value::String(String::new()),
+                );
             }
             let updated = serde_json::to_string(&v).map_err(|e| {
                 InterfaceError::Default(format!("Failed to serialize ceremony record: {e}"))
@@ -1847,7 +1853,7 @@ pub(crate) mod tests {
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
     use cosmian_kms_crypto::{crypto::KmsRng, reexport::cosmian_crypto_core::Secret};
-    use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
+    use cosmian_kms_interfaces::{ObjectsStore as _, PermissionsStore as _, UserId};
     use uuid::Uuid;
 
     use crate::{
@@ -1966,6 +1972,28 @@ pub(crate) mod tests {
             .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
             .await?;
         assert!(found.is_empty(), "find returned stale hit: {found:?}");
+        Ok(())
+    }
+
+    /// Revoking a ceremony record erases the sealed blob, so clearing `revoked_at` cannot
+    /// bring it back.
+    pub(crate) async fn test_db_redis_revoked_ceremony_record_is_tombstoned()
+    -> crate::error::DbResult<()> {
+        let mut rng = KmsRng::new().seeded_csrng()?;
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
+        let user = format!("co-{}", Uuid::new_v4());
+        store
+            .activate_crypto_officer_ceremony("blob", &user, &user)
+            .await?;
+        store.revoke_crypto_officer_activation(&user, &user).await?;
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(store.derive_per_user_ceremony_key_name("crypto_officer", &user))
+            .query_async(&mut store.mgr.clone())
+            .await?;
+        let record: serde_json::Value =
+            serde_json::from_str(&raw.ok_or_else(|| crate::db_error!("ceremony record missing"))?)?;
+        assert_eq!(record["sealed"], "");
         Ok(())
     }
 

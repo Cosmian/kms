@@ -286,6 +286,8 @@ impl SqlitePool {
             get_sqlite_query!("clean-table-gcm_invocations"),
         ];
         let purge_gcm_invocations = get_sqlite_query!("purge-orphan-gcm-invocations");
+        let tombstone_revoked_co =
+            get_sqlite_query!("tombstone-revoked-crypto-officer-activations");
         let table_info_objects_sql = get_sqlite_query!("table-info-objects");
         let add_version_sql = get_sqlite_query!("add-column-version");
         retry_on_transient_lock(|| async {
@@ -320,6 +322,8 @@ impl SqlitePool {
                         // Drop counters orphaned by an older KMS that deleted keys without
                         // deleting their counters (downgrade then upgrade).
                         tx.execute(purge_gcm_invocations, [])?;
+                        // Erase the sealed record of ceremony activations revoked by an older KMS.
+                        tx.execute(tombstone_revoked_co, [])?;
                         tx.commit()?;
                         Ok(())
                     },

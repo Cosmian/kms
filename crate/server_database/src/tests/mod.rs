@@ -141,6 +141,8 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
         get_redis_fixed_key(false)
     })
     .await?;
+    crate::stores::redis::redis_with_findex::tests::test_db_redis_revoked_ceremony_record_is_tombstoned()
+        .await?;
     Box::pin(redis_migration_tests::redis_migration_scenarios()).await?;
     Ok(())
 }

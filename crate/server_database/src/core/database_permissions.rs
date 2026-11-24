@@ -210,10 +210,12 @@ impl Database {
     }
 
     /// Verify sealed record integrity. Returns `true` if a valid sealed record exists and
-    /// verifies against this node's `ceremony_keys`, `false` if no record exists **or** if the
-    /// record fails GCM verification (a tampered record, or — in a multi-region deployment — a
-    /// replicated record sealed with a different `ceremony_secret`/`ceremony_key_id` than this
-    /// node's), or `Err` only for a genuine local misconfiguration (`ceremony_keys` unset).
+    /// verifies against this node's `ceremony_keys` and was sealed for `user`, `false` if no
+    /// record exists, **or** if the record fails GCM verification (a tampered record, or — in a
+    /// multi-region deployment — a replicated record sealed with a different
+    /// `ceremony_secret`/`ceremony_key_id` than this node's), **or** if it was sealed for another
+    /// user (a record moved between rows), or `Err` only for a genuine local misconfiguration
+    /// (`ceremony_keys` unset).
     fn verify_ceremony_record(
         &self,
         sealed_opt: Option<String>,
@@ -235,7 +237,17 @@ impl Database {
                 // dispatch.rs::check_role_permission's existing fallback for the identical
                 // underlying condition.
                 match keys.unseal(&sealed, role) {
-                    Ok(_) => Ok(true),
+                    Ok(payload) if payload.activated_by == user => Ok(true),
+                    Ok(_) => {
+                        tracing::error!(
+                            target: "audit",
+                            role,
+                            user,
+                            "ceremony record was sealed for another user (record moved between \
+                             rows); treating as inactive"
+                        );
+                        Ok(false)
+                    }
                     Err(DbError::CryptographicError(e)) => {
                         tracing::error!(
                             target: "audit",
@@ -251,5 +263,104 @@ impl Database {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
+mod tests {
+    use std::{collections::HashMap, num::NonZeroUsize, path::Path, time::Duration};
+
+    use tempfile::TempDir;
+
+    use super::Database;
+    use crate::{
+        CeremonyKeys,
+        core::{CacheParams, MainDbParams},
+        error::DbResult,
+    };
+
+    async fn ceremony_db(dir: &Path) -> DbResult<Database> {
+        Database::instantiate(
+            &MainDbParams::Sqlite(dir.to_path_buf(), None),
+            false,
+            HashMap::new(),
+            CacheParams {
+                max_age: Duration::from_secs(1),
+                max_size: NonZeroUsize::new(100).expect("non-zero"),
+                max_ttl: None,
+                disabled: false,
+            },
+            None,
+            Some(std::sync::Arc::new(CeremonyKeys::derive(&[7_u8; 32])?)),
+        )
+        .await
+    }
+
+    /// Tamper with the `SQLite` file behind the database's back, as a database writer would.
+    fn sqlite_exec(dir: &Path, sql: &str) -> DbResult<()> {
+        rusqlite::Connection::open(dir.join("kms.db"))?.execute(sql, [])?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ceremony_record_copied_to_another_user_is_inactive() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let db = ceremony_db(dir.path()).await?;
+        db.activate_crypto_officer_ceremony("alice", &["p1".to_owned(), "p2".to_owned()], "hash")
+            .await?;
+        let sealed = db
+            .permissions
+            .get_crypto_officer_activation_by("alice")
+            .await?
+            .expect("alice has a record");
+        // A database writer replays alice's record under bob.
+        db.permissions
+            .activate_crypto_officer_ceremony(&sealed, "bob", "bob")
+            .await?;
+        assert!(db.is_crypto_officer_activated_by("alice").await?);
+        assert!(!db.is_crypto_officer_activated_by("bob").await?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn revoked_ceremony_record_stays_inactive_when_revocation_is_cleared() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let db = ceremony_db(dir.path()).await?;
+        db.activate_crypto_officer_ceremony("alice", &["p1".to_owned()], "hash")
+            .await?;
+        db.revoke_crypto_officer_activation("alice", "alice")
+            .await?;
+        assert!(!db.is_crypto_officer_activated_by("alice").await?);
+        sqlite_exec(
+            dir.path(),
+            "UPDATE crypto_officer_activations SET revoked_at = NULL, revoked_by = NULL",
+        )?;
+        assert!(!db.is_crypto_officer_activated_by("alice").await?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ceremony_records_revoked_before_upgrade_are_tombstoned_at_startup() -> DbResult<()> {
+        let dir = TempDir::new()?;
+        let db = ceremony_db(dir.path()).await?;
+        db.activate_crypto_officer_ceremony("alice", &["p1".to_owned()], "hash")
+            .await?;
+        // An older KMS revokes by setting `revoked_at` only, leaving the sealed record.
+        sqlite_exec(
+            dir.path(),
+            "UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP",
+        )?;
+        drop(db);
+        let db = ceremony_db(dir.path()).await?;
+        sqlite_exec(
+            dir.path(),
+            "UPDATE crypto_officer_activations SET revoked_at = NULL, revoked_by = NULL",
+        )?;
+        assert!(!db.is_crypto_officer_activated_by("alice").await?);
+        Ok(())
     }
 }

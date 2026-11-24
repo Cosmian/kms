@@ -1243,6 +1243,17 @@ impl Migrate for MySqlPool {
             DbError::DatabaseError("Missing SQL query: purge-orphan-gcm-invocations".to_owned())
         })?;
         conn.query_drop(purge_sql).await.map_err(DbError::from)?;
+        // Erase the sealed record of ceremony activations revoked by an older KMS.
+        let tombstone_sql = queries
+            .get("tombstone-revoked-crypto-officer-activations")
+            .ok_or_else(|| {
+                DbError::DatabaseError(
+                    "Missing SQL query: tombstone-revoked-crypto-officer-activations".to_owned(),
+                )
+            })?;
+        conn.query_drop(tombstone_sql)
+            .await
+            .map_err(DbError::from)?;
 
         // Add wrapping_key_id column if not present.
         // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
