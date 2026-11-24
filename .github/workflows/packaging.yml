@@ -25,6 +25,58 @@ jobs:
       AZURE_CLIENT_ID_POC: ${{ secrets.AZURE_CLIENT_ID_POC }}
       AZURE_CLIENT_SECRET_POC: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
 
+  # Not inside build_windows.yml: a job of a called workflow does not receive the `package-publish` environment secret
+  # (the caller's explicit `secrets:` map is all it sees), so the upload runs here, in a top-level job.
+  publish-windows-release:
+    name: ${{ matrix.archive-name }} - publish assets
+    needs: [windows-package, windows-package-fips]
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: write # GitHub Release assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive-name: windows
+            variant: non-fips
+          - archive-name: windows-fips
+            variant: fips
+    steps:
+      - name: Checkout repository (for release metadata)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ matrix.archive-name }}-release-signed
+          path: ${{ runner.temp }}/package-artifacts
+
+      - name: List downloaded files
+        run: find "${RUNNER_TEMP}/package-artifacts" -maxdepth 3 -type f -print
+
+      - name: Push installers to package.cosmian.com
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
+          subdir: windows/x86_64/${{ matrix.variant }}/static-openssl
+          files: |
+            ${{ runner.temp }}/package-artifacts/**/cosmian-kms-server*.exe
+            ${{ matrix.variant == 'non-fips' && format('{0}/package-artifacts/**/cosmian-kms-cli*.exe', runner.temp) || '' }}
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
+        with:
+          files: |
+            ${{ runner.temp }}/package-artifacts/cosmian-kms-server*.exe
+            ${{ matrix.variant == 'non-fips' && format('{0}/package-artifacts/cosmian-kms-cli*.exe', runner.temp) || '' }}
+            ./nix/signing-keys/cosmian-kms-public.asc
+
   docker:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
       'schedule'
@@ -121,11 +173,10 @@ jobs:
 
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: write # GitHub Release assets
 
     strategy:
       fail-fast: false
@@ -154,24 +205,22 @@ jobs:
           - runner: macos-15
             cpu-arch: amd64
     steps:
-      - name: Remove existing old artifacts
-        run: rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
-
-      - name: Checkout repository (for public key file)
+      - name: Checkout repository (for public key file and upload action)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Download packaged artifact for this matrix
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
+          path: ${{ runner.temp }}/package-artifacts
 
       - name: List downloaded assets
         run: |
           set -ex
-          ls -la
-          find . -type f -print
+          find "${RUNNER_TEMP}/package-artifacts" -type f -print
 
       - name: Compute upload set
         id: upload-set
@@ -190,16 +239,17 @@ jobs:
             echo 'files<<EOF'
             if [[ "${{ matrix.package-type }}" != "pkcs11-zip" ]]; then
               echo "./nix/signing-keys/cosmian-kms-public.asc"
-              echo "result-server-${{ matrix.features }}-${{ matrix.link }}/bin/*${BINARY_PATTERN}*"
+              echo "${RUNNER_TEMP}/package-artifacts/result-server-${{ matrix.features }}-${{ matrix.link }}/bin/*${BINARY_PATTERN}*"
             fi
-            echo "result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/*${PACKAGE_PATTERN}*${PKG_EXT}*"
+            echo "${RUNNER_TEMP}/package-artifacts/result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/*${PACKAGE_PATTERN}*${PKG_EXT}*"
             echo 'EOF'
           } >>"$GITHUB_OUTPUT"
 
-      - name: Push to package.cosmian.com (self-hosted)
+      - name: Push to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: ${{ steps.upload-set.outputs.subdir }}
           files: ${{ steps.upload-set.outputs.files }}
 
@@ -208,8 +258,8 @@ jobs:
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
-            result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
-            result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
+            ${{ runner.temp }}/package-artifacts/result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-server*
+            ${{ runner.temp }}/package-artifacts/result-${{ matrix.package-type }}-${{ matrix.features }}-${{ matrix.link }}/cosmian-kms-cli*
             ./nix/signing-keys/cosmian-kms-public.asc
 
       - name: Publish GitHub Release assets (pkcs11-zip)
@@ -217,7 +267,7 @@ jobs:
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
-            result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
+            ${{ runner.temp }}/package-artifacts/result-pkcs11-zip-${{ matrix.features }}-${{ matrix.link }}/cosmian-pkcs11-*
             ./nix/signing-keys/cosmian-kms-public.asc
 
   publish-sbom:
@@ -232,11 +282,10 @@ jobs:
       group: publish-sbom-${{ matrix.features }}-${{ matrix.link }}
       cancel-in-progress: false
       queue: max
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -249,34 +298,38 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Download SBOM artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: sbom_${{ matrix.features }}_${{ matrix.link }}
-          path: sbom
+          path: ${{ runner.temp }}/package-artifacts/sbom
 
       - name: Push SBOM (server) to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: sbom/server/${{ matrix.features }}/${{ matrix.link }}
-          files: sbom/server/${{ matrix.features }}/${{ matrix.link }}/*
+          files: ${{ runner.temp }}/package-artifacts/sbom/server/${{ matrix.features }}/${{ matrix.link }}/*
 
       - name: Push SBOM (ckms) to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}
-          files: sbom/ckms/${{ matrix.features }}/${{ matrix.link }}/*
+          files: ${{ runner.temp }}/package-artifacts/sbom/ckms/${{ matrix.features }}/${{ matrix.link }}/*
 
       - name: Push OpenVEX to package.cosmian.com
         if: matrix.features == 'fips' && matrix.link == 'static'
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: sbom
-          files: sbom/openvex.json
+          files: ${{ runner.temp }}/package-artifacts/sbom/openvex.json
 
   build-monitoring-archive:
     name: Build monitoring stack archive
@@ -309,35 +362,37 @@ jobs:
       || startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
     needs: build-monitoring-archive
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: write # GitHub Release asset
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Download monitoring archive artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cosmian-kms-monitoring
+          path: ${{ runner.temp }}/package-artifacts
 
       - name: Push to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: monitoring
-          files: cosmian-kms-monitoring.zip
+          files: ${{ runner.temp }}/package-artifacts/cosmian-kms-monitoring.zip
 
       - name: Publish GitHub Release asset
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
-          files: cosmian-kms-monitoring.zip
+          files: ${{ runner.temp }}/package-artifacts/cosmian-kms-monitoring.zip
 
   tests:
     needs: packages

@@ -18,13 +18,17 @@ pub(super) fn default_cors_origins(scheme: &str, port: u16) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn configure_http() -> KResult<HttpConfig> {
+pub(crate) fn configure_http(listen_on_all: bool) -> KResult<HttpConfig> {
     let theme = ColorfulTheme::default();
 
-    #[cfg(target_os = "windows")]
-    let default_hostname = "127.0.0.1".to_owned();
-    #[cfg(not(target_os = "windows"))]
-    let default_hostname = "0.0.0.0".to_owned();
+    // Several nodes sit behind a load balancer or share a virtual IP: they must accept
+    // connections on every interface (Windows otherwise defaults to loopback).
+    let default_hostname = if listen_on_all || !cfg!(target_os = "windows") {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    }
+    .to_owned();
 
     let port: u16 = Input::with_theme(&theme)
         .with_prompt("HTTP server port")

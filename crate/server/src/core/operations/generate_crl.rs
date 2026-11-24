@@ -70,6 +70,19 @@ const CRL_MEMORY_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs
 static GENERATED_CRL_CACHE: LazyLock<tokio::sync::RwLock<CrlCacheInner>> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
+/// Test-only: clear the process-global CRL cache.
+///
+/// `GENERATED_CRL_CACHE` is a single process-wide static keyed only by `issuer_id`. Tests that
+/// instantiate multiple `KMS` instances *in the same test process* (simulating multiple KMS
+/// regions, each with its own Postgres database) share this cache across instances. A test
+/// asserting that a given `KMS` instance served a CRL from its own local DB row (not a
+/// coincidental cache hit populated by a *different* simulated region's `generate_crl` call in
+/// the same process) must call this first.
+#[cfg(test)]
+pub(crate) async fn clear_generated_crl_cache_for_tests() {
+    GENERATED_CRL_CACHE.write().await.clear();
+}
+
 /// Retrieve the most recently cached CRL DER bytes for an issuer.
 ///
 /// Called by the public CRL endpoint (`GET /public/certificates/{issuer_id}/crl`).
@@ -157,6 +170,51 @@ pub(crate) async fn regenerate_crl(kms: &KMS, issuer_certificate_id: &str) -> KR
     .await
 }
 
+/// `true` when the stored CRL `crl_der` of `issuer_certificate_id` lists a different set of
+/// serials than the certificates revoked in the database now.
+///
+/// A revocation served by a follower region replicates to the leader without regenerating the
+/// CRL (a follower never writes `crls`): the leader's refresh job uses this to republish it
+/// before the stored CRL nears its nextUpdate.
+pub(crate) async fn crl_revocations_changed(
+    kms: &KMS,
+    issuer_certificate_id: &str,
+    crl_der: &[u8],
+) -> KResult<bool> {
+    let issuer_owm =
+        retrieve_issuer_certificate(kms, issuer_certificate_id, CrlRequester::Server).await?;
+    let Object::Certificate(Certificate {
+        certificate_value, ..
+    }) = issuer_owm.object()
+    else {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "Object '{issuer_certificate_id}' is not a certificate"
+        )));
+    };
+    let issuer_x509 = X509::from_der(certificate_value).map_err(|e| {
+        KmsError::InvalidRequest(format!("Failed to parse issuer certificate DER: {e}"))
+    })?;
+    let current: HashSet<Vec<u8>> =
+        Box::pin(find_revoked_certificates(kms, &issuer_owm, &issuer_x509))
+            .await?
+            .into_iter()
+            .map(|entry| entry.serial_number)
+            .collect();
+    let crl = X509Crl::from_der(crl_der)
+        .map_err(|e| KmsError::ServerError(format!("Failed to parse stored CRL: {e}")))?;
+    let mut listed = HashSet::new();
+    for revoked in crl.get_revoked().into_iter().flatten() {
+        listed.insert(
+            revoked
+                .serial_number()
+                .to_bn()
+                .map_err(|e| KmsError::ServerError(format!("Failed to decode CRL serial: {e}")))?
+                .to_vec(),
+        );
+    }
+    Ok(current != listed)
+}
+
 /// Retrieve the issuer certificate: ACL-checked for a user, read directly (but not destroyed)
 /// for the server, since a certificate is public information.
 async fn retrieve_issuer_certificate(
@@ -208,6 +266,7 @@ pub(crate) async fn generate_crl(
     validity_days: Option<u32>,
     requester: CrlRequester<'_>,
 ) -> KResult<X509Crl> {
+    crate::core::require_leader_region(kms, "CRL generation")?;
     debug!(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id

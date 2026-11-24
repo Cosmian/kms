@@ -14,6 +14,6 @@ print_header "Running AWS XKS tests against remote server"
 
 REPO_ROOT="$(get_repo_root)"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_xks_remote.sh"
+bash "${REPO_ROOT}/.mise/scripts/test/cloud/test_xks_remote.sh"
 
 print_success "AWS XKS remote tests completed"

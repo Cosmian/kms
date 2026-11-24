@@ -23,6 +23,6 @@ print_header "Running IBM Db2 LUW KMIP TDE integration tests (${VARIANT_NAME})"
 
 require_cmd docker "Docker is required to run the Db2 container."
 
-bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/test_db2_tde.sh" --variant "$VARIANT" --link "$LINK"
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/interop/test_db2_tde.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "Db2 TDE tests completed"

@@ -172,6 +172,27 @@ is stored in the database.
     per-certificate revocation status — see
     [OCSP Responder](pki-ocsp.md).
 
+!!! note "Multi-region active-active deployments"
+    In a multi-region deployment, CRL generation (`ckms certificates generate-crl`,
+    `GET /certificates/{issuer_id}/crl`) and the background refresh scheduler run on the **leader**
+    region only (`region_role = "leader"`), to keep the RFC 5280 `crlNumber` monotonic. The signed CRL
+    rows in the `crls` table replicate to every follower region, so the public CDP endpoint
+    (`GET /public/certificates/{issuer_id}/crl`) serves the replicated CRL in every region.
+
+    A certificate revoked on a follower does **not** regenerate the CRL: the leader gate refuses the
+    follower's automatic regeneration (logged at `WARN`). The revocation replicates to the leader, which
+    republishes the stored CRL at the next run of its refresh scheduler (every `crl_refresh_check_hours`,
+    default 1 h, when `kms_public_url` is set): the scheduler regenerates a CRL whose `nextUpdate` is
+    within `crl_refresh_overlap_hours` (default 24 h) or whose list of revoked certificates has changed.
+    To publish a revocation at once, revoke on the leader region, or run `generate-crl` on the leader
+    after revoking on a follower.
+
+    The OCSP response cache is in memory, per KMS process: a revocation evicts only the cached response
+    of the process that served it. Other KMS nodes, in every region, answer nonce-less requests from
+    their cache until `ocsp_cache_ttl_secs` (default 86400 s) elapses. Keep `ocsp_cache_ttl_secs` low in a
+    multi-region deployment, or have relying parties send a nonce, which bypasses the cache.
+    See [Multi-region active-active deployment](../configuration/database/multi_region.md#operating-notes).
+
 ## No Revocation Available (`id-ce-noRevAvail`, RFC 9608)
 
 For **self-signed certificates** (no issuer key provided) that do not carry a CRL

@@ -65,7 +65,7 @@ impl TestUserIdExt for UserId {
 // ── Extension strings ────────────────────────────────────────────────────────
 
 /// CA certificate extension: has `cRLSign` (required by our new enforcement).
-const CA_EXT: &[u8] = b"[v3_ca]
+pub(crate) const CA_EXT: &[u8] = b"[v3_ca]
 subjectKeyIdentifier=hash
 basicConstraints=critical,CA:TRUE
 keyUsage=critical,keyCertSign,crlSign,digitalSignature
@@ -79,7 +79,7 @@ keyUsage=critical,keyCertSign,digitalSignature
 ";
 
 /// Leaf certificate extension (no crlDistributionPoints — avoids live fetches).
-const LEAF_EXT: &[u8] = b"[v3_ca]
+pub(crate) const LEAF_EXT: &[u8] = b"[v3_ca]
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 basicConstraints=critical,CA:FALSE
@@ -97,7 +97,7 @@ async fn make_kms_with_public_url(url: &str) -> KResult<Arc<KMS>> {
 /// Uses RSA-2048 (FIPS-approved) unless `CryptographicAlgorithm::RSA` is unavailable.
 /// When `issuer_cert_id` / `issuer_sk_id` are `None`, a self-signed root is created.
 /// Returns `(cert_id, private_key_id)`.
-async fn certify(
+pub(crate) async fn certify(
     kms: &Arc<KMS>,
     owner: &UserId,
     cn: &str,
@@ -156,7 +156,7 @@ async fn certify(
 }
 
 /// Revoke a certificate with the given reason code.
-async fn revoke_cert(
+pub(crate) async fn revoke_cert(
     kms: &Arc<KMS>,
     owner: &UserId,
     cert_id: &str,
@@ -178,7 +178,7 @@ async fn revoke_cert(
 }
 
 /// Return the serial number bytes from a DER-encoded certificate.
-fn cert_serial(cert_der: &[u8]) -> Vec<u8> {
+pub(crate) fn cert_serial(cert_der: &[u8]) -> Vec<u8> {
     x509_parser::prelude::X509Certificate::from_der(cert_der)
         .expect("parse cert DER")
         .1
@@ -187,7 +187,7 @@ fn cert_serial(cert_der: &[u8]) -> Vec<u8> {
 }
 
 /// Retrieve the DER-encoded certificate from the KMS.
-async fn get_cert_der(kms: &Arc<KMS>, owner: &UserId, cert_id: &str) -> Vec<u8> {
+pub(crate) async fn get_cert_der(kms: &Arc<KMS>, owner: &UserId, cert_id: &str) -> Vec<u8> {
     let resp = kms
         .get(
             Get {
@@ -234,7 +234,7 @@ fn big_uint_to_u64(n: &x509_parser::num_bigint::BigUint) -> u64 {
 }
 
 /// Parse DER CRL with `x509_parser` and return the serial numbers of revoked entries.
-fn revoked_serials(crl_der: &[u8]) -> Vec<Vec<u8>> {
+pub(crate) fn revoked_serials(crl_der: &[u8]) -> Vec<Vec<u8>> {
     let (_, parsed) = CertificateRevocationList::from_der(crl_der).expect("parse CRL DER");
     parsed
         .iter_revoked_certificates()
@@ -308,6 +308,54 @@ async fn test_crl_includes_revoked_cert() -> KResult<()> {
         "revoked leaf serial must appear in CRL"
     );
     assert_eq!(serials.len(), 1, "exactly one entry expected");
+    Ok(())
+}
+
+/// A revocation that did not regenerate the CRL (e.g. served by a follower region and replicated
+/// here) is published by the refresh job even though the stored CRL is far from its nextUpdate.
+#[tokio::test]
+async fn test_refresh_job_publishes_revocation_missing_from_stored_crl() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::new("crl_owner");
+
+    let (ca_id, ca_sk_id) = certify(&kms, &owner, "Refresh CA", None, None, CA_EXT).await?;
+    let (leaf_id, _) = certify(
+        &kms,
+        &owner,
+        "Refresh Leaf",
+        Some(&ca_id),
+        Some(&ca_sk_id),
+        LEAF_EXT,
+    )
+    .await?;
+    let leaf_serial = cert_serial(&get_cert_der(&kms, &owner, &leaf_id).await);
+
+    let crl_before = generate_crl_der(&kms, &owner, &ca_id).await;
+    revoke_cert(&kms, &owner, &leaf_id, RevocationReasonCode::KeyCompromise).await?;
+    let (unchanged, _) = kms
+        .database
+        .get_crl(&ca_id)
+        .await?
+        .expect("CRL must be stored");
+    assert_eq!(
+        unchanged, crl_before,
+        "revoke without kms_public_url must not regenerate the CRL"
+    );
+
+    // overlap 0h: the CRL is not near expiry, so only the revoked-set check can trigger it.
+    crate::cron::refresh_expiring_crls(&kms, 0).await;
+    let (stored, _) = kms
+        .database
+        .get_crl(&ca_id)
+        .await?
+        .expect("CRL must be stored");
+    assert_ne!(stored, crl_before, "refresh must have regenerated the CRL");
+    assert!(revoked_serials(&stored).contains(&leaf_serial));
+
+    // Nothing changed since: no further regeneration.
+    crate::cron::refresh_expiring_crls(&kms, 0).await;
+    let (again, _) = kms.database.get_crl(&ca_id).await?.expect("CRL stored");
+    assert_eq!(again, stored, "an up-to-date CRL must not be regenerated");
     Ok(())
 }
 

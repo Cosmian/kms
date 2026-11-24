@@ -72,6 +72,13 @@ server_core = '''
                       |tests/))
 '''
 
+# Server code of the multi-region active-active model: leader gating, leader-only jobs, CRL and ceremony operations.
+multi_region = '''
+  ^crate/server/src/(cron\.rs|core/mod\.rs|config/command_line/clap_config\.rs)$
+| ^crate/server/src/core/operations/(generate_crl|join_split_key|batch_undo)\.rs$
+| ^crate/server/src/tests/(pgedge_|key_ceremony_tests\.rs)
+'''
+
 pg_store = '^crate/server_database/src/stores/sql/pgsql\.rs$'
 mysql_store = '^crate/server_database/src/stores/sql/(mysql\.rs|query_mysql\.sql)$'
 
@@ -120,7 +127,7 @@ pki = '''
   ^crate/server/src/routes/(est|scep|ocsp)/
 | ^crate/server/src/routes/crl\.rs$
 | ^\.mise/tasks/test/pki/
-| ^\.mise/scripts/test/(test_est_interop|test_scep_interop)\.sh$
+| ^\.mise/scripts/test/pki/(test_est_interop|test_scep_interop)\.sh$
 | ^\.mise/scripts/kmip-go/go\.mod$
 | ^crate/server/src/routes/(csr|enrollment|enrollment_guard)\.rs$
 | ^crate/server/src/core/certificate/
@@ -182,7 +189,7 @@ no-fork-pr = true
 events = ["pull_request", "schedule", "workflow_dispatch"]
 
 [units.xks-remote]
-files = '^crate/server/src/routes/aws_xks/ | ^\.mise/scripts/test/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
+files = '^crate/server/src/routes/aws_xks/ | ^\.mise/scripts/test/cloud/(deploy_xks_remote|test_xks_remote|test_xks_aws_e2e)\.sh$'
 variants = ["non-fips"]
 upstream = true
 events = ["pull_request", "tag", "workflow_dispatch"]
@@ -227,11 +234,28 @@ sets = ["db_core", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/db/(_default|openbao)$
 | ^\.mise/tasks/test/interop/openbao$
-| ^\.mise/scripts/test/openbao/
+| ^\.mise/scripts/test/interop/openbao/
 | ^crate/server/src/routes/kv/
 '''
 # the OpenBao KV scenario replayed on PostgreSQL and MySQL
 variants = ["fips", "non-fips"]
+
+# Multi-region active-active legs (2-node pgEdge/Spock, 2-node Galera). The guard suite re-runs both proofs and is
+# non-FIPS only, to avoid duplicating their job time.
+[units."db:pgedge"]
+sets = ["multi_region", "db_core", "db_shared", "pg_store"]
+files = '^\.mise/tasks/test/db/pgedge$ | ^\.mise/lib/multi_region_guards\.sh$ | ^crate/server/src/tests/pgedge_'
+variants = ["fips", "non-fips"]
+
+[units."db:galera"]
+sets = ["multi_region", "db_core", "db_shared", "mysql_store"]
+files = '^\.mise/tasks/test/db/galera$ | ^\.mise/lib/multi_region_guards\.sh$'
+variants = ["fips", "non-fips"]
+
+[units."db:multi-region-guards"]
+sets = ["multi_region", "db_core", "db_shared", "pg_store", "mysql_store"]
+files = '^\.mise/tasks/test/db/(pgedge|galera|multi-region-guards)$ | ^\.mise/lib/multi_region_guards\.sh$ | ^crate/server/src/tests/pgedge_'
+variants = ["non-fips"]
 
 [units.cloud]
 files = '''
@@ -239,7 +263,7 @@ files = '''
 | ^crate/clients/clap/src/actions/(google|aws|azure)/
 | ^documentation/docs/google_cse/test_wrapped_private_key$
 | ^\.mise/tasks/test/cloud/
-| ^\.mise/scripts/test/(azure_ekm_test|azure_ekm_mtls_test|test_secret_aws|test_secret_azure|test_secret_vault
+| ^\.mise/scripts/test/cloud/(azure_ekm_test|azure_ekm_mtls_test|test_secret_aws|test_secret_azure|test_secret_vault
                        |test_secret_cosmian_kms|test_xks)\.sh$
 '''
 variants = ["fips", "non-fips"]
@@ -252,7 +276,7 @@ files = '''
 | ^crate/server/src/tests/
 | ^\.mise/tasks/test/hsm/
 | ^\.mise/lib/(softhsm2|kryoptic|pkcs11_helpers)\.sh$
-| ^\.mise/scripts/test/(c2p_no_inotify\.c|pkcs11_fips_iv_shim\.c|pkcs11_gcm_iv_probe\.(c|py)|test_nix_helpers\.sh)$
+| ^\.mise/scripts/test/hsm/(c2p_no_inotify\.c|pkcs11_fips_iv_shim\.c|pkcs11_gcm_iv_probe\.(c|py)|test_nix_helpers\.sh)$
 '''
 variants = ["fips", "non-fips"]
 bench = {fips = "softhsm2 utimaco crypt2pay-simulator", non-fips = "softhsm2 utimaco crypt2pay-simulator kryoptic"}
@@ -287,7 +311,7 @@ files = '''
 | ^crate/clients/clap/src/actions/pkcs11/
 | ^\.mise/tasks/test/pkcs11/
 | ^\.mise/lib/(softhsm2|pkcs11_helpers)\.sh$
-| ^\.mise/scripts/test/(test_pkcs11_conformance\.sh|pkcs11_raw_abi_check\.py|test_gnupg\.sh|test_gnupg_smartcard\.sh
+| ^\.mise/scripts/test/pkcs11/(test_pkcs11_conformance\.sh|pkcs11_raw_abi_check\.py|test_gnupg\.sh|test_gnupg_smartcard\.sh
                        |gnupg_pkcs11_scd_driver\.py|test_luks\.sh|test_openssh\.sh|test_hsm_kek_pkcs11_comprehensive\.sh
                        |test_pkcs11_check\.sh|requirements-pkcs11-check\.(in|txt)|test_veracrypt\.sh)$
 | ^crate/server/src/core/operations/pkcs11\.rs$
@@ -301,7 +325,7 @@ files = '''
 | ^crate/clients/clap/src/actions/audit\.rs$
 | ^\.mise/tasks/test/obs/
 | ^\.mise/lib/audit_(e2e|compat)\.sh$
-| ^\.mise/scripts/test/(test_audit_log\.sh|test_audit_postgres_log\.sh|generate_live_audit_fixture\.sh
+| ^\.mise/scripts/test/obs/(test_audit_log\.sh|test_audit_postgres_log\.sh|generate_live_audit_fixture\.sh
                        |validate_audit_compat\.py|fixtures/|test_cef_format\.sh|test_siem_[a-z_]+\.sh
                        |siem_verify_fields\.py|cef_helper\.py|rsyslog\.conf|test_monitoring\.sh
                        |requirements-(cef|audit-compat)\.(in|txt))
@@ -330,7 +354,7 @@ files = '''
 | ^authentication$
 | ^\.mise/tasks/test/spire/
 | ^\.mise/lib/spire_test\.sh$
-| ^\.mise/scripts/test/grant_spire_pki_certify\.sh$
+| ^\.mise/scripts/test/spire/grant_spire_pki_certify\.sh$
 '''
 variants = ["non-fips"]
 
@@ -342,29 +366,29 @@ files = '''
 | ^authentication$
 | ^\.mise/tasks/test/ui/
 | ^\.mise/tasks/build/(ui|wasm)$
-| ^\.mise/scripts/test/(test_ui|test_ui_auth|test_ui_oidc|test_ui_saml)\.sh$
-| ^\.mise/scripts/test/saml_sso/
+| ^\.mise/scripts/test/ui/(test_ui|test_ui_auth|test_ui_oidc|test_ui_saml)\.sh$
+| ^\.mise/scripts/test/ui/saml_sso/
 '''
 variants = ["fips", "non-fips"]
 
 [units."interop:ase"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
+files = '^crate/clients/pkcs11/ | ^\.mise/tasks/test/interop/ase$ | ^\.mise/scripts/test/interop/test_ase_tde\.sh$ | ^\.mise/scripts/docker/ase/'
 variants = ["non-fips"]
 
 [units."interop:db2"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/test_db2_tde\.sh$'
+files = '^\.mise/tasks/test/interop/db2$ | ^\.mise/scripts/test/interop/test_db2_tde\.sh$'
 variants = ["non-fips"]
 
 [units."interop:edb-tde"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
+files = '^\.mise/tasks/test/interop/edb-tde$ | ^\.mise/scripts/test/interop/test_edb_tde\.sh$ | ^\.mise/scripts/(edb_tde|pykmip)/'
 variants = ["non-fips"]
 
 [units."interop:iris"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/test_iris\.sh$'
+files = '^\.mise/tasks/test/interop/iris$ | ^\.mise/scripts/test/interop/test_iris\.sh$'
 variants = ["non-fips"]
 
 [units."interop:jose"]
@@ -374,7 +398,7 @@ files = '''
 | ^crate/hsm/kryoptic/
 | ^\.mise/tasks/test/(interop|hsm)/jose$
 | ^\.mise/lib/kryoptic\.sh$
-| ^\.mise/scripts/test/(test_jose\.sh|jose_interop_helper\.py|requirements-jose\.(in|txt))$
+| ^\.mise/scripts/test/interop/(test_jose\.sh|jose_interop_helper\.py|requirements-jose\.(in|txt))$
 '''
 variants = ["non-fips"]
 
@@ -383,7 +407,7 @@ sets = ["kmip_wire", "interop_shared"]
 files = '''
   ^kmip$
 | ^\.mise/tasks/test/interop/kmip-go$
-| ^\.mise/scripts/test/test_kmip_go\.sh$
+| ^\.mise/scripts/test/interop/test_kmip_go\.sh$
 | ^\.mise/scripts/kmip-go/
 | ^\.mise/scripts/pykmip/kms\.toml$
 '''
@@ -396,30 +420,30 @@ variants = ["non-fips"]
 
 [units."interop:openbao"]
 sets = ["interop_shared"]
-files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/routes/kv/'
+files = '^\.mise/tasks/test/interop/openbao$ | ^\.mise/scripts/test/interop/openbao/ | ^crate/server/src/routes/kv/'
 variants = ["fips", "non-fips"]
 
 [units."interop:openbao-auth-verifier"]
 sets = ["interop_shared"]
-files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
+files = '^authentication$ | ^\.mise/tasks/test/interop/openbao-auth-verifier$ | ^\.mise/lib/spire_test\.sh$ | ^\.mise/scripts/test/interop/openbao/ | ^crate/server/src/middlewares/auth_verifier/'
 variants = ["fips", "non-fips"]
 
 [units."interop:openbao-kmip"]
 sets = ["kmip_wire", "interop_shared"]
-files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/openbao/'
+files = '^\.mise/tasks/test/interop/openbao-kmip$ | ^\.mise/scripts/test/interop/openbao/'
 variants = ["fips", "non-fips"]
 
 [units."interop:pykmip"]
 sets = ["kmip_wire", "interop_shared", "ci_setup"]
-files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
+files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/interop/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
 variants = ["non-fips"]
 
 [units."interop:ssh-secrets"]
 sets = ["interop_shared", "pg_store", "mysql_store"]
 files = '''
   ^\.mise/tasks/test/interop/ssh-secrets$
-| ^\.mise/scripts/test/(test_ssh_certificates|test_secret_rotation)\.sh$
-| ^\.mise/scripts/test/openbao/bao_verifier\.sh$
+| ^\.mise/scripts/test/interop/(test_ssh_certificates|test_secret_rotation)\.sh$
+| ^\.mise/scripts/test/interop/openbao/bao_verifier\.sh$
 | ^crate/server/src/routes/(ssh|kv)/
 '''
 variants = ["fips", "non-fips"]
@@ -456,7 +480,7 @@ files = '''
 | ^crate/server/src/tests/
 | ^\.mise/tasks/test/hsm/(idemia-sphere-simulator|other)$
 | ^\.mise/scripts/windows/(test_hsm_idemia|test_hsm_other|hsm_common|prepare_windows_fips_provider)\.ps1$
-| ^\.mise/scripts/test/pkcs11_fips_iv_shim\.c$
+| ^\.mise/scripts/test/hsm/pkcs11_fips_iv_shim\.c$
 | ^\.github/reusable_scripts$
 '''
 setup = "windows"

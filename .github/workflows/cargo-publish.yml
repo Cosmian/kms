@@ -1,19 +1,30 @@
 ---
 name: Cargo Publish Workspace
 
+# Two jobs on two fresh runners, so no dependency code (build script, proc macro) can ever run next to the
+# registry token:
+#   verify  — builds the whole workspace package set (`--dry-run` compiles); holds NO credential.
+#   publish — tags only, environment `crates-io` (required reviewers; the CRATES_IO secret lives ONLY in that
+#             environment, so callers never hold it); `--no-verify` skips compilation. Cargo repackages the same immutable commit: it does not upload verify's tarballs.
+
 on:
   workflow_call:
-    secrets:
-      token:
-        required: true
+
+permissions:
+  contents: read
 
 jobs:
-  publish:
+  verify:
+    name: Verify publication (no credential)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.sha }}
           submodules: recursive
+          persist-credentials: false
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
@@ -33,23 +44,37 @@ jobs:
 
       - uses: ./.github/actions/cleanup-runner
 
-      - name: Dump context for debug
-        uses: crazy-max/ghaction-dump-context@4d9eeaf15dd59aa4346919ea84a84ccf514b4db8 # v3
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
       - uses: ./.github/actions/install-rust
 
-      - name: Publishing
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.token }}
-        run: |
-          cargo publish --all-features --workspace
+      - name: Probe that dependency code receives no release credential
+        run: python3 .mise/scripts/dev/test_release_security.py --probe "$GITHUB_WORKSPACE"
+
+      - name: Publishing - dry run (compiles every crate)
+        run: cargo publish --all-features --workspace --dry-run
 
       - name: Check disk space after build
         if: always()
         run: df -h
+
+  publish:
+    name: Publish to crates.io
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    environment: crates-io
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-rust
+
+      # Nothing is compiled here: --no-verify skips the build that would run dependency code.
+      - name: Publishing
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
+        run: cargo publish --all-features --workspace --no-verify

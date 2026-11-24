@@ -1,7 +1,7 @@
 ---
 name: 'Docker and Kubernetes'
 description: 'Docker image build/test conventions and Kubernetes deployment patterns for the Eviden KMS project'
-applyTo: 'nix/docker.nix, nix/k8s-images.nix, docker-compose.yml, .mise/scripts/docker-compose.yml, .mise/scripts/test/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/pkg/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*, .github/workflows/packaging-docker.yml'
+applyTo: 'nix/docker.nix, nix/k8s-images.nix, docker-compose.yml, .mise/scripts/docker-compose.yml, .mise/scripts/test/pkg/test_docker_image.sh, .mise/lib/k8s.sh, .mise/tasks/build/docker, .mise/tasks/test/pkg/docker, .mise/tasks/test/k8s/**, charts/cosmian-kms/**/*, .github/workflows/packaging-docker.yml'
 ---
 
 # Docker and Kubernetes conventions
@@ -168,7 +168,7 @@ DOCKER_IMAGE_NAME=cosmian-kms:5.26.0-fips mise run test:pkg:docker --variant fip
 5. **CA bundle test** — `grep -c "BEGIN CERTIFICATE" /etc/ssl/certs/ca-bundle.crt` must
    return ≥ 50 inside the container (validates `grep` binary + CA bundle correctness).
 6. **Config-file compose test** — `docker compose logs kms-with-conf`.
-7. **Load balancer shutdown test** — `.mise/scripts/test/test_lb_kms_shutdown.sh`.
+7. **Load balancer shutdown test** — `.mise/scripts/test/pkg/test_lb_kms_shutdown.sh`.
 8. **Oracle TDE HSM test** — PKCS#11 TDE migration `software → HSM → software`.
 
 ### Third-party image catalog — root `docker-compose.yml`
@@ -297,7 +297,7 @@ After modifying any of the covered files, run `/kms-sync-rules` and check these 
 - `nix/docker.nix` → rebuild both variants locally, run `test:pkg:docker` for both
 - `.mise/scripts/docker-compose.yml` → run `test:pkg:docker` for both variants
 - `docker-compose.yml` (root) → run `docker compose --profile '*' config -q`, and the scripts that read the changed image through `compose_image` (`grep -rn 'compose_image <service>' .mise`)
-- `.mise/scripts/test/test_docker_image.sh` → run `test:pkg:docker --variant fips` locally
+- `.mise/scripts/test/pkg/test_docker_image.sh` → run `test:pkg:docker --variant fips` locally
 - `.mise/lib/k8s.sh` or `.mise/tasks/test/k8s/**` → run `test:k8s:kms-image` locally
 - `charts/cosmian-kms/**` → run `test:k8s:kms-image` and `helm lint charts/cosmian-kms`
 - `.github/workflows/packaging-docker.yml` → verify the CI matrix table in section 5 is still accurate

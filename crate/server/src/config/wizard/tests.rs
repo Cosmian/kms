@@ -11,8 +11,14 @@ use std::path::{Path, PathBuf};
 use openssl::{nid::Nid, pkey::PKey, x509::X509};
 use tempfile::TempDir;
 
-use super::cert_gen::{CertGenOptions, generate_self_signed_pki};
-use crate::config::{ClapConfig, HttpConfig, MainDBConfig, TlsConfig};
+use super::{
+    cert_gen::{CertGenOptions, generate_self_signed_pki},
+    profile_wizard::{
+        DeploymentProfile, NodeLocation, ProfileAnswers, allowed_databases, profile_notes,
+        region_role_for_choice, resolve_profile,
+    },
+};
+use crate::config::{ClapConfig, DatabaseType, HttpConfig, MainDBConfig, RegionRole, TlsConfig};
 
 // ── cert_gen tests ────────────────────────────────────────────────────────────
 
@@ -260,6 +266,7 @@ fn test_config_toml_round_trip_preserves_values() {
             mount: "secrets".to_owned(),
             ttl_check_interval_secs: 15,
         },
+        region_role: RegionRole::Follower,
         ..ClapConfig::default()
     };
 
@@ -269,9 +276,12 @@ fn test_config_toml_round_trip_preserves_values() {
     // Must be non-empty and contain expected keys.
     assert_ne!(toml_str.len(), 0);
     assert!(toml_str.contains("force_default_username"));
+    assert!(toml_str.contains("region_role = \"follower\""));
 
     let restored: ClapConfig =
         toml::from_str(&toml_str).expect("ClapConfig must round-trip through TOML");
+
+    assert_eq!(restored.region_role, RegionRole::Follower);
 
     assert_eq!(restored.default_username, "operator");
     assert!(restored.force_default_username);
@@ -319,4 +329,126 @@ fn test_config_toml_round_trip_default() {
     assert_eq!(restored.default_username, original.default_username);
     assert_eq!(restored.http.port, original.http.port);
     assert_eq!(restored.http.hostname, original.http.hostname);
+}
+
+// ── deployment profile ────────────────────────────────────────────────────────
+
+/// Every edge of the decision tree of the high-availability guide.
+#[test]
+fn test_resolve_profile_matches_decision_tree() {
+    let base = ProfileAnswers::default();
+    let multi = ProfileAnswers {
+        several_nodes: true,
+        ..base
+    };
+    let cases = [
+        (
+            ProfileAnswers {
+                confidential_vm: true,
+                ..base
+            },
+            DeploymentProfile::SingleNode,
+        ),
+        // The confidential VM answer wins over every later one.
+        (
+            ProfileAnswers {
+                confidential_vm: true,
+                several_regions: true,
+                ..multi
+            },
+            DeploymentProfile::SingleNode,
+        ),
+        (
+            ProfileAnswers {
+                several_regions: true,
+                ..base
+            },
+            DeploymentProfile::MultiRegion,
+        ),
+        (base, DeploymentProfile::SingleNode),
+        (
+            ProfileAnswers {
+                location: Some(NodeLocation::CloudLoadBalancer),
+                ..multi
+            },
+            DeploymentProfile::CloudLoadBalancer,
+        ),
+        (
+            ProfileAnswers {
+                location: Some(NodeLocation::NoLoadBalancer),
+                ..multi
+            },
+            DeploymentProfile::RoundRobinDns,
+        ),
+        (
+            ProfileAnswers {
+                location: Some(NodeLocation::OnPremises),
+                spread_load: Some(false),
+                ..multi
+            },
+            DeploymentProfile::KeepalivedOnly,
+        ),
+        (
+            ProfileAnswers {
+                location: Some(NodeLocation::OnPremises),
+                spread_load: Some(true),
+                ..multi
+            },
+            DeploymentProfile::HaProxy,
+        ),
+    ];
+    for (answers, expected) in cases {
+        assert_eq!(resolve_profile(answers), expected, "{answers:?}");
+    }
+}
+
+/// `SQLite` is for one node only; multi-region requires `PostgreSQL` or `MySQL` (Galera).
+#[test]
+fn test_allowed_databases_per_profile() {
+    let all = DatabaseType::FIPS_VARIANTS;
+    assert_eq!(
+        allowed_databases(DeploymentProfile::SingleNode, all),
+        [
+            DatabaseType::Sqlite,
+            DatabaseType::Postgresql,
+            DatabaseType::Mysql
+        ]
+    );
+    assert_eq!(
+        allowed_databases(DeploymentProfile::HaProxy, all),
+        [DatabaseType::Postgresql, DatabaseType::Mysql]
+    );
+    assert_eq!(
+        allowed_databases(DeploymentProfile::MultiRegion, all),
+        [DatabaseType::Postgresql, DatabaseType::Mysql]
+    );
+}
+
+#[test]
+fn test_region_role_for_choice() {
+    assert_eq!(region_role_for_choice(0), RegionRole::Leader);
+    assert_eq!(region_role_for_choice(1), RegionRole::Follower);
+}
+
+#[test]
+fn test_profile_notes() {
+    let follower_line = "CRL generation and Crypto Officer ceremonies are rejected on this follower \
+                         region; send them to the leader.";
+    let health_line = "Point the health check at GET /health?strict=true on the HTTPS port.";
+
+    assert!(
+        profile_notes(DeploymentProfile::MultiRegion, RegionRole::Follower)
+            .contains(&follower_line)
+    );
+    assert!(
+        !profile_notes(DeploymentProfile::MultiRegion, RegionRole::Leader).contains(&follower_line)
+    );
+    assert!(
+        !profile_notes(DeploymentProfile::RoundRobinDns, RegionRole::Leader).contains(&health_line)
+    );
+    assert!(profile_notes(DeploymentProfile::HaProxy, RegionRole::Leader).contains(&health_line));
+    assert_eq!(
+        profile_notes(DeploymentProfile::SingleNode, RegionRole::Leader).len(),
+        1
+    );
 }

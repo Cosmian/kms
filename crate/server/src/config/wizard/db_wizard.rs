@@ -1,30 +1,51 @@
 //! Database configuration step of the KMS configuration wizard.
 
-use std::path::PathBuf;
+use std::{io::Write as _, path::PathBuf};
 
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 
-use super::PromptResultExt;
+use super::{
+    PromptResultExt,
+    profile_wizard::{DeploymentProfile, allowed_databases},
+};
 use crate::{
     config::{DatabaseType, MainDBConfig},
     error::KmsError,
     result::KResult,
 };
 
-pub(crate) fn configure_db() -> KResult<MainDBConfig> {
+/// Database types the wizard offers in a FIPS build.
+#[cfg(not(feature = "non-fips"))]
+const fn wizard_db_variants() -> &'static [DatabaseType] {
+    DatabaseType::FIPS_VARIANTS
+}
+
+/// Database types the wizard offers in a non-FIPS build.
+#[cfg(feature = "non-fips")]
+const fn wizard_db_variants() -> &'static [DatabaseType] {
+    DatabaseType::NON_FIPS_VARIANTS
+}
+
+pub(crate) fn configure_db(profile: DeploymentProfile) -> KResult<MainDBConfig> {
     let theme = ColorfulTheme::default();
 
-    #[cfg(not(feature = "non-fips"))]
-    let db_variants = DatabaseType::FIPS_VARIANTS;
-    #[cfg(feature = "non-fips")]
-    let db_variants = DatabaseType::NON_FIPS_VARIANTS;
+    let db_variants = allowed_databases(profile, wizard_db_variants());
 
-    let db_idx = Select::with_theme(&theme)
-        .with_prompt("Select database type")
-        .items(&db_variants.iter().map(|v| v.as_str()).collect::<Vec<_>>())
-        .default(0)
-        .interact()
-        .prompt_err()?;
+    let db_idx = if let [only] = db_variants.as_slice() {
+        writeln!(
+            std::io::stdout().lock(),
+            "  ℹ  Database: {only} (required by deployment profile {})",
+            profile.number()
+        )?;
+        0
+    } else {
+        Select::with_theme(&theme)
+            .with_prompt("Select database type")
+            .items(&db_variants.iter().map(|v| v.as_str()).collect::<Vec<_>>())
+            .default(0)
+            .interact()
+            .prompt_err()?
+    };
 
     let selected_db = db_variants
         .get(db_idx)
@@ -85,11 +106,20 @@ pub(crate) fn configure_db() -> KResult<MainDBConfig> {
         None
     };
 
-    let clear_database: bool = Confirm::with_theme(&theme)
-        .with_prompt("⚠  Clear database on start? (DELETES ALL DATA)")
-        .default(false)
-        .interact()
-        .prompt_err()?;
+    let clear_database: bool = if profile.is_multi_node() {
+        writeln!(
+            std::io::stdout().lock(),
+            "  ⚠  clear_database is not offered: with several nodes or regions it would erase \
+             the shared or replicated data."
+        )?;
+        false
+    } else {
+        Confirm::with_theme(&theme)
+            .with_prompt("⚠  Clear database on start? (DELETES ALL DATA)")
+            .default(false)
+            .interact()
+            .prompt_err()?
+    };
 
     let max_connections_str: String = Input::with_theme(&theme)
         .with_prompt("Max database connections (leave blank for default)")

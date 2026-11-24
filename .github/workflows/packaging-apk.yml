@@ -181,7 +181,7 @@ jobs:
         run: mise run test:pkg:alpine-native-build --variant ${{ matrix.features }}
 
   # Proves the Nix-built Alpine apk packages install (`apk add`) and run on real
-  # Alpine. See .mise/scripts/test/test_alpine_musl.sh for the full sequence:
+  # Alpine. See .mise/scripts/test/pkg/test_alpine_musl.sh for the full sequence:
   # installed-binary --version/--info pre-checks, server start, /version and UI
   # checks, FIPS/legacy-provider log checks, AES/RSA/EC round-trips, and PQC for
   # non-FIPS (SLH-DSA as a musl thread-stack-size canary).
@@ -231,7 +231,7 @@ jobs:
             echo "::group::${features}"
             SERVER_APK=$(find "${features}/result-apk-server-${features}" -name "cosmian-kms-server-*.apk")
             CLI_APK=$(find "${features}/result-apk-cli-${features}" -name "cosmian-kms-cli-*.apk")
-            bash .mise/scripts/test/test_alpine_musl.sh \
+            bash .mise/scripts/test/pkg/test_alpine_musl.sh \
               --variant "${features}" \
               --server-apk "$(pwd)/${SERVER_APK}" \
               --cli-apk "$(pwd)/${CLI_APK}" \
@@ -263,11 +263,10 @@ jobs:
 
     name: Publish apk-${{ matrix.features }}-${{ matrix.runner }}
     needs: [apk, alpine-packages-test]
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: write # GitHub Release assets
 
     strategy:
       fail-fast: false
@@ -282,39 +281,39 @@ jobs:
           - runner: ubuntu-24.04-arm
             cpu-arch: amd64
     steps:
-      - name: Remove existing old artifacts
-        run: rm -rf apk_${{ matrix.features }}_${{ matrix.runner }}
-
-      - name: Checkout repository (for public key file)
+      - name: Checkout repository (for public key file and upload action)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Download apk artifact for this matrix
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: apk_${{ matrix.features }}_${{ matrix.runner }}
+          path: ${{ runner.temp }}/package-artifacts
 
       - name: List downloaded assets
         run: |
           set -ex
-          find . -maxdepth 2 -type f -print
+          find "${RUNNER_TEMP}/package-artifacts" -maxdepth 2 -type f -print
 
-      - name: Push to package.cosmian.com (self-hosted)
+      - name: Push to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: apk/${{ matrix.cpu-arch }}/${{ matrix.features }}
           files: |
             ./nix/signing-keys/cosmian-kms-public.asc
-            result-apk-server-${{ matrix.features }}/*
-            result-apk-cli-${{ matrix.features }}/*
+            ${{ runner.temp }}/package-artifacts/result-apk-server-${{ matrix.features }}/*
+            ${{ runner.temp }}/package-artifacts/result-apk-cli-${{ matrix.features }}/*
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
-            result-apk-server-${{ matrix.features }}/cosmian-kms-server-*
-            result-apk-cli-${{ matrix.features }}/cosmian-kms-cli-*
+            ${{ runner.temp }}/package-artifacts/result-apk-server-${{ matrix.features }}/cosmian-kms-server-*
+            ${{ runner.temp }}/package-artifacts/result-apk-cli-${{ matrix.features }}/cosmian-kms-cli-*
             ./nix/signing-keys/cosmian-kms-public.asc

@@ -52,7 +52,7 @@
         "knip": "^6.45.1",
         "prettier": "^3.10.1",
         "typescript": "~5.9.3",
-        "typescript-eslint": "^8.72.2",
+        "typescript-eslint": "^8.73.0",
         "vite": "^7.3.8",
         "vitest": "^5.1.0"
     },

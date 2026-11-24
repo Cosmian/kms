@@ -3,7 +3,8 @@
 KMS nodes are stateless: all data lives in the database. They can be scaled horizontally from a single node up to any
 number of nodes, simply by connecting them all to the same database and putting a single entry point in front of them.
 A deployment is therefore two choices: **which database**, and **how clients reach the nodes**. This page lists the
-usual profiles, from the simplest to the most available, and what each one gives and does not give.
+usual profiles, from the simplest to the most available, and what each one gives and does not give. To serve clients
+from several regions, each with its own database, see [Profile 6](#profile-6-multi-region-active-active).
 
 ```mermaid
 %%{init: {"flowchart": {"curve": "linear"}}}%%
@@ -44,10 +45,14 @@ How the nodes share background jobs and report their state (`/health`, `/cluster
 | 3 | [Round-robin DNS](#profile-3-round-robin-dns) | 2+ | a DNS name with one record per node | nothing automatic: requests keep going to it until it leaves the DNS | simple load spreading |
 | 4 | [Keepalived only](#profile-4-keepalived-only) | 2+ | a virtual IP (VIP) shared by the nodes | the VIP moves to another node in a few seconds | on premises, nodes on one network |
 | 5 | [HAProxy, with or without Keepalived](#profile-5-haproxy) | 2+, plus 1 or 2+ load balancers | one HAProxy, or a VIP over several HAProxy | HAProxy stops sending requests to it | on premises, load spread over all nodes |
+| 6 | [Multi-region active-active](#profile-6-multi-region-active-active) | 1+ per region, in two regions | the nearest region (geo DNS or a global load balancer), each region with profile 2 to 5 inside | the other region keeps serving; clients of the failed region move to it | local reads and writes in two regions, with asynchronous convergence |
 
 Profiles 2 to 5 need a PostgreSQL or MySQL/MariaDB database shared by all the nodes (see
 [Rules common to profiles 2 to 5](#rules-common-to-profiles-2-to-5)). The availability of the database itself is a
-separate choice, described in [Database availability](#database-availability).
+separate choice, described in [Database availability](#database-availability). Profile 6 repeats one of them in each
+region, with its own database in each region: a PostgreSQL database per region replicated with Spock, or a node per
+region of a MySQL Galera cluster spanning the regions (see
+[MySQL with Galera](../configuration/database/multi_region.md#mysql-with-galera)).
 
 ```mermaid
 %%{init: {"flowchart": {"curve": "linear"}}}%%
@@ -65,9 +70,13 @@ flowchart TD
     p3["Profile 3<br/>Round-robin DNS"]:::profile
     p4["Profile 4<br/>Keepalived only"]:::profile
     p5["Profile 5<br/>HAProxy (+ Keepalived)"]:::profile
+    p6["Profile 6<br/>Multi-region active-active"]:::profile
+    regions{"Serve clients from<br/>several regions?"}:::question
 
     vm -->|yes: one VM| p1
-    vm -->|no| start
+    vm -->|no| regions
+    regions -->|"yes, one database<br/>per region"| p6
+    regions -->|no| start
     start -->|no| p1
     start -->|yes| where
     where -->|cloud, managed<br/>load balancer| p2
@@ -76,6 +85,9 @@ flowchart TD
     spread -->|no, failover is enough| p4
     spread -->|yes| p5
 ```
+
+`cosmian_kms configure` asks these questions first, then restricts the database choice to the profile,
+writes `region_role` for profile 6 and prints the profile's operating notes.
 
 ## Rules common to profiles 2 to 5
 
@@ -268,10 +280,89 @@ The configuration of both is described in [HAProxy and Keepalived](./haproxy_kee
 `GET /health?strict=true` to also take out the nodes that `/health` reports as `DEGRADED` (see
 [What `/health` tells a load balancer](#what-health-tells-a-load-balancer)).
 
+## Profile 6: multi-region active-active
+
+Each region runs its own group of KMS nodes and its own database node: either a PostgreSQL node per region, the
+PostgreSQL nodes replicating to one another with a logical multi-master extension (validated with pgEdge Spock), or a
+node per region of a MySQL Galera cluster spanning the regions (validated with Percona XtraDB Cluster). Clients use
+the nearest region, which serves reads and writes locally. Inside a region, use one of profiles 2 to 5 for the nodes.
+
+```mermaid
+%%{init: {"flowchart": {"curve": "linear"}}}%%
+flowchart TB
+    classDef client fill:#e1d5e7,stroke:#9673a6,stroke-width:2px,color:#000
+    classDef entry fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px,color:#000
+    classDef kms fill:#d5e8d4,stroke:#82b366,stroke-width:2px,color:#000
+    classDef db fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#000
+
+    clients["💻 Clients"]:::client
+    geo["🌍 Geo DNS or global<br/>load balancer"]:::entry
+
+    subgraph eu["EU — leader region"]
+        lb_eu["🔀 Regional entry point<br/>(profile 2 to 5)"]:::entry
+        kms_eu["🛡️ KMS nodes"]:::kms
+        db_eu[("🗄️ Database EU<br/>(PostgreSQL or<br/>Galera node)")]:::db
+    end
+    subgraph us["US — follower region"]
+        lb_us["🔀 Regional entry point<br/>(profile 2 to 5)"]:::entry
+        kms_us["🛡️ KMS nodes"]:::kms
+        db_us[("🗄️ Database US<br/>(PostgreSQL or<br/>Galera node)")]:::db
+    end
+
+    clients --> geo
+    geo --> lb_eu & lb_us
+    lb_eu --> kms_eu --> db_eu
+    lb_us --> kms_us --> db_us
+    db_eu <-.->|"multi-master<br/>replication"| db_us
+```
+
+What differs from profiles 2 to 5:
+
+- **One database per region**, not one for all the nodes. The rules common to profiles 2 to 5 apply inside each region.
+- **One `region_role = "leader"` region**, all the others `follower`. CRL generation, Crypto Officer ceremonies and
+  background key auto-rotation run on the leader region only; a follower rejects the first two with an HTTP 422 (the
+  client retries on the leader region) and skips the third. Everything else is served by every region.
+- **Cluster coordination stays inside a region**: job locks, heartbeats, `GET /cluster/status` and
+  `GET /health` describe the region that answers (see
+  [Multi-region deployments](./cluster_coordination.md#multi-region-deployments)). Point the health check of each
+  regional entry point at its own nodes, with `?strict=true` if a degraded node must leave the pool. On Galera, the
+  heartbeats replicate, so `GET /cluster/status` lists the nodes of every region.
+- **Convergence is eventual**: a change made in a region reaches the others after the replication lag. Object
+  lifecycle states converge to the most restrictive one (a destroyed key stays destroyed in every region).
+- The validated topology has **two regions**. The database is PostgreSQL with Spock (one database per region) or a
+  MySQL Galera cluster spanning the regions (see
+  [MySQL with Galera](../configuration/database/multi_region.md#mysql-with-galera)). All the regions use the same
+  `ceremony_secret`.
+
+### Operating profile 6
+
+- **Upgrade the KMS release** one region first, then the others in the same window, stopping every older node before
+  starting the new release. On PostgreSQL, release 5.29.0 starts on the upgraded database, but lifecycle triggers
+  override its direct state writes. No mixed-version rolling restart is supported on PostgreSQL.
+  See [Database tables](../configuration/database/tables.md#deliberate-postgresql-downgrade-and-return) for downgrade recovery and limits.
+  On Galera, start the first node alone before the others. The storage changes themselves are applied at startup;
+  no migration command is needed.
+- **Move an existing deployment to profile 6**: a region must run PostgreSQL or MySQL; a node with
+  `region_role = "follower"` on SQLite or Redis-with-Findex is rejected at startup. The existing region keeps the
+  default `region_role = "leader"`. The replication setup of the new region is in
+  [Multi-region active-active deployment](../configuration/database/multi_region.md).
+- **If the leader region is lost**, the followers keep serving reads and writes, but CRL generation, Crypto Officer
+  ceremonies and auto-rotation stop. There is no automatic election: set `region_role = "leader"` on one surviving
+  region and restart its nodes, and make sure the lost region cannot come back as a leader (never two leaders).
+- **Objects in an HSM do not replicate**: each region needs the same HSM keys.
+
+The full list of operating notes and limits is in
+[Multi-region active-active deployment](../configuration/database/multi_region.md#operating-notes).
+
+The topology, what converges and how, the replication set to configure and the limits are in
+[Multi-region active-active deployment](../configuration/database/multi_region.md); the settings are in
+[Database configuration](../configuration/database/configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr).
+
 ## Database availability
 
-Whatever the profile, all the nodes depend on one database: if it is down, no node can serve requests. Make it highly
-available with the tools of your database:
+In profiles 1 to 5, all nodes depend on one database: if it is down, no node can serve requests. In profile 6, this
+dependency is local to each region; another region can continue serving against its own database. Make each
+database highly available with the tools of your database:
 
 - PostgreSQL: streaming replication with an HA manager such as Patroni or pg_auto_failover, or a managed multi-zone
   service;

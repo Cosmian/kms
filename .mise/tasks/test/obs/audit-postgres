@@ -102,6 +102,6 @@ cargo test -p cosmian_kms_server --lib "${FEATURES_FLAG[@]}" \
 _require_tests_passed "${_log_server}"
 
 print_status "Running end-to-end integration test (KMS server + ckms CLI)..."
-bash "${REPO_ROOT}/.mise/scripts/test/test_audit_postgres_log.sh" --variant "${VARIANT}"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_audit_postgres_log.sh" --variant "${VARIANT}"
 
 print_success "PostgreSQL audit backend tests completed"

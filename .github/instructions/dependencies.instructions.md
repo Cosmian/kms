@@ -42,7 +42,7 @@ Gates: `cargo deny check` (CI job `cargo-deny` in `.github/workflows/main.yml`, 
     4. Re-run `cargo vet check --locked` until it prints `Vetting Succeeded`.
 - [ ] Change `supply-chain/` only through the `cargo vet` commands above. Never run `cargo vet certify` (it records a human audit under the git user's name), `cargo vet trust` or `cargo vet regenerate exemptions` (it silently exempts everything new), and never edit `[imports.*]`/`[policy.*]` of `supply-chain/config.toml` or `[[trusted.*]]` of `supply-chain/audits.toml`: those are human decisions.
 - [ ] Dependabot cargo PRs are security updates only (`.github/dependabot.yml`: `open-pull-requests-limit: 0`). It cannot edit `supply-chain/`, so on such a PR run `cargo vet check` without `--locked` (fetches imported audits, which may already cover the bump), then `cargo vet suggest` and the exemption procedure above for what is still reported, and push to the PR branch.
-- [ ] `Cargo.lock` changed → also `lockfile-hashes.instructions.md` (Nix vendor hashes).
+- [ ] `Cargo.lock` changed → also `lockfile-hashes.instructions.md` (do not renew the Nix vendor hashes; the nightly build does).
 
 ## 3. JavaScript (pnpm, `ui/`)
 
@@ -63,18 +63,18 @@ Gates: CI job `npm-dependency-audit` (`.github/workflows/supply-chain.yml`), pre
 - [ ] `pnpm install --frozen-lockfile` succeeds with the committed `ui/pnpm-lock.yaml`.
 - [ ] OSV-Scanner (`mise run audit:npm --base origin/develop`) reports no advisory on a package you added or bumped. Ignore an advisory in `ui/osv-scanner.toml` only with a reachability reason and an `ignoreUntil` date.
 - [ ] `pnpm run check:dedup` (knip) does not report the new package as unused.
-- [ ] `ui/pnpm-lock.yaml` changed → also `lockfile-hashes.instructions.md` (`ui.pnpm.{linux,darwin}.sha256`).
+- [ ] `ui/pnpm-lock.yaml` changed → also `lockfile-hashes.instructions.md` (do not renew `ui.pnpm.{linux,darwin}.sha256`; the nightly build does).
 
 ## 4. Python (test and docs helpers)
 
-Lockfiles: `.mise/scripts/test/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
+Lockfiles: `.mise/scripts/test/<group>/requirements-*.{in,txt}` and `.mise/scripts/docs/requirements.{in,txt}`. Gates: CI job `python-dependency-audit` (`.github/workflows/supply-chain.yml`), pre-push hook `pip-audit-lockfiles`.
 
 - [ ] Prefer the standard library (`python.instructions.md`).
-- [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/requirements-jose.in`).
+- [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/interop/requirements-jose.in`).
 - [ ] Regenerate the `.txt` with the exact `pip-compile --generate-hashes …` command recorded in its header, from the repository root, under the Python version that header names; commit both files.
 - [ ] `pip-audit -r <file>.txt` reports no known vulnerability.
 - [ ] Test and docs scripts install with `pip install --require-hashes -r <file>.txt`, never `pip install <pkg>`.
-- [ ] A new lockfile: add it to the `for f in` list of the `python-dependency-audit` job and to `[files] extend-exclude` of `_typos.toml` (unless an existing entry already matches it). Outside `.mise/scripts/test/` and `.mise/scripts/docs/`, also add its directory to the `pip` entry of `.github/dependabot.yml` and widen the `files:` regex of the `pip-audit-lockfiles` hook and the `exclude:` regex of the `requirements-txt-fixer` hook in `.pre-commit-config.yaml`.
+- [ ] A new lockfile: add it to the `for f in` list of the `python-dependency-audit` job and to `[files] extend-exclude` of `_typos.toml` (unless an existing entry already matches it). Outside the `pip` directories already listed in `.github/dependabot.yml`, also add its directory to the `pip` entry of `.github/dependabot.yml` and widen the `files:` regex of the `pip-audit-lockfiles` hook and the `exclude:` regex of the `requirements-txt-fixer` hook in `.pre-commit-config.yaml`.
 
 ## 5. Go (`.mise/scripts/kmip-go`)
 
@@ -114,4 +114,4 @@ Gate: pre-commit hook `no-curl-pipe-shell` (workflows, actions, `.mise/`, `scrip
 - `.mise/scripts/pykmip/setup_pykmip.sh`: unpinned `pip install PyKMIP`, with a `git+https://github.com/OpenKMIP/PyKMIP.git` fallback.
 - `documentation/theme/scripts/setup-mdbook.sh` (submodule): `curl | sh` rustup fallback when `cargo` is missing; `cargo install` without `--locked` for `mdbook-admonish`, `mdbook-mermaid` and `mdbook-linkcheck`.
 
-> Rule 4.19 of `/kms-sync-rules`. Lock-file hash sync: `lockfile-hashes.instructions.md` (rule 4.11).
+> Rule 4.19 of `/kms-sync-rules`. Nix hashes are left to the nightly build: `lockfile-hashes.instructions.md` (rule 4.11).

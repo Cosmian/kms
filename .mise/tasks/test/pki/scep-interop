@@ -29,7 +29,7 @@ if ! has_cmd go; then
   ensure_nix_shell
 fi
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_scep_interop.sh" \
+bash "${REPO_ROOT}/.mise/scripts/test/pki/test_scep_interop.sh" \
   --variant "${usage_variant:-fips}" --link "${usage_link:-static}"
 
 print_success "SCEP interoperability tests completed"

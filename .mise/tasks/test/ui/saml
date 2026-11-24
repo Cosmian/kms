@@ -21,4 +21,4 @@ fi
 export WITH_WASM=1 WITH_CURL=1
 ensure_nix_shell
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_ui_saml.sh" --variant "${VARIANT}" --link "${LINK}"
+bash "${REPO_ROOT}/.mise/scripts/test/ui/test_ui_saml.sh" --variant "${VARIANT}" --link "${LINK}"

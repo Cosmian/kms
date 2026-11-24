@@ -15,3 +15,28 @@ pub use otel_metrics::OtelMetrics;
 
 #[cfg(test)]
 mod lint_cleanup_characterization_tests;
+
+use crate::{error::KmsError, result::KResult};
+
+/// Whether this node belongs to a follower region of a multi-region deployment.
+///
+/// The job locks of the cluster coordination live in the node's own database, and each region has
+/// its own, so they do not exclude a job running in another region: work that must happen in one
+/// region only is skipped on a follower.
+pub(crate) fn is_follower_region(kms: &KMS) -> bool {
+    kms.params.region_role == crate::config::RegionRole::Follower
+}
+
+/// Reject an operation restricted to the leader region of a multi-region active-active
+/// deployment (see [`crate::config::RegionRole`]). No-op for the default single-region
+/// `Leader` role.
+pub(crate) fn require_leader_region(kms: &KMS, action: &str) -> KResult<()> {
+    if is_follower_region(kms) {
+        return Err(KmsError::InvalidRequest(format!(
+            "{action} is only permitted on the leader region of a multi-region deployment; \
+             this node is configured with `region_role = follower`. Retry the request against \
+             the leader region."
+        )));
+    }
+    Ok(())
+}

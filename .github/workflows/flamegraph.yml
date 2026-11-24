@@ -105,33 +105,35 @@ jobs:
     # Only publish when the flamegraph job actually produced output; scp -r on
     # an empty artifact directory fails and there is nothing useful to publish.
     if: needs.flamegraph.result == 'success'
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: read
 
     steps:
+      - name: Checkout repository (for the upload action)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
       - name: Download flamegraph artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-          path: flamegraph-docs
+          path: ${{ runner.temp }}/package-artifacts/flamegraph-docs
 
+      # Copies cpu_scaling.md and the flamegraph/ SVGs/PNGs.
       - name: Push flamegraph output to package.cosmian.com
-        shell: bash
-        run: |
-          set -ex
-          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph"
-          SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
+          version-dir: ${{ inputs.server_version || github.ref_name }}
+          subdir: benchmarks/flamegraph
+          directory: ${{ runner.temp }}/package-artifacts/flamegraph-docs
 
-          # Create remote directory.
-          ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
-
-          # Copy cpu_scaling.md and flamegraph/ SVGs/PNGs.
-          # Use tar-over-ssh instead of `scp dir/.` — newer OpenSSH (SFTP mode)
-          # rejects the trailing-dot trick with "unexpected filename: .".
-          tar -C flamegraph-docs -cf - . | ssh ${SSH_OPTS} cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
-
-          echo ""
-          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph/cpu_scaling.md"
+      - name: Print published URL
+        env:
+          VERSION_DIR: ${{ inputs.server_version || github.ref_name }}
+        run: echo "Published - https://package.cosmian.com/kms/${VERSION_DIR}/benchmarks/flamegraph/cpu_scaling.md"

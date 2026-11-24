@@ -30,7 +30,7 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
  * works without cross-origin cookie complications).
  *
  * The harness responsible for building/starting everything is
- * `.github/scripts/test/test_ui_auth.sh`. For CI, that script sets `CI=true`
+ * `.mise/scripts/test/ui/test_ui_auth.sh`. For CI, that script sets `CI=true`
  * and `PLAYWRIGHT_BASE_URL` after both servers are confirmed ready.
  */
 export default defineConfig({

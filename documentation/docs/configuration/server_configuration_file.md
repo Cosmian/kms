@@ -13,17 +13,18 @@ cosmian_kms configure
 
 The wizard guides you step-by-step through all configuration sections:
 
-| Step | Section                | What it covers                                                                    |
-| ---- | ---------------------- | --------------------------------------------------------------------------------- |
-| 1/9  | **Database**           | Type (SQLite / PostgreSQL / MySQL / Redis-Findex), URL, paths, cache settings     |
-| 2/9  | **HTTP server**        | Listening port and hostname                                                       |
-| 3/9  | **TLS / Certificates** | Enable TLS; optionally generates a self-signed PKI (CA → server + client certs)   |
-| 4/9  | **KMIP socket server** | Enable the binary KMIP socket listener (port 5696)                                |
-| 5/9  | **Authentication**     | API token, JWT/OIDC providers, mTLS client certificates                           |
-| 6/9  | **HSM**                | Model, admin user, slot numbers and passwords                                     |
-| 7/9  | **Logging**            | Log level, OTLP endpoint, syslog, rolling logs                                    |
-| 8/9  | **Proxy**              | Outbound proxy for JWKS fetch (URL, auth, exclusions)                             |
-| 9/9  | **Advanced**           | Workspace paths, KEK, MS DKE, KMIP policy, Google CSE, Azure EKM, AWS XKS, Web UI |
+| Step  | Section                | What it covers                                                                                                                                                                    |
+| ----- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1/10  | **Deployment profile** | [High-availability decision tree](../installation/high_availability_mode.md#choosing-a-profile) (profiles 1 to 6); limits the database choice, writes `region_role` for profile 6 |
+| 2/10  | **Database**           | Type (SQLite / PostgreSQL / MySQL / Redis-Findex), URL, paths, cache settings                                                                                                     |
+| 3/10  | **HTTP server**        | Listening port and hostname                                                                                                                                                       |
+| 4/10  | **TLS / Certificates** | Enable TLS; optionally generates a self-signed PKI (CA → server + client certs)                                                                                                   |
+| 5/10  | **KMIP socket server** | Enable the binary KMIP socket listener (port 5696)                                                                                                                                |
+| 6/10  | **Authentication**     | API token, JWT/OIDC providers, mTLS client certificates                                                                                                                           |
+| 7/10  | **HSM**                | Model, admin user, slot numbers and passwords                                                                                                                                     |
+| 8/10  | **Logging**            | Log level, OTLP endpoint, syslog, rolling logs                                                                                                                                    |
+| 9/10  | **Proxy**              | Outbound proxy for JWKS fetch (URL, auth, exclusions)                                                                                                                             |
+| 10/10 | **Advanced**           | Workspace paths, KEK, MS DKE, KMIP policy, Google CSE, Azure EKM, AWS XKS, Web UI                                                                                                 |
 
 At the end the wizard writes the resulting TOML file to the default system path
 (`/etc/cosmian/kms.toml` on Linux/macOS, `C:\ProgramData\Cosmian\kms.toml` on Windows)
@@ -86,6 +87,14 @@ The file should be a TOML file with the following structure:
 ```toml
 # The default username to use when no authentication method is provided
 default_username = "admin"
+
+# Role of this node's region in a multi-region active-active deployment:
+# `leader` (default) or `follower`. Exactly one region of the deployment is the leader;
+# a single-region deployment keeps `leader`.
+# Only the leader generates CRLs and activates or revokes Crypto Officer ceremonies.
+# A follower requires `PostgreSQL` with logical multi-master replication
+# or a `MySQL` Galera cluster.
+region_role = "leader"
 
 # When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method

@@ -125,6 +125,20 @@ from that PR's merge ref.
 |`docker-login-ghcr`|`github-token`|Logs in to ghcr.io|`packaging-docker.yml`|
 |`import-gpg-key`|`gpg-private-key`, `passphrase`|Imports the package-signing key and lists it|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`|
 |`setup-helm-minikube`|none|Installs Helm and starts Minikube (docker driver, Kubernetes v1.32.0)|`packaging-docker.yml`|
-|`push-package-cosmian`|`subdir`, `files`, `known-hosts`|Uploads files to `package.cosmian.com` under the branch (or tag) directory; output `remote-dir`|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`, `build_windows.yml`|
+|`push-package-cosmian`|`subdir`, `files` or `directory`, `version-dir`, `known-hosts`, `ssh-private-key`|Uploads with a write-only restricted rsync key (`.mise/scripts/release/push_package.sh`) to `package.cosmian.com` under the branch (or tag, or `version-dir`) directory; output `remote-dir`|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`, `benchmark.yml`, `flamegraph.yml`|
 
-Upload callers pass the trusted host key from `vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS`. Missing or mismatched keys fail the upload; SSH host-key verification is never disabled by this action.
+Upload callers pass the trusted host key from `vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS` and the dedicated key `secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY`. Missing or mismatched keys fail the upload; SSH host-key verification is never disabled by this action.
+
+Publish jobs run on fresh `ubuntu-24.04` runners in the `package-publish` environment (no job container, no host-mounted key), download artifacts under `${{ runner.temp }}/package-artifacts` (never over the checkout that holds the uploader) and upload only plain regular files.
+
+### Credential boundaries (release, publish, upload)
+
+|Credential|Held by|Never present in|
+|---|---|---|
+|`PAT_TOKEN`|`commit-generated.yml` (last step only), `sync-branches`, dispatch/wait steps|jobs that build, generate docs or hashes, or compile (`prepare-build`, `generate-nix-hashes`, `generate-docs`, `retrieve-sbom`)|
+|`CRATES_IO`|`cargo-publish.yml` `publish` job (environment `crates-io`, `--no-verify`)|`verify` (the compiling `--dry-run`)|
+|`PACKAGE_COSMIAN_SSH_PRIVATE_KEY`|publish jobs in environment `package-publish`|every build, test and Git job|
+
+Builders upload a data-only `changes.patch`; `commit-generated.yml` applies it onto the same commit, takes its helper scripts from the workflow's own commit (never from `base-sha`), requires `base-sha` to be reachable from the target branch or the default branch (`check_base_lineage.sh`), accepts only plain-file changes at the caller's exact paths (`validate_generated_changes.py`), transplants that single commit onto the branch tip and pushes without force. `mise run dev:ci-security` (supply-chain job `release-security`) tests these boundaries, and `.mise/scripts/dev/test_release_security.py --probe` runs in the builders to prove dependency code sees no release credential.
+
+Administrator prerequisites (not creatable from the repository): environments `crates-io` (required reviewers; `CRATES_IO` is stored ONLY as an environment secret: delete it at repository and organization level, otherwise any workflow can read it and the reviewer gate protects nothing) and `package-publish` (secret `PACKAGE_COSMIAN_SSH_PRIVATE_KEY`); on `package.cosmian.com` a dedicated account `kms-ci-upload` (write access to `/mnt/package/kms` only, `/bin/dash` shell) whose authorized key is prefixed with `restrict,command="/usr/bin/rrsync -wo -munge -no-del -no-lock /mnt/package/kms"` (check the installed rrsync path); `PAT_TOKEN` must be available to the repository.

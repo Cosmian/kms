@@ -323,45 +323,40 @@ jobs:
   publish:
     name: Publish to package.cosmian.com
     needs: benchmark
-    runs-on: [self-hosted, not-sgx]
+    runs-on: ubuntu-24.04
+    environment: package-publish
     permissions:
       contents: read
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
 
     steps:
+      - name: Checkout repository (for the upload action)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
       - name: Download benchmark artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: benchmark-report-${{ inputs.server_version || 'src' }}-${{ inputs.variant || 'non-fips' }}-${{ inputs.benchmark || 'software' }}
-          path: report
+          path: ${{ runner.temp }}/package-artifacts/report
 
+      # Copies the staged report folders (report.md + load/ + criterion/ SVGs + raw JSON).
       - name: Push benchmark report to package.cosmian.com
-        shell: bash
+        uses: ./.github/actions/push-package-cosmian
+        with:
+          known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
+          version-dir: ${{ inputs.server_version || github.ref_name }}
+          subdir: benchmarks
+          directory: ${{ runner.temp }}/package-artifacts/report
+
+      - name: Print published report URLs
         env:
           VERSION_DIR: ${{ inputs.server_version || github.ref_name }}
-          KNOWN_HOSTS: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
         run: |
-          set -euo pipefail
-          : "${KNOWN_HOSTS:?Package server SSH host key is not configured (vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS)}"
-          known_hosts=$(mktemp)
-          trap 'rm -f "${known_hosts}"' EXIT
-          printf '%s\n' "${KNOWN_HOSTS}" > "${known_hosts}"
-          REMOTE_DIR="/mnt/package/kms/${VERSION_DIR}/benchmarks"
-          SSH_OPTS=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${known_hosts}" -o BatchMode=yes -i /root/.ssh/id_rsa)
-
-          printf 'mkdir -p -- %q\n' "${REMOTE_DIR}" | ssh "${SSH_OPTS[@]}" cosmian@package.cosmian.com bash
-
-          # Copy the staged report folders (report.md + load/ + criterion/ SVGs + raw JSON).
-          # Use tar-over-ssh instead of `scp dir/.` — newer OpenSSH (SFTP mode)
-          # rejects the trailing-dot trick with "unexpected filename: .".
-          tar -C report -cf - . | ssh "${SSH_OPTS[@]}" cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
-
-          echo ""
           echo "Published:"
-          for d in report/*/; do
+          for d in "${RUNNER_TEMP}"/package-artifacts/report/*/; do
             echo "  https://package.cosmian.com/kms/${VERSION_DIR}/benchmarks/$(basename "${d}")/report.md"
           done
 

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#MISE description="Fail on vulnerable quinn/rustix lock entries, QUIC in the shipped binaries and unmatched advisory exceptions (cargo audit + cargo tree + OpenVEX)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+REPO_ROOT="$(get_repo_root)"
+PYTHON="$(pick_python312)"
+require_cmd cargo
+cargo audit --version >/dev/null 2>&1 || print_error "cargo-audit is not installed (cargo install --locked cargo-audit@0.23.0)"
+
+work="$(mktemp -d)"
+trap 'rm -rf "${work}"' EXIT
+cd "${REPO_ROOT}"
+
+print_header "Advisory coverage: cargo audit + production graphs + OpenVEX"
+# cargo audit exits 1 when it finds a vulnerability: keep its status and JSON for the checker.
+audit_status=0
+cargo audit --json >"${work}/audit.json" 2>"${work}/audit.err" || audit_status=$?
+[ "${audit_status}" -eq 0 ] || sed 's/^/  cargo audit: /' "${work}/audit.err" >&2
+
+# Normal edges of the shipped crates only (no dev/build deps), every target, per build variant.
+tree_args=()
+for variant in fips non-fips; do
+  features=()
+  if [ "${variant}" = "non-fips" ]; then features=(--features non-fips); fi
+  cargo tree --locked --color never -p cosmian_kms_server -p ckms --target all --edges normal --prefix none \
+    --format '{p}|{f}' ${features[@]+"${features[@]}"} >"${work}/${variant}.txt"
+  tree_args+=(--production-tree "${work}/${variant}.txt")
+done
+
+"${PYTHON}" "${REPO_ROOT}/.mise/scripts/sbom/check_advisory_coverage.py" \
+  --root "${REPO_ROOT}" --audit-json "${work}/audit.json" --audit-exit-status "${audit_status}" "${tree_args[@]}"
+print_success "Advisory coverage verified"

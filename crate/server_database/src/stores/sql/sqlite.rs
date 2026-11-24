@@ -831,6 +831,10 @@ impl ObjectsStore for SqlitePool {
         Ok(owned)
     }
 
+    async fn get_parameter(&self, name: &'static str) -> InterfaceResult<Option<String>> {
+        Ok(DbParameters::get_parameter(self, name).await?)
+    }
+
     async fn get_or_insert_parameter(
         &self,
         name: &'static str,
@@ -1796,7 +1800,8 @@ impl OwnedOp {
                     tags: tags.clone(),
                 })
             }
-            AtomicOperation::UpdateState((uid, state)) => Ok(Self::UpdateState {
+            AtomicOperation::UpdateState((uid, state))
+            | AtomicOperation::ResetState((uid, state)) => Ok(Self::UpdateState {
                 uid: uid.clone(),
                 state_s: state.to_string(),
             }),

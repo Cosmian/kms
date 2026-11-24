@@ -6,7 +6,7 @@
  * running Auth Verifier authentication server (not mocked) and a REAL KMS server
  * configured with `[auth_verifier]`.
  *
- * Prerequisites (see `.github/scripts/test/test_ui_auth.sh`):
+ * Prerequisites (see `.mise/scripts/test/ui/test_ui_auth.sh`):
  *   - Auth Verifier server running on https://localhost:8443 with the bundled
  *     dev seed (realm "_", super-admin `admin` / `change_me`).
  *   - KMS server running on http://localhost:9998, serving the UI itself
@@ -53,6 +53,27 @@ test.describe("Auth Verifier server — Web UI login", () => {
         await expect(page.getByTestId("logout-btn")).toBeVisible();
     });
 
+    test("TC1b — the session cookie is sealed, HttpOnly, SameSite=Lax and lives 24 hours", async ({ page, context }) => {
+        await page.goto("/ui/");
+        await page.getByTestId("auth-verifier-username-input").fill(VALID_USERNAME);
+        await page.getByTestId("auth-verifier-password-input").fill(VALID_PASSWORD);
+        await page.getByTestId("auth-verifier-login-submit").click();
+        await page.waitForURL(/\/ui\/locate/, { timeout: 15_000 });
+
+        const session = (await context.cookies()).find((c) => c.name === "auth_session");
+        expect(session, "auth_session cookie is set at login").toBeDefined();
+        expect(session?.httpOnly).toBe(true);
+        expect(session?.sameSite).toBe("Lax");
+        expect(session?.path).toBe("/");
+        // `Secure` follows the public URL scheme, as before.
+        expect(session?.secure).toBe(page.url().startsWith("https://"));
+        const lifetime = (session?.expires ?? 0) - Date.now() / 1000;
+        expect(lifetime).toBeGreaterThan(23 * 3600);
+        expect(lifetime).toBeLessThanOrEqual(24 * 3600 + 60);
+        // AES-GCM sealed: the user name is not readable in the value.
+        expect(session?.value).not.toContain(VALID_USERNAME);
+    });
+
     test("TC4 — bad credentials are rejected", async ({ page }) => {
         await page.goto("/ui/");
 
@@ -66,7 +87,7 @@ test.describe("Auth Verifier server — Web UI login", () => {
         await expect(page.getByTestId("auth-verifier-login-form")).toBeVisible();
     });
 
-    test("TC8 — logout clears the session", async ({ page }) => {
+    test("TC8 — logout clears the session", async ({ page, context }) => {
         await page.goto("/ui/");
         await page.getByTestId("auth-verifier-username-input").fill(VALID_USERNAME);
         await page.getByTestId("auth-verifier-password-input").fill(VALID_PASSWORD);
@@ -78,5 +99,8 @@ test.describe("Auth Verifier server — Web UI login", () => {
 
         const whoami = await page.request.get("/ui/whoami");
         expect(whoami.status()).toBe(401);
+
+        // The session cookie is dropped by the browser, not only rejected by the server.
+        expect((await context.cookies()).some((c) => c.name === "auth_session")).toBe(false);
     });
 });

@@ -9,6 +9,4 @@ ignore = [
   "RUSTSEC-2023-0071",
   # crypto-bigint 0.5.5 via elliptic-curve 0.13 (jsonwebtoken, optional pgp); no 0.5.x patch, see deny.toml
   "RUSTSEC-2026-0387",
-  # cookie 0.16.2 via actix-web 4 (no patched 0.16.x): the server never forks and derives its cookie Key with Key::from, see deny.toml
-  "RUSTSEC-2026-0594",
 ]

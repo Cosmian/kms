@@ -81,7 +81,7 @@ for every failure.
 | **Compile error** | `error[E...]` / `could not compile` | Read error, fix source |
 | **Test failure** | `test ... FAILED` / assertion / panic | Read failing test output, fix logic |
 | **Dependency audit** | `cargo deny` / `cargo audit` / `cargo machete` | Upgrade vulnerable deps; remove unused deps; use only justified exceptions |
-| **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Update the matching expected hash from the failed job |
+| **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Do not renew it. If a lock file changed intentionally, the nightly build recomputes the hashes (`lockfile-hashes.instructions.md`); otherwise revert the lock file change |
 | **Docker/packaging** | packaging-job failure | Inspect the failing Docker/package path only |
 | **Runner lost / infrastructure** | Annotation `The hosted runner lost communication with the server` or `The runner has received a shutdown signal`; failed step has `conclusion: null` and no log | Confirm the same job passed on an earlier run whose diff to this commit does not touch the job's inputs, then `gh run rerun $RUN_ID --repo Cosmian/kms --failed` once and watch it. No commit. If it recurs on the rerun, investigate that step's memory/disk use instead of rerunning. |
 | **Flaky test** | intermittent failure | Re-run the affected test; investigate if repeatable |
@@ -95,7 +95,7 @@ Inspect only files implicated by the failed steps. Apply all confirmed fixes for
 Use the narrowest relevant verification for each fix:
 
 - Rust source change: run `cargo clippy-all`, `cargo fmt --all`, and the targeted test(s) for changed behavior once after the batch. These required project checks are not skipped; avoid rerunning them after each individual hunk.
-- Nix hash-only change: verify the matching hash; do not run unrelated Rust tests.
+- Nix hash mismatch after a lock file change: no commit; hashes are renewed by the nightly build only.
 - Workflow, shell, Docker, or packaging change: run the failing job's relevant local check where available.
 - Dependency audit: inspect existing `deny.toml` exceptions; upgrade affected crates or use only a justified, time-limited exception.
 - `cargo machete`: remove confirmed unused dependencies after checking conditional and target-specific usage.
@@ -105,7 +105,7 @@ Use the narrowest relevant verification for each fix:
 cargo test -p <affected_crate> <test_name>
 ```
 
-For Nix hash mismatches, either update `nix/expected-hashes/` from the failed log or run `mise run release:update-hashes <failed-job-link>`.
+For Nix hash mismatches, never update `nix/expected-hashes/` or run `mise run release:update-hashes`: the nightly build does it (unless the user explicitly asks).
 
 ## Step 6 — Commit and push
 

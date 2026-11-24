@@ -7,6 +7,6 @@ has_env_vars DOCKER_IMAGE_NAME ORACLE_KMS_DEMO_USER_PASS COSMIAN_HSM_PIN || skip
 print_header "Running Oracle TDE remote upgrade and smoke test"
 
 REPO_ROOT="$(get_repo_root)"
-bash "${REPO_ROOT}/.mise/scripts/test/test_docker_oracle.sh"
+bash "${REPO_ROOT}/.mise/scripts/test/pkg/test_docker_oracle.sh"
 
 print_success "Oracle TDE remote upgrade and smoke test completed"
