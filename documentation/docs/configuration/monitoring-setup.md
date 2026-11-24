@@ -181,7 +181,7 @@ Generating a 4096 bit RSA private key
 writing new private key to './certs/kms-demo.key'
 -----
 PKCS#12 demo certificate generated at: ./certs/kms.p12
-Password: testpassword
+Password: <value of KMS_P12_PASSWORD>
 ```
 
 ![monitor00](images/monitor-00.png)
