@@ -2865,7 +2865,8 @@ paths:
         '200':
           description: |
             Signed, DER-encoded `OCSPResponse` (RFC 6960 §4.2). Also returned for
-            protocol-level rejections (`malformedRequest`, `unauthorized`) per
+            protocol-level rejections (`malformedRequest`, `unauthorized`, `tryLater` when the
+            certificate status cannot be looked up) per
             RFC 6960 §2.3 — these are unsigned, minimal `OCSPResponse` bodies, not
             HTTP error statuses, since standard OCSP clients cannot parse anything
             other than a DER `OCSPResponse`.

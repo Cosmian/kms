@@ -810,6 +810,7 @@ Crate path: `crate/server`
 | `warn` | `UI session revocation lookup failed, refusing the session: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The database could not be read; the logged-in session is refused (fail closed). |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral session key. Sessions will be invalidated on server restart and are not portable across instances. For persistent sessions and load-balanced deployments, set `ui_session_salt` (or KMS_SESSION_SALT) to a strong random secret value. `` | `src/start_kms_server.rs` | - | Each instance seals its cookies with its own random key, so behind a load balancer users are logged out whenever a request reaches another instance. |
 | `debug` | `UI session cookie rejected: revoked` | `src/middlewares/ui_session.rs` | - | The session id was revoked by a logout on this or another instance. |
+| `error` | `OCSP certificate status lookup failed: {e}` | `src/routes/ocsp/handler.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -876,6 +877,7 @@ Crate path: `crate/server_database`
 | `debug` | `[metrics] skipping unparsable DeactivationDate {json}: {e}` | `src/stores/sql/mod.rs` | `json`, `e` | - |
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/mysql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/pgsql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
+| `warn` | `find: object store '{prefix}' failed: {e}` | `src/core/database_objects.rs` | `prefix`, `e` | ×2 in this file |
 
 ### `cosmian_kms_crypto`
 

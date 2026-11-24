@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 /// [scep]
 /// scep_enabled = false
 /// scep_ca_uid = "..."
-/// scep_allow_renewal_without_challenge = true
+/// scep_allow_renewal_without_challenge = false
 /// scep_template = "iot_device"
 /// ```
-#[derive(Args, Clone, Deserialize, Serialize)]
+#[derive(Args, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ScepConfig {
     /// Enable the SCEP endpoint at `/scep`.
@@ -67,8 +67,10 @@ pub struct ScepConfig {
     /// Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
     /// CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
     ///
-    /// When `false`, renewal requests are rejected with `badRequest`.
-    #[clap(long = "scep-allow-renewal-without-challenge", id = "scep_allow_renewal_without_challenge", value_name = "SCEP_ALLOW_RENEWAL_WITHOUT_CHALLENGE", default_value_t = true, action = clap::ArgAction::Set, verbatim_doc_comment)]
+    /// When `false` (default), renewal requests are rejected with `badRequest` and a device
+    /// must re-enroll with the challenge password. Set to `true` only if every certificate
+    /// issued by the SCEP CA may be renewed by whoever holds its private key.
+    #[clap(long = "scep-allow-renewal-without-challenge", id = "scep_allow_renewal_without_challenge", value_name = "SCEP_ALLOW_RENEWAL_WITHOUT_CHALLENGE", default_value_t = false, action = clap::ArgAction::Set, verbatim_doc_comment)]
     #[serde(rename = "scep_allow_renewal_without_challenge")]
     pub allow_renewal_without_challenge: bool,
 
@@ -104,17 +106,5 @@ impl std::fmt::Debug for ScepConfig {
             )
             .field("scep_template", &self.template)
             .finish()
-    }
-}
-
-impl Default for ScepConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            ca_uid: None,
-            challenge_password: None,
-            allow_renewal_without_challenge: true,
-            template: None,
-        }
     }
 }

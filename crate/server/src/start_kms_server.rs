@@ -2150,7 +2150,12 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
 
     // Configure client certificate verification if specified
     if let Some(ca_cert_pem) = &server_config.clients_ca_cert_pem {
-        configure_client_cert_verification(&mut builder, ca_cert_pem, "http server")?;
+        configure_client_cert_verification(
+            &mut builder,
+            ca_cert_pem,
+            "http server",
+            server_config.clients_crl_dir.as_deref(),
+        )?;
     }
 
     Ok(builder)

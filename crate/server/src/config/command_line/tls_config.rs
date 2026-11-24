@@ -51,6 +51,18 @@ pub struct TlsConfig {
     #[clap(long, env = "KMS_CLIENTS_CA_CERT_FILE", verbatim_doc_comment)]
     pub clients_ca_cert_file: Option<PathBuf>,
 
+    /// Directory of PEM certificate revocation lists (CRLs) used to reject revoked client
+    /// certificates presented for mTLS authentication.
+    /// The directory must be in OpenSSL hashed-directory format (run `openssl rehash <dir>`):
+    /// one `<issuer-subject-hash>.r0` (then `.r1`, ...) file per issuing CA.
+    /// When set, the CRL of the CA that issued each client certificate must be present and
+    /// not expired, otherwise the client is rejected (fail-closed). A renewed CRL must be added
+    /// under the next suffix (`.r1`, `.r2`, ...) and is then picked up without restarting the
+    /// server; an overwritten `.rN` file is not reloaded until restart.
+    /// Requires `--clients-ca-cert-file`.
+    #[clap(long, env = "KMS_CLIENTS_CRL_DIR", verbatim_doc_comment)]
+    pub clients_crl_dir: Option<PathBuf>,
+
     /// Colon-separated list of TLS cipher suites to enable:
     /// Example: --tls-cipher-suites `"TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256"`
     /// If not specified, OpenSSL default cipher suites will be used:
@@ -99,8 +111,9 @@ impl Display for TlsConfig {
                 }
                 return write!(
                     f,
-                    "clients' CA cert file: {:?}, cipher suites: {:?}",
+                    "clients' CA cert file: {:?}, clients' CRL dir: {:?}, cipher suites: {:?}",
                     self.clients_ca_cert_file.as_ref(),
+                    self.clients_crl_dir.as_ref(),
                     self.tls_cipher_suites.as_ref()
                 );
             }
@@ -109,11 +122,12 @@ impl Display for TlsConfig {
             if self.tls_cert_file.is_some() && self.tls_key_file.is_some() {
                 return write!(
                     f,
-                    "PEM cert: {:?}, key: {:?}, chain: {:?}, clients' CA cert file: {:?}, cipher suites: {:?}",
+                    "PEM cert: {:?}, key: {:?}, chain: {:?}, clients' CA cert file: {:?}, clients' CRL dir: {:?}, cipher suites: {:?}",
                     self.tls_cert_file.as_ref(),
                     self.tls_key_file.as_ref(),
                     self.tls_chain_file.as_ref(),
                     self.clients_ca_cert_file.as_ref(),
+                    self.clients_crl_dir.as_ref(),
                     self.tls_cipher_suites.as_ref()
                 );
             }

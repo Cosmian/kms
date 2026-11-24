@@ -755,7 +755,7 @@ fn characterization_validate_crl_url_accepts_public_hosts() {
         "https://foo.local.example.com",
         "https://internal.example.com",
         "https://8.8.8.8/crl",
-        "https://[2001:db8::1]/crl",
+        "https://[2001:4860:4860::8888]/crl",
     ] {
         validate_crl_url(url).unwrap();
     }

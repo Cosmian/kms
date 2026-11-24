@@ -49,7 +49,7 @@ All routes answer `404` unless `scep_enabled = true`.
 
 | Route | Authentication | Request | Response | Description |
 | --- | --- | --- | --- | --- |
-| `GET /scep?operation=GetCACaps` | None | None | `text/plain`: `POSTPKIOperation`, `SHA-256`, `AES`, and `Renewal` only when `scep_allow_renewal_without_challenge = true` | Capabilities the client must negotiate. |
+| `GET /scep?operation=GetCACaps` | None | None | `text/plain`: `POSTPKIOperation`, `SHA-256`, `AES`, and `Renewal` only when `scep_allow_renewal_without_challenge = true` (not the default) | Capabilities the client must negotiate. |
 | `GET /scep?operation=GetCACert` | None | None | `application/x-x509-ca-cert` (single CA) or `application/x-x509-ca-ra-cert` (chain) | The CA certificate the client encrypts its requests to. |
 | `POST /scep?operation=PKIOperation` | Challenge password (`PKCSReq`), or signature by a current certificate of this CA (`RenewalReq`) | `application/x-pki-message` body | `application/x-pki-message` (`CertRep`) | Enrollment or renewal. Issuance is synchronous. |
 | `GET /scep?operation=PKIOperation&message=<base64>` | Same as `POST` | Base64 `pkiMessage` in the query | `application/x-pki-message` (`CertRep`) | Same operation, for clients that cannot `POST`. |
@@ -68,7 +68,7 @@ interactive `cosmian_kms configure` wizard also asks about SCEP at the last step
 | `scep_enabled` | `false` | Serve `/scep`. |
 | `scep_ca_uid` | none | UID of the **RSA** CA certificate. Required when SCEP is enabled. |
 | `scep_challenge_password` | none | Shared secret for first enrollment, at least 8 characters (environment variable `KMS_SCEP_CHALLENGE_PASSWORD`). |
-| `scep_allow_renewal_without_challenge` | `true` | Accept renewals signed by a current certificate without the challenge. |
+| `scep_allow_renewal_without_challenge` | `false` | Accept renewals signed by a current certificate without the challenge. Off by default: the renewal is authenticated only by a certificate that the SCEP CA already issued, so opt in only when you accept that. |
 | `scep_template` | none | Name of the `[templates.<name>]` section. **Required** when SCEP is enabled; see [Certificate templates](pki-enrollment.md#certificate-templates). |
 
 ## How-to: enable SCEP
@@ -80,7 +80,7 @@ Add to the server configuration:
 scep_enabled = true
 scep_ca_uid = "device-ca"
 scep_challenge_password = "<a long random secret>"
-scep_allow_renewal_without_challenge = true
+scep_allow_renewal_without_challenge = false # set to true to let devices renew without the challenge
 scep_template = "mdm_device"
 
 [templates.mdm_device]
@@ -100,8 +100,8 @@ Restart the KMS, then check that SCEP answers (use `https://` if your KMS serves
 curl -fsS "http://<kms-host>:<port>/scep?operation=GetCACaps"
 ```
 
-The answer is exactly these lines (`Renewal` is omitted when
-`scep_allow_renewal_without_challenge = false`):
+The answer is exactly these lines. `Renewal` is advertised only when
+`scep_allow_renewal_without_challenge = true`; with the default (`false`) the last line is absent:
 
 ```text
 POSTPKIOperation
@@ -117,10 +117,11 @@ password to the value above, and **pin the CA certificate or its fingerprint** (
 How SCEP behaves:
 
 - the first request (`PKCSReq`) must carry the challenge password;
-- a renewal (`RenewalReq`) is signed with a certificate previously issued by this CA that is still
-  valid and `Active`; it needs no challenge and must keep the same Subject and SubjectAltName.
-  Set `scep_allow_renewal_without_challenge = false` to forbid it (a `RenewalReq` is then refused
-  with HTTP `400` and counted as a failed attempt);
+- a renewal (`RenewalReq`) is refused by default (HTTP `400`, counted as a failed attempt): a device
+  re-enrolls with `PKCSReq` and the challenge. Set `scep_allow_renewal_without_challenge = true`
+  to accept it: the `RenewalReq` is then signed with a certificate previously issued by this CA
+  that is still valid and `Active`, needs no challenge and must keep the same Subject and
+  SubjectAltName;
 - the request must be signed with an RSA or EC key, because the certificate is returned encrypted
   to it;
 - the envelope must use AES-CBC (128, 192 or 256) and the signature SHA-256, SHA-384 or SHA-512:
@@ -141,13 +142,13 @@ sequenceDiagram
     participant D as Device or MDM
     participant K as KMS SCEP
     D->>K: GetCACaps
-    K-->>D: POSTPKIOperation, SHA-256, AES, Renewal
+    K-->>D: POSTPKIOperation, SHA-256, AES, Renewal (only with scep_allow_renewal_without_challenge = true)
     D->>K: GetCACert
     K-->>D: CA certificate
     D->>K: PKCSReq with CSR and challenge, encrypted to the CA
     K->>K: Decrypt, check challenge and template, sign
     K-->>D: CertRep SUCCESS with the certificate
-    Note over D,K: Before expiry
+    Note over D,K: Before expiry, only with scep_allow_renewal_without_challenge = true
     D->>K: RenewalReq signed with the current certificate
     K-->>D: CertRep SUCCESS with the renewed certificate
 ```
@@ -201,7 +202,7 @@ Errors common to EST and SCEP are listed on the
 ## Verifying the setup
 
 - `mise run test:pki:scep-interop`: the micromdm `scepclient` (built to send RSAES-OAEP):
-  enrollment, challenge-less renewal and a wrong challenge.
+  enrollment, challenge-less renewal (the script opts in to it) and a wrong challenge.
 - `mise run test:pki:scep-apple --variant non-fips` (macOS, interactive): installs a
   `com.apple.security.scep` profile with a `CAFingerprint` pin; you approve it in System Settings.
   It checks the Apple request (SHA-256, AES, RSA-2048, challenge) and the issued identity in the

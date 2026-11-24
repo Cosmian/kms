@@ -13,6 +13,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, ObjectHandle, ObjectWithMetadata,
     ObjectsStore, UserId,
 };
+use cosmian_logger::warn;
 use time::Date;
 
 use crate::{
@@ -633,9 +634,9 @@ impl Database {
         let start = Instant::now();
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
-        for db in map.values() {
-            results.extend(
-                db.find_with_options(
+        for (prefix, db) in map.iter() {
+            match db
+                .find_with_options(
                     researched_attributes,
                     state,
                     user,
@@ -644,8 +645,24 @@ impl Database {
                     options,
                 )
                 .await
-                .unwrap_or(vec![]),
-            );
+            {
+                Ok(found) => results.extend(found),
+                // A failure of the main store must not look like "nothing found": callers
+                // (OCSP, CRL, Validate) would otherwise treat a revoked certificate as unknown.
+                Err(e) if prefix.is_empty() => {
+                    if let Some(rec) = &self.recorder {
+                        rec.record_operation(
+                            "find",
+                            self.kind,
+                            "failure",
+                            start.elapsed().as_secs_f64(),
+                        );
+                    }
+                    return Err(e.into());
+                }
+                // HSM stores hold no certificates: an HSM outage must not fail Locate.
+                Err(e) => warn!("find: object store '{prefix}' failed: {e}"),
+            }
         }
         if let Some(rec) = &self.recorder {
             rec.record_operation("find", self.kind, "success", start.elapsed().as_secs_f64());
@@ -684,12 +701,16 @@ impl Database {
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
-        for db in map.values() {
-            results.extend(
-                db.find_all_with_options(researched_attributes, state, vendor_id, options)
-                    .await
-                    .unwrap_or_default(),
-            );
+        for (prefix, db) in map.iter() {
+            match db
+                .find_all_with_options(researched_attributes, state, vendor_id, options)
+                .await
+            {
+                Ok(found) => results.extend(found),
+                // See `find_with_options`: only prefixed (HSM) stores may be skipped.
+                Err(e) if prefix.is_empty() => return Err(e.into()),
+                Err(e) => warn!("find: object store '{prefix}' failed: {e}"),
+            }
         }
         Ok(results)
     }
@@ -1801,8 +1822,9 @@ mod tests {
 
     const INJECTED_GCM_FAILURE: &str = "injected gcm_invocations cleanup failure";
 
-    /// Delegates to the real default store, except that the AES-GCM counter cleanup fails.
-    struct FailingGcmCleanupStore(Arc<dyn ObjectsStore + Sync + Send>);
+    /// Delegates to the real default store, except that the AES-GCM counter cleanup fails
+    /// and, when the flag is set, `find` and `find_all` fail too.
+    struct FailingGcmCleanupStore(Arc<dyn ObjectsStore + Sync + Send>, bool);
 
     #[async_trait(?Send)]
     impl ObjectsStore for FailingGcmCleanupStore {
@@ -1870,6 +1892,9 @@ mod tests {
             user_must_be_owner: bool,
             vendor_id: &str,
         ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+            if self.1 {
+                return Err(InterfaceError::Db("injected find failure".to_owned()));
+            }
             self.0
                 .find(
                     researched_attributes,
@@ -1915,6 +1940,9 @@ mod tests {
             state: Option<State>,
             vendor_id: &str,
         ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+            if self.1 {
+                return Err(InterfaceError::Db("injected find_all failure".to_owned()));
+            }
             self.0
                 .find_all(researched_attributes, state, vendor_id)
                 .await
@@ -1941,9 +1969,52 @@ mod tests {
         .await
         .expect("Failed to instantiate database");
         let real = db.get_object_store("").await.expect("default store");
-        db.register_objects_store("", Arc::new(FailingGcmCleanupStore(real)))
+        db.register_objects_store("", Arc::new(FailingGcmCleanupStore(real, false)))
             .await;
         (tmp, db)
+    }
+
+    /// A failing default store must fail `find`/`find_all` instead of silently returning
+    /// no rows (which OCSP/CRL would read as "certificate unknown / not revoked").
+    #[tokio::test]
+    async fn test_find_propagates_default_store_error() {
+        let (db, _tmp) = test_db().await;
+        let real = db.get_object_store("").await.expect("default store");
+        db.register_objects_store("", Arc::new(FailingGcmCleanupStore(real, true)))
+            .await;
+        let user = UserId::from("owner@example.com");
+        db.find_all(None, None, VENDOR_ID_COSMIAN)
+            .await
+            .expect_err("find_all must propagate the default store error");
+        db.find(None, None, &user, false, VENDOR_ID_COSMIAN)
+            .await
+            .expect_err("find must propagate the default store error");
+    }
+
+    /// A failing prefixed (HSM) store is skipped: the default store's rows are still returned.
+    #[tokio::test]
+    async fn test_find_skips_failing_prefixed_store() {
+        let (db, _tmp) = test_db().await;
+        let owner = UserId::from("owner@example.com");
+        let key = test_key();
+        let attributes = key.attributes().expect("key has attributes").clone();
+        let uid = db
+            .create(None, &owner, &key, &attributes, &HashSet::new())
+            .await
+            .expect("create key");
+        let real = db.get_object_store("").await.expect("default store");
+        db.register_objects_store("hsm::fake", Arc::new(FailingGcmCleanupStore(real, true)))
+            .await;
+        let all = db
+            .find_all(None, None, VENDOR_ID_COSMIAN)
+            .await
+            .expect("find_all must skip the failing HSM store");
+        assert!(all.iter().any(|(found, _, _)| *found == uid));
+        let found = db
+            .find(None, None, &owner, false, VENDOR_ID_COSMIAN)
+            .await
+            .expect("find must skip the failing HSM store");
+        assert!(found.iter().any(|(found, _, _)| *found == uid));
     }
 
     /// Create a key and warm its object, unwrapped (plaintext) and rotate-name cache entries.

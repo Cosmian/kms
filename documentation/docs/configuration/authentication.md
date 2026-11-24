@@ -94,6 +94,48 @@ In this example, `john.doe@example.com` would become the authenticated username.
 
 Clients must present a valid certificate signed by the specified authority.
 
+#### Revoking client certificates (CRL)
+
+By default a client certificate stays valid until it expires. To reject revoked client
+certificates, point `clients_crl_dir` (`--clients-crl-dir`, `KMS_CLIENTS_CRL_DIR`) to a directory of
+CRLs. It requires `clients_ca_cert_file` and applies to both the HTTPS server and the KMIP socket server.
+
+=== "kms.toml"
+
+    ```toml
+    [tls]
+    clients_ca_cert_file = "client_ca.cert.pem"
+    clients_crl_dir = "/etc/cosmian/client-crls"
+    ```
+
+The directory must be in the OpenSSL *hashed directory* format: each CRL is a PEM file named
+`<hash>.r0`, where `<hash>` is the hash of the issuing CA subject name. Compute it with
+`openssl x509 -noout -subject_hash -in client_ca.cert.pem`, or let OpenSSL create the links:
+
+```sh
+cp ca.crl.pem /etc/cosmian/client-crls/
+openssl rehash /etc/cosmian/client-crls
+```
+
+When a CRL is renewed, add it under the next suffix (`<hash>.r1`, `<hash>.r2`, ...): OpenSSL
+reads them on demand, without restarting the server, and uses the CRL with the most recent
+`thisUpdate` date. Make sure the new CRL has a later `thisUpdate` than the one it replaces.
+Overwriting an existing `<hash>.rN` file is **not** picked up until the server restarts.
+
+Behavior to be aware of:
+
+- **Fail-closed:** when `clients_crl_dir` is set, a client certificate is rejected if no CRL of
+  its issuing CA is present in the directory, or if that CRL has expired (`nextUpdate` in the past).
+  Keep the CRLs refreshed before their `nextUpdate`.
+- Only the client (leaf) certificate is checked against the CRL; CRLs of intermediate CAs are not.
+- Revocation is evaluated when the TLS connection is established. A connection already open
+  (for example an HTTP keep-alive connection) keeps its identity until it is closed, even if the
+  certificate is revoked in the meantime.
+- The directory is also an OpenSSL trust store: a CA certificate stored there as `<hash>.0` is
+  trusted. Only administrators may write to it.
+- `clients_crl_dir` must be an existing directory and requires `clients_ca_cert_file`;
+  otherwise the server refuses to start.
+
 ### JWT Token Authentication
 
 The server supports JWT tokens compatible with [OpenID Connect](https://openid.net/connect/). Configure JWT authentication with:

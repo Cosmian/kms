@@ -1,6 +1,7 @@
 use std::{
     io::{self, ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
+    path::Path,
     sync::{
         Arc, RwLock,
         atomic::{AtomicUsize, Ordering},
@@ -70,6 +71,8 @@ pub struct SocketServerParams<'a> {
     pub server_chain_pem: Option<&'a [u8]>,
     /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: &'a [u8],
+    /// Hashed directory of CRLs used to reject revoked client certificates (fail-closed)
+    pub clients_crl_dir: Option<&'a Path>,
     /// Configured cipher suites to use for TLS connections (OpenSSL cipher string format)
     pub cipher_suites: Option<&'a String>,
 }
@@ -94,6 +97,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
             #[cfg(feature = "non-fips")]
             p12: tls_params.p12.as_ref(),
             client_ca_cert_pem,
+            clients_crl_dir: tls_params.clients_crl_dir.as_deref(),
             cipher_suites: tls_params.cipher_suites.as_ref(),
             server_cert_pem: &tls_params.server_cert_pem,
             server_key_pem: &tls_params.server_key_pem,
@@ -646,6 +650,7 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
         &mut builder,
         server_config.client_ca_cert_pem,
         "socket server",
+        server_config.clients_crl_dir,
     )?;
     // The socket server authenticates exclusively via mTLS: abort the handshake
     // when the client sends no certificate (the shared helper only sets PEER).
@@ -718,6 +723,7 @@ mod tests {
             server_key_pem: &key,
             server_chain_pem: None,
             client_ca_cert_pem: &ca,
+            clients_crl_dir: None,
             cipher_suites: None,
         };
         Ok(create_openssl_acceptor(&params)?)
