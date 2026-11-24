@@ -16,7 +16,7 @@ if [ -f .env ]; then
   # shellcheck disable=SC2046
   export $(grep -v '^#' .env | xargs)
 fi
-P12_PASSWORD="${KMS_P12_PASSWORD}" # must match --tls-p12-password in docker-compose
+P12_PASSWORD="${KMS_P12_PASSWORD}" # same value the KMS container reads as KMS_TLS_P12_PASSWORD (see docker-compose.yml)
 
 # 1) Ensure target directory exists
 mkdir -p "${CERTS_DIR}"

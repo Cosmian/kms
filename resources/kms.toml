@@ -158,7 +158,8 @@ kv_ttl_check_interval_secs = 30
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"
-redis_master_password = "master-password"
+# No password is shipped: set KMS_REDIS_MASTER_PASSWORD or use a `secret://` reference.
+# redis_master_password = "<set-a-strong-password>"
 
 # ── Role-based access control ─────────────────────────────────────────────────
 [roles]

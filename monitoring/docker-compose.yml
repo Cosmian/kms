@@ -7,6 +7,7 @@ services:
     environment:
       - OTEL_RESOURCE_ATTRIBUTES=host.name=cosmian-kms # This sets the "host.name" attribute for all telemetry emitted by the KMS, which is useful for filtering in Grafana Explore and dashboards
       - KMS_INSECURE_ALLOW_UNAUTHENTICATED=true # demo only: no authentication method is configured
+      - KMS_TLS_P12_PASSWORD=${KMS_P12_PASSWORD} # via the environment: a --tls-p12-password flag would show in the process list
     profiles:
       - kms-local
     volumes:
@@ -19,8 +20,6 @@ services:
       - /root/cosmian-kms/sqlite-data
       - --tls-p12-file
       - /root/cosmian-kms/kms.p12
-      - --tls-p12-password
-      - ${KMS_P12_PASSWORD}
       - --hostname
       - 0.0.0.0
       - --port
@@ -46,7 +45,7 @@ services:
       - kms-observability
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea
     container_name: otel-collector
     command: [--config=/etc/otel-collector-config.yaml]
     volumes:
@@ -66,10 +65,10 @@ services:
       - kms-observability
 
   victoria-metrics:
-    image: victoriametrics/victoria-metrics:latest
+    image: victoriametrics/victoria-metrics:v1.157.0@sha256:322a7a92fdcc269280e9c38af94c83bc76827a31b792acbc60e44394e7f29c20
     container_name: victoria-metrics
     ports:
-      - 8428:8428
+      - 127.0.0.1:8428:8428
     command:
       - --storageDataPath=/victoria-metrics-data
       - --retentionPeriod=${METRICS_RETENTION_MONTHS}
@@ -88,7 +87,7 @@ services:
       - kms-observability
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
     container_name: grafana
     ports:
       - 3000:3000
