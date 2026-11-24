@@ -422,7 +422,10 @@ async fn ocsp_cache_misses_wait_for_the_lookup_budget() -> KResult<()> {
         ocsp_statuses(&kms, &ca, &[&revoked_leaf, &active_leaf]),
     )
     .await;
-    assert!(blocked.is_err(), "the request must wait for a lookup permit");
+    assert!(
+        blocked.is_err(),
+        "the request must wait for a lookup permit"
+    );
     drop(held);
     assert_eq!(
         ocsp_statuses(&kms, &ca, &[&revoked_leaf, &active_leaf]).await?,

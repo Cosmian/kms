@@ -124,9 +124,8 @@ const MAX_OCSP_CACHE_ENTRIES: usize = 10_000;
 static OCSP_CACHE: LazyLock<OcspCache> = LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Number of OCSP cache misses (status lookup + signature) processed at once, process-wide.
-pub(crate) static MAX_CONCURRENT_OCSP_LOOKUPS: LazyLock<usize> = LazyLock::new(|| {
-    std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get)
-});
+pub(crate) static MAX_CONCURRENT_OCSP_LOOKUPS: LazyLock<usize> =
+    LazyLock::new(|| std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get));
 
 /// The responder is public: nonce and multi-`CertID` requests bypass the cache, so their
 /// certificate scans and signatures must not take every worker or database connection (CWE-400).
@@ -355,7 +354,10 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
                 .iter()
                 .map(|q| q.serial_hex.to_ascii_uppercase())
                 .collect();
-            Box::pin(find_ca_issued_certificates(kms, &ca_owm, &ca_cert, &serials)).await?
+            Box::pin(find_ca_issued_certificates(
+                kms, &ca_owm, &ca_cert, &serials,
+            ))
+            .await?
         };
         let entries: Vec<OcspStatusEntry> = queries
             .iter()

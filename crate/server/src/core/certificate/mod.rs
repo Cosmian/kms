@@ -3,8 +3,8 @@ pub(crate) mod oracle_signing;
 
 pub(crate) use find::{
     CertificateRecord, find_ca_issued_certificates, linked_id_str,
-    retrieve_certificate_for_private_key,
-    retrieve_issuer_private_key_and_certificate, retrieve_private_key_for_certificate,
+    retrieve_certificate_for_private_key, retrieve_issuer_private_key_and_certificate,
+    retrieve_private_key_for_certificate,
 };
 
 /// Returns `true` if `v4` is a private (RFC 1918), loopback, link-local, or

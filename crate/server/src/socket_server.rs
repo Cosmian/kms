@@ -981,8 +981,7 @@ mod tests {
 
         let mut message = ttlv_header(8);
         message.extend_from_slice(&[7; 8]);
-        if read_request(&mut io::Cursor::new(message.clone()), &budget)?
-            .map(|(request, _)| request)
+        if read_request(&mut io::Cursor::new(message.clone()), &budget)?.map(|(request, _)| request)
             != Some(message)
         {
             return Err("a request was refused while slow frames held the budget".into());

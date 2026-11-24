@@ -519,8 +519,9 @@ mod tests {
     }
 
     fn stream_payload(chunks: Vec<Result<Bytes, actix_web::error::PayloadError>>) -> Payload {
-        let stream: Pin<Box<dyn futures::Stream<Item = Result<Bytes, actix_web::error::PayloadError>>>> =
-            Box::pin(futures::stream::iter(chunks));
+        let stream: Pin<
+            Box<dyn futures::Stream<Item = Result<Bytes, actix_web::error::PayloadError>>>,
+        > = Box::pin(futures::stream::iter(chunks));
         Payload::from(stream)
     }
 
