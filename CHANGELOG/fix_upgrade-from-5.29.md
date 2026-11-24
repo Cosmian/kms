@@ -11,3 +11,4 @@
 ## Testing
 
 - `test_windows_package.ps1` reinstalls over the running install and checks that `kms.toml` is kept and `kms.toml.new` is written
+- Container proof (systemd, arm64, ubuntu 24.04 and rockylinux 9): a 5.29.0 deb/rpm upgraded to the fixed package stays enabled and running with its edited `kms.toml`; the 5.29.0 package reinstalled over itself ends disabled and stopped
