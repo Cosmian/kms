@@ -68,9 +68,9 @@ services:
     image: ${DOCKER_IMAGE_NAME}
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
-      KMS_INSECURE_ALLOW_UNAUTHENTICATED: 'true'
     volumes:
-      - ../../pkg/kms.toml:/etc/cosmian/kms.toml:ro
+      # A config file ignores env variables: the unauthenticated opt-in lives in the fixture.
+      - ../../test_data/configs/server/test/docker_with_conf.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
         published: ${KMS_SLOT_KMS_CONF_PORT:-11098}

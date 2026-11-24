@@ -18,6 +18,8 @@ By default, if no authentication methods are configured, the server operates in 
 
 Unless `insecure_allow_unauthenticated` is set, this mode is only accepted when the server binds a loopback address (`127.0.0.1`, `::1` or `localhost`): on any other address the server refuses to start (`refusing to start: no authentication method is configured ...`). Configure an authentication method, bind a loopback address, or set `insecure_allow_unauthenticated = true` (`KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`) for development only. The startup warning remains when the opt-in is used. The Docker image, the packaged `kms.toml` and the Helm chart bind `0.0.0.0`, so without authentication they refuse to start out of the box.
 
+When the server is started with a configuration file (`-c`/`--config` or `COSMIAN_KMS_CONF`), environment variables and command-line arguments are ignored: set `insecure_allow_unauthenticated = true` under `[http]` in that file, not `KMS_INSECURE_ALLOW_UNAUTHENTICATED`.
+
 ### Authenticated Mode
 
 When one or more authentication methods are enabled, the server requires successful authentication for all requests. The authentication mechanism works in a cascading fashion, attempting each configured method until one succeeds.

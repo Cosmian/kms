@@ -1881,7 +1881,7 @@ The Kubernetes image and live-HSM smoke deployments also explicitly set `kms.ins
 
 **Description:** Docker image smoke tests. Does **not** build an image: it exports `KMS_TLS_CONFIG_FLAVOR` (`fips` or `non_fips`, derived from `--variant`) and runs `.mise/scripts/test/pkg/test_docker_image.sh`, which starts the already-built and already-loaded image named by `DOCKER_IMAGE_NAME` through `docker compose -f .mise/scripts/docker-compose.yml up -d --wait`, probes TLS with `openssl s_client`, drives the stack with `ckms` (run through `cargo run -p ckms`), and checks the FIPS/non-FIPS variant reported by `/version`. The image itself is produced beforehand (Nix build via `mise run build:docker --load`, or the packaging CI workflow).
 
-The no-config, non-root and packaged-config smoke containers explicitly set `KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`. Other no-auth compose services use development opt-ins in their `test_data` fixtures; authenticated services retain their authentication.
+The no-config and non-root smoke containers explicitly set `KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`. A configuration file (`-c`/`COSMIAN_KMS_CONF`) ignores environment variables, so the config-based services and scripts (`kms-with-conf`, `test_xks.sh`, the `bench_helpers.sh` servers) carry `insecure_allow_unauthenticated = true` under `[http]` instead. Other no-auth compose services use development opt-ins in their `test_data` fixtures; authenticated services retain their authentication.
 
 #### Architecture Overview
 

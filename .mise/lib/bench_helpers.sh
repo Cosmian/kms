@@ -242,6 +242,9 @@ database_type = "sqlite"
 sqlite_path = "${sqlite_path}"
 
 [http]
+# Benchmark servers are unauthenticated by design: development-only opt-in (a config file
+# ignores env variables, so it lives here).
+insecure_allow_unauthenticated = true
 hostname = "0.0.0.0"
 port = ${port}
 EOF
@@ -255,11 +258,10 @@ EOF
   local pin=()
   [ -n "${BENCH_SERVER_CPUS:-}" ] && pin=(taskset -c "${BENCH_SERVER_CPUS}")
   echo "Starting KMS server on port ${port}...${BENCH_SERVER_CPUS:+ (cpus ${BENCH_SERVER_CPUS})}"
-  # Benchmark servers are unauthenticated by design: development-only opt-in.
   if [ -n "${OPENSSL_MODULES_DIR:-}" ]; then
-    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true OPENSSL_MODULES="${OPENSSL_MODULES_DIR}" ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
+    OPENSSL_MODULES="${OPENSSL_MODULES_DIR}" ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
   else
-    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
+    ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
   fi
   KMS_PID=$!
   export KMS_PID
@@ -542,6 +544,7 @@ database_type = "sqlite"
 sqlite_path   = "${sqlite_path}"
 
 [http]
+insecure_allow_unauthenticated = true
 hostname = "0.0.0.0"
 port     = ${port}
 EOF
@@ -553,7 +556,6 @@ EOF
   echo "Starting KMS server (HSM-backed [${hsm_model}]) on port ${port}..."
 
   env \
-    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true \
     ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
     "${KMS_BIN}" --config "${kms_conf}" \
     >"${kms_log}" 2>&1 &
@@ -700,6 +702,7 @@ database_type = "sqlite"
 sqlite_path   = "${sqlite_path}"
 
 [http]
+insecure_allow_unauthenticated = true
 hostname = "0.0.0.0"
 port     = ${port}
 EOF
@@ -711,7 +714,6 @@ EOF
   echo "Starting KMS server (HSM-resident [${hsm_model}], no KEK) on port ${port}..."
 
   env \
-    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true \
     ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
     "${KMS_BIN}" --config "${kms_conf}" \
     >"${kms_log}" 2>&1 &
