@@ -11,7 +11,7 @@
 # Optional:
 #   KMS_XKS_HOST             — server hostname (default: aws-xks-kms.cosmian.dev)
 #   KMS_XKS_REMOTE_BIN       — remote path for the binary (default: /usr/sbin/cosmian_kms)
-#   KMS_XKS_REMOTE_CONF      — remote server configuration file (default: /etc/cosmian/kms.toml)
+#   KMS_XKS_REMOTE_CONF      — remote server configuration file (default: read from the unit)
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -24,7 +24,6 @@ source "${SCRIPT_DIR}/../../common.sh"
 
 KMS_XKS_HOST="${KMS_XKS_HOST:-aws-xks-kms.cosmian.dev}"
 KMS_XKS_REMOTE_BIN="${KMS_XKS_REMOTE_BIN:-/usr/sbin/cosmian_kms}"
-KMS_XKS_REMOTE_CONF="${KMS_XKS_REMOTE_CONF:-/etc/cosmian/kms.toml}"
 
 SSH_DIR="$(mktemp -d)"
 # shellcheck disable=SC2064
@@ -52,33 +51,52 @@ echo "Replacing binary and restarting service ..."
 # A server started from a configuration file ignores environment variables, and without
 # authentication on a non-loopback address it refuses to start unless the file carries
 # `insecure_allow_unauthenticated = true` under `[http]` (issue #1486). This shared XKS test
-# host is such a server (SigV4 on the XKS routes only): the opt-in is added to its config only
-# for the start of the new binary. The original config is restored once the server is healthy,
-# or on rollback, because binaries without this setting reject the unknown key.
+# host is such a server (SigV4 on the XKS routes only). The configuration file is the one the
+# unit uses (`-c`/`--config` in ExecStart, else COSMIAN_KMS_CONF); the deployment fails early
+# when it cannot be found. The opt-in is added (tagged, unless the file already has the key)
+# only for the start of the new binary. The original file is restored once the server is
+# healthy, or on rollback, because binaries without this setting reject the unknown key.
+# The temporary opt-in can be dropped once every deployable branch has the setting and the
+# operator keeps it in the host configuration.
+# The remote script prints the resolved configuration path on stdout (nothing else does).
 # shellcheck disable=SC2087
-ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" REMOTE_CONF="${KMS_XKS_REMOTE_CONF}" bash <<'REMOTE_SCRIPT'
+KMS_XKS_REMOTE_CONF="$(
+  ssh "${SSH_OPTS[@]}" "${REMOTE}" env REMOTE_BIN="${KMS_XKS_REMOTE_BIN}" CONF_OVERRIDE="${KMS_XKS_REMOTE_CONF:-}" bash <<'REMOTE_SCRIPT'
 set -euo pipefail
+tag='# added by deploy_xks_remote.sh'
+conf="$CONF_OVERRIDE"
+if [ -z "$conf" ]; then
+  conf="$(systemctl show -p ExecStart --value cosmian_kms | grep -oE -- '(-c|--config)[ =][^ ;]+' | head -n1 | sed -E 's/^(-c|--config)[ =]//')" || true
+fi
+if [ -z "$conf" ]; then
+  conf="$(systemctl show -p Environment --value cosmian_kms | tr ' ' '\n' | sed -n 's/^COSMIAN_KMS_CONF=//p' | head -n1)" || true
+fi
+if [ -z "$conf" ] || ! sudo test -f "$conf"; then
+  echo "ERROR: cannot find the cosmian_kms configuration file (ExecStart -c, COSMIAN_KMS_CONF or KMS_XKS_REMOTE_CONF): '${conf}'" >&2
+  exit 1
+fi
 if [ -f "$REMOTE_BIN" ]; then
   sudo cp -f "$REMOTE_BIN" "${REMOTE_BIN}.bak"
 fi
-# Drop a key a cancelled run may have left behind, then keep a pristine backup of the config.
-sudo rm -f "${REMOTE_CONF}.bak"
-if sudo test -f "$REMOTE_CONF"; then
-  sudo sed -i '/^insecure_allow_unauthenticated/d' "$REMOTE_CONF"
-  sudo cp -f "$REMOTE_CONF" "${REMOTE_CONF}.bak"
-  if sudo grep -q '^\[http\]' "$REMOTE_CONF"; then
-    sudo sed -i '/^\[http\]/a insecure_allow_unauthenticated = true' "$REMOTE_CONF"
+# Drop an opt-in a cancelled run left behind (tagged lines only), then keep a pristine backup.
+sudo rm -f "${conf}.bak"
+sudo sed -i "\|${tag}\$|d" "$conf"
+if ! sudo grep -q '^insecure_allow_unauthenticated' "$conf"; then
+  sudo cp -f "$conf" "${conf}.bak"
+  line="insecure_allow_unauthenticated = true ${tag}"
+  if sudo grep -q '^\[http\]' "$conf"; then
+    sudo sed -i "/^\[http\]/a ${line}" "$conf"
   else
-    printf '\n[http]\ninsecure_allow_unauthenticated = true\n' | sudo tee -a "$REMOTE_CONF" >/dev/null
+    printf '\n[http]\n%s\n' "$line" | sudo tee -a "$conf" >/dev/null
   fi
-else
-  echo "WARNING: $REMOTE_CONF not found on the host; the service must opt in by other means." >&2
 fi
 sudo systemctl stop cosmian_kms
 sudo mv /tmp/cosmian_kms_deploy "$REMOTE_BIN"
 sudo chmod 755 "$REMOTE_BIN"
 sudo systemctl start cosmian_kms
+echo "$conf"
 REMOTE_SCRIPT
+)"
 
 # Restores the previously-deployed binary and restarts the service. Called
 # when the new deployment fails to become healthy below, so a broken build

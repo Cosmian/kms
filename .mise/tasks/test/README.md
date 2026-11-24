@@ -323,7 +323,7 @@ sequenceDiagram
 | `xks` | AWS XKS (local) | no | KMS build + SigV4 test script |
 | `xks-remote` | AWS XKS (remote) | no | Nix shell (`WITH_XKS=1`), `KMS_XKS_SIGV4_ACCESS_KEY_ID` / `KMS_XKS_SIGV4_SECRET_ACCESS_KEY`, no build |
 
-The shared XKS host runs without KMIP authentication on `0.0.0.0`, so a server started from its configuration file refuses to start unless that file carries `insecure_allow_unauthenticated = true` (`KMS_XKS_REMOTE_CONF`, default `/etc/cosmian/kms.toml`). `deploy_xks_remote.sh` adds the key only while the new binary starts and restores the original file once the server is healthy (or on rollback), because binaries without the setting reject the unknown key.
+The shared XKS host runs without KMIP authentication on `0.0.0.0`, so a server started from its configuration file refuses to start unless that file carries `insecure_allow_unauthenticated = true`. `deploy_xks_remote.sh` reads the file from the systemd unit (`-c`/`--config` in `ExecStart`, else `COSMIAN_KMS_CONF`; override with `KMS_XKS_REMOTE_CONF`) and fails early if it cannot find it. It adds a tagged key only while the new binary starts (skipped when the file already carries the key) and restores the original file once the server is healthy or on rollback, because binaries without the setting reject the unknown key.
 
 ### Architecture Overview
 
