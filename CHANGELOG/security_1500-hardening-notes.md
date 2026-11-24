@@ -2,7 +2,7 @@
 
 ### Hardening
 - Rate limiter: idle per-IP keys are purged every minute, so the key map no longer grows with every new peer address ([#1500](https://github.com/Cosmian/kms/issues/1500))
-- Every response carries `Strict-Transport-Security`, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`; the Web UI (index page and static assets) is served with a `Content-Security-Policy` restricting scripts, styles, images, connections, objects and base URI to the server itself ([#1500](https://github.com/Cosmian/kms/issues/1500))
+- Every response carries `Strict-Transport-Security`, `Referrer-Policy: same-origin` (no `Referer` leaves the server's origin; `no-referrer` would make browsers send `Origin: null` on the UI's logout form POST) and `X-Content-Type-Options: nosniff`; the Web UI (index page and static assets) is served with a `Content-Security-Policy` restricting scripts, styles, images, connections, objects and base URI to the server itself ([#1500](https://github.com/Cosmian/kms/issues/1500))
 - The public `GET /version` no longer reports the OpenSSL build string; the `(FIPS)` / `(non-FIPS)` flavour is kept. `GET /server-info` still gives the full detail to authenticated users ([#1500](https://github.com/Cosmian/kms/issues/1500))
 - The server logs a warning naming each secret passed as a command-line flag (visible in the process list); use the `KMS_*` environment variable or the configuration file instead. Values are never logged ([#1500](https://github.com/Cosmian/kms/issues/1500))
 - `cosmian_kms` secret backend: only `localhost`, `127.0.0.1` and `::1` hosts use plain `http`; `localhost.evil.com` and similar hosts now use `https` ([#1500](https://github.com/Cosmian/kms/issues/1500))

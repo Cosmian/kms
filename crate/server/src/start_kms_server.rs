@@ -1559,7 +1559,9 @@ pub async fn prepare_kms_server(
                     .add(("Content-Security-Policy", "frame-ancestors 'none'"))
                     // Ignored by browsers over plain HTTP (RFC 6797 §8.1), so it is always sent
                     .add(("Strict-Transport-Security", "max-age=31536000"))
-                    .add(("Referrer-Policy", "no-referrer"))
+                    // `same-origin`, not `no-referrer`: with `no-referrer` browsers send `Origin: null`
+                    // on same-origin form POSTs (the UI logout), which the `/ui` CORS layer refuses.
+                    .add(("Referrer-Policy", "same-origin"))
                     .add(("X-Content-Type-Options", "nosniff")),
             )
             .app_data(ui_session_cookie.clone())
@@ -3311,7 +3313,7 @@ mod tests {
         );
         assert_eq!(
             header(&version, &REFERRER_POLICY).as_deref(),
-            Some("no-referrer")
+            Some("same-origin")
         );
         assert_eq!(
             header(&version, &X_CONTENT_TYPE_OPTIONS).as_deref(),
