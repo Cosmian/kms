@@ -20,7 +20,7 @@ const HTTP_DATE_MONTH_NAMES: [&str; 12] = [
 pub(crate) struct CrlQueryParams {
     /// Output format: `der` (default, RFC 2585) or `pem`.
     pub format: Option<String>,
-    /// CRL validity in days (default: 7).
+    /// CRL validity in days (1–365, default: server-configured, typically 7).
     pub validity_days: Option<u32>,
 }
 

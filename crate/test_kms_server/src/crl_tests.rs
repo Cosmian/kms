@@ -1120,3 +1120,29 @@ async fn test_crl_invalid_format_returns_400() {
 
     resources.cleanup(&client).await;
 }
+
+/// Test: `validity_days` above 365 is refused (HTTP 422) and the server keeps serving.
+#[tokio::test]
+async fn test_crl_rejects_out_of_range_validity_days_live() {
+    init_test_logging();
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let ca_cert_id = create_named_ca(&client, "ValidityBound-CA", &mut resources).await;
+
+    for days in ["4294967295", "366"] {
+        client
+            .get_bytes(
+                &format!("/certificates/{ca_cert_id}/crl"),
+                Some(&[("format", "der"), ("validity_days", days)]),
+            )
+            .await
+            .expect_err("validity_days above 365 must be rejected");
+    }
+
+    // The server is still alive and serves a valid CRL.
+    fetch_crl_der(&client, &ca_cert_id, 7).await;
+
+    resources.cleanup(&client).await;
+}

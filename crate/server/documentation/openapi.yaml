@@ -2575,10 +2575,11 @@ paths:
         - name: validity_days
           in: query
           required: false
-          description: 'CRL validity period in days (default: server-configured value, typically 7)'
+          description: 'CRL validity period in days, 1–365 (default: server-configured value, typically 7)'
           schema:
             type: integer
             minimum: 1
+            maximum: 365
             default: 7
       responses:
         '200':
@@ -2603,7 +2604,7 @@ paths:
         '404':
           description: Issuer certificate not found or caller lacks read access to the CA key
         '422':
-          description: Invalid request — e.g. unsupported `format` value
+          description: Invalid request — e.g. unsupported `format` value or `validity_days` above 365
         '500':
           description: Internal server error — CRL generation failed
 

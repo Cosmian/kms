@@ -49,6 +49,8 @@ GET /certificates/{issuer_id}/crl?format=pem&validity_days=7
 
 Returns `application/pkix-crl` (DER, default) or `application/x-pem-file` (PEM).
 
+`validity_days` must be at most 365; larger values are rejected with HTTP 422.
+
 !!! note "Access control"
     Any **authenticated** user with `Get` access to the CA certificate may call
     this endpoint — no Crypto Officer role is required. CRL content is public
