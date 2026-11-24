@@ -103,6 +103,7 @@ if [[ "${HELM_E2E:-false}" == "true" ]]; then
     --set image.repository=ghcr.io/cosmian/kms-fips \
     --set image.tag="${APP_VERSION}" \
     --set image.pullPolicy=IfNotPresent \
+    --set kms.insecureAllowUnauthenticated=true \
     --wait \
     --timeout 10m
 

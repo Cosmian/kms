@@ -555,6 +555,7 @@ async fn privileged_unwrap_drive_resource_checks_audience() {
     let mut config = local_google_cse_config(&rsa);
     config.authentication = Arc::new(vec![JwtConfig {
         jwt_issuer_uri: LOCAL_AUTHN_ISSUER.to_owned(),
+        issuer_namespace: None,
         jwks: build_jwks_manager_with_key(LOCAL_KID, &rsa),
         jwt_audience: Some(vec!["kacls-migration".to_owned()]),
         accept_spiffe_subject: false,
@@ -697,6 +698,7 @@ async fn two_kacls(
     config_b.authentication = Arc::new(vec![
         JwtConfig {
             jwt_issuer_uri: LOCAL_KACLS_URL.to_owned(),
+            issuer_namespace: None,
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             jwks: Arc::new(JwksManager {
                 uris: vec![LOCAL_KACLS_URL.to_owned()],
@@ -710,6 +712,7 @@ async fn two_kacls(
         },
         JwtConfig {
             jwt_issuer_uri: LOCAL_AUTHN_ISSUER.to_owned(),
+            issuer_namespace: None,
             jwt_audience: None,
             jwks: build_jwks_manager_with_key(LOCAL_KID, rsa),
             accept_spiffe_subject: false,

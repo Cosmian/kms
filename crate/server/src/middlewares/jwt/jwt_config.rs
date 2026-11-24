@@ -102,9 +102,41 @@ where
     deserializer.deserialize_any(AudVisitor)
 }
 
+fn deserialize_bool_or_string<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct BoolVisitor;
+
+    impl Visitor<'_> for BoolVisitor {
+        type Value = Option<bool>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a boolean, \"true\", \"false\", or null")
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+            Ok(Some(v))
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            v.parse::<bool>().map(Some).map_err(E::custom)
+        }
+    }
+
+    deserializer.deserialize_any(BoolVisitor)
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct UserClaim {
     pub email: Option<String>,
+    /// Whether the issuer has verified the email address used as the identity.
+    #[serde(default, deserialize_with = "deserialize_bool_or_string")]
+    pub email_verified: Option<bool>,
     pub iss: Option<String>,
     pub sub: Option<String>,
     #[serde(deserialize_with = "deserialize_aud")]
@@ -232,6 +264,8 @@ impl JwtTokenHeaders {
 pub struct JwtConfig {
     pub jwt_issuer_uri: String,
     pub jwt_audience: Option<Vec<String>>,
+    /// Namespace for secondary identity providers; absent for the primary provider and KACLS.
+    pub issuer_namespace: Option<String>,
     pub jwks: Arc<JwksManager>,
     /// When `true`, a token from this issuer that has no `email` claim is authenticated
     /// using its `sub` claim, provided `sub` starts with `spiffe://` (SPIFFE JWT-SVID).

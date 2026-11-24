@@ -68,6 +68,7 @@ services:
     image: ${DOCKER_IMAGE_NAME}
     environment:
       COSMIAN_KMS_CONF: /etc/cosmian/kms.toml
+      KMS_INSECURE_ALLOW_UNAUTHENTICATED: 'true'
     volumes:
       - ../../pkg/kms.toml:/etc/cosmian/kms.toml:ro
     ports:
@@ -103,11 +104,12 @@ services:
       start_period: 10s
 
   # === No-config smoke test ===
-  # Starts the KMS without any configuration file or environment variables,
-  # using only CLI defaults (SQLite in-memory, no TLS, no auth).
-  # Validates that the Docker image is fully usable out of the box.
+  # Starts without a configuration file, with an explicit development-only
+  # opt-in to unauthenticated non-loopback binds.
   kms-no-conf:
     image: ${DOCKER_IMAGE_NAME}
+    environment:
+      KMS_INSECURE_ALLOW_UNAUTHENTICATED: 'true'
     ports:
       - target: 9998
         published: ${KMS_SLOT_KMS_NO_CONF_PORT:-13098}
@@ -129,6 +131,8 @@ services:
     image: ${DOCKER_IMAGE_NAME}
     user: 1000:1000
     read_only: true
+    environment:
+      KMS_INSECURE_ALLOW_UNAUTHENTICATED: 'true'
     ports:
       - target: 9998
         published: ${KMS_SLOT_KMS_NONROOT_PORT:-14098}

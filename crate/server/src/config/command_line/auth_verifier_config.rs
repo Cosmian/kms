@@ -40,12 +40,12 @@ pub struct AuthVerifierConfig {
     #[clap(long, env = "KMS_AUTH_VERIFIER_JWKS_URI", verbatim_doc_comment)]
     pub auth_verifier_jwks_uri: Option<String>,
 
-    /// Realm to authenticate the Web UI against on the Auth Verifier server.
+    /// Realm for Auth Verifier Web UI login and bearer tokens.
     ///
-    /// Required only to enable the Web UI login form for the Auth Verifier
-    /// server (`POST /ui/login_as`); bearer-token validation of already-issued tokens
-    /// does not need a realm. When unset, the UI falls back to any other configured
-    /// authentication method (OIDC/JWT or client certificate).
+    /// Required to enable the Web UI login form (`POST /ui/login_as`).
+    /// When set, bearer tokens must also have been issued for this realm.
+    /// Tokens from the admin realm are always rejected. When unset, the UI
+    /// falls back to another configured authentication method (OIDC/JWT or client certificate).
     #[clap(long, env = "KMS_AUTH_VERIFIER_REALM", verbatim_doc_comment)]
     pub auth_verifier_realm: Option<String>,
 
@@ -285,7 +285,7 @@ mod tests {
             cfg.auth_verifier_url.as_deref(),
             Some("https://localhost:8443")
         );
-        assert_eq!(cfg.auth_verifier_realm.as_deref(), Some("_"));
+        assert_eq!(cfg.auth_verifier_realm.as_deref(), Some("kms"));
         assert!(cfg.auth_verifier_accept_invalid_certs);
         assert_eq!(
             cfg.jwks_uri().as_deref(),

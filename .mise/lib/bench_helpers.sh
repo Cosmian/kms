@@ -255,10 +255,11 @@ EOF
   local pin=()
   [ -n "${BENCH_SERVER_CPUS:-}" ] && pin=(taskset -c "${BENCH_SERVER_CPUS}")
   echo "Starting KMS server on port ${port}...${BENCH_SERVER_CPUS:+ (cpus ${BENCH_SERVER_CPUS})}"
+  # Benchmark servers are unauthenticated by design: development-only opt-in.
   if [ -n "${OPENSSL_MODULES_DIR:-}" ]; then
-    OPENSSL_MODULES="${OPENSSL_MODULES_DIR}" ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
+    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true OPENSSL_MODULES="${OPENSSL_MODULES_DIR}" ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
   else
-    ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
+    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
   fi
   KMS_PID=$!
   export KMS_PID
@@ -552,6 +553,7 @@ EOF
   echo "Starting KMS server (HSM-backed [${hsm_model}]) on port ${port}..."
 
   env \
+    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true \
     ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
     "${KMS_BIN}" --config "${kms_conf}" \
     >"${kms_log}" 2>&1 &
@@ -709,6 +711,7 @@ EOF
   echo "Starting KMS server (HSM-resident [${hsm_model}], no KEK) on port ${port}..."
 
   env \
+    KMS_INSECURE_ALLOW_UNAUTHENTICATED=true \
     ${_BENCH_HSM_ENV_VARS[@]+"${_BENCH_HSM_ENV_VARS[@]}"} \
     "${KMS_BIN}" --config "${kms_conf}" \
     >"${kms_log}" 2>&1 &

@@ -8,7 +8,7 @@
 use actix_web::{App, test as actix_test, web::Data};
 
 #[cfg(not(windows))]
-use crate::config::{ClapConfig, ServerParams};
+use crate::config::{ClapConfig, ServerParams, UnauthenticatedBind};
 use crate::routes::access::get_crypto_officer_status;
 
 #[cfg(not(windows))]
@@ -55,6 +55,7 @@ socket_server_hostname = "0.0.0.0"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+insecure_allow_unauthenticated = false
 
 [proxy]
 
@@ -162,6 +163,7 @@ fn characterization_clap_config_flags_and_redaction() {
         "9999",
         "--hostname",
         "example.org",
+        "--insecure-allow-unauthenticated",
         "--proxy-url",
         "http://p:3128",
         "--proxy-basic-auth-username",
@@ -183,6 +185,7 @@ fn characterization_clap_config_flags_and_redaction() {
     assert!(c.print_default_config);
     assert_eq!(c.http.port, 9999);
     assert_eq!(c.http.hostname, "example.org");
+    assert!(c.http.insecure_allow_unauthenticated);
     assert_eq!(c.socket_server.port, 6000);
     assert!(c.socket_server.start);
     assert_eq!(c.db.database_type.as_deref(), Some("sqlite"));
@@ -206,6 +209,7 @@ fn characterization_clap_config_flags_and_redaction() {
         r#", KMS http: "http://example.org:9999", KMS public URL: None, workspace: WorkspaceConfig { root_data_path: "./cosmian-kms", tmp_path: "/tmp" }, vendor identification: "cosmian", default username: "admin", force default username: false, region_role: Leader, google_cse_enable: false, azure_ekm_enable: false, Microsoft Double Key Encryption URL: None"#
     ));
     let params = ServerParams::try_from(c).unwrap();
+    assert_eq!(params.unauthenticated_bind, UnauthenticatedBind::AllowAny);
     let params_debug = format!("{params:?}");
     // BASE behavior: `ProxyParams`'s Debug prints the proxy password in clear text.
     assert!(params_debug.contains(r#"basic_auth_password: Some("s3cr3t-pw")"#));

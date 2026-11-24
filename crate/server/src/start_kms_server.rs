@@ -55,7 +55,7 @@ use crate::routes::tokenize;
 use crate::{
     config::{
         AuthVerifierConfig, AuthVerifierRuntimeConfig, IdpAuthConfig, OidcRuntimeConfig,
-        ProxyParams, ServerParams, TlsParams,
+        ProxyParams, ServerParams, TlsParams, UnauthenticatedBind,
     },
     core::KMS,
     cron,
@@ -347,7 +347,7 @@ fn validate_aws_xks_reserved_identity_config(server_params: &ServerParams) -> KR
     // AWS never calls back into the XKS proxy to list, rotate, revoke, or destroy key
     // material (the XKS proxy API spec only defines GetKeyMetadata/Encrypt/Decrypt/
     // GetHealthStatus) — lifecycle management of XKS keys is entirely this operator's
-    // responsibility, exercised as the real, credentialed `default_username` identity
+    // responsibility, exercised with the API token as `default_username`
     // (never as the reserved, unreachable-by-design `AWS_XKS_SERVICE_USER`). Warn loudly
     // when no Crypto Officer is configured, since that is the intended identity for this
     // responsibility and an empty list very likely means no one can currently reach these
@@ -356,9 +356,9 @@ fn validate_aws_xks_reserved_identity_config(server_params: &ServerParams) -> KR
         warn!(
             "AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is \
              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers \
-             these operations on your behalf — configure a Crypto Officer identity backed by a \
-             real credential (TLS certificate CN / OIDC subject matching `default_username`) so \
-             XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md."
+             these operations on your behalf — configure a Crypto Officer and use the API \
+             token to manage XKS keys as `default_username`. External TLS/JWT identities must \
+             differ from `default_username`. See crate/server/src/routes/aws_xks/README.md."
         );
     }
 
@@ -791,12 +791,14 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Sec
 async fn build_oidc_runtime_config(
     oidc_config: crate::config::OidcConfig,
     proxy_params: Option<&ProxyParams>,
+    primary_jwt_issuer: Option<String>,
 ) -> OidcRuntimeConfig {
     use crate::config::OidcDiscoveredEndpoints;
 
     let Some(ref issuer) = oidc_config.issuer_url else {
         return OidcRuntimeConfig {
             config: oidc_config,
+            primary_jwt_issuer,
             discovered: None,
         };
     };
@@ -813,6 +815,7 @@ async fn build_oidc_runtime_config(
             warn!("OIDC: failed to build HTTP client for discovery: {e}");
             return OidcRuntimeConfig {
                 config: oidc_config,
+                primary_jwt_issuer,
                 discovered: None,
             };
         }
@@ -825,6 +828,7 @@ async fn build_oidc_runtime_config(
                 warn!("OIDC: failed to parse discovery document from {discovery_url}: {e}");
                 return OidcRuntimeConfig {
                     config: oidc_config,
+                    primary_jwt_issuer,
                     discovered: None,
                 };
             }
@@ -833,6 +837,7 @@ async fn build_oidc_runtime_config(
             warn!("OIDC: failed to fetch discovery document from {discovery_url}: {e}");
             return OidcRuntimeConfig {
                 config: oidc_config,
+                primary_jwt_issuer,
                 discovered: None,
             };
         }
@@ -853,6 +858,7 @@ async fn build_oidc_runtime_config(
         warn!("OIDC: discovery document at {discovery_url} is missing required fields");
         return OidcRuntimeConfig {
             config: oidc_config,
+            primary_jwt_issuer,
             discovered: None,
         };
     };
@@ -868,6 +874,7 @@ async fn build_oidc_runtime_config(
             warn!("OIDC: failed to build JwksManager for UI OIDC: {e}");
             return OidcRuntimeConfig {
                 config: oidc_config,
+                primary_jwt_issuer,
                 discovered: None,
             };
         }
@@ -875,6 +882,7 @@ async fn build_oidc_runtime_config(
 
     OidcRuntimeConfig {
         config: oidc_config,
+        primary_jwt_issuer,
         discovered: Some(OidcDiscoveredEndpoints {
             authorization_endpoint,
             token_endpoint,
@@ -1043,12 +1051,16 @@ pub async fn prepare_kms_server(
 
             let mut built_jwt_configurations =
                 Vec::with_capacity(identity_provider_configurations.len());
-            for (idp_config, jwks_uri) in identity_provider_configurations.iter().zip(idp_jwks_uris)
+            for (index, (idp_config, jwks_uri)) in identity_provider_configurations
+                .iter()
+                .zip(idp_jwks_uris)
+                .enumerate()
             {
                 built_jwt_configurations.push(JwtConfig {
                     jwt_issuer_uri: idp_config.jwt_issuer_uri.clone(),
                     jwks: Arc::new(JwksManager::new(vec![jwks_uri], proxy_params).await?),
                     jwt_audience: idp_config.jwt_audience.clone(),
+                    issuer_namespace: (index > 0).then(|| idp_config.jwt_issuer_uri.clone()),
                     accept_spiffe_subject: kms_server.params.jwt_svid_auth_enabled,
                 });
             }
@@ -1140,7 +1152,11 @@ pub async fn prepare_kms_server(
         || use_cert_auth
         || use_api_token_auth
         || use_auth_verifier;
-    // Insecure defaults remain supported for development; make them visible in production logs.
+    check_unauthenticated_bind(
+        &kms_server.params.http_hostname,
+        use_any_auth,
+        kms_server.params.unauthenticated_bind == UnauthenticatedBind::AllowAny,
+    )?;
     if !use_any_auth {
         cosmian_logger::warn!(
             "SECURITY: no authentication method is configured: every request is served as the \
@@ -1391,7 +1407,17 @@ pub async fn prepare_kms_server(
             let oidc_config = kms_server.params.ui.oidc_auth.clone();
             let proxy_params = kms_server.params.proxy_params.clone();
             Some(Arc::new(
-                build_oidc_runtime_config(oidc_config, proxy_params.as_ref()).await,
+                build_oidc_runtime_config(
+                    oidc_config,
+                    proxy_params.as_ref(),
+                    kms_server
+                        .params
+                        .identity_provider_configurations
+                        .as_ref()
+                        .and_then(|configs| configs.first())
+                        .map(|config| config.jwt_issuer_uri.clone()),
+                )
+                .await,
             ))
         } else {
             None
@@ -1729,6 +1755,12 @@ pub async fn prepare_kms_server(
                     || OidcRuntimeConfig {
                         config: kms_server_for_http.params.ui.oidc_auth.clone(),
                         discovered: None,
+                        primary_jwt_issuer: kms_server_for_http
+                            .params
+                            .identity_provider_configurations
+                            .as_ref()
+                            .and_then(|configs| configs.first())
+                            .map(|config| config.jwt_issuer_uri.clone()),
                     },
                     |arc| arc.as_ref().clone(),
                 );
@@ -2073,6 +2105,29 @@ pub(crate) fn create_openssl_acceptor(server_config: &TlsParams) -> KResult<SslA
     Ok(builder)
 }
 
+/// Refuse an unauthenticated server on a non-loopback address unless explicitly allowed:
+/// without authentication every caller is served as `default_username`.
+fn check_unauthenticated_bind(hostname: &str, use_any_auth: bool, allow: bool) -> KResult<()> {
+    let address = hostname
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(hostname);
+    if use_any_auth
+        || allow
+        || hostname.eq_ignore_ascii_case("localhost")
+        || address
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+    {
+        return Ok(());
+    }
+    Err(KmsError::ServerError(format!(
+        "refusing to start: no authentication method is configured and the server binds the \
+         non-loopback address '{hostname}'. Configure authentication, bind 127.0.0.1, or set \
+         insecure_allow_unauthenticated (KMS_INSECURE_ALLOW_UNAUTHENTICATED=true) for development only"
+    )))
+}
+
 /// Validate that every JWKS URI in `uris` uses the `https` scheme.
 ///
 /// Prevents the KMS from starting with an HTTP JWKS endpoint, which would expose
@@ -2170,6 +2225,13 @@ where
             AuthVerifier::new(
                 stack.auth_verifier.clone(),
                 stack.auth_verifier_session_realm.clone(),
+                stack
+                    .kms_server
+                    .params
+                    .auth_verifier_config
+                    .as_ref()
+                    .and_then(|config| config.auth_verifier_realm.as_deref())
+                    .map(Arc::from),
             ),
         ))
         .wrap(Condition::new(
@@ -2713,6 +2775,26 @@ mod tests {
             assert_eq!(status(response), StatusCode::UNAUTHORIZED, "{path}");
         }
         handle.stop(false).await;
+    }
+
+    /// F-003 (#1486): without authentication the server serves every caller as
+    /// `default_username`, so it only binds loopback unless explicitly opted in.
+    #[test]
+    fn check_unauthenticated_bind_cases() {
+        for hostname in ["0.0.0.0", "::", "[::]", "10.0.0.1", "kms.example.com"] {
+            let error = check_unauthenticated_bind(hostname, false, false).unwrap_err();
+            assert!(
+                error.to_string().contains("refusing to start"),
+                "{hostname}: unexpected error: {error}"
+            );
+        }
+        for hostname in ["127.0.0.1", "::1", "[::1]", "localhost", "LOCALHOST"] {
+            check_unauthenticated_bind(hostname, false, false).unwrap();
+        }
+        for hostname in ["0.0.0.0", "::", "10.0.0.1", "127.0.0.1"] {
+            check_unauthenticated_bind(hostname, true, false).unwrap();
+        }
+        check_unauthenticated_bind("0.0.0.0", false, true).unwrap();
     }
 }
 

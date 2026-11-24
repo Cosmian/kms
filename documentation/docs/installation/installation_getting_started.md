@@ -72,8 +72,10 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     Run the container as follows:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+    docker run -p 9998:9998 -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true --name kms ghcr.io/cosmian/kms:latest
     ```
+
+    This unauthenticated opt-in is for development only; configure authentication for production.
 
     - The KMS UI is available at `http://localhost:9998/ui`.
     - The KMS REST API is available on `http://localhost:9998`,
@@ -82,7 +84,7 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
     A FIPS version is also available:
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms-fips:latest
+    docker run -p 9998:9998 -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true --name kms ghcr.io/cosmian/kms-fips:latest
     ```
 
     To persist data between restarts, mount the `/root/cosmian-kms/sqlite-data` path to a filesystem
@@ -90,6 +92,7 @@ gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 
     ```sh
     docker run --rm -p 9998:9998 \
+    -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true \
     -v cosmian-kms:/root/cosmian-kms/sqlite-data \
     --name kms ghcr.io/cosmian/kms:latest
     ```

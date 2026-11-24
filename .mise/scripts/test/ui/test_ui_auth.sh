@@ -8,9 +8,8 @@
 #   1. Builds the UI WITHOUT VITE_DEV_MODE/VITE_KMS_URL, so `authMethod` is
 #      fetched from the real `GET /ui/auth_method` and the
 #      Authentication Verifier username/password login form actually renders.
-#   2. Builds and starts a real Authentication Verifier (from the
-#      sibling `authentication` repo) using its bundled dev config
-#      (in-memory SQLite, bundled test certs, seeded `admin`/`change_me`).
+#   2. Starts a real Authentication Verifier from a complete test_data fixture,
+#      then uses its admin API to create realm `kms` and user `kms-user`.
 #   3. Builds and starts the KMS server configured with [auth_verifier],
 #      serving the UI itself on the SAME origin (required for the session
 #      cookie set by POST /ui/login_as to work without cross-origin
@@ -41,7 +40,7 @@ WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
 init_build_env "$@"
 
 AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
-if [ ! -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+if [ ! -d "${AUTH_VERIFIER_REPO}/server" ]; then
   echo "ERROR: Authentication Verifier repo not found at '${AUTH_VERIFIER_REPO}'." >&2
   echo "       Set AUTH_VERIFIER_REPO to the path of a checkout of the 'authentication' repo." >&2
   exit 1
@@ -129,16 +128,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Auth Verifier config: the bundled dev.toml with the port substituted,
-# a unique SQLite path (avoid /tmp/path.db collisions on shared CI runners),
-# and admin_ui_path removed (the admin UI isn't built in CI).
-# Paths inside (tls_params) are relative to AUTH_VERIFIER_REPO,
-# which is why the server is started with that as its cwd.
-AUTH_DB_PATH="${WORK_DIR}/auth.db"
-sed -e "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
-  -e "s|^connection_url = .*|connection_url = \"sqlite://${AUTH_DB_PATH}\"|" \
-  -e '/^admin_ui_path/d' \
-  "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
+# Copy complete fixtures; only existing scalar values vary at runtime.
+set_toml_value() {
+  local config="$1" key="$2" value="$3"
+  grep -qE "^${key} *= " "${config}" || {
+    echo "ERROR: key '${key}' missing in ${config}" >&2
+    return 1
+  }
+  sed -E "s|^(${key} *= *).*|\\1${value}|" "${config}" >"${config}.tmp"
+  mv "${config}.tmp" "${config}"
+}
+cp "${REPO_ROOT}/test_data/configs/auth_verifier/ui_auth.toml" "${AUTH_CONF_FILE}"
+set_toml_value "${AUTH_CONF_FILE}" host_port "${AUTH_PORT}"
 
 # ── 3. Authentication Verifier — start with pre-built binary ─────────────────
 # The binary is pre-built with the host toolchain by the `test:ui:auth` mise
@@ -175,36 +176,28 @@ for i in $(seq 1 "${_auth_timeout}"); do
   sleep 1
 done
 
-# KMS config: auth_verifier pointed at the Authentication Verifier above, serving the UI
-# itself on the same origin as the API (required for the session cookie).
-cat >"${KMS_CONF_FILE}" <<EOF
-vendor_identification = "test_vendor"
-kms_public_url = "http://localhost:${KMS_PORT}"
+# The admin realm is only for provisioning, never for KMS authentication.
+AUTH_URL="https://127.0.0.1:${AUTH_PORT}"
+ADMIN_COOKIES="${WORK_DIR}/admin.cookies"
+curl -ksSf --max-time 10 -o /dev/null -c "${ADMIN_COOKIES}" \
+  -u admin:change_me -H 'Content-Type: application/json' \
+  -d '{}' "${AUTH_URL}/login?realm=_"
+curl -ksSf --max-time 10 -o /dev/null -b "${ADMIN_COOKIES}" \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"kms","auth_params":{"username_password_params":{"allow_expired_passwords":false}},"session_max_age_seconds":3600,"session_max_stale_age_seconds":3600}' \
+  "${AUTH_URL}/admins/realms"
+curl -ksSf --max-time 10 -o /dev/null -b "${ADMIN_COOKIES}" \
+  -H 'Content-Type: application/json' \
+  -d '{"realm":"kms","username":"kms-user","password_input":{"plaintext":"change_me"},"change_password":false,"roles":[]}' \
+  "${AUTH_URL}/realms/kms/userpass"
 
-[http]
-port = ${KMS_PORT}
-hostname = "localhost"
-
-[db]
-database_type = "sqlite"
-sqlite_path = "${KMS_SQLITE_DIR}"
-clear_database = true
-
-[auth_verifier]
-auth_verifier_url = "https://localhost:${AUTH_PORT}"
-auth_verifier_realm = "_"
-auth_verifier_accept_invalid_certs = true
-
-[ui_config]
-ui_index_html_folder = "${UI_DIR}/dist"
-
-[logging]
-rust_log = "info,cosmian_kms=debug"
-quiet = false
-log_to_syslog = false
-environment = "development"
-ansi_colors = true
-EOF
+# Serve the UI on the API origin so the login session cookie is same-origin.
+cp "${REPO_ROOT}/test_data/configs/server/auth/ui_auth.toml" "${KMS_CONF_FILE}"
+set_toml_value "${KMS_CONF_FILE}" kms_public_url "\"http://localhost:${KMS_PORT}\""
+set_toml_value "${KMS_CONF_FILE}" port "${KMS_PORT}"
+set_toml_value "${KMS_CONF_FILE}" sqlite_path "\"${KMS_SQLITE_DIR}\""
+set_toml_value "${KMS_CONF_FILE}" auth_verifier_url "\"https://localhost:${AUTH_PORT}\""
+set_toml_value "${KMS_CONF_FILE}" ui_index_html_folder "\"${UI_DIR}/dist\""
 
 echo "==> Starting KMS server (port ${KMS_PORT}) …"
 "${kms_bin}" --config "${KMS_CONF_FILE}" >"${KMS_LOG}" 2>&1 &

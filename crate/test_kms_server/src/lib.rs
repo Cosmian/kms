@@ -71,6 +71,9 @@ mod hsm_startup_tests;
 mod openapi_validation;
 
 #[cfg(test)]
+mod unauthenticated_bind_tests;
+
+#[cfg(test)]
 #[cfg(feature = "non-fips")]
 mod pgp_gnupg_tests;
 

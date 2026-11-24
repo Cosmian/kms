@@ -16,6 +16,8 @@ By default, if no authentication methods are configured, the server operates in 
     [default: admin]
 ```
 
+Unless `insecure_allow_unauthenticated` is set, this mode is only accepted when the server binds a loopback address (`127.0.0.1`, `::1` or `localhost`): on any other address the server refuses to start (`refusing to start: no authentication method is configured ...`). Configure an authentication method, bind a loopback address, or set `insecure_allow_unauthenticated = true` (`KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`) for development only. The startup warning remains when the opt-in is used. The Docker image, the packaged `kms.toml` and the Helm chart bind `0.0.0.0`, so without authentication they refuse to start out of the box.
+
 ### Authenticated Mode
 
 When one or more authentication methods are enabled, the server requires successful authentication for all requests. The authentication mechanism works in a cascading fashion, attempting each configured method until one succeeds.
@@ -130,6 +132,10 @@ Authorization: Bearer <JWT_TOKEN>
 
 The server extracts the username from the token's `email` claim.
 
+JWT tokens (and UI OIDC logins) must carry `email_verified: true` (a JSON boolean or the string `"true"`); a token without it is rejected. Identity providers that omit the claim, such as Microsoft Entra ID access tokens, are not accepted.
+
+Users of the second and later `jwt_auth_provider` entries are identified as `email#<jwt_issuer_uri>` (for example `alice@example.com#https://login.example.com/`), so access rights and role lists for these users must use that form. Users of the first provider keep the bare `email`. The same rule applies to the UI OIDC login: its identity is `email#<ui_oidc_issuer_url>` unless that URL is exactly the issuer of the first `jwt_auth_provider` (plain string comparison; a trailing slash makes them differ). Google CSE (KACLS) issuers are never namespaced. The UI OIDC `id_token` must carry the `exp`, `iss`, `aud` and `sub` claims.
+
 #### Supported Signing Algorithms
 
 The KMS server automatically detects the signing algorithm from the JWT header (`alg` claim) and validates accordingly. The following signing algorithms from the [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) library are supported; tokens using the `none` algorithm (for example, `Algorithm::None` / `alg: "none"`) are explicitly rejected:
@@ -201,6 +207,14 @@ API Token authentication uses a symmetric key stored in the KMS as the authentic
    ```
 
 When using API token authentication, the authenticated user will be the default username.
+
+### Choosing `default_username`
+
+Only the API token or the non-authenticated mode can act as `default_username`. Any request authenticated by another method (client certificate Common Name, JWT `email` or `sub`, Auth Verifier or SAML subject, UI session) whose identity equals `default_username` is rejected with `401 Unauthorized` (`external identity collides with the KMS default_username`). The comparison ignores case and trailing spaces. Choose a `default_username` that is distinct from every real identity: if a certificate CN or an email is currently `admin`, change `default_username`.
+
+### Auth Verifier bearer tokens
+
+Auth Verifier bearer tokens are only accepted when issued for the realm set in `auth_verifier_realm` (when it is set). Tokens of the admin realm (`_`) are always rejected: create a dedicated realm and users for the KMS.
 
 ## Force Default Username
 

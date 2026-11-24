@@ -616,6 +616,7 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
     let cse_config = GoogleCseConfig {
         authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: kacls_url.to_owned(),
+            issuer_namespace: None,
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             jwks: Arc::new(jwks_manager),
             accept_spiffe_subject: false,
@@ -703,6 +704,7 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
     let cse_config = GoogleCseConfig {
         authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: kacls_url.to_owned(),
+            issuer_namespace: None,
             jwt_audience: Some(vec!["wrong-aud".to_owned(), "kacls-migration".to_owned()]),
             jwks: Arc::new(jwks_manager),
             accept_spiffe_subject: false,
@@ -788,6 +790,7 @@ async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
     let cse_config = GoogleCseConfig {
         authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: kacls_url.to_owned(),
+            issuer_namespace: None,
             jwt_audience: Some(vec!["wrong1".to_owned(), "wrong2".to_owned()]),
             jwks: Arc::new(jwks_manager),
             accept_spiffe_subject: false,

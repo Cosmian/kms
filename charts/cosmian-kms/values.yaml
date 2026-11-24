@@ -189,6 +189,8 @@ initContainers: []
 kms:
   # -- The default username used when no authentication method is configured.
   defaultUsername: admin
+  # -- Development only: allow non-loopback binds without authentication.
+  insecureAllowUnauthenticated: false
   # -- HTTP server hostname to bind to inside the container.
   hostname: 0.0.0.0
   # -- HTTP server port. Must match `service.port` / probe port unless overridden.

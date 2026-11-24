@@ -77,6 +77,7 @@ pub(super) async fn handle_auth_verifier(
     auth_verifier: &AuthVerifierValidator,
     req: &ServiceRequest,
     session_cookie_realm: Option<&str>,
+    expected_realm: Option<&str>,
 ) -> KResult<AuthenticatedUser> {
     let token = match extract_bearer_token(req) {
         Ok(token) => token,
@@ -102,7 +103,8 @@ pub(super) async fn handle_auth_verifier(
         }
     };
 
-    let username = UserId::from(verify_auth_verifier_jwt_subject(auth_verifier, token).await?);
+    let username =
+        UserId::from(verify_auth_verifier_jwt_subject(auth_verifier, token, expected_realm).await?);
     reject_reserved_service_identity(&username)?;
     Ok(AuthenticatedUser {
         username,
@@ -146,8 +148,21 @@ pub(crate) async fn authenticate_auth_verifier_session_cookie(
 pub(crate) async fn verify_auth_verifier_jwt_subject(
     auth_verifier: &AuthVerifierValidator,
     token: &str,
+    expected_realm: Option<&str>,
 ) -> KResult<String> {
     let claims = verify_auth_verifier_jwt(&auth_verifier.jwks, token).await?;
+    if claims.realm_id.as_deref() == Some("_") {
+        return Err(KmsError::Unauthorized(
+            "Auth Verifier: tokens of the admin realm are not accepted".to_owned(),
+        ));
+    }
+    if let Some(realm) = expected_realm
+        && claims.realm_id.as_deref() != Some(realm)
+    {
+        return Err(KmsError::Unauthorized(format!(
+            "Auth Verifier: token was not issued for realm `{realm}`"
+        )));
+    }
     auth_verifier.ensure_live_session(token).await?;
     Ok(claims.sub)
 }
@@ -293,7 +308,7 @@ pub(crate) mod tests {
     }
 
     async fn verify(header: &str) -> crate::result::KResult<String> {
-        verify_auth_verifier_jwt_subject(&*live_auth_verifier().await, &token(header)).await
+        verify_auth_verifier_jwt_subject(&*live_auth_verifier().await, &token(header), None).await
     }
 
     #[tokio::test]
@@ -390,7 +405,7 @@ pub(crate) mod tests {
             .await
             .expect_err("the cookie of an ended session must be rejected");
         assert!(matches!(error, KmsError::Unauthorized(_)), "{error}");
-        let error = verify_auth_verifier_jwt_subject(&ended, &token)
+        let error = verify_auth_verifier_jwt_subject(&ended, &token, None)
             .await
             .expect_err("the bearer token of an ended session must be rejected");
         assert!(matches!(error, KmsError::Unauthorized(_)), "{error}");
@@ -425,6 +440,55 @@ pub(crate) mod tests {
                 "{realm:?}: {error}"
             );
         }
+    }
+
+    /// F-004 (#1486): bearer tokens of the `_` admin realm never authenticate, and when an
+    /// `auth_verifier_realm` is configured, bearer tokens of any other realm (or none) are
+    /// rejected too. Both checks run before the session liveness lookup.
+    #[tokio::test]
+    async fn bearer_token_of_another_or_admin_realm_is_rejected() {
+        let auth_verifier = live_auth_verifier().await;
+        for expected in [None, Some("kms-api")] {
+            let token = auth_verifier_token("alice@example.com", Some("_"));
+            let error = verify_auth_verifier_jwt_subject(&auth_verifier, &token, expected)
+                .await
+                .expect_err("a bearer token of the admin realm must be rejected");
+            assert!(
+                matches!(&error, KmsError::Unauthorized(m) if m.contains("admin realm")),
+                "{expected:?}: {error}"
+            );
+        }
+        for realm in [Some("other-app"), Some(""), None] {
+            let token = auth_verifier_token("alice@example.com", realm);
+            let error = verify_auth_verifier_jwt_subject(&auth_verifier, &token, Some("kms-api"))
+                .await
+                .expect_err("a bearer token of another realm must be rejected");
+            assert!(
+                matches!(&error, KmsError::Unauthorized(m) if m.contains("realm `kms-api`")),
+                "{realm:?}: {error}"
+            );
+        }
+
+        let token = auth_verifier_token("alice@example.com", Some("kms-api"));
+        let sub = verify_auth_verifier_jwt_subject(&auth_verifier, &token, Some("kms-api"))
+            .await
+            .expect("a bearer token of the configured realm must be accepted");
+        assert_eq!(sub, "alice@example.com");
+        for realm in [Some("other-app"), None] {
+            let token = auth_verifier_token("alice@example.com", realm);
+            let sub = verify_auth_verifier_jwt_subject(&auth_verifier, &token, None)
+                .await
+                .expect("without a configured realm, a non-admin realm must be accepted");
+            assert_eq!(sub, "alice@example.com", "{realm:?}");
+        }
+
+        // The realm checks precede the liveness lookup: the realm error wins on an ended session.
+        let ended = mock_auth_verifier(Arc::new(AtomicBool::new(false))).await;
+        let token = auth_verifier_token("alice@example.com", Some("_"));
+        let error = verify_auth_verifier_jwt_subject(&ended, &token, None)
+            .await
+            .expect_err("a bearer token of the admin realm must be rejected");
+        assert!(error.to_string().contains("admin realm"), "{error}");
     }
 
     #[tokio::test]

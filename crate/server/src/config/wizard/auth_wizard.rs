@@ -59,6 +59,16 @@ pub(crate) fn configure_auth(
         .interact()
         .prompt_err()?;
 
+    if selected.is_empty() {
+        http.insecure_allow_unauthenticated = Confirm::with_theme(&theme)
+            .with_prompt(
+                "Allow a non-loopback bind without authentication? Development only; otherwise bind loopback",
+            )
+            .default(false)
+            .interact()
+            .prompt_err()?;
+    }
+
     // API key
     let api_token_id: Option<String> = if selected.contains(&0) {
         let token: String = Input::with_theme(&theme)
