@@ -652,9 +652,7 @@ mod tests {
                 requests::symmetric_key_create_request,
             },
         },
-        cosmian_kms_crypto::crypto::{
-            is_fips_build, symmetric::symmetric_ciphers::caller_gcm_iv_allowed,
-        },
+        cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::caller_gcm_iv_allowed,
     };
 
     use crate::{
@@ -1367,13 +1365,6 @@ mod tests {
                 .unwrap()
         {
             let computed = compute_hmac(&v.key, &v.msg, v.hash);
-            if is_fips_build() && v.key.len() < 14 && computed.is_err() {
-                // SP 800-131A: refused by the build.rs provider, whose fipsmodule.cnf comes from
-                // `make install_fips` (util/mk-fipsmodule-cnf.pl: pedantic, `hmac-key-check = 1`);
-                // accepted in CI by the Nix provider (`fipsinstall` without `-pedantic`). A provider
-                // that accepts the key must compute the expected tag.
-                continue;
-            }
             if v.valid {
                 let computed = computed.unwrap_or_else(|e| panic!("{} ({}): {e}", v.id, v.source));
                 assert_eq!(

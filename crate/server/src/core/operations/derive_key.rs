@@ -1110,13 +1110,6 @@ mod tests {
     fn test_hkdf_official_vectors() {
         for v in hkdf_vectors().unwrap() {
             let okm = derive_hkdf(&v.ikm, &v.salt, &v.info, v.size, v.hash);
-            if is_fips_build() && v.ikm.len() < 14 && okm.is_err() {
-                // SP 800-131A: refused by the build.rs provider, whose fipsmodule.cnf comes from
-                // `make install_fips` (util/mk-fipsmodule-cnf.pl: pedantic, `hkdf-key-check = 1`);
-                // accepted in CI by the Nix provider (`fipsinstall` without `-pedantic`). A provider
-                // that accepts the key must derive the expected key.
-                continue;
-            }
             if v.valid {
                 let okm = okm.unwrap_or_else(|e| panic!("{} ({}): {e}", v.id, v.source));
                 assert_eq!(okm.to_vec(), v.okm, "{} ({})", v.id, v.source);
