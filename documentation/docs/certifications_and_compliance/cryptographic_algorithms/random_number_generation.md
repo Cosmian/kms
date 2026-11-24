@@ -383,7 +383,7 @@ Only under conditions none of which are met today, and only partially:
 - Mechanically, `crate/crypto/build.rs` already supports substituting a pre-built OpenSSL: if the `OPENSSL_DIR`
   environment variable points at a directory containing `ssl/openssl.cnf` and `lib/ossl-modules`, the build
   script skips compiling its own OpenSSL and links against that directory instead
-  (`crate/crypto/build.rs` lines 61-72). A customer could point this at their own OpenSSL installation.
+  (`crate/crypto/build.rs`, the `OPENSSL_DIR` check). A customer could point this at their own OpenSSL installation.
 - However, swapping the OpenSSL build alone does not confer FIPS/ESV compliance unless **all** of the following
   additionally hold, not all of which hold today:
   1. The customer's OpenSSL build must itself be an exact, unmodified copy of a CMVP-validated FIPS 140-3
@@ -427,8 +427,8 @@ OpenSSL, ... If you need a FIPS validated module then you must ONLY generate a F
 versions that have valid FIPS certificates." The same document explicitly warns, using OpenSSL 3.6.0 as the
 example: "Note that the OpenSSL 3.6.0 FIPS provider has not been validated so it must not be used for FIPS
 purposes." FIPS/ESV certification is bound to one specific, tested binary via a CMVP certificate number
-published in a Security Policy — never to "the latest source code." Bumping `OPENSSL_MAIN_VERSION` /
-`OPENSSL_MAIN_TARBALL` / `OPENSSL_MAIN_SHA256` in `crate/crypto/build.rs` (lines 15-19) to a newer OpenSSL
+published in a Security Policy — never to "the latest source code." Bumping the `main` entry of
+`crate/crypto/openssl_versions.json` (version and SHA-256) to a newer OpenSSL
 release (even one whose source includes FIPS-indicator-tagged ML-KEM/ML-DSA/SLH-DSA, as OpenSSL 3.5+ does per
 `docs.openssl.org/3.5/man7/OSSL_PROVIDER-FIPS`) does not grant FIPS validation or an ESV certificate. Only the
 specific provider version that CMVP validated (3.5.9, Certificate #5586) may be used as the FIPS provider;
