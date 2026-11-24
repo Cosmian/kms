@@ -335,7 +335,8 @@ pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<St
 
 /// Compute the number of whole days until the next scheduled rotation for a key.
 ///
-/// Returns `None` if the rotation schedule cannot be determined (no interval, no anchor date).
+/// Returns `None` if the rotation schedule cannot be determined (no interval, no anchor date)
+/// or the schedule leaves the supported date range.
 /// Returns a negative number if the deadline has already passed.
 fn days_until_next_rotation(
     attrs: &cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
@@ -345,11 +346,11 @@ fn days_until_next_rotation(
     let interval = time::Duration::seconds(interval_secs);
 
     let next_rotation = if let Some(last_rotate) = attrs.rotate_date {
-        last_rotate + interval
+        last_rotate.checked_add(interval)?
     } else {
         let initial = attrs.initial_date?;
         let offset = time::Duration::seconds(attrs.rotate_offset.unwrap_or(0));
-        initial + offset + interval
+        initial.checked_add(offset)?.checked_add(interval)?
     };
 
     Some((next_rotation - now).whole_days())
@@ -365,7 +366,7 @@ mod tests {
 
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
-            kmip_0::kmip_types::State,
+            kmip_0::kmip_types::{ErrorReason, State},
             kmip_2_1::{
                 kmip_attributes::{Attribute, Attributes},
                 kmip_operations::SetAttribute,
@@ -525,6 +526,154 @@ mod tests {
             days_until_next_rotation(&attrs, now).is_none(),
             "no anchor dates should return None"
         );
+    }
+
+    /// Schedules that leave the supported date range, as stored before the write-side bound.
+    fn out_of_range_schedules(now: time::OffsetDateTime) -> [Attributes; 3] {
+        [
+            Attributes {
+                rotate_interval: Some(i64::MAX),
+                rotate_date: Some(now),
+                ..Default::default()
+            },
+            Attributes {
+                rotate_interval: Some(10),
+                rotate_offset: Some(i64::MIN),
+                initial_date: Some(now),
+                ..Default::default()
+            },
+            Attributes {
+                rotate_interval: Some(10),
+                rotate_offset: Some(i64::MAX),
+                initial_date: Some(now),
+                ..Default::default()
+            },
+        ]
+    }
+
+    /// A schedule outside the date range has no next rotation instead of panicking.
+    #[test]
+    fn test_out_of_range_schedule_returns_none() {
+        let now = now();
+        for attrs in out_of_range_schedules(now) {
+            assert!(days_until_next_rotation(&attrs, now).is_none(), "{attrs:?}");
+        }
+    }
+
+    /// Rotation values are KMIP Intervals (0..=`u32::MAX` seconds): larger or negative values
+    /// are refused on write.
+    #[tokio::test]
+    async fn test_set_attribute_rejects_out_of_range_rotation_values() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("rotation_bounds_test@example.com");
+        let uid = uuid::Uuid::new_v4().to_string();
+        kms.database
+            .create(
+                Some(uid.clone()),
+                &owner,
+                &make_aes256_key(),
+                &Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    state: Some(State::Active),
+                    ..Default::default()
+                },
+                &HashSet::new(),
+            )
+            .await
+            .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+
+        for rejected in [
+            Attribute::RotateInterval(i64::MAX),
+            Attribute::RotateOffset(-1),
+        ] {
+            let res = Box::pin(set_attribute(
+                &kms,
+                SetAttribute {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    new_attribute: rejected.clone(),
+                },
+                &owner,
+            ))
+            .await;
+            assert!(
+                matches!(
+                    res,
+                    Err(crate::error::KmsError::Kmip21Error(
+                        ErrorReason::Invalid_Attribute_Value,
+                        _
+                    ))
+                ),
+                "{rejected:?}: {res:?}"
+            );
+        }
+
+        Box::pin(set_attribute(
+            &kms,
+            SetAttribute {
+                unique_identifier: Some(UniqueIdentifier::TextString(uid)),
+                new_attribute: Attribute::RotateInterval(i64::from(u32::MAX)),
+            },
+            &owner,
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// Out-of-range schedules stored before the write-side bound used to panic the scheduler
+    /// on every tick; they are now skipped.
+    #[tokio::test]
+    async fn test_auto_rotation_survives_out_of_range_schedule() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("out_of_range_schedule_test@example.com");
+        let now = time::OffsetDateTime::now_utc();
+
+        let mut uids = Vec::new();
+        for schedule in [
+            Attributes {
+                rotate_interval: Some(i64::MAX),
+                initial_date: Some(now - time::Duration::hours(1)),
+                ..Default::default()
+            },
+            Attributes {
+                rotate_interval: Some(3600),
+                rotate_offset: Some(i64::MIN),
+                initial_date: Some(now),
+                ..Default::default()
+            },
+        ] {
+            let uid = uuid::Uuid::new_v4().to_string();
+            // `database.create` bypasses the write-side validation, like a pre-bound stored value.
+            kms.database
+                .create(
+                    Some(uid.clone()),
+                    &owner,
+                    &make_aes256_key(),
+                    &Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        state: Some(State::Active),
+                        rotate_automatic: Some(true),
+                        ..schedule
+                    },
+                    &HashSet::new(),
+                )
+                .await
+                .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+            uids.push(uid);
+        }
+
+        run_auto_rotation(&kms).await;
+        dispatch_renewal_warnings(&kms, &mut std::collections::HashMap::new()).await;
+
+        for uid in uids {
+            let owm = kms
+                .database
+                .retrieve_object_arc(&uid)
+                .await
+                .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
+                .expect("key must still exist");
+            assert_eq!(owm.state(), State::Active, "{uid} must not be rotated");
+        }
+        Ok(())
     }
 
     // ── Integration: run_auto_rotation dispatches ReKey for due symmetric key ─

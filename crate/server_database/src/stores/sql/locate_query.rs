@@ -706,7 +706,8 @@ pub(super) fn find_due_for_rotation_query<P: PlaceholderTrait>() -> String {
 /// - `rotate_date + rotate_interval` if `rotate_date` is set (last rotation timestamp)
 /// - `initial_date + rotate_offset + rotate_interval` otherwise (first rotation from creation)
 ///
-/// Returns `true` if `now >= next_rotation_time`.
+/// Returns `true` if `now >= next_rotation_time`. Returns `false` when the schedule leaves the
+/// supported date range.
 pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime) -> bool {
     let interval_secs = match attrs.rotate_interval {
         Some(secs) if secs > 0 => secs,
@@ -715,16 +716,19 @@ pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime)
     let interval = time::Duration::seconds(interval_secs);
 
     let next_rotation = if let Some(last_rotate) = attrs.rotate_date {
-        last_rotate + interval
+        last_rotate.checked_add(interval)
     } else if let Some(initial) = attrs.initial_date {
         let offset = time::Duration::seconds(attrs.rotate_offset.unwrap_or(0));
-        initial + offset + interval
+        initial
+            .checked_add(offset)
+            .and_then(|t| t.checked_add(interval))
     } else {
         // No anchor date available — cannot determine schedule
         return false;
     };
 
-    now >= next_rotation
+    // A schedule outside the supported date range (stored before the bound) is never due.
+    next_rotation.is_some_and(|next| now >= next)
 }
 
 /// Keep the `(uid, owner)` of the `(uid, owner, attributes)` rows that are due
@@ -895,6 +899,38 @@ mod tests {
         assert_eq!(
             filter_due_for_rotation(rows, now),
             vec![("a".to_owned(), "alice".to_owned())]
+        );
+    }
+
+    #[test]
+    fn filter_due_for_rotation_skips_out_of_range_schedules() {
+        let now = time::OffsetDateTime::now_utc();
+        let rows = [
+            Attributes {
+                rotate_interval: Some(i64::MAX),
+                rotate_date: Some(now),
+                ..Attributes::default()
+            },
+            Attributes {
+                rotate_interval: Some(10),
+                rotate_offset: Some(i64::MIN),
+                initial_date: Some(now),
+                ..Attributes::default()
+            },
+            Attributes {
+                rotate_interval: Some(10),
+                rotate_offset: Some(i64::MAX),
+                initial_date: Some(now),
+                ..Attributes::default()
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, attrs)| (i.to_string(), "alice".to_owned(), attrs))
+        .collect::<Vec<_>>();
+        assert_eq!(
+            filter_due_for_rotation(rows, now),
+            Vec::<(String, String)>::new()
         );
     }
 }

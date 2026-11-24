@@ -21,8 +21,8 @@ use time::OffsetDateTime;
 const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
 use super::policy::{
-    check_grant, check_read_only, check_rotate_name, check_sql_rotate_name, check_vendor_attribute,
-    read_only_error,
+    check_grant, check_read_only, check_rotation_attribute, check_sql_rotate_name,
+    check_vendor_attribute, read_only_error,
 };
 use crate::{
     core::{
@@ -70,7 +70,7 @@ pub(crate) async fn set_attribute(
 
     // Read-only guard — must be checked before the DB round-trip.
     check_read_only(request.new_attribute.tag(), KmipOperation::SetAttribute)?;
-    check_rotate_name(&request.new_attribute, "SetAttribute")?;
+    check_rotation_attribute(&request.new_attribute, "SetAttribute")?;
     check_vendor_attribute(&request.new_attribute, KmipOperation::SetAttribute)?;
     // KMIP 2.1 §4.59: clients set Total and Unit only; the server owns the Count.
     if let Attribute::UsageLimits(limits) = &mut request.new_attribute {
