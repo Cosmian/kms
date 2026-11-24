@@ -256,6 +256,39 @@ fn disable_proxies_for_tests() {
     }
 }
 
+/// Number of scheduler turns a probe task must get while an operation is pending for that
+/// operation to count as not blocking the runtime.
+pub(crate) const MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK: usize = 100;
+
+/// Runs `op` on the current-thread test runtime next to a probe that yields in a loop, and
+/// returns the output of `op` with the number of turns the probe got before `op` finished.
+///
+/// Work done inline in `op` (no await point) leaves the probe at most one turn; work moved
+/// to the blocking pool leaves it a very large number. No wall-clock threshold is involved,
+/// so the result does not depend on machine load. `op` must not park on anything else before
+/// its heavy work (e.g. a database call): those turns would be counted too.
+pub(crate) async fn runtime_turns_during<F: Future>(op: F) -> (F::Output, usize) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let done = AtomicBool::new(false);
+    let (output, turns) = tokio::join!(
+        async {
+            let output = op.await;
+            done.store(true, Ordering::SeqCst);
+            output
+        },
+        async {
+            let mut turns = 0_usize;
+            while !done.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+                turns += 1;
+            }
+            turns
+        }
+    );
+    (output, turns)
+}
+
 pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
     // Set the absolute path of the project directory
     let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

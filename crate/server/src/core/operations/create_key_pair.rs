@@ -698,7 +698,7 @@ mod tests {
         cosmian_kms_crypto::crypto::is_fips_build,
     };
 
-    use super::{reject_eddsa_key_pair, resolve_shared_attribute};
+    use super::{reject_eddsa_key_pair, resolve_shared_attribute, spawn_generate_key_pair};
     use crate::{
         error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
     };
@@ -837,41 +837,29 @@ mod tests {
         Ok(())
     }
 
-    /// RSA key generation runs on the blocking pool: the async runtime keeps ticking while a
-    /// large modulus is generated.
+    /// RSA key generation runs on the blocking pool: the async runtime keeps scheduling other
+    /// tasks while a large modulus is generated (see `runtime_turns_during`).
     #[tokio::test]
     async fn test_create_key_pair_runs_off_the_async_worker() -> KResult<()> {
-        use std::{
-            sync::atomic::{AtomicBool, Ordering},
-            time::{Duration, Instant},
+        use crate::tests::test_utils::{
+            MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK, runtime_turns_during,
         };
 
         let kms = test_kms().await?;
-        let owner = UserId::from("keygen_off_worker");
         let request =
             create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 8192, false, None)?;
 
-        let done = AtomicBool::new(false);
-        let (res, worst_gap) = tokio::join!(
-            async {
-                let res = kms.create_key_pair(request, &owner).await;
-                done.store(true, Ordering::SeqCst);
-                res
-            },
-            async {
-                let mut worst = Duration::ZERO;
-                while !done.load(Ordering::SeqCst) {
-                    let started = Instant::now();
-                    tokio::time::sleep(Duration::from_millis(5)).await;
-                    worst = worst.max(started.elapsed());
-                }
-                worst
-            }
-        );
+        let (res, turns) = runtime_turns_during(spawn_generate_key_pair(
+            &kms,
+            request,
+            "keygen_off_worker_sk".to_owned(),
+            "keygen_off_worker_pk".to_owned(),
+        ))
+        .await;
         res?;
-        if worst_gap >= Duration::from_millis(250) {
+        if turns < MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK {
             return Err(KmsError::Default(format!(
-                "RSA key generation stalled the runtime for {worst_gap:?}"
+                "RSA key generation blocked the runtime: the probe got only {turns} turns"
             )));
         }
         Ok(())

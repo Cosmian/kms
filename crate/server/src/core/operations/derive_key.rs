@@ -314,20 +314,14 @@ async fn derive_key_symmetric(
                      blocks exceeds {MAX_PBKDF2_ITERATIONS}"
                 )));
             }
-            // PBKDF2 is CPU-bound for seconds: run it on the blocking pool, not the HTTP worker.
-            let key = Zeroizing::new(base_key_bytes.to_vec());
-            let salt = salt.clone();
-            tokio::task::spawn_blocking(move || {
-                derive_pbkdf2(
-                    &key,
-                    &salt,
-                    iterations_u32,
-                    cryptographic_length,
-                    hashing_algorithm,
-                )
-            })
-            .await
-            .map_err(|e| KmsError::Default(format!("PBKDF2 derivation task failed: {e}")))??
+            derive_pbkdf2_blocking(
+                base_key_bytes,
+                salt,
+                iterations_u32,
+                cryptographic_length,
+                hashing_algorithm,
+            )
+            .await?
         }
         DerivationMethod::HKDF => {
             let salt = request
@@ -1073,6 +1067,24 @@ fn derive_pbkdf2(
     Ok(output)
 }
 
+/// [`derive_pbkdf2`] on the blocking pool: PBKDF2 is CPU-bound for seconds and must not pin the
+/// HTTP worker.
+async fn derive_pbkdf2_blocking(
+    key: &[u8],
+    salt: &[u8],
+    iterations: u32,
+    length: usize,
+    hashing_algorithm: HashingAlgorithm,
+) -> KResult<Zeroizing<Vec<u8>>> {
+    let key = Zeroizing::new(key.to_vec());
+    let salt = salt.to_vec();
+    tokio::task::spawn_blocking(move || {
+        derive_pbkdf2(&key, &salt, iterations, length, hashing_algorithm)
+    })
+    .await
+    .map_err(|e| KmsError::Default(format!("PBKDF2 derivation task failed: {e}")))?
+}
+
 /// HKDF key derivation using OpenSSL's native HKDF implementation
 ///
 /// Returns the derived key wrapped in [`Zeroizing`] so the bytes are scrubbed
@@ -1132,7 +1144,30 @@ mod tests {
         kat_vectors::{hkdf_vectors, pbkdf2_vectors},
     };
 
-    use super::{derive_hkdf, derive_pbkdf2};
+    use super::{HashingAlgorithm, derive_hkdf, derive_pbkdf2, derive_pbkdf2_blocking};
+
+    /// PBKDF2 runs on the blocking pool: the async runtime keeps scheduling other tasks while
+    /// it computes (see `runtime_turns_during`).
+    #[tokio::test]
+    async fn test_derive_pbkdf2_runs_off_the_async_worker() {
+        use crate::tests::test_utils::{
+            MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK, runtime_turns_during,
+        };
+
+        let (dk, turns) = runtime_turns_during(derive_pbkdf2_blocking(
+            &[7; 32],
+            &[9; 16],
+            10_000_000,
+            32,
+            HashingAlgorithm::SHA256,
+        ))
+        .await;
+        assert_eq!(dk.expect("PBKDF2 must succeed").len(), 32);
+        assert!(
+            turns >= MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK,
+            "PBKDF2 blocked the runtime: the probe got only {turns} turns"
+        );
+    }
 
     /// `derive_hkdf` against the Wycheproof / OpenSSL HKDF vectors.
     #[test]
