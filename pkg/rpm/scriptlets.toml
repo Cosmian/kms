@@ -29,6 +29,21 @@ if [ -d "$UI_DIST" ]; then
   fi
 fi
 
+# Record the service state across an upgrade ($1 >= 2). The %postun of <= 5.29.0 stops AND
+# disables the unit during an upgrade (rpm runs it after the new %post); %posttrans restores
+# the state from these markers.
+STATE_DIR="/var/lib/cosmian"
+rm -f "$STATE_DIR/upgrade-service-enabled" "$STATE_DIR/upgrade-service-active"
+if [ "${1:-1}" -ge 2 ] && has_systemd; then
+  mkdir -p "$STATE_DIR"
+  if systemctl is-enabled --quiet cosmian_kms.service; then
+    touch "$STATE_DIR/upgrade-service-enabled"
+  fi
+  if systemctl is-active --quiet cosmian_kms.service; then
+    touch "$STATE_DIR/upgrade-service-active"
+  fi
+fi
+
 '''
 
 post_install_script = '''
@@ -102,48 +117,8 @@ post_uninstall_script = '''
 
 set -x
 
-has_systemd() {
-  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
-}
-
-if ! has_systemd; then
-  # Still clean up files even without systemd
-  case "$1" in
-  0)
-    rm -f  /usr/sbin/cosmian_kms
-    rm -rf /usr/local/cosmian
-    ;;
-  esac
-  exit 0
-fi
-
-systemctl daemon-reload >/dev/null 2>&1 || true
-
-# Check if the service is active (running)
-if systemctl is-active --quiet cosmian_kms.service; then
-  echo "Service is running. Stopping the service..."
-  systemctl stop cosmian_kms.service >/dev/null 2>&1 || true
-
-  # Verify if the service was stopped
-  if systemctl is-active --quiet cosmian_kms.service; then
-    echo "Failed to stop the service."
-  else
-    echo "Service stopped successfully. Disabling it"
-    if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
-      echo "Service exists. Disabling the service..."
-      systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
-    fi
-  fi
-else
-  echo "Service is not running. Disabling it"
-  if systemctl list-unit-files | grep -q '^cosmian_kms.service'; then
-    echo "Service exists. Disabling the service..."
-    systemctl disable cosmian_kms.service >/dev/null 2>&1 || true
-  fi
-fi
-
-systemctl daemon-reload >/dev/null 2>&1 || true
-
+# Erase only: the service is stopped and disabled by pre_uninstall_script. On upgrade ($1 >= 1)
+# the service state is kept.
 case "$1" in
 0)
   # erase: remove binary and bundled libraries
@@ -151,5 +126,27 @@ case "$1" in
   rm -rf /usr/local/cosmian
   ;;
 esac
+
+'''
+
+# %posttrans runs after the old package's %postun, which (<= 5.29.0) disables the unit on
+# upgrade. Never branch on $1 here: markers only.
+post_trans_script = '''
+#!/bin/bash
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+if has_systemd; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  if [ -f /var/lib/cosmian/upgrade-service-enabled ]; then
+    systemctl enable cosmian_kms.service >/dev/null 2>&1 || true
+  fi
+  if [ -f /var/lib/cosmian/upgrade-service-active ]; then
+    systemctl restart cosmian_kms.service >/dev/null 2>&1 || true
+  fi
+fi
+rm -f /var/lib/cosmian/upgrade-service-enabled /var/lib/cosmian/upgrade-service-active
 
 '''
