@@ -568,7 +568,7 @@ Both dash (`ssl-mode`) and underscore (`ssl_mode`) variants are accepted.
 !!! note "ssl-mode behaviour"
     - `DISABLED` – no TLS at all.
     - `PREFERRED` / `REQUIRED` – TLS is used but the server certificate is **not** verified.
-    - `VERIFY_CA` – the server certificate is verified against the CA.
+    - `VERIFY_CA` – the server certificate is verified against the CA. When `ssl-ca` is set, only that CA is trusted (the system CA store is not consulted); the file must contain the root CA of the server chain. Without `ssl-ca`, the system CA store is used.
     - `VERIFY_IDENTITY` – the server certificate is verified against the CA **and** the hostname must match.
 
 !!! warning "PKCS#12 client identity"

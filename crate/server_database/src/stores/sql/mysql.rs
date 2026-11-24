@@ -50,6 +50,16 @@ use crate::{
 // Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
 const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
 
+/// `SslOpts` of the `VERIFY_CA`/`VERIFY_IDENTITY` modes: with `ssl-ca`, that CA is the only trust
+/// anchor (the system CA store is not consulted).
+fn verify_ssl_opts(ca_path: Option<&str>) -> SslOpts {
+    ca_path.map_or_else(SslOpts::default, |ca_path| {
+        SslOpts::default()
+            .with_root_certs(vec![PathBuf::from(ca_path).into()])
+            .with_disable_built_in_roots(true)
+    })
+}
+
 fn validate_client_identity_parameters(
     identity_path: Option<&str>,
     identity_password: Option<&str>,
@@ -251,14 +261,12 @@ impl MySqlPool {
                             .with_danger_accept_invalid_certs(true)
                             .with_danger_skip_domain_validation(true);
                     } else {
-                        // Load CA certificate for server verification (ssl-ca) for VERIFY modes
-                        if let Some(ca_path) = query_params
-                            .get("ssl-ca")
-                            .or_else(|| query_params.get("ssl_ca"))
-                        {
-                            ssl_opts = ssl_opts
-                                .with_root_certs(vec![PathBuf::from(ca_path.as_ref()).into()]);
-                        }
+                        ssl_opts = verify_ssl_opts(
+                            query_params
+                                .get("ssl-ca")
+                                .or_else(|| query_params.get("ssl_ca"))
+                                .map(AsRef::as_ref),
+                        );
                     }
 
                     ssl_opts = configure_client_identity(
@@ -2272,6 +2280,20 @@ pub(super) async fn atomic_(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_ssl_opts_pins_the_configured_ca() {
+        let opts = verify_ssl_opts(Some("/etc/kms/mysql-ca.pem"));
+        assert!(opts.disable_built_in_roots());
+        assert_eq!(opts.root_certs().len(), 1);
+    }
+
+    #[test]
+    fn verify_ssl_opts_without_ca_keeps_system_roots() {
+        let opts = verify_ssl_opts(None);
+        assert!(!opts.disable_built_in_roots());
+        assert_eq!(opts.root_certs(), []);
+    }
 
     /// `RELEASE_LOCK` returns NULL when the named lock no longer exists. That used to panic in the
     /// row conversion (killing the cron thread); it must be reported as an error.
