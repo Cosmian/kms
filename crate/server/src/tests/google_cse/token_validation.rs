@@ -529,6 +529,59 @@ async fn digest_rejects_authz_without_email() {
     );
 }
 
+/// A token naming a reserved service identity is refused on every path that derives the
+/// calling user from a token, not only on `wrap`/`unwrap`.
+#[tokio::test]
+async fn reserved_service_identity_is_rejected_on_every_token_path() {
+    use crate::routes::aws_xks::AWS_XKS_SERVICE_USER;
+
+    let rsa = Rsa::generate(2048).unwrap();
+    let app = validating_app(&rsa).await;
+    let reserved = "reserved service identity";
+
+    let reply = post_json_raw(
+        &app,
+        wrap_request(
+            authn_token(&rsa, Some(AWS_XKS_SERVICE_USER), None),
+            authz(&rsa, Some(AWS_XKS_SERVICE_USER), "writer"),
+        ),
+        "/google_cse/wrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), reserved);
+
+    let reply = post_json_raw(
+        &app,
+        PrivilegedWrapRequest {
+            authentication: authn_token(&rsa, Some(AWS_XKS_SERVICE_USER), None),
+            key: DEK.to_owned(),
+            perimeter_id: String::new(),
+            resource_name: "resource_name_test".to_owned(),
+            reason: String::new(),
+        },
+        "/google_cse/privilegedwrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), reserved);
+
+    let reply = post_json_raw(
+        &app,
+        DigestRequest {
+            authorization: migration_authz_token(
+                &rsa,
+                Some(AWS_XKS_SERVICE_USER),
+                "verifier",
+                DRIVE_RESOURCE,
+            ),
+            wrapped_key: "AAAA".to_owned(),
+            reason: String::new(),
+        },
+        "/google_cse/digest",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), reserved);
+}
+
 /// An ordinary identity-provider user is not a privileged caller: the three privileged
 /// endpoints refuse its token unless its email is in `google_cse_privileged_users`.
 #[tokio::test]

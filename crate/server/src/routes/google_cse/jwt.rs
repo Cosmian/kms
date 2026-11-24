@@ -351,6 +351,7 @@ pub async fn validate_cse_authentication_token(
     let claims =
         validate_idp_token(authentication_token, cse_config, google_cse_kacls_url, None).await?;
     let email = authentication_email(claims)?;
+    reject_reserved_cse_user(&email)?;
     trace!("authentication token validated for {email}");
     Ok(email)
 }
@@ -423,12 +424,14 @@ pub async fn validate_cse_privileged_token(
     }
 
     let claims = validate_idp_token(token, cse_config, google_cse_kacls_url, resource_name).await?;
-    if let Ok(email) = authentication_email(claims)
-        && privileged_users
+    if let Ok(email) = authentication_email(claims) {
+        reject_reserved_cse_user(&email)?;
+        if privileged_users
             .iter()
             .any(|user| !user.is_empty() && user.eq_ignore_ascii_case(&email))
-    {
-        return Ok(PrivilegedCaller::User(email));
+        {
+            return Ok(PrivilegedCaller::User(email));
+        }
     }
     Err(privileged_denied())
 }
@@ -498,10 +501,13 @@ pub(super) async fn validate_cse_authorization_token(
 
     enforce_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
 
-    if authorization_token.email.is_none() {
-        return Err(KmsError::Unauthorized(
-            "Authorization token should contain an email".to_owned(),
-        ));
+    match &authorization_token.email {
+        Some(email) => reject_reserved_cse_user(email)?,
+        None => {
+            return Err(KmsError::Unauthorized(
+                "Authorization token should contain an email".to_owned(),
+            ));
+        }
     }
 
     Ok(authorization_token)
@@ -551,8 +557,6 @@ pub(super) async fn validate_tokens(
             "Authentication and authorization emails in tokens do not match".to_owned()
         )
     );
-
-    reject_reserved_cse_user(&authentication_email)?;
 
     debug!("Google CSE request authorized for user {authentication_email}");
 
