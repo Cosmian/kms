@@ -300,7 +300,7 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     https://package.cosmian.com/kms/5.29.0/windows/x86_64/fips/static-openssl/cosmian-kms-server-fips-static-openssl_5.29.0_x86_64.exe
     ```
 
-    It installs the same service and additionally ships the OpenSSL 3.1.2 FIPS provider under
+    It installs the same service and additionally ships the OpenSSL 3.5.9 FIPS provider under
     `<install dir>\openssl`. The `CosmianKMS` service gets `OPENSSL_CONF`, `OPENSSL_MODULES` and
     `OPENSSL_CONF_INCLUDE` in its own environment (no machine-wide variables are set). To run the
     server from a console, use `<install dir>\openssl\cosmian_kms_fips.cmd -c <install dir>\kms.toml`

@@ -247,7 +247,7 @@ at startup (set `key_encryption_key_wrapping_algorithm` to a key-wrap algorithm 
 
 The FIPS-build tests therefore run on Windows with:
 
-- the **OpenSSL FIPS provider** (`fips.dll`, 3.1.2), built by `.mise/scripts/windows/prepare_windows_fips_provider.ps1`
+- the **OpenSSL FIPS provider** (`fips.dll`, 3.5.9), built by `.mise/scripts/windows/prepare_windows_fips_provider.ps1`
   and activated for the KMS through `OPENSSL_CONF` / `OPENSSL_MODULES`;
 - a **PKCS#11 IV shim** (`.mise/scripts/test/hsm/pkcs11_fips_iv_shim.c`) in front of the simulator, which plays a FIPS
   module that generates the AES-GCM IV and refuses a caller IV. It also sets `SHIM_BACKEND_ISOLATE_OPENSSL`: the

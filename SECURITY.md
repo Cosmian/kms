@@ -1829,7 +1829,7 @@ When using Cosmian KMS, we recommend:
 
 ## FIPS Compliance
 
-Cosmian KMS supports FIPS 140-3 compliance when built with FIPS features enabled. KMS links against OpenSSL 3.6.2, but the FIPS build still uses the OpenSSL 3.1.2 FIPS provider for cryptographic operations because it is the official FIPS provider version available today (no more recent FIPS provider version).
+Cosmian KMS supports FIPS 140-3 compliance when built with FIPS features enabled. KMS links against OpenSSL 3.6.5, but the FIPS build uses the CMVP-validated OpenSSL 3.5.9 FIPS provider (certificate #5586) for cryptographic operations.
 
 ## Security Audits
 
