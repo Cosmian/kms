@@ -33,6 +33,11 @@ use crate::{
 /// Vendor attribute name used to mark split key shares belonging to a Crypto Officer ceremony.
 pub(crate) const CRYPTO_OFFICER_CEREMONY_ATTR: &str = "x-cosmian-crypto-officer-ceremony";
 
+/// Largest secret `CreateSplitKey` splits: at most 255 × 8 KiB ≈ 2 MiB of shares are then
+/// allocated and persisted per request. Imported Secret Data / Opaque Objects are not
+/// bounded by the symmetric `Create` size limit.
+const MAX_SPLIT_KEY_SOURCE_BYTES: usize = 8192;
+
 /// `CreateSplitKey` operation handler.
 ///
 /// Splits an existing Managed Cryptographic Object into N share objects, each stored as a
@@ -132,6 +137,13 @@ pub(crate) async fn create_split_key(
     // key encryption key protects it at rest)
     let source_object = kms.get_unwrapped(owm.id(), owm.object(), user).await?;
     let key_bytes: &[u8] = extract_key_bytes_ref(&source_object)?;
+    if key_bytes.len() > MAX_SPLIT_KEY_SOURCE_BYTES {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "CreateSplitKey: the object to split is {} bytes, which exceeds the \
+             {MAX_SPLIT_KEY_SOURCE_BYTES}-byte limit",
+            key_bytes.len()
+        )));
+    }
 
     // Determine whether this is a Crypto Officer ceremony split.
     //
@@ -882,5 +894,76 @@ mod tests {
             None
         };
         assert!(generic_uid.is_none());
+    }
+
+    /// An oversized imported object is refused before any share is allocated or stored.
+    #[tokio::test]
+    async fn create_split_key_rejects_oversized_source_without_creating_shares() -> KResult<()> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+            Locate, Register,
+        };
+
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let user = UserId::from("split-source-cap@example.com");
+
+        let register_opaque = |len: usize| Register {
+            object_type: ObjectType::OpaqueObject,
+            attributes: Attributes {
+                object_type: Some(ObjectType::OpaqueObject),
+                ..Attributes::default()
+            },
+            object: Object::OpaqueObject(OpaqueObject {
+                opaque_data_type: OpaqueDataType::Unknown,
+                opaque_data_value: vec![7; len],
+            }),
+            protection_storage_masks: None,
+        };
+        let split = |uid: UniqueIdentifier, parts: i32| CreateSplitKey {
+            object_type: ObjectType::SplitKey,
+            unique_identifier: Some(uid),
+            split_key_parts: parts,
+            split_key_threshold: parts,
+            split_key_method: SplitKeyMethod::XOR,
+            attributes: None,
+            prime_field_size: None,
+            protection_storage_masks: None,
+        };
+
+        let too_big = kms
+            .register(register_opaque(MAX_SPLIT_KEY_SOURCE_BYTES + 1), &user)
+            .await?
+            .unique_identifier;
+        match kms.create_split_key(split(too_big, 255), &user).await {
+            Err(KmsError::InvalidRequest(m)) if m.contains("exceeds") => {}
+            other => {
+                return Err(KmsError::Default(format!(
+                    "an oversized source must be refused: {other:?}"
+                )));
+            }
+        }
+        let shares = kms
+            .locate(
+                Locate {
+                    attributes: Attributes {
+                        object_type: Some(ObjectType::SplitKey),
+                        ..Attributes::default()
+                    },
+                    ..Locate::default()
+                },
+                &user,
+            )
+            .await?;
+        if !shares.unique_identifier.unwrap_or_default().is_empty() {
+            return Err(KmsError::Default(
+                "no share may be created for a refused split".to_owned(),
+            ));
+        }
+
+        let at_limit = kms
+            .register(register_opaque(MAX_SPLIT_KEY_SOURCE_BYTES), &user)
+            .await?
+            .unique_identifier;
+        kms.create_split_key(split(at_limit, 2), &user).await?;
+        Ok(())
     }
 }
