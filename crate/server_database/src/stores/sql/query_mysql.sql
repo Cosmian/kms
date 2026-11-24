@@ -183,16 +183,6 @@ DELETE
 FROM objects
 WHERE id = ?;
 
--- name: upsert-object
-INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
-VALUES (?, ?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE object=VALUES(object),
-                        attributes=VALUES(attributes),
-                        state=VALUES(state),
-                        owner=VALUES(owner),
-                        wrapping_key_id=VALUES(wrapping_key_id),
-                        version=version + 1;
-
 -- name: select-user-accesses-for-object
 SELECT permissions
 FROM read_access

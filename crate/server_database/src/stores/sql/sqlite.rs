@@ -46,6 +46,31 @@ use crate::{
     },
 };
 
+/// Create `path` if missing and restrict it to its owner (0600 on Unix), an existing file
+/// included; no-op on other platforms. Returns the open handle.
+#[cfg(unix)]
+fn open_owner_only(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let file = File::options()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(path)?;
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    Ok(file)
+}
+
+/// Create `path` if missing; permissions are left to the platform (see the Unix variant).
+#[cfg(not(unix))]
+fn open_owner_only(path: &Path) -> std::io::Result<File> {
+    File::options()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)
+}
+
 /// Async handle over a `rusqlite` connection; blocking calls run on tokio's blocking pool.
 /// The mutex serialises access to the connection; readers stay parallel because each reader
 /// is its own `Connection`. Dropping the last clone closes the `SQLite` handle synchronously.
@@ -55,9 +80,13 @@ struct Connection(Arc<std::sync::Mutex<rusqlite::Connection>>);
 impl Connection {
     async fn open(path: &Path) -> DbResult<Self> {
         let path = path.to_path_buf();
-        let conn = tokio::task::spawn_blocking(move || rusqlite::Connection::open(path))
-            .await
-            .map_err(|e| DbError::DatabaseError(format!("sqlite open task failed: {e}")))??;
+        let conn = tokio::task::spawn_blocking(move || -> DbResult<rusqlite::Connection> {
+            // the database holds wrapped keys: never leave it readable by other users
+            open_owner_only(&path)?;
+            Ok(rusqlite::Connection::open(path)?)
+        })
+        .await
+        .map_err(|e| DbError::DatabaseError(format!("sqlite open task failed: {e}")))??;
         Ok(Self(Arc::new(std::sync::Mutex::new(conn))))
     }
 
@@ -1338,14 +1367,9 @@ impl Migrate for SqlitePool {
 
     async fn acquire_migration_lock(&self) -> DbResult<Self::MigrationLock> {
         let lock_name = self.migration_lock_path.display().to_string();
-        let file = File::options()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&self.migration_lock_path)
-            .map_err(|error| {
-                db_error!("Cannot open SQLite migration lock '{lock_name}': {error}")
-            })?;
+        let file = open_owner_only(&self.migration_lock_path).map_err(|error| {
+            db_error!("Cannot open SQLite migration lock '{lock_name}': {error}")
+        })?;
         wait_for_migration_lock(&lock_name, MIGRATION_LOCK_TIMEOUT, async || {
             match file.try_lock() {
                 Ok(()) => Ok(true),
@@ -2260,6 +2284,31 @@ mod tests {
             .await
             .expect("cleared");
         assert!(!cleared.is_ui_session_revoked("new").await.expect("lookup"));
+    }
+
+    /// The database file (new or pre-existing) and its migration lock are owner-only.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_sqlite_file_permissions_0o600() -> DbResult<()> {
+        use std::{
+            fs,
+            os::unix::fs::{MetadataExt, PermissionsExt},
+        };
+
+        let dir = TempDir::new()?;
+        let fresh = dir.path().join("fresh.db");
+        let existing = dir.path().join("existing.db");
+        fs::write(&existing, b"")?;
+        fs::set_permissions(&existing, fs::Permissions::from_mode(0o644))?;
+        for file in [&fresh, &existing] {
+            SqlitePool::instantiate(file, false, None).await?;
+            let mode = fs::metadata(file)?.mode() & 0o777;
+            crate::db_ensure!(mode == 0o600, "{file:?} has mode {mode:o}");
+            let lock = format!("{}.migration.lock", file.display());
+            let lock_mode = fs::metadata(&lock)?.mode() & 0o777;
+            crate::db_ensure!(lock_mode == 0o600, "{lock} has mode {lock_mode:o}");
+        }
+        Ok(())
     }
 }
 
