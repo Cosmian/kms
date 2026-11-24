@@ -25,7 +25,7 @@ use super::super::common::{
 use crate::{
     core::{
         KMS,
-        operations::{create_key_pair::generate_key_pair, key_ops::KeySelectionSpec},
+        operations::{create_key_pair::spawn_generate_key_pair, key_ops::KeySelectionSpec},
         uid_utils::from_request,
     },
     middlewares::UserId,
@@ -142,14 +142,13 @@ impl RekeyOperation for SqlKeypairRekeyer {
         ])
     }
 
-    fn generate_replacement(
+    async fn generate_replacement(
         &self,
         kms: &KMS,
         _user: &UserId,
         candidates: &[RotationCandidate; 2],
-    ) -> impl Future<Output = KResult<[ReplacementObject; 2]>> {
-        // Key-pair generation is synchronous CPU work: no suspension point is needed.
-        std::future::ready(Self::build_replacement(kms, candidates))
+    ) -> KResult<[ReplacementObject; 2]> {
+        Self::build_replacement(kms, candidates).await
     }
 
     fn prepare_attributes(
@@ -222,8 +221,8 @@ impl RekeyOperation for SqlKeypairRekeyer {
 }
 
 impl SqlKeypairRekeyer {
-    /// Generates the replacement key pair (synchronous CPU work).
-    fn build_replacement(
+    /// Generates the replacement key pair (on the blocking pool).
+    async fn build_replacement(
         kms: &KMS,
         candidates: &[RotationCandidate; 2],
     ) -> KResult<[ReplacementObject; 2]> {
@@ -270,13 +269,13 @@ impl SqlKeypairRekeyer {
             public_protection_storage_masks: None,
         };
 
-        let key_pair = generate_key_pair(
-            kms.vendor_id(),
+        let key_pair = spawn_generate_key_pair(
+            kms,
             create_kp_request,
-            &new_sk_uid,
-            &new_pk_uid,
-            &kms.rng,
-        )?;
+            new_sk_uid.clone(),
+            new_pk_uid.clone(),
+        )
+        .await?;
 
         Ok([
             ReplacementObject {

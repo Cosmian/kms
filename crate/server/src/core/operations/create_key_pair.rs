@@ -124,7 +124,7 @@ pub(crate) async fn create_key_pair(
         });
 
     let KeyPair((mut private_key, mut public_key)) =
-        generate_key_pair(kms.vendor_id(), request, &sk_uid, &pk_uid, &kms.rng)?;
+        spawn_generate_key_pair(kms, request, sk_uid.clone(), pk_uid.clone()).await?;
 
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     let private_key_attributes =
@@ -285,7 +285,7 @@ fn resolve_shared_attribute<T: Clone + PartialEq>(
 ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
 ///
 /// Only Covercrypt master keys can be created using this function
-pub(super) fn generate_key_pair(
+fn generate_key_pair(
     vendor_id: &str,
     request: CreateKeyPair,
     private_key_uid: &str,
@@ -662,6 +662,23 @@ pub(super) fn generate_key_pair(
     Ok(key_pair)
 }
 
+/// Runs [`generate_key_pair`] on the blocking pool: RSA prime search (up to
+/// `MAX_RSA_MODULUS_LENGTH` bits) would otherwise stall the HTTP worker for seconds.
+pub(super) async fn spawn_generate_key_pair(
+    kms: &KMS,
+    request: CreateKeyPair,
+    private_key_uid: String,
+    public_key_uid: String,
+) -> KResult<KeyPair> {
+    let vendor_id = kms.vendor_id().to_owned();
+    let rng = kms.rng.clone();
+    tokio::task::spawn_blocking(move || {
+        generate_key_pair(&vendor_id, request, &private_key_uid, &public_key_uid, &rng)
+    })
+    .await
+    .map_err(|e| KmsError::Default(format!("key pair generation task failed: {e}")))?
+}
+
 #[cfg(test)]
 mod tests {
     use cosmian_kms_server_database::reexport::{
@@ -675,7 +692,7 @@ mod tests {
                     CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve,
                     UniqueIdentifier, UsageLimits, UsageLimitsUnit,
                 },
-                requests::create_ec_key_pair_request,
+                requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
             },
         },
         cosmian_kms_crypto::crypto::is_fips_build,
@@ -816,6 +833,46 @@ mod tests {
                 Some(Some(4)),
                 "{uid}"
             );
+        }
+        Ok(())
+    }
+
+    /// RSA key generation runs on the blocking pool: the async runtime keeps ticking while a
+    /// large modulus is generated.
+    #[tokio::test]
+    async fn test_create_key_pair_runs_off_the_async_worker() -> KResult<()> {
+        use std::{
+            sync::atomic::{AtomicBool, Ordering},
+            time::{Duration, Instant},
+        };
+
+        let kms = test_kms().await?;
+        let owner = UserId::from("keygen_off_worker");
+        let request =
+            create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 8192, false, None)?;
+
+        let done = AtomicBool::new(false);
+        let (res, worst_gap) = tokio::join!(
+            async {
+                let res = kms.create_key_pair(request, &owner).await;
+                done.store(true, Ordering::SeqCst);
+                res
+            },
+            async {
+                let mut worst = Duration::ZERO;
+                while !done.load(Ordering::SeqCst) {
+                    let started = Instant::now();
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    worst = worst.max(started.elapsed());
+                }
+                worst
+            }
+        );
+        res?;
+        if worst_gap >= Duration::from_millis(250) {
+            return Err(KmsError::Default(format!(
+                "RSA key generation stalled the runtime for {worst_gap:?}"
+            )));
         }
         Ok(())
     }

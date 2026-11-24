@@ -1860,3 +1860,163 @@ async fn test_derive_key_x25519_is_wrapped_by_server_kek() -> KResult<()> {
     );
     Ok(())
 }
+
+/// Builds a `DeriveKey` over `base`, deriving `bits` bits with `method` and SHA-256.
+fn bounded_derive_request(
+    base: UniqueIdentifier,
+    object_type: ObjectType,
+    method: DerivationMethod,
+    iterations: Option<i32>,
+    bits: i32,
+) -> DeriveKey {
+    DeriveKey::new_single_base(
+        object_type,
+        base,
+        method,
+        DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            initialization_vector: None,
+            derivation_data: Some(b"bounded derivation".to_vec().into()),
+            salt: Some(b"a 16 byte salt!!".to_vec().into()),
+            iteration_count: iterations,
+        },
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(bits),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+            ),
+            ..Attributes::default()
+        },
+    )
+}
+
+/// The derived length is bounded like a `Create` symmetric key (8..=8192 bits): a client can no
+/// longer make the server allocate `i32::MAX / 8` bytes.
+#[tokio::test]
+async fn test_derive_key_rejects_out_of_range_length() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("test_user");
+    let base = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+
+    for bits in [8200, i32::MAX, 0, -8] {
+        let res = kms
+            .derive_key(
+                bounded_derive_request(
+                    base.clone(),
+                    ObjectType::SymmetricKey,
+                    DerivationMethod::HKDF,
+                    None,
+                    bits,
+                ),
+                &owner,
+            )
+            .await;
+        assert!(
+            matches!(
+                res,
+                Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Attribute_Value,
+                    _
+                ))
+            ),
+            "{bits} bits: {res:?}"
+        );
+    }
+
+    kms.derive_key(
+        bounded_derive_request(
+            base,
+            ObjectType::SecretData,
+            DerivationMethod::HKDF,
+            None,
+            8192,
+        ),
+        &owner,
+    )
+    .await?;
+    Ok(())
+}
+
+/// The PBKDF2 cap bounds iterations × output blocks, not only the iteration count.
+#[tokio::test]
+async fn test_derive_key_pbkdf2_total_work_is_capped() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("test_user");
+    let base = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+
+    // 512 bits with SHA-256 = 2 blocks: 12M iterations of work.
+    let res = kms
+        .derive_key(
+            bounded_derive_request(
+                base,
+                ObjectType::SymmetricKey,
+                DerivationMethod::PBKDF2,
+                Some(6_000_000),
+                512,
+            ),
+            &owner,
+        )
+        .await;
+    assert!(
+        matches!(&res, Err(KmsError::InvalidRequest(m)) if m.contains("iteration count")),
+        "{res:?}"
+    );
+    Ok(())
+}
+
+/// PBKDF2 runs on the blocking pool: the async runtime keeps ticking while it computes.
+#[tokio::test]
+async fn test_derive_key_pbkdf2_runs_off_the_async_worker() -> KResult<()> {
+    use std::{
+        sync::atomic::{AtomicBool, Ordering},
+        time::{Duration, Instant},
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("test_user");
+    let base = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+    let request = bounded_derive_request(
+        base,
+        ObjectType::SymmetricKey,
+        DerivationMethod::PBKDF2,
+        Some(10_000_000),
+        256,
+    );
+
+    let done = AtomicBool::new(false);
+    let (res, worst_gap) = tokio::join!(
+        async {
+            let res = kms.derive_key(request, &owner).await;
+            done.store(true, Ordering::SeqCst);
+            res
+        },
+        async {
+            let mut worst = Duration::ZERO;
+            while !done.load(Ordering::SeqCst) {
+                let started = Instant::now();
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                worst = worst.max(started.elapsed());
+            }
+            worst
+        }
+    );
+    res?;
+    assert!(
+        worst_gap < Duration::from_millis(250),
+        "PBKDF2 stalled the runtime for {worst_gap:?}"
+    );
+    Ok(())
+}

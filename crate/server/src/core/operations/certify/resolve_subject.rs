@@ -36,7 +36,7 @@ use openssl::x509::X509Req;
 use super::subject::{KeyPairData, Subject};
 use crate::{
     core::{
-        KMS, operations::create_key_pair::generate_key_pair,
+        KMS, operations::create_key_pair::spawn_generate_key_pair,
         retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     },
     error::KmsError,
@@ -348,13 +348,13 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         public_key_attributes: public_attributes,
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
-    let key_pair = generate_key_pair(
-        kms.vendor_id(),
+    let key_pair = spawn_generate_key_pair(
+        kms,
         create_key_pair_request,
-        &sk_uid.to_string(),
-        &pk_uid.to_string(),
-        &kms.rng,
-    )?;
+        sk_uid.to_string(),
+        pk_uid.to_string(),
+    )
+    .await?;
     info!("Key pair created for certification");
 
     let certificate_id = attributes.unique_identifier.clone().unwrap_or_default();
