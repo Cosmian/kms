@@ -71,8 +71,12 @@ fi
 if [ -z "$conf" ]; then
   conf="$(systemctl show -p Environment --value cosmian_kms | tr ' ' '\n' | sed -n 's/^COSMIAN_KMS_CONF=//p' | head -n1)" || true
 fi
-if [ -z "$conf" ] || ! sudo test -f "$conf"; then
-  echo "ERROR: cannot find the cosmian_kms configuration file (ExecStart -c, COSMIAN_KMS_CONF or KMS_XKS_REMOTE_CONF): '${conf}'" >&2
+if [ -z "$conf" ]; then
+  # The server itself falls back to this path when neither -c nor COSMIAN_KMS_CONF is set.
+  conf=/etc/cosmian/kms.toml
+fi
+if ! sudo test -f "$conf"; then
+  echo "ERROR: cannot find the cosmian_kms configuration file (ExecStart -c, COSMIAN_KMS_CONF, /etc/cosmian/kms.toml or KMS_XKS_REMOTE_CONF): '${conf}'" >&2
   exit 1
 fi
 if [ -f "$REMOTE_BIN" ]; then
