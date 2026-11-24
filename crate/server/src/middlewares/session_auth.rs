@@ -151,9 +151,7 @@ where
                 res.headers_mut().append(
                     SET_COOKIE,
                     HeaderValue::from_str(&cookie).map_err(|e| {
-                        crate::error::KmsError::ServerError(format!(
-                            "session cookie header: {e}"
-                        ))
+                        crate::error::KmsError::ServerError(format!("session cookie header: {e}"))
                     })?,
                 );
             }

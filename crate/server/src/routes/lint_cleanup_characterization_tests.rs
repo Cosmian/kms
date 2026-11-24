@@ -241,7 +241,10 @@ fn startup_config_debug_redacts_secrets() {
     ]);
     let clap_debug = format!("{c:#?}");
     for secret in secrets {
-        assert!(!clap_debug.contains(secret), "{secret} leaked: {clap_debug}");
+        assert!(
+            !clap_debug.contains(secret),
+            "{secret} leaked: {clap_debug}"
+        );
     }
     assert!(format!("{c:?}").contains(r#"google_cse_migration_key: Some("[****]")"#));
     let params_debug = format!("{:#?}", ServerParams::try_from(c).unwrap());
