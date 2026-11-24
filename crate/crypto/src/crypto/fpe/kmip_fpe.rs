@@ -26,6 +26,21 @@ struct FpeMetadata {
 /// Prevents memory/CPU exhaustion from oversized payloads sent by authenticated clients.
 const MAX_ADDITIONAL_DATA_LEN: usize = 4096;
 
+/// Maximum byte length of the FPE data and of the tweak: FF1 cost grows with the
+/// numeral-string length; NIST SP 800-38G only requires `maxlen <= 2^32`.
+const MAX_INPUT_LEN: usize = 4096;
+
+fn check_input_lengths(data: &[u8], tweak: &[u8]) -> Result<(), FPEError> {
+    if data.len() > MAX_INPUT_LEN || tweak.len() > MAX_INPUT_LEN {
+        return Err(FPEError::OutOfBounds(format!(
+            "FPE data and tweak are limited to {MAX_INPUT_LEN} bytes (got {} and {})",
+            data.len(),
+            tweak.len()
+        )));
+    }
+    Ok(())
+}
+
 impl FpeMetadata {
     fn parse(additional_data: Option<&[u8]>) -> Result<Self, FPEError> {
         let Some(additional_data) = additional_data else {
@@ -180,6 +195,7 @@ pub fn encrypt_fpe(
     let key = key_to_array(key)?;
     let metadata = FpeMetadata::parse(additional_data)?;
     let tweak = tweak.unwrap_or_default();
+    check_input_lengths(data, tweak)?;
 
     match metadata.data_type {
         FpeDataType::Text => {
@@ -222,6 +238,7 @@ pub fn decrypt_fpe(
     let key = key_to_array(key)?;
     let metadata = FpeMetadata::parse(additional_data)?;
     let tweak = tweak.unwrap_or_default();
+    check_input_lengths(data, tweak)?;
 
     match metadata.data_type {
         FpeDataType::Text => {
