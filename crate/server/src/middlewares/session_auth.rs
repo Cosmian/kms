@@ -150,8 +150,11 @@ where
             if let Some(cookie) = set_cookie {
                 res.headers_mut().append(
                     SET_COOKIE,
-                    HeaderValue::from_str(&cookie)
-                        .map_err(actix_web::error::ErrorInternalServerError)?,
+                    HeaderValue::from_str(&cookie).map_err(|e| {
+                        crate::error::KmsError::ServerError(format!(
+                            "session cookie header: {e}"
+                        ))
+                    })?,
                 );
             }
             Ok(res.map_into_left_body())

@@ -6,7 +6,6 @@
 
 use actix_web::{HttpResponse, http::StatusCode};
 use cosmian_kms_server_database::DbError;
-use cosmian_logger::error;
 use serde_json::json;
 
 use crate::error::KmsError;
@@ -76,8 +75,9 @@ impl actix_web::error::ResponseError for KvApiError {
             Self::Forbidden => "permission denied",
             Self::UnsupportedOperation => "unsupported operation",
             Self::InternalError(detail) => {
-                error!("KV API internal error: {detail}");
-                "internal error"
+                let (mut builder, message) =
+                    crate::routes::internal_error(self.status_code(), detail);
+                return builder.json(json!({ "errors": [message] }));
             }
         };
         HttpResponse::build(self.status_code()).json(json!({ "errors": [message] }))
@@ -98,10 +98,19 @@ mod tests {
         let response = KvApiError::InternalError("db at /var/lib/kms: row 42 corrupt".to_owned())
             .error_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let id = response
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .expect("x-request-id header")
+            .to_owned();
         let body = to_bytes(response.into_body())
             .await
             .expect("body is readable");
-        assert_eq!(&body[..], br#"{"errors":["internal error"]}"#);
+        assert_eq!(
+            String::from_utf8_lossy(&body),
+            format!(r#"{{"errors":["Internal Server Error (request id: {id})"]}}"#)
+        );
     }
 
     #[test]

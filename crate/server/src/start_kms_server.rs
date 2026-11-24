@@ -710,10 +710,10 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
     info!("Serving index.html from {}", index_html_path.display());
     match actix_files::NamedFile::open(index_html_path) {
         Ok(file) => file.into_response(req),
-        Err(e) => {
-            error!("Failed to open index.html: {e:?}");
-            HttpResponse::InternalServerError().finish()
-        }
+        Err(e) => crate::routes::internal_error_response(
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Failed to open index.html: {e:?}"),
+        ),
     }
 }
 

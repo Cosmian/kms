@@ -1185,12 +1185,10 @@ async fn metadata_pointing_at_a_foreign_object_fails_closed() {
         TestRequest::delete().uri(&format!("/kv/metadata/{path}")),
     ] {
         let (status, body) = send_raw(&app, request, "alice").await;
-        assert_eq!(
-            (status, body.as_str()),
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                r#"{"errors":["internal error"]}"#
-            )
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            body.starts_with(r#"{"errors":["Internal Server Error (request id: "#),
+            "{body}"
         );
     }
     let foreign = kms

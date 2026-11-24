@@ -24,7 +24,7 @@ impl fmt::Display for AzureEkmErrorReply {
 }
 
 impl From<AzureEkmErrorReply> for HttpResponse {
-    fn from(e: AzureEkmErrorReply) -> Self {
+    fn from(mut e: AzureEkmErrorReply) -> Self {
         debug!("EKM Error: {:?}", e);
         // as of version 0.1-preview, the spec only returns these exact error codes
         match e.code.as_str() {
@@ -36,7 +36,15 @@ impl From<AzureEkmErrorReply> for HttpResponse {
             "Forbidden" | "KeyDisabled" | "OperationNotAllowed" => Self::Forbidden().json(e), // 403
             "KeyNotFound" => Self::NotFound().json(e),      // 404
             "TooManyRequests" => Self::TooManyRequests().json(e), // 429
-            _ => Self::InternalServerError().json(e),       // 5xx errors
+            _ => {
+                // 5xx errors: the detail goes to the log only
+                let (mut builder, message) = crate::routes::internal_error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    &e.message,
+                );
+                e.message = message;
+                builder.json(e)
+            }
         }
     }
 }
@@ -220,7 +228,7 @@ mod tests {
                 AzureEkmErrorReply::internal_error("boom"),
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "InternalError",
-                "boom",
+                "Internal Server Error (request id: ",
             ),
         ];
         for (reply, expected_status, expected_code, expected_message) in cases {

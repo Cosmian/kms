@@ -827,10 +827,13 @@ mod characterization_tests {
         let kms = Box::pin(kms_without_key()).await.unwrap();
         let (status, body) = call(&kms, &json!({"csr": csr_pem(), "uri_sans": "a"})).await;
         assert_eq!(status, 500);
-        assert_eq!(
-            body.to_string(),
-            r#"{"errors":["PKI CA private key with tag 'vault_pki_ca' not found in KMS. Create a key pair and tag it with 'vault_pki_ca' first."]}"#
+        // The internal error text goes to the log, never to the client.
+        let message = body["errors"][0].as_str().unwrap_or_default();
+        assert!(
+            message.starts_with("Internal Server Error (request id: "),
+            "{body}"
         );
+        assert!(!message.contains("vault_pki_ca"), "{body}");
     }
 
     #[tokio::test]
@@ -838,9 +841,12 @@ mod characterization_tests {
         let kms = Box::pin(kms_with_ca(false)).await.unwrap();
         let (status, body) = call(&kms, &json!({"csr": csr_pem(), "uri_sans": "a"})).await;
         assert_eq!(status, 500);
-        assert_eq!(
-            body.to_string(),
-            r#"{"errors":["Invalid Request: No CertificateLink found in the public key"]}"#
+        // The internal error text goes to the log, never to the client.
+        let message = body["errors"][0].as_str().unwrap_or_default();
+        assert!(
+            message.starts_with("Internal Server Error (request id: "),
+            "{body}"
         );
+        assert!(!message.contains("CertificateLink"), "{body}");
     }
 }

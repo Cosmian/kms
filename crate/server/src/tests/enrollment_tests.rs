@@ -1539,9 +1539,10 @@ async fn enrollment_without_certify_grant_fails_closed() -> KResult<()> {
         .set_payload(scep_pkcs_req_message(&ca, &key, "dev1.iot.example"))
         .to_request();
     let (status, body, _) = body_of(test::call_service(&app, req).await).await;
-    // unauthenticated caller: a fixed message, no CA / key UID or permission detail (S105)
+    // unauthenticated caller: a generic message and request id, no CA / key UID or permission
+    // detail (S105)
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(body, b"the enrollment CA is not available");
+    assert!(body.starts_with(b"Internal Server Error (request id: "));
 
     assert_eq!(
         certificate_uids(&kms).await?,

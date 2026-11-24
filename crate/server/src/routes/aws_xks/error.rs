@@ -155,6 +155,13 @@ impl Display for XksErrorReply {
     }
 }
 
+/// Answer a 5xx reply with the generic message and a request id: the detail goes to the log.
+fn internal_xks_reply(status: actix_web::http::StatusCode, mut e: XksErrorReply) -> HttpResponse {
+    let (mut builder, message) = crate::routes::internal_error(status, &e);
+    e.errorMessage = Some(message);
+    builder.json(e)
+}
+
 impl From<XksErrorReply> for HttpResponse {
     fn from(e: XksErrorReply) -> Self {
         debug!("Xks Error: {:?}", e);
@@ -170,9 +177,15 @@ impl From<XksErrorReply> for HttpResponse {
             XksErrorName::KeyNotFound => Self::ImATeapot().json(e),
             XksErrorName::InvalidUriPath => Self::NotFound().json(e),
             XksErrorName::Throttling => Self::TooManyRequests().json(e),
-            XksErrorName::UnsupportedOperation => Self::NotImplemented().json(e),
-            XksErrorName::DependencyTimeout => Self::ServiceUnavailable().json(e),
-            XksErrorName::Internal => Self::InternalServerError().json(e),
+            XksErrorName::UnsupportedOperation => {
+                internal_xks_reply(actix_web::http::StatusCode::NOT_IMPLEMENTED, e)
+            }
+            XksErrorName::DependencyTimeout => {
+                internal_xks_reply(actix_web::http::StatusCode::SERVICE_UNAVAILABLE, e)
+            }
+            XksErrorName::Internal => {
+                internal_xks_reply(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e)
+            }
         }
     }
 }

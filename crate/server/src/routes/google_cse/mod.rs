@@ -44,7 +44,7 @@ impl CseErrorReply {
 }
 
 impl From<CseErrorReply> for HttpResponse {
-    fn from(e: CseErrorReply) -> Self {
+    fn from(mut e: CseErrorReply) -> Self {
         debug!("CSE Error: {:?}", e);
         match e.code {
             400 => Self::BadRequest().json(e),
@@ -53,7 +53,14 @@ impl From<CseErrorReply> for HttpResponse {
             404 => Self::NotFound().json(e),
             405 => Self::MethodNotAllowed().json(e),
             422 => Self::UnprocessableEntity().json(e),
-            _ => Self::InternalServerError().json(e),
+            _ => {
+                let (mut builder, message) = crate::routes::internal_error(
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    &e.details,
+                );
+                e.details = message;
+                builder.json(e)
+            }
         }
     }
 }
@@ -273,4 +280,32 @@ pub(crate) async fn delegate(
 ) -> HttpResponse {
     info!("POST /google_cse/delegate: not implemented yet");
     HttpResponse::Ok().finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::{body::to_bytes, http::StatusCode};
+
+    use super::{CseErrorReply, HttpResponse, KmsError};
+
+    #[actix_web::test]
+    async fn cse_internal_error_hides_details() {
+        let reply = CseErrorReply::from(&KmsError::ServerError("secret detail".to_owned()));
+        let response = HttpResponse::from(reply);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let id = response
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .expect("x-request-id header")
+            .to_owned();
+        let body = to_bytes(response.into_body()).await.expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(
+            json["details"],
+            format!("Internal Server Error (request id: {id})")
+        );
+        assert_eq!(json["message"], "A CSE request to the Cosmian KMS failed");
+        assert!(!String::from_utf8_lossy(&body).contains("secret detail"));
+    }
 }

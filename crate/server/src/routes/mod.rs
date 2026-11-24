@@ -98,16 +98,12 @@ impl actix_web::error::ResponseError for KmsError {
 
     fn error_response(&self) -> HttpResponse {
         let status_code = self.status_code();
-        let message = self.to_string();
-
-        if status_code >= StatusCode::INTERNAL_SERVER_ERROR {
-            error!("{status_code} - {message}");
-        } else {
-            warn!("{status_code} - {message}");
+        if status_code.is_server_error() {
+            return internal_error_response(status_code, self);
         }
+        let message = self.to_string();
+        warn!("{status_code} - {message}");
 
-        // Return the actual error message for visibility, even for 5xx errors.
-        // The error is already logged server-side; clients need to see the real issue.
         // Plain text + nosniff: messages can quote request data (e.g. an EST CSR Subject), and
         // this origin also serves the Web UI, so they must never be rendered as HTML.
         HttpResponseBuilder::new(status_code)
@@ -115,6 +111,44 @@ impl actix_web::error::ResponseError for KmsError {
             .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
             .body(message)
     }
+}
+
+/// Starts a 5xx response that never discloses `detail` (CWE-209): `detail` is logged at error
+/// level under a fresh request id, which is returned in `X-Request-Id`. Returns the builder and
+/// the only message a 5xx body may carry, so provider JSON schemas keep their shape.
+pub(crate) fn internal_error(
+    status: StatusCode,
+    detail: &dyn std::fmt::Display,
+) -> (HttpResponseBuilder, String) {
+    let request_id = uuid::Uuid::new_v4();
+    error!("{status} [request id: {request_id}] - {detail}");
+    let mut builder = HttpResponseBuilder::new(status);
+    builder.insert_header(("x-request-id", request_id.to_string()));
+    (
+        builder,
+        format!("Internal Server Error (request id: {request_id})"),
+    )
+}
+
+/// Plain-text form of [`internal_error`].
+pub(crate) fn internal_error_response(
+    status: StatusCode,
+    detail: &dyn std::fmt::Display,
+) -> HttpResponse {
+    let (mut builder, message) = internal_error(status, detail);
+    builder
+        .insert_header((header::CONTENT_TYPE, "text/plain; charset=utf-8"))
+        .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
+        .body(message)
+}
+
+/// JSON form of [`internal_error`] for `{"error": "<message>"}` bodies.
+pub(crate) fn internal_error_json_response(
+    status: StatusCode,
+    detail: &dyn std::fmt::Display,
+) -> HttpResponse {
+    let (mut builder, message) = internal_error(status, detail);
+    builder.json(serde_json::json!({ "error": message }))
 }
 
 /// Get the KMS version
@@ -296,7 +330,41 @@ mod lint_cleanup_characterization_tests;
 
 #[cfg(test)]
 mod tests {
+    use actix_web::{ResponseError, body::to_bytes, http::StatusCode};
+    use cosmian_kms_server_database::DbError;
+
     use super::parse_duration_secs;
+    use crate::error::KmsError;
+
+    #[actix_web::test]
+    async fn server_errors_answer_generic_body_with_request_id() {
+        let secret = "open /var/lib/kms password=s3cret";
+        for error in [
+            KmsError::ServerError(secret.to_owned()),
+            KmsError::Database(DbError::DatabaseError(secret.to_owned())),
+            KmsError::CryptographicError(secret.to_owned()),
+            KmsError::Certificate(secret.to_owned()),
+            KmsError::Default(secret.to_owned()),
+        ] {
+            let response = error.error_response();
+            assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+            let id = response
+                .headers()
+                .get("x-request-id")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| uuid::Uuid::parse_str(v).ok())
+                .expect("x-request-id must be a UUID");
+            let body = to_bytes(response.into_body()).await.expect("body");
+            let body = String::from_utf8_lossy(&body);
+            assert_eq!(body, format!("Internal Server Error (request id: {id})"));
+            assert!(!body.contains("s3cret"));
+        }
+
+        let response = KmsError::InvalidRequest("bad field".to_owned()).error_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = to_bytes(response.into_body()).await.expect("body");
+        assert!(String::from_utf8_lossy(&body).contains("bad field"));
+    }
 
     #[test]
     fn duration_grammar() {

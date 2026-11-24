@@ -154,11 +154,12 @@ where
         let kms_server = self.kms_server.clone();
 
         Box::pin(async move {
-            let params = kms_server.params.aws_xks_params.clone().ok_or_else(||
-                actix_web::error::ErrorInternalServerError(
-                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
+            let params = kms_server.params.aws_xks_params.clone().ok_or_else(|| {
+                xks_internal_error(
+                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set"
+                        .to_owned(),
                 )
-            )?;
+            })?;
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
                 req.into_parts();
 
@@ -187,7 +188,7 @@ where
                 .acquire()
                 .await
                 .map_err(|error| {
-                    actix_web::error::ErrorInternalServerError(format!(
+                    xks_internal_error(format!(
                         "SigV4 verification semaphore unexpectedly closed: {error}"
                     ))
                 })?;
@@ -201,7 +202,7 @@ where
                 tokio::task::spawn_blocking(move || verify_sigv4_request(&http_request, &params))
                     .await
                     .map_err(|join_err| {
-                        actix_web::error::ErrorInternalServerError(format!(
+                        xks_internal_error(format!(
                             "SigV4 verification task panicked: {join_err}"
                         ))
                     })?;
@@ -245,6 +246,15 @@ async fn read_bounded_body(mut body: Payload, limit: usize) -> Result<Bytes, Err
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes.freeze())
+}
+
+/// A 5xx XKS reply: the detail is logged, the client only gets a generic message and request id.
+fn xks_internal_error(detail: String) -> Error {
+    XksErrorReply {
+        errorName: XksErrorName::Internal,
+        errorMessage: Some(detail),
+    }
+    .into()
 }
 
 fn enforce_sigv4_request_freshness<B>(
