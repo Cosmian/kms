@@ -394,11 +394,12 @@ async fn wrap_using_kms(
         .retrieve_object_arc(wrapping_key_uid)
         .await
         .context("wrap using KMS")?;
-    let wrapping_key = wrapping_key.ok_or_else(|| {
-        KmsError::NotSupported(format!(
+    let not_accessible = || {
+        KmsError::Unauthorized(format!(
             "The wrapping key {wrapping_key_uid} does not exist or is not accessible"
         ))
-    })?;
+    };
+    let wrapping_key = wrapping_key.ok_or_else(not_accessible)?;
     trace!("Wrapping key retrieved successfully: {wrapping_key}");
 
     // in the case the key is a Private Key, we need to fetch the corresponding private key or certificate
@@ -418,13 +419,10 @@ async fn wrap_using_kms(
                 .retrieve_object_arc(&pk_id)
                 .await
                 .context("wrapping using the KMS")?;
-            wrapping_key.ok_or_else(|| {
-                KmsError::NotSupported(format!(
-                    "The wrapping public key {pk_id} does not exist or is not accessible for the \
-                     private key {wrapping_key_uid}"
-                ))
-            })?
+            wrapping_key.ok_or_else(not_accessible)?
         }
+        // the type of another user's object is not revealed either
+        _ if wrapping_key.owner() != user => return Err(not_accessible()),
         _ => kms_bail!("wrap_key: unsupported object type: {}", object_type),
     };
     // The server-configured key_encryption_key is a shared server resource accessible
@@ -446,10 +444,7 @@ async fn wrap_using_kms(
             .iter()
             .any(|p| [KmipOperation::Encrypt, KmipOperation::Get].contains(p))
         {
-            return Err(KmsError::Unauthorized(format!(
-                "The user {user} does not have the permission to wrap with the key \
-                 {wrapping_key_uid}"
-            )));
+            return Err(not_accessible());
         }
     }
     if wrapping_key.state() != State::Active {

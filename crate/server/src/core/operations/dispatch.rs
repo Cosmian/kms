@@ -463,7 +463,6 @@ mod tests {
             OperationEnumeration::Revoke,
             OperationEnumeration::Destroy,
             OperationEnumeration::ReKey,
-            OperationEnumeration::DeriveKey,
             OperationEnumeration::Certify,
             OperationEnumeration::ModifyAttribute,
             OperationEnumeration::JoinSplitKey,

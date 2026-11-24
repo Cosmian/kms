@@ -5,7 +5,7 @@ use actix_web::{
     web::{Data, Json},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::{MAC, MACVerify},
+    kmip_operations::{MAC, MACVerify, Operation},
     kmip_types::{UniqueIdentifier, ValidityIndicator},
 };
 use cosmian_logger::trace;
@@ -15,7 +15,7 @@ use super::{
     CryptoApiError, MacComputeResponse, MacRequest, MacVerifyResponse, b64_decode, b64_encode,
     jose_to_kmip_params,
 };
-use crate::core::KMS;
+use crate::core::{KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request};
 
 /// MAC operation response — either compute or verify result.
 #[derive(Debug, Serialize)]
@@ -57,6 +57,11 @@ pub(crate) async fn mac(
             final_indicator: None,
         };
 
+        enforce_kmip_algorithm_policy_for_request(
+            &kms.params,
+            &Operation::MACVerify(verify_req.clone()),
+        )
+        .map_err(CryptoApiError::from)?;
         let resp = kms
             .mac_verify(verify_req, &user)
             .await
@@ -78,6 +83,8 @@ pub(crate) async fn mac(
             ..Default::default()
         };
 
+        enforce_kmip_algorithm_policy_for_request(&kms.params, &Operation::MAC(mac_req.clone()))
+            .map_err(CryptoApiError::from)?;
         let resp = kms
             .mac(mac_req, &user)
             .await

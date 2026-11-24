@@ -5,6 +5,7 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-071 — DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys](#cosmian-2026-071--derivekey-skipped-the-create-gate-jose-and-spire-routes-skipped-the-kmip-algorithm-policy-wrapping-errors-revealed-other-users-keys)
       - [COSMIAN-2026-070 — Key wrapping with a Certificate skipped the `WrapKey` usage-mask check](#cosmian-2026-070--key-wrapping-with-a-certificate-skipped-the-wrapkey-usage-mask-check)
       - [COSMIAN-2026-069 — GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree](#cosmian-2026-069--ghsa-g3hv-75wg-m249-minimatch-denial-of-service-in-the-web-ui-dependency-tree)
       - [COSMIAN-2026-068 — RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates](#cosmian-2026-068--rustsec-2026-0543-and-rustsec-2026-0542-unmaintained-chrono-and-humantime-crates)
@@ -130,6 +131,29 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-071 — DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys
+
+| Field      | Value                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Severity   | Low                                                                                                                                                                                                    |
+| Published  | Pending                                                                                                                                                                                                |
+| Affected   | before 6.0.0                                                                                                                                                                                           |
+| Fixed in   | 6.0.0                                                                                                                                                                                                  |
+| Found by   | Threat model review, 14 November 2026                                                                                                                                                                  |
+| References | [#1492](https://github.com/Cosmian/kms/issues/1492), [Regression tests](crate/server/src/tests/kmip_policy/routes.rs), [Vector](test_data/vectors/negative/security/wrap_with_unusable_kek/manifest.toml) |
+
+**Summary:** Three authorization gaps:
+
+- `DeriveKey` persisted a new caller-owned object without the Create permission check that `Create`, `Import` and the other object-creating operations apply (`privileged_users`, Operator role).
+- The JOSE (`/v1/crypto`) and SPIRE transit routes called `Create`, `CreateKeyPair`, `Import`, `Decrypt` and `Sign` directly, so the request-time `kmip.policy_id` algorithm policy was not applied to them.
+- Wrapping and unwrapping errors told an unauthorized caller whether a wrapping key existed and, for unwrap, whether another user's key was inactive or lacked `UnwrapKey`.
+
+**Impact:** A user with a `DeriveKey` grant could create objects although object creation was restricted to privileged users. A deployment restricting algorithms through `kmip.policy_id` could still have keys of disallowed algorithms or sizes created, imported or used through the JOSE and SPIRE routes. A caller allowed to import wrapped keys could probe the existence and lifecycle state of other users' keys. No key material was exposed.
+
+**Mitigation:** Upgrade to 6.0.0. `DeriveKey` now requires the Create permission (the Crypto Officer is still allowed). The JOSE and SPIRE routes run the same request policy check as the KMIP endpoint and return the same error. Wrap and unwrap return `The (un)wrapping key <uid> does not exist or is not accessible` for a missing key and for a key the caller may not use, and check the key's state and usage only after the permission. Regression tests: `derive_key_requires_create_permission`, `crate/server/src/tests/kmip_policy/routes.rs`, `unauthorized_caller_cannot_distinguish_unwrapping_keys` and `unauthorized_caller_cannot_distinguish_wrapping_keys`.
+
+---
 
 #### COSMIAN-2026-070 — Key wrapping with a Certificate skipped the `WrapKey` usage-mask check
 
@@ -1742,6 +1766,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-071    | Low      | before 6.0.0                                                            | 6.0.0    | DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys |
 | COSMIAN-2026-070    | Moderate | before 6.0.0                                                            | 6.0.0    | Key wrapping with a Certificate skipped the `WrapKey` usage-mask check                              |
 | COSMIAN-2026-069    | Low      | from 5.3.0 before 6.0.0 (build tooling only)                            | 6.0.0    | GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree                    |
 | COSMIAN-2026-068    | Low      | before 6.0.0                                                            | 6.0.0    | RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates               |
