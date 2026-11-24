@@ -6,7 +6,7 @@
 //! the CA's CRL, and keeping one active must not make OCSP answer `good` for a revoked
 //! certificate.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use actix_web::{App, test, web::Data};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
@@ -301,8 +301,12 @@ async fn crl_lists_only_revocations_of_certificates_the_ca_issued() -> KResult<(
     Ok(())
 }
 
-/// POST an OCSP request for `leaf` (issued by `ca`) and return the verified status.
-async fn ocsp_status(kms: &Arc<KMS>, ca: &X509, leaf: &X509) -> KResult<OcspCertStatus> {
+/// POST one OCSP request for `leaves` (issued by `ca`) and return their verified statuses.
+async fn ocsp_statuses(
+    kms: &Arc<KMS>,
+    ca: &X509,
+    leaves: &[&X509],
+) -> KResult<Vec<OcspCertStatus>> {
     let app = test::init_service(
         App::new()
             .app_data(Data::new(kms.clone()))
@@ -310,7 +314,9 @@ async fn ocsp_status(kms: &Arc<KMS>, ca: &X509, leaf: &X509) -> KResult<OcspCert
     )
     .await;
     let mut request = OcspRequest::new()?;
-    request.add_id(OcspCertId::from_cert(MessageDigest::sha1(), leaf, ca)?)?;
+    for leaf in leaves {
+        request.add_id(OcspCertId::from_cert(MessageDigest::sha1(), leaf, ca)?)?;
+    }
     let response = test::call_service(
         &app,
         test::TestRequest::post()
@@ -326,11 +332,16 @@ async fn ocsp_status(kms: &Arc<KMS>, ca: &X509, leaf: &X509) -> KResult<OcspCert
     trusted.add_cert(ca.clone())?;
     let untrusted: Stack<X509> = Stack::new()?;
     basic.verify(&untrusted, &trusted.build(), OcspFlag::empty())?;
-    let id = OcspCertId::from_cert(MessageDigest::sha1(), leaf, ca)?;
-    Ok(basic
-        .find_status(&id)
-        .ok_or_else(|| KmsError::ServerError("no OCSP status for the leaf".to_owned()))?
-        .status)
+    leaves
+        .iter()
+        .map(|leaf| {
+            let id = OcspCertId::from_cert(MessageDigest::sha1(), leaf, ca)?;
+            Ok(basic
+                .find_status(&id)
+                .ok_or_else(|| KmsError::ServerError("no OCSP status for the leaf".to_owned()))?
+                .status)
+        })
+        .collect()
 }
 
 fn config(sqlite_path: &std::path::Path, ocsp_ca_uid: Option<String>) -> ClapConfig {
@@ -366,12 +377,56 @@ async fn ocsp_ignores_forged_and_copied_certificates_linked_to_the_ca() -> KResu
     drop(kms);
     let kms = test_kms_with_config(config(&sqlite_path, Some(ca_id))).await?;
     assert_eq!(
-        ocsp_status(&kms, &ca, &revoked_leaf).await?,
-        OcspCertStatus::REVOKED
+        ocsp_statuses(&kms, &ca, &[&revoked_leaf]).await?,
+        vec![OcspCertStatus::REVOKED]
     );
     assert_eq!(
-        ocsp_status(&kms, &ca, &active_leaf).await?,
-        OcspCertStatus::GOOD
+        ocsp_statuses(&kms, &ca, &[&active_leaf]).await?,
+        vec![OcspCertStatus::GOOD]
+    );
+    // One request for both serials: the single batched scan keeps per-serial statuses and the
+    // filtering of forged and copied certificates.
+    assert_eq!(
+        ocsp_statuses(&kms, &ca, &[&revoked_leaf, &active_leaf]).await?,
+        vec![OcspCertStatus::REVOKED, OcspCertStatus::GOOD]
+    );
+    Ok(())
+}
+
+/// Cache misses (here a two-`CertID` request) wait for the process-wide OCSP lookup budget.
+#[tokio::test]
+async fn ocsp_cache_misses_wait_for_the_lookup_budget() -> KResult<()> {
+    let sqlite_path = get_tmp_sqlite_path();
+    let kms = test_kms_with_config(config(&sqlite_path, None)).await?;
+    let alice = user("alice@example.com");
+    let (ca_id, ca_sk_id) = make_ca(&kms, &alice).await?;
+    let ca = certificate(&kms, &alice, &ca_id).await?;
+    let leaf_subject = |cn: &str| format!("C=FR, O=KMS Test, CN={cn}");
+    let issuer = Some((ca_id.as_str(), ca_sk_id.as_str()));
+    let revoked_leaf_id = certify(&kms, &alice, &leaf_subject("Revoked Leaf"), issuer).await?;
+    let revoked_leaf = certificate(&kms, &alice, &revoked_leaf_id).await?;
+    let active_leaf_id = certify(&kms, &alice, &leaf_subject("Active Leaf"), issuer).await?;
+    let active_leaf = certificate(&kms, &alice, &active_leaf_id).await?;
+    revoke(&kms, &alice, &revoked_leaf_id).await?;
+    drop(kms);
+    let kms = test_kms_with_config(config(&sqlite_path, Some(ca_id))).await?;
+
+    let all_permits = u32::try_from(*ocsp::handler::MAX_CONCURRENT_OCSP_LOOKUPS)
+        .map_err(|e| KmsError::ServerError(e.to_string()))?;
+    let held = ocsp::handler::OCSP_LOOKUP_PERMITS
+        .acquire_many(all_permits)
+        .await
+        .map_err(|e| KmsError::ServerError(e.to_string()))?;
+    let blocked = tokio::time::timeout(
+        Duration::from_millis(500),
+        ocsp_statuses(&kms, &ca, &[&revoked_leaf, &active_leaf]),
+    )
+    .await;
+    assert!(blocked.is_err(), "the request must wait for a lookup permit");
+    drop(held);
+    assert_eq!(
+        ocsp_statuses(&kms, &ca, &[&revoked_leaf, &active_leaf]).await?,
+        vec![OcspCertStatus::REVOKED, OcspCertStatus::GOOD]
     );
     Ok(())
 }

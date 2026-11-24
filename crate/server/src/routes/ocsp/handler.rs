@@ -43,19 +43,18 @@ use cosmian_kms_server_database::reexport::{
         ParsedOcspQuery, build_ocsp_response, parse_ocsp_request, request_has_nonce,
         verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, info};
 use openssl::{sha::sha256, x509::X509};
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 
 use crate::{
     config::NoncePolicyConfig,
     core::{
         KMS,
         certificate::{
-            find_ca_issued_certificates,
+            CertificateRecord, find_ca_issued_certificates,
             oracle_signing::{
                 placeholder_signer_certificate, placeholder_signing_key,
                 sign_ocsp_response_with_oracle,
@@ -105,7 +104,6 @@ const fn is_ocsp_get_path_too_long(encoded_len: usize) -> bool {
 }
 
 type OcspResponseFuture<'a> = Pin<Box<dyn Future<Output = KResult<HttpResponse>> + 'a>>;
-type OcspStatusFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspCertStatus>> + 'a>>;
 type OcspSignerMaterials = (X509, IssuerKey);
 type OcspSignerFuture<'a> = Pin<Box<dyn Future<Output = KResult<OcspSignerMaterials>> + 'a>>;
 type OcspCacheEntry = (Vec<u8>, Instant);
@@ -124,6 +122,16 @@ const MAX_OCSP_CACHE_ENTRIES: usize = 10_000;
 /// `CertID`s of its request). Requests that carry a nonce bypass the cache because
 /// the nonce makes each response unique.
 static OCSP_CACHE: LazyLock<OcspCache> = LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Number of OCSP cache misses (status lookup + signature) processed at once, process-wide.
+pub(crate) static MAX_CONCURRENT_OCSP_LOOKUPS: LazyLock<usize> = LazyLock::new(|| {
+    std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get)
+});
+
+/// The responder is public: nonce and multi-`CertID` requests bypass the cache, so their
+/// certificate scans and signatures must not take every worker or database connection (CWE-400).
+pub(crate) static OCSP_LOOKUP_PERMITS: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(*MAX_CONCURRENT_OCSP_LOOKUPS));
 
 /// Cache key for one `CertID`: the response echoes the requester's `CertID`
 /// (hash algorithm and issuer hashes), so responses for different `CertID`
@@ -227,7 +235,7 @@ pub(crate) async fn post_ocsp(
 /// 2. Parse request; verify issuer hashes match configured CA cert.
 /// 3. Cascade check: if CA is compromised all leaf certs are `revoked`.
 /// 4. Check in-memory cache (bypass when nonce present).
-/// 5. Build status entries from KMS object states.
+/// 5. Build status entries with one certificate scan, under `OCSP_LOOKUP_PERMITS`.
 /// 6. Retrieve signer cert and private key.
 /// 7. Sign `BasicResponse` via `cosmian_kms_crypto::openssl::ocsp`.
 /// 8. Cache result; return with RFC 5019 headers.
@@ -336,24 +344,37 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
             }
         }
 
-        // ── 5b. Build a status entry for every CertID ─────────────────────────────
-        let mut entries: Vec<OcspStatusEntry> = Vec::with_capacity(queries.len());
-        for query in &queries {
-            let serial = &query.serial_hex;
-            let status = if ca_compromised {
-                OcspCertStatus::Revoked {
-                    revocation_time: OffsetDateTime::now_utc(),
-                    reason: Some(CrlReasonCode::CaCompromise),
-                }
-            } else {
-                Box::pin(look_up_cert_status(kms, &ca_owm, &ca_cert, serial)).await?
-            };
-
-            entries.push(OcspStatusEntry {
-                serial_hex: serial.clone(),
-                status,
-            });
-        }
+        // ── 5b. One scan for every CertID, within the process-wide lookup budget ──
+        let lookup_permit = OCSP_LOOKUP_PERMITS.acquire().await.map_err(|e| {
+            KmsError::ServerError(format!("OCSP lookup semaphore unexpectedly closed: {e}"))
+        })?;
+        let records = if ca_compromised {
+            HashMap::new()
+        } else {
+            let serials: HashSet<String> = queries
+                .iter()
+                .map(|q| q.serial_hex.to_ascii_uppercase())
+                .collect();
+            Box::pin(find_ca_issued_certificates(kms, &ca_owm, &ca_cert, &serials)).await?
+        };
+        let entries: Vec<OcspStatusEntry> = queries
+            .iter()
+            .map(|query| OcspStatusEntry {
+                serial_hex: query.serial_hex.clone(),
+                status: if ca_compromised {
+                    OcspCertStatus::Revoked {
+                        revocation_time: OffsetDateTime::now_utc(),
+                        reason: Some(CrlReasonCode::CaCompromise),
+                    }
+                } else {
+                    cert_status(
+                        records
+                            .get(&query.serial_hex.to_ascii_uppercase())
+                            .map_or(&[][..], Vec::as_slice),
+                    )
+                },
+            })
+            .collect();
 
         // ── 6. Retrieve signer cert + key ────────────────────────────────────────
         let (signer_cert, signer_key) =
@@ -405,6 +426,8 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
                 .await?
             }
         };
+        // Scan, signer retrieval and signing (HSM included) are done: free the lookup slot.
+        drop(lookup_permit);
 
         // ── 8. Cache + respond ────────────────────────────────────────────────────
         // `unknown` responses are not cached: they are what random-serial requests
@@ -460,52 +483,32 @@ const fn map_nonce_policy(config: &NoncePolicyConfig) -> NoncePolicy {
 /// `revocationTime` and `revocationReason` come from the stored revocation
 /// details (`deactivation_date`, `revocation_reason`), exactly as in the CRL, so
 /// both sources agree and verifiers see when the certificate was actually revoked.
-fn look_up_cert_status<'a>(
-    kms: &'a KMS,
-    ca: &'a ObjectWithMetadata,
-    ca_cert: &'a X509,
-    serial_hex: &'a str,
-) -> OcspStatusFuture<'a> {
-    Box::pin(async move {
-        let serial = serial_hex.to_ascii_uppercase();
-        let records = Box::pin(find_ca_issued_certificates(
-            kms,
-            ca,
-            ca_cert,
-            &HashSet::from([serial.clone()]),
-        ))
-        .await?
-        .remove(&serial)
-        .unwrap_or_default();
-
-        // Mirrors `generate_crl::find_revoked_certificates`.
-        if let Some((_, _, attributes)) = records
-            .iter()
-            .filter(|(_, state, attributes)| is_revoked(*state, attributes))
-            .min_by_key(|(_, _, attributes)| attributes.deactivation_date)
-        {
-            return Ok(OcspCertStatus::Revoked {
-                revocation_time: attributes
-                    .compromise_date
-                    .or(attributes.deactivation_date)
-                    .unwrap_or_else(OffsetDateTime::now_utc),
-                reason: attributes
-                    .revocation_reason
-                    .as_ref()
-                    .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
-            });
-        }
-        Ok(
-            if records
-                .iter()
-                .any(|(_, state, _)| matches!(state, State::Active | State::PreActive))
-            {
-                OcspCertStatus::Good
-            } else {
-                OcspCertStatus::Unknown
-            },
-        )
-    })
+fn cert_status(records: &[CertificateRecord]) -> OcspCertStatus {
+    // Mirrors `generate_crl::find_revoked_certificates`.
+    if let Some((_, _, attributes)) = records
+        .iter()
+        .filter(|(_, state, attributes)| is_revoked(*state, attributes))
+        .min_by_key(|(_, _, attributes)| attributes.deactivation_date)
+    {
+        return OcspCertStatus::Revoked {
+            revocation_time: attributes
+                .compromise_date
+                .or(attributes.deactivation_date)
+                .unwrap_or_else(OffsetDateTime::now_utc),
+            reason: attributes
+                .revocation_reason
+                .as_ref()
+                .map(|r| kmip_reason_to_crl_reason(r.revocation_reason_code)),
+        };
+    }
+    if records
+        .iter()
+        .any(|(_, state, _)| matches!(state, State::Active | State::PreActive))
+    {
+        OcspCertStatus::Good
+    } else {
+        OcspCertStatus::Unknown
+    }
 }
 
 /// Retrieve the OCSP signing certificate and private key.
