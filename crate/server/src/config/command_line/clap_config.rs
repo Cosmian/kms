@@ -792,7 +792,7 @@ impl fmt::Debug for ClapConfig {
                 )
                 .field(
                     "google_cse_migration_key",
-                    &self.google_cse_config.migration_key,
+                    &self.google_cse_config.migration_key.as_ref().map(|_| "[****]"),
                 )
                 .field(
                     "google_cse_privileged_users",

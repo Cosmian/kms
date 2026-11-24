@@ -211,14 +211,46 @@ fn characterization_clap_config_flags_and_redaction() {
     let params = ServerParams::try_from(c).unwrap();
     assert_eq!(params.unauthenticated_bind, UnauthenticatedBind::AllowAny);
     let params_debug = format!("{params:?}");
-    // BASE behavior: `ProxyParams`'s Debug prints the proxy password in clear text.
-    assert!(params_debug.contains(r#"basic_auth_password: Some("s3cr3t-pw")"#));
+    // `ProxyParams`'s Debug redacts the proxy password.
+    assert!(!params_debug.contains(secret));
+    assert!(params_debug.contains(r#"basic_auth_password: Some("[****]")"#));
     assert!(params_debug.starts_with(
         r#"ServerParams { jwt_svid_auth_enabled: false, default_username: "admin", force_default_username: false, region_role: Leader, vendor_identification: "cosmian", main_db_params: sqlite: "#
     ));
     assert!(params_debug.contains(
         r#"x.db, clear_db_on_start: false, unwrapped_cache_max_age: 900s, unwrapped_cache_max_size: 1000, unwrapped_cache_max_ttl: None, disable_unwrapped_cache: false, otel_params: OpenTelemetryConfig { otlp_url: None, otlp_allow_insecure: false, enable_metering: false, environment: Some("development") }, kmip_policy_id: None, kmip_algorithm_policy: "no restrictions — all supported algorithms are allowed", socket_server_hostname: "0.0.0.0", socket_server_port: 6000, google_cse_enable: false, aws_xks_params: "not configured", azure_ekm_enable: false, hsm_instances: "no HSM configure"#
     ));
+}
+
+/// Startup config dumps never print proxy, Redis or CSE migration secrets. Values set through
+/// `secret://` are resolved into these same fields before the dumps are logged.
+#[cfg(not(windows))]
+#[test]
+fn startup_config_debug_redacts_secrets() {
+    let secrets = ["url-secret", "pw-secret", "hdr-secret", "migration-secret"];
+    let c = parse(&[
+        "--proxy-url",
+        "http://u:url-secret@p:3128",
+        "--proxy-basic-auth-password",
+        "pw-secret",
+        "--proxy-custom-auth-header",
+        "hdr-secret",
+        "--google-cse-enable",
+        "--google-cse-migration-key",
+        "migration-secret",
+    ]);
+    let clap_debug = format!("{c:#?}");
+    for secret in secrets {
+        assert!(!clap_debug.contains(secret), "{secret} leaked: {clap_debug}");
+    }
+    assert!(format!("{c:?}").contains(r#"google_cse_migration_key: Some("[****]")"#));
+    let params_debug = format!("{:#?}", ServerParams::try_from(c).unwrap());
+    for secret in secrets {
+        assert!(
+            !params_debug.contains(secret),
+            "{secret} leaked: {params_debug}"
+        );
+    }
 }
 
 #[tokio::test]
