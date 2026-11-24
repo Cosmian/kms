@@ -125,7 +125,7 @@ from that PR's merge ref.
 |`docker-login-ghcr`|`github-token`|Logs in to ghcr.io|`packaging-docker.yml`|
 |`import-gpg-key`|`gpg-private-key`, `passphrase`|Imports the package-signing key and lists it|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`|
 |`setup-helm-minikube`|none|Installs Helm and starts Minikube (docker driver, Kubernetes v1.32.0)|`packaging-docker.yml`|
-|`push-package-cosmian`|`subdir`, `files` or `directory`, `version-dir`, `known-hosts`, `ssh-private-key`|Uploads with a write-only restricted rsync key (`.mise/scripts/release/push_package.sh`) to `package.cosmian.com` under the branch (or tag, or `version-dir`) directory; output `remote-dir`|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`, `build_windows.yml`, `benchmark.yml`, `flamegraph.yml`|
+|`push-package-cosmian`|`subdir`, `files` or `directory`, `version-dir`, `known-hosts`, `ssh-private-key`|Uploads with a write-only restricted rsync key (`.mise/scripts/release/push_package.sh`) to `package.cosmian.com` under the branch (or tag, or `version-dir`) directory; output `remote-dir`|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`, `benchmark.yml`, `flamegraph.yml`|
 
 Upload callers pass the trusted host key from `vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS` and the dedicated key `secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY`. Missing or mismatched keys fail the upload; SSH host-key verification is never disabled by this action.
 
