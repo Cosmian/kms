@@ -51,6 +51,8 @@ struct ResponseBody {
     patch: Option<String>,
     #[serde(rename = "patchType", skip_serializing_if = "Option::is_none")]
     patch_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<Value>,
 }
 
 #[derive(Clone)]
@@ -108,8 +110,8 @@ async fn mutate_handler(
         |req| match mutate(&req, &state) {
             Ok(r) => r,
             Err(e) => {
-                warn!(error = %e, uid, "mutation failed — passing pod through");
-                allow_response(&api_version, &uid)
+                warn!(error = %e, uid, "mutation failed — rejecting pod");
+                deny_response(&api_version, &uid, &e.to_string())
             }
         },
     );
@@ -125,6 +127,22 @@ fn allow_response(api_version: &str, uid: &str) -> AdmissionResponse {
             allowed: true,
             patch: None,
             patch_type: None,
+            status: None,
+        },
+    }
+}
+
+/// Reject the pod: an annotated pod must never run without its injected init-container.
+fn deny_response(api_version: &str, uid: &str, message: &str) -> AdmissionResponse {
+    AdmissionResponse {
+        api_version: api_version.to_owned(),
+        kind: "AdmissionReview".to_owned(),
+        response: ResponseBody {
+            uid: uid.to_owned(),
+            allowed: false,
+            patch: None,
+            patch_type: None,
+            status: Some(json!({ "code": 400, "message": message })),
         },
     }
 }
@@ -170,6 +188,7 @@ fn mutate(
             allowed: true,
             patch: Some(patch_b64),
             patch_type: Some("JSONPatch".to_owned()),
+            status: None,
         },
     })
 }
@@ -517,5 +536,38 @@ mod tests {
             .find(|e| e.get("name").and_then(Value::as_str) == Some("KMS_SECRETS_DIR"))
             .expect("KMS_SECRETS_DIR must be in env");
         assert_eq!(dir.get("value").and_then(Value::as_str), Some(custom_dir));
+    }
+}
+
+#[cfg(test)]
+mod deny_tests {
+    use std::sync::Arc;
+
+    use axum::{Json, extract::State};
+    use serde_json::json;
+
+    use super::{AdmissionReview, WebhookState, mutate_handler};
+
+    /// An annotated pod whose annotations cannot be applied must be rejected, not admitted
+    /// without the injected init-container.
+    #[tokio::test]
+    async fn mutate_error_denies_pod() {
+        let state = WebhookState {
+            kms_server_url: "https://kms.example.com".to_owned(),
+            kms_api_token_secret_ref: None,
+            injector_image: "cosmian/kms-injector:latest".to_owned(),
+        };
+        let review: AdmissionReview = serde_json::from_value(json!({
+            "apiVersion": "admission.k8s.io/v1",
+            "request": {
+                "uid": "u-1",
+                "object": { "metadata": { "annotations": { "kms.cosmian.com/inject": "true" } } }
+            }
+        }))
+        .expect("valid review");
+        let resp = mutate_handler(State(Arc::new(state)), Json(review)).await;
+        assert!(!resp.0.response.allowed);
+        assert_eq!(resp.0.response.uid, "u-1");
+        assert!(resp.0.response.status.is_some());
     }
 }

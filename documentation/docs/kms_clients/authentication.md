@@ -152,6 +152,8 @@ Each product has its own `http_config` section with these options:
 | `accept_invalid_certs` | Accept self-signed certificates (set to "true") | No |
 | `verified_cert` | PEM certificate for pinning | No |
 
+For `ckms login cosmian`, the `cosmian_conf.server_url` of the Auth Verifier must be `https` (plain `http` is accepted only for loopback hosts), because the username and password are sent as HTTP Basic credentials.
+
 For KMS, you can also configure Gmail API access for S/MIME operations - see the [S/MIME Gmail service account configuration](./smime_gmail.md).
 
 ## Quick Configuration Examples

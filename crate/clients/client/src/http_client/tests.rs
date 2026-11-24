@@ -860,6 +860,24 @@ mod approle_login_tests {
         );
     }
 
+    /// Basic credentials are never sent over plain http to a non-loopback host.
+    #[tokio::test]
+    async fn test_auth_verifier_login_rejects_plain_http_remote_url() {
+        let err = auth_verifier_login(
+            &AuthVerifierLoginConfig {
+                server_url: "http://auth.example.invalid".to_owned(),
+                realm: "kms".to_owned(),
+            },
+            "user",
+            "pass",
+            false,
+            None,
+        )
+        .await
+        .expect_err("plain http to a remote host must be refused");
+        assert!(err.to_string().contains("must use https"), "{err}");
+    }
+
     /// `auth_verifier_login` sends `Basic` credentials and the `_ea_` session cookie is the token.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_auth_verifier_login_sends_basic_auth_and_returns_ea_cookie() {

@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+use cosmian_kmip::SensitiveBytes;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, StatefulSet},
@@ -13,7 +14,6 @@ use kube::{
     runtime::{controller::Action, watcher::Config as WatcherConfig},
 };
 use serde::de::DeserializeOwned;
-use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -71,19 +71,7 @@ async fn reconcile(obj: Arc<KMSSecret>, ctx: Arc<Context>) -> Result<Action, Ope
         Err(err) => {
             // Reflect the failure in the CRD status so `kubectl get kmssecret`
             // shows `ready=False` with an error message.
-            let last_hash = obj
-                .status
-                .as_ref()
-                .and_then(|s| s.last_secret_hash.as_deref())
-                .unwrap_or("");
-            patch_status(
-                &ctx.k8s,
-                &namespace,
-                &name,
-                last_hash,
-                Some(&err.to_string()),
-            )
-            .await;
+            patch_status(&ctx.k8s, &namespace, &name, Some(&err.to_string())).await;
             Err(err)
         }
     }
@@ -99,28 +87,20 @@ async fn do_reconcile(
     info!(name, namespace, secret_id = %obj.spec.secret_id, "reconciling KMSSecret");
 
     // 1. Fetch secret bytes from KMS.
-    let bytes = ctx.kms.get_secret_bytes(&obj.spec.secret_id).await?;
-    let current_hash = hex::encode(Sha256::digest(&bytes));
+    let bytes = SensitiveBytes::new(ctx.kms.get_secret_bytes(&obj.spec.secret_id).await?);
 
-    // 2. Detect whether the value changed since last sync.
-    let previous_hash = obj
-        .status
-        .as_ref()
-        .and_then(|s| s.last_secret_hash.as_deref());
-    let secret_changed = previous_hash != Some(current_hash.as_str());
+    // 2. Create or update the target K8s Secret; detect a changed value against it.
+    let secret_changed = upsert_secret(&ctx.k8s, namespace, obj, &bytes).await?;
 
-    // 3. Create or update the target K8s Secret.
-    upsert_secret(&ctx.k8s, namespace, obj, bytes).await?;
-
-    // 4. Rolling-restart workloads if the secret value changed.
+    // 3. Rolling-restart workloads if the secret value changed.
     if secret_changed {
         restart_workloads(&ctx.k8s, namespace, obj).await;
     }
 
-    // 5. Update KMSSecret status.
-    patch_status(&ctx.k8s, namespace, &name, &current_hash, None).await;
+    // 4. Update KMSSecret status.
+    patch_status(&ctx.k8s, namespace, &name, None).await;
 
-    // 6. Requeue after the configured refresh interval.
+    // 5. Requeue after the configured refresh interval.
     Ok(Action::requeue(refresh_duration(obj, ctx.default_refresh)))
 }
 
@@ -131,14 +111,23 @@ fn error_policy(obj: &KMSSecret, err: &OperatorError, _ctx: &Context) -> Action 
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Create or update the managed K8s `Secret`.
+/// `true` when the managed Secret does not hold `bytes` under `key` (constant-time compare).
+fn secret_value_changed(existing: Option<&Secret>, key: &str, bytes: &SensitiveBytes) -> bool {
+    existing
+        .and_then(|s| s.data.as_ref()?.get(key))
+        .is_none_or(|old| *bytes != old.0)
+}
+
+/// Create or update the managed K8s `Secret`; returns whether its value changed.
 async fn upsert_secret(
     client: &Client,
     namespace: &str,
     owner: &KMSSecret,
-    bytes: Vec<u8>,
-) -> Result<(), OperatorError> {
+    bytes: &SensitiveBytes,
+) -> Result<bool, OperatorError> {
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
+    let existing = secrets.get_opt(&owner.spec.target_secret).await?;
+    let changed = secret_value_changed(existing.as_ref(), &owner.spec.key, bytes);
 
     let mut labels = owner.spec.labels.clone();
     labels.insert(
@@ -147,7 +136,10 @@ async fn upsert_secret(
     );
 
     let mut data: BTreeMap<String, k8s_openapi::ByteString> = BTreeMap::new();
-    data.insert(owner.spec.key.clone(), k8s_openapi::ByteString(bytes));
+    data.insert(
+        owner.spec.key.clone(),
+        k8s_openapi::ByteString(bytes.to_vec()),
+    );
 
     let secret = Secret {
         metadata: ObjectMeta {
@@ -160,7 +152,7 @@ async fn upsert_secret(
         ..Secret::default()
     };
 
-    if secrets.get_opt(&owner.spec.target_secret).await?.is_none() {
+    if existing.is_none() {
         secrets.create(&PostParams::default(), &secret).await?;
         info!(name = %owner.spec.target_secret, "created K8s Secret");
     } else {
@@ -173,7 +165,7 @@ async fn upsert_secret(
             .await?;
         info!(name = %owner.spec.target_secret, "updated K8s Secret");
     }
-    Ok(())
+    Ok(changed)
 }
 
 /// Trigger a rolling restart for declared Deployments and `StatefulSets` by
@@ -229,24 +221,30 @@ async fn restart_resource<K>(
     }
 }
 
-/// Update the `KMSSecret` status subresource.
-async fn patch_status(
-    client: &Client,
-    namespace: &str,
-    name: &str,
-    hash: &str,
-    error_msg: Option<&str>,
-) {
-    let api: Api<KMSSecret> = Api::namespaced(client.clone(), namespace);
+/// Body of the `KMSSecret` status patch.
+fn status_patch(error_msg: Option<&str>) -> serde_json::Value {
     let status = KMSSecretStatus {
         ready: if error_msg.is_none() { "True" } else { "False" }.to_owned(),
         message: error_msg.map(ToOwned::to_owned),
-        last_secret_hash: Some(hash.to_owned()),
         last_sync_time: Some(rfc3339_now()),
     };
-    let patch = serde_json::json!({ "status": status });
+    let mut status = serde_json::json!(status);
+    if let Some(fields) = status.as_object_mut() {
+        // clears the digest published by earlier releases
+        fields.insert("lastSecretHash".to_owned(), serde_json::Value::Null);
+    }
+    serde_json::json!({ "status": status })
+}
+
+/// Update the `KMSSecret` status subresource.
+async fn patch_status(client: &Client, namespace: &str, name: &str, error_msg: Option<&str>) {
+    let api: Api<KMSSecret> = Api::namespaced(client.clone(), namespace);
     if let Err(e) = api
-        .patch_status(name, &PatchParams::default(), &Patch::Merge(patch))
+        .patch_status(
+            name,
+            &PatchParams::default(),
+            &Patch::Merge(status_patch(error_msg)),
+        )
         .await
     {
         warn!(name, error = %e, "failed to patch KMSSecret status");
@@ -452,5 +450,60 @@ mod parse_duration_tests {
             parse_duration("18446744073709551615s"),
             Some(Duration::from_secs(u64::MAX))
         );
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    //! The status never carries a digest of the secret, and changes are detected against the
+    //! managed Secret itself.
+
+    use std::collections::BTreeMap;
+
+    use cosmian_kmip::SensitiveBytes;
+    use k8s_openapi::{ByteString, api::core::v1::Secret};
+
+    use super::{secret_value_changed, status_patch};
+
+    fn secret_with(value: &[u8]) -> Secret {
+        Secret {
+            data: Some(BTreeMap::from([(
+                "value".to_owned(),
+                ByteString(value.to_vec()),
+            )])),
+            ..Secret::default()
+        }
+    }
+
+    #[test]
+    fn secret_value_changed_compares_managed_secret() {
+        let bytes = SensitiveBytes::new(b"s".to_vec());
+        assert!(secret_value_changed(None, "value", &bytes));
+        assert!(!secret_value_changed(
+            Some(&secret_with(b"s")),
+            "value",
+            &bytes
+        ));
+        assert!(secret_value_changed(
+            Some(&secret_with(b"t")),
+            "value",
+            &bytes
+        ));
+        assert!(secret_value_changed(
+            Some(&secret_with(b"s")),
+            "other",
+            &bytes
+        ));
+    }
+
+    #[test]
+    fn status_patch_clears_secret_digest() {
+        let patch = status_patch(None);
+        // an explicit null (not an absent key) is what clears a stored digest on a merge patch
+        assert_eq!(
+            patch["status"].get("lastSecretHash"),
+            Some(&serde_json::Value::Null)
+        );
+        assert_eq!(patch["status"]["ready"], "True");
     }
 }

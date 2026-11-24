@@ -163,6 +163,10 @@ init-container (`cosmian-kms-operator inject`) that:
 2. Writes each secret value as a file inside a shared `emptyDir` volume.
 3. The main container finds the files at the configured mount path on startup.
 
+A pod annotated with `kms.cosmian.com/inject: "true"` whose other annotations are invalid
+(for example a missing `kms.cosmian.com/secret-uids`) is rejected by the webhook instead of
+being admitted without the init-container.
+
 ### Example Pod annotation
 
 ```yaml

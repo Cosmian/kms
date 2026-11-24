@@ -546,6 +546,19 @@ pub async fn auth_verifier_login(
     let mut url = Url::parse(config.server_url.trim_end_matches('/')).map_err(|e| {
         HttpClientError::Default(format!("Invalid Auth Verifier server URL: {e:?}"))
     })?;
+    // Basic credentials must not travel in clear text, except to a loopback host.
+    let loopback = match url.host() {
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    if url.scheme() != "https" && !loopback {
+        return Err(HttpClientError::Default(
+            "Auth Verifier server URL must use https (plain http is only allowed for loopback hosts)"
+                .to_owned(),
+        ));
+    }
     url.path_segments_mut()
         .map_err(|()| {
             HttpClientError::Default(
