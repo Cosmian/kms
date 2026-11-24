@@ -9,7 +9,10 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_ensure,
-    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, refresh_jwks_for_token},
+    middlewares::{
+        JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId, refresh_jwks_for_token,
+        reject_reserved_service_identity,
+    },
     result::KResult,
     routes::google_cse::build_google_cse_url,
 };
@@ -509,6 +512,12 @@ pub(super) struct TokenExtractedContent {
     pub resource_name: Option<Vec<u8>>,
 }
 
+/// A Google CSE token must not name a reserved service identity (such as the AWS XKS one):
+/// the email becomes the KMS user that owns or is granted the keys.
+fn reject_reserved_cse_user(email: &str) -> KResult<()> {
+    reject_reserved_service_identity(&UserId::from(email))
+}
+
 /// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
 pub(super) async fn validate_tokens(
@@ -542,6 +551,8 @@ pub(super) async fn validate_tokens(
             "Authentication and authorization emails in tokens do not match".to_owned()
         )
     );
+
+    reject_reserved_cse_user(&authentication_email)?;
 
     debug!("Google CSE request authorized for user {authentication_email}");
 
@@ -1557,5 +1568,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(claims.email.as_deref(), Some("user@example.com"));
+    }
+
+    #[test]
+    fn cse_tokens_cannot_name_a_reserved_service_identity() {
+        use crate::routes::aws_xks::AWS_XKS_SERVICE_USER;
+
+        assert!(matches!(
+            super::reject_reserved_cse_user(AWS_XKS_SERVICE_USER),
+            Err(crate::error::KmsError::Unauthorized(_))
+        ));
+        assert!(matches!(
+            super::reject_reserved_cse_user("user@example.com"),
+            Ok(())
+        ));
     }
 }
