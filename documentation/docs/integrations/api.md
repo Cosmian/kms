@@ -128,6 +128,19 @@ Supported authentication methods include:
 - **AWS SigV4 (`Sigv4MWare`)**: Authenticates AWS KMS requests on the `/aws` scope using AWS Signature Version 4 HMAC signatures.
 - **Web UI Sessions (`SessionAuth`)**: Uses an `HttpOnly`, `SameSite=Lax` cookie (`auth_session`) sealed with AES-256-GCM (key derived from `ui_session_salt`, or random per process when it is unset). The 24-hour lifetime is enforced by the server, not only by the browser `Max-Age`.
 
+#### Web UI Session Lifetime and Revocation
+
+The server enforces the session lifetime itself, from values sealed inside the cookie:
+
+- **Idle timeout**: a session unused for 1 hour is refused. Activity on session-authenticated routes extends it: the cookie is re-issued (same session id, same absolute expiry) when its last activity is 5 minutes old or more.
+- **Absolute lifetime**: 24 hours from login, never extended.
+- **Logout revocation**: `/ui/logout` records the session id in memory, so a copy of the cookie kept elsewhere is refused until its expiry. The revocation list is per process: it does not survive a restart and does not reach other instances behind a load balancer.
+- **Account changes**: disabling an account at the identity provider or the Auth Verifier does not end an open KMS UI session before its idle or absolute expiry.
+
+Cookies issued by a previous version carry no session id and are refused: users log in again once after an upgrade.
+
+`POST /ui/login_as` (Auth Verifier password login) is throttled before any credential is relayed: 10 attempts per minute per client IP and 5 per minute per username (case-insensitive; a username longer than 256 bytes is refused with `400`), answered with `429 Too Many Requests` and a `Retry-After` header. A `429` from the Auth Verifier itself is relayed to the browser the same way. The client IP is the TCP peer, or the `X-Forwarded-For` client when the peer is listed in `trusted_proxy_cidrs` (`--audit-trusted-proxy-cidrs`); behind a reverse proxy that is not listed there, the per-IP quota is shared by all users.
+
 #### Fail-Closed Enforcement (`EnsureAuth`)
 
 The `EnsureAuth` middleware runs after all credential extractors:

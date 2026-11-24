@@ -5,6 +5,9 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-078 — Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted](#cosmian-2026-078--web-ui-session-key-derived-with-the-public-url-as-password-guessable-ui_session_salt-accepted)
+      - [COSMIAN-2026-077 — Web UI session cookie could be replayed after logout and had no server-enforced lifetime](#cosmian-2026-077--web-ui-session-cookie-could-be-replayed-after-logout-and-had-no-server-enforced-lifetime)
+      - [COSMIAN-2026-076 — `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure](#cosmian-2026-076--post-uilogin_as-had-no-kms-side-rate-limit-and-turned-an-auth-verifier-throttle-into-an-authentication-failure)
       - [COSMIAN-2026-075 — External credential named like `default_username` inherited the default user's identity](#cosmian-2026-075--external-credential-named-like-default_username-inherited-the-default-users-identity)
       - [COSMIAN-2026-074 — KMS identity taken from an unverified `email` claim, shared across identity providers](#cosmian-2026-074--kms-identity-taken-from-an-unverified-email-claim-shared-across-identity-providers)
       - [COSMIAN-2026-073 — Authentication Verifier bearer tokens of the admin realm or of another realm accepted](#cosmian-2026-073--authentication-verifier-bearer-tokens-of-the-admin-realm-or-of-another-realm-accepted)
@@ -136,6 +139,60 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ### 2026
 
+#### COSMIAN-2026-078 — Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.15.0 before 6.0.0 (deployments setting `ui_session_salt`) |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, issue #1487 |
+| References | [#1487](https://github.com/Cosmian/kms/issues/1487) |
+
+**Summary:** The Web UI session cookie key was derived with PBKDF2 or Argon2 using the public KMS URL as password and the configured `ui_session_salt` only as salt material. The startup check measured the salt's length, not its entropy, so a lengthened human-chosen phrase passed. An anonymous caller of `/ui/login_flow` receives a sealed cookie, which allows offline testing of candidate salts.
+
+**Impact:** When the salt was guessable, an attacker could recover the session key and forge a session cookie for any user, which authenticates on the KMIP and REST scopes.
+
+**Mitigation:** Upgrade to 6.0.0. `ui_session_salt` is now the secret input of the key derivation (the URL only binds the key to the deployment) and must be at least 32 random bytes encoded as hex or base64 (`openssl rand -hex 32`); other values stop the server at startup. Existing sessions are invalidated once. Until upgraded, set a random 32-byte `ui_session_salt`.
+
+---
+
+#### COSMIAN-2026-077 — Web UI session cookie could be replayed after logout and had no server-enforced lifetime
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.26.0 before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, issue #1487 |
+| References | [#1487](https://github.com/Cosmian/kms/issues/1487) |
+
+**Summary:** The Web UI session lived in a client-side encrypted cookie (`actix-session` `CookieSessionStore`) with a 24-hour `Max-Age` set only on the browser side. Logout only asked the browser to delete the cookie, and the server kept no session state.
+
+**Impact:** A copy of the cookie (stolen, or kept after logout) stayed valid as a bearer credential on the Web UI and on the KMIP/REST scopes for as long as the cookie key lived.
+
+**Mitigation:** Upgrade to 6.0.0. The sealed cookie carries a random session id and times: the server enforces a 24-hour absolute lifetime and a 1-hour idle timeout, and `/ui/logout` revokes the session id. The revocation list is in memory (per process, lost on restart, not shared between instances); disabling an account at the identity provider does not end an open session before its expiry. Until upgraded, rotate `ui_session_salt` to invalidate all sessions.
+
+---
+
+#### COSMIAN-2026-076 — `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.26.0 before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, issue #1487 |
+| References | [#1487](https://github.com/Cosmian/kms/issues/1487) |
+
+**Summary:** The unauthenticated `POST /ui/login_as` relayed every password login to the Auth Verifier from the KMS process. The KMS applied no per-client or per-account limit, the Auth Verifier saw a single peer, and an upstream `429` was returned as `401`.
+
+**Impact:** Password guessing against Auth Verifier accounts through the KMS, and a single client exhausting the shared Auth Verifier bucket so that legitimate Web UI logins failed.
+
+**Mitigation:** Upgrade to 6.0.0. The endpoint is throttled to 10 attempts per minute per peer IP and 5 per minute per username (always on), answers `429` with `Retry-After`, and relays an Auth Verifier `429` as `429`. Behind a reverse proxy, list it in `trusted_proxy_cidrs` so each client is throttled by its own address.
 #### COSMIAN-2026-075 — External credential named like `default_username` inherited the default user's identity
 
 | Field      | Value                                                                                                  |
@@ -1846,6 +1903,9 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-078    | Moderate | from 5.15.0 before 6.0.0 (deployments setting `ui_session_salt`) | 6.0.0 | Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted |
+| COSMIAN-2026-077    | Moderate | from 5.26.0 before 6.0.0 | 6.0.0 | Web UI session cookie could be replayed after logout and had no server-enforced lifetime |
+| COSMIAN-2026-076    | Moderate | from 5.26.0 before 6.0.0 | 6.0.0 | `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure |
 | COSMIAN-2026-075    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | External credential named like `default_username` inherited the default user's identity             |
 | COSMIAN-2026-074    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | KMS identity taken from an unverified `email` claim, shared across identity providers               |
 | COSMIAN-2026-073    | Moderate | from 5.26.0 before 6.0.0                                                | 6.0.0    | Authentication Verifier bearer tokens of the admin realm or of another realm accepted               |

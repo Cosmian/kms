@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{
     HttpRequest, HttpResponse, get,
@@ -18,9 +18,10 @@ use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
     middlewares::{
-        AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, UiSession, UiSessionCookie,
-        UserId, authenticate_auth_verifier_session_cookie, reject_reserved_service_identity,
-        request_cookie, validate_jwt_svid,
+        AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, LoginAsLimiter, UiSession,
+        UiSessionCookie, UserId, authenticate_auth_verifier_session_cookie,
+        hardened_client_builder, reject_reserved_service_identity, request_cookie,
+        validate_jwt_svid,
     },
 };
 
@@ -397,6 +398,18 @@ struct AuthVerifierLoginResponse {
     next_step: &'static str,
 }
 
+/// Longest accepted `username` of `POST /ui/login_as`.
+const MAX_LOGIN_USERNAME_BYTES: usize = 256;
+
+/// `429` of `POST /ui/login_as`, with the `Retry-After` (seconds or HTTP date) when known.
+fn too_many_login_attempts(retry_after: Option<&str>) -> HttpResponse {
+    let mut response = HttpResponse::TooManyRequests();
+    if let Some(retry_after) = retry_after {
+        response.insert_header((header::RETRY_AFTER, retry_after));
+    }
+    response.json(serde_json::json!({ "error": "Too many login attempts" }))
+}
+
 /// BFF proxy login for the Auth Verifier server ("AS" / "SA").
 ///
 /// The browser posts `{ username, password, totp_code? }`; this handler replays the
@@ -409,10 +422,22 @@ struct AuthVerifierLoginResponse {
 /// as the OIDC flow (`callback`, above).
 #[post("/login_as")]
 pub(crate) async fn login_as(
+    req: HttpRequest,
     session_cookie: web::Data<UiSessionCookie>,
     body: web::Json<AuthVerifierLoginRequest>,
     auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
+    limiter: web::Data<LoginAsLimiter>,
 ) -> HttpResponse {
+    // Bounds the limiter's per-username keys: a longer name is never a real account.
+    if body.username.len() > MAX_LOGIN_USERNAME_BYTES {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Username too long" }));
+    }
+    // Every attempt is counted, before any credential is relayed upstream.
+    let client_ip = limiter.client_ip(&req);
+    if let Err(retry_after) = limiter.check(client_ip, &body.username) {
+        warn!("login_as: too many attempts from {client_ip}");
+        return too_many_login_attempts(Some(&retry_after.to_string()));
+    }
     let config = &auth_verifier_runtime.config;
     if !config.ui_login_enabled() {
         return HttpResponse::InternalServerError().json(
@@ -448,10 +473,7 @@ pub(crate) async fn login_as(
     }
     url.query_pairs_mut().append_pair("realm", realm);
 
-    let client = match Client::builder()
-        .danger_accept_invalid_certs(config.auth_verifier_accept_invalid_certs)
-        .build()
-    {
+    let client = match hardened_client_builder(config.auth_verifier_accept_invalid_certs).build() {
         Ok(c) => c,
         Err(e) => {
             return HttpResponse::InternalServerError()
@@ -480,6 +502,14 @@ pub(crate) async fn login_as(
         }
     };
 
+    // The Auth Verifier throttles too: tell the browser to back off instead of reporting bad credentials.
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok());
+        return too_many_login_attempts(retry_after);
+    }
     if !response.status().is_success() {
         let status = response.status();
         return HttpResponse::Unauthorized().json(
@@ -692,6 +722,8 @@ pub(crate) async fn logout(
     auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
+    // Server-side revocation: a copy of the cookie kept elsewhere stops working too.
+    session_cookie.revoke(req.headers());
     let mut response = HttpResponse::Found();
     response.append_header((SET_COOKIE, session_cookie.removal_cookie()));
     if end_auth_verifier_session(&req, &auth_verifier_runtime).await {
@@ -788,9 +820,7 @@ async fn revoke_auth_verifier_session(
         .push("sessions");
     let session_id = hex::encode(openssl::sha::sha256(token.as_bytes()));
 
-    let response = Client::builder()
-        .danger_accept_invalid_certs(accept_invalid_certs)
-        .timeout(Duration::from_secs(10))
+    let response = hardened_client_builder(accept_invalid_certs)
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?
         .delete(url)
@@ -864,7 +894,13 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, sync::Arc};
+    use std::{
+        collections::HashMap,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
     use actix_web::{
         App,
@@ -880,8 +916,8 @@ mod tests {
     use url::{Url, form_urlencoded};
 
     use super::{
-        URL_SAFE_NO_PAD, callback, get_auth_method, login, login_saml, login_svid, logout,
-        pkce_challenge_from_verifier, saml_login_url, whoami,
+        URL_SAFE_NO_PAD, callback, get_auth_method, login, login_as, login_saml, login_svid,
+        logout, pkce_challenge_from_verifier, saml_login_url, whoami,
     };
     use crate::{
         config::{
@@ -889,9 +925,10 @@ mod tests {
             OidcRuntimeConfig,
         },
         middlewares::{
-            AUTH_VERIFIER_SESSION_COOKIE, JwksManager, JwtConfig, UiSession, UserId,
+            AUTH_VERIFIER_SESSION_COOKIE, JwksManager, JwtConfig, LoginAsLimiter, UiSession,
+            UserId,
             auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier},
-            test_ui_session_cookie,
+            test_session_cookie_pair, test_ui_session_cookie,
         },
         tests::test_utils::{https_clap_config, test_kms_with_config},
     };
@@ -1019,6 +1056,15 @@ mod tests {
             .find(|c| c.starts_with(&format!("{AUTH_VERIFIER_SESSION_COOKIE}=")))
     }
 
+    /// An OIDC runtime with default settings and no discovery document.
+    fn default_oidc_runtime() -> OidcRuntimeConfig {
+        OidcRuntimeConfig {
+            config: OidcConfig::default(),
+            discovered: None,
+            primary_jwt_issuer: None,
+        }
+    }
+
     /// `GET /logout` carrying the given `Cookie` header, if any.
     async fn logout_response(
         cookie: Option<String>,
@@ -1026,11 +1072,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(saml_runtime(Some("kms-saml")).await))
-                .app_data(web::Data::new(OidcRuntimeConfig {
-                    config: OidcConfig::default(),
-                    discovered: None,
-                    primary_jwt_issuer: None,
-                }))
+                .app_data(web::Data::new(default_oidc_runtime()))
                 .app_data(web::Data::new(KMS_URL.to_owned()))
                 .app_data(web::Data::new(test_ui_session_cookie()))
                 .service(logout),
@@ -1071,6 +1113,197 @@ mod tests {
             .find(|c| c.starts_with("auth_session=;"))
             .expect("logout must expire the KMS session cookie");
         assert!(removal.contains("Max-Age=0"), "{removal}");
+    }
+
+    #[actix_web::test]
+    async fn logout_revokes_the_kms_session_cookie() {
+        let codec = web::Data::new(test_ui_session_cookie());
+        let cookie = test_session_cookie_pair(&codec, "alice@example.com");
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(saml_runtime(None).await))
+                .app_data(web::Data::new(default_oidc_runtime()))
+                .app_data(web::Data::new(KMS_URL.to_owned()))
+                .app_data(codec.clone())
+                .service(whoami)
+                .service(logout),
+        )
+        .await;
+        let request = |uri: &str| {
+            test::TestRequest::get()
+                .uri(uri)
+                .insert_header((header::COOKIE, cookie.clone()))
+                .to_request()
+        };
+
+        let resp = test::call_service(&app, request("/whoami")).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp = test::call_service(&app, request("/logout")).await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+
+        // A copy of the cookie kept by the browser (or an attacker) is dead server-side.
+        let resp = test::call_service(&app, request("/whoami")).await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// A mock Auth Verifier on a loopback port answering every request with `status_line` and
+    /// `extra_headers` (each ending in CRLF). Returns the port and the count of requests seen.
+    async fn mock_login_upstream(
+        status_line: &'static str,
+        extra_headers: &'static str,
+    ) -> (u16, Arc<AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("local address").port();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = hits.clone();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = vec![0_u8; 8192];
+                let _read = stream.read(&mut buf).await.unwrap_or(0);
+                counter.fetch_add(1, Ordering::SeqCst);
+                let response = format!(
+                    "HTTP/1.1 {status_line}\r\n{extra_headers}Content-Length: 2\r\n\
+                     Connection: close\r\n\r\n{{}}"
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("mock Auth Verifier response");
+            }
+        });
+        (port, hits)
+    }
+
+    /// `POST /login_as` as `username` from `peer`.
+    async fn post_login_as<S, B>(app: &S, peer: &str, username: &str) -> ServiceResponse<B>
+    where
+        S: actix_web::dev::Service<
+                actix_http::Request,
+                Response = ServiceResponse<B>,
+                Error = actix_web::Error,
+            >,
+    {
+        let request = test::TestRequest::post()
+            .uri("/login_as")
+            .peer_addr(peer.parse().expect("socket address"))
+            .set_json(serde_json::json!({ "username": username, "password": "pw" }))
+            .to_request();
+        test::call_service(app, request).await
+    }
+
+    async fn login_as_app(
+        port: u16,
+        trusted_proxies: Vec<ipnet::IpNet>,
+    ) -> impl actix_web::dev::Service<
+        actix_http::Request,
+        Response = ServiceResponse<impl actix_web::body::MessageBody>,
+        Error = actix_web::Error,
+    > {
+        let runtime = AuthVerifierRuntimeConfig {
+            config: AuthVerifierConfig {
+                auth_verifier_url: Some(format!("http://127.0.0.1:{port}")),
+                auth_verifier_realm: Some("kms".to_owned()),
+                ..AuthVerifierConfig::default()
+            },
+            auth_verifier: Some(live_auth_verifier().await),
+        };
+        test::init_service(
+            App::new()
+                .app_data(web::Data::new(runtime))
+                .app_data(web::Data::new(test_ui_session_cookie()))
+                .app_data(web::Data::new(LoginAsLimiter::new(trusted_proxies)))
+                .service(login_as),
+        )
+        .await
+    }
+
+    #[actix_web::test]
+    async fn login_as_is_rate_limited_before_reaching_the_auth_verifier() {
+        let (port, hits) = mock_login_upstream("401 Unauthorized", "").await;
+        let app = login_as_app(port, Vec::new()).await;
+
+        for attempt in 1..=5 {
+            let resp = post_login_as(&app, "10.0.0.1:4000", "u1").await;
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "attempt {attempt}");
+        }
+        let resp = post_login_as(&app, "10.0.0.1:4000", "u1").await;
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        let retry_after = resp
+            .headers()
+            .get(header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
+        assert!(retry_after.is_some_and(|secs| secs >= 1), "{retry_after:?}");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            5,
+            "the 6th attempt was relayed"
+        );
+
+        // Another user from another IP is still served.
+        let resp = post_login_as(&app, "10.0.0.2:4000", "u2").await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(hits.load(Ordering::SeqCst), 6);
+    }
+
+    #[actix_web::test]
+    async fn login_as_rejects_an_oversized_username_without_relaying_it() {
+        let (port, hits) = mock_login_upstream("401 Unauthorized", "").await;
+        let app = login_as_app(port, Vec::new()).await;
+
+        let resp = post_login_as(&app, "10.0.0.1:4000", &"a".repeat(10_000)).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// Behind a trusted reverse proxy each end user has their own per-IP quota; from an
+    /// untrusted peer, `X-Forwarded-For` is ignored.
+    #[actix_web::test]
+    async fn login_as_throttles_per_forwarded_client_behind_a_trusted_proxy() {
+        let (port, _hits) = mock_login_upstream("401 Unauthorized", "").await;
+        let trusted = login_as_app(port, vec!["10.0.0.0/8".parse().expect("cidr")]).await;
+        let request = |peer: &str, client: String, user: String| {
+            test::TestRequest::post()
+                .uri("/login_as")
+                .peer_addr(peer.parse().expect("socket address"))
+                .insert_header(("X-Forwarded-For", client))
+                .set_json(serde_json::json!({ "username": user, "password": "pw" }))
+                .to_request()
+        };
+
+        // 11 distinct users behind one trusted proxy, each from a distinct client: all served.
+        for i in 0..11 {
+            let req = request("10.0.0.1:4000", format!("203.0.113.{i}"), format!("u{i}"));
+            let resp = test::call_service(&trusted, req).await;
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "client {i}");
+        }
+
+        // Same 11 users, an untrusted peer forging X-Forwarded-For: one shared bucket of 10.
+        let untrusted = login_as_app(port, Vec::new()).await;
+        let mut last = StatusCode::OK;
+        for i in 0..11 {
+            let req = request("192.0.2.9:4000", format!("203.0.113.{i}"), format!("u{i}"));
+            last = test::call_service(&untrusted, req).await.status();
+        }
+        assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[actix_web::test]
+    async fn login_as_relays_an_upstream_429() {
+        let (port, _hits) =
+            mock_login_upstream("429 Too Many Requests", "Retry-After: 7\r\n").await;
+        let app = login_as_app(port, Vec::new()).await;
+
+        let resp = post_login_as(&app, "10.0.0.1:4000", "u1").await;
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            resp.headers()
+                .get(header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok()),
+            Some("7")
+        );
     }
 
     #[actix_web::test]

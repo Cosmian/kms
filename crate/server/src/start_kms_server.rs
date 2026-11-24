@@ -22,6 +22,10 @@ use actix_web::{
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use base64::{
+    Engine,
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD},
+};
 use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
@@ -61,11 +65,12 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig, SessionAuth,
-        SpireTokenCache, UiSessionCookie, UserId, api_token_middleware, ensure_auth_middleware,
-        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
-        reject_forgeable_session_mutation, spire_token_middleware, tls_auth_fn,
-        vault_token_optional_middleware,
+        AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig,
+        LoginAsLimiter, SessionAuth, SpireTokenCache, UiSessionCookie, UserId,
+        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        hardened_client_builder, jwt_auth_middleware, otel_http_metrics_middleware,
+        reject_forgeable_session_mutation, require_https_or_loopback, spire_token_middleware,
+        tls_auth_fn, vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -728,14 +733,15 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 ///
 /// # Versioning
 ///
-/// The version string (v1) allows for future algorithm changes. If the derivation
-/// algorithm needs to change, increment the version to ensure backward compatibility
-/// during rolling upgrades.
+/// The domain-separation string (`cosmian-kms-ui-session-v2`) allows for future algorithm
+/// changes. v2 replaced v1, which used the public URL as the password: sessions sealed
+/// with a v1 key are invalid and users log in again once.
 ///
 /// # Arguments
 ///
-/// * `public_url` - The public URL of the KMS server
-/// * `user_salt` - A user-provided secret salt (must not be empty)
+/// * `public_url` - The public URL of the KMS server (binds the key to the deployment)
+/// * `user_salt` - The random `ui_session_salt` (see [`decode_session_salt`]); it is the
+///   KDF password, the URL only contributes to the KDF salt
 ///
 /// # Returns
 ///
@@ -744,36 +750,67 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 ///
 /// # Errors
 ///
-/// Returns `KmsError` if key derivation fails.
+/// Returns `KmsError` if `user_salt` is not a valid random salt or key derivation fails.
 fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Secret<64>> {
-    // Version prefix allows for future algorithm changes
-    const VERSION: &str = "v1";
+    let secret = decode_session_salt(user_salt)?;
 
-    // Create a URL-specific salt by combining salt seed, version, and URL
-    // This ensures different URLs get different salts while maintaining determinism
-    let salt_input = format!("{user_salt}{VERSION}{public_url}");
-
-    // Hash the salt input to get a fixed-size salt
-    // Using SHA-256 to get 32 bytes, then taking first FIPS_MIN_SALT_SIZE (16) bytes
+    // KDF salt = first FIPS_MIN_SALT_SIZE bytes of SHA-256(domain || public_url)
     let mut hasher = Hasher::new(MessageDigest::sha256())
         .map_err(|e| KmsError::ServerError(format!("Failed to create hasher: {e}")))?;
     hasher
-        .update(salt_input.as_bytes())
+        .update(b"cosmian-kms-ui-session-v2")
+        .and_then(|()| hasher.update(public_url.as_bytes()))
         .map_err(|e| KmsError::ServerError(format!("Failed to hash salt input: {e}")))?;
     let hash = hasher
         .finish()
         .map_err(|e| KmsError::ServerError(format!("Failed to finish hash: {e}")))?;
-
-    // Extract first FIPS_MIN_SALT_SIZE bytes as salt
     let (salt, _) = hash
         .split_first_chunk::<FIPS_MIN_SALT_SIZE>()
         .ok_or_else(|| {
             KmsError::ServerError("SHA-256 digest is shorter than the FIPS salt size".to_owned())
         })?;
 
-    // Derive a 64-byte key from the public URL
-    derive_key_from_password::<64>(salt, public_url.as_bytes())
+    derive_key_from_password::<64>(salt, &secret)
         .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))
+}
+
+/// Decode and validate the `ui_session_salt` secret.
+///
+/// Accepts an all-hex string of even length >= 64, else standard or URL-safe base64
+/// (padded or not) decoding to >= 32 bytes. The decoded secret must contain at least 16
+/// distinct byte values, which rejects passphrases and repeated patterns.
+///
+/// # Errors
+///
+/// Returns `KmsError::ServerError` if the value is not an encoded random secret.
+fn decode_session_salt(salt: &str) -> KResult<Zeroizing<Vec<u8>>> {
+    const MIN_BYTES: usize = 32;
+    const MIN_DISTINCT_BYTES: usize = 16;
+    let invalid = || {
+        KmsError::ServerError(
+            "ui_session_salt must be random: ≥32 bytes encoded as hex (openssl rand -hex 32) \
+             or base64"
+                .to_owned(),
+        )
+    };
+
+    let decoded = if salt.bytes().all(|b| b.is_ascii_hexdigit()) {
+        // An all-hex string is never reinterpreted as base64.
+        hex::decode(salt).ok()
+    } else {
+        STANDARD
+            .decode(salt)
+            .or_else(|_| STANDARD_NO_PAD.decode(salt))
+            .or_else(|_| URL_SAFE.decode(salt))
+            .or_else(|_| URL_SAFE_NO_PAD.decode(salt))
+            .ok()
+    };
+    let secret = Zeroizing::new(decoded.ok_or_else(invalid)?);
+    let distinct = secret.iter().collect::<HashSet<_>>().len();
+    if secret.len() < MIN_BYTES || distinct < MIN_DISTINCT_BYTES {
+        return Err(invalid());
+    }
+    Ok(secret)
 }
 
 /// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
@@ -975,24 +1012,8 @@ pub async fn prepare_kms_server(
 
     // Validate session salt entropy when UI is enabled.
     if kms_server.params.ui.enable {
-        if let Some(ref salt) = kms_server.params.ui.session_salt {
-            if salt.len() < 32 {
-                return Err(KmsError::ServerError(format!(
-                    "ui_session_salt is too short ({} bytes). Minimum 32 bytes required for \
-                     adequate entropy. Generate one with: openssl rand -hex 32",
-                    salt.len()
-                )));
-            }
-            // Reject known-weak default values
-            let weak_salts = [
-                "test", "dev", "debug", "changeme", "password", "secret", "0000",
-            ];
-            if weak_salts.contains(&salt.to_ascii_lowercase().as_str()) {
-                return Err(KmsError::ServerError(format!(
-                    "ui_session_salt uses a weak/known-default value '{salt}'. Generate a random \
-                     one with: openssl rand -hex 32"
-                )));
-            }
+        if let Some(salt) = &kms_server.params.ui.session_salt {
+            decode_session_salt(salt)?;
         } else {
             cosmian_logger::warn!(
                 "UI is enabled but ui_session_salt is not set. A random salt will be generated \
@@ -1110,6 +1131,16 @@ pub async fn prepare_kms_server(
             #[cfg(not(feature = "insecure"))]
             if !auth_verifier_cfg.auth_verifier_accept_invalid_certs {
                 validate_jwks_uris_are_https(std::slice::from_ref(&jwks_uri))?;
+            }
+            require_https_or_loopback(
+                auth_verifier_cfg
+                    .auth_verifier_url
+                    .as_deref()
+                    .unwrap_or_default(),
+                "auth_verifier_url",
+            )?;
+            if let Some(explicit_jwks_uri) = auth_verifier_cfg.auth_verifier_jwks_uri.as_deref() {
+                require_https_or_loopback(explicit_jwks_uri, "auth_verifier_jwks_uri")?;
             }
 
             let proxy_params = kms_server.params.proxy_params.clone();
@@ -1349,18 +1380,26 @@ pub async fn prepare_kms_server(
             .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
     }
     let ui_session_cookie = Data::new(UiSessionCookie::new(session_key, session_cookie_secure));
+    // One limiter for all workers: the quotas are per process, not per worker.
+    let login_as_limiter = Data::new(LoginAsLimiter::new(
+        kms_server.params.audit_trusted_proxy_cidrs.clone(),
+    ));
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
 
     // Pre-build the reqwest client for auth-verifier token validation.
     // Must be done here (outside the HttpServer closure) so that `?` propagates properly.
+    if let Some(vault_url) = &kms_server.params.vault.auth_verifier_url {
+        require_https_or_loopback(vault_url.as_str(), "vault_auth_verifier_url")?;
+    }
     let vault_http_client: Arc<reqwest::Client> =
         {
-            let mut builder = reqwest::Client::builder();
-            if kms_server.params.vault.auth_verifier_accept_invalid_certs {
-                builder = builder.danger_accept_invalid_certs(true);
-            } else if let Some(ca_cert_path) = &kms_server.params.vault.auth_verifier_ca_cert {
+            let accept_invalid_certs = kms_server.params.vault.auth_verifier_accept_invalid_certs;
+            let mut builder = hardened_client_builder(accept_invalid_certs);
+            if !accept_invalid_certs
+                && let Some(ca_cert_path) = &kms_server.params.vault.auth_verifier_ca_cert
+            {
                 let cert_pem = std::fs::read(ca_cert_path).map_err(|e| {
                     KmsError::ServerError(format!(
                         "cannot read vault_auth_verifier_ca_cert '{}': {e}",
@@ -1455,6 +1494,7 @@ pub async fn prepare_kms_server(
                     .add(("Content-Security-Policy", "frame-ancestors 'none'")),
             )
             .app_data(ui_session_cookie.clone())
+            .app_data(login_as_limiter.clone())
             .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
             // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
             // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
@@ -2303,7 +2343,7 @@ mod tests {
         let url1 = "https://kms.example.com:9998";
         let url2 = "https://kms.example.com:9998";
         let url3 = "https://kms.different.com:9998";
-        let salt = "test_secret_salt";
+        let salt = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
         // Same URL and salt should generate the same key
         let key1 = derive_session_key_from_url(url1, salt).expect("Failed to derive key 1");
@@ -2328,8 +2368,11 @@ mod tests {
         );
 
         // Different salt should generate different key
-        let key4 =
-            derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
+        let key4 = derive_session_key_from_url(
+            url1,
+            "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        )
+        .expect("Failed to derive key 4");
         let key4_bytes = &*key4;
 
         assert_ne!(
@@ -2350,7 +2393,7 @@ mod tests {
         }
 
         let url = "https://kms.example.com:9998";
-        let salt = "my_secret_salt";
+        let salt = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
         // Same URL and salt should always produce the same key
         let key1 = derive_session_key_from_url(url, salt).expect("Failed to derive key 1");
@@ -2801,48 +2844,132 @@ mod tests {
 
 #[cfg(test)]
 mod characterization_tests {
-    //! Characterization tests pinning BASE behavior of `derive_session_key_from_url`.
+    //! Tests pinning the composition of `derive_session_key_from_url` (v2 domain separation,
+    //! URL-bound salt, secret = decoded `ui_session_salt`) and the `ui_session_salt` validation.
 
-    use super::derive_session_key_from_url;
+    use base64::{
+        Engine,
+        engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    };
+    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::password_derivation::{
+        FIPS_MIN_SALT_SIZE, derive_key_from_password,
+    };
+    use openssl::hash::{MessageDigest, hash};
+
+    use super::{decode_session_salt, derive_session_key_from_url};
+
+    /// Bytes `0..32` as hex (32 distinct values).
+    const SALT_A: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    /// Bytes `32..64` as hex.
+    const SALT_B: &str = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f";
+    /// `SALT_A` with a different last byte.
+    const SALT_C: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1eff";
 
     const INPUTS: [(&str, &str); 3] = [
-        ("https://kms.example.com", "salt-seed"),
-        ("http://localhost:9998", "another seed"),
-        ("", "x"),
+        ("https://kms.example.com", SALT_A),
+        ("http://localhost:9998", SALT_B),
+        ("", SALT_C),
     ];
+
+    /// 32 distinct bytes whose base64 encodings use `+` (standard) resp. `-` (URL-safe).
+    fn random_looking_bytes() -> Vec<u8> {
+        (0..32_u8)
+            .map(|i| i.wrapping_mul(37).wrapping_add(250))
+            .collect()
+    }
 
     /// FIPS builds derive the key with PBKDF2.
     #[cfg(not(feature = "non-fips"))]
     const GOLDEN: [&str; 3] = [
-        "80788cf852702e730812c9c7099b3ddf2ce2a89f5b778925d16a878ad18adc5489019e2d0d55a811d4d8baac17fd5ed28428b152ec1e5e06decb97c455ee43d7",
-        "d0199379e84f9b075d467db05c105bc2ae29aa5deff7125a5ead632f09da1c263213d5797255fee02ba4e2415f75331efb84f3ae1dcca85046b43f57ab6f361a",
-        "904a45d88bc08a7dfd8a60ee1736f441cb2d48d757f05619e1c1668ffa7f66d3108b01bfea801f278f31f7e8a888c5d546a234f4104f1f0b70612d58d9e199c9",
+        "395377feda45eaddd3e50cb8b24cc025790610393164bda2207bbb8d76ae71d29afa727badcdeba7fa07489c35fbc97af01bbe53ec186342f6b630564d51bd22",
+        "741612cd4063084fa523e51c10773df74940b1fa124dbcf9e262deb2a131f74b151c17efd4ebfb17fe9666773a0a021d0c80befe48dc50ea28e3b48c192cb236",
+        "bd5192a2d925f68162686a91d9090799e5215616db1885a82692e58572d05c85bc89f5cae13582dc0f80a92c517e44f9d488ca5103c5ede1c2c7764fe03f3128",
     ];
 
     /// Non-FIPS builds derive the key with Argon2.
     #[cfg(feature = "non-fips")]
     const GOLDEN: [&str; 3] = [
-        "63f57eb44bcf400861970fe398a083119d9fc2578f4e3f578316d44eea7c5725a393fe6139f1772f58bad78b6fa7fc460cbc29ecf45e9c117b9fb9665bd7a668",
-        "e8a6adab7054d4aaa82a130dc53c82dedc44714c7a196e96234a024c55e3c4b37208ef6fb1080c16493c0b38ee699833f8f2c5e642da3b4a793b72e2f7a82359",
-        "6b54c77f007beb08287fa5e80d48fc9d41d3fa76b8037d45e6bcf7f50c507262b1d0c00cace05c376876571f9ce84120933eaec16c024f717bef6d6aa7b69b1b",
+        "aa7240ef7ac6dd83b4ce60265e45f12c629f8db7e79c6f9622de4758f4a12c8759b614fe3a1ceb50906a56d9cf257b51a6d280074df7688e5d5478cc75bece51",
+        "e451559d4203d2d4d5bad87b46f98e061134f8d1574bf923924e25c5fe913bbbbdb7d8afd07db827de16b2a08f97899d63165b0ce99f6dfdadbdedf79d46dc40",
+        "0c8a2088ebcbc2ece543a5c8e35a72e464575d50b4b4f29235e7df1cc336a2da9b8876e6554db3c70f5d7d2546501709eb75d6b7b97be05ce0a57086777ae91e",
     ];
 
+    /// Pins the derived bytes (a silent KDF change would log every user out) and re-derives
+    /// each key by hand: salt = `SHA-256("cosmian-kms-ui-session-v2" || url)[..16]`,
+    /// password = the hex-decoded `ui_session_salt`. Contract change from v1 (URL as password).
     #[test]
     fn characterization_derive_session_key_from_url_golden() {
-        let derived: Vec<String> = INPUTS
-            .iter()
-            .map(|(url, salt)| hex::encode(&*derive_session_key_from_url(url, salt).unwrap()))
-            .collect();
-        assert_eq!(derived, GOLDEN.to_vec());
+        let mut pinned = Vec::new();
+        for (url, salt_hex) in INPUTS {
+            let digest = hash(
+                MessageDigest::sha256(),
+                &[b"cosmian-kms-ui-session-v2".as_slice(), url.as_bytes()].concat(),
+            )
+            .unwrap();
+            let salt = digest.first_chunk::<FIPS_MIN_SALT_SIZE>().unwrap();
+            let secret = hex::decode(salt_hex).unwrap();
+            let expected = derive_key_from_password::<64>(salt, &secret).unwrap();
+            let derived = derive_session_key_from_url(url, salt_hex).unwrap();
+            assert_eq!(&*derived, &*expected, "url {url:?}");
+            pinned.push(hex::encode(&*derived));
+        }
+        assert_eq!(pinned, GOLDEN.to_vec());
     }
 
     #[test]
     fn characterization_derive_session_key_from_url_is_deterministic() {
-        let a = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
-        let b = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
-        let c = derive_session_key_from_url("https://kms.example.com", "salt-see").unwrap();
+        let a = derive_session_key_from_url("https://kms.example.com", SALT_A).unwrap();
+        let b = derive_session_key_from_url("https://kms.example.com", SALT_A).unwrap();
+        let c = derive_session_key_from_url("https://kms.example.com", SALT_C).unwrap();
         assert_eq!(&*a, &*b);
         assert_ne!(&*a, &*c);
         assert_eq!(a.len(), 64);
+    }
+
+    #[test]
+    fn derive_session_key_rejects_weak_salt() {
+        derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap_err();
+    }
+
+    #[test]
+    fn decode_session_salt_cases() {
+        let bytes = random_looking_bytes();
+        let std_b64 = STANDARD.encode(&bytes);
+        let url_b64 = URL_SAFE_NO_PAD.encode(&bytes);
+        assert!(std_b64.contains('+') && url_b64.contains('-'));
+
+        // Accepted: hex (any case) and base64 (standard/URL-safe, padded or not).
+        for ok in [
+            SALT_A.to_owned(),
+            SALT_A.to_ascii_uppercase(),
+            hex::encode(&bytes),
+            std_b64.clone(),
+            std_b64.trim_end_matches('=').to_owned(),
+            url_b64,
+        ] {
+            let decoded = decode_session_salt(&ok).unwrap_or_else(|e| panic!("{ok}: {e}"));
+            assert!(decoded.len() >= 32, "{ok}");
+        }
+
+        // Rejected: passphrases, short or low-entropy values, odd/short hex, short base64.
+        for bad in [
+            String::new(),
+            "passphrase".to_owned(),
+            "changemechangemechangemechangeme".to_owned(),
+            "not a salt but a passphrase with spaces".to_owned(),
+            "a".repeat(64),
+            "ab".repeat(32),
+            "0123456789abcdef".repeat(4),
+            SALT_A[..62].to_owned(),
+            SALT_A[..63].to_owned(),
+            STANDARD.encode(&bytes[..31]),
+            STANDARD.encode((0..32_u8).map(|i| i % 15).collect::<Vec<_>>()),
+        ] {
+            let err = decode_session_salt(&bad).expect_err(&bad);
+            assert!(
+                err.to_string().contains("ui_session_salt must be random"),
+                "{bad}: {err}"
+            );
+        }
     }
 }

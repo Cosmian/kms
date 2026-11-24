@@ -20,12 +20,12 @@
 use std::sync::Arc;
 
 use actix_web::dev::ServiceRequest;
-#[cfg(all(not(test), not(feature = "insecure")))]
+#[cfg(not(feature = "insecure"))]
 use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
 use jsonwebtoken::dangerous;
-#[cfg(all(not(test), not(feature = "insecure")))]
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header, jwk::Jwk};
+#[cfg(not(feature = "insecure"))]
+use jsonwebtoken::{DecodingKey, Header, Validation, decode, decode_header, jwk::Jwk};
 use serde::Deserialize;
 
 use super::AuthVerifierValidator;
@@ -42,7 +42,7 @@ use crate::{
 ///
 /// HS* algorithms are excluded: they use a shared secret and an attacker who
 /// obtains the JWKS public key could forge tokens.
-#[cfg(all(not(test), not(feature = "insecure")))]
+#[cfg(not(feature = "insecure"))]
 const ALLOWED_ALGORITHMS: &[Algorithm] = &[
     Algorithm::RS256,
     Algorithm::RS384,
@@ -195,83 +195,103 @@ async fn verify_auth_verifier_jwt(
     jwks_manager: &Arc<JwksManager>,
     token: &str,
 ) -> KResult<AuthVerifierClaims> {
+    verify_signed_auth_verifier_jwt(jwks_manager, token).await
+}
+
+/// Validate the signature of a Auth Verifier server JWT against its JWKS.
+///
+/// The JWKS is refreshed periodically (throttled). When no cached key validates the token,
+/// it is fetched once more outside that throttle (but within the `force_refresh` cooldown)
+/// and the keys are tried again, so that a rotation of the signing key of the Auth
+/// Verifier is picked up without waiting for the next periodic refresh.
+#[cfg(not(feature = "insecure"))]
+async fn verify_signed_auth_verifier_jwt(
+    jwks_manager: &JwksManager,
+    token: &str,
+) -> KResult<AuthVerifierClaims> {
     // RFC 7515 §4.1.11: `jsonwebtoken` ignores `crit`, so enforce it here, in every build.
     JwtTokenHeaders::from_token(token)?.reject_unsupported_extensions()?;
 
-    // Production: full validation.
-    {
-        let header = decode_header(token).map_err(|e| {
-            KmsError::Unauthorized(format!("Auth Verifier: cannot decode token header: {e}"))
-        })?;
+    let header = decode_header(token).map_err(|e| {
+        KmsError::Unauthorized(format!("Auth Verifier: cannot decode token header: {e}"))
+    })?;
 
-        if !ALLOWED_ALGORITHMS.contains(&header.alg) {
-            return Err(KmsError::Unauthorized(format!(
-                "Auth Verifier: algorithm {:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted",
-                header.alg
-            )));
-        }
-
-        // Look up key by kid if header provides it, otherwise try all keys without cloning the cache.
-        if jwks_manager.is_empty()? {
-            // JWKS cache is empty — the initial fetch at startup may have failed, or the
-            // IdP may have been unreachable. Force a refresh, bypassing the normal
-            // throttle: a plain `refresh()` call could be a no-op here for up to
-            // `REFRESH_INTERVAL` seconds if `last_update` was already set by that earlier
-            // failed attempt, even though the cache never got populated.
-            jwks_manager.force_refresh().await?;
-        }
-
-        let mut last_error: Option<String> = None;
-        let mut tried_keys = 0_usize;
-
-        let validate_with_jwk = |jwk: &Jwk| -> Result<AuthVerifierClaims, String> {
-            let decoding_key = DecodingKey::from_jwk(jwk)
-                .map_err(|e| format!("cannot build decoding key: {e}"))?;
-
-            let mut validation = Validation::new(header.alg);
-            validation.algorithms = vec![header.alg];
-            // Do not validate issuer — the Auth Verifier server may not set `iss`.
-            validation.set_issuer::<String>(&[]);
-            validation.validate_exp = true;
-            validation.validate_aud = false;
-            validation.required_spec_claims.clear();
-            validation.set_required_spec_claims(&["sub", "exp"]);
-
-            decode::<AuthVerifierClaims>(token, &decoding_key, &validation)
-                .map(|data| data.claims)
-                .map_err(|e| format!("{e}"))
-        };
-
-        if let Some(kid) = header.kid.as_deref() {
-            if let Some(jwk) = jwks_manager.find(kid)? {
-                match validate_with_jwk(&jwk) {
-                    Ok(claims) => return Ok(claims),
-                    Err(e) => last_error = Some(e),
-                }
-                tried_keys = 1;
-            }
-        } else {
-            let verified = jwks_manager.find_map_key(|jwk| {
-                tried_keys += 1;
-                match validate_with_jwk(jwk) {
-                    Ok(claims) => Some(claims),
-                    Err(e) => {
-                        last_error = Some(e);
-                        None
-                    }
-                }
-            })?;
-            if let Some(claims) = verified {
-                return Ok(claims);
-            }
-        }
-
-        Err(KmsError::Unauthorized(format!(
-            "Auth Verifier: token signature validation failed against all {} JWKS key(s): {}",
-            tried_keys,
-            last_error.unwrap_or_else(|| "no keys available".to_owned())
-        )))
+    if !ALLOWED_ALGORITHMS.contains(&header.alg) {
+        return Err(KmsError::Unauthorized(format!(
+            "Auth Verifier: algorithm {:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted",
+            header.alg
+        )));
     }
+
+    jwks_manager.refresh().await?;
+    let mut outcome = verify_with_cached_keys(jwks_manager, token, &header)?;
+    if outcome.is_err() {
+        jwks_manager.force_refresh().await?;
+        outcome = verify_with_cached_keys(jwks_manager, token, &header)?;
+    }
+    outcome.map_err(KmsError::Unauthorized)
+}
+
+/// Verify `token` against the cached keys: the one named by the `kid` header when there is
+/// one, otherwise every key in turn (these tokens usually carry no `kid`).
+///
+/// The inner `Err` is the message of the signature failure.
+#[cfg(not(feature = "insecure"))]
+fn verify_with_cached_keys(
+    jwks_manager: &JwksManager,
+    token: &str,
+    header: &Header,
+) -> KResult<Result<AuthVerifierClaims, String>> {
+    let mut last_error: Option<String> = None;
+    let mut tried_keys = 0_usize;
+
+    let validate_with_jwk = |jwk: &Jwk| -> Result<AuthVerifierClaims, String> {
+        let decoding_key =
+            DecodingKey::from_jwk(jwk).map_err(|e| format!("cannot build decoding key: {e}"))?;
+
+        let mut validation = Validation::new(header.alg);
+        validation.algorithms = vec![header.alg];
+        // Do not validate issuer — the Auth Verifier server may not set `iss`.
+        validation.set_issuer::<String>(&[]);
+        validation.validate_exp = true;
+        validation.validate_aud = false;
+        validation.required_spec_claims.clear();
+        validation.set_required_spec_claims(&["sub", "exp"]);
+
+        decode::<AuthVerifierClaims>(token, &decoding_key, &validation)
+            .map(|data| data.claims)
+            .map_err(|e| format!("{e}"))
+    };
+
+    if let Some(kid) = header.kid.as_deref() {
+        if let Some(jwk) = jwks_manager.find(kid)? {
+            match validate_with_jwk(&jwk) {
+                Ok(claims) => return Ok(Ok(claims)),
+                Err(e) => last_error = Some(e),
+            }
+            tried_keys = 1;
+        }
+    } else {
+        let verified = jwks_manager.find_map_key(|jwk| {
+            tried_keys += 1;
+            match validate_with_jwk(jwk) {
+                Ok(claims) => Some(claims),
+                Err(e) => {
+                    last_error = Some(e);
+                    None
+                }
+            }
+        })?;
+        if let Some(claims) = verified {
+            return Ok(Ok(claims));
+        }
+    }
+
+    Ok(Err(format!(
+        "Auth Verifier: token signature validation failed against all {} JWKS key(s): {}",
+        tried_keys,
+        last_error.unwrap_or_else(|| "no keys available".to_owned())
+    )))
 }
 
 #[cfg(test)]
@@ -514,5 +534,106 @@ pub(crate) mod tests {
         .await
         .expect_err("a malformed cookie must be rejected");
         assert!(matches!(error, KmsError::Unauthorized(_)));
+    }
+
+    /// Signature validation against a JWKS that rotates (the other tests skip signatures).
+    #[cfg(not(feature = "insecure"))]
+    mod signed {
+        use std::sync::atomic::AtomicUsize;
+
+        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+        use openssl::rsa::Rsa;
+
+        use super::{
+            Arc, AsyncReadExt, AsyncWriteExt, Engine, JwksManager, KmsError, Ordering, TcpListener,
+            URL_SAFE_NO_PAD,
+        };
+        use crate::middlewares::auth_verifier::token::verify_signed_auth_verifier_jwt;
+
+        fn jwks_of(rsa: &Rsa<openssl::pkey::Private>) -> String {
+            serde_json::json!({"keys": [{
+                "kty": "RSA",
+                "alg": "RS256",
+                "use": "sig",
+                "n": URL_SAFE_NO_PAD.encode(rsa.n().to_vec()),
+                "e": URL_SAFE_NO_PAD.encode(rsa.e().to_vec()),
+            }]})
+            .to_string()
+        }
+
+        /// Serve `bodies[i]` to the i-th request (the last one afterwards); returns the URL.
+        async fn jwks_server(bodies: Vec<String>, hits: Arc<AtomicUsize>) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let port = listener.local_addr().expect("local address").port();
+            tokio::spawn(async move {
+                while let Ok((mut stream, _)) = listener.accept().await {
+                    let mut buf = vec![0_u8; 4096];
+                    drop(stream.read(&mut buf).await);
+                    let index = hits.fetch_add(1, Ordering::SeqCst);
+                    let body = bodies
+                        .get(index)
+                        .or(bodies.last())
+                        .cloned()
+                        .unwrap_or_default();
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    drop(stream.write_all(response.as_bytes()).await);
+                }
+            });
+            format!("http://127.0.0.1:{port}/jwks.json")
+        }
+
+        /// A `kid`-less RS256 token, as the Auth Verifier issues them.
+        fn token_signed_by(rsa: &Rsa<openssl::pkey::Private>) -> String {
+            let key = EncodingKey::from_rsa_der(&rsa.private_key_to_der().expect("DER key"));
+            let claims = serde_json::json!({"sub": "alice", "exp": 4_102_444_800_u64});
+            encode(&Header::new(Algorithm::RS256), &claims, &key).expect("sign test JWT")
+        }
+
+        /// F-036: a token signed by a key published after the last (throttled) refresh must
+        /// validate: the keys are fetched again once the cached ones failed.
+        #[tokio::test]
+        async fn rotated_signing_key_is_picked_up_on_failure() {
+            let (old, new) = (
+                Rsa::generate(2048).expect("RSA key"),
+                Rsa::generate(2048).expect("RSA key"),
+            );
+            let hits = Arc::new(AtomicUsize::new(0));
+            let url = jwks_server(vec![jwks_of(&old), jwks_of(&new)], hits.clone()).await;
+            let manager = JwksManager::new(vec![url], None)
+                .await
+                .expect("JWKS manager");
+
+            let claims = verify_signed_auth_verifier_jwt(&manager, &token_signed_by(&new))
+                .await
+                .expect("the rotated key must be fetched and accepted");
+
+            assert_eq!(claims.sub, "alice");
+            assert_eq!(hits.load(Ordering::SeqCst), 2);
+        }
+
+        /// A token signed by a key the Auth Verifier never published is still rejected, after
+        /// a single forced refresh.
+        #[tokio::test]
+        async fn token_of_an_unknown_key_is_rejected() {
+            let (published, rogue) = (
+                Rsa::generate(2048).expect("RSA key"),
+                Rsa::generate(2048).expect("RSA key"),
+            );
+            let hits = Arc::new(AtomicUsize::new(0));
+            let url = jwks_server(vec![jwks_of(&published)], hits.clone()).await;
+            let manager = JwksManager::new(vec![url], None)
+                .await
+                .expect("JWKS manager");
+
+            let error = verify_signed_auth_verifier_jwt(&manager, &token_signed_by(&rogue))
+                .await
+                .expect_err("a token of an unknown key must be rejected");
+
+            assert!(matches!(error, KmsError::Unauthorized(_)), "{error}");
+            assert_eq!(hits.load(Ordering::SeqCst), 2);
+        }
     }
 }

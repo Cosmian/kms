@@ -176,8 +176,22 @@ impl JwksManager {
 
         if refresh_is_allowed {
             tracing::info!("Refreshing JWKS");
-            let refreshed_jwks =
+            let mut refreshed_jwks =
                 Self::fetch_all(&self.uris, &self.proxy_params, self.accept_invalid_certs).await;
+            // A failed fetch must not drop the keys of that URI: keep the last good set, so a
+            // transient IdP outage (or an attacker forcing refreshes) cannot reject every token.
+            {
+                let current = self.jwks.read().map_err(|e| {
+                    KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}"))
+                })?;
+                for uri in &self.uris {
+                    if !refreshed_jwks.contains_key(uri)
+                        && let Some(previous) = current.get(uri)
+                    {
+                        refreshed_jwks.insert(uri.clone(), previous.clone());
+                    }
+                }
+            }
             self.set_jwks(refreshed_jwks)?;
         }
 
@@ -585,6 +599,45 @@ mod tests {
             manager.find(ROTATED_KID).unwrap().is_some(),
             "rotated key should be discoverable after refresh-on-miss"
         );
+    }
+
+    /// F-036: a failed refresh (here an HTTP 500 body that is no JWKS) keeps the last good
+    /// key set instead of leaving the cache empty.
+    #[actix_web::test]
+    async fn failed_refresh_keeps_the_previous_keys() {
+        let broken = std::sync::Arc::new(AtomicBool::new(false));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server_broken = broken.clone();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = vec![0_u8; 4096];
+                let _ = stream.read(&mut buf).await.unwrap();
+                let response = if server_broken.load(Ordering::SeqCst) {
+                    "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
+                } else {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{SAMPLE_JWKS}",
+                        SAMPLE_JWKS.len()
+                    )
+                };
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let manager = JwksManager::new(vec![format!("http://127.0.0.1:{port}/jwks.json")], None)
+            .await
+            .unwrap();
+        assert!(manager.find(SAMPLE_RSA_JWK_KID).unwrap().is_some());
+
+        broken.store(true, Ordering::SeqCst);
+        *manager.last_update.write().unwrap() = None;
+        manager.refresh().await.unwrap();
+
+        assert!(
+            manager.find(SAMPLE_RSA_JWK_KID).unwrap().is_some(),
+            "the last good key set must survive a failed fetch"
+        );
+        assert!(!manager.is_empty().unwrap());
     }
 
     /// A token whose payload carries `iss` (header and signature are irrelevant here).

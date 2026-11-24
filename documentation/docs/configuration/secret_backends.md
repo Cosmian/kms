@@ -240,7 +240,7 @@ The same key also derives the tag that marks KV versions carrying a TTL, so that
 
 ### Authenticating the bao CLI
 
-The `BAO_TOKEN` is a Vault token that a verifier configured with `vault_auth_verifier_url` accepts. The KMS validates it with `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` (the login requests) to `<url>/v1/auth/*` unchanged. The URL is the base URL of the verifier, with no `/v1` suffix. There are two cases.
+The `BAO_TOKEN` is a Vault token that a verifier configured with `vault_auth_verifier_url` accepts. The KMS validates it with `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` (the login requests) to `<url>/v1/auth/*` unchanged. The URL is the base URL of the verifier, with no `/v1` suffix. It must use `https://` (`http://` only for a loopback host), otherwise the server refuses to start; redirects are not followed. There are two cases.
 
 **With an existing OpenBao or Vault server.** Set `vault_auth_verifier_url` to that server's base URL. Users log in to their OpenBao as usual, or through the KMS since `/v1/auth/*` is forwarded, then use the same token with `BAO_ADDR=<KMS>`.
 

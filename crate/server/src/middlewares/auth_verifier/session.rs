@@ -16,7 +16,7 @@ use std::{
 use dashmap::DashMap;
 use url::Url;
 
-use super::token::AUTH_VERIFIER_SESSION_COOKIE;
+use super::{hardened_client_builder, token::AUTH_VERIFIER_SESSION_COOKIE};
 use crate::{
     config::AuthVerifierConfig,
     error::KmsError,
@@ -70,10 +70,7 @@ impl AuthVerifierValidator {
                 KmsError::ServerError("invalid auth_verifier_url: cannot be a base".to_owned())
             })?
             .push("whoami");
-        let mut client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(config.auth_verifier_accept_invalid_certs)
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(10));
+        let mut client = hardened_client_builder(config.auth_verifier_accept_invalid_certs);
         if let Some(proxy_params) = &jwks.proxy_params {
             client = client.proxy(reqwest_proxy(proxy_params)?);
         }

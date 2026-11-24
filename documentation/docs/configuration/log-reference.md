@@ -805,6 +805,10 @@ Crate path: `crate/server`
 | `warn` | `[metrics] Failed to sync kms.keys.active.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
 | `warn` | `[metrics] Failed to sync kms.keys.expiring_soon.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
 | `debug` | `[metrics] kms.keys.active.count synced: {} bucket(s)` | `src/core/otel_metrics.rs` | - | - |
+| `warn` | `login_as: too many attempts from {client_ip}` | `src/routes/ui_auth.rs` | `client_ip` (peer, or the client reported by a trusted proxy) | The per-IP or per-username `login_as` quota is exhausted; the request is answered `429` and not relayed. |
+| `warn` | `UI session cookie refresh failed: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The refreshed cookie could not be sealed; the previous cookie stays valid until it expires. |
+| `warn` | `UI session revocation list is full: evicting the entry closest to expiry` | `src/middlewares/ui_session.rs` | - | More than 100 000 live revoked sessions; the oldest revocation is dropped. |
+| `warn` | `UI session revocation store unavailable` | `src/middlewares/ui_session.rs` | - | The revocation lock is poisoned; every UI session is refused (fail closed) until restart. |
 
 ### `cosmian_kms_server_database`
 

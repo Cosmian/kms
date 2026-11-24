@@ -274,7 +274,8 @@ pub fn configure_advanced(mut ui: UiConfig, tls: &TlsConfig) -> KResult<Advanced
 
     let session_salt: String = Input::with_theme(&theme)
         .with_prompt(
-            "Session cookie salt (leave blank to auto-generate; \
+            "Session cookie salt: >=32 random bytes as hex or base64, e.g. \
+             `openssl rand -hex 32` (leave blank to auto-generate; \
              must match across load-balanced instances)",
         )
         .allow_empty(true)
