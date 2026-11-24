@@ -33,6 +33,7 @@ pub(crate) async fn register(
     trace!("Register request");
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
     kms.enforce_create_permission(owner).await?;
+    super::attributes::policy::reject_server_vendor_attributes(&request.attributes)?;
 
     if request.object_type != request.object.object_type() {
         kms_bail!(KmsError::InconsistentOperation(

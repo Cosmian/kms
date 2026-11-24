@@ -4,6 +4,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::{
         KmipOperation,
         attribute_policy::AttributeEditPolicy,
+        extra::tagging::VENDOR_ID_COSMIAN,
         kmip_attributes::{Attribute, Attributes},
         kmip_types::Tag,
     },
@@ -64,15 +65,39 @@ pub(crate) fn single_valued(message: &str) -> KmsError {
     KmsError::Kmip21Error(ErrorReason::Attribute_Single_Valued, message.to_owned())
 }
 
-/// Whether a custom attribute is server-owned (KMIP 1.x `y-` names, KMIP 2.1 §4.46).
+/// Whether a custom attribute is server-owned: KMIP 1.x `y-` names (KMIP 2.1 §4.46) and the
+/// Cosmian split-key bookkeeping that `JoinSplitKey` trusts. The ceremony marker
+/// (`x-cosmian-crypto-officer-ceremony`) stays client-settable: the CLI `--ceremony` flag sets it.
 pub(crate) fn is_server_vendor_attribute(
     vendor_identification: &str,
     attribute_name: &str,
 ) -> bool {
-    vendor_identification == "KMIP1" && attribute_name.starts_with("y-")
+    (vendor_identification == "KMIP1" && attribute_name.starts_with("y-"))
+        || (vendor_identification == VENDOR_ID_COSMIAN
+            && matches!(
+                attribute_name,
+                "x-cosmian-split-key-source" | "x-cosmian-share-wrapping-key"
+            ))
 }
 
-/// Rejects client writes to server-owned custom attributes (KMIP 1.x `y-` names, KMIP 2.1 §4.46).
+/// Rejects server-owned custom attributes in the attributes a client supplies when creating,
+/// importing or registering an object.
+pub(crate) fn reject_server_vendor_attributes(attributes: &Attributes) -> KResult<()> {
+    if let Some(va) = attributes
+        .vendor_attributes
+        .iter()
+        .flatten()
+        .find(|va| is_server_vendor_attribute(&va.vendor_identification, &va.attribute_name))
+    {
+        return Err(KmsError::InvalidRequest(format!(
+            "the custom attribute {}/{} is server-owned and cannot be set by a client",
+            va.vendor_identification, va.attribute_name
+        )));
+    }
+    Ok(())
+}
+
+/// Rejects client writes to server-owned custom attributes (see [`is_server_vendor_attribute`]).
 pub(crate) fn check_vendor_attribute(
     attribute: &Attribute,
     operation: KmipOperation,

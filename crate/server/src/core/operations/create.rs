@@ -48,6 +48,7 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
     trace!("Create request");
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
     kms.enforce_create_permission(owner).await?;
+    super::attributes::policy::reject_server_vendor_attributes(&request.attributes)?;
     reject_inapplicable_attributes("Create", request.object_type, &request.attributes)?;
     // System tags (`_` prefix) are the server's: a user-supplied one could forge the KV store's
     // `_kv::` tags (see the Import path, which strips them).
