@@ -706,13 +706,27 @@ async fn start_http_kms_server(
     server.await.map_err(Into::into)
 }
 
+/// Content-Security-Policy of the Web UI (index page and static assets). `wasm-unsafe-eval` is
+/// needed by the WASM module and `unsafe-inline` styles by Ant Design. There is no `form-action`
+/// directive: the SAML POST binding auto-submits a form to the identity provider.
+const UI_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' \
+    'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src \
+    'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+
 /// This function handles a request to an inner path of the static UI and redirects
 /// it to the index.html file, so that the routing renders the appropriate component
 fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpResponse {
     let index_html_path = PathBuf::from(ui_index_html_folder).join("index.html");
     info!("Serving index.html from {}", index_html_path.display());
     match actix_files::NamedFile::open(index_html_path) {
-        Ok(file) => file.into_response(req),
+        Ok(file) => {
+            let mut response = file.into_response(req);
+            response.headers_mut().insert(
+                actix_web::http::header::CONTENT_SECURITY_POLICY,
+                actix_web::http::header::HeaderValue::from_static(UI_CONTENT_SECURITY_POLICY),
+            );
+            response
+        }
         Err(e) => {
             error!("Failed to open index.html: {e:?}");
             HttpResponse::InternalServerError().finish()
@@ -1505,6 +1519,9 @@ pub async fn prepare_kms_server(
             .rate_limit_per_second
             .map_or(u32::MAX, |rps| rps.saturating_mul(3)),
     );
+    if rate_limit_enabled {
+        rate_limiter_config.spawn_purge_task();
+    }
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
@@ -1519,7 +1536,11 @@ pub async fn prepare_kms_server(
                 DefaultHeaders::new()
                     // Prevent the UI from being embedded in a foreign frame (clickjacking)
                     .add(("X-Frame-Options", "DENY"))
-                    .add(("Content-Security-Policy", "frame-ancestors 'none'")),
+                    .add(("Content-Security-Policy", "frame-ancestors 'none'"))
+                    // Ignored by browsers over plain HTTP (RFC 6797 §8.1), so it is always sent
+                    .add(("Strict-Transport-Security", "max-age=31536000"))
+                    .add(("Referrer-Policy", "no-referrer"))
+                    .add(("X-Content-Type-Options", "nosniff")),
             )
             .app_data(ui_session_cookie.clone())
             .app_data(login_as_limiter.clone())
@@ -1970,12 +1991,21 @@ pub async fn prepare_kms_server(
                     ),
                 );
             }
+            // `DefaultHeaders` of the inner scope run first, so the UI policy wins over the global
+            // `frame-ancestors 'none'` one (DefaultHeaders never overwrites a present header).
             auth_routes = auth_routes.service(
-                Files::new("/", ui_index_folder)
-                    .index_file("index.html")
-                    .use_last_modified(true)
-                    .use_etag(true)
-                    .prefer_utf8(true),
+                web::scope("")
+                    .wrap(DefaultHeaders::new().add((
+                        actix_web::http::header::CONTENT_SECURITY_POLICY,
+                        UI_CONTENT_SECURITY_POLICY,
+                    )))
+                    .service(
+                        Files::new("/", ui_index_folder)
+                            .index_file("index.html")
+                            .use_last_modified(true)
+                            .use_etag(true)
+                            .prefer_utf8(true),
+                    ),
             );
             // Add the auth_routes to the main app
             app = app.service(auth_routes);
@@ -3213,6 +3243,76 @@ mod tests {
             check_unauthenticated_bind(hostname, true, false).unwrap();
         }
         check_unauthenticated_bind("0.0.0.0", false, true).unwrap();
+    }
+
+    /// Every response carries HSTS, `Referrer-Policy` and `nosniff`; the UI (index page and static
+    /// assets) overrides the global `frame-ancestors`-only CSP with its own script/style policy,
+    /// while API responses keep the minimal one.
+    #[actix_web::test]
+    async fn test_security_headers_present() {
+        use reqwest::header::{
+            CONTENT_SECURITY_POLICY, REFERRER_POLICY, STRICT_TRANSPORT_SECURITY,
+            X_CONTENT_TYPE_OPTIONS,
+        };
+
+        let ui_dir = tempfile::tempdir().unwrap();
+        std::fs::write(ui_dir.path().join("index.html"), "<html></html>").unwrap();
+        std::fs::write(ui_dir.path().join("app.js"), "// asset").unwrap();
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.socket_server.start = false;
+        config.ui_config.enable = true;
+        config.ui_config.index_html_folder = Some(ui_dir.path().to_string_lossy().into_owned());
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let header = |response: &reqwest::Response, name: &reqwest::header::HeaderName| {
+            response
+                .headers()
+                .get(name)
+                .map(|v| v.to_str().unwrap().to_owned())
+        };
+
+        let version = client.get(format!("{base}/version")).send().await.unwrap();
+        assert_eq!(version.status(), reqwest::StatusCode::OK);
+        assert_eq!(
+            header(&version, &STRICT_TRANSPORT_SECURITY).as_deref(),
+            Some("max-age=31536000")
+        );
+        assert_eq!(
+            header(&version, &REFERRER_POLICY).as_deref(),
+            Some("no-referrer")
+        );
+        assert_eq!(
+            header(&version, &X_CONTENT_TYPE_OPTIONS).as_deref(),
+            Some("nosniff")
+        );
+        let api_csp = header(&version, &CONTENT_SECURITY_POLICY).unwrap();
+        assert!(!api_csp.contains("default-src"), "{api_csp}");
+
+        for path in ["/ui/login", "/ui/app.js"] {
+            let response = client.get(format!("{base}{path}")).send().await.unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            let csp = header(&response, &CONTENT_SECURITY_POLICY).unwrap();
+            assert!(csp.contains("default-src 'self'"), "{path}: {csp}");
+            assert!(csp.contains("'wasm-unsafe-eval'"), "{path}: {csp}");
+            assert_eq!(
+                header(&response, &STRICT_TRANSPORT_SECURITY).as_deref(),
+                Some("max-age=31536000"),
+                "{path}"
+            );
+        }
+        handle.stop(false).await;
     }
 }
 
