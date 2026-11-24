@@ -46,8 +46,8 @@ pub(crate) const MAX_XKS_REQUEST_BODY: usize = 2 * 1024 * 1024;
 
 /// Bounds the number of concurrent `SigV4` verification tasks running on the Tokio blocking
 /// thread pool. Each unauthenticated XKS request can trigger CPU-heavy canonicalization and
-/// hashing of a request body up to `MAX_XKS_REQUEST_BODY`; without a bound, an attacker could submit an
-/// unbounded number of such requests and exhaust CPU and blocking-pool capacity (CWE-400:
+/// hashing of a request body up to `MAX_XKS_REQUEST_BODY`; without a bound, an attacker could
+/// submit an unbounded number of such requests and exhaust CPU and blocking-pool capacity (CWE-400:
 /// Uncontrolled Resource Consumption). The previous synchronous verification path was
 /// implicitly bounded by the number of Actix worker threads — this preserves an equivalent
 /// bound, sized to the number of available CPUs.
@@ -167,9 +167,9 @@ where
             let http_request = to_http_request(&actix_web_http_request, body_bytes.clone())?;
 
             // Canonicalization and body hashing run synchronously and scale with the request body
-            // size (up to `MAX_XKS_REQUEST_BODY`), so running them directly on the Actix worker would let
-            // a burst of large concurrent requests starve all HTTP workers (CWE-400). Offload the
-            // whole verification to the blocking thread pool.
+            // size (up to `MAX_XKS_REQUEST_BODY`), so running them directly on the Actix worker
+            // would let a burst of large concurrent requests starve all HTTP workers (CWE-400).
+            // Offload the whole verification to the blocking thread pool.
             //
             // Bound the number of concurrent verification tasks with a semaphore: an
             // unauthenticated caller could otherwise submit an unbounded number of large signed
