@@ -94,7 +94,8 @@ clear_database = true
 EOF
 
 echo "Starting KMS server (background) using ${KMS_CONF_PATH} ..."
-RUST_LOG="info,cosmian_kms=debug" \
+# The XKS fixture binds 0.0.0.0 with SigV4 only (no KMIP-scope authentication): opt in explicitly.
+RUST_LOG="info,cosmian_kms=debug" KMS_INSECURE_ALLOW_UNAUTHENTICATED=true \
   "${KMS_BIN}" -c "${KMS_CONF_PATH}" \
   >"${LOG_PATH}" 2>&1 &
 KMS_PID=$!

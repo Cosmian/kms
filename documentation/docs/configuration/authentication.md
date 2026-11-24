@@ -134,7 +134,7 @@ The server extracts the username from the token's `email` claim.
 
 JWT tokens (and UI OIDC logins) must carry `email_verified: true` (a JSON boolean or the string `"true"`); a token without it is rejected. Identity providers that omit the claim, such as Microsoft Entra ID access tokens, are not accepted.
 
-Users of the second and later `jwt_auth_provider` entries are identified as `email#<jwt_issuer_uri>` (for example `alice@example.com#https://login.example.com/`), so access rights and role lists for these users must use that form. Users of the first provider keep the bare `email`. The same rule applies to the UI OIDC login: its identity is `email#<ui_oidc_issuer_url>` unless that URL is exactly the issuer of the first `jwt_auth_provider` (plain string comparison; a trailing slash makes them differ). Google CSE (KACLS) issuers are never namespaced. The UI OIDC `id_token` must carry the `exp`, `iss`, `aud` and `sub` claims.
+Users of the second and later `jwt_auth_provider` entries are identified as `email#<jwt_issuer_uri>` (for example `alice@example.com#https://login.example.com/`), so access rights and role lists for these users must use that form. Users of the first provider keep the bare `email`. The same rule applies to the UI OIDC login: its identity is `email#<ui_oidc_issuer_url>` unless that URL is exactly the issuer of the first `jwt_auth_provider` (plain string comparison; a trailing slash makes them differ). Whitelisted Google CSE (KACLS) migration issuers are namespaced like secondary providers. The UI OIDC `id_token` must carry the `exp`, `iss`, `aud` and `sub` claims.
 
 #### Supported Signing Algorithms
 
@@ -210,7 +210,7 @@ When using API token authentication, the authenticated user will be the default 
 
 ### Choosing `default_username`
 
-Only the API token or the non-authenticated mode can act as `default_username`. Any request authenticated by another method (client certificate Common Name, JWT `email` or `sub`, Auth Verifier or SAML subject, UI session) whose identity equals `default_username` is rejected with `401 Unauthorized` (`external identity collides with the KMS default_username`). The comparison ignores case and trailing spaces. Choose a `default_username` that is distinct from every real identity: if a certificate CN or an email is currently `admin`, change `default_username`.
+Only the API token or the non-authenticated mode can act as `default_username`. Any request authenticated by another method (client certificate Common Name, JWT `email` or `sub`, Auth Verifier or SAML subject, UI session) whose identity equals `default_username` is rejected with `401 Unauthorized` (`external identity collides with the KMS default_username`). The comparison ignores ASCII case and trailing spaces only: on MySQL/MariaDB, whose default accent-insensitive collations (for example `utf8mb4_0900_ai_ci`) can also equate accent variants such as `admín` with `admin`, such a name is not detected. Choose a `default_username` that is distinct from every real identity: if a certificate CN or an email is currently `admin`, change `default_username`.
 
 ### Auth Verifier bearer tokens
 

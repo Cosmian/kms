@@ -264,7 +264,7 @@ impl JwtTokenHeaders {
 pub struct JwtConfig {
     pub jwt_issuer_uri: String,
     pub jwt_audience: Option<Vec<String>>,
-    /// Namespace for secondary identity providers; absent for the primary provider and KACLS.
+    /// Namespace for secondary identity providers and whitelisted KACLS issuers; absent for the primary provider.
     pub issuer_namespace: Option<String>,
     pub jwks: Arc<JwksManager>,
     /// When `true`, a token from this issuer that has no `email` claim is authenticated

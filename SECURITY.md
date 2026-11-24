@@ -5,6 +5,10 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-075 — External credential named like `default_username` inherited the default user's identity](#cosmian-2026-075--external-credential-named-like-default_username-inherited-the-default-users-identity)
+      - [COSMIAN-2026-074 — KMS identity taken from an unverified `email` claim, shared across identity providers](#cosmian-2026-074--kms-identity-taken-from-an-unverified-email-claim-shared-across-identity-providers)
+      - [COSMIAN-2026-073 — Authentication Verifier bearer tokens of the admin realm or of another realm accepted](#cosmian-2026-073--authentication-verifier-bearer-tokens-of-the-admin-realm-or-of-another-realm-accepted)
+      - [COSMIAN-2026-072 — Server without authentication started on a non-loopback address](#cosmian-2026-072--server-without-authentication-started-on-a-non-loopback-address)
       - [COSMIAN-2026-071 — DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys](#cosmian-2026-071--derivekey-skipped-the-create-gate-jose-and-spire-routes-skipped-the-kmip-algorithm-policy-wrapping-errors-revealed-other-users-keys)
       - [COSMIAN-2026-070 — Key wrapping with a Certificate skipped the `WrapKey` usage-mask check](#cosmian-2026-070--key-wrapping-with-a-certificate-skipped-the-wrapkey-usage-mask-check)
       - [COSMIAN-2026-069 — GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree](#cosmian-2026-069--ghsa-g3hv-75wg-m249-minimatch-denial-of-service-in-the-web-ui-dependency-tree)
@@ -131,6 +135,82 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-075 — External credential named like `default_username` inherited the default user's identity
+
+| Field      | Value                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| Severity   | Moderate                                                                                               |
+| Published  | Pending                                                                                                |
+| Affected   | from 5.0.0 before 6.0.0                                                                                |
+| Fixed in   | 6.0.0                                                                                                  |
+| Found by   | Security audit, issue #1486                                                                            |
+| References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
+
+**Summary:** A client certificate CN, JWT identity or session subject equal to `default_username` was accepted as that user, which owns objects created in unauthenticated or API-token mode and holds the `default_username` exemptions in permission and unwrap checks.
+
+**Impact:** The holder of such a credential acted as the default owner.
+
+**Mitigation:** Upgrade to 6.0.0: every authentication path other than the API token and the unauthenticated mode is refused with 401 when the identity equals `default_username` (case and trailing spaces ignored), including the KMIP socket server. Choose a `default_username` distinct from every real identity; use an API token for operator provisioning. Regression tests: `external_identity_equal_to_default_username_is_rejected` (`crate/server/src/middlewares/ensure_auth.rs`), `client_cn_equal_to_default_username_is_rejected` (`crate/server/src/socket_server.rs`).
+
+---
+
+#### COSMIAN-2026-074 — KMS identity taken from an unverified `email` claim, shared across identity providers
+
+| Field      | Value                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| Severity   | Moderate                                                                                               |
+| Published  | Pending                                                                                                |
+| Affected   | from 5.0.0 before 6.0.0                                                                                |
+| Fixed in   | 6.0.0                                                                                                  |
+| Found by   | Security audit, issue #1486                                                                            |
+| References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
+
+**Summary:** JWT and Web UI OIDC logins used the `email` claim as the KMS user name without checking `email_verified`, and an identical email from any configured identity provider resolved to the same KMS user.
+
+**Impact:** A user who can register an unverified address at an identity provider (or controls a secondary provider) could take the identity, and so the keys and grants, of a user with that email.
+
+**Mitigation:** Upgrade to 6.0.0: `email_verified` must be `true`; users of the second and later `jwt_auth_provider` entries (and of a UI OIDC issuer other than the first provider) are identified as `email#<issuer>`, so their access grants and role lists must use that form. Identity providers that omit `email_verified` (for example Microsoft Entra ID access tokens) are rejected. Regression tests: `unverified_email_claim_is_rejected`, `same_email_from_a_secondary_issuer_is_namespaced` (`crate/server/src/middlewares/jwt/jwt_token_auth.rs`), `oidc_login_namespaces_the_identity_unless_the_idp_is_the_primary_jwt_issuer` (`crate/server/src/routes/ui_auth.rs`).
+
+---
+
+#### COSMIAN-2026-073 — Authentication Verifier bearer tokens of the admin realm or of another realm accepted
+
+| Field      | Value                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| Severity   | Moderate                                                                                               |
+| Published  | Pending                                                                                                |
+| Affected   | from 5.26.0 before 6.0.0                                                                               |
+| Fixed in   | 6.0.0                                                                                                  |
+| Found by   | Security audit, issue #1486                                                                            |
+| References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
+
+**Summary:** The KMS validated the signature and liveness of Auth Verifier bearer tokens but not their realm, so tokens of the admin realm `_` or of any other realm of the same Auth Verifier authenticated as the token subject; the Web UI login (`/ui/login_as`) had the same gap.
+
+**Impact:** A user of another application's realm, or an administrator account of the admin realm, could authenticate to the KMS under its own subject name and act with the permissions granted to that name.
+
+**Mitigation:** Upgrade to 6.0.0: admin-realm tokens are always rejected and, when `auth_verifier_realm` is set, bearer tokens and UI logins must be issued for that realm. A deployment that configured `auth_verifier_realm = "_"` must create a dedicated realm and users. Regression test: `bearer_token_of_another_or_admin_realm_is_rejected` (`crate/server/src/middlewares/auth_verifier/token.rs`).
+
+---
+
+#### COSMIAN-2026-072 — Server without authentication started on a non-loopback address
+
+| Field      | Value                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| Severity   | Moderate                                                                                               |
+| Published  | Pending                                                                                                |
+| Affected   | from 5.0.0 before 6.0.0                                                                                |
+| Fixed in   | 6.0.0                                                                                                  |
+| Found by   | Security audit, issue #1486                                                                            |
+| References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
+
+**Summary:** With no authentication method configured, every request is served as `default_username`. The server (and the default Docker image, Helm chart and packaged `kms.toml`, which bind `0.0.0.0`) started in this mode and only logged a warning.
+
+**Impact:** Any network client could use all KMIP/REST scopes with the default user's permissions and objects.
+
+**Mitigation:** Upgrade to 6.0.0, which refuses to start without authentication on a non-loopback address unless `insecure_allow_unauthenticated = true` (`KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`, development only; Helm `kms.insecureAllowUnauthenticated`). Configure mTLS, JWT, an API token or the Auth Verifier, or bind `127.0.0.1`. Regression tests: `check_unauthenticated_bind_cases` (`crate/server/src/start_kms_server.rs`), `no_auth_server_refuses_non_loopback_bind` (`crate/test_kms_server/src/unauthenticated_bind_tests.rs`). Until upgraded, configure an authentication method.
+
+---
 
 #### COSMIAN-2026-071 — DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys
 
@@ -341,7 +421,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An unauthenticated network client could run operations on those scopes with the permissions and objects of the default user. Only deployments whose sole authentication method is the Vault token verifier were exposed.
 
-**Mitigation:** Upgrade to 6.0.0. An `X-Vault-Token` now counts as configured authentication on every scope, so a request without credentials is rejected. Clients must send `X-Vault-Token` or authenticate another way, for example an mTLS client certificate whose CN is `default_username` for `ckms` provisioning. Regression test: `vault_token_only_auth_rejects_requests_without_credentials` in `crate/server/src/start_kms_server.rs`. Until upgraded, configure a second authentication method (mTLS, JWT or API token) so that anonymous requests are refused.
+**Mitigation:** Upgrade to 6.0.0. An `X-Vault-Token` now counts as configured authentication on every scope, so a request without credentials is rejected. Clients must send `X-Vault-Token` or authenticate another way, for example an API token (`api_token_id`) for `ckms` provisioning; a client certificate whose CN equals `default_username` is refused since 6.0.0 (COSMIAN-2026-073). Regression test: `vault_token_only_auth_rejects_requests_without_credentials` in `crate/server/src/start_kms_server.rs`. Until upgraded, configure a second authentication method (mTLS, JWT or API token) so that anonymous requests are refused.
 
 ---
 
@@ -1766,6 +1846,10 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-075    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | External credential named like `default_username` inherited the default user's identity             |
+| COSMIAN-2026-074    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | KMS identity taken from an unverified `email` claim, shared across identity providers               |
+| COSMIAN-2026-073    | Moderate | from 5.26.0 before 6.0.0                                                | 6.0.0    | Authentication Verifier bearer tokens of the admin realm or of another realm accepted               |
+| COSMIAN-2026-072    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | Server without authentication started on a non-loopback address                                     |
 | COSMIAN-2026-071    | Low      | before 6.0.0                                                            | 6.0.0    | DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys |
 | COSMIAN-2026-070    | Moderate | before 6.0.0                                                            | 6.0.0    | Key wrapping with a Certificate skipped the `WrapKey` usage-mask check                              |
 | COSMIAN-2026-069    | Low      | from 5.3.0 before 6.0.0 (build tooling only)                            | 6.0.0    | GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree                    |

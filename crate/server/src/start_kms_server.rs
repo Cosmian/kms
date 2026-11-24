@@ -1307,7 +1307,8 @@ pub async fn prepare_kms_server(
     }
     if let Some(auth_verifier_config) = kms_server.params.auth_verifier_config.as_ref() {
         auth_verifier_config
-            .validate_saml()
+            .validate_realm()
+            .and_then(|()| auth_verifier_config.validate_saml())
             .map_err(KmsError::ServerError)?;
     }
 

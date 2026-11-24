@@ -74,7 +74,9 @@ pub async fn list_jwt_configurations(
     for url in url_whitelist {
         configurations.push(JwtConfig {
             jwt_issuer_uri: url.clone(),
-            issuer_namespace: None,
+            // Namespaced like a secondary provider: a whitelisted KACLS token carrying a verified
+            // `email` never resolves to a bare (primary-provider) identity.
+            issuer_namespace: Some(url.clone()),
             jwks: Arc::new(JwksManager::new(vec![format!("{url}/certs")], proxy_params).await?),
             // KACLS-to-KACLS migration tokens always carry `aud: "kacls-migration"`.
             // Setting the expected audience here ensures `validate_authentication_token`

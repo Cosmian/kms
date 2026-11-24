@@ -95,6 +95,21 @@ impl AuthVerifierConfig {
             .and(self.auth_verifier_saml_realm.as_deref())
     }
 
+    /// Checks `auth_verifier_realm`: the Auth Verifier admin realm (`_`) is always rejected
+    /// at login and for bearer tokens, so configuring it would only fail at runtime.
+    ///
+    /// # Errors
+    /// Returns the reason when `auth_verifier_realm` is the admin realm `_`.
+    pub fn validate_realm(&self) -> Result<(), String> {
+        if self.auth_verifier_realm.as_deref() == Some("_") {
+            return Err(
+                "auth_verifier_realm: the admin realm `_` cannot be used for KMS authentication; create a dedicated realm"
+                    .to_owned(),
+            );
+        }
+        Ok(())
+    }
+
     /// Checks the SAML settings: the realm must not be empty or the Auth Verifier admin
     /// realm (`_`), whose password-login sessions would otherwise be accepted as KMS
     /// users, and `auth_verifier_url` must use `https://` because the session cookie, a
@@ -162,6 +177,17 @@ mod tests {
             Ok(())
         );
         assert_eq!(AuthVerifierConfig::default().validate_saml(), Ok(()));
+    }
+
+    #[test]
+    fn test_validate_realm_rejects_admin_realm() {
+        let with_realm = |realm: Option<&str>| AuthVerifierConfig {
+            auth_verifier_realm: realm.map(str::to_owned),
+            ..AuthVerifierConfig::default()
+        };
+        assert!(with_realm(Some("_")).validate_realm().is_err());
+        assert_eq!(with_realm(Some("kms")).validate_realm(), Ok(()));
+        assert_eq!(with_realm(None).validate_realm(), Ok(()));
     }
 
     #[test]
