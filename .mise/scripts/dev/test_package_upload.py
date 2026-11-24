@@ -229,6 +229,23 @@ class PackageUploadTest(unittest.TestCase):
             'remote-dir=/mnt/package/kms/1.2.3/deb/amd64/fips/static\n',
         )
 
+    def test_parallel_uploads_do_not_lock_each_other_out(self) -> None:
+        # rrsync's default per-directory lock rejects a second concurrent upload; the matrix jobs of one run upload in parallel.
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.write('dist/big.bin', os.urandom(8 * 1024 * 1024))
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            procs = list(
+                pool.map(
+                    lambda n: self.push(SUBDIR=f'par/{n}', FILES='dist/big.bin'),
+                    range(6),
+                )
+            )
+        for proc in procs:
+            self.assertPushOk(proc)
+        for n in range(6):
+            self.assertTrue((self.root / f'1.2.3/par/{n}/big.bin').is_file())
+
     def test_branch_with_slash_uses_last_build(self) -> None:
         self.write('x.zip', b'zip')
         proc = self.push(
