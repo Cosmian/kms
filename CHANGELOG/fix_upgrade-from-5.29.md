@@ -11,4 +11,4 @@
 ## Testing
 
 - `test_windows_package.ps1` reinstalls over the running install and checks that `kms.toml` is kept and `kms.toml.new` is written
-- Container proof (systemd, arm64, ubuntu 24.04 and rockylinux 9): a 5.29.0 deb/rpm upgraded to the fixed package stays enabled and running with its edited `kms.toml`; the 5.29.0 package reinstalled over itself ends disabled and stopped
+- Container proof (systemd, arm64, ubuntu 24.04 deb and rockylinux 9 rpm, released 5.29.0 `fips-static` package as the old version, `fips-static` package of the packaging run as the new one; both are version 5.29.0, so the upgrade is a same-version replacement): the service stays enabled and running with its edited `kms.toml`, restarts under a new PID and runs the new binary. The 5.29.0 package reinstalled over itself ends disabled and stopped. A non-interactive deb upgrade over an edited `kms.toml` needs `--force-confold`; without it dpkg aborts at the conffile prompt, and `dpkg --configure -a --force-confold` recovers it
