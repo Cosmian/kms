@@ -453,8 +453,8 @@ impl KMS {
             return Err(KmsError::InvalidRequest(
                 "OTLP endpoint uses plaintext HTTP which exposes telemetry data \
                  (including encryption operation metadata) over an unencrypted channel. \
-                 Use https:// or set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true \
-                 if you accept this risk."
+                 Set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true if you accept this \
+                 risk (https:// endpoints are not supported by this build)."
                     .to_owned(),
             ));
         }
