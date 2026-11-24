@@ -77,6 +77,14 @@ if [ -z "$conf" ]; then
 fi
 if ! sudo test -f "$conf"; then
   echo "ERROR: cannot find the cosmian_kms configuration file (ExecStart -c, COSMIAN_KMS_CONF, /etc/cosmian/kms.toml or KMS_XKS_REMOTE_CONF): '${conf}'" >&2
+  {
+    echo "--- diagnostics"
+    echo "sudo -n true: $(sudo -n true 2>&1 && echo ok)"
+    echo "ExecStart: $(systemctl show -p ExecStart --value cosmian_kms)"
+    echo "Environment: $(systemctl show -p Environment --value cosmian_kms)"
+    sudo -n ls -ld "$(dirname "$conf")" "$conf" 2>&1 || true
+    ls -ld "$(dirname "$conf")" "$conf" 2>&1 || true
+  } >&2
   exit 1
 fi
 if [ -f "$REMOTE_BIN" ]; then
