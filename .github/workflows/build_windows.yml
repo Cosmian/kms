@@ -18,9 +18,6 @@ on:
         required: true
       AZURE_CLIENT_SECRET_POC:
         required: true
-      # Resolved from the `package-publish` environment of publish-windows-release; never passed by callers.
-      PACKAGE_COSMIAN_SSH_PRIVATE_KEY:
-        required: false
 
 jobs:
   cargo-build:
@@ -242,7 +239,9 @@ jobs:
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
-          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
+          # Not declared under workflow_call.secrets: a declared secret is taken from the caller (empty) and shadows the
+          # `package-publish` environment secret. The index form also keeps actionlint quiet about the undeclared name.
+          ssh-private-key: ${{ secrets['PACKAGE_COSMIAN_SSH_PRIVATE_KEY'] }}
           subdir: windows/x86_64/${{ inputs.variant }}/static-openssl
           files: |
             ${{ runner.temp }}/package-artifacts/**/cosmian-kms-server*.exe

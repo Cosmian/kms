@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Upload build artifacts to package.cosmian.com with a write-only, directory-restricted rsync key.
 #
-# The server pins the key to `rrsync -wo -munge -no-del /mnt/package/kms` (forced command): no shell,
+# The server pins the key to `rrsync -wo -munge -no-del -no-lock /mnt/package/kms` (forced command; -no-lock because
+# the matrix jobs of one run upload in parallel and rrsync's default per-directory lock rejects the second one): no shell,
 # no download, no delete, no path outside the upload root. Every remote path below is therefore
 # relative to /mnt/package/kms. Used by .github/actions/push-package-cosmian.
 #

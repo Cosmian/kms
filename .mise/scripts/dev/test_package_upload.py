@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Integration tests of .mise/scripts/release/push_package.sh against a real localhost sshd.
 
-The sshd forces the production command (`rrsync -wo -munge -no-del <root>`) on the test key, exactly as the
+The sshd forces the production command (`rrsync -wo -munge -no-del -no-lock <root>`) on the test key, exactly as the
 package server does for the kms-ci-upload account. A `ssh` shim placed first on PATH redirects the production
 host name to the isolated endpoint (HostName/Port/HostKeyAlias only): host-key verification, key handling and
 rsync options are the ones the script uses in production.
@@ -103,7 +103,7 @@ class PackageUploadTest(unittest.TestCase):
         keygen(cls.unauthorized_key)
         cls.unauthorized_key = cls.unauthorized_key.read_text()
         (cls.tmp / 'authorized_keys').write_text(
-            f'restrict,command="{RRSYNC} -wo -munge -no-del {cls.root}" {client_pub}\n'
+            f'restrict,command="{RRSYNC} -wo -munge -no-del -no-lock {cls.root}" {client_pub}\n'
         )
         with socket.socket() as s:
             s.bind(('127.0.0.1', 0))

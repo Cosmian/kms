@@ -9,4 +9,4 @@
 ## Build
 
 - `Cargo.lock`: `quinn-proto` 0.11.16 -> 0.11.19 (RUSTSEC-2026-0523/0524), `quinn-udp` 0.5.15 -> 0.5.16 (RUSTSEC-2026-0538), `rustix` 1.1.4 -> 1.1.6 (RUSTSEC-2026-0486); `rustix` is a real runtime dependency (via `tempfile`/`native-tls`), the QUIC stack is not compiled in
-- Administrators must create the `crates-io` (required reviewers, `CRATES_IO` as environment secret only) and `package-publish` (`PACKAGE_COSMIAN_SSH_PRIVATE_KEY`) environments, a `kms-ci-upload` account on `package.cosmian.com` whose key is prefixed `restrict,command="/usr/bin/rrsync -wo -munge -no-del /mnt/package/kms"`, and make `PAT_TOKEN` available to the repository. See `.github/workflows/README_main.md`
+- Administrators must create the `crates-io` (required reviewers, `CRATES_IO` as environment secret only) and `package-publish` (`PACKAGE_COSMIAN_SSH_PRIVATE_KEY`) environments, a `kms-ci-upload` account on `package.cosmian.com` whose key is prefixed `restrict,command="/usr/bin/rrsync -wo -munge -no-del -no-lock /mnt/package/kms"`, and make `PAT_TOKEN` available to the repository. See `.github/workflows/README_main.md`
