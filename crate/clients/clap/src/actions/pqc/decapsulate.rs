@@ -1,7 +1,9 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use std::{io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kms_client::{KmsClient, kmip_2_1::requests::decrypt_request, read_bytes_from_file};
+use cosmian_kms_client::{
+    KmsClient, create_private_file, kmip_2_1::requests::decrypt_request, read_bytes_from_file,
+};
 
 use crate::{
     actions::{console, labels::KEY_ID, shared::get_key_uid},
@@ -55,8 +57,7 @@ impl DecapsulateAction {
             .output_file
             .clone()
             .unwrap_or_else(|| self.input_file.with_extension("key"));
-        let mut buffer =
-            File::create(&output_file).with_context(|| "failed to write the shared secret file")?;
+        let mut buffer = create_private_file(&output_file)?;
         buffer
             .write_all(&shared_secret)
             .with_context(|| "failed to write the shared secret file")?;

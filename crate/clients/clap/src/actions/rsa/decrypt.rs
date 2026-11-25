@@ -1,8 +1,8 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use std::{io::Write, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::{
-    KmsClient,
+    KmsClient, create_private_file,
     kmip_2_1::requests::decrypt_request,
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
@@ -134,8 +134,7 @@ impl DecryptAction {
             .output_file
             .clone()
             .unwrap_or_else(|| self.input_file.clone().with_extension("plain"));
-        let mut buffer =
-            File::create(&output_file).with_context(|| "Fail to write the plain file")?;
+        let mut buffer = create_private_file(&output_file)?;
         buffer
             .write_all(&plaintext)
             .with_context(|| "Fail to write the plain file")?;

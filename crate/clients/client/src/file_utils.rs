@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -74,6 +74,68 @@ pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), 
     })
 }
 
+/// On Unix, make `options` create the file readable and writable by its owner only (0600) when
+/// `private`; no-op on other platforms.
+#[cfg(unix)]
+pub fn restrict_to_owner(options: &mut fs::OpenOptions, private: bool) {
+    use std::os::unix::fs::OpenOptionsExt;
+    if private {
+        options.mode(0o600);
+    }
+}
+
+/// On Unix, make `options` create the file readable and writable by its owner only (0600) when
+/// `private`; no-op on other platforms.
+#[cfg(not(unix))]
+pub fn restrict_to_owner(_options: &mut fs::OpenOptions, _private: bool) {}
+
+// `mode` only applies to files that are created: reset an existing file too.
+#[cfg(unix)]
+fn reset_to_owner_only(file: &File) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(not(unix))]
+fn reset_to_owner_only(_file: &File) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Create or truncate `file` for writing, readable by its owner only (0600 on Unix), an existing
+/// file included.
+/// # Errors
+/// If the file cannot be created or its permissions restricted, an error is returned.
+pub fn create_private_file(file: &impl AsRef<Path>) -> Result<File, KmsClientError> {
+    let path = file.as_ref();
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    restrict_to_owner(&mut options, true);
+    let f = options
+        .open(path)
+        .with_context(|| format!("could not create the file {}", path.display()))?;
+    reset_to_owner_only(&f)
+        .with_context(|| format!("could not restrict the permissions of {}", path.display()))?;
+    Ok(f)
+}
+
+/// Write `bytes` to `file`, readable by its owner only (see [`create_private_file`]).
+/// # Errors
+/// If the file cannot be created or written, an error is returned.
+pub fn write_private_bytes_to_file(
+    bytes: &[u8],
+    file: &impl AsRef<Path>,
+) -> Result<(), KmsClientError> {
+    create_private_file(file)?
+        .write_all(bytes)
+        .with_context(|| {
+            format!(
+                "failed writing {} bytes to {}",
+                bytes.len(),
+                file.as_ref().display()
+            )
+        })
+}
+
 /// Write a JSON object to a file
 /// # Errors
 /// If the file cannot be opened or written, an error is returned.
@@ -98,7 +160,10 @@ pub fn write_kmip_object_to_file(
 ) -> Result<(), KmsClientError> {
     let mut ttlv = to_ttlv(kmip_object)?;
     ttlv.tag = tag_from_object(kmip_object).into();
-    write_json_object_to_file(&ttlv, object_file)
+    // The object can be a private key.
+    let bytes =
+        serde_json::to_vec(&ttlv).context("failed writing the object from the json object")?;
+    write_private_bytes_to_file(&bytes, object_file)
 }
 
 /// Write the decrypted data to a file
@@ -117,7 +182,8 @@ pub fn write_single_decrypted_data(
         std::clone::Clone::clone,
     );
 
-    write_bytes_to_file(plaintext, &output_file).context("failed to write the decrypted file")?;
+    write_private_bytes_to_file(plaintext, &output_file)
+        .context("failed to write the decrypted file")?;
 
     info!("The decrypted file is available at {output_file:?}");
     Ok(())
@@ -221,7 +287,7 @@ pub fn write_bulk_decrypted_data(
             ),
         };
 
-        write_bytes_to_file(chunk_data, &output_file)?;
+        write_private_bytes_to_file(chunk_data, &output_file)?;
 
         info!("The decrypted file is available at {output_file:?}");
         Ok(())
@@ -296,6 +362,8 @@ mod characterization_tests {
 
     use cosmian_crypto_core::bytes_ser_de::Serializer;
 
+    #[cfg(unix)]
+    use super::write_private_bytes_to_file;
     use super::{write_bulk_decrypted_data, write_bulk_encrypted_data};
 
     fn bulk(chunks: &[&[u8]]) -> Vec<u8> {
@@ -534,5 +602,24 @@ mod characterization_tests {
             "Invalid conversion: missing input file for chunk 1"
         );
         assert_eq!(std::fs::read(scratch.path("a.plain")).unwrap(), b"one");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_private_bytes_to_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let scratch = Scratch::new("private_write");
+        let new = scratch.path("new");
+        write_private_bytes_to_file(b"new", &new).unwrap();
+        let existing = scratch.path("existing");
+        std::fs::write(&existing, b"old content").unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_private_bytes_to_file(b"x", &existing).unwrap();
+        for (path, content) in [(&new, &b"new"[..]), (&existing, &b"x"[..])] {
+            let mode = std::fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "{}", path.display());
+            assert_eq!(std::fs::read(path).unwrap(), content);
+        }
     }
 }

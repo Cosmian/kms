@@ -5,10 +5,11 @@ pub use cosmian_kms_client_utils::reexport::cosmian_kmip::{
 pub use error::{KmsClientError, result::KmsClientResult};
 pub use export_utils::{ExportObjectParams, batch_export_objects, export_object};
 pub use file_utils::{
-    read_bytes_from_file, read_bytes_from_files_to_bulk, read_from_json_file,
-    read_object_from_json_ttlv_bytes, read_object_from_json_ttlv_file, write_bulk_decrypted_data,
-    write_bulk_encrypted_data, write_bytes_to_file, write_json_object_to_file,
-    write_kmip_object_to_file, write_single_decrypted_data, write_single_encrypted_data,
+    create_private_file, read_bytes_from_file, read_bytes_from_files_to_bulk, read_from_json_file,
+    read_object_from_json_ttlv_bytes, read_object_from_json_ttlv_file, restrict_to_owner,
+    write_bulk_decrypted_data, write_bulk_encrypted_data, write_bytes_to_file,
+    write_json_object_to_file, write_kmip_object_to_file, write_private_bytes_to_file,
+    write_single_decrypted_data, write_single_encrypted_data,
 };
 pub use kms_rest_client::KmsClient;
 
