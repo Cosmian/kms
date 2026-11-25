@@ -609,6 +609,7 @@ mod tests {
             *jwks.last_update.write().unwrap() = None;
             JwtConfig {
                 jwt_issuer_uri: issuer.to_owned(),
+                issuer_namespace: None,
                 jwt_audience: None,
                 jwks: std::sync::Arc::new(jwks),
                 accept_spiffe_subject: false,

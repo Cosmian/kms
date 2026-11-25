@@ -98,6 +98,7 @@ pub(crate) fn local_google_cse_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
     GoogleCseConfig {
         authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: LOCAL_AUTHN_ISSUER.to_owned(),
+            issuer_namespace: None,
             jwks: jwks.clone(),
             jwt_audience: None,
             accept_spiffe_subject: false,
@@ -107,6 +108,7 @@ pub(crate) fn local_google_cse_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
                 "drive".to_owned(),
                 Arc::new(JwtConfig {
                     jwt_issuer_uri: LOCAL_AUTHZ_ISSUER.to_owned(),
+                    issuer_namespace: None,
                     jwks: jwks.clone(),
                     jwt_audience: Some(vec![AUTHZ_AUDIENCE.to_owned()]),
                     accept_spiffe_subject: false,
@@ -116,6 +118,7 @@ pub(crate) fn local_google_cse_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
                 "gmail".to_owned(),
                 Arc::new(JwtConfig {
                     jwt_issuer_uri: LOCAL_GMAIL_AUTHZ_ISSUER.to_owned(),
+                    issuer_namespace: None,
                     jwks: jwks.clone(),
                     jwt_audience: Some(vec![AUTHZ_AUDIENCE.to_owned()]),
                     accept_spiffe_subject: false,
@@ -125,6 +128,7 @@ pub(crate) fn local_google_cse_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
                 "migration".to_owned(),
                 Arc::new(JwtConfig {
                     jwt_issuer_uri: LOCAL_MIGRATION_AUTHZ_ISSUER.to_owned(),
+                    issuer_namespace: None,
                     jwks,
                     jwt_audience: Some(vec![AUTHZ_AUDIENCE.to_owned()]),
                     accept_spiffe_subject: false,
@@ -368,6 +372,7 @@ pub(crate) async fn google_cse_auth(
     let jwks_manager = Arc::new(JwksManager::new(uris, proxy_params).await?);
     let jwt_config = JwtConfig {
         jwt_issuer_uri: GOOGLE_JWT_ISSUER_URI.to_owned(),
+        issuer_namespace: None,
         jwks: jwks_manager.clone(),
         jwt_audience: None,
         accept_spiffe_subject: false,

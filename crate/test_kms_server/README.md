@@ -525,7 +525,7 @@ replays the steps sequentially.
 | Negative / Security | `negative/security/ticket_bound_to_user` | A Login ticket cannot be used or logged out by another user | 4 |
 | Negative / Security | `negative/security/ticket_forged` | Guessed tickets of 32 and 16 zero bytes are refused | 3 |
 | Negative / Security | `negative/security/ticket_request_count_exhausted` | A ticket limited to one request is refused on the second use | 4 |
-| Negative / Security | `negative/security/wrap_with_unusable_kek` | Wrapping with a KEK that cannot wrap, is not active, or belongs to another user is refused | 8 |
+| Negative / Security | `negative/security/wrap_with_unusable_kek` | Wrapping with a KEK that cannot wrap, is not active, or belongs to another user is refused | 12 |
 | Negative / SetAttribute | `negative/set_attribute/hsm_rotate_offset_rejected` | Tests that SetAttribute rotate_offset on an HSM-resident key is rejected | 4 |
 | Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute expects Object_Not_Found | 1 |
 | Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute expects Read_Only_Attribute | 2 |

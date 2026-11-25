@@ -300,6 +300,7 @@ mod tests {
                 hostname: "[hostname]".to_owned(),
                 api_token_id: None,
                 rate_limit_per_second: Some(100),
+                insecure_allow_unauthenticated: false,
                 cors_allowed_origins: None,
                 http_workers: None,
                 jwks_enabled: false,
@@ -443,6 +444,7 @@ tls_cipher_suites = "TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
 port = 443
 hostname = "[hostname]"
 rate_limit_per_second = 100
+insecure_allow_unauthenticated = false
 
 [proxy]
 proxy_url = "https://proxy.example.com:8080"

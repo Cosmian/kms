@@ -770,24 +770,24 @@ version = "0.4.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.kube]]
-version = "4.2.0"
+version = "4.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.kube-client]]
-version = "4.2.0"
+version = "4.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.kube-core]]
-version = "4.2.0"
+version = "4.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.kube-derive]]
-version = "4.2.0"
+version = "4.2.1"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.kube-runtime]]
-version = "4.2.0"
+version = "4.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.language-tags]]

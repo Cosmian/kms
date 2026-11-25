@@ -322,6 +322,11 @@ Options:
 
           [env: KMS_RATE_LIMIT_PER_SECOND=]
 
+      --insecure-allow-unauthenticated
+          Allow starting without any authentication method on a non-loopback address. Development only.
+
+          [env: KMS_INSECURE_ALLOW_UNAUTHENTICATED=]
+
       --cors-allowed-origins <CORS_ALLOWED_ORIGINS>
           Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
           Required for any Web UI deployment: the browser Fetch API sends an `Origin` header on
