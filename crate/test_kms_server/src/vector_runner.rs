@@ -3288,7 +3288,7 @@ ObjectType = "SymmetricKey"
 
     // ── KAT vectors: asymmetric (new) ────────────────────────────────────
 
-    // Ed25519 is not in the OpenSSL 3.1.2 FIPS provider, the only provider a FIPS build uses.
+    // A FIPS build refuses Ed25519 (the only provider it uses is the FIPS provider).
     #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_asym_ed25519_eddsa_sign() -> Result<(), KmsClientError> {

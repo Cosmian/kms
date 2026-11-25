@@ -702,8 +702,8 @@ The following table shows the OpenSSL versions used by **Cosmian KMS** variants:
 
 | OpenSSL Linkage | FIPS                                                                   | Non‑FIPS                                                         |
 | --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Static          | Linkage: OpenSSL 3.6.5; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.5; runtime uses default/legacy providers    |
-| Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.5; ships `libssl`/`libcrypto` and providers |
+| Static          | Linkage: OpenSSL 3.6.5; runtime loads FIPS provider from OpenSSL 3.5.9 | Linkage: OpenSSL 3.6.5; runtime uses default/legacy providers    |
+| Dynamic         | Linkage: OpenSSL 3.5.9; ships FIPS configs and provider OpenSSL 3.5.9  | Linkage: OpenSSL 3.6.5; ships `libssl`/`libcrypto` and providers |
 
 Notes:
 

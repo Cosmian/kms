@@ -17,9 +17,12 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 # other than this CI cross-check build.
 # ---------------------------------------------------------------------------
 
-OPENSSL_VERSION="3.6.5"
-OPENSSL_URL="https://package.cosmian.com/openssl/openssl-${OPENSSL_VERSION}.tar.gz"
-OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+# Same source tarball/hash as crate/crypto/build.rs (crate/crypto/openssl_versions.json).
+# shellcheck source=.mise/lib/openssl.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/openssl.sh"
+OPENSSL_VERSION="$(openssl_version main)"
+OPENSSL_URL="$(openssl_url main)"
+OPENSSL_SHA256="$(openssl_sha256 main)"
 
 require_cmd curl
 require_cmd perl

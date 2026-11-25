@@ -38,6 +38,8 @@ source "${MISE_CONFIG_ROOT:-.}/.mise/scripts/common.sh"
 source "${MISE_CONFIG_ROOT:-.}/.mise/lib/test_slots.sh"
 # shellcheck source=.mise/lib/kms_server.sh
 source "${MISE_CONFIG_ROOT:-.}/.mise/lib/kms_server.sh"
+# shellcheck source=.mise/lib/openssl.sh
+source "${MISE_CONFIG_ROOT:-.}/.mise/lib/openssl.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
 init_build_env "$@"
@@ -238,7 +240,8 @@ echo "==> Building libcosmian_pkcs11.so for linux/amd64…"
 PKCS11_TARGET_DIR="${REPO_ROOT}/target/pkcs11-linux-amd64"
 # Prevent a stale/incomplete OpenSSL prefix from forcing dynamic linkage into
 # the PKCS#11 module loaded inside the ASE dataserver.
-rm -rf "${REPO_ROOT}/target/openssl-non-fips-3.6.5-linux-x86_64"
+OSSL_MAIN_VERSION="$(openssl_version main)"
+rm -rf "${REPO_ROOT}/target/openssl-non-fips-${OSSL_MAIN_VERSION}-linux-x86_64"
 rm -rf "${PKCS11_TARGET_DIR}"
 RUST_VERSION=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${REPO_ROOT}/rust-toolchain.toml" | head -1)
 docker run --rm --platform linux/amd64 \
@@ -247,7 +250,7 @@ docker run --rm --platform linux/amd64 \
   bash -c "apt-get update -qq && apt-get install -y -qq clang libssl-dev pkg-config >/dev/null 2>&1; \
     env -u OPENSSL_DIR -u OPENSSL_LIB_DIR -u OPENSSL_INCLUDE_DIR \
     cargo build -p cosmian_pkcs11 --features non-fips --target-dir /work/target/pkcs11-linux-amd64; rc=\$?; \
-    rm -rf /work/target/openssl-non-fips-3.6.5-linux-x86_64; exit \$rc"
+    rm -rf /work/target/openssl-non-fips-${OSSL_MAIN_VERSION}-linux-x86_64; exit \$rc"
 # The container build bakes /work/target/... into the OpenSSL prefix as OPENSSLDIR; the container
 # removes it (as root, even if the build failed) so later leaves (jose, kmipkit) rebuild it for the host path.
 PKCS11_LIB="${PKCS11_TARGET_DIR}/debug/libcosmian_pkcs11.so"
