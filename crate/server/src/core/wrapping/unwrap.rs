@@ -17,7 +17,10 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, warn};
 
 use crate::{
-    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap::requested_hsm_algorithm},
+    core::{
+        KMS, otel_metrics::outcome_label, uid_utils::ObjectHandle,
+        wrapping::wrap::requested_hsm_algorithm,
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -370,11 +373,11 @@ async fn unwrap_using_crypto_oracle(
     let crypto_oracle = lock.get(prefix).ok_or_else(|| {
         KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
     })?;
-    let plaintext = match crypto_oracle
+    let plaintext: KResult<_> = match crypto_oracle
         .decrypt(unwrapping_key_uid, wrapped_key, requested.clone(), None)
         .await
     {
-        Ok(plaintext) => plaintext,
+        Ok(plaintext) => Ok(plaintext),
         Err(e) if requested.is_some() => {
             // GCM tags, the KW/KWP integrity check and OAEP all fail closed on the wrong mode.
             warn!(
@@ -385,15 +388,16 @@ async fn unwrap_using_crypto_oracle(
             crypto_oracle
                 .decrypt(unwrapping_key_uid, wrapped_key, None, None)
                 .await
-                .map_err(|_retry_error| e)?
+                .map_err(|_retry_error| e.into())
         }
-        Err(e) => return Err(e.into()),
+        Err(e) => Err(e.into()),
     };
     if let Some(metrics) = &kms.metrics {
         let model =
             crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);
-        metrics.record_hsm_operation("Unwrap", model);
+        metrics.record_hsm_operation("Unwrap", model, outcome_label(&plaintext));
     }
+    let plaintext = plaintext?;
 
     // decode the unwrapped key
     let key_value = decode_unwrapped_key(

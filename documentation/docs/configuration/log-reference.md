@@ -391,7 +391,6 @@ Crate path: `crate/server`
 | `debug` | `...wrapping the key block with key uid: {wrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`, `user` | — |
 | `debug` | `[kms-init] Failed to seed kms.objects.total: {e}` | `src/core/kms/mod.rs` | `e` | — |
 | `debug` | `[metrics-cron] Failed to sync kms.objects.total: {}` | `src/cron.rs` | — | — |
-| `debug` | `[metrics-cron] kms.keys.active.count synced to {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] kms.objects.total synced to {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] reconcile_all_object_counts failed: {}` | `src/cron.rs` | — | — |
 | `debug` | `API Token Middleware: An authenticated user was found; there is no need to                      authenticate twice...` | `src/middlewares/api_token/api_token_middleware.rs` | — | — |
@@ -602,8 +601,6 @@ Crate path: `crate/server`
 | `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
 | `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
-| `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
-| `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
 | `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
 | `warn` | `JWKS refresh failed while validating a JWT-SVID: {error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | JWKS endpoint unreachable |
 | `warn` | `JWT-SVID for {sub} rejected: missing or empty 'aud' claim` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID of the rejected SVID | Possible cross-service SVID replay attempt |
@@ -805,6 +802,9 @@ Crate path: `crate/server`
 | `trace` | `{} vault transit decrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
 | `trace` | `{} vault transit encrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
 | `trace` | `{} vault transit keys/{name}/rotate` | `src/routes/spire/transit_encryption.rs` | `name` | - |
+| `warn` | `[metrics] Failed to sync kms.keys.active.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
+| `warn` | `[metrics] Failed to sync kms.keys.expiring_soon.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
+| `debug` | `[metrics] kms.keys.active.count synced: {} bucket(s)` | `src/core/otel_metrics.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -868,6 +868,7 @@ Crate path: `crate/server_database`
 | `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
 | `error` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | `role`, `user`, `error` | Security: audit event on every check of the user. Tampered record, or `ceremony_secret`/`ceremony_key_id` differing between regions. |
+| `debug` | `[metrics] skipping unparsable DeactivationDate {json}: {e}` | `src/stores/sql/mod.rs` | `json`, `e` | - |
 
 ### `cosmian_kms_crypto`
 
@@ -1113,6 +1114,11 @@ Crate path: `crate/interfaces`
 | `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `mac: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `mac_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
+| `warn` | `HSM key_inventory: failed to list slots: {e}` | `src/hsm/hsm_store.rs` | `e` | - |
+| `warn` | `HSM key_inventory: slot {slot_id} typed query failed, slot skipped: {e}` | `src/hsm/hsm_store.rs` | `slot_id`, `e` | - |
+| `warn` | `key_deactivation_dates not implemented for this ObjectsStore backend — kms.keys.expiring_soon.count will not include its keys` | `src/stores/objects_store.rs` | - | - |
+| `warn` | `key_inventory not implemented for this ObjectsStore backend — kms.keys.active.count will not include its keys` | `src/stores/objects_store.rs` | - | - |
+| `debug` | `HSM key_inventory: slot {slot_id} query failed: {e}` | `src/hsm/hsm_store.rs` | `slot_id`, `e` | - |
 
 ### `cosmian_kms_access`
 
