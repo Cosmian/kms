@@ -37,20 +37,6 @@ flowchart LR
 
 ## Installation
 
-=== "Helm (recommended)"
-
-    ```bash
-    helm repo add cosmian https://cosmian.github.io/kms
-    helm repo update
-
-    helm install cosmian-kms-operator cosmian/kms \
-      --namespace cosmian-kms-operator --create-namespace \
-      --set server.enabled=false \
-      --set operator.enabled=true \
-      --set operator.kmsUrl=https://kms.example.com:9998 \
-      --set operator.kmsApiKey=YOUR_API_KEY
-    ```
-
 === "Docker image"
 
     Pre-built images are published to the GitHub Container Registry on every release:
@@ -59,16 +45,24 @@ flowchart LR
     docker pull ghcr.io/cosmian/kms-operator:<VERSION>
     ```
 
-    Run inside a Kubernetes cluster by referencing the image in your Deployment manifest:
+    Install the CRD, then run the image as a Deployment that mounts the
+    [configuration file](#configuration) from a `ConfigMap`:
+
+    ```bash
+    cosmian-kms-operator crd | kubectl apply -f -
+    ```
 
     ```yaml
     containers:
       - name: cosmian-kms-operator
         image: ghcr.io/cosmian/kms-operator:<VERSION>
-        args:
-          - --kms-url=https://kms.example.com:9998
-          - --kms-api-key=$(KMS_API_KEY)
+        args: ["serve", "--config", "/etc/cosmian-kms-operator/config.yaml"]
+        volumeMounts:
+          - name: config
+            mountPath: /etc/cosmian-kms-operator
     ```
+
+    There is no Helm chart for the operator: the `cosmian/kms` chart deploys the KMS server only.
 
 === "Build from source"
 
@@ -81,33 +75,73 @@ flowchart LR
 
 ## Configuration
 
+The configuration file is YAML; unknown keys are rejected.
+
 ```yaml
 kms:
   server_url: "https://kms.example.com:9998"
 
-  # Optional API key authentication
-  api_key: "YOUR_API_KEY"
+  # Optional API token authentication
+  api_token: "YOUR_API_KEY"
 
-  # Optional API key injected from a Kubernetes Secret
+  # Optional API token injected from a Kubernetes Secret
   # api_token_secret_ref:
   #   name: kms-api-token
   #   key: token
 
   # Optional mutual TLS
-  # tls_cert: "/etc/cosmian-kms-operator/client.crt"
-  # tls_key:  "/etc/cosmian-kms-operator/client.key"
-  # ca_cert:  "/etc/cosmian-kms-operator/ca.crt"
+  # tls_client_cert: "/etc/cosmian-kms-operator/client.crt"
+  # tls_client_key:  "/etc/cosmian-kms-operator/client.key"
+  # tls_ca_cert:     "/etc/cosmian-kms-operator/ca.crt"
 
 # How often each KMSSecret is re-fetched when no individual refreshInterval is set
 default_refresh_interval: "1h"
 
+# REQUIRED (fail closed): the KMS UIDs a KMSSecret may fetch, per namespace.
+# A namespace or UID that is not listed is refused. An empty map refuses every KMSSecret.
+allowed_uids_by_namespace:
+  velo-infra:
+    - "5f3a1b2c-4d56-7890-abcd-ef1234567890"
+
 webhook:
   # Port for the admission webhook HTTPS server
   port: 9443
+  # Image of the init-container injected into annotated pods
+  injector_image: "ghcr.io/cosmian/kms-operator:<VERSION>"
   # TLS certificate and key for the webhook server (auto-generated if omitted)
   # tls_cert: "/etc/cosmian-kms-operator/webhook.crt"
   # tls_key:  "/etc/cosmian-kms-operator/webhook.key"
 ```
+
+### Namespace allowlist
+
+The operator uses a single KMS credential for the whole cluster. Without a policy, anyone who
+can create a `KMSSecret` in any namespace could make the operator copy any KMS secret into a
+`Secret` they can read (confused deputy). `allowed_uids_by_namespace` binds each namespace to the
+KMS UIDs it may reference; the check runs before any call to the KMS and a refused `KMSSecret`
+is reported in `status.message`:
+
+```text
+KMS UID '<uid>' is not allowed for namespace '<namespace>'
+```
+
+At startup the operator logs a warning when the map is empty.
+
+!!! warning "Upgrading"
+    Operator configurations written for earlier releases have no `allowed_uids_by_namespace`
+    and every `KMSSecret` is refused until the key is added.
+
+### Target `Secret` ownership
+
+Every `Secret` written by the operator carries the label `kms.cosmian.com/kmssecret=<KMSSecret name>`.
+Before updating an existing target `Secret`, the operator requires that it:
+
+- carries that label with the name of the reconciled `KMSSecret`; or
+- is a legacy operator-managed `Secret` (label `app.kubernetes.io/managed-by=cosmian-kms-operator`
+  and no `kms.cosmian.com/kmssecret` label), which is adopted and relabelled.
+
+Any other existing `Secret` (unmanaged, or owned by another `KMSSecret`) is never overwritten; the
+reconcile fails with `target Secret '<name>' is not owned by KMSSecret '<name>'`.
 
 ---
 
@@ -199,6 +233,8 @@ secret value.
 
 - Grant the operator only the RBAC permissions it needs: `get/list/watch` on `KMSSecret`
   CRDs, `create/update/delete` on `Secret` in the target namespaces.
+- Keep `allowed_uids_by_namespace` as small as possible: it is the only barrier between a
+  namespace's `KMSSecret` objects and the operator's KMS credential.
 - Use `api_token_secret_ref` to inject the KMS API key from a Kubernetes `Secret` rather
   than embedding it in the operator configuration file.
 - The managed `Secret` objects are standard Kubernetes Secrets; apply
@@ -213,7 +249,7 @@ secret value.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `KMSSecret` stuck in `ready: "False"` | KMS unreachable or wrong `secretId` | Check operator logs and verify the UID with `ckms objects get <uid>` |
+| `KMSSecret` stuck in `ready: "False"` | KMS unreachable, wrong `secretId`, UID not in `allowed_uids_by_namespace`, or target `Secret` owned by something else | Check `status.message` and the operator logs; verify the UID with `ckms objects get <uid>` |
 | Managed `Secret` not updated after rotation | `refreshInterval` not elapsed | Set a shorter `refreshInterval` or force reconcile by annotating the CRD |
 | Webhook rejecting pods | Webhook TLS mismatch | Rotate the webhook certificate and update the `MutatingWebhookConfiguration` |
 | Init-container crashloops | Invalid KMS URL or missing API key | Check init-container logs with `kubectl logs <pod> -c cosmian-kms-inject` |

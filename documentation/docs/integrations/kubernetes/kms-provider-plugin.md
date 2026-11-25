@@ -177,12 +177,31 @@ cosmian_kms:
 
   # Unix socket path exposed to the kube-apiserver
   socket_path: "/var/run/kubernetes-kms-plugin/kms.sock"
+
+  # REQUIRED: UIDs allowed to connect to the socket, i.e. the kube-apiserver process UID
+  # on the node (check with: ps -o uid= -C kube-apiserver). 0 on kubeadm static pods,
+  # 65532 for a distroless non-root apiserver image.
+  allowed_peer_uids: [0]
 EOF
 sudo chmod 600 /etc/kubernetes-kms-plugin/config.yaml
 ```
 
-Only `server_url` and `wrapping_key_uid` are required. `socket_path` defaults to
-`/var/run/kubernetes-kms-plugin/kms.sock`.
+`server_url`, `wrapping_key_uid` and `allowed_peer_uids` are required; the plugin refuses to
+start with `allowed_peer_uids must list the kube-apiserver UID` when the list is empty.
+`socket_path` defaults to `/var/run/kubernetes-kms-plugin/kms.sock`.
+
+### Peer-credential check
+
+The plugin reads the kernel peer credentials (`SO_PEERCRED`) of every connection to its socket
+and disconnects peers whose UID is not in `allowed_peer_uids`, logging
+`rejected KMS plugin peer` with the peer `uid` and `gid`. This keeps any other local process,
+for example one that obtained write access to the socket directory, from using the KEK to
+decrypt data. The `key_id` sent by kube-apiserver still selects the KEK on `Decrypt`, so
+decrypting data encrypted with an older KEK after rotation works as before.
+
+!!! warning "Upgrading"
+    Plugin configurations written for earlier releases must add `allowed_peer_uids`, otherwise
+    the plugin does not start.
 
 ### KMS reachability
 
@@ -522,7 +541,7 @@ It is **not** available via `minikube ssh` or as a system binary on most distrib
 
 ## Security considerations
 
-- The Unix socket must be readable only by the `kube-apiserver` process (mode `0600`).
+- The Unix socket must be readable only by the `kube-apiserver` process (mode `0600`); `allowed_peer_uids` enforces this at the connection level.
 - The `config.yaml` must be readable only by the plugin process (mode `0600`).
 - The KEK should be created with restricted access controls in the KMS.
 - Rotate the KEK regularly and re-encrypt Secrets after rotation with:

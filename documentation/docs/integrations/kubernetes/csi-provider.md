@@ -55,6 +55,11 @@ helm install csi-secrets-store \
 Enable `enableSecretRotation` if you want in-place file updates when a secret is rotated
 in the KMS.
 
+The provider identifies the requesting namespace from the pod information the driver passes
+on each mount: the `CSIDriver` object must have `podInfoOnMount: true` (the default of the
+upstream Helm chart). Without it every mount is refused with
+`pod namespace missing: enable podInfoOnMount on the CSIDriver`.
+
 ---
 
 ## Installation
@@ -134,9 +139,32 @@ cosmian_kms:
 
   # Unix socket path (must match the DaemonSet hostPath)
   socket_path: "/var/run/cosmian-kms-provider.sock"
+
+  # REQUIRED (fail closed): the KMS UIDs a pod may mount, per pod namespace.
+  allowed_uids_by_namespace:
+    default:
+      - "5f3a1b2c-4d56-7890-abcd-ef1234567890"
 ```
 
-Only `server_url` is required. `socket_path` defaults to `/var/run/cosmian-kms-provider.sock`.
+`server_url` and `allowed_uids_by_namespace` are required in practice. `socket_path` defaults to
+`/var/run/cosmian-kms-provider.sock`.
+
+### Namespace allowlist and path rules
+
+A `SecretProviderClass` is writable by anyone with access to its namespace, so it must not be
+trusted to choose which KMS object is mounted. Before any KMS call, each `Mount` is checked:
+
+| Check | Refusal |
+|---|---|
+| The CSI driver sent the pod namespace (`podInfoOnMount: true`) | `PermissionDenied`: `pod namespace missing: enable podInfoOnMount on the CSIDriver` |
+| `kmsUID` is listed for that namespace in `allowed_uids_by_namespace` (a UID starting with `[`, a KMS tag list, is never allowed) | `PermissionDenied`: `KMS UID '<uid>' is not allowed for namespace '<ns>'` |
+| `objectName` is a relative path, does not start with `..` and has no `..` component | `InvalidArgument`: `objectName '<name>' must be a relative path, must not contain '..', and must not start with '..'` |
+
+An empty `allowed_uids_by_namespace` refuses every mount.
+
+!!! warning "Upgrading"
+    Provider configurations written for earlier releases must add `allowed_uids_by_namespace`,
+    and the `CSIDriver` must enable `podInfoOnMount`, or every mount fails.
 
 ---
 
@@ -240,6 +268,8 @@ To rotate a secret:
   owned by the provider process user.
 - Secret data is held in a `tmpfs` (in-memory) volume in the pod — it is never written
   to the node's disk.
+- Keep `allowed_uids_by_namespace` minimal: it is what stops a pod in one namespace from
+  mounting another namespace's secrets through a crafted `SecretProviderClass`.
 - Use mutual TLS (`tls_cert`, `tls_key`, `ca_cert`) in production to authenticate the
   provider to the KMS server.
 
@@ -252,6 +282,8 @@ To rotate a secret:
 | `pod has unbound immediate PersistentVolumeClaims` | CSI driver not installed | Install `secrets-store-csi-driver` via Helm |
 | `provider not found: cosmian-kms` | Provider DaemonSet not running on the node | Check `kubectl get pods -n kube-system -l app=cosmian-kms-csi-provider` |
 | `connection refused` to KMS | Wrong `server_url` or KMS unreachable | Verify `server_url` from inside the node |
+| `KMS UID '…' is not allowed for namespace '…'` | UID missing from `allowed_uids_by_namespace` | Add the UID under the pod's namespace and restart the provider |
+| `pod namespace missing` | `podInfoOnMount` disabled on the `CSIDriver` | Enable `podInfoOnMount: true` |
 | `object not found` in mount | Wrong `kmsUID` in `SecretProviderClass` | Verify the UID with `ckms objects get <uid>` |
 | File not updating on rotation | `enableSecretRotation` not enabled | Reinstall CSI driver with `--set enableSecretRotation=true` |
 
