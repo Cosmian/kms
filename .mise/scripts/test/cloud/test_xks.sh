@@ -84,10 +84,7 @@ SQLITE_PATH="$(mktemp -d -t kms-xks-sqlite-XXXXXX)"
 # Compose a minimal config based on test_data/aws_xks/aws_xks.toml and add a DB section.
 # This keeps the documented XKS config intact while making the test hermetic.
 KMS_CONF_PATH="$(mktemp -t kms-xks-conf-XXXXXX.toml)"
-# The fixture binds 0.0.0.0 with SigV4 only (no KMIP-scope authentication): opt in explicitly.
-# A config file ignores env variables, so the opt-in is injected under [http].
-awk '{ print } /^\[http\]$/ { print "insecure_allow_unauthenticated = true" }' \
-  "${REPO_ROOT}/test_data/aws_xks/aws_xks.toml" >"${KMS_CONF_PATH}"
+cat "${REPO_ROOT}/test_data/aws_xks/aws_xks.toml" >"${KMS_CONF_PATH}"
 cat >>"${KMS_CONF_PATH}" <<EOF
 
 [db]
