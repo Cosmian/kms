@@ -482,18 +482,18 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
 
     // An extractable (non-sensitive) HSM key never signs a CSR: the key must stay in the HSM.
     let extractable_sk_id = as_hsm_uid!(slot, Uuid::new_v4());
-    kms.create_key_pair(
-        create_rsa_key_pair_request(
-            VENDOR_ID_COSMIAN,
-            Some(UniqueIdentifier::TextString(extractable_sk_id.clone())),
-            EMPTY_TAGS,
-            2048,
-            false,
-            None,
-        )?,
-        &owner,
-    )
-    .await?;
+    let mut extractable_request = create_rsa_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(extractable_sk_id.clone())),
+        EMPTY_TAGS,
+        2048,
+        false,
+        None,
+    )?;
+    if let Some(private_key_attributes) = extractable_request.private_key_attributes.as_mut() {
+        private_key_attributes.sensitive = Some(false);
+    }
+    kms.create_key_pair(extractable_request, &owner).await?;
     let result = generate_csr(&kms, &extractable_sk_id, "CN=Extractable", &owner).await;
     assert!(
         matches!(&result, Err(KmsError::InvalidRequest(msg)) if msg.contains("is extractable")),

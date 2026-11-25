@@ -21,7 +21,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+        KMS, operations::export_get::check_extractable_and_sensitive,
+        retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
         wrapping::wrap_and_cache,
     },
     error::KmsError,
@@ -110,6 +111,10 @@ pub(crate) async fn create_split_key(
             "CreateSplitKey is not supported for HSM-backed keys".to_owned()
         ));
     }
+
+    // Shares carry the plaintext key material (a ceremony reconstructs it), so a Sensitive or
+    // non-extractable key must not be split: that would bypass the export restrictions.
+    check_extractable_and_sensitive(&owm, &None, false)?;
 
     // Validate threshold / parts parameters
     if request.split_key_threshold < 2 {
@@ -816,6 +821,139 @@ mod tests {
             return Err(KmsError::Default(format!(
                 "expected both shares to be located: {located:?}"
             )));
+        }
+        Ok(())
+    }
+
+    /// Issue #1490: a Sensitive or non-extractable key must not be split (the shares hold its
+    /// plaintext); an ordinary key still splits, joins and returns the original bytes.
+    #[tokio::test]
+    async fn create_split_key_rejects_restricted_source() -> KResult<()> {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::{
+            Create, Get, JoinSplitKey, Locate,
+        };
+
+        let kms = crate::tests::test_utils::test_kms().await?;
+        let user = UserId::from("split-restricted@example.com");
+
+        let create_key = |attributes: Attributes| {
+            kms.create(
+                Create {
+                    object_type: ObjectType::SymmetricKey,
+                    attributes: Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                        cryptographic_length: Some(256),
+                        ..attributes
+                    },
+                    protection_storage_masks: None,
+                },
+                &user,
+            )
+        };
+        let split = |uid: UniqueIdentifier| {
+            kms.create_split_key(
+                CreateSplitKey {
+                    object_type: ObjectType::SplitKey,
+                    unique_identifier: Some(uid),
+                    split_key_parts: 2,
+                    split_key_threshold: 2,
+                    split_key_method: SplitKeyMethod::XOR,
+                    attributes: None,
+                    prime_field_size: None,
+                    protection_storage_masks: None,
+                },
+                &user,
+            )
+        };
+
+        let sensitive = create_key(Attributes {
+            sensitive: Some(true),
+            ..Attributes::default()
+        })
+        .await?
+        .unique_identifier;
+        match split(sensitive).await {
+            Err(KmsError::Kmip21Error(ErrorReason::Sensitive, _)) => {}
+            other => {
+                return Err(KmsError::Default(format!(
+                    "expected a Sensitive denial, got {other:?}"
+                )));
+            }
+        }
+
+        let non_extractable = create_key(Attributes {
+            extractable: Some(false),
+            ..Attributes::default()
+        })
+        .await?
+        .unique_identifier;
+        match split(non_extractable).await {
+            Err(KmsError::Kmip21Error(ErrorReason::Not_Extractable, _)) => {}
+            other => {
+                return Err(KmsError::Default(format!(
+                    "expected a Not_Extractable denial, got {other:?}"
+                )));
+            }
+        }
+
+        // No share was created by the refused requests
+        let located = kms
+            .locate(
+                Locate {
+                    maximum_items: Some(100),
+                    attributes: Attributes {
+                        object_type: Some(ObjectType::SplitKey),
+                        ..Attributes::default()
+                    },
+                    ..Locate::default()
+                },
+                &user,
+            )
+            .await?;
+        if located.located_items.unwrap_or_default() != 0 {
+            return Err(KmsError::Default(format!(
+                "a refused split must not create shares: {located:?}"
+            )));
+        }
+
+        // An ordinary key still splits and joins
+        let ordinary = create_key(Attributes::default()).await?.unique_identifier;
+        let original = kms
+            .get(
+                Get {
+                    unique_identifier: Some(ordinary.clone()),
+                    ..Get::default()
+                },
+                &user,
+            )
+            .await?;
+        let shares = split(ordinary).await?.unique_identifier;
+        let joined = kms
+            .join_split_key(
+                JoinSplitKey {
+                    object_type: ObjectType::SymmetricKey,
+                    unique_identifier: shares,
+                    secret_data_type: None,
+                    attributes: None,
+                    protection_storage_masks: None,
+                },
+                &user,
+            )
+            .await?
+            .unique_identifier;
+        let rejoined = kms
+            .get(
+                Get {
+                    unique_identifier: Some(joined),
+                    ..Get::default()
+                },
+                &user,
+            )
+            .await?;
+        if extract_key_bytes_ref(&original.object)? != extract_key_bytes_ref(&rejoined.object)? {
+            return Err(KmsError::Default(
+                "the joined key differs from the original".to_owned(),
+            ));
         }
         Ok(())
     }
