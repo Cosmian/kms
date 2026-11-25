@@ -11,7 +11,7 @@ without an additional key-service sidecar:
 ## Vault Transit
 
 The Vault Transit source uses the KMS Transit `encrypt` and `decrypt` endpoints delivered for
-issue [#1365](https://github.com/Cosmian/kms/issues/1365) and merged in PR
+issue [#1385](https://github.com/Cosmian/kms/issues/1385) and merged in PR
 [#1398](https://github.com/Cosmian/kms/pull/1398).
 
 Configure SOPS with the Vault-compatible mount and key name:
