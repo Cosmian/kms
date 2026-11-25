@@ -21,8 +21,6 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> CosmianResult<()>
     use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::{
         certificate_utils::Algorithm, export_utils::CertificateExportFormat,
     };
-    use std::path::PathBuf;
-
     use tempfile::TempDir;
     use test_kms_server::{TestClientOptions, start_test_server_with_patch, test_config_path};
 
@@ -50,15 +48,19 @@ async fn test_import_revoked_certificate_encrypt_prime256() -> CosmianResult<()>
     let leaf_pem = leaf_pem.to_str().unwrap();
     let output_file = tmp_dir.path().join("plain.enc");
 
+    // the CA must carry cRLSign, otherwise the server cannot publish its CRL
+    let ca_ext = tmp_dir.path().join("ca_ext.cnf");
+    std::fs::write(
+        &ca_ext,
+        "[v3_ca]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,crlSign\n",
+    )?;
     let ca_id = certify(
         &conf,
         CertifyOp {
             generate_keypair: true,
             algorithm: Some(Algorithm::NistP256),
             subject_name: Some("CN=Revoked Import CA,O=Cosmian".to_owned()),
-            certificate_extensions: Some(PathBuf::from(
-                "../../../test_data/certificates/chain/root/ca/ext_v3_ca_root.cnf",
-            )),
+            certificate_extensions: Some(ca_ext),
             ..Default::default()
         },
     )?;

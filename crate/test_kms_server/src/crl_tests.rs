@@ -1327,9 +1327,8 @@ async fn test_import_revoked_leaf_issued_by_intermediate_is_compromised() {
     .await;
     let good_leaf = issue_cert(&client, &inter_id, "good-leaf-chain-1461", &mut resources).await;
     revoke_cert(&client, &revoked_leaf, RevocationReasonCode::KeyCompromise).await;
-    // The intermediate's own CRL (signed by the root) is fetched during the chain check; the
-    // root has revoked nothing, so no CRL exists yet and a missing one counts as a failure.
-    fetch_crl_der(&client, &root_id, 30).await;
+    // The root has revoked nothing: its CRL URL answers 404 during the chain check, which
+    // must not mark the imported leaf Compromised (see the dedicated test below).
 
     for (leaf_id, expected_state) in [
         (&revoked_leaf, State::Compromised),
@@ -1358,6 +1357,38 @@ async fn test_import_revoked_leaf_issued_by_intermediate_is_compromised() {
             assert!(err.contains("Wrong_Key_Lifecycle_State"), "{err}");
         }
     }
+
+    resources.cleanup(&client).await;
+    ctx.stop_server().await.expect("server should stop");
+}
+
+/// Regression test for #1461: a good leaf imported with a link to an intermediate must stay
+/// `Active` although the root's CRL has never been published (nothing revoked: HTTP 404).
+#[tokio::test]
+async fn test_import_good_leaf_with_unpublished_root_crl_stays_active() {
+    init_test_logging();
+    let ctx = start_self_cdp_test_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let root_id = create_named_ca(&client, "Root-NoCrl-1461", &mut resources).await;
+    let inter_id =
+        create_intermediate_ca(&client, &root_id, "Inter-NoCrl-1461", &mut resources).await;
+    let good_leaf = issue_cert(&client, &inter_id, "good-leaf-nocrl-1461", &mut resources).await;
+
+    let imported_id = reimport_cert_with_issuer(&client, &good_leaf, &inter_id).await;
+    resources.track(imported_id.clone());
+    let state = client
+        .get_attributes(GetAttributes::from(imported_id.as_str()))
+        .await
+        .expect("GetAttributes should succeed")
+        .attributes
+        .state;
+    assert_eq!(
+        state,
+        Some(State::Active),
+        "state of the imported good leaf"
+    );
 
     resources.cleanup(&client).await;
     ctx.stop_server().await.expect("server should stop");

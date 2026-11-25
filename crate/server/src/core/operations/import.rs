@@ -183,6 +183,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
                 chain,
                 kms.params.proxy_params.as_ref(),
                 kms.params.kms_public_url.as_deref(),
+                true,
             )
             .await
             {
