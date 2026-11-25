@@ -305,9 +305,18 @@ reads one row by primary key; a failed read refuses the session.
 The Redis-with-Findex backend stores a key `ui_session_revoked:<sid>` with a time-to-live equal to the
 remaining lifetime of the session, so Redis expires it by itself.
 
-On a multi-region PostgreSQL deployment (Spock), add the table to the replication set on every node after
-upgrading, otherwise a logout is not seen by the other regions:
-`SELECT spock.repset_add_table('default', 'ui_session_revocations');`
+**Replication.** The table is read from the database on every request, so it needs no replication in a
+cluster of KMS instances sharing one database. It is an ordinary `public` table with a primary key and
+is replicated like the other ones:
+
+- Galera: replicated synchronously, like every InnoDB table.
+- PostgreSQL with Spock (multi-region): it is part of the replication set created by
+  `spock.repset_add_all_tables('default', ARRAY['public'])`. On a deployment that was set up before this
+  table existed, add it on every node after upgrading, otherwise a logout is not seen by the other
+  regions: `SELECT spock.repset_add_table('default', 'ui_session_revocations');`. Revoking the same session
+  in two regions at once inserts the same row twice, which converges. Replication is asynchronous: a region
+  that has not received the row yet still accepts the cookie, for the length of the replication lag.
+- Redis-with-Findex: not a multi-region backend; in a cluster the instances share the same Redis.
 
 **Downgrade.** SAFE. An older KMS ignores this table. The Web UI cookies of the two releases are not
 interchangeable (the session key derivation changed), so a revoked session cannot be replayed on an

@@ -554,14 +554,14 @@ mr_guard_pg_container_ready() {
 # Usage: mr_guard_primary_keys <container>
 mr_guard_primary_keys() {
   local container="$1" pks ident
-  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey','object_state_events_pkey','object_state_event_tombstones_pkey');")"
-  if [ "${pks//[^0-9]/}" != "5" ]; then
-    print_warning "primary keys: ${container} has ${pks:-0}/5 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey, object_state_events_pkey, object_state_event_tombstones_pkey)"
+  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey','object_state_events_pkey','object_state_event_tombstones_pkey','ui_session_revocations_pkey');")"
+  if [ "${pks//[^0-9]/}" != "6" ]; then
+    print_warning "primary keys: ${container} has ${pks:-0}/6 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey, object_state_events_pkey, object_state_event_tombstones_pkey, ui_session_revocations_pkey)"
     return 1
   fi
 
-  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations','object_state_events','object_state_event_tombstones');")"
-  if [ "$ident" != "crypto_officer_activations=d,object_state_event_tombstones=d,object_state_events=d,read_access=d,tags=d" ]; then
+  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations','object_state_events','object_state_event_tombstones','ui_session_revocations');")"
+  if [ "$ident" != "crypto_officer_activations=d,object_state_event_tombstones=d,object_state_events=d,read_access=d,tags=d,ui_session_revocations=d" ]; then
     print_warning "primary keys: ${container} REPLICA IDENTITY not default for all replicated tables: ${ident:-<none>}"
     return 1
   fi

@@ -1113,6 +1113,31 @@ ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_
         ));
     }
 
+    // S9: `ui_session_revocations` replicates, so a Web UI logout in one region is honoured by
+    // the others, even when both regions revoke the same session while partitioned.
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let sid = Uuid::new_v4().to_string();
+    pg1.revoke_ui_session(&sid, now + 3600, now).await?;
+    sync_both(&pg1, &pg2).await?;
+    if !pg2.is_ui_session_revoked(&sid).await? {
+        return Err(DbError::ServerError(
+            "S9: ui_session_revocations was not replicated".to_owned(),
+        ));
+    }
+    let sid = Uuid::new_v4().to_string();
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.revoke_ui_session(&sid, now + 3600, now).await?;
+    pg2.revoke_ui_session(&sid, now + 3600, now).await?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    for (name, pg) in [("pg1", &pg1), ("pg2", &pg2)] {
+        if !pg.is_ui_session_revoked(&sid).await? {
+            return Err(DbError::ServerError(format!(
+                "S9 {name}: concurrent revocation of one session was lost"
+            )));
+        }
+    }
+
     // Grants: whole-row last-update-wins is the accepted contract; the nodes must agree and
     // the row is either gone or holds both operations.
     let uid = new_object(false).await?;
@@ -1360,6 +1385,15 @@ pub(crate) async fn test_db_galera_active_active() -> DbResult<()> {
     {
         return Err(DbError::ServerError(
             "G7: cluster_nodes was not replicated".to_owned(),
+        ));
+    }
+
+    // G7b: a Web UI session revoked by a logout on one node is refused on the other.
+    let sid = Uuid::new_v4().to_string();
+    my1.revoke_ui_session(&sid, now + 3600, now).await?;
+    if !my2.is_ui_session_revoked(&sid).await? {
+        return Err(DbError::ServerError(
+            "G7b: ui_session_revocations was not replicated".to_owned(),
         ));
     }
 
