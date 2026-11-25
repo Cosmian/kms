@@ -206,7 +206,7 @@ pkgs.mkShell {
   ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
   # GnuPG smartcard test: gnupg-pkcs11-scd bridges GnuPG to the provider; opensc provides
   # pkcs11-tool for the raw CKA_ID cross-check.
-  ++ pkgs.lib.optionals (withGnupgPkcs11 && pkgs.stdenv.isLinux) [
+  ++ pkgs.lib.optionals ((withGnupgPkcs11 || withSops) && pkgs.stdenv.isLinux) [
     pkgs.gnupg-pkcs11-scd
     pkgs.opensc
   ]

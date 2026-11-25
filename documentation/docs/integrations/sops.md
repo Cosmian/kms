@@ -78,9 +78,8 @@ control and remove any temporary plaintext files after a manual verification.
 
 The repository's `test:interop:sops` task validates encryption, decryption, and `sops updatekeys`
 for both native sources. It runs the Vault Transit scenario against the KMS Transit API and runs
-the OpenPGP source with a temporary GnuPG key. The existing `test:pkcs11:gnupg` task separately
-validates the KMS PKCS#11 smartcard provider used by the documented OpenPGP setup. The OpenPGP
-path is non-FIPS because it uses the existing KMS OpenPGP and GnuPG smartcard integration.
+the OpenPGP source through `gnupg-pkcs11-scd` and the KMS PKCS#11 provider. The OpenPGP path is
+non-FIPS because it uses the existing KMS OpenPGP and GnuPG smartcard integration.
 
 If SOPS, GnuPG, or `gnupg-pkcs11-scd` is not installed, install the versions provided by the
 project's development shell rather than downloading an unverified binary.

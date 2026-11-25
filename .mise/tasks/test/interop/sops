@@ -14,6 +14,9 @@ kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
 
 [ "${VARIANT}" = non-fips ] || skip_test "SOPS OpenPGP integration requires the non-fips variant"
+if [ "$(uname)" != Linux ]; then
+  skip_test "SOPS PKCS#11-backed OpenPGP integration requires the Linux gnupg-pkcs11-scd package"
+fi
 if [ "${CI:-}" != true ]; then
   has_cmd nix-shell || skip_test "nix-shell not found"
 fi

@@ -6,12 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../../common.sh"
 REPO_ROOT="$(get_repo_root)"
 source "${REPO_ROOT}/.mise/lib/kms_build.sh"
+source "${REPO_ROOT}/.mise/lib/pkcs11_helpers.sh"
 source "${REPO_ROOT}/.mise/lib/spire_test.sh"
 
 init_build_env "$@"
 setup_test_logging
 require_cmd sops
 require_cmd gpg
+require_cmd gnupg-pkcs11-scd
 require_cmd curl
 require_cmd python3
 
@@ -40,6 +42,7 @@ spire_ensure_certs "${TEST_DATA}"
 AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
 kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_build_all
 
 cp "${TEST_DATA}/config/auth_verifier.toml" "${WORK_DIR}/auth.toml"
 cp "${TEST_DATA}/config/kms.toml" "${WORK_DIR}/kms.toml"
@@ -111,21 +114,48 @@ EOF2
 
 print_header "SOPS OpenPGP source"
 mkdir -p "${WORK_DIR}/pgp"
-cat >"${WORK_DIR}/pgp/keygen.batch" <<'EOF'
+PKCS11_LIB="$(get_cosmian_pkcs11_lib)"
+COSMIAN_KMS_CLI_CONF="${CKMS_CONF}"
+export COSMIAN_KMS_CLI_CONF
+PGP_RSA_JSON="$(
+  COSMIAN_KMS_CLI_FORMAT=json "$(get_ckms_bin)" rsa keys create \
+    --size_in_bits 2048 --tag gnupg-card
+)"
+PGP_PUBLIC_KEY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["public_key_unique_identifier"])' "${PGP_RSA_JSON}")"
+"$(get_ckms_bin)" certificates certify \
+  --public-key-id-to-certify "${PGP_PUBLIC_KEY_ID}" \
+  --subject-name "CN=SOPS PKCS#11 CI" \
+  --days 1095 \
+  --tag gnupg-card >/dev/null
+cat >"${GNUPGHOME}/gnupg-pkcs11-scd.conf" <<EOF
+providers cosmian
+provider-cosmian-library ${PKCS11_LIB}
+provider-cosmian-allow-protected-auth
+EOF
+cat >"${GNUPGHOME}/gpg-agent.conf" <<EOF
+scdaemon-program $(command -v gnupg-pkcs11-scd)
+EOF
+gpgconf --kill gpg-agent || true
+gpg-connect-agent 'scd learn --force' /bye
+gpg --card-status >/dev/null
+cat >"${WORK_DIR}/pgp/master.batch" <<'EOF'
 Key-Type: RSA
 Key-Length: 2048
-Name-Real: SOPS CI
-Name-Email: sops-ci@example.com
+Key-Usage: cert
+Name-Real: SOPS PKCS#11 CI
+Name-Email: sops-pkcs11-ci@example.com
 Expire-Date: 0
 %no-protection
 %commit
 EOF
-gpg --batch --generate-key "${WORK_DIR}/pgp/keygen.batch"
-PGP_FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys sops-ci@example.com | awk -F: '$1 == "fpr" {print $10; exit}')"
+gpg --batch --generate-key "${WORK_DIR}/pgp/master.batch"
+PGP_MASTER_FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys sops-pkcs11-ci@example.com | awk -F: '$1 == "fpr" {print $10; exit}')"
+gpg --batch --yes --edit-key "${PGP_MASTER_FINGERPRINT}" addcardkey 5
+gpg --batch --list-secret-keys "${PGP_MASTER_FINGERPRINT}" | grep -q '>'
 cat >"${WORK_DIR}/pgp/.sops.yaml" <<EOF
 creation_rules:
   - path_regex: \\.yaml$
-    pgp: ${PGP_FINGERPRINT}
+    pgp: ${PGP_MASTER_FINGERPRINT}
 EOF
 printf 'database:\n  password: pgp-secret\n' >"${WORK_DIR}/pgp/secrets.yaml"
 (
