@@ -128,8 +128,8 @@ jobs:
       - name: Generate SBOM (server + ckms)
         if: matrix.runner == 'ubuntu-24.04'
         run: |
-          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_3_1_2
-          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_3_6_5
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_fips
+          mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target openssl_main
           mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target server
           mise run sbom:generate --variant ${{ matrix.features }} --link ${{ matrix.link }} --target ckms
 

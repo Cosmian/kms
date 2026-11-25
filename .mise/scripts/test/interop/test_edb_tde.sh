@@ -48,10 +48,11 @@ PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
 echo "Using Python interpreter: $PYTHON_BIN"
 
 # Verify ssl module is available
-if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES "$PYTHON_BIN" - <<'PY'; then
+if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES "$PYTHON_BIN" - <<'PY'
 import ssl, sys
 print("SSL OK:", ssl.OPENSSL_VERSION)
 PY
+then
   echo "Error: Selected Python has no working ssl module." >&2
   exit 1
 fi

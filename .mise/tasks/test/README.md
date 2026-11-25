@@ -89,7 +89,7 @@ sequenceDiagram
 **Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`, `test:db:pgedge`, `test:db:galera`, `test:db:multi-region-guards`
 **Orchestrator:** `test:db`
 
-All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
+All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
 
 | Task | Backend | FIPS? | Notes |
 |------|---------|-------|-------|
@@ -108,7 +108,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 ```mermaid
 graph TB
     subgraph Host["Host / CI"]
-        Nix["Nix shell<br/>FIPS OpenSSL 3.1.2"]
+        Nix["Nix shell<br/>FIPS OpenSSL"]
         Cargo["cargo test"]
         SoftHSM["SoftHSM2<br/>(PKCS#11)"]
     end
@@ -323,6 +323,8 @@ sequenceDiagram
 | `xks` | AWS XKS (local) | no | KMS build + SigV4 test script |
 | `xks-remote` | AWS XKS (remote) | no | Nix shell (`WITH_XKS=1`), `KMS_XKS_SIGV4_ACCESS_KEY_ID` / `KMS_XKS_SIGV4_SECRET_ACCESS_KEY`, no build |
 
+The shared XKS host runs without KMIP authentication on `0.0.0.0`, so the new binary refuses to start unless `insecure_allow_unauthenticated` is on. `deploy_xks_remote.sh` mimics the server's configuration lookup (`-c`/`--config` in `ExecStart`, else `COSMIAN_KMS_CONF` if that file exists, else `/etc/cosmian/kms.toml` if it exists; override with `KMS_XKS_REMOTE_CONF`). With a configuration file (which ignores environment variables) it adds a tagged `insecure_allow_unauthenticated = true` key; with none, a systemd drop-in sets `KMS_INSECURE_ALLOW_UNAUTHENTICATED`. Either is undone once the server is healthy or on rollback, because binaries without the setting reject the unknown TOML key.
+
 ### Architecture Overview
 
 ```mermaid
@@ -428,9 +430,9 @@ sequenceDiagram
 
 **Description:** SPIRE + Mistral client full integration (non-FIPS only). Multi-tenant topology with two independent SPIRE deployments against the same KMS.
 
-After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
+After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18), `test:spire:kmip` (19) and `test:spire:vault-transit-seal` (20).
 
-Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin` = `default_username`, signed by the test CA; trusted via `[tls] clients_ca_cert_file` in `test_data/spire/config/kms.toml`), passed to `kms_write_ckms_conf`. With the Vault token verifier as the only auth method the KMS answers 401 to token-less requests, so the default-user fallback no longer applies.
+Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with an API token, so that the PKI CA key is owned by `default_username` (`kms-default-user`), as `routes/spire/pki.rs` requires. `test_data/spire/config/kms.toml` sets `api_token_id = "spire-api-token"`; once the KMS is up, the task creates that symmetric key with a random 256-bit value (`ckms sym keys create --bytes-b64`) through the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin`, signed by the test CA; trusted via `[tls] clients_ca_cert_file`), then writes a second `ckms` configuration whose `access_token` is that value (`spire_write_api_token_conf` in `.mise/lib/spire_test.sh`). Every later `ckms` step on the CA key uses the token configuration. The KMS maps a valid API token to `default_username`; mTLS, JWT or session identities equal to `default_username` are refused with 401, so the admin certificate can no longer own the CA key. The key is looked up per request, so it may be created after the KMS started.
 
 #### Architecture Overview
 
@@ -457,7 +459,7 @@ graph TB
     SSA --> |X.509-SVID + JWT-SVID| Mistral
     SBA --> |X.509-SVID + JWT-SVID| Mistral
     Mistral --> |mTLS + JWT-SVID| KMS3
-    CKMS -- "certify, provision<br/>mTLS admin" --> KMS3
+    CKMS -- "certify, provision<br/>API token" --> KMS3
 ```
 
 #### Sequence Diagram
@@ -547,7 +549,8 @@ sequenceDiagram
     CKMS->>CKMS: build KMS (no insecure feature), ckms, auth-verifier
     CKMS->>Auth: start auth-verifier on :8443
     CKMS->>K0: start KMS bootstrap
-    CKMS->>K0: certify vault_pki_ca_cert (mTLS admin cert)
+    CKMS->>K0: sym keys create spire-api-token (mTLS admin cert)
+    CKMS->>K0: certify vault_pki_ca_cert (API token = default_username)
     CKMS->>Auth: provision AppRoles
     Auth-->>CKMS: ROLE_ID_A, SECRET_ID_A
     CKMS->>SP: docker compose up spire-server-a
@@ -683,7 +686,7 @@ graph TB
     end
 
     AuthVrf3 --> |AppRole provisioning| KMS6
-    CKMS4 -- "certify, keys create<br/>mTLS admin" --> KMS6
+    CKMS4 -- "certify, keys create<br/>API token" --> KMS6
     TestScript --> CKMS4
     TestScript --> AuthVrf3
 ```
@@ -704,7 +707,9 @@ sequenceDiagram
     Test->>Cargo: build ckms CLI
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
+    Test->>CKMS: sym keys create spire-api-token (mTLS admin cert)
+    CKMS->>KMS: create API token key
+    Test->>CKMS: certificates certify vault_pki_ca_cert (API token = default_username)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -746,7 +751,7 @@ graph TB
     SP_Agt2 --> |SDS delivery| Envoy_D2
     Envoy_D2 --> |mTLS| Envoy_U2
     AuthVrf4 --> |AppRole provisioning| KMS7
-    CKMS5 -- "certify, provision<br/>mTLS admin" --> KMS7
+    CKMS5 -- "certify, provision<br/>API token" --> KMS7
     TestSDS2 --> |orchestrates| DockerCompose
 ```
 
@@ -768,7 +773,9 @@ sequenceDiagram
     Test->>Cargo: build KMS server, auth-verifier, ckms
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
+    Test->>CKMS: sym keys create spire-api-token (mTLS admin cert)
+    CKMS->>KMS: create API token key
+    Test->>CKMS: certificates certify vault_pki_ca_cert (API token = default_username)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -793,6 +800,34 @@ sequenceDiagram
 ```
 
 ---
+
+### `test:spire:vault-transit-seal`
+
+**Description:** HashiCorp Vault OSS (Docker, `hashicorp/vault:1.21` pinned by digest) auto-unseals with `seal "transit"` against the KMS Transit engine (`/v1/transit/encrypt|decrypt`). Non-FIPS only. Checks init + unseal, auto-unseal after restart (KV secret readable), auto-unseal after KMS key rotation, and that Vault stays sealed once the KMS key is deleted. See `documentation/docs/integrations/hashicorp_vault_auto_unseal.md`.
+
+```mermaid
+sequenceDiagram
+    participant Test as vault-transit-seal
+    participant AV as auth-verifier :8443
+    participant KMS as KMS :9998
+    participant Vault as Vault OSS<br/>(dynamic host port)
+
+    Test->>AV: ckms vault approle create-role vault-seal
+    Test->>KMS: POST /v1/auth/approle/login
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker run (seal "transit")
+    Test->>Vault: PUT /v1/sys/init
+    Vault->>KMS: encrypt root key
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt root key
+    Test->>Vault: read KV secret
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal/rotate
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt v1 root key
+    Test->>KMS: DELETE /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker restart
+    Vault-->>Test: remains sealed
+```
 
 ### `test:interop:openbao`
 
@@ -1609,6 +1644,8 @@ sequenceDiagram
 
 **Description:** Kubernetes KMS Provider Plugin — etcd Secret encryption. Deploys KMS in-cluster, creates a KEK, installs the plugin binary on the Minikube node as a systemd service, and verifies etcd Secret encryption. gRPC is used only between kube-apiserver and the plugin (KMS v2 API over a unix socket); the plugin talks to the KMS over plain HTTP, or over HTTPS with client certificates when the task runs with `--mtls`.
 
+The test deployment explicitly sets `kms.insecureAllowUnauthenticated=true` for its initial HTTP-only stage; the chart default remains `false`.
+
 #### Architecture Overview
 
 ```mermaid
@@ -1668,6 +1705,8 @@ sequenceDiagram
 
 **Description:** KMS Operator — injects a SecretData value from KMS into a workload Pod via initContainer.
 
+The test-only KMS deployment opts into unauthenticated access with `kms.insecureAllowUnauthenticated=true`.
+
 #### Architecture Overview
 
 ```mermaid
@@ -1704,6 +1743,8 @@ sequenceDiagram
 ### `test:k8s:csi-provider`
 
 **Description:** KMS CSI Provider — Secrets Store CSI Driver integration. DaemonSet in kube-system mounts secrets as volumes.
+
+The test-only KMS deployment opts into unauthenticated access with `kms.insecureAllowUnauthenticated=true`.
 
 #### Architecture Overview
 
@@ -1760,6 +1801,8 @@ sequenceDiagram
 **Tasks:** `test:ui:standard`, `test:ui:auth`, `test:ui:oidc`, `test:ui:saml`, `test:ui:wasm`
 
 **Orchestrator:** `test:ui` runs the five suites above, each on its own (they are also separate CI legs). The auth and SAML suites are non-FIPS only (the auth-verifier is not FIPS-aware) and are skipped when the `authentication` submodule is absent; the SAML suite also needs a running Docker daemon; the OIDC suite needs Auth0 secrets and skips cleanly without them.
+
+**Auth Verifier login:** `test:ui:auth` loads the paired `test_data/configs/auth_verifier/ui_auth.toml` and `test_data/configs/server/auth/ui_auth.toml` fixtures. It uses the Auth Verifier admin API to provision realm `kms` and user `kms-user` (`change_me`, test only), then exercises UI and Rust login flows as that non-admin user. Admin-realm tokens are never used to authenticate to KMS.
 
 **SAML single sign-on:** `test:ui:saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/ui/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
 
@@ -1834,9 +1877,13 @@ sequenceDiagram
 
 **Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
+The Kubernetes image and live-HSM smoke deployments also explicitly set `kms.insecureAllowUnauthenticated=true`; the image and chart do not opt in by default. The Alpine package smoke script ([`test_alpine_musl.sh`](../../scripts/test/pkg/test_alpine_musl.sh)) passes `KMS_INSECURE_ALLOW_UNAUTHENTICATED=true` to its temporary container, whose published port is loopback-only.
+
 ### `test:pkg:docker`
 
 **Description:** Docker image smoke tests. Does **not** build an image: it exports `KMS_TLS_CONFIG_FLAVOR` (`fips` or `non_fips`, derived from `--variant`) and runs `.mise/scripts/test/pkg/test_docker_image.sh`, which starts the already-built and already-loaded image named by `DOCKER_IMAGE_NAME` through `docker compose -f .mise/scripts/docker-compose.yml up -d --wait`, probes TLS with `openssl s_client`, drives the stack with `ckms` (run through `cargo run -p ckms`), and checks the FIPS/non-FIPS variant reported by `/version`. The image itself is produced beforehand (Nix build via `mise run build:docker --load`, or the packaging CI workflow).
+
+The no-config and non-root smoke containers explicitly set `KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`. A configuration file (`-c`/`COSMIAN_KMS_CONF`) ignores environment variables, so the config-based services and scripts carry `insecure_allow_unauthenticated = true` under `[http]` instead: the `bench_helpers.sh` servers in their generated TOML, `test_xks.sh` via the `test_data/aws_xks/aws_xks.toml` fixture, and `kms-with-conf` in a temporary copy of the shipped `pkg/kms.toml` made by `test_docker_image.sh`. Other no-auth compose services use development opt-ins in their `test_data` fixtures; authenticated services retain their authentication.
 
 #### Architecture Overview
 
@@ -1890,6 +1937,8 @@ sequenceDiagram
 ### `test:k8s:helm`
 
 **Description:** Helm chart lint, template validation, and optional E2E deployment on a live Kubernetes cluster.
+
+The optional live E2E deployment explicitly sets `kms.insecureAllowUnauthenticated=true` for the temporary test instance; static rendering still checks the secure default (`false`).
 
 #### Architecture Overview
 

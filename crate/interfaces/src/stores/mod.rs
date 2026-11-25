@@ -6,6 +6,7 @@ mod permissions_store;
 pub use audit_sink::{AuditSink, ChainHead, SealReason, WriteOutcome};
 pub use object_with_metadata::ObjectWithMetadata;
 pub use objects_store::{
-    AtomicOperation, DestroyedFilter, FindOptions, GCM_MAX_INVOCATIONS, ObjectsStore,
+    AtomicOperation, DestroyedFilter, FindOptions, GCM_MAX_INVOCATIONS, KeyInventoryBucket,
+    ObjectsStore,
 };
 pub use permissions_store::PermissionsStore;

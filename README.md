@@ -21,7 +21,7 @@ The **Eviden KMS** presents some unique features, such as:
 - **Storage integrations**: [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [VAST Data](./documentation/docs/integrations/storage/vast_data.md), and [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md).
 - **Container Orchestration**: [Kubernetes KMS Provider Plugin](./documentation/docs/integrations/kubernetes/index.md) — etcd Secrets encrypted at rest via the KMS v2 API.
 - **Infrastructure as Code**: [Terraform / OpenTofu Provider](./documentation/docs/integrations/terraform.md) — manage keys, certificates, and access rights as code; published on the [Terraform Registry](https://registry.terraform.io/providers/Cosmian/kms).
-- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [OpenBao auto-unseal and KV store](./documentation/docs/integrations/openbao.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [GnuPG / OpenPGP keys](./documentation/docs/integrations/gnupg/openpgp.md) (create, import, export, encrypt, decrypt, sign, verify; non-FIPS builds) and [GnuPG smartcard](./documentation/docs/integrations/gnupg/smartcard.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
+- **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [OpenBao auto-unseal and KV store](./documentation/docs/integrations/openbao.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [GnuPG / OpenPGP keys](./documentation/docs/integrations/gnupg/openpgp.md) (create, import, export, encrypt, decrypt, sign, verify; non-FIPS builds) and [GnuPG smartcard](./documentation/docs/integrations/gnupg/smartcard.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), [HashiCorp Vault auto-unseal](./documentation/docs/integrations/hashicorp_vault_auto_unseal.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, AWS CloudHSM, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
 - **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/key_management_system/kms_clients/index.html), [high-availability mode](./documentation/docs/installation/high_availability_mode.md) with [cluster coordination](./documentation/docs/installation/cluster_coordination.md), [automatic database migrations](./documentation/docs/installation/upgrading/database_migrations.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
@@ -43,8 +43,10 @@ Pre-built binaries [are available](https://package.cosmian.com/kms/5.29.0/) for 
 Using Docker to quick-start an Eviden KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+docker run -p 9998:9998 -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true --name kms ghcr.io/cosmian/kms:latest
 ```
+
+This unauthenticated opt-in is for development only; configure authentication for production.
 
 Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can be either:
 
@@ -702,8 +704,8 @@ The following table shows the OpenSSL versions used by **Cosmian KMS** variants:
 
 | OpenSSL Linkage | FIPS                                                                   | Non‑FIPS                                                         |
 | --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Static          | Linkage: OpenSSL 3.6.5; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.5; runtime uses default/legacy providers    |
-| Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.5; ships `libssl`/`libcrypto` and providers |
+| Static          | Linkage: OpenSSL 3.6.5; runtime loads FIPS provider from OpenSSL 3.5.9 | Linkage: OpenSSL 3.6.5; runtime uses default/legacy providers    |
+| Dynamic         | Linkage: OpenSSL 3.5.9; ships FIPS configs and provider OpenSSL 3.5.9  | Linkage: OpenSSL 3.6.5; ships `libssl`/`libcrypto` and providers |
 
 Notes:
 

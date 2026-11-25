@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_objects::Object,
-            kmip_operations::Decrypt,
+            kmip_operations::{Decrypt, Operation},
             kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier},
         },
     },
@@ -85,7 +85,10 @@ use super::{
     jose_to_kmip_params, keys::nid_from_crv,
 };
 use crate::{
-    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS, ObjectHandle, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request,
+        retrieve_object_utils::retrieve_object_for_operation,
+    },
     middlewares::UserId,
 };
 
@@ -208,6 +211,11 @@ async fn decrypt_dir(
         ..Default::default()
     };
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::Decrypt(Box::new(decrypt_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
     let resp = kms
         .decrypt(decrypt_req, user)
         .await

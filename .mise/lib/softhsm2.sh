@@ -40,7 +40,7 @@ SOFTHSM2_HSM_SLOT_ID_3=""
 # Detect the SoftHSM2 library directory and set SOFTHSM2_LIB_DIR, SOFTHSM2_PKCS11_LIB_PATH, and SOFTHSM2_UTIL.
 #
 # Inside the Nix shell the PATH already contains the Nix-built SoftHSM2, which
-# links against the same Nix OpenSSL FIPS 3.1.2 as the KMS server.  Always
+# links against the same Nix OpenSSL FIPS provider build as the KMS server.  Always
 # prefer the softhsm2-util found on PATH (Nix first) so that both the token
 # utility and the PKCS#11 library use the same OpenSSL build — avoiding the
 # version mismatch that causes CKR_PIN_INCORRECT in C_Login.

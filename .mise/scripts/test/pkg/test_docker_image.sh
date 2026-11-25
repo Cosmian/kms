@@ -15,6 +15,19 @@ source "${SCRIPT_DIR}/../../../lib/test_slots.sh"
 COMPOSE_FILE=".mise/scripts/docker-compose.yml"
 export COMPOSE_FILE
 
+# `kms-with-conf` mounts the shipped pkg/kms.toml. A config file ignores env variables, so the
+# development-only unauthenticated opt-in is enabled in a temporary copy (the only difference).
+KMS_WITH_CONF_TOML="$(mktemp -t kms-with-conf-XXXXXX.toml)"
+trap 'rm -f "${KMS_WITH_CONF_TOML}"' EXIT
+sed 's/^# insecure_allow_unauthenticated = false$/insecure_allow_unauthenticated = true/' pkg/kms.toml >"${KMS_WITH_CONF_TOML}"
+grep -q '^insecure_allow_unauthenticated = true$' "${KMS_WITH_CONF_TOML}" ||
+  {
+    echo "pkg/kms.toml no longer carries the insecure_allow_unauthenticated placeholder" >&2
+    exit 1
+  }
+chmod 644 "${KMS_WITH_CONF_TOML}"
+export KMS_WITH_CONF_TOML
+
 # shellcheck source=.mise/lib/common.sh
 source "${SCRIPT_DIR}/../../../lib/common.sh"
 
