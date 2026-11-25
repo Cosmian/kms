@@ -27,6 +27,8 @@ The KMS object-store schema has nine tables shared by all SQL backends, plus `ob
 Every PostgreSQL deployment, single- or multi-region, keeps the lifecycle state of objects in the two insert-only tables `object_state_events` and `object_state_event_tombstones`, created at startup, from which `ENABLE ALWAYS` triggers derive `objects.state`. In a multi-region active-active deployment they make the state converge across regions (see [Multi-region active-active PostgreSQL](./configuration.md#multi-region-active-active-postgresql-spock--pgedge--bdr)).
 The links between tables are **logical** relationships (enforced by the application, not by SQL foreign-key constraints).
 
+On a multi-region deployment, which of these tables are replicated, and how Spock (PostgreSQL) or Galera (MySQL) selects them, is explained in [Which tables are replicated](multi_region.md#which-tables-are-replicated).
+
 ```mermaid
 erDiagram
     OBJECTS ||--o{ READ_ACCESS : "grants (read_access.id = objects.id)"

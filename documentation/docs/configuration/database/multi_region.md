@@ -32,7 +32,7 @@ See the [Spock documentation](https://docs.pgedge.com/spock-v5/v5-0-12/conflicts
 | ------------- | ------- | ---------------------------- |
 | Node | One PostgreSQL database taking part in the group | One per region |
 | Subscription | A one-way logical replication link from a provider node to a subscriber node | One in each direction makes a two-region group (a full mesh with more regions) |
-| Replication set | The list of tables a node publishes | Every `public` table except `cluster_nodes` (see [Scheduled jobs and cluster coordination](#scheduled-jobs-and-cluster-coordination)) |
+| Replication set | The list of tables a node publishes | Every `public` table except `cluster_nodes` (see [Which tables are replicated](#which-tables-are-replicated)) |
 | Conflict resolution (`last_update_wins`) | When two regions change the same row, the version with the latest commit timestamp is kept | Object payload, attributes and tags; lifecycle states need another mechanism (see [Object-state conflict merge](#object-state-conflict-merge)) |
 | Delta-apply | A numeric column is replicated as an increment instead of a new value | `gcm_invocations.count`, so the AES-GCM counts of the regions add up |
 
@@ -42,6 +42,77 @@ The KMS creates its lifecycle triggers as `ENABLE ALWAYS` so that they also fire
 node.
 
 MySQL has no Spock: the Galera alternative is described [below](#mysql-with-galera).
+
+## Which tables are replicated
+
+### What "public" means
+
+On PostgreSQL, `public` is the default **schema** (namespace) of a database; it is not a visibility setting. The
+KMS creates its tables without a schema name, in the database named in the connection URL, so with the default
+`search_path` (`"$user", public`) they all land in the `public` schema. The KMS never creates another schema, so
+"the `public` tables" are **all the KMS tables of that database**: nothing else lives there. The audit store of a
+PostgreSQL audit backend is a separate database and is not part of this replication.
+
+| Table (PostgreSQL) | Replicated by Spock | Why |
+| ------------------ | ------------------- | --- |
+| `objects`, `tags`, `read_access`, `parameters` | Yes | Object store, last-update-wins |
+| `object_state_events`, `object_state_event_tombstones` | Yes | Insert-only lifecycle log (see [Object-state conflict merge](#object-state-conflict-merge)) |
+| `crypto_officer_activations`, `crls` | Yes | Written by the leader region, read by every region |
+| `gcm_invocations` | Yes, with delta-apply | The AES-GCM counts of the regions add up |
+| `ui_session_revocations` | Yes | A Web UI logout is honored by every region |
+| `cluster_nodes` | **No** | Heartbeats and elected leader are per region |
+
+`kms_migration_lock` and `kms_cron_locks` exist on MySQL only. The full list and the purpose of each table is in
+[Database tables](tables.md).
+
+### How Spock selects the tables
+
+Spock does not replicate a schema: it replicates the tables that belong to a **replication set**, and a
+subscription receives the rows of the tables of the sets it subscribes to. A Spock node comes with the sets
+`default` (insert, update, delete, truncate), `default_insert_only` and `ddl_sql`; the KMS tables are added to
+`default`.
+
+`spock.repset_add_all_tables('default', ARRAY['public'])` is the command that ties the two notions together: it
+adds to the `default` set **every table that exists in the `public` schema when the command runs**. It is a
+one-time snapshot, not a rule that stays active, so:
+
+- A table created **afterwards** is not replicated until it is added with
+  `spock.repset_add_table('default', '<table>')`. This is what an upgrade that adds a table needs on every node
+  (for example `ui_session_revocations` on a deployment set up before it existed).
+- Spock replicates rows, not schema changes (`spock.enable_ddl_replication` is `off` by default): every node
+  creates the table itself. The KMS does it at startup with `CREATE TABLE IF NOT EXISTS`, so each region has the
+  table as soon as its KMS is upgraded, whether or not the table is replicated.
+- Updates and deletes are replicated through the row's `REPLICA IDENTITY`, in practice the `PRIMARY KEY`; every
+  KMS table has one (checked by `mr_guard_primary_keys`).
+- `cluster_nodes` is removed from the set on purpose (`spock.repset_remove_table`).
+
+To list the tables of the `public` schema that a node does **not** publish (an empty result is correct; the
+deliberate exception is `cluster_nodes`):
+
+```sql
+SELECT t.tablename
+FROM pg_tables t
+WHERE t.schemaname = 'public'
+  AND NOT EXISTS (SELECT 1 FROM spock.replication_set_table r
+                  WHERE r.set_reloid = format('public.%I', t.tablename)::regclass);
+```
+
+`mise run test:db:multi-region-guards` runs this check (`mr_guard_replication_set_complete`) and fails with the
+`repset_add_table` command to run.
+
+### How Galera selects the tables
+
+Galera has no replication set and no schema filter: every committed change to an **InnoDB** table of any schema is
+replicated to every node of the cluster. The KMS tables are all InnoDB, in the `kms` database. The rules that
+matter:
+
+- A new table is replicated from its creation: `CREATE TABLE` is replicated as a schema change
+  (total order isolation, the default of `wsrep_OSU_method`), so the KMS startup on one node creates it everywhere and there is no operator step
+  on upgrade.
+- Tables of another storage engine are not replicated (`wsrep_replicate_myisam = OFF`); the KMS creates none.
+- Every table needs a `PRIMARY KEY`; Percona XtraDB Cluster in strict mode (`pxc_strict_mode = ENFORCING`)
+  refuses writes to a table without one. `mr_guard_mysql_primary_keys` checks it.
+- A table cannot be excluded, which is why `cluster_nodes` is replicated on Galera.
 
 ## Global architecture
 
