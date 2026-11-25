@@ -909,6 +909,34 @@ sequenceDiagram
 
 To run it by hand: `mise run test:interop:openbao-auth-verifier --variant non-fips`.
 
+### `test:interop:sops`
+
+**Description:** SOPS native key-source interoperability against a KMS configured with the
+Vault-compatible Transit API. The non-FIPS-only task starts the Auth Verifier and KMS from the
+complete SPIRE fixtures, creates an AppRole token, and verifies SOPS encryption, decryption, and
+`updatekeys` rotation for both `hc_vault_transit` and `pgp`. SOPS and GnuPG come from the pinned
+Nix shell (`WITH_SOPS=1`); the existing `test:pkcs11:gnupg` task covers the KMS PKCS#11 smartcard
+provider used to expose OpenPGP keys to GnuPG.
+
+```mermaid
+sequenceDiagram
+    participant Test as test:interop:sops
+    participant Auth as Auth Verifier
+    participant KMS as Cosmian KMS
+    participant SOPS as SOPS
+    participant GPG as GnuPG
+
+    Test->>Auth: start from the complete test fixture
+    Test->>KMS: start Vault-compatible Transit API
+    Test->>KMS: create AppRole and Transit keys
+    Test->>SOPS: encrypt and decrypt YAML with hc_vault_transit
+    Test->>SOPS: updatekeys to the second Transit key
+    Test->>GPG: generate a temporary OpenPGP key
+    Test->>SOPS: encrypt, decrypt and updatekeys with pgp
+```
+
+To run it by hand: `mise run test:interop:sops --variant non-fips`.
+
 ### `test:interop:openbao-kmip`
 
 **Description:** OpenBao auto-unseal through the KMS binary KMIP listener: the reverse direction of `test:interop:openbao`, with OpenBao as a KMIP consumer. Runs in both variants and needs only Docker. The task generates a throw-away CA, a KMS server certificate and an OpenBao client certificate (`CN=openbao-seal`), starts the KMS with mTLS HTTPS and `[socket_server]` (KMIP over TCP/TLS), then creates and activates an AES-256 wrapping key as the OpenBao identity through `POST /kmip/2_1`. OpenBao (image `ghcr.io/openbao/openbao`, override with `BAO_IMAGE`) is configured with `seal "kmip"` (`endpoint`, `kms_key_id`, `client_cert`, `client_key`, `ca_cert`, `encrypt_alg = "AES_GCM"`).

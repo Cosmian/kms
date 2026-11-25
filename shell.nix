@@ -47,6 +47,8 @@ let
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
   # GnuPG smartcard PKCS#11 test: gnupg-pkcs11-scd + opensc (pkcs11-tool) on Linux
   withGnupgPkcs11 = (builtins.getEnv "WITH_GNUPG_PKCS11") == "1";
+  # SOPS interoperability tests: SOPS and GnuPG are provided by the pinned nixpkgs.
+  withSops = (builtins.getEnv "WITH_SOPS") == "1";
   # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
   withAws = (builtins.getEnv "WITH_AWS") == "1";
   # IRIS mTLS test / Vault secret backend test: Docker CLI must be available inside the nix-shell to pull and run containers
@@ -202,6 +204,11 @@ pkgs.mkShell {
   ++ pkgs.lib.optionals (withGnupgPkcs11 && pkgs.stdenv.isLinux) [
     pkgs.gnupg-pkcs11-scd
     pkgs.opensc
+  ]
+  # SOPS interoperability tests use the same pinned GnuPG toolchain.
+  ++ pkgs.lib.optionals withSops [
+    pkgs.sops
+    pkgs.gnupg
   ]
   # AWS secret backend test: include awscli2 for SSM parameter management
   ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]

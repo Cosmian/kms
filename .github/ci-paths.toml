@@ -438,6 +438,11 @@ sets = ["kmip_wire", "interop_shared", "ci_setup"]
 files = '^\.mise/tasks/test/interop/pykmip$ | ^\.mise/scripts/test/interop/test_pykmip\.sh$ | ^\.mise/scripts/pykmip/'
 variants = ["non-fips"]
 
+[units."interop:sops"]
+sets = ["interop_shared", "ci_setup"]
+files = '^\.mise/tasks/test/interop/sops$ | ^\.mise/scripts/test/interop/sops\.sh$ | ^shell\.nix$ | ^\.mise/lib/nix_helpers\.sh$'
+variants = ["non-fips"]
+
 [units."interop:ssh-secrets"]
 sets = ["interop_shared", "pg_store", "mysql_store"]
 files = '''

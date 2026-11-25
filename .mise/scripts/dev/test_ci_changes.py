@@ -160,6 +160,7 @@ FULL_SUITES = [
     *leg('interop:openbao-auth-verifier', *BOTH),
     *leg('interop:openbao-kmip', *BOTH),
     *leg('interop:pykmip', 'non-fips'),
+    *leg('interop:sops', 'non-fips'),
     *leg('interop:ssh-secrets', *BOTH),
     *leg('windows-cargo-test', **WIN),
     *leg('windows-ui', **WIN),
@@ -170,7 +171,13 @@ FULL_SUITES = [
 
 
 # The one leg per setup path a change to the shared CI setup (ci_setup) runs (plain Linux, nix, macOS, Windows).
-SETUP_PROBES = {'forward-proxy', 'interop:pykmip', 'pki-macos', 'windows-est'}
+SETUP_PROBES = {
+    'forward-proxy',
+    'interop:pykmip',
+    'interop:sops',
+    'pki-macos',
+    'windows-est',
+}
 # Units whose own steps are the composite action .github/actions/legs/<unit>/.
 LEG_ACTIONS = {
     'build-documentation',
@@ -557,7 +564,7 @@ class Matrices(unittest.TestCase):
     def test_everything_runs_every_leg_in_toml_order(self) -> None:
         for legs in (self.legs([]), self.everything('pull_request')):
             self.assertEqual(legs, FULL_SUITES)
-            self.assertEqual(len(legs), 66)
+            self.assertEqual(len(legs), 67)
 
     def test_no_nix_legs_come_runner_major(self) -> None:
         legs = [g for g in FULL_SUITES if g['suite'] == 'no-nix']
@@ -633,7 +640,7 @@ class Matrices(unittest.TestCase):
     def test_nightly_runs_every_unit_but_xks(self) -> None:
         legs = self.everything('schedule')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 67)
+        self.assertEqual(len(legs), 68)
         self.assertEqual(suites, set(EVERYTHING) - {'xks-remote'})
         self.assertEqual(
             [g['lock'] for g in legs if g['suite'].startswith('hsm:')],
@@ -643,26 +650,26 @@ class Matrices(unittest.TestCase):
     def test_tag_runs_the_real_publish_instead_of_the_dry_run(self) -> None:
         legs = self.everything('tag')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 67)
+        self.assertEqual(len(legs), 68)
         self.assertEqual(suites, set(EVERYTHING) - {'cargo-publish-dry-run'})
         self.assertIn('xks-remote', suites)
 
     def test_dispatch_runs_every_leg(self) -> None:
         legs = self.everything('workflow_dispatch')
-        self.assertEqual(len(legs), 68)
+        self.assertEqual(len(legs), 69)
         self.assertEqual({g['suite'] for g in legs}, set(EVERYTHING))
 
     def test_nightly_of_a_fork_repository(self) -> None:
         legs = self.everything('schedule', secrets=False)
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 63)
+        self.assertEqual(len(legs), 64)
         self.assertFalse(suites & {'cloud', 'hsm:crypt2pay', 'hsm:proteccio'})
         self.assertTrue(suites >= {'cargo-publish-dry-run', 'windows-est'})
 
     def test_fork_pull_request(self) -> None:
         legs = self.legs([], secrets=False, fork_pr=True)
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 56)
+        self.assertEqual(len(legs), 57)
         self.assertFalse(suites & {'cloud', 'xks-remote', 'cargo-publish-dry-run'})
         self.assertFalse({u for u in suites if u.startswith('windows-')})
 
@@ -862,6 +869,7 @@ UNIT_SAMPLES = {
     'interop:openbao-auth-verifier': '.mise/tasks/test/interop/openbao-auth-verifier',
     'interop:openbao-kmip': '.mise/tasks/test/interop/openbao-kmip',
     'interop:pykmip': '.mise/tasks/test/interop/pykmip',
+    'interop:sops': '.mise/tasks/test/interop/sops',
     'interop:ssh-secrets': '.mise/tasks/test/interop/ssh-secrets',
     'windows-cargo-test': 'crate/server/src/lib.rs',
     'windows-ui': '.mise/scripts/windows/test_ui.ps1',
@@ -1275,7 +1283,7 @@ class Main(unittest.TestCase):
     def test_nightly_never_reads_the_diff_and_skips_xks(self) -> None:
         text, legs = self.run_all('--event', 'schedule')
         self.assertIn('not a pull request: run everything', text)
-        self.assertEqual(len(legs), 67)
+        self.assertEqual(len(legs), 68)
         self.assertNotIn('xks-remote', {g['suite'] for g in legs})
         self.assertIn('RUN  hsm:proteccio', text)
         self.assertIn('SKIP xks-remote', text)
@@ -1283,14 +1291,14 @@ class Main(unittest.TestCase):
     def test_nightly_without_secrets_keeps_windows_but_not_upstream_units(self) -> None:
         _, legs = self.run_all('--event', 'schedule', '--no-secrets')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 63)
+        self.assertEqual(len(legs), 64)
         self.assertIn('windows-cargo-test', suites)
         self.assertFalse(suites & {'cloud', 'hsm:crypt2pay', 'hsm:proteccio'})
 
     def test_tag_and_dispatch_runs(self) -> None:
         _, tag = self.run_all('--event', 'tag')
         _, dispatch = self.run_all('--event', 'workflow_dispatch')
-        self.assertEqual((len(tag), len(dispatch)), (67, 68))
+        self.assertEqual((len(tag), len(dispatch)), (68, 69))
 
     def test_fork_pr_without_secrets_drops_cloud_and_windows(self) -> None:
         self.run_main(

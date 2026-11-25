@@ -10,9 +10,9 @@ without an additional key-service sidecar:
 
 ## Vault Transit
 
-The Vault Transit source requires the KMS Transit `encrypt` and `decrypt` endpoints from issue
-[#1365](https://github.com/Cosmian/kms/issues/1365). They are available once PR
-[#1398](https://github.com/Cosmian/kms/pull/1398) is merged.
+The Vault Transit source uses the KMS Transit `encrypt` and `decrypt` endpoints delivered for
+issue [#1365](https://github.com/Cosmian/kms/issues/1365) and merged in PR
+[#1398](https://github.com/Cosmian/kms/pull/1398).
 
 Configure SOPS with the Vault-compatible mount and key name:
 
@@ -76,11 +76,11 @@ control and remove any temporary plaintext files after a manual verification.
 
 ## Validation
 
-The integration is validated by encrypting and decrypting a fixture and then running
-`sops updatekeys`. Automated repository coverage is being added alongside the two native
-key-source implementations. The OpenPGP path is non-FIPS because it uses the existing KMS
-OpenPGP and GnuPG smartcard integration. The Vault Transit path can be automated after the
-prerequisite Transit implementation is available.
+The repository's `test:interop:sops` task validates encryption, decryption, and `sops updatekeys`
+for both native sources. It runs the Vault Transit scenario against the KMS Transit API and runs
+the OpenPGP source with a temporary GnuPG key. The existing `test:pkcs11:gnupg` task separately
+validates the KMS PKCS#11 smartcard provider used by the documented OpenPGP setup. The OpenPGP
+path is non-FIPS because it uses the existing KMS OpenPGP and GnuPG smartcard integration.
 
 If SOPS, GnuPG, or `gnupg-pkcs11-scd` is not installed, install the versions provided by the
 project's development shell rather than downloading an unverified binary.
