@@ -1319,6 +1319,23 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
         )));
     }
 
+    // ── find_all_wrapped_by: no permission filter, no false positives ─────
+    // (startup row-binding backfill relies on it)
+    let all = db.find_all_wrapped_by(wrapping_key_uid).await?;
+    if all != [wrapped_uid.clone()] {
+        return Err(DbError::ServerError(format!(
+            "find_all_wrapped_by should return exactly '{wrapped_uid}', got: {all:?}"
+        )));
+    }
+    let none = db
+        .find_all_wrapped_by("wrapping_key_link_unrelated")
+        .await?;
+    if !none.is_empty() {
+        return Err(DbError::ServerError(format!(
+            "find_all_wrapped_by must return nothing for an unrelated key, got: {none:?}"
+        )));
+    }
+
     // ── Cleanup ───────────────────────────────────────────────────────────
     db.delete(&wrapped_uid).await?;
     db.delete(&plain_uid).await?;
