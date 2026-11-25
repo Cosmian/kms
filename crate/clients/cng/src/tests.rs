@@ -111,6 +111,66 @@ fn test_create_ec_key_pair() {
     cleanup_key_pair(&client, &priv_id, &pub_id);
 }
 
+// ─── Export policy ────────────────────────────────────────────────────────────
+
+#[test]
+fn test_export_policy_from_attributes_fails_closed() {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
+
+    let policy = |extractable, sensitive, never_extractable| {
+        backend::export_policy_from_attributes(&Attributes {
+            extractable,
+            sensitive,
+            never_extractable,
+            ..Default::default()
+        })
+    };
+    // Only an explicit `Extractable=true` without any protection flag allows export.
+    assert_eq!(policy(Some(true), None, None), (true, true));
+    assert_eq!(policy(Some(true), Some(false), Some(false)), (true, true));
+    // An omitted `Extractable` is not an export grant.
+    assert_eq!(policy(None, None, None), (false, false));
+    assert_eq!(policy(Some(false), None, None), (false, false));
+    assert_eq!(policy(Some(true), Some(true), None), (false, false));
+    assert_eq!(policy(Some(true), None, Some(true)), (false, false));
+}
+
+/// CNG private keys created through the KSP are non-extractable in the KMS, so the KMS (and
+/// therefore the KSP) never hands out their private material; the public key stays readable.
+#[test]
+#[serial]
+fn test_created_private_keys_are_not_exportable() {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_types::RecommendedCurve;
+
+    let client = test_client();
+    let (rsa_priv, rsa_pub) =
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-not-exportable", 2048)
+            .expect("create_rsa_key_pair failed");
+    let (ec_priv, ec_pub) = backend::create_ec_key_pair(
+        &client,
+        TEST_VENDOR_ID,
+        "test-ec-not-exportable",
+        RecommendedCurve::P256,
+    )
+    .expect("create_ec_key_pair failed");
+
+    for (priv_id, pub_id) in [(&rsa_priv, &rsa_pub), (&ec_priv, &ec_pub)] {
+        let attrs = backend::get_key_attributes(&client, priv_id).expect("get attributes");
+        assert_eq!(attrs.sensitive, Some(true));
+        assert_eq!(attrs.extractable, Some(false));
+        assert_eq!(
+            backend::export_policy_from_attributes(&attrs),
+            (false, false)
+        );
+        // The KMS must refuse to export a CNG private key.
+        backend::export_private_key_pkcs8(&client, priv_id).unwrap_err();
+        backend::export_public_key_spki(&client, pub_id).expect("public key export must work");
+    }
+
+    cleanup_key_pair(&client, &rsa_priv, &rsa_pub);
+    cleanup_key_pair(&client, &ec_priv, &ec_pub);
+}
+
 // ─── Key locate & tag ─────────────────────────────────────────────────────────
 
 #[test]

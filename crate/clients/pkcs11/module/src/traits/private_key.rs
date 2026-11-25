@@ -21,7 +21,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     ModuleResult,
-    traits::{KeyAlgorithm, SignatureAlgorithm},
+    traits::{KeyAlgorithm, KeyProtection, SignatureAlgorithm},
 };
 
 pub trait PrivateKey: Send + Sync {
@@ -35,6 +35,12 @@ pub trait PrivateKey: Send + Sync {
 
     /// Return the key size in bits
     fn key_size(&self) -> usize;
+
+    /// Sensitive/extractable attributes of the key in the KMS (drive `CKA_SENSITIVE`,
+    /// `CKA_EXTRACTABLE` and whether `CKA_VALUE` may be returned).
+    fn protection(&self) -> KeyProtection {
+        KeyProtection::default()
+    }
 
     /// Return the DER bytes of the private key
     /// This is a lazy loaded value

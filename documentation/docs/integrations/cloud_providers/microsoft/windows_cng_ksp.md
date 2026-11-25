@@ -427,6 +427,11 @@ ckms locate --tag "cng-ksp::my-key"
 - All key operations require an authenticated connection to the KMS.
 - The `NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG` is **off** by default; private keys cannot
   be exported in plaintext.
+- Private keys created through the KSP are created in the KMS with `Sensitive=true` and
+  `Extractable=false`, so the KMS itself refuses to export them. When a key is opened, its
+  export policy is read from the KMS attributes and fails closed: private-key export
+  (`NCryptExportKey` with a private blob type) returns `NTE_PERM` unless the KMS key is
+  explicitly `Extractable=true` and neither `Sensitive` nor `NeverExtractable` is set.
 - Use mTLS or bearer-token authentication in `ckms.toml` for production deployments.
 - Run `ckms cng register` as Administrator. The DLL path stored in the registry
   is read by the Windows LSASS process — only trusted, signed DLLs should be
@@ -685,7 +690,7 @@ not in CI.
 |---|---|---|
 | `NTE_FAIL` on `OpenKey` or `CreatePersistedKey` | `ckms.toml` missing or KMS unreachable | Verify `ckms.toml` is present and `server_url` is reachable (`curl https://<kms>/kmip/2_1`). |
 | `NTE_BAD_KEYSET` on `OpenKey` | Key name not found in the KMS | Run `ckms cng list-keys`; verify the name and that the `cng-ksp::<name>` tag exists. |
-| `NTE_PERM` on `ExportKey` | Export policy disabled (by design) | Private key export is intentionally blocked. Use `ExportKey` only for public key blobs. |
+| `NTE_PERM` on `ExportKey` | Private key is non-extractable in the KMS (by design) | Private key export is blocked unless the KMS key is explicitly `Extractable=true` and not `Sensitive`. Use `ExportKey` only for public key blobs. |
 | `NTE_BAD_ALGID` | Algorithm string not recognised | Use `RSA`, `ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ECDH_P256`, `ECDH_P384`, or `ECDH_P521`. |
 | `RegCreateKeyExW` returns `0x80070005` (Access Denied) | Not running as Administrator | Run `ckms cng register` from an elevated PowerShell prompt. |
 | KSP not listed in `certutil -csplist` | Registry key missing or `CryptSvc` cached old list | Re-run `ckms cng register` and restart the `CryptSvc` service (`Restart-Service CryptSvc`). |

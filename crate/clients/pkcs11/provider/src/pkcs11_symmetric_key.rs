@@ -1,11 +1,13 @@
 use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
-    traits::{KeyAlgorithm, SearchOptions, SymmetricKey, backend},
+    traits::{KeyAlgorithm, KeyProtection, SearchOptions, SymmetricKey, backend},
 };
 use zeroize::Zeroizing;
 
-use crate::kms_object::{KmsObject, LazyKeyMaterial, key_algorithm_from_attributes};
+use crate::kms_object::{
+    KmsObject, LazyKeyMaterial, key_algorithm_from_attributes, key_protection_from_attributes,
+};
 
 /// A PKCS11 Symmetric Key implementation that may only hold remote
 /// references to the actual symmetric key
@@ -18,6 +20,7 @@ pub(crate) struct Pkcs11SymmetricKey {
     raw_bytes: LazyKeyMaterial,
     /// KMIP cryptographic usage mask, when the KMS reported one; drives `CKA_SIGN`/`CKA_VERIFY`.
     usage_mask: Option<CryptographicUsageMask>,
+    protection: KeyProtection,
 }
 
 impl Pkcs11SymmetricKey {
@@ -26,6 +29,7 @@ impl Pkcs11SymmetricKey {
         algorithm: KeyAlgorithm,
         key_size: usize,
         usage_mask: Option<CryptographicUsageMask>,
+        protection: KeyProtection,
     ) -> Self {
         Self {
             remote_id,
@@ -33,6 +37,7 @@ impl Pkcs11SymmetricKey {
             algorithm,
             key_size,
             usage_mask,
+            protection,
         }
     }
 
@@ -57,6 +62,7 @@ impl Pkcs11SymmetricKey {
             key_size,
             raw_bytes,
             usage_mask: kms_object.attributes.cryptographic_usage_mask,
+            protection: key_protection_from_attributes(&kms_object.attributes),
         })
     }
 }
@@ -72,6 +78,10 @@ impl SymmetricKey for Pkcs11SymmetricKey {
 
     fn key_size(&self) -> usize {
         self.key_size
+    }
+
+    fn protection(&self) -> KeyProtection {
+        self.protection
     }
 
     fn raw_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
@@ -94,12 +104,18 @@ impl SymmetricKey for Pkcs11SymmetricKey {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_pkcs11_module::traits::{KeyAlgorithm, SymmetricKey};
+    use cosmian_pkcs11_module::traits::{KeyAlgorithm, KeyProtection, SymmetricKey};
 
     use super::{CryptographicUsageMask, Pkcs11SymmetricKey};
 
     fn key(mask: Option<CryptographicUsageMask>) -> Pkcs11SymmetricKey {
-        Pkcs11SymmetricKey::new("id".to_owned(), KeyAlgorithm::Aes256, 256, mask)
+        Pkcs11SymmetricKey::new(
+            "id".to_owned(),
+            KeyAlgorithm::Aes256,
+            256,
+            mask,
+            KeyProtection::default(),
+        )
     }
 
     /// `CKA_SIGN` / `CKA_VERIFY` follow the KMIP `MACGenerate` / `MACVerify` usage-mask bits.

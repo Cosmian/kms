@@ -16,14 +16,15 @@ use pkcs11_sys::{
     CK_GCM_MESSAGE_PARAMS, CK_GCM_PARAMS, CK_INFO, CK_INVALID_HANDLE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_INFO, CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE,
     CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_UNAVAILABLE_INFORMATION, CKA_CLASS,
-    CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_VALUE_LEN, CKF_MESSAGE_SIGN, CKF_SERIAL_SESSION, CKF_SIGN,
-    CKF_VERIFY, CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKK_AES, CKM_AES_CBC_PAD, CKM_AES_CMAC,
-    CKM_AES_GCM, CKM_AES_GMAC, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA, CKM_EDDSA, CKM_RSA_PKCS_PSS,
-    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
-    CKR_FUNCTION_NOT_SUPPORTED, CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID,
-    CKR_SIGNATURE_LEN_RANGE, CKR_SLOT_ID_INVALID,
+    CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_SENSITIVE, CKA_VALUE, CKA_VALUE_LEN, CKF_MESSAGE_SIGN,
+    CKF_SERIAL_SESSION, CKF_SIGN, CKF_VERIFY, CKG_GENERATE_RANDOM, CKG_NO_GENERATE, CKK_AES,
+    CKM_AES_CBC_PAD, CKM_AES_CMAC, CKM_AES_GCM, CKM_AES_GMAC, CKM_AES_KEY_GEN, CKM_DSA, CKM_ECDSA,
+    CKM_EDDSA, CKM_RSA_PKCS_PSS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED,
+    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
+    CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
@@ -47,9 +48,9 @@ use crate::{
     },
     traits::{
         AES_CMAC_TAG_SIZE, AES_GMAC_TAG_SIZE, Backend, Certificate, DataObject, DecryptContext,
-        EncryptContext, EncryptionAlgorithm, KeyAlgorithm, MacAlgorithm, MessageEncryptionOutput,
-        PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm, SymmetricKey, Version,
-        register_backend,
+        EncryptContext, EncryptionAlgorithm, KeyAlgorithm, KeyProtection, MacAlgorithm,
+        MessageEncryptionOutput, PrivateKey, PublicKey, SearchOptions, SignatureAlgorithm,
+        SymmetricKey, Version, register_backend,
     },
     utils::{ck_len, ck_ptr},
 };
@@ -2006,5 +2007,113 @@ fn no_fallback_for_non_private_key_class() {
     );
 
     assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Symmetric key whose KMS protection attributes are chosen by the test.
+struct ProtectedSymKey {
+    id: String,
+    protection: KeyProtection,
+}
+
+impl SymmetricKey for ProtectedSymKey {
+    fn remote_id(&self) -> &str {
+        &self.id
+    }
+
+    fn algorithm(&self) -> KeyAlgorithm {
+        KeyAlgorithm::Aes256
+    }
+
+    fn key_size(&self) -> usize {
+        256
+    }
+
+    fn protection(&self) -> KeyProtection {
+        self.protection
+    }
+
+    fn raw_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        Ok(Zeroizing::new(vec![7_u8; 32]))
+    }
+}
+
+/// `CKA_VALUE` of a sensitive or non-extractable secret key must not leave the module
+/// (PKCS#11 v2.40 §4.9, §5.7): `CKR_ATTRIBUTE_SENSITIVE`, `ulValueLen` set to
+/// `CK_UNAVAILABLE_INFORMATION`, and the remaining attributes of the template still served.
+#[test]
+#[serial]
+fn get_attribute_value_protects_sensitive_secret_key() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    let session_h = open_test_session();
+
+    let protected = |protection: KeyProtection| {
+        OBJECTS_STORE
+            .write()
+            .unwrap()
+            .upsert(Arc::new(Object::SymmetricKey(Arc::new(ProtectedSymKey {
+                id: format!("protected_sym_key_{protection:?}"),
+                protection,
+            }))))
+    };
+    let read_value_and_sensitive = |handle: CK_OBJECT_HANDLE| {
+        let mut value = [0_u8; 64];
+        let mut sensitive = [0xAA_u8; 1];
+        let mut template = [
+            CK_ATTRIBUTE {
+                type_: CKA_VALUE,
+                pValue: value.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: 64,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_SENSITIVE,
+                pValue: sensitive.as_mut_ptr().cast::<std::ffi::c_void>(),
+                ulValueLen: 1,
+            },
+        ];
+        let rv = unsafe { C_GetAttributeValue(session_h, handle, template.as_mut_ptr(), 2) };
+        (rv, template[0].ulValueLen, value, sensitive[0])
+    };
+
+    for protection in [
+        KeyProtection {
+            sensitive: Some(true),
+            ..KeyProtection::default()
+        },
+        KeyProtection {
+            extractable: Some(false),
+            ..KeyProtection::default()
+        },
+        KeyProtection {
+            never_extractable: Some(true),
+            ..KeyProtection::default()
+        },
+    ] {
+        let (rv, value_len, value, _) = read_value_and_sensitive(protected(protection));
+        assert_eq!(rv, CKR_ATTRIBUTE_SENSITIVE, "{protection:?}");
+        assert_eq!(value_len, CK_UNAVAILABLE_INFORMATION, "{protection:?}");
+        assert!(
+            value.iter().all(|b| *b == 0),
+            "{protection:?}: value leaked"
+        );
+    }
+
+    // The remaining attributes are still served alongside the sensitive one.
+    let (_, _, _, sensitive) = read_value_and_sensitive(protected(KeyProtection {
+        sensitive: Some(true),
+        ..KeyProtection::default()
+    }));
+    assert_eq!(sensitive, 1);
+
+    // Non-sensitive, extractable (KMS defaults): the bytes are returned.
+    let (rv, value_len, value, sensitive) =
+        read_value_and_sensitive(protected(KeyProtection::default()));
+    assert_eq!(rv, CKR_OK);
+    assert_eq!(value_len, 32);
+    assert_eq!(&value[..32], &[7_u8; 32]);
+    assert_eq!(sensitive, 0);
+
+    assert_eq!(C_CloseSession(session_h), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
 }

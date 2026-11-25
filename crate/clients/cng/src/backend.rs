@@ -257,6 +257,18 @@ pub fn get_key_attributes(client: &KmsClient, uid: &str) -> KspResult<Attributes
     })
 }
 
+/// CNG export policy `(allow_export, allow_plaintext_export)` derived from the KMS key attributes.
+///
+/// Fails closed: the private key may only be exported when the KMS explicitly marks it
+/// `Extractable=true` and neither `Sensitive` nor `NeverExtractable` is set.
+#[must_use]
+pub fn export_policy_from_attributes(attrs: &Attributes) -> (bool, bool) {
+    let exportable = attrs.extractable == Some(true)
+        && attrs.sensitive != Some(true)
+        && attrs.never_extractable != Some(true);
+    (exportable, exportable)
+}
+
 /// Export the public key associated with a key-pair (SPKI DER).
 ///
 /// For RSA and EC key pairs the KMS returns the public key in PKCS#8 (SPKI)
@@ -583,6 +595,9 @@ pub fn create_rsa_key_pair(
             .map_err(|e| KspError::Backend(e.to_string()))?;
 
         let private_key_attributes = Attributes {
+            // CNG private keys never leave the KMS (see `export_policy_from_attributes`).
+            sensitive: Some(true),
+            extractable: Some(false),
             cryptographic_usage_mask: Some(
                 CryptographicUsageMask::Sign
                     | CryptographicUsageMask::Decrypt
@@ -651,6 +666,9 @@ pub fn create_ec_key_pair(
             .map_err(|e| KspError::Backend(e.to_string()))?;
 
         let private_key_attributes = Attributes {
+            // CNG private keys never leave the KMS (see `export_policy_from_attributes`).
+            sensitive: Some(true),
+            extractable: Some(false),
             cryptographic_usage_mask: Some(
                 CryptographicUsageMask::Sign
                     | CryptographicUsageMask::DeriveKey

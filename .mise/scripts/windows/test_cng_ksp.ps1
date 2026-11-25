@@ -423,37 +423,30 @@ server_url = "$KMS_URL"
         Remove-Item -Force $exportPath -ErrorAction SilentlyContinue
         Remove-Item -Force $pemExportPath -ErrorAction SilentlyContinue
 
-        # Export the private key via Export-IntunePrivateKey.
-        # This calls NCryptOpenKey → NCryptExportKey with PKCS8_PRIVATEKEY blob type.
+        # Private-key export must be refused: KSP keys are Sensitive/non-extractable in the KMS,
+        # so NCryptExportKey with the PKCS8_PRIVATEKEY blob type returns NTE_PERM.
+        # (Import-IntunePrivateKey is no longer round-tripped here: it needs a private key
+        # blob, which the KSP can no longer export.)
         $privExportPath = Join-Path $env:TEMP "intune-pfx-test-key-priv.pfx"
         if (Test-Path $privExportPath) { Remove-Item -Force $privExportPath }
-        Export-IntunePrivateKey `
-            -ProviderName "Cosmian KMS Key Storage Provider" `
-            -KeyName $intuneKeyName `
-            -FilePath $privExportPath
-        if (-not (Test-Path $privExportPath)) {
-            throw "Export-IntunePrivateKey did not produce output file"
+        $privExportRefused = $false
+        try {
+            Export-IntunePrivateKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $intuneKeyName `
+                -FilePath $privExportPath `
+                -ErrorAction Stop
+        } catch {
+            $privExportRefused = $true
+            Write-Ok "Export-IntunePrivateKey refused as expected: $($_.Exception.Message)"
         }
-        $privFileSize = (Get-Item $privExportPath).Length
-        if ($privFileSize -eq 0) {
-            throw "Export-IntunePrivateKey produced empty file"
+        if ($privExportRefused -eq $false -or (Test-Path $privExportPath)) {
+            Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
+            Write-Fail "Export-IntunePrivateKey must fail with NTE_PERM for a non-extractable KMS key"
+            exit 1
         }
-        Write-Ok "Export-IntunePrivateKey wrote $privFileSize bytes"
 
-        # Import a private key via Import-IntunePrivateKey.
-        # This calls NCryptImportKey with RSAFULLPRIVATEBLOB blob type.
-        $importKeyName = "intune-pfx-import-$($intuneKeyName.Substring($intuneKeyName.LastIndexOf('-') + 1))"
-        Import-IntunePrivateKey `
-            -ProviderName "Cosmian KMS Key Storage Provider" `
-            -KeyName $importKeyName `
-            -FilePath $privExportPath `
-            -MakeExportable
-        Write-Ok "Import-IntunePrivateKey succeeded"
-
-        # Clean up
-        Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
-
-        Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublicBcrypt + ExportPublicPEM + ExportPrivate + Import)"
+        Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublicBcrypt + ExportPublicPEM + ExportPrivate refused)"
     } else {
         Write-Step "Skipping Intune PFX Import test (not Administrator)"
         Write-Host "  [SKIP] Add-IntuneKspKey requires a registered KSP (Administrator)" -ForegroundColor Yellow

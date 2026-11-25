@@ -4,7 +4,10 @@
 
 use zeroize::Zeroizing;
 
-use crate::{ModuleResult, traits::KeyAlgorithm};
+use crate::{
+    ModuleResult,
+    traits::{KeyAlgorithm, KeyProtection},
+};
 
 pub trait SymmetricKey: Send + Sync {
     /// The unique identifier of the key (in the KMS)
@@ -18,6 +21,12 @@ pub trait SymmetricKey: Send + Sync {
 
     /// Return raw bytes
     fn raw_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>>;
+
+    /// Sensitive/extractable attributes of the key in the KMS (drive `CKA_SENSITIVE`,
+    /// `CKA_EXTRACTABLE` and whether `CKA_VALUE` may be returned).
+    fn protection(&self) -> KeyProtection {
+        KeyProtection::default()
+    }
 
     /// Whether the key's KMIP usage mask allows `MACGenerate` (reported as `CKA_SIGN`).
     fn can_generate_mac(&self) -> bool {

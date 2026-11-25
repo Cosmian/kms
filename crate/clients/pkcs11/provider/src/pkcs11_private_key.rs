@@ -2,12 +2,14 @@ use cosmian_logger::error;
 use cosmian_pkcs11_module::{
     ModuleError, ModuleResult,
     profiling::{self, SignPhase},
-    traits::{KeyAlgorithm, PrivateKey, SearchOptions, SignatureAlgorithm, backend},
+    traits::{KeyAlgorithm, KeyProtection, PrivateKey, SearchOptions, SignatureAlgorithm, backend},
 };
 use openssl::pkey::PKey;
 use zeroize::Zeroizing;
 
-use crate::kms_object::{KmsObject, LazyKeyMaterial, key_algorithm_from_attributes};
+use crate::kms_object::{
+    KmsObject, LazyKeyMaterial, key_algorithm_from_attributes, key_protection_from_attributes,
+};
 
 /// A PKCS11 Private Key implementation that may only hold remote
 /// references to the actual private key
@@ -18,15 +20,22 @@ pub(crate) struct Pkcs11PrivateKey {
     key_size: usize,
     /// DER bytes of the private key — lazy-loaded on first use.
     der_bytes: LazyKeyMaterial,
+    protection: KeyProtection,
 }
 
 impl Pkcs11PrivateKey {
-    pub(crate) const fn new(remote_id: String, algorithm: KeyAlgorithm, key_size: usize) -> Self {
+    pub(crate) const fn new(
+        remote_id: String,
+        algorithm: KeyAlgorithm,
+        key_size: usize,
+        protection: KeyProtection,
+    ) -> Self {
         Self {
             remote_id,
             der_bytes: LazyKeyMaterial::new(),
             algorithm,
             key_size,
+            protection,
         }
     }
 
@@ -50,6 +59,7 @@ impl Pkcs11PrivateKey {
             algorithm,
             key_size,
             der_bytes,
+            protection: key_protection_from_attributes(&kms_object.attributes),
         })
     }
 }
@@ -80,6 +90,10 @@ impl PrivateKey for Pkcs11PrivateKey {
 
     fn key_size(&self) -> usize {
         self.key_size
+    }
+
+    fn protection(&self) -> KeyProtection {
+        self.protection
     }
 
     fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {

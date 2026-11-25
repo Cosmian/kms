@@ -964,7 +964,8 @@ mod characterization_tests {
                 to_hex(&blob[..24]),
                 "52534131000800000300000000010000".to_owned() + "0000000000000000"
             );
-            assert_ne!(ctx.export_private_pkcs8().unwrap().len(), 0);
+            // Generated keys are non-extractable in the KMS: the private key never leaves it.
+            ctx.export_private_pkcs8().unwrap_err();
             cleanup(&client, &ctx);
         }
 

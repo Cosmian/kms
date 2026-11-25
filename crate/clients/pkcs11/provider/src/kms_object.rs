@@ -41,7 +41,8 @@ use cosmian_pkcs11_module::{
     profiling::{self, SignPhase},
     traits::{
         AES_GMAC_TAG_SIZE, DecryptContext, DigestType, EncryptContext, EncryptionAlgorithm,
-        KeyAlgorithm, MacAlgorithm, MacUsage, MessageEncryptionOutput, SignatureAlgorithm,
+        KeyAlgorithm, KeyProtection, MacAlgorithm, MacUsage, MessageEncryptionOutput,
+        SignatureAlgorithm,
     },
 };
 use zeroize::Zeroizing;
@@ -1573,6 +1574,16 @@ pub(crate) async fn get_kms_object_attributes_async(
         })
         .await?;
     Ok(response.attributes)
+}
+
+/// Sensitive/extractable attributes the KMS reported for a key.
+pub(crate) const fn key_protection_from_attributes(attributes: &Attributes) -> KeyProtection {
+    KeyProtection {
+        sensitive: attributes.sensitive,
+        extractable: attributes.extractable,
+        never_extractable: attributes.never_extractable,
+        always_sensitive: attributes.always_sensitive,
+    }
 }
 
 pub(crate) fn key_algorithm_from_attributes(attributes: &Attributes) -> Pkcs11Result<KeyAlgorithm> {
