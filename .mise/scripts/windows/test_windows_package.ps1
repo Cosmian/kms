@@ -12,7 +12,9 @@
     4. the service runs and answers GET /version (the FIPS server proves it loaded fips.dll),
     5. FIPS variant: without OPENSSL_* the server must refuse to start (fail closed),
     6. FIPS variant: openssl\cosmian_kms_fips.cmd starts a working server on its own,
-    7. uninstall removes the service and the binary.
+    7. a silent reinstall over the running install keeps the edited kms.toml and writes the
+       packaged template to kms.toml.new, and the service still answers,
+    8. uninstall removes the service and the binary.
 
 .EXAMPLE
   .\.mise\scripts\windows\test_windows_package.ps1 -Installer target\release\cosmian-kms-server-fips-static-openssl_<ver>_x86_64.exe -Variant fips
@@ -146,6 +148,23 @@ function Assert-ServiceAnswers {
     Write-Host "OK: GET /version -> $($resp.StatusCode): $($resp.Content)"
 }
 
+# A reinstall over an existing install must keep the operator's kms.toml (not overwrite it with
+# the packaged template) and drop the template next to it as kms.toml.new.
+function Assert-ReinstallKeepsConfig {
+    param([string]$Dir)
+    Write-Step "Reinstall keeps kms.toml"
+    $marker = "# upgrade-check $([guid]::NewGuid())"
+    $config = Join-Path $Dir "kms.toml"
+    Add-Content -LiteralPath $config -Value $marker
+    Install-KmsPackage
+    if (-not (Select-String -LiteralPath $config -SimpleMatch -Quiet -Pattern $marker)) {
+        throw "kms.toml was overwritten by the reinstall (marker '$marker' lost)"
+    }
+    Assert-File (Join-Path $Dir "kms.toml.new")
+    Assert-ServiceAnswers -Dir $Dir
+    Write-Host "OK: kms.toml kept across the reinstall, template written to kms.toml.new"
+}
+
 # Environment that hides the FIPS provider from a child process.
 function Get-NoOpenSslEnv {
     $vars = @{}
@@ -237,6 +256,7 @@ try {
         Assert-FailsClosedWithoutProvider -Dir $installedDir
         Assert-LauncherWorks -Dir $installedDir
     }
+    Assert-ReinstallKeepsConfig -Dir $installedDir
     $script:ChecksOk = $true
 } finally {
     Remove-KmsPackage -Dir $installedDir

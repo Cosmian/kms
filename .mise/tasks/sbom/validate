@@ -32,7 +32,7 @@ fi
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 # Committed SBOMs of other variants may predate the current generator: CI filters to what it just built.
 mapfile -t files < <(find "${REPO_ROOT}/sbom" "${REPO_ROOT}/cbom" -name '*.cdx.json' |
-  grep -E "/(server|ckms)/${usage_variant:-[^/]+}/${usage_link:-[^/]+}/|/openssl_[^/]+/|/cbom/" | sort)
+  grep -E "/(server|ckms)/${usage_variant:-[^/]+}/${usage_link:-[^/]+}/|/openssl/[^/]+/|/cbom/" | sort)
 
 print_header "Validating CycloneDX SBOM/CBOM"
 [ "${#files[@]}" -gt 0 ] || {

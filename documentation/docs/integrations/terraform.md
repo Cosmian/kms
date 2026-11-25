@@ -305,10 +305,10 @@ output "private_key_uid" { value = kms_key_pair.app_signing.private_key_uid }
 output "public_key_uid"  { value = kms_key_pair.app_signing.public_key_uid }
 ```
 
-Apply it against a local KMS instance:
+Apply it against a local development KMS instance (unauthenticated: development only):
 
 ```bash
-docker run -d -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+docker run -d -p 9998:9998 -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true --name kms ghcr.io/cosmian/kms:latest
 
 export COSMIAN_KMS_SERVER_URL=http://localhost:9998
 terraform init
@@ -337,10 +337,10 @@ provider_installation {
 }
 ```
 
-Run the acceptance tests against a local KMS server:
+Run the acceptance tests against a local development KMS server (unauthenticated: development only):
 
 ```bash
-docker run -d -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+docker run -d -p 9998:9998 -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true --name kms ghcr.io/cosmian/kms:latest
 
 export TF_ACC=1
 export COSMIAN_KMS_SERVER_URL=http://localhost:9998

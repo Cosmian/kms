@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_attributes::{Attribute, Attributes},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
-        kmip_operations::{Destroy, Revoke, SetAttribute},
+        kmip_operations::{Destroy, Import, ImportResponse, Operation, Revoke, SetAttribute},
         kmip_types::{KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         requests::{
             create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
@@ -36,7 +36,9 @@ use super::{
     b64_decode,
 };
 use crate::{
-    core::{KMS, ObjectHandle},
+    core::{
+        KMS, ObjectHandle, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request,
+    },
     middlewares::UserId,
     routes::jwks::JWKS_TAG,
 };
@@ -198,6 +200,11 @@ async fn generate_symmetric_key(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::Create(Box::new(create_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
     let resp = kms
         .create(create_req, user)
         .await
@@ -275,6 +282,11 @@ async fn generate_ec_key_pair(
         }
     }
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::CreateKeyPair(Box::new(create_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
     let resp = kms
         .create_key_pair(create_req, user)
         .await
@@ -365,6 +377,11 @@ async fn generate_rsa_key_pair(
         }
     }
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::CreateKeyPair(Box::new(create_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
     let resp = kms
         .create_key_pair(create_req, user)
         .await
@@ -454,6 +471,11 @@ async fn generate_okp_key_pair(
         }
     }
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::CreateKeyPair(Box::new(create_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
     let resp = kms
         .create_key_pair(create_req, user)
         .await
@@ -578,10 +600,7 @@ async fn import_symmetric_key(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    let resp = kms
-        .import(import_req, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let resp = policy_checked_import(kms, import_req, user).await?;
 
     let kid = resp.unique_identifier.to_string();
     let key_ops = key_ops_from_alg(alg);
@@ -615,6 +634,22 @@ fn spki_public_key_object(spki_der: Vec<u8>, attributes: Attributes) -> Object {
             key_wrapping_data: None,
         },
     })
+}
+
+/// `Import` after the request passed the `kmip.policy_id` check, as the KMIP endpoint does.
+pub(super) async fn policy_checked_import(
+    kms: &KMS,
+    import_req: Import,
+    user: &UserId,
+) -> Result<ImportResponse, CryptoApiError> {
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::Import(Box::new(import_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
+    kms.import(import_req, user)
+        .await
+        .map_err(CryptoApiError::from)
 }
 
 // ─── Internal: derive and import the public key for an imported private key ──
@@ -662,9 +697,7 @@ async fn import_public_key_for_private(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    kms.import(import_req, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    policy_checked_import(kms, import_req, user).await?;
 
     // Set PublicKeyLink on the private key so sign.rs can resolve the public kid
     // for the JWS protected header (RFC 7515 §4.1.4).
@@ -825,10 +858,7 @@ async fn import_ec_key(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    let resp = kms
-        .import(import_req, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let resp = policy_checked_import(kms, import_req, user).await?;
 
     let kid = resp.unique_identifier.to_string();
 
@@ -966,10 +996,7 @@ async fn import_rsa_key(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    let resp = kms
-        .import(import_req, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let resp = policy_checked_import(kms, import_req, user).await?;
 
     let kid = resp.unique_identifier.to_string();
 
@@ -1101,10 +1128,7 @@ async fn import_rsa_public_key(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    let resp = kms
-        .import(import_req, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let resp = policy_checked_import(kms, import_req, user).await?;
 
     Ok(KeyCreateResponse {
         kid: resp.unique_identifier.to_string(),
@@ -1216,10 +1240,7 @@ async fn import_okp_key(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    let resp = kms
-        .import(import_req, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let resp = policy_checked_import(kms, import_req, user).await?;
 
     let kid = resp.unique_identifier.to_string();
 

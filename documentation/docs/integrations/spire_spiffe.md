@@ -218,6 +218,7 @@ permanently non-exportable at every API surface.
 | `POST` | `/v1/{mount}/keys/{name}/config` | *(no-op)* | Accept SPIRE's config call without error | 204 No Content |
 | `DELETE` | `/v1/{mount}/keys/{name}` | `Revoke`+`Destroy` | Permanently delete key pair | 204 No Content |
 | `POST`/`PUT` | `/v1/{mount}/sign/{name}/{hash_alg}` | `Sign` | Sign a pre-hashed input server-side (private key never leaves KMS) | Signature string (`vault:v1:` prefix + base64) |
+| `POST`/`PUT` | `/v1/{mount}/encrypt/{name}`, `/v1/{mount}/decrypt/{name}`, `/v1/{mount}/keys/{name}/rotate` | `Encrypt` / `Decrypt` / `Create` | AES-256-GCM with `aes256-gcm96` keys (Vault auto-unseal) — see [HashiCorp Vault auto-unseal](hashicorp_vault_auto_unseal.md) | `vault:vN:` ciphertext / base64 plaintext |
 
 #### `/v1/{mount}/root/sign-intermediate` — PKI engine (single endpoint)
 
@@ -429,24 +430,35 @@ Before SPIRE can sign its intermediate CA, the KMS must hold a CA key with the t
 configured in `--vault-pki-ca-key-label` (default: `vault_pki_ca`).
 
 When the Vault token verifier is the only authentication method, the KMS answers `401`
-to token-less requests, so `ckms` must authenticate as the server admin
-(`default_username`, e.g. `admin`) with an mTLS client certificate whose CN equals that
-name. Make the KMS trust the CA that signed it, then point `ckms` at the certificate:
+to token-less requests, so `ckms` must authenticate with an **API token**, which acts as the
+server admin (`default_username`). A client certificate or JWT whose identity equals
+`default_username` is refused with `401 external identity collides with the KMS default_username`,
+so use a certificate with a different CN only to seed the token key. Make the KMS trust the CA
+that signed that certificate, declare the token key id, and choose a `default_username`
+distinct from every real identity:
 
 ```toml
 # kms.toml
-default_username = "admin"
+default_username = "kms-default-user"
+api_token_id = "spire-admin-token"      # id of the symmetric key holding the token
 
 [tls]
-clients_ca_cert_file = "/etc/cosmian/clients-ca.crt"   # CA that signed the admin client cert
+clients_ca_cert_file = "/etc/cosmian/clients-ca.crt"   # CA that signed the bootstrap client cert
+```
+
+Create the token key once, through a certificate (CN != `default_username`) that the CA above
+signed, then use the token as `access_token`:
+
+```bash
+TOKEN=$(openssl rand -base64 32)
+ckms --conf /etc/cosmian/bootstrap-ckms.toml sym keys create --bytes-b64 "$TOKEN" spire-admin-token
 ```
 
 ```toml
 # ckms.toml
 [http_config]
 server_url = "https://kms.example.com:9998"
-tls_client_pem_cert_path = "/etc/cosmian/admin.crt"   # CN=admin, extendedKeyUsage=clientAuth
-tls_client_pem_key_path  = "/etc/cosmian/admin.key"
+access_token = "<the $TOKEN value>"
 ```
 
 Create the key once with the `ckms` CLI:

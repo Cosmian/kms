@@ -162,6 +162,9 @@ pub struct OidcRuntimeConfig {
     pub config: OidcConfig,
     /// Populated when `ui_oidc_issuer_url` is configured; `None` otherwise.
     pub discovered: Option<OidcDiscoveredEndpoints>,
+    /// Issuer of the first JWT identity provider; UI identities from any other issuer are
+    /// namespaced `email#issuer`. `None` when no JWT provider is configured.
+    pub primary_jwt_issuer: Option<String>,
 }
 
 /// Runtime configuration for the Web UI's Auth Verifier server (BFF) login.

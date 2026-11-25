@@ -8,7 +8,7 @@
   pkgs ? import <nixpkgs> { },
   lib ? pkgs.lib,
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   rustPlatform ? pkgs.rustPlatform,
   version,
   features ? [ ],
@@ -21,7 +21,7 @@ let
       pkgs
       lib
       openssl36
-      openssl312
+      opensslFips
       static
       features
       ;

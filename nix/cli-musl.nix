@@ -4,7 +4,7 @@
   pkgsMusl,
   lib ? pkgsMusl.lib,
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   rustPlatform ? pkgsMusl.rustPlatform,
   version,
   features ? [ ],
@@ -20,7 +20,7 @@ let
     inherit
       lib
       openssl36
-      openssl312
+      opensslFips
       features
       ;
     static = true; # OpenSSL main library is always statically embedded (.a) here
@@ -28,6 +28,7 @@ let
   inherit (common)
     opensslLink
     mkFilteredSrc
+    opensslEnv
     baseVariant
     ;
 
@@ -78,10 +79,12 @@ rustPlatform.buildRustPackage rec {
 
   buildInputs = [ opensslLink ];
 
-  OPENSSL_DIR = opensslLink;
-  OPENSSL_LIB_DIR = "${opensslLink}/lib";
-  OPENSSL_INCLUDE_DIR = "${opensslLink}/include";
-  OPENSSL_NO_VENDOR = 1;
+  inherit (opensslEnv)
+    OPENSSL_DIR
+    OPENSSL_LIB_DIR
+    OPENSSL_INCLUDE_DIR
+    OPENSSL_NO_VENDOR
+    ;
   OPENSSL_STATIC = "1";
 
   RUSTFLAGS = lib.concatStringsSep " " [

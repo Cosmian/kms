@@ -4,37 +4,40 @@ This directory contains OpenSSL source tarballs for offline Nix builds.
 
 ## Files
 
-- `openssl-3.1.2.tar.gz`: OpenSSL 3.1.2 source tarball (SHA256: a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539)
+`openssl-<version>.tar.gz`, one per entry of [`crate/crypto/openssl_versions.json`](../../crate/crypto/openssl_versions.json),
+the single source of truth for the OpenSSL versions and SHA-256 hashes:
 
-This tarball exists to support the **OpenSSL 3.1.2 FIPS provider**; KMS links against **OpenSSL 3.6.5** for the main runtime/library, but 3.1.2 must still be used because it is the official FIPS provider version available today (no more recent FIPS provider version).
+- `main`: the OpenSSL the KMS links against (runtime/library);
+- `fips`: the newest CMVP-validated OpenSSL FIPS provider, built separately and loaded at runtime.
+
+`crate/crypto/build.rs`, `nix/openssl.nix`, the packaging scripts (`.mise/lib/openssl.sh`) and the Windows FIPS provider
+script all read that file. To bump a version, edit it (version and SHA-256), then regenerate the Nix vendor hashes if needed.
 
 ## Usage
 
-The Nix derivation in `nix/openssl.nix` will automatically use the local tarball if present (for the 3.1.2 FIPS provider build), otherwise it will fall back to downloading from the internet.
+The Nix derivation in `nix/openssl.nix` automatically uses the local tarball if present, otherwise it downloads
+`https://package.cosmian.com/openssl/openssl-<version>.tar.gz`. `mise run package` downloads missing tarballs once
+(`one_shot_fetch_openssl` in `.mise/scripts/package/package_common.sh`) so later steps can run offline.
 
-**Hash Validation**: The build will fail if the local tarball's SHA256 hash does not match the expected official hash. This ensures integrity and prevents builds with corrupted or modified source files.
-
-This enables offline builds when network access is limited or for reproducible builds that don't depend on external downloads.
+**Hash Validation**: the build fails if the local tarball's SHA-256 does not match the pinned hash. This ensures integrity
+and prevents builds with corrupted or modified source files.
 
 ## Verification
 
-To verify the integrity of the tarball:
-
 ```bash
-sha256sum openssl-3.1.2.tar.gz
+sha256sum openssl-<version>.tar.gz
+# compare with: jq -r '.[].sha256' ../../crate/crypto/openssl_versions.json
 ```
-
-Expected hash: `a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539`
 
 ## Error Handling
 
-If the local tarball has an incorrect hash, the build will fail with an error message like:
+If the local tarball has an incorrect hash, the build fails with an error message like:
 
 ```text
 error: Local OpenSSL tarball hash mismatch!
-Expected: a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539
+Expected: <pinned hash>
 Actual:   [actual_hash]
-Please verify the integrity of ./resources/tarballs/openssl-3.1.2.tar.gz
+Please verify the integrity of ./resources/tarballs/openssl-<version>.tar.gz
 ```
 
 In this case, either:

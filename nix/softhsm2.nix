@@ -1,7 +1,7 @@
 {
   pkgs ? import <nixpkgs> { },
   # The OpenSSL SoftHSM2 links and runs against. The FIPS variant passes the shared
-  # OpenSSL 3.1.2 build (nix/openssl.nix, enableLegacy = false), whose ssl/openssl.cnf
+  # OpenSSL 3.5.9 build (nix/openssl.nix, enableLegacy = false), whose ssl/openssl.cnf
   # activates only the fips + base providers and includes the generated fipsmodule.cnf.
   openssl ? pkgs.openssl,
 }:

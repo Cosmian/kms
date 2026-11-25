@@ -29,8 +29,8 @@ use zeroize::Zeroizing;
 use crate::{
     AtomicOperation, CryptoAlgorithm, CryptoOracle, DestroyedFilter, EcCurve, FindOptions, HSM,
     HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, KeyType, MacAlgorithm, MacKeyMetadata,
-    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
+    InterfaceError, InterfaceResult, KeyInventoryBucket, KeyMaterial, KeyType, MacAlgorithm,
+    MacKeyMetadata, ObjectWithMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
     crypto_oracle::{EncryptedContent, KeyMetadata, KeyUsageFlags},
 };
 
@@ -798,6 +798,99 @@ impl ObjectsStore for HsmStore {
             }
         }
         Ok(total)
+    }
+
+    /// Break the HSM keys down by type and algorithm.
+    ///
+    /// Each slot is queried once per typed filter; keys matched by no typed
+    /// filter (e.g. generic secrets) are reported under an `Unknown` object
+    /// type. PKCS#11 `find` does not return key lengths or KMIP states, so
+    /// those dimensions stay `None`. A slot whose listing or any typed query
+    /// fails is skipped entirely, so its keys are never misreported as `Unknown`;
+    /// errors are non-fatal, as in [`Self::count_non_destroyed_keys`].
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        const TYPED_FILTERS: [(HsmObjectFilter, &str, &str); 5] = [
+            (HsmObjectFilter::AesKey, "SymmetricKey", "AES"),
+            (HsmObjectFilter::RsaPrivateKey, "PrivateKey", "RSA"),
+            (HsmObjectFilter::RsaPublicKey, "PublicKey", "RSA"),
+            (HsmObjectFilter::EcPrivateKey, "PrivateKey", "EC"),
+            (HsmObjectFilter::EcPublicKey, "PublicKey", "EC"),
+        ];
+        let slot_ids = self
+            .hsm
+            .get_available_slot_list()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("HSM key_inventory: failed to list slots: {e}");
+                vec![]
+            });
+        let mut typed_counts = [0_u64; TYPED_FILTERS.len()];
+        let mut unknown: u64 = 0;
+        for slot_id in slot_ids {
+            let total = match self.hsm.find(slot_id, HsmObjectFilter::Any).await {
+                Ok(keys) => u64::try_from(keys.len()).unwrap_or(u64::MAX),
+                Err(e) => {
+                    debug!("HSM key_inventory: slot {slot_id} query failed: {e}");
+                    continue;
+                }
+            };
+            // A failed typed query would push that type's keys into `Unknown`: skip the slot.
+            let mut slot_counts = [0_u64; TYPED_FILTERS.len()];
+            let mut slot_failed = false;
+            for ((filter, _, _), count) in TYPED_FILTERS.iter().zip(slot_counts.iter_mut()) {
+                match self.hsm.find(slot_id, *filter).await {
+                    Ok(keys) => *count = u64::try_from(keys.len()).unwrap_or(u64::MAX),
+                    Err(e) => {
+                        warn!(
+                            "HSM key_inventory: slot {slot_id} typed query failed, slot skipped: {e}"
+                        );
+                        slot_failed = true;
+                        break;
+                    }
+                }
+            }
+            if slot_failed {
+                continue;
+            }
+            let typed_total = slot_counts.iter().fold(0_u64, |a, n| a.saturating_add(*n));
+            for (acc, n) in typed_counts.iter_mut().zip(slot_counts) {
+                *acc = acc.saturating_add(n);
+            }
+            unknown = unknown.saturating_add(total.saturating_sub(typed_total));
+        }
+        let mut inventory: Vec<(KeyInventoryBucket, u64)> = TYPED_FILTERS
+            .iter()
+            .zip(typed_counts)
+            .filter(|(_, count)| *count > 0)
+            .map(|((_, object_type, algorithm), count)| {
+                (
+                    KeyInventoryBucket {
+                        object_type: (*object_type).to_owned(),
+                        algorithm: Some((*algorithm).to_owned()),
+                        key_length: None,
+                        state: None,
+                    },
+                    count,
+                )
+            })
+            .collect();
+        if unknown > 0 {
+            inventory.push((
+                KeyInventoryBucket {
+                    object_type: "Unknown".to_owned(),
+                    algorithm: None,
+                    key_length: None,
+                    state: None,
+                },
+                unknown,
+            ));
+        }
+        Ok(inventory)
+    }
+
+    /// PKCS#11 objects carry no KMIP `DeactivationDate`.
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
+        Ok(vec![])
     }
 
     /// HSM keys are physically stored on the device and never wrapped in KMIP format.
@@ -2575,6 +2668,47 @@ mod tests {
             return Err(InterfaceError::Default(format!(
                 "count_all_non_destroyed ({via_all}) must equal count_non_destroyed_keys \
                  ({via_keys}) for HsmStore"
+            )));
+        }
+        Ok(())
+    }
+
+    /// A slot whose typed `find` fails is skipped: its keys must appear neither in the typed
+    /// buckets nor in `Unknown` (regression: they used to be counted as `Unknown`).
+    #[tokio::test]
+    async fn test_key_inventory_skips_slot_with_failed_typed_query() -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_get_available_slot_list()
+            .returning(|| Ok(vec![0, 1]));
+        mock.expect_find()
+            .returning(|slot_id, filter| match (slot_id, filter) {
+                (0, HsmObjectFilter::Any) => Ok(vec![vec![0]; 5]),
+                (0, HsmObjectFilter::AesKey) => {
+                    Err(InterfaceError::Default("typed find failed".to_owned()))
+                }
+                (0, HsmObjectFilter::RsaPublicKey) => Ok(vec![vec![0]; 3]),
+                (1, HsmObjectFilter::Any) => Ok(vec![vec![0]; 4]),
+                (1, HsmObjectFilter::AesKey) => Ok(vec![vec![0]; 2]),
+                (1, HsmObjectFilter::RsaPrivateKey) => Ok(vec![vec![0]]),
+                _ => Ok(vec![]),
+            });
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+
+        let mut got: Vec<(String, Option<String>, u64)> = store
+            .key_inventory()
+            .await?
+            .into_iter()
+            .map(|(bucket, count)| (bucket.object_type, bucket.algorithm, count))
+            .collect();
+        got.sort();
+        let expected = vec![
+            ("PrivateKey".to_owned(), Some("RSA".to_owned()), 1),
+            ("SymmetricKey".to_owned(), Some("AES".to_owned()), 2),
+            ("Unknown".to_owned(), None, 1),
+        ];
+        if got != expected {
+            return Err(InterfaceError::Default(format!(
+                "key_inventory must only count the healthy slot: expected {expected:?}, got {got:?}"
             )));
         }
         Ok(())
