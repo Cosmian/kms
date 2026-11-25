@@ -37,6 +37,7 @@ applyTo: 'crate/server/**/*.rs'
 - Server config lives in `src/config/`.
 - CLI flags map to `clap` derive structs.
 - Configuration templates in `resources/`.
+- State that another KMS instance or region must see (revocations, locks, counters, election) lives in the database, never in a `static` or a struct field: follow `database-replication.instructions.md` and run `/kms-db-compat`.
 
 ## Testing
 

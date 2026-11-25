@@ -226,7 +226,7 @@ sequenceDiagram
             Task->>Docker: up pgedge-1 pgedge-2
             Task->>Cargo: state merge and grants, CRL gating, ceremony gating (non-FIPS only)
             Cargo->>PG: create the schema, wire Spock full-mesh, write on both nodes
-            Task->>PG: primary keys, lifecycle triggers, cluster tables, Spock wiring
+            Task->>PG: primary keys, lifecycle triggers, cluster tables, replication set, Spock wiring
         end
         opt backend is mysql or all
             Task->>Docker: up galera-1 galera-2 (wait until synced)

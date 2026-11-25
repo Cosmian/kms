@@ -169,6 +169,7 @@ When a prompt matches a trigger below, read `.github/skills/<skill>/SKILL.md` an
 | `/kms-adversarial-test` | `\badversarial test` |
 | `/kms-db-compat` | `\b(downgrad\w*\|rollback\|roll back\|backward[- ]compat\w*\|mixed[- ]version\|rolling upgrade)\b.*\b(database\|db\|schema\|sql\w*\|postgres\w*\|mysql\|mariadb\|redis)\b` |
 | `/kms-db-compat` | `\b(database\|db\|schema)\s+(upgrade\|migration)\b` |
+| `/kms-db-compat` | `\b(multi[- ]region\|spock\|galera\|pgedge\|cluster mode\|replication set)\b` |
 | `/adr` | `\barchitectural decision record\b` |
 
 ## Credit-Saving Strategies

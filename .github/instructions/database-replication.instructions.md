@@ -21,7 +21,7 @@ A change here is not finished until the cluster and multi-region questions below
 
 ## Mandatory decisions, one per new table, column or stored value
 
-Put the answers in the `##`table`` section of `documentation/docs/configuration/database/tables.md` (a **Replication.** paragraph next to **Downgrade.**) and in the PR description.
+Put the answers in the table's section of `documentation/docs/configuration/database/tables.md` (a **Replication.** paragraph next to **Downgrade.**) and in the PR description.
 
 1. **Cluster.** Is the data read by an instance other than the one that wrote it? If yes it MUST be in the database (SQL and Redis-with-Findex), with the same idempotent startup creation as every other table. A per-process copy is only a cache with a stated maximum staleness. Fail closed when a security decision depends on a read that fails.
 2. **Multi-region PostgreSQL: replicated or node-local?** The default is replicated: `spock.repset_add_all_tables('default', ARRAY['public'])` adds every `public` table. A node-local table (like `cluster_nodes`) needs an explicit `spock.repset_remove_table` and is guarded by `mr_guard_cluster_tables`.
@@ -40,7 +40,7 @@ Put the answers in the `##`table`` section of `documentation/docs/configuration/
 
 - (a) `tables.md`: a **Replication.** paragraph (mode by mode: cluster, Spock, Galera, Redis) for each new table.
 - (b) `multi_region.md` and ADR consequences: the operator step for existing deployments, the conflict class, the lag window. Update the replication-set commands if the table is node-local.
-- (c) `.mise/lib/multi_region_guards.sh`: extend the guard that matches the decision (primary key list, node-local tables, delta-apply).
+- (c) `.mise/lib/multi_region_guards.sh`: extend the guard that matches the decision (primary key list in `mr_guard_primary_keys`, node-local tables in `mr_guard_cluster_tables`, delta-apply). `mr_guard_replication_set_complete` fails when a `public` table other than `cluster_nodes` is not in a Spock replication set, so a table added by an upgrade is caught until the operator runs `repset_add_table`; a node-local table must be added to its exclusion.
 - (d) A behavioural scenario in the live two-node tests: `test_db_pgedge_active_active` (numbered `S<n>`, uses `set_replication` to partition) and `test_db_galera_active_active` (`G<n>`), in `crate/server_database/src/tests/mod.rs`. Cover the write on one node read on the other, and the concurrent write of the same key while partitioned. Run them with `mise run test:db:pgedge` and `mise run test:db:galera`, and require `1 passed`; an `ignored` result is not a proof.
 - (e) If a cluster-mode decision moved state from process memory to the database, a unit test with two instances sharing one store (see `a_logout_on_one_instance_revokes_the_session_on_every_instance` in `crate/server/src/middlewares/ui_session.rs`).
 - (f) Run `/kms-db-compat`: its table now carries a **Cluster / multi-region** verdict per change.
@@ -51,7 +51,7 @@ Run these on the diff before answering the decisions above; any hit means this f
 
 ```bash
 BASE="${1:-origin/develop}"; git rev-parse -q --verify "$BASE" >/dev/null || BASE=HEAD~1
-git diff "$(git merge-base "$BASE" HEAD)" -- crate/server_database crate/interfaces/src/stores '*.sql' | grep -nE '^\+.*(CREATE TABLE|ALTER TABLE|CREATE INDEX|CREATE TRIGGER|-- name:|PermissionsStore|ObjectsStore|ui_session|cron_lock|advisory)'
+git diff "$(git merge-base "$BASE" HEAD)" -- crate/server_database crate/interfaces/src/stores '*.sql' | grep -nE '^\+.*(CREATE TABLE|ALTER TABLE|CREATE INDEX|CREATE TRIGGER|-- name:|PermissionsStore|ObjectsStore|cron_lock|advisory)'
 git diff "$(git merge-base "$BASE" HEAD)" -- crate/server/src | grep -nE '^\+.*(Mutex<(Hash|BTree)|OnceLock|LazyLock|static [A-Z_]+:|moka|Cache)'
 ```
 
