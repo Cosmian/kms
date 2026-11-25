@@ -572,7 +572,7 @@ pub(crate) mod tests {
                     let index = hits.fetch_add(1, Ordering::SeqCst);
                     let body = bodies
                         .get(index)
-                        .or(bodies.last())
+                        .or_else(|| bodies.last())
                         .cloned()
                         .unwrap_or_default();
                     let response = format!(

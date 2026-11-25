@@ -134,8 +134,9 @@ The server enforces the session lifetime itself, from values sealed inside the c
 
 - **Idle timeout**: a session unused for 1 hour is refused. Activity on session-authenticated routes extends it: the cookie is re-issued (same session id, same absolute expiry) when its last activity is 5 minutes old or more.
 - **Absolute lifetime**: 24 hours from login, never extended.
-- **Logout revocation**: `/ui/logout` records the session id in memory, so a copy of the cookie kept elsewhere is refused until its expiry. The revocation list is per process: it does not survive a restart and does not reach other instances behind a load balancer.
+- **Logout revocation**: `/ui/logout` records the session id in the KMS database, so a copy of the cookie kept elsewhere is refused by every instance sharing that database until its expiry. If the revocation cannot be read, the session is refused; if it cannot be written at logout, the cookie is still dropped from the browser and a warning is logged.
 - **Account changes**: disabling an account at the identity provider or the Auth Verifier does not end an open KMS UI session before its idle or absolute expiry.
+- **Load balancer**: every instance must use the same `ui_session_salt` and the same `kms_public_url` (the public URL of the load balancer), because both feed the cookie key derivation; without a `kms_public_url`, the URL is built from each instance's own hostname and port and the instances reject each other's cookies. The `/ui/login_as` throttle is per instance, so the effective quota grows with the number of instances.
 
 Cookies issued by a previous version carry no session id and are refused: users log in again once after an upgrade.
 

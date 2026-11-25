@@ -121,7 +121,7 @@ pub(crate) async fn callback(
     // Retrieve stored values.
     // PKCE is mandatory for the UI login flow: the login_flow handler always generates
     // and stores a verifier, so a missing value means the session was lost or tampered.
-    let stored = session_cookie.read(req.headers()).unwrap_or_default();
+    let stored = session_cookie.read(req.headers()).await.unwrap_or_default();
     let Some(pkce_verifier) = stored.pkce_verifier else {
         return HttpResponse::BadRequest().body("Missing PKCE verifier");
     };
@@ -645,6 +645,7 @@ pub(crate) async fn whoami(
     }
     session_cookie
         .read(req.headers())
+        .await
         .and_then(|s| s.user_id)
         .map_or_else(
             || {
@@ -724,7 +725,7 @@ pub(crate) async fn logout(
     kms_url: web::Data<String>,
 ) -> HttpResponse {
     // Server-side revocation: a copy of the cookie kept elsewhere stops working too.
-    session_cookie.revoke(req.headers());
+    session_cookie.revoke(req.headers()).await;
     let mut response = HttpResponse::Found();
     response.append_header((SET_COOKIE, session_cookie.removal_cookie()));
     if end_auth_verifier_session(&req, &auth_verifier_runtime).await {
@@ -1547,10 +1548,10 @@ mod tests {
     }
 
     /// The session sealed in an `auth_session=<value>` pair, read with the test key.
-    fn opened(pair: &str) -> Option<UiSession> {
+    async fn opened(pair: &str) -> Option<UiSession> {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, HeaderValue::from_str(pair).expect("header"));
-        test_ui_session_cookie().read(&headers)
+        test_ui_session_cookie().read(&headers).await
     }
 
     fn get(uri: &str, cookie: Option<&str>) -> actix_http::Request {
@@ -1685,7 +1686,7 @@ mod tests {
         );
         let session_cookie = session_pair(&resp);
         assert_eq!(
-            opened(&session_cookie),
+            opened(&session_cookie).await,
             Some(UiSession {
                 user_id: Some(UserId::from(OIDC_EMAIL)),
                 ..UiSession::default()
@@ -1765,7 +1766,7 @@ mod tests {
         let resp = test::call_service(&app, get(&url, Some(&flow_cookie))).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
         assert_eq!(
-            opened(&session_pair(&resp)),
+            opened(&session_pair(&resp)).await,
             Some(UiSession {
                 user_id: Some(UserId::from(OIDC_EMAIL)),
                 ..UiSession::default()
@@ -1795,7 +1796,7 @@ mod tests {
             let resp = test::call_service(&app, get(&url, Some(&flow_cookie))).await;
             assert_eq!(resp.status(), StatusCode::FOUND, "{primary_jwt_issuer:?}");
             assert_eq!(
-                opened(&session_pair(&resp)),
+                opened(&session_pair(&resp)).await,
                 Some(UiSession {
                     user_id: Some(UserId::from(expected.as_str())),
                     ..UiSession::default()
@@ -1862,7 +1863,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let session_cookie = session_pair(&resp);
         assert_eq!(
-            opened(&session_cookie),
+            opened(&session_cookie).await,
             Some(UiSession {
                 user_id: Some(UserId::from(SPIFFE_ID)),
                 ..UiSession::default()

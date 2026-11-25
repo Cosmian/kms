@@ -423,7 +423,6 @@ Crate path: `crate/server`
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
-| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | Emitted at session-key derivation time when `ui_session_salt` is absent. The ephemeral key means all browser sessions are lost on restart. Set `ui_session_salt` (or env `KMS_UI_SESSION_SALT`) to a stable 32-byte+ secret for production. |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
 | `trace` | `` Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `e`, `v` | - |
 | `trace` | `` PKCS#11 `C_Finalize` failed: {e} `` | `src/core/operations/pkcs11.rs` | `e` | - |
@@ -807,8 +806,10 @@ Crate path: `crate/server`
 | `debug` | `[metrics] kms.keys.active.count synced: {} bucket(s)` | `src/core/otel_metrics.rs` | - | - |
 | `warn` | `login_as: too many attempts from {client_ip}` | `src/routes/ui_auth.rs` | `client_ip` (peer, or the client reported by a trusted proxy) | The per-IP or per-username `login_as` quota is exhausted; the request is answered `429` and not relayed. |
 | `warn` | `UI session cookie refresh failed: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The refreshed cookie could not be sealed; the previous cookie stays valid until it expires. |
-| `warn` | `UI session revocation list is full: evicting the entry closest to expiry` | `src/middlewares/ui_session.rs` | - | More than 100 000 live revoked sessions; the oldest revocation is dropped. |
-| `warn` | `UI session revocation store unavailable` | `src/middlewares/ui_session.rs` | - | The revocation lock is poisoned; every UI session is refused (fail closed) until restart. |
+| `warn` | `UI session revocation failed: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | Logout could not record the revocation in the database; the browser cookie is dropped, but a copy of it stays valid until it expires. |
+| `warn` | `UI session revocation lookup failed, refusing the session: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The database could not be read; the logged-in session is refused (fail closed). |
+| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral session key. Sessions will be invalidated on server restart and are not portable across instances. For persistent sessions and load-balanced deployments, set `ui_session_salt` (or KMS_SESSION_SALT) to a strong random secret value. `` | `src/start_kms_server.rs` | - | Each instance seals its cookies with its own random key, so behind a load balancer users are logged out whenever a request reaches another instance. |
+| `debug` | `UI session cookie rejected: revoked` | `src/middlewares/ui_session.rs` | - | The session id was revoked by a logout on this or another instance. |
 
 ### `cosmian_kms_server_database`
 
@@ -873,6 +874,8 @@ Crate path: `crate/server_database`
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
 | `error` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | `role`, `user`, `error` | Security: audit event on every check of the user. Tampered record, or `ceremony_secret`/`ceremony_key_id` differing between regions. |
 | `debug` | `[metrics] skipping unparsable DeactivationDate {json}: {e}` | `src/stores/sql/mod.rs` | `json`, `e` | - |
+| `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/mysql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
+| `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/pgsql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 
 ### `cosmian_kms_crypto`
 

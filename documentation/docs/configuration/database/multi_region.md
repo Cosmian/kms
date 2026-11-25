@@ -208,6 +208,11 @@ ALTER TABLE gcm_invocations ALTER COLUMN count
 
 `mise run test:db:multi-region-guards` checks both settings.
 
+On an existing deployment upgraded to a release that adds the `ui_session_revocations` table (Web UI logout
+revocation), `repset_add_all_tables` has already run: add the new table on every node with
+`SELECT spock.repset_add_table('default', 'ui_session_revocations');`, otherwise a logout in one region is not
+seen by the others.
+
 ## Operating notes
 
 - Set `region_role` once per region (`--region-role` or `KMS_REGION_ROLE`); never configure two leaders.

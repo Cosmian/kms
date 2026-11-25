@@ -1355,7 +1355,7 @@ pub async fn prepare_kms_server(
     //   This is deterministic across restarts and identical across load-balanced instances.
     // - Otherwise: generate a random ephemeral key (secure but lost on restart).
     //   Operators who need persistent sessions or load-balanced deployments MUST set
-    //   `ui_session_salt` (or KMS_UI_SESSION_SALT).
+    //   `ui_session_salt` (or KMS_SESSION_SALT).
     let mut session_key = Zeroizing::new([0_u8; 32]);
     if let Some(salt) = kms_server.params.ui.session_salt.as_deref() {
         let derived = derive_session_key_from_url(&kms_public_url, salt)?;
@@ -1371,7 +1371,7 @@ pub async fn prepare_kms_server(
             "ui_session_salt is not configured — using a randomly generated ephemeral \
              session key. Sessions will be invalidated on server restart and are not \
              portable across instances. For persistent sessions and load-balanced \
-             deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
+             deployments, set `ui_session_salt` (or KMS_SESSION_SALT) to a strong \
              random secret value."
         );
         kms_server
@@ -1379,7 +1379,13 @@ pub async fn prepare_kms_server(
             .fill_bytes(&mut *session_key)
             .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
     }
-    let ui_session_cookie = Data::new(UiSessionCookie::new(session_key, session_cookie_secure));
+    // Logout revocations go to the KMS database, so every instance behind a load balancer
+    // sees them.
+    let ui_session_cookie = Data::new(UiSessionCookie::new(
+        session_key,
+        session_cookie_secure,
+        kms_server.clone(),
+    ));
     // One limiter for all workers: the quotas are per process, not per worker.
     let login_as_limiter = Data::new(LoginAsLimiter::new(
         kms_server.params.audit_trusted_proxy_cidrs.clone(),

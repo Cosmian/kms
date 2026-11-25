@@ -4,14 +4,16 @@
 //! key, with the cookie name as AAD and a server-enforced expiry inside the sealed payload.
 //! The browser can neither read nor forge it. The server enforces an absolute lifetime, an
 //! idle timeout (sliding, refreshed by [`UiSessionCookie::read_with_refresh`]) and a logout
-//! revocation list kept in memory: it is per process and does not survive a restart.
+//! revocation list kept in the KMS database ([`SessionRevocations`]), so that a logout on
+//! one instance is honored by every instance sharing the database.
 //!
 //! The IV is generated inside the `OpenSSL` provider DRBG (mandatory in FIPS mode, and
 //! fork-safe), never by this module.
 
-use std::{collections::HashMap, sync::Mutex};
+use std::sync::Arc;
 
 use actix_web::http::header::{self, HeaderMap};
+use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::{
     KmsRng,
@@ -21,7 +23,7 @@ use cosmian_logger::{debug, warn};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-use crate::{error::KmsError, middlewares::UserId, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::UserId, result::KResult};
 
 /// Name of the KMS session cookie; also the AES-GCM AAD, binding a sealed value to this cookie.
 const UI_SESSION_COOKIE: &str = "auth_session";
@@ -34,9 +36,6 @@ const UI_SESSION_IDLE_SECS: i64 = 60 * 60;
 
 /// A session whose last activity is at least this old is re-issued with a fresh `last`.
 const UI_SESSION_REFRESH_SECS: i64 = 5 * 60;
-
-/// Most logout revocations kept; beyond it the entry closest to its expiry is evicted.
-const MAX_REVOKED_SESSIONS: usize = 100_000;
 
 /// Largest cookie value parsed: a browser caps a cookie near 4 KiB, a longer one is hostile.
 const MAX_COOKIE_VALUE_LEN: usize = 4096;
@@ -89,12 +88,35 @@ struct SealedSession {
     session: UiSession,
 }
 
+/// Where logout revocations are kept: the database shared by every KMS instance.
+#[async_trait(?Send)]
+pub(crate) trait SessionRevocations: Send + Sync {
+    /// Refuse the session `sid` until `expires_at` (Unix seconds).
+    async fn revoke(&self, sid: &str, expires_at: i64) -> KResult<()>;
+
+    /// Whether the session `sid` was revoked.
+    async fn is_revoked(&self, sid: &str) -> KResult<bool>;
+}
+
+#[async_trait(?Send)]
+impl SessionRevocations for KMS {
+    async fn revoke(&self, sid: &str, expires_at: i64) -> KResult<()> {
+        Ok(self
+            .database
+            .revoke_ui_session(sid, expires_at, now())
+            .await?)
+    }
+
+    async fn is_revoked(&self, sid: &str) -> KResult<bool> {
+        Ok(self.database.is_ui_session_revoked(sid).await?)
+    }
+}
+
 /// Seals and opens the session cookie. Registered once as actix `app_data`.
 pub(crate) struct UiSessionCookie {
     key: Zeroizing<[u8; 32]>,
     secure: bool,
-    /// Session ids revoked by logout, mapped to the session's absolute expiry.
-    revoked: Mutex<HashMap<String, i64>>,
+    revocations: Arc<dyn SessionRevocations>,
 }
 
 fn now() -> i64 {
@@ -108,40 +130,17 @@ fn new_sid() -> KResult<String> {
     Ok(hex::encode(raw))
 }
 
-/// Records `sid` as revoked until `exp`, after dropping the entries that expired by `now`.
-/// A full list evicts the entry closest to its expiry, with a warning: that session could
-/// then be replayed until it expires.
-fn record_revocation(
-    revoked: &mut HashMap<String, i64>,
-    sid: String,
-    exp: i64,
-    now: i64,
-    max: usize,
-) {
-    revoked.retain(|_, entry_exp| *entry_exp > now);
-    if exp <= now {
-        return;
-    }
-    if revoked.len() >= max && !revoked.contains_key(&sid) {
-        let oldest = revoked
-            .iter()
-            .min_by_key(|(_, entry_exp)| **entry_exp)
-            .map(|(oldest_sid, _)| oldest_sid.clone());
-        if let Some(oldest) = oldest {
-            warn!("UI session revocation list is full: evicting the entry closest to expiry");
-            revoked.remove(&oldest);
-        }
-    }
-    revoked.insert(sid, exp);
-}
-
 impl UiSessionCookie {
     /// `secure` adds the `Secure` attribute (public URL is `https://` or TLS is configured).
-    pub(crate) fn new(key: Zeroizing<[u8; 32]>, secure: bool) -> Self {
+    pub(crate) fn new(
+        key: Zeroizing<[u8; 32]>,
+        secure: bool,
+        revocations: Arc<dyn SessionRevocations>,
+    ) -> Self {
         Self {
             key,
             secure,
-            revoked: Mutex::new(HashMap::new()),
+            revocations,
         }
     }
 
@@ -177,18 +176,18 @@ impl UiSessionCookie {
 
     /// The session carried by the request, or `None` when the cookie is absent, tampered with,
     /// sealed under another key, expired, idle for too long or revoked by logout.
-    pub(crate) fn read(&self, headers: &HeaderMap) -> Option<UiSession> {
-        self.read_sealed(headers).map(|sealed| sealed.session)
+    pub(crate) async fn read(&self, headers: &HeaderMap) -> Option<UiSession> {
+        self.read_sealed(headers).await.map(|sealed| sealed.session)
     }
 
     /// Like [`Self::read`], plus a refreshed `Set-Cookie` (same `sid`, `iat` and `exp`, `last`
     /// moved to now) once the session has been idle for [`UI_SESSION_REFRESH_SECS`]: the idle
     /// timeout then slides with the activity, with at most one new cookie per refresh period.
-    pub(crate) fn read_with_refresh(
+    pub(crate) async fn read_with_refresh(
         &self,
         headers: &HeaderMap,
     ) -> Option<(UiSession, Option<String>)> {
-        let mut sealed = self.read_sealed(headers)?;
+        let mut sealed = self.read_sealed(headers).await?;
         let now = now();
         let refreshed = if now.saturating_sub(sealed.last) >= UI_SESSION_REFRESH_SECS {
             sealed.last = now;
@@ -205,42 +204,48 @@ impl UiSessionCookie {
         Some((sealed.session, refreshed))
     }
 
-    /// Revokes the logged-in session carried by the request, so that its cookie is refused
-    /// until its expiry even if a copy of it was kept. In memory only: not shared with other
-    /// instances and lost on restart.
-    pub(crate) fn revoke(&self, headers: &HeaderMap) {
+    /// Revokes the logged-in session carried by the request, so that its cookie is refused by
+    /// every KMS instance until its expiry even if a copy of it was kept. Best effort: a
+    /// failure to record the revocation is logged, and the browser cookie is dropped anyway.
+    pub(crate) async fn revoke(&self, headers: &HeaderMap) {
         let Some(value) = request_cookie(headers, UI_SESSION_COOKIE) else {
             return;
         };
         let Ok(sealed) = self.unseal(value) else {
             return;
         };
-        if sealed.session.user_id.is_none() {
+        if sealed.session.user_id.is_none() || sealed.exp <= now() {
             return;
         }
-        // `open` refuses every cookie while the lock is poisoned: nothing to record.
-        if let Ok(mut revoked) = self.revoked.lock() {
-            record_revocation(
-                &mut revoked,
-                sealed.sid,
-                sealed.exp,
-                now(),
-                MAX_REVOKED_SESSIONS,
-            );
-        } else {
-            warn!("UI session revocation store unavailable");
+        if let Err(e) = self.revocations.revoke(&sealed.sid, sealed.exp).await {
+            warn!("UI session revocation failed: {e}");
         }
     }
 
-    fn read_sealed(&self, headers: &HeaderMap) -> Option<SealedSession> {
+    async fn read_sealed(&self, headers: &HeaderMap) -> Option<SealedSession> {
         let value = request_cookie(headers, UI_SESSION_COOKIE)?;
-        match self.open(value) {
-            Ok(sealed) => Some(sealed),
+        let sealed = match self.open(value) {
+            Ok(sealed) => sealed,
             Err(reason) => {
                 debug!("UI session cookie rejected: {reason}");
-                None
+                return None;
+            }
+        };
+        // Only a logged-in session can be revoked: skip the lookup during the login flow.
+        if sealed.session.user_id.is_some() {
+            match self.revocations.is_revoked(&sealed.sid).await {
+                Ok(false) => {}
+                Ok(true) => {
+                    debug!("UI session cookie rejected: revoked");
+                    return None;
+                }
+                Err(e) => {
+                    warn!("UI session revocation lookup failed, refusing the session: {e}");
+                    return None;
+                }
             }
         }
+        Some(sealed)
     }
 
     /// Cookie value: `base64url(iv || ciphertext || tag)` of the sealed session.
@@ -293,7 +298,8 @@ impl UiSessionCookie {
         serde_json::from_slice(&json).map_err(|_e| "invalid JSON")
     }
 
-    /// Inverse of [`Self::seal`], refusing an expired, idle or revoked session.
+    /// Inverse of [`Self::seal`], refusing an expired or idle session. Revocation is checked
+    /// by [`Self::read_sealed`].
     fn open(&self, value: &str) -> Result<SealedSession, &'static str> {
         let sealed = self.unseal(value)?;
         let now = now();
@@ -302,14 +308,6 @@ impl UiSessionCookie {
         }
         if now.saturating_sub(sealed.last) > UI_SESSION_IDLE_SECS {
             return Err("idle");
-        }
-        let is_revoked = self
-            .revoked
-            .lock()
-            .map_err(|_e| "revocation store unavailable")?
-            .contains_key(&sealed.sid);
-        if is_revoked {
-            return Err("revoked");
         }
         Ok(sealed)
     }
@@ -341,10 +339,46 @@ pub(crate) fn request_cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&
         })
 }
 
-/// Codec with a fixed key and no `Secure` attribute, for tests.
+/// In-memory revocation store standing in for the database, for tests.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct MemoryRevocations(std::sync::Mutex<std::collections::HashSet<String>>);
+
+#[cfg(test)]
+impl MemoryRevocations {
+    fn sids(&self) -> std::sync::MutexGuard<'_, std::collections::HashSet<String>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[cfg(test)]
+#[async_trait(?Send)]
+impl SessionRevocations for MemoryRevocations {
+    async fn revoke(&self, sid: &str, _expires_at: i64) -> KResult<()> {
+        self.sids().insert(sid.to_owned());
+        Ok(())
+    }
+
+    async fn is_revoked(&self, sid: &str) -> KResult<bool> {
+        Ok(self.sids().contains(sid))
+    }
+}
+
+/// Codec with a fixed key, no `Secure` attribute and its own revocation store, for tests.
 #[cfg(test)]
 pub(crate) fn test_ui_session_cookie() -> UiSessionCookie {
-    UiSessionCookie::new(Zeroizing::new([0x42; 32]), false)
+    test_ui_session_cookie_with(Arc::new(MemoryRevocations::default()))
+}
+
+/// Like [`test_ui_session_cookie`], with the given revocation store (shared between
+/// "instances" to model one database).
+#[cfg(test)]
+pub(crate) fn test_ui_session_cookie_with(
+    revocations: Arc<dyn SessionRevocations>,
+) -> UiSessionCookie {
+    UiSessionCookie::new(Zeroizing::new([0x42; 32]), false, revocations)
 }
 
 /// The `name=value` request cookie of a new session of `user` issued by `codec`, for tests.
@@ -393,25 +427,31 @@ mod tests {
             .expect("auth_session set-cookie")
     }
 
-    fn read_value(codec: &UiSessionCookie, value: &str) -> Option<UiSession> {
-        codec.read(&headers(&format!("{UI_SESSION_COOKIE}={value}")))
+    async fn read_value(codec: &UiSessionCookie, value: &str) -> Option<UiSession> {
+        codec
+            .read(&headers(&format!("{UI_SESSION_COOKIE}={value}")))
+            .await
     }
 
-    #[test]
-    fn sealed_session_round_trips() {
+    #[actix_web::test]
+    async fn sealed_session_round_trips() {
         let codec = test_ui_session_cookie();
         let set_cookie = codec.set_cookie(&alice()).expect("set_cookie");
         assert_eq!(
-            read_value(&codec, value_of(&set_cookie)),
+            read_value(&codec, value_of(&set_cookie)).await,
             Some(alice()),
             "the sealed session is read back unchanged"
         );
     }
 
-    #[test]
-    fn invalid_values_are_rejected() {
+    #[actix_web::test]
+    async fn invalid_values_are_rejected() {
         let codec = test_ui_session_cookie();
-        let other = UiSessionCookie::new(Zeroizing::new([0x24; 32]), false);
+        let other = UiSessionCookie::new(
+            Zeroizing::new([0x24; 32]),
+            false,
+            Arc::new(MemoryRevocations::default()),
+        );
         let set_cookie = codec.set_cookie(&alice()).expect("set_cookie");
         let value = value_of(&set_cookie);
 
@@ -427,7 +467,7 @@ mod tests {
             "",
             &"A".repeat(5000),
         ] {
-            assert_eq!(read_value(&codec, bad), None, "accepted {bad:.20}");
+            assert_eq!(read_value(&codec, bad).await, None, "accepted {bad:.20}");
         }
     }
 
@@ -444,24 +484,24 @@ mod tests {
             .expect("seal")
     }
 
-    #[test]
-    fn expiry_is_enforced_by_the_server() {
+    #[actix_web::test]
+    async fn expiry_is_enforced_by_the_server() {
         let codec = test_ui_session_cookie();
         let now = now();
         let expired = seal_at(&codec, now - 1, now - 10);
         let live = seal_at(&codec, now + 60, now);
-        assert_eq!(read_value(&codec, &expired), None);
-        assert_eq!(read_value(&codec, &live), Some(alice()));
+        assert_eq!(read_value(&codec, &expired).await, None);
+        assert_eq!(read_value(&codec, &live).await, Some(alice()));
     }
 
-    #[test]
-    fn idle_sessions_are_rejected() {
+    #[actix_web::test]
+    async fn idle_sessions_are_rejected() {
         let codec = test_ui_session_cookie();
         let now = now();
         let idle = seal_at(&codec, now + 600, now - UI_SESSION_IDLE_SECS - 1);
         let active = seal_at(&codec, now + 600, now - UI_SESSION_IDLE_SECS + 60);
-        assert_eq!(read_value(&codec, &idle), None);
-        assert_eq!(read_value(&codec, &active), Some(alice()));
+        assert_eq!(read_value(&codec, &idle).await, None);
+        assert_eq!(read_value(&codec, &active).await, Some(alice()));
     }
 
     #[test]
@@ -480,67 +520,81 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_revoked_session_is_rejected_but_other_sessions_are_not() {
+    #[actix_web::test]
+    async fn a_revoked_session_is_rejected_but_other_sessions_are_not() {
         let codec = test_ui_session_cookie();
         let revoked = codec.set_cookie(&alice()).expect("set_cookie");
         let other = codec.set_cookie(&alice()).expect("set_cookie");
         let revoked_headers = headers(&format!("auth_session={}", value_of(&revoked)));
-        assert_eq!(codec.read(&revoked_headers), Some(alice()));
+        assert_eq!(codec.read(&revoked_headers).await, Some(alice()));
 
-        codec.revoke(&revoked_headers);
+        codec.revoke(&revoked_headers).await;
 
         assert_eq!(
-            codec.read(&revoked_headers),
+            codec.read(&revoked_headers).await,
             None,
             "revoked cookie replayed"
         );
-        assert_eq!(codec.read_with_refresh(&revoked_headers), None);
-        assert_eq!(read_value(&codec, value_of(&other)), Some(alice()));
+        assert_eq!(codec.read_with_refresh(&revoked_headers).await, None);
+        assert_eq!(read_value(&codec, value_of(&other)).await, Some(alice()));
     }
 
-    #[test]
-    fn revoking_a_session_without_a_user_records_nothing() {
-        let codec = test_ui_session_cookie();
+    #[actix_web::test]
+    async fn a_logout_on_one_instance_revokes_the_session_on_every_instance() {
+        let database = Arc::new(MemoryRevocations::default());
+        let (node_a, node_b) = (
+            test_ui_session_cookie_with(database.clone()),
+            test_ui_session_cookie_with(database),
+        );
+        let set_cookie = node_a.set_cookie(&alice()).expect("set_cookie");
+        let request = headers(&format!("auth_session={}", value_of(&set_cookie)));
+        assert_eq!(node_b.read(&request).await, Some(alice()));
+
+        node_a.revoke(&request).await;
+
+        assert_eq!(node_b.read(&request).await, None, "replayed on node B");
+    }
+
+    #[actix_web::test]
+    async fn revoking_a_session_without_a_user_records_nothing() {
+        let revocations = Arc::new(MemoryRevocations::default());
+        let codec = test_ui_session_cookie_with(revocations.clone());
         let pending = codec.set_cookie(&UiSession::default()).expect("set_cookie");
-        codec.revoke(&headers(&format!("auth_session={}", value_of(&pending))));
-        assert!(codec.revoked.lock().expect("lock").is_empty());
+        codec
+            .revoke(&headers(&format!("auth_session={}", value_of(&pending))))
+            .await;
+        assert!(revocations.0.lock().expect("lock").is_empty());
     }
 
-    #[test]
-    fn revocation_list_is_bounded_and_pruned() {
-        let mut revoked = HashMap::new();
-        record_revocation(&mut revoked, "a".to_owned(), 10, 0, 2);
-        record_revocation(&mut revoked, "b".to_owned(), 20, 0, 2);
-        record_revocation(&mut revoked, "c".to_owned(), 30, 0, 2);
-        let mut sids: Vec<_> = revoked.keys().cloned().collect();
-        sids.sort();
-        assert_eq!(sids, ["b", "c"], "the entry closest to expiry is evicted");
+    /// A revocation store that is down.
+    struct UnavailableRevocations;
 
-        record_revocation(&mut revoked, "d".to_owned(), 40, 25, 2);
-        let mut sids: Vec<_> = revoked.keys().cloned().collect();
-        sids.sort();
-        assert_eq!(sids, ["c", "d"], "expired entries are pruned");
+    #[async_trait(?Send)]
+    impl SessionRevocations for UnavailableRevocations {
+        async fn revoke(&self, _sid: &str, _expires_at: i64) -> KResult<()> {
+            Err(KmsError::ServerError("database down".to_owned()))
+        }
+
+        async fn is_revoked(&self, _sid: &str) -> KResult<bool> {
+            Err(KmsError::ServerError("database down".to_owned()))
+        }
     }
 
-    #[test]
-    fn a_poisoned_revocation_store_refuses_every_session() {
-        let codec = test_ui_session_cookie();
-        let set_cookie = codec.set_cookie(&alice()).expect("set_cookie");
-        let poisoned = std::thread::scope(|scope| {
-            scope
-                .spawn(|| {
-                    let _guard = codec.revoked.lock().expect("lock");
-                    panic!("poison the revocation store");
-                })
-                .join()
-        });
-        assert!(poisoned.is_err());
-        assert_eq!(read_value(&codec, value_of(&set_cookie)), None);
+    #[actix_web::test]
+    async fn an_unavailable_revocation_store_refuses_logged_in_sessions_only() {
+        let codec = test_ui_session_cookie_with(Arc::new(UnavailableRevocations));
+        let logged_in = codec.set_cookie(&alice()).expect("set_cookie");
+        let pending = codec.set_cookie(&UiSession::default()).expect("set_cookie");
+        assert_eq!(read_value(&codec, value_of(&logged_in)).await, None);
+        assert_eq!(
+            read_value(&codec, value_of(&pending)).await,
+            Some(UiSession::default()),
+            "a login in progress needs no revocation lookup"
+        );
     }
 
-    #[test]
-    fn refresh_keeps_the_session_identity_and_expiry() {
+    #[actix_web::test]
+    async fn refresh_keeps_the_session_identity_and_expiry() {
         let codec = test_ui_session_cookie();
         let now = now();
         let issued = SealedSession {
@@ -554,6 +608,7 @@ mod tests {
 
         let (session, refreshed) = codec
             .read_with_refresh(&headers(&format!("auth_session={value}")))
+            .await
             .expect("live session");
         assert_eq!(session, alice());
         let refreshed = refreshed.expect("an old session is refreshed");
@@ -568,6 +623,7 @@ mod tests {
         let fresh = codec.set_cookie(&alice()).expect("set_cookie");
         let (_, not_refreshed) = codec
             .read_with_refresh(&headers(&format!("auth_session={}", value_of(&fresh))))
+            .await
             .expect("live session");
         assert_eq!(not_refreshed, None, "a recent session is not re-issued");
     }
@@ -593,9 +649,13 @@ mod tests {
 
     #[test]
     fn cookie_attributes() {
-        let secure = UiSessionCookie::new(Zeroizing::new([0x42; 32]), true)
-            .set_cookie(&alice())
-            .expect("set_cookie");
+        let secure = UiSessionCookie::new(
+            Zeroizing::new([0x42; 32]),
+            true,
+            Arc::new(MemoryRevocations::default()),
+        )
+        .set_cookie(&alice())
+        .expect("set_cookie");
         for attribute in [
             "; Secure",
             "; HttpOnly",

@@ -275,6 +275,7 @@ impl SqlitePool {
             get_sqlite_query!("create-index-objects-type-state"),
             get_sqlite_query!("create-table-crypto_officer_activations"),
             get_sqlite_query!("create-table-crls"),
+            get_sqlite_query!("create-table-ui_session_revocations"),
             get_sqlite_query!("create-table-gcm_invocations"),
             get_sqlite_query!("create-table-cluster-nodes"),
         ];
@@ -283,6 +284,7 @@ impl SqlitePool {
             get_sqlite_query!("clean-table-read_access"),
             get_sqlite_query!("clean-table-tags"),
             get_sqlite_query!("clean-table-crls"),
+            get_sqlite_query!("clean-table-ui_session_revocations"),
             get_sqlite_query!("clean-table-gcm_invocations"),
         ];
         let purge_gcm_invocations = get_sqlite_query!("purge-orphan-gcm-invocations");
@@ -1646,6 +1648,39 @@ impl PermissionsStore for SqlitePool {
             .await?;
         Ok(max.map(crl_number_from_sql))
     }
+
+    async fn revoke_ui_session(&self, sid: &str, expires_at: i64, now: i64) -> InterfaceResult<()> {
+        let purge_sql: &'static str = get_sqlite_query!("purge-ui-session-revocations");
+        let insert_sql: &'static str = get_sqlite_query!("insert-ui-session-revocation");
+        let sid_s = sid.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(insert_sql, rusqlite::params![sid_s, expires_at])?;
+                    tx.execute(purge_sql, rusqlite::params![now])?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn is_ui_session_revoked(&self, sid: &str) -> InterfaceResult<bool> {
+        let sql: &'static str = get_sqlite_query!("select-ui-session-revocation");
+        let sid_s = sid.to_owned();
+        let found: Option<i64> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
+                    c.query_row(sql, rusqlite::params![sid_s], |row| row.get::<_, i64>(0))
+                        .optional()
+                },
+            )
+            .await?;
+        Ok(found.is_some())
+    }
 }
 
 impl SqlitePool {
@@ -2088,6 +2123,39 @@ mod tests {
         expect_crl_issuers(&SqlitePool::instantiate(&file, false, None).await?, 1).await?;
         // ...clearing removes it.
         expect_crl_issuers(&SqlitePool::instantiate(&file, true, None).await?, 0).await
+    }
+
+    /// A revocation is visible to another pool on the same file (another KMS instance), is
+    /// purged once expired, and is removed by `clear_database`.
+    #[tokio::test]
+    async fn test_ui_session_revocations_are_shared_purged_and_cleared() {
+        let dir = TempDir::new().expect("temp dir");
+        let file = dir.path().join("revocations.db");
+        let node_a = SqlitePool::instantiate(&file, true, None)
+            .await
+            .expect("node A");
+        let node_b = SqlitePool::instantiate(&file, false, None)
+            .await
+            .expect("node B");
+
+        node_a
+            .revoke_ui_session("old", 100, 0)
+            .await
+            .expect("revoke");
+        assert!(node_b.is_ui_session_revoked("old").await.expect("lookup"));
+
+        // A later revocation drops the entries expired by then.
+        node_a
+            .revoke_ui_session("new", 300, 200)
+            .await
+            .expect("revoke");
+        assert!(!node_b.is_ui_session_revoked("old").await.expect("lookup"));
+        assert!(node_b.is_ui_session_revoked("new").await.expect("lookup"));
+
+        let cleared = SqlitePool::instantiate(&file, true, None)
+            .await
+            .expect("cleared");
+        assert!(!cleared.is_ui_session_revoked("new").await.expect("lookup"));
     }
 }
 

@@ -51,9 +51,9 @@ use actix_web::{
     http::{Method, header},
 };
 pub(crate) use session_auth::{SessionAuth, reject_forgeable_session_mutation};
-pub(crate) use ui_session::{UiSession, UiSessionCookie, request_cookie};
 #[cfg(test)]
-pub(crate) use ui_session::{test_session_cookie_pair, test_ui_session_cookie};
+pub(crate) use ui_session::{MemoryRevocations, test_session_cookie_pair, test_ui_session_cookie};
+pub(crate) use ui_session::{UiSession, UiSessionCookie, request_cookie};
 
 use crate::{
     error::KmsError,

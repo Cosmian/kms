@@ -27,8 +27,8 @@ use crate::{
             atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
             find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
-            key_inventory_test, lifecycle_state_contract_test, update_if_version_test,
-            wrapping_key_link_test,
+            key_inventory_test, lifecycle_state_contract_test, ui_session_revocation_test,
+            update_if_version_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -139,6 +139,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
     Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
     gcm_invocations_test(&get_redis_with_findex().await?).await?;
+    ui_session_revocation_test(&get_redis_with_findex().await?).await?;
     gcm_invocations_orphan_purge_test(&get_redis_fixed_key(true).await?, || {
         get_redis_fixed_key(false)
     })
@@ -185,6 +186,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
     Box::pin(update_if_version_test(&get_sqlite(&db_file).await?)).await?;
     gcm_invocations_test(&get_sqlite(&db_file).await?).await?;
+    ui_session_revocation_test(&get_sqlite(&db_file).await?).await?;
     gcm_invocations_orphan_purge_test(&get_sqlite(&db_file).await?, || {
         SqlitePool::instantiate(&db_file, false, None)
     })
@@ -251,6 +253,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
     Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
     gcm_invocations_test(&get_pgsql().await?).await?;
+    ui_session_revocation_test(&get_pgsql().await?).await?;
     lifecycle_state_contract_test(&get_pgsql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_pgsql().await?, || async {
         PgPool::instantiate(
@@ -1166,6 +1169,7 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
     gcm_invocations_test(&get_mysql().await?).await?;
+    ui_session_revocation_test(&get_mysql().await?).await?;
     lifecycle_state_contract_test(&get_mysql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_mysql().await?, || async {
         MySqlPool::instantiate(

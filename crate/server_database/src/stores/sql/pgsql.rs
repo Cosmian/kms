@@ -1675,6 +1675,7 @@ impl Migrate for PgPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-ui_session_revocations",
             "create-table-gcm_invocations",
             "create-table-cluster-nodes",
             "create-table-object_state_events",
@@ -1860,6 +1861,7 @@ impl Migrate for PgPool {
                 "clean-table-object_state_events",
                 "clean-table-objects",
                 "clean-table-crls",
+                "clean-table-ui_session_revocations",
                 "clean-table-gcm_invocations",
             ] {
                 let sql = self.get_query(name)?;
@@ -2200,6 +2202,36 @@ impl PermissionsStore for PgPool {
             // MAX() returns one row; the value is NULL when the table is empty.
             let max: Option<i64> = rows.first().and_then(|row| row.get::<_, Option<i64>>(0));
             Ok(max.map(crl_number_from_sql))
+        })
+    }
+
+    async fn revoke_ui_session(&self, sid: &str, expires_at: i64, now: i64) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            client
+                .execute(
+                    get_pgsql_query!("insert-ui-session-revocation"),
+                    &[&sid, &expires_at],
+                )
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            // Housekeeping only: a failed purge must not lose the revocation just written.
+            if let Err(e) = client
+                .execute(get_pgsql_query!("purge-ui-session-revocations"), &[&now])
+                .await
+            {
+                tracing::warn!("Failed to purge expired UI session revocations: {e}");
+            }
+            Ok(())
+        })
+    }
+
+    async fn is_ui_session_revoked(&self, sid: &str) -> InterfaceResult<bool> {
+        pg_retry!(self.pool, |client| {
+            let rows = client
+                .query(get_pgsql_query!("select-ui-session-revocation"), &[&sid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(!rows.is_empty())
         })
     }
 }

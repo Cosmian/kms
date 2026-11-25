@@ -173,7 +173,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A copy of the cookie (stolen, or kept after logout) stayed valid as a bearer credential on the Web UI and on the KMIP/REST scopes for as long as the cookie key lived.
 
-**Mitigation:** Upgrade to 6.0.0. The sealed cookie carries a random session id and times: the server enforces a 24-hour absolute lifetime and a 1-hour idle timeout, and `/ui/logout` revokes the session id. The revocation list is in memory (per process, lost on restart, not shared between instances); disabling an account at the identity provider does not end an open session before its expiry. Until upgraded, rotate `ui_session_salt` to invalidate all sessions.
+**Mitigation:** Upgrade to 6.0.0. The sealed cookie carries a random session id and times: the server enforces a 24-hour absolute lifetime and a 1-hour idle timeout, and `/ui/logout` revokes the session id in the KMS database, so every instance sharing it refuses the cookie. Disabling an account at the identity provider does not end an open session before its expiry. Until upgraded, rotate `ui_session_salt` to invalidate all sessions.
 
 ---
 

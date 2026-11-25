@@ -119,6 +119,7 @@ Instead it stores:
 | Database metadata | Internal keys holding the database state (`ready`/`upgrading`) and version |
 | Ceremony records | Encrypted records under key names obfuscated with the master key |
 | Server parameters | AES-256-GCM encrypted under the database key at `kms::parameter::<name>` (e.g. the KV/SSH identifier key); the first value written wins across replicas |
+| Web UI session revocations | `ui_session_revoked:<sid>` keys with a time-to-live equal to the session's remaining lifetime |
 
 ## Migration
 

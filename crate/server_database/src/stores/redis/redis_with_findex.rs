@@ -1809,6 +1809,37 @@ impl PermissionsStore for RedisWithFindex {
         Ok(max_number)
     }
 
+    async fn revoke_ui_session(&self, sid: &str, expires_at: i64, now: i64) -> InterfaceResult<()> {
+        // The key expires with the session: no purge needed. `NX` keeps a re-revocation a no-op.
+        let ttl = expires_at.saturating_sub(now);
+        if ttl <= 0 {
+            return Ok(());
+        }
+        redis::cmd("SET")
+            .arg(format!("ui_session_revoked:{sid}"))
+            .arg(1)
+            .arg("EX")
+            .arg(ttl)
+            .arg("NX")
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to revoke UI session in Redis: {e}"))
+            })?;
+        Ok(())
+    }
+
+    async fn is_ui_session_revoked(&self, sid: &str) -> InterfaceResult<bool> {
+        let exists: u64 = redis::cmd("EXISTS")
+            .arg(format!("ui_session_revoked:{sid}"))
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to read UI session revocation: {e}"))
+            })?;
+        Ok(exists > 0)
+    }
+
     async fn activate_crypto_officer_ceremony(
         &self,
         sealed_record: &str,

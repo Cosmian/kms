@@ -7,7 +7,7 @@ The Redis-with-Findex backend does not use relational tables; see [Redis with Fi
 
 ## Overview
 
-The KMS object-store schema has eight tables shared by all SQL backends, plus `object_state_events` and `object_state_event_tombstones` on PostgreSQL, and `kms_migration_lock` and `kms_cron_locks` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
+The KMS object-store schema has nine tables shared by all SQL backends, plus `object_state_events` and `object_state_event_tombstones` on PostgreSQL, and `kms_migration_lock` and `kms_cron_locks` on MySQL, MariaDB, and Percona XtraDB Cluster. The optional [PostgreSQL audit backend](#postgresql-audit-database) adds `kms_audit_events` and `kms_audit_control` in its own separate database.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -17,6 +17,7 @@ The KMS object-store schema has eight tables shared by all SQL backends, plus `o
 | `tags` | Tags attached to objects, used by `Locate` |
 | `crypto_officer_activations` | Records of the Crypto Officer activation ceremony |
 | `crls` | Most recently signed CRL per issuer CA (RFC 5280 §5), for CDP serving after restart |
+| `ui_session_revocations` | Web UI sessions revoked by logout, shared by every KMS instance on the database |
 | `gcm_invocations` | Number of AES-GCM invocations with a random IV made with each key (NIST SP 800-38D §8.3) |
 | `cluster_nodes` | Recent node heartbeats, KMS version, and elected leader |
 | `object_state_events`, `object_state_event_tombstones` | Insert-only object lifecycle log from which `objects.state` is derived (PostgreSQL only) |
@@ -78,6 +79,10 @@ erDiagram
         string version
         int last_heartbeat
         boolean is_leader
+    }
+    UI_SESSION_REVOCATIONS {
+        string sid PK
+        bigint expires_at
     }
 ```
 
@@ -284,6 +289,29 @@ One row per CA certificate. The row is replaced atomically on every CRL regenera
 
 The Redis-with-Findex backend stores each CRL as a JSON value under the key
 `crl:<issuer_id>`.
+
+## `ui_session_revocations`
+
+`/ui/logout` records the id of the Web UI session it ends here, and every KMS instance sharing the
+database refuses a cookie carrying a revoked id, so a logout on one node of a load-balanced
+deployment is honored by all of them. Each authenticated request that carries a session cookie
+reads one row by primary key; a failed read refuses the session.
+
+| Column | Type | Description |
+| ------ | ---- | ----------- |
+| `sid` | `VARCHAR(64)` | Primary key. The random session id (32 hex characters) sealed in the cookie. |
+| `expires_at` | `BIGINT` | Absolute expiry of the session (Unix seconds). A revocation older than this is useless and is deleted at the next logout. |
+
+The Redis-with-Findex backend stores a key `ui_session_revoked:<sid>` with a time-to-live equal to the
+remaining lifetime of the session, so Redis expires it by itself.
+
+On a multi-region PostgreSQL deployment (Spock), add the table to the replication set on every node after
+upgrading, otherwise a logout is not seen by the other regions:
+`SELECT spock.repset_add_table('default', 'ui_session_revocations');`
+
+**Downgrade.** SAFE. An older KMS ignores this table. The Web UI cookies of the two releases are not
+interchangeable (the session key derivation changed), so a revoked session cannot be replayed on an
+older node.
 
 ## `gcm_invocations`
 
