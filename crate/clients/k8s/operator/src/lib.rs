@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 
 use cosmian_kms_client::{KmsClientConfig, http_client::HttpClientConfig};
 use kube::Client;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     config::{InjectArgs, ServeArgs},
@@ -30,10 +30,15 @@ pub async fn serve(args: ServeArgs) -> Result<(), OperatorError> {
     let default_refresh = controller::parse_duration(&cfg.default_refresh_interval)
         .unwrap_or(Duration::from_secs(3600));
 
+    if cfg.allowed_uids_by_namespace.is_empty() {
+        warn!("allowed_uids_by_namespace is empty: every KMSSecret will be refused");
+    }
+
     let ctx = Arc::new(Context {
         k8s,
         kms,
         default_refresh,
+        allowed_uids_by_namespace: cfg.allowed_uids_by_namespace.clone(),
     });
 
     info!("starting Cosmian KMS operator");

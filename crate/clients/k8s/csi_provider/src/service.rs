@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{kmip_operations::Get, kmip_types::UniqueIdentifier},
@@ -34,6 +36,10 @@ const DEFAULT_FILE_MODE: i32 = 0o400;
 #[derive(Deserialize, Debug)]
 struct Attributes {
     objects: String,
+    /// Namespace of the mounting pod, injected by the CSI driver when the `CSIDriver` sets
+    /// `podInfoOnMount: true`.
+    #[serde(rename = "csi.storage.k8s.io/pod.namespace")]
+    pod_namespace: Option<String>,
 }
 
 /// A single entry from the `objects` YAML list in `spec.parameters`.
@@ -66,13 +72,21 @@ struct ObjectSpec {
 /// writes them to the pod tmpfs volume.
 pub struct CsiProviderService {
     client: KmsClient,
+    allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl CsiProviderService {
-    /// Create a new service backed by `client`.
+    /// Create a new service backed by `client`; a pod may only mount the KMS UIDs listed
+    /// for its namespace in `allowed_uids_by_namespace`.
     #[must_use]
-    pub const fn new(client: KmsClient) -> Self {
-        Self { client }
+    pub const fn new(
+        client: KmsClient,
+        allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
+    ) -> Self {
+        Self {
+            client,
+            allowed_uids_by_namespace,
+        }
     }
 }
 
@@ -112,7 +126,18 @@ impl CsiDriverProvider for CsiProviderService {
         let req = request.into_inner();
         debug!(target_path = %req.target_path, "CSI provider Mount() called");
 
-        let specs = parse_attributes(&req.attributes).map_err(Status::from)?;
+        let (specs, pod_namespace) = parse_attributes(&req.attributes).map_err(Status::from)?;
+
+        // Authorize every object before the first KMS call.
+        let namespace = pod_namespace.ok_or_else(|| {
+            Status::permission_denied(
+                "pod namespace missing: enable podInfoOnMount on the CSIDriver",
+            )
+        })?;
+        for spec in &specs {
+            check_mount_access(&self.allowed_uids_by_namespace, &namespace, &spec.kms_uid)?;
+            validate_object_path(&spec.object_name)?;
+        }
 
         // Build a lookup map: kms_uid → current version (for rotation detection).
         let current_versions: std::collections::HashMap<String, String> = req
@@ -173,9 +198,40 @@ impl CsiDriverProvider for CsiProviderService {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/// Refuse a KMS UID that is not allowlisted for the pod's namespace. A UID starting with
+/// `[` is a KMS tag list (resolves to an arbitrary object) and is never allowed.
+fn check_mount_access(
+    policy: &BTreeMap<String, BTreeSet<String>>,
+    namespace: &str,
+    uid: &str,
+) -> Result<(), CsiProviderError> {
+    if !uid.starts_with('[') && policy.get(namespace).is_some_and(|u| u.contains(uid)) {
+        Ok(())
+    } else {
+        Err(CsiProviderError::PermissionDenied(format!(
+            "KMS UID '{uid}' is not allowed for namespace '{namespace}'"
+        )))
+    }
+}
+
+/// `objectName` becomes a file path under the pod volume: it must be relative and must not
+/// escape the volume.
+fn validate_object_path(p: &str) -> Result<(), CsiProviderError> {
+    if p.is_empty() || p.starts_with('/') || p.starts_with("..") || p.split('/').any(|c| c == "..")
+    {
+        Err(CsiProviderError::InvalidObjectPath(format!(
+            "objectName '{p}' must be a relative path, must not contain '..', and must not start with '..'"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 /// Parse the JSON `attributes` string from a `MountRequest` into a list of
-/// [`ObjectSpec`] entries.
-fn parse_attributes(attributes: &str) -> Result<Vec<ObjectSpec>, CsiProviderError> {
+/// [`ObjectSpec`] entries and the pod namespace, if the driver provided it.
+fn parse_attributes(
+    attributes: &str,
+) -> Result<(Vec<ObjectSpec>, Option<String>), CsiProviderError> {
     let attrs: Attributes = serde_json::from_str(attributes).map_err(|e| {
         CsiProviderError::InvalidAttributes(format!(
             "attributes is not valid JSON: {e} — raw: {attributes}"
@@ -189,7 +245,7 @@ fn parse_attributes(attributes: &str) -> Result<Vec<ObjectSpec>, CsiProviderErro
     if specs.is_empty() {
         return Err(CsiProviderError::NoObjects);
     }
-    Ok(specs)
+    Ok((specs, attrs.pod_namespace))
 }
 
 /// Retrieve raw bytes for a KMS object identified by `uid`.
@@ -256,7 +312,8 @@ mod tests {
         // whose `objects` value is a YAML-encoded list.
         let objects_yaml = "- objectName: my-api-key\n  objectType: secret\n  kmsUID: 550e8400-e29b-41d4-a716-446655440000\n  objectVersion: \"\"\n";
         let attributes = serde_json::json!({ "objects": objects_yaml }).to_string();
-        let specs = parse_attributes(&attributes).unwrap_or_else(|e| panic!("should parse: {e}"));
+        let (specs, _) =
+            parse_attributes(&attributes).unwrap_or_else(|e| panic!("should parse: {e}"));
         assert_eq!(specs.len(), 1);
         let first = specs.first().expect("at least one spec");
         assert_eq!(first.object_name, "my-api-key");
@@ -268,7 +325,8 @@ mod tests {
     fn parse_attributes_reads_object_version_pin() {
         let objects_yaml = "- objectName: a\n  kmsUID: uid-a\n  objectVersion: abc123\n- objectName: b\n  kmsUid: uid-b\n";
         let attributes = serde_json::json!({ "objects": objects_yaml }).to_string();
-        let specs = parse_attributes(&attributes).unwrap_or_else(|e| panic!("should parse: {e}"));
+        let (specs, _) =
+            parse_attributes(&attributes).unwrap_or_else(|e| panic!("should parse: {e}"));
         assert_eq!(specs.len(), 2);
         assert_eq!(specs.first().expect("first").object_version, "abc123");
         assert_eq!(specs.get(1).expect("second").object_version, "");
@@ -348,6 +406,19 @@ mod tests {
     }
 
     #[test]
+    fn validate_object_path_rejects_escapes_and_accepts_relative() {
+        for bad in ["", "/abs", "../x", "a/../b", "..x", "a/.."] {
+            assert_eq!(
+                tonic::Status::from(validate_object_path(bad).unwrap_err()).code(),
+                tonic::Code::InvalidArgument,
+                "{bad}"
+            );
+        }
+        validate_object_path("a/b").unwrap();
+        validate_object_path("my-key.pem").unwrap();
+    }
+
+    #[test]
     fn content_version_deterministic() {
         let v1 = content_version(b"hello");
         let v2 = content_version(b"hello");
@@ -360,6 +431,8 @@ mod tests {
 #[cfg(test)]
 mod characterization_tests {
     //! Characterization tests for `CsiProviderService::new` and its gRPC entry points.
+
+    use std::collections::{BTreeMap, BTreeSet};
 
     use cosmian_kms_client::{KmsClient, KmsClientConfig, http_client::HttpClientConfig};
     use tonic::{Code, Request};
@@ -378,7 +451,21 @@ mod characterization_tests {
             ..KmsClientConfig::default()
         })
         .unwrap();
-        CsiProviderService::new(client)
+        CsiProviderService::new(
+            client,
+            BTreeMap::from([("team-a".to_owned(), BTreeSet::from(["uid-a".to_owned()]))]),
+        )
+    }
+
+    fn mount_request(objects: &str, namespace: Option<&str>) -> MountRequest {
+        let mut attributes = serde_json::json!({ "objects": objects });
+        if let Some(ns) = namespace {
+            attributes["csi.storage.k8s.io/pod.namespace"] = ns.into();
+        }
+        MountRequest {
+            attributes: attributes.to_string(),
+            ..MountRequest::default()
+        }
     }
 
     #[tokio::test]
@@ -429,15 +516,64 @@ mod characterization_tests {
 
     #[tokio::test]
     async fn characterization_csi_service_new_mount_unreachable_kms_is_internal() {
-        let objects = "- objectName: a\n  kmsUID: uid-a\n";
-        let attributes = serde_json::json!({ "objects": objects }).to_string();
         let status = service()
-            .mount(Request::new(MountRequest {
-                attributes,
-                ..MountRequest::default()
-            }))
+            .mount(Request::new(mount_request(
+                "- objectName: a\n  kmsUID: uid-a\n",
+                Some("team-a"),
+            )))
             .await
             .unwrap_err();
         assert_eq!(status.code(), Code::Internal);
+    }
+
+    #[tokio::test]
+    async fn mount_refuses_missing_pod_namespace() {
+        let status = service()
+            .mount(Request::new(mount_request(
+                "- objectName: a\n  kmsUID: uid-a\n",
+                None,
+            )))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), Code::PermissionDenied);
+        assert_eq!(
+            status.message(),
+            "pod namespace missing: enable podInfoOnMount on the CSIDriver"
+        );
+    }
+
+    #[tokio::test]
+    async fn mount_refuses_foreign_namespace_unlisted_uid_and_tag_list() {
+        for (objects, ns, uid) in [
+            ("- objectName: a\n  kmsUID: uid-a\n", "team-b", "uid-a"),
+            ("- objectName: a\n  kmsUID: uid-z\n", "team-a", "uid-z"),
+            (
+                "- objectName: a\n  kmsUID: '[\"tag\"]'\n",
+                "team-a",
+                "[\"tag\"]",
+            ),
+        ] {
+            let status = service()
+                .mount(Request::new(mount_request(objects, Some(ns))))
+                .await
+                .unwrap_err();
+            assert_eq!(status.code(), Code::PermissionDenied, "{objects}");
+            assert_eq!(
+                status.message(),
+                format!("KMS UID '{uid}' is not allowed for namespace '{ns}'")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn mount_refuses_escaping_object_name_before_any_kms_call() {
+        let status = service()
+            .mount(Request::new(mount_request(
+                "- objectName: ../x\n  kmsUID: uid-a\n",
+                Some("team-a"),
+            )))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), Code::InvalidArgument);
     }
 }

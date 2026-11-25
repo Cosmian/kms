@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use clap::Parser;
 use cosmian_kms_client::{KmsClientConfig, http_client::HttpClientConfig};
 use serde::{Deserialize, Serialize};
@@ -67,6 +69,11 @@ pub struct OperatorConfig {
     /// `KMSSecret` resources can override this per-object.
     #[serde(default = "default_refresh_interval")]
     pub default_refresh_interval: String,
+    /// Required allowlist: namespace → set of KMS UIDs a `KMSSecret` of that namespace
+    /// may fetch. A namespace (or UID) that is not listed is refused; an empty map refuses
+    /// every `KMSSecret`.
+    #[serde(default)]
+    pub allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// A reference to a key inside a Kubernetes Secret.

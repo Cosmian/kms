@@ -1644,6 +1644,8 @@ sequenceDiagram
 
 **Description:** Kubernetes KMS Provider Plugin — etcd Secret encryption. Deploys KMS in-cluster, creates a KEK, installs the plugin binary on the Minikube node as a systemd service, and verifies etcd Secret encryption. gRPC is used only between kube-apiserver and the plugin (KMS v2 API over a unix socket); the plugin talks to the KMS over plain HTTP, or over HTTPS with client certificates when the task runs with `--mtls`.
 
+The plugin configuration written on the node sets the required `allowed_peer_uids` (kube-apiserver UID: `0` for the kubeadm static pod, `65532` for a distroless non-root image); the plugin refuses to start without it.
+
 The test deployment explicitly sets `kms.insecureAllowUnauthenticated=true` for its initial HTTP-only stage; the chart default remains `false`.
 
 #### Architecture Overview
@@ -1744,6 +1746,8 @@ sequenceDiagram
 
 **Description:** KMS CSI Provider — Secrets Store CSI Driver integration. DaemonSet in kube-system mounts secrets as volumes.
 
+The provider ConfigMap lists the four KMS UIDs created by the test under `allowed_uids_by_namespace.default` (required, fail closed); the Secrets Store CSI Driver supplies the pod namespace through `podInfoOnMount`.
+
 The test-only KMS deployment opts into unauthenticated access with `kms.insecureAllowUnauthenticated=true`.
 
 #### Architecture Overview
@@ -1784,7 +1788,7 @@ sequenceDiagram
 
     Test->>KMS: deploy + create secrets + keys
     Test->>Driver: helm install secrets-store-csi-driver
-    Test->>Provider: kubectl apply DaemonSet
+    Test->>Provider: kubectl apply ConfigMap (allowed_uids_by_namespace) + DaemonSet
     Provider->>KMS: fetch secret value
     KMS-->>Provider: plaintext
     Test->>Pod: kubectl apply pod
