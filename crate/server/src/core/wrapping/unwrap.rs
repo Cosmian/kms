@@ -186,25 +186,27 @@ fn is_exempt_server_kek(kms: &KMS, allow_server_kek: bool, uid: &str) -> bool {
 }
 
 /// Fetch the database key `unwrapping_key_uid` (the private key for a public key or
-/// certificate) and check `user` may unwrap with it: active, `UnwrapKey` usage, and owner,
-/// default user, or `Decrypt`/`Get` grant — except for the server KEK on stored objects.
+/// certificate) and check `user` may unwrap with it: owner, default user, or `Decrypt`/`Get`
+/// grant, then active and `UnwrapKey` usage — except for the server KEK on stored objects.
 async fn authorized_kms_unwrapping_key(
     kms: &KMS,
     user: &UserId,
     unwrapping_key_uid: &str,
     allow_server_kek: bool,
 ) -> KResult<Arc<ObjectWithMetadata>> {
-    // fetch the wrapping key
+    // Every failure before the permission check returns the same error, so an unauthorized
+    // caller cannot tell a missing key from another user's key.
+    let not_accessible = || {
+        KmsError::Unauthorized(format!(
+            "The unwrapping key {unwrapping_key_uid} does not exist or is not accessible"
+        ))
+    };
     let unwrapping_key = kms
         .database
         .retrieve_object_arc(unwrapping_key_uid)
         .await
-        .context("wrap using KMS")?;
-    let unwrapping_key = unwrapping_key.ok_or_else(|| {
-        KmsError::NotSupported(format!(
-            "The wrapping key {unwrapping_key_uid} does not exist or is not accessible."
-        ))
-    })?;
+        .context("wrap using KMS")?
+        .ok_or_else(not_accessible)?;
     // In the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
     let object_type = unwrapping_key.object().object_type();
     let unwrapping_key = match object_type {
@@ -219,31 +221,41 @@ async fn authorized_kms_unwrapping_key(
             } else if let Some(stripped) = unwrapping_key_uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY) {
                 stripped.to_owned()
             } else {
-                kms_bail!(
-                    "unwrap_key: no corresponding private key link found for the public key \
-                     {unwrapping_key_uid}"
-                );
+                return Err(not_accessible());
             };
             let private_key = kms
                 .database
                 .retrieve_object_arc(&sk_id)
                 .await
                 .context("wrap using KMS")?
-                .ok_or_else(|| {
-                    KmsError::NotSupported(format!(
-                        "The unwrapping private key {sk_id} does not exist or is not accessible \
-                         for the public key {unwrapping_key_uid}"
-                    ))
-                })?;
+                .ok_or_else(not_accessible)?;
             if private_key.object().object_type() != ObjectType::PrivateKey {
-                return Err(KmsError::NotSupported(format!(
-                    "The key {sk_id} linked to {unwrapping_key_uid} is not a private key"
-                )));
+                return Err(not_accessible());
             }
             private_key
         }
+        // the type of another user's object is not revealed either
+        _ if unwrapping_key.owner() != user => return Err(not_accessible()),
         _ => kms_bail!("unwrap_key: unsupported object type: {}", object_type),
     };
+    // check user permissions on the resolved key first: state and usage errors would otherwise
+    // reveal another user's key; the server KEK wrapped stored objects on behalf of every user
+    // (mirrors `wrap_using_kms`)
+    if !is_exempt_server_kek(kms, allow_server_kek, unwrapping_key_uid)
+        && unwrapping_key.owner() != user
+        && user != kms.params.default_username.as_str()
+    {
+        let ops = kms
+            .database
+            .list_user_operations_on_object(unwrapping_key.id(), user, false)
+            .await?;
+        if !ops
+            .iter()
+            .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
+        {
+            return Err(not_accessible());
+        }
+    }
     // check active state
     if unwrapping_key.state() != State::Active {
         return Err(KmsError::NotSupported(format!(
@@ -259,26 +271,6 @@ async fn authorized_kms_unwrapping_key(
         return Err(KmsError::NotSupported(format!(
             "The key: {unwrapping_key_uid}, is not meant to unwrap keys"
         )));
-    }
-    // check user permissions on the resolved key; the server KEK wrapped stored objects on
-    // behalf of every user (mirrors `wrap_using_kms`)
-    if !is_exempt_server_kek(kms, allow_server_kek, unwrapping_key_uid)
-        && unwrapping_key.owner() != user
-        && user != kms.params.default_username.as_str()
-    {
-        let ops = kms
-            .database
-            .list_user_operations_on_object(unwrapping_key.id(), user, false)
-            .await?;
-        if !ops
-            .iter()
-            .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-        {
-            return Err(KmsError::NotSupported(format!(
-                "The user {user} does not have the permission to unwrap with the key \
-                 {unwrapping_key_uid}"
-            )));
-        }
     }
     Ok(unwrapping_key)
 }

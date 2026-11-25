@@ -5,16 +5,22 @@ use std::sync::Arc;
 use cosmian_kms_interfaces::HsmStore;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, RevocationReason, RevocationReasonCode, State},
+        kmip_0::kmip_types::{
+            CryptographicUsageMask, ErrorReason, RevocationReason, RevocationReasonCode, State,
+        },
         kmip_2_1::{
             extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
+            kmip_objects::{Object, ObjectType},
             kmip_operations::{Destroy, Revoke},
             kmip_types::{
                 CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, RecommendedCurve,
                 UniqueIdentifier, WrappingMethod,
             },
-            requests::{create_ec_key_pair_request, symmetric_key_create_request},
+            requests::{
+                create_derivation_object_request, create_ec_key_pair_request,
+                symmetric_key_create_request,
+            },
         },
     },
     cosmian_kms_crypto::crypto::wrap::unwrap_key_block,
@@ -978,6 +984,179 @@ async fn characterization_wrap_object_inactive_wrapping_key_is_rejected() {
         format!("Not Supported: The wrapping key {wrapping} is not active")
     );
     assert!(!object.is_wrapped());
+}
+
+// ── wrapping: no existence/state oracle on another user's key (F-039) ───────
+
+async fn create_aes_key_with_mask(
+    kms: &KMS,
+    user: &UserId,
+    mask: CryptographicUsageMask,
+) -> String {
+    let mut request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .unwrap();
+    request.attributes.cryptographic_usage_mask = Some(mask);
+    kms.create(request, user)
+        .await
+        .unwrap()
+        .unique_identifier
+        .to_string()
+}
+
+/// A copy of the wrapped `object` whose key wrapping data names `unwrapping_key_uid`.
+fn wrapped_by(object: &Object, unwrapping_key_uid: &str) -> Object {
+    let mut object = object.clone();
+    object
+        .key_block_mut()
+        .unwrap()
+        .key_wrapping_data
+        .as_mut()
+        .unwrap()
+        .encryption_key_information
+        .as_mut()
+        .unwrap()
+        .unique_identifier = UniqueIdentifier::TextString(unwrapping_key_uid.to_owned());
+    object
+}
+
+/// An owned `SecretData` object: an object type that can neither wrap nor unwrap keys.
+async fn create_secret_data(kms: &KMS, user: &UserId) -> String {
+    kms.create(
+        create_derivation_object_request(ObjectType::SecretData).unwrap(),
+        user,
+    )
+    .await
+    .unwrap()
+    .unique_identifier
+    .to_string()
+}
+
+#[tokio::test]
+async fn unauthorized_caller_cannot_distinguish_unwrapping_keys() {
+    let kms = test_kms().await.unwrap();
+    let owner = UserId::from("f039_unwrap_owner");
+    let outsider = UserId::from("f039_unwrap_outsider");
+
+    let active = create_aes_key(&kms, &owner, EMPTY_TAGS.as_slice()).await;
+    let inactive = create_aes_key(&kms, &owner, EMPTY_TAGS.as_slice()).await;
+    revoke(
+        &kms,
+        &owner,
+        &inactive,
+        reason(RevocationReasonCode::Unspecified, None),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let no_unwrap_usage = create_aes_key_with_mask(
+        &kms,
+        &owner,
+        CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+    )
+    .await;
+    // the public key resolves to the owner's private key, which has no UnwrapKey usage
+    let (_, public_key) = create_ec_pair(&kms, &owner).await;
+    let secret_data = create_secret_data(&kms, &owner).await;
+    let missing = "f039_missing_unwrapping_key".to_owned();
+
+    let wrapped_uid = create_wrapped_aes_key(&kms, &owner, &active).await;
+    let wrapped = kms
+        .database
+        .retrieve_object(&wrapped_uid)
+        .await
+        .unwrap()
+        .unwrap()
+        .object()
+        .clone();
+    assert!(wrapped.is_wrapped());
+
+    // the outsider gets the same error whether the key is missing, active, inactive,
+    // unusable for unwrapping, or of an unsupported object type
+    for uid in [
+        &missing,
+        &active,
+        &inactive,
+        &no_unwrap_usage,
+        &public_key,
+        &secret_data,
+    ] {
+        let mut object = wrapped_by(&wrapped, uid);
+        let err = unwrap_object(&mut object, &kms, &outsider)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("Access denied: The unwrapping key {uid} does not exist or is not accessible"),
+        );
+        assert!(object.is_wrapped());
+    }
+
+    // the owner still learns why the key cannot be used
+    let mut object = wrapped_by(&wrapped, &inactive);
+    let err = unwrap_object(&mut object, &kms, &owner).await.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        format!("Not Supported: The unwrapping key {inactive} is not active")
+    );
+    let mut object = wrapped_by(&wrapped, &no_unwrap_usage);
+    let err = unwrap_object(&mut object, &kms, &owner).await.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        format!("Not Supported: The key: {no_unwrap_usage}, is not meant to unwrap keys")
+    );
+}
+
+#[tokio::test]
+async fn unauthorized_caller_cannot_distinguish_wrapping_keys() {
+    let kms = test_kms().await.unwrap();
+    let owner = UserId::from("f039_wrap_owner");
+    let outsider = UserId::from("f039_wrap_outsider");
+
+    let active = create_aes_key(&kms, &owner, EMPTY_TAGS.as_slice()).await;
+    let inactive = create_aes_key(&kms, &owner, EMPTY_TAGS.as_slice()).await;
+    revoke(
+        &kms,
+        &owner,
+        &inactive,
+        reason(RevocationReasonCode::Unspecified, None),
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+    let secret_data = create_secret_data(&kms, &owner).await;
+    let missing = "f039_missing_wrapping_key".to_owned();
+
+    let target_uid = create_aes_key(&kms, &outsider, EMPTY_TAGS.as_slice()).await;
+    let target = kms
+        .database
+        .retrieve_object(&target_uid)
+        .await
+        .unwrap()
+        .unwrap()
+        .object()
+        .clone();
+
+    for uid in [&missing, &active, &inactive, &secret_data] {
+        let mut object = target.clone();
+        let err = wrap_object(&mut object, &wrapping_spec(uid), &kms, &outsider)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("Access denied: The wrapping key {uid} does not exist or is not accessible"),
+        );
+        assert!(!object.is_wrapped());
+    }
 }
 
 // ── KMS::instantiate: unwrapped cache parameters ─────────────────────────────

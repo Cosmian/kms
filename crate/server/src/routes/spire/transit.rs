@@ -39,7 +39,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
-            kmip_operations::{Destroy, Revoke, Sign},
+            kmip_operations::{Destroy, Operation, Revoke, Sign},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
                 LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
@@ -55,7 +55,7 @@ use time::format_description::well_known::Rfc3339;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::KMS,
+    core::{KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request},
     error::KmsError,
     result::KResult,
     routes::spire::{
@@ -443,6 +443,11 @@ async fn create_nonfips_transit_key(
     )
     .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::CreateKeyPair(Box::new(create_req.clone())),
+    )
+    .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
     kms.create_key_pair(create_req, user)
         .await
         .map_err(SpireApiError::from)?;
@@ -581,6 +586,11 @@ async fn create_transit_key_impl(
         let create_req = create_ec_key_pair_request(kms.vendor_id(), None, tags, curve, true, None)
             .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+        enforce_kmip_algorithm_policy_for_request(
+            &kms.params,
+            &Operation::CreateKeyPair(Box::new(create_req.clone())),
+        )
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
         kms.create_key_pair(create_req, &user)
             .await
             .map_err(SpireApiError::from)?;
@@ -604,6 +614,11 @@ async fn create_transit_key_impl(
         let create_req = create_rsa_key_pair_request(kms.vendor_id(), None, tags, bits, true, None)
             .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+        enforce_kmip_algorithm_policy_for_request(
+            &kms.params,
+            &Operation::CreateKeyPair(Box::new(create_req.clone())),
+        )
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
         kms.create_key_pair(create_req, &user)
             .await
             .map_err(SpireApiError::from)?;
@@ -916,6 +931,9 @@ async fn sign_with_transit_key_impl(
         data: data.map(Into::into),
         ..Default::default()
     };
+
+    enforce_kmip_algorithm_policy_for_request(&kms.params, &Operation::Sign(sign_req.clone()))
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
 
     let resp = kms
         .sign(sign_req, &user)

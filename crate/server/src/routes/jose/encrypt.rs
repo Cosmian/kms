@@ -113,6 +113,11 @@ async fn encrypt_dir(
         ..Default::default()
     };
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::Encrypt(Box::new(encrypt_req.clone())),
+    )
+    .map_err(CryptoApiError::from)?;
     let resp = kms
         .encrypt(encrypt_req, user)
         .await
