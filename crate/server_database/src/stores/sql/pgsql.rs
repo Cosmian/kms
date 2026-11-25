@@ -31,7 +31,7 @@ use crate::{
     stores::{
         migrate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
-            wait_for_migration_lock,
+            synced_state_json, wait_for_migration_lock,
         },
         pgsql_queries,
         sql::{
@@ -547,6 +547,35 @@ impl PgPool {
                     error = %e,
                     "wrapping_key_id backfill: skipping object that failed to deserialize"
                 ),
+            }
+        }
+        tx.commit().await.map_err(DbError::from)
+    }
+
+    /// Same transactional shape as the wrapping-key backfill.
+    async fn sync_stored_state(&self) -> DbResult<()> {
+        let mut client = pg_get_client(&self.pool).await?;
+        let tx = client.transaction().await.map_err(DbError::from)?;
+        let update_stmt = tx
+            .prepare(get_pgsql_query!("update-object-state-json"))
+            .await
+            .map_err(DbError::from)?;
+        let rows = tx
+            .query(get_pgsql_query!("select-objects-state-sync"), &[])
+            .await
+            .map_err(DbError::from)?;
+        for row in &rows {
+            let id: String = row.try_get(0).map_err(DbError::from)?;
+            let object_json: String = row.try_get(1).map_err(DbError::from)?;
+            let Json(attributes): Json<serde_json::Value> =
+                row.try_get(2).map_err(DbError::from)?;
+            let state: String = row.try_get(3).map_err(DbError::from)?;
+            if let Some((object, attributes)) =
+                synced_state_json(&id, &state, &object_json, attributes)
+            {
+                tx.execute(&update_stmt, &[&object, &Json(attributes), &id])
+                    .await
+                    .map_err(DbError::from)?;
             }
         }
         tx.commit().await.map_err(DbError::from)
@@ -1894,6 +1923,7 @@ impl Migrate for PgPool {
             MigrationStep::CertificateSerialTagBackfill => {
                 self.backfill_certificate_serial_tags().await
             }
+            MigrationStep::StoredStateSync => self.sync_stored_state().await,
         }
     }
 }

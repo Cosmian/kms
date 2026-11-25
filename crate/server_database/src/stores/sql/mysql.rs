@@ -31,7 +31,7 @@ use crate::{
     stores::{
         migrate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
-            wait_for_migration_lock,
+            synced_state_json, wait_for_migration_lock,
         },
         mysql_queries,
         sql::{
@@ -348,6 +348,26 @@ impl MySqlPool {
                     "wrapping_key_id backfill: skipping object {id} that failed to \
                      deserialize: {e}"
                 ),
+            }
+        }
+        Ok(())
+    }
+
+    /// Same autocommit shape as the wrapping-key backfill; the sync is idempotent.
+    async fn sync_stored_state(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let update_sql = get_mysql_query!("update-object-state-json");
+        let rows: Vec<(String, String, Value, String)> = conn
+            .query(get_mysql_query!("select-objects-state-sync"))
+            .await
+            .map_err(DbError::from)?;
+        for (id, object_json, attributes, state) in rows {
+            if let Some((object, attributes)) =
+                synced_state_json(&id, &state, &object_json, attributes)
+            {
+                conn.exec_drop(update_sql, (object, attributes.to_string(), &id))
+                    .await
+                    .map_err(DbError::from)?;
             }
         }
         Ok(())
@@ -1394,6 +1414,7 @@ impl Migrate for MySqlPool {
             MigrationStep::CertificateSerialTagBackfill => {
                 self.backfill_certificate_serial_tags().await
             }
+            MigrationStep::StoredStateSync => self.sync_stored_state().await,
         }
     }
 }

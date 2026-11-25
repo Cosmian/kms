@@ -302,6 +302,12 @@ SELECT objects.id, objects.object FROM objects
 INNER JOIN tags c ON c.id = objects.id AND c.tag = '_cert'
 WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag, 1, 8) = '_serial=');
 
+-- name: select-objects-state-sync
+SELECT id, object, attributes, state FROM objects;
+
+-- name: update-object-state-json
+UPDATE objects SET object=?, attributes=? WHERE id=?;
+
 -- name: has-index
 SELECT 1
 FROM information_schema.statistics

@@ -40,7 +40,7 @@ use crate::{
     stores::{
         migrate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
-            wait_for_migration_lock,
+            synced_state_json, wait_for_migration_lock,
         },
         pgsql_queries, sqlite_queries,
     },
@@ -438,6 +438,50 @@ impl SqlitePool {
                                     "wrapping_key_id backfill: skipping object that failed to \
                                      deserialize"
                                 ),
+                            }
+                        }
+                        tx.commit()?;
+                        Ok(())
+                    },
+                )
+                .await
+        })
+        .await
+    }
+
+    /// The scan and updates share a transaction, so an interrupted run leaves nothing half-synced.
+    async fn sync_stored_state(&self) -> DbResult<()> {
+        let select_sql = get_sqlite_query!("select-objects-state-sync");
+        let update_sql = get_sqlite_query!("update-object-state-json");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        let tx = c.transaction()?;
+                        let rows: Vec<(String, String, String, String)> = {
+                            let mut stmt = tx.prepare(select_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut out = Vec::new();
+                            while let Some(row) = rows.next()? {
+                                out.push((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?));
+                            }
+                            out
+                        };
+                        for (id, object_json, attributes_json, state) in &rows {
+                            let Ok(attributes) = serde_json::from_str(attributes_json) else {
+                                tracing::warn!(
+                                    uid = %id,
+                                    "state sync: skipping object with unparsable attributes"
+                                );
+                                continue;
+                            };
+                            if let Some((object, attributes)) =
+                                synced_state_json(id, state, object_json, attributes)
+                            {
+                                tx.execute(
+                                    update_sql,
+                                    rusqlite::params![object, attributes.to_string(), id],
+                                )?;
                             }
                         }
                         tx.commit()?;
@@ -1339,6 +1383,7 @@ impl Migrate for SqlitePool {
             MigrationStep::CertificateSerialTagBackfill => {
                 self.backfill_certificate_serial_tags().await
             }
+            MigrationStep::StoredStateSync => self.sync_stored_state().await,
         }
     }
 }

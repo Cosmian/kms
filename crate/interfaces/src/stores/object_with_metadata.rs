@@ -127,6 +127,17 @@ impl ObjectWithMetadata {
             .or(self.attributes.cryptographic_algorithm)
     }
 
+    /// State reported for a row: the lifecycle column wins, except a `PreActive` column defers
+    /// to the attributes' state when set. Clock-free, unlike [`Self::effective_state`], so it is
+    /// safe in migrations.
+    #[must_use]
+    pub const fn stored_state_precedence(column: State, attributes_state: Option<State>) -> State {
+        match (column, attributes_state) {
+            (State::PreActive, Some(attributes_state)) => attributes_state,
+            _ => column,
+        }
+    }
+
     // ─── Lifecycle predicates ────────────────────────────────────────────────
 
     /// Determine the effective KMIP state based on stored state and time-based

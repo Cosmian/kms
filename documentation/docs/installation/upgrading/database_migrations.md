@@ -15,6 +15,10 @@ You can upgrade directly to the current release without installing intermediate 
 
 On large databases, the first startup after an upgrade takes longer than a normal boot while new indexes or data backfills run.
 
+### Upgrading to 6.0.0: stored state synchronization
+
+Releases before 6.0.0 updated only the lifecycle column when an object changed state (`Deactivated`, `Destroyed`, ...), leaving the `State` inside the stored attributes and key block stale. KMS always reported the column, so clients saw the right state. The 6.0.0 upgrade writes that reported state into the stored attributes (and, except for destroyed objects, the key-block attributes) of every object once. API responses do not change; rows whose stored JSON cannot be parsed are skipped with a warning. Because this step rewrites rows, it adds to the first startup time on large databases.
+
 ## Before you upgrade
 
 1. **Stop running instances of the previous version.** Starting a new KMS binary does not stop older KMS nodes that are already connected to the database. Shut down the older instances before starting the new release so they do not write stale records during the upgrade.

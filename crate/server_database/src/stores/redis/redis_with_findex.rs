@@ -477,6 +477,48 @@ impl RedisWithFindex {
         Ok(())
     }
 
+    /// Write the state clients already see into the stored attributes and the key block's
+    /// embedded attributes (same precedence and destroyed-payload rule as
+    /// [`crate::stores::migrate::sync_state_json`]). Only changed records are rewritten, through
+    /// the normal atomic path so tags and Findex keywords stay untouched.
+    pub(crate) async fn sync_stored_state(&self) -> DbResult<()> {
+        for (uid, db_object) in self.objects_db.scan_all_objects().await? {
+            let column = db_object.state;
+            let mut object = db_object.object;
+            let mut attributes = db_object.attributes.unwrap_or_default();
+            let state = ObjectWithMetadata::stored_state_precedence(column, attributes.state);
+            let mut changed = attributes.state != Some(state);
+            attributes.state = Some(state);
+            if !matches!(column, State::Destroyed | State::Destroyed_Compromised)
+                && let Ok(embedded) = object.attributes_mut()
+                && embedded.state != Some(state)
+            {
+                embedded.state = Some(state);
+                changed = true;
+            }
+            if !changed {
+                continue;
+            }
+            match self
+                .run_atomic(
+                    None,
+                    &[AtomicOperation::UpdateObject((
+                        uid,
+                        object,
+                        attributes,
+                        db_object.tags,
+                    ))],
+                )
+                .await
+            {
+                // ItemNotFound: deleted since the scan started
+                Ok(_) | Err(DbError::ItemNotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
     /// Test-only accessor to the underlying object store, used to seed a legacy
     /// (unindexed) object when exercising [`Self::backfill_wrapped_by_index`].
     #[cfg(test)]
