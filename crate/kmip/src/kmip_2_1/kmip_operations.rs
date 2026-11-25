@@ -1075,7 +1075,7 @@ impl_display!(RNGRetrieveResponse, "RNGRetrieveResponse", { req_len data });
 ///
 /// Requests the server to seed an RNG instance with the provided Data.
 /// The response returns the Amount of Seed Data consumed.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct RNGSeed {
     /// Seed material provided by the client.
@@ -1083,6 +1083,15 @@ pub struct RNGSeed {
 }
 
 impl_display!(RNGSeed, "RNGSeed", { req_len data });
+
+/// The seed is entropy input: `Debug` shows its length only.
+impl fmt::Debug for RNGSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RNGSeed")
+            .field("data", &format_args!("{}", self.data.len_display()))
+            .finish()
+    }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]

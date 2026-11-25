@@ -160,11 +160,24 @@ pub struct PublicKey {
     pub key_block: KeyBlock,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct OpaqueObject {
     pub opaque_data_type: OpaqueDataType,
     pub opaque_data_value: Vec<u8>,
+}
+
+/// The opaque value may be any secret: `Debug` shows its length only.
+impl fmt::Debug for OpaqueObject {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpaqueObject")
+            .field("opaque_data_type", &self.opaque_data_type)
+            .field(
+                "opaque_data_value",
+                &format_args!("{}", self.opaque_data_value.len_display()),
+            )
+            .finish()
+    }
 }
 
 impl From<OpaqueObject> for kmip_2_1::kmip_objects::OpaqueObject {

@@ -1560,25 +1560,6 @@ impl TryFrom<kmip_2_1::kmip_types::CryptographicParameters> for CryptographicPar
     }
 }
 
-/// 2.1.7.1 Transparent Symmetric Key Structure
-/// The Transparent Symmetric Key structure is used to carry the key data for a
-/// symmetric key in raw form.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentSymmetricKey {
-    pub key: Vec<u8>,
-}
-
-/// 2.1.7.2 Transparent DSA Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentDsaPrivateKey {
-    pub p: Vec<u8>,
-    pub q: Vec<u8>,
-    pub g: Vec<u8>,
-    pub x: Vec<u8>,
-}
-
 /// 2.1.7.3 Transparent DSA Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1589,47 +1570,12 @@ pub struct TransparentDsaPublicKey {
     pub y: Vec<u8>,
 }
 
-/// 2.1.7.4 Transparent RSA Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentRsaPrivateKey {
-    pub modulus: Vec<u8>,
-    pub private_exponent: Vec<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub public_exponent: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub p: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub q: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prime_exponent_p: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prime_exponent_q: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub crt_coefficient: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recommended_curve: Option<RecommendedCurve>,
-}
-
 /// 2.1.7.5 Transparent RSA Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct TransparentRsaPublicKey {
     pub modulus: Vec<u8>,
     pub public_exponent: Vec<u8>,
-}
-
-/// 2.1.7.6 Transparent DH Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentDhPrivateKey {
-    pub p: Vec<u8>,
-    pub g: Vec<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub q: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub j: Option<Vec<u8>>,
-    pub x: Vec<u8>,
 }
 
 /// 2.1.7.7 Transparent DH Public Key Structure
@@ -1645,14 +1591,6 @@ pub struct TransparentDhPublicKey {
     pub y: Vec<u8>,
 }
 
-/// 2.1.7.8 Transparent ECDSA Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentEcdsaPrivateKey {
-    pub recommended_curve: RecommendedCurve,
-    pub d: Vec<u8>,
-}
-
 /// 2.1.7.9 Transparent ECDSA Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1661,28 +1599,12 @@ pub struct TransparentEcdsaPublicKey {
     pub q_string: Vec<u8>,
 }
 
-/// 2.1.7.10 Transparent ECDH Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentEcdhPrivateKey {
-    pub recommended_curve: RecommendedCurve,
-    pub d: Vec<u8>,
-}
-
 /// 2.1.7.11 Transparent ECDH Public Key Structure
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct TransparentEcdhPublicKey {
     pub recommended_curve: RecommendedCurve,
     pub q_string: Vec<u8>,
-}
-
-/// 2.1.7.12 Transparent ECMQV Private Key Structure
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "PascalCase")]
-pub struct TransparentEcmqvPrivateKey {
-    pub recommended_curve: RecommendedCurve,
-    pub d: Vec<u8>,
 }
 
 /// 2.1.7.13 Transparent ECMQV Public Key Structure
