@@ -219,6 +219,13 @@ services:
       --ssl-cert=/etc/mysql/certs/server-cert.pem
       --ssl-key=/etc/mysql/certs/server-key.pem
       --ssl-ca=/etc/mysql/certs/ca.pem
+    healthcheck:
+      # TCP probe: unlike the init phase's socket-only server, it answers only once the final
+      # (TLS-enabled) mysqld listens, i.e. after the user and database are set up.
+      test: [CMD-SHELL, mysqladmin ping -h 127.0.0.1 -uroot -pkms --silent]
+      interval: 2s
+      timeout: 5s
+      retries: 30
   redis:
     image: redis:7.2
     ports:

@@ -23,9 +23,32 @@ docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d mysql || {
   skip_test "could not start compose: mysql"
 }
 
+# TLS-enabled server for the live TLS tests (test_mysql_tls_sslmode_matrix, test_db_mysql_mtls_connection):
+# --require-secure-transport, server certificate signed by the test CA.
+MYSQL_MTLS_PORT="${KMS_SLOT_MYSQL_MTLS_PORT:-3309}"
+print_status "Starting mysql-mtls container (port ${MYSQL_MTLS_PORT})..."
+docker compose --project-directory "${REPO_ROOT}" up -d --wait mysql-mtls || {
+  if [ "${CI:-}" = true ]; then print_error "could not start compose: mysql-mtls"; fi
+  skip_test "could not start compose: mysql-mtls"
+}
+trap 'docker compose --project-directory "${REPO_ROOT}" stop mysql-mtls 2>/dev/null || true' EXIT
+: "${KMS_MYSQL_MTLS_URL:=mysql://kms:kms@127.0.0.1:${MYSQL_MTLS_PORT}/kms}"
+export KMS_MYSQL_MTLS_URL
+
 print_header "Running MySQL tests (${VARIANT_NAME})"
 
 check_and_test_db "MySQL" "mysql" "MYSQL_HOST" "MYSQL_PORT"
+
+# Named test_mysql_tls_* (not test_db_mysql_*) so that the Percona and MariaDB tasks, which share
+# the test_db_mysql filter, do not pick them up without the mysql-mtls server.
+print_status "Running MySQL TLS tests against mysql-mtls..."
+cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+  -- --ignored --nocapture test_mysql_tls_
+if [ "${VARIANT:-}" = "non-fips" ]; then
+  # PKCS#12 client identity through the full server instantiation path (non-FIPS only).
+  cargo test -p cosmian_kms_server --lib "${FEATURES_FLAG[@]}" \
+    -- --ignored --nocapture test_db_mysql_mtls_connection
+fi
 run_db_softhsm2_tests "mysql_softhsm2"
 
 print_success "MySQL tests completed"
