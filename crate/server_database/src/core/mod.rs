@@ -10,6 +10,7 @@ use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_kms_interfaces::{KeyInventoryBucket, ObjectsStore, PermissionsStore};
+use cosmian_logger::error;
 pub use db_metrics::DbMetricsRecorder;
 #[cfg(feature = "non-fips")]
 use redis::AsyncCommands;
@@ -154,9 +155,19 @@ trait DatabaseHealth {
 /// otherwise a long job would block the leader-election heartbeat.
 pub(crate) const CRON_LOCK_CONNECTIONS: usize = 8;
 
+/// Validity of a `MySQL` cron lease (Galera): a holder that vanishes loses it after this delay.
+/// The running job renews it every third of the TTL.
+pub(crate) const CRON_LEASE_TTL_SECS: i64 = 300;
+
 #[async_trait]
 pub(crate) trait ClusterLockGuard: Send {
     async fn release(self: Box<Self>) -> DbResult<()>;
+
+    /// Extend a lease-based lock while its job runs; an error means the lease was lost.
+    /// Session-bound locks (`SQLite`, `PostgreSQL`, `GET_LOCK`) never expire: nothing to do.
+    async fn renew(&mut self) -> DbResult<()> {
+        Ok(())
+    }
 }
 
 pub(crate) struct NoopClusterLockGuard;
@@ -365,10 +376,24 @@ impl Database {
         F: FnOnce() -> Fut,
         Fut: Future<Output = ()>,
     {
-        let Some(lock) = self.health.try_acquire_cron_lock(lock_name).await? else {
+        let Some(mut lock) = self.health.try_acquire_cron_lock(lock_name).await? else {
             return Ok(false);
         };
-        action().await;
+        let renew_every = Duration::from_secs(CRON_LEASE_TTL_SECS.unsigned_abs() / 3);
+        let mut ticker =
+            tokio::time::interval_at(tokio::time::Instant::now() + renew_every, renew_every);
+        let mut action = std::pin::pin!(action());
+        loop {
+            tokio::select! {
+                () = &mut action => break,
+                _ = ticker.tick() => {
+                    // No safe abort exists and the job's writes are transactional: run it to the end.
+                    if let Err(e) = lock.renew().await {
+                        error!("cron lock '{lock_name}' renewal failed, the job keeps running: {e}");
+                    }
+                }
+            }
+        }
         lock.release().await?;
         Ok(true)
     }
@@ -616,7 +641,7 @@ impl DatabaseHealth for RedisFindexHealthProbe {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::future::pending;
 
     use tokio::time::{sleep, timeout};
@@ -726,10 +751,16 @@ mod tests {
             .expect("expire follower");
     }
 
-    /// Two servers sharing one database must never run the same job at the same time.
-    async fn assert_cron_lock_exclusion(params: &MainDbParams) {
-        let node_a = instantiate(params, false).await;
-        let node_b = instantiate(params, false).await;
+    /// Two servers sharing one database (or two nodes of one cluster) must never run the same
+    /// job at the same time. `cancel_frees_lock` is false for TTL leases, which stay held until
+    /// they expire when their job is cancelled.
+    pub(crate) async fn assert_cron_lock_exclusion(
+        params_a: &MainDbParams,
+        params_b: &MainDbParams,
+        cancel_frees_lock: bool,
+    ) {
+        let node_a = instantiate(params_a, false).await;
+        let node_b = instantiate(params_b, false).await;
 
         let ran_by_a = node_a
             .with_cron_lock("job", || async {
@@ -759,6 +790,9 @@ mod tests {
                 .expect("acquire released lock")
         );
 
+        if !cancel_frees_lock {
+            return;
+        }
         // A cancelled job (server shutdown) must free its lock for the other nodes.
         timeout(
             Duration::from_millis(200),
@@ -804,7 +838,7 @@ mod tests {
             .unwrap_or("postgres://kms:kms@127.0.0.1:5432/kms")
             .to_owned();
         let params = MainDbParams::Postgres(url, None);
-        assert_cron_lock_exclusion(&params).await;
+        assert_cron_lock_exclusion(&params, &params, true).await;
         let database = instantiate(&params, false).await;
         assert_heartbeats(&database).await;
         assert_concurrent_heartbeats_do_not_deadlock(&database).await;
@@ -816,8 +850,7 @@ mod tests {
     async fn test_db_mysql_cluster_heartbeat_and_cron_lock() {
         let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
         let params = MainDbParams::Mysql(url.parse().expect("valid MySQL URL"), None);
-        // On a server that refuses `GET_LOCK` (Percona `XtraDB` Cluster), the row lock excludes too.
-        assert_cron_lock_exclusion(&params).await;
+        assert_cron_lock_exclusion(&params, &params, true).await;
         let database = instantiate(&params, false).await;
         assert_heartbeats(&database).await;
         assert_concurrent_heartbeats_do_not_deadlock(&database).await;

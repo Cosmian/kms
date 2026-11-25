@@ -520,6 +520,35 @@ INSERT IGNORE INTO kms_cron_locks (name) VALUES (?);
 -- name: select-cron-lock-nowait
 SELECT name FROM kms_cron_locks WHERE name = ? FOR UPDATE NOWAIT;
 
+-- Scheduled-job TTL leases, used when the server refuses GET_LOCK (Galera). Committed rows are
+-- replicated, so the lease excludes the KMS nodes of every Galera node. Times are the database's.
+-- name: create-table-cron-leases
+CREATE TABLE IF NOT EXISTS kms_cron_leases
+(
+    name       VARCHAR(128) NOT NULL PRIMARY KEY,
+    holder     VARCHAR(64)  NOT NULL,
+    expires_at DATETIME(6)  NOT NULL
+);
+
+-- name: insert-cron-lease
+INSERT IGNORE INTO kms_cron_leases (name, holder, expires_at)
+VALUES (?, '', CURRENT_TIMESTAMP(6) - INTERVAL 1 SECOND);
+
+-- name: acquire-cron-lease
+UPDATE kms_cron_leases
+SET holder = ?, expires_at = CURRENT_TIMESTAMP(6) + INTERVAL ? SECOND
+WHERE name = ? AND expires_at < CURRENT_TIMESTAMP(6);
+
+-- name: renew-cron-lease
+UPDATE kms_cron_leases
+SET expires_at = CURRENT_TIMESTAMP(6) + INTERVAL ? SECOND
+WHERE name = ? AND holder = ?;
+
+-- name: release-cron-lease
+UPDATE kms_cron_leases
+SET expires_at = CURRENT_TIMESTAMP(6) - INTERVAL 1 SECOND
+WHERE name = ? AND holder = ?;
+
 -- name: start-transaction
 START TRANSACTION;
 
