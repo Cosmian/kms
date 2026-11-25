@@ -7,6 +7,7 @@ use cosmian_kms_server_database::reexport::{
         self, creation_time,
         kmip_0::kmip_types::{CertificateType, KeyWrapType, State},
         kmip_2_1::{
+            KmipOperation,
             extra::tagging::{
                 SYSTEM_TAG_CERTIFICATE, SYSTEM_TAG_OPAQUE_OBJECT, SYSTEM_TAG_PGP_KEY,
                 SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY, SYSTEM_TAG_SECRET_DATA,
@@ -43,6 +44,7 @@ use crate::{
             export_get::resolve_pkcs12_password,
             validate::{CrlVerdict, verify_crls},
         },
+        retrieve_object_utils::retrieve_object_for_operation,
         uid_utils::ObjectHandle,
         wrapping::{unwrap_object, wrap_and_cache},
     },
@@ -51,6 +53,30 @@ use crate::{
     middlewares::UserId,
     result::KResult,
 };
+
+/// Load the certificate referenced by the `CertificateLink` of the import attributes.
+/// Any lookup or parse failure yields `None`: the CRL check then runs on the leaf alone.
+async fn linked_issuer_certificate(
+    kms: &KMS,
+    attributes: &Attributes,
+    user: &UserId,
+) -> Option<X509> {
+    let issuer_uid = attributes.get_link(LinkType::CertificateLink)?.to_string();
+    let owm = Box::pin(retrieve_object_for_operation(
+        ObjectHandle::from(&issuer_uid),
+        KmipOperation::Get,
+        kms,
+        user,
+    ))
+    .await
+    .ok()?;
+    match owm.object() {
+        Object::Certificate(Certificate {
+            certificate_value, ..
+        }) => X509::from_der(certificate_value).ok(),
+        _ => None,
+    }
+}
 
 /// Initial lifecycle state of an imported or registered object (KMIP 2.1 §3.1.7):
 /// `Active` if `ActivationDate` is present and `<= now`, `PreActive` otherwise.
@@ -130,8 +156,15 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
             }) = &request.object
             && let Ok(cert) = X509::from_der(certificate_value)
         {
+            // An HTTP(S) CRL signature can only be verified against certificates of the
+            // checked chain: put the linked issuer (if any) before the leaf (#1461).
+            let mut chain = Vec::with_capacity(2);
+            if let Some(issuer) = linked_issuer_certificate(kms, &request.attributes, user).await {
+                chain.push(issuer);
+            }
+            chain.push(cert);
             match verify_crls(
-                vec![cert],
+                chain,
                 kms.params.proxy_params.as_ref(),
                 kms.params.kms_public_url.as_deref(),
             )
