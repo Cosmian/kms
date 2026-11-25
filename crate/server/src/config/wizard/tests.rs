@@ -243,6 +243,7 @@ fn test_config_toml_round_trip_preserves_values() {
             hostname: "127.0.0.1".to_owned(),
             api_token_id: None,
             rate_limit_per_second: None,
+            insecure_allow_unauthenticated: false,
             cors_allowed_origins: None,
             http_workers: None,
             jwks_enabled: false,

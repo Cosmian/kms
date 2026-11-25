@@ -360,10 +360,25 @@ async fn revert_inner(kms: &KMS, user: &UserId, record: &UndoRecord) -> KResult<
             owm.id().to_owned(),
             owm.state(),
         )));
+        // The undone item's KMIP response is not withheld, so a budget it consumed stays
+        // consumed; any other change to the limits (attribute edits, a replacing Import) is undone.
+        let mut attributes = owm.attributes().clone();
+        if let (Some(restored), Some(after)) = (
+            attributes.usage_limits.as_mut(),
+            snapshot.after.1.usage_limits.as_ref(),
+        ) && restored.usage_limits_unit == after.usage_limits_unit
+            && restored.usage_limits_total == after.usage_limits_total
+        {
+            restored.usage_limits_count = Some(restored.remaining().min(after.remaining()));
+        }
+        let mut object = owm.object().clone();
+        if let Ok(a) = object.attributes_mut() {
+            a.usage_limits.clone_from(&attributes.usage_limits);
+        }
         operations.push(AtomicOperation::UpdateObject((
             owm.id().to_owned(),
-            owm.object().clone(),
-            owm.attributes().clone(),
+            object,
+            attributes,
             Some(snapshot.tags.clone()),
         )));
     }
@@ -397,8 +412,8 @@ mod tests {
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
         kmip_attributes::Attribute,
         kmip_objects::ObjectType,
-        kmip_operations::{CreateSplitKey, Destroy, JoinSplitKey, SetAttribute},
-        kmip_types::{Link, LinkType, SplitKeyMethod},
+        kmip_operations::{CreateSplitKey, Destroy, Encrypt, JoinSplitKey, SetAttribute},
+        kmip_types::{Link, LinkType, SplitKeyMethod, UsageLimits, UsageLimitsUnit},
         requests::symmetric_key_create_request,
     };
 
@@ -493,6 +508,84 @@ mod tests {
         assert!(revert(&kms, &attacker, &record).await);
         assert_eq!(comment(&kms, &victim_key).await?.as_deref(), Some("victim"));
         assert_eq!(comment(&kms, &attacker_key).await?, None);
+        Ok(())
+    }
+
+    /// Undoing an item never refunds the Usage Limits it consumed: its response (e.g. the
+    /// ciphertext) is still returned, so the budget must stay spent.
+    #[tokio::test]
+    async fn undo_keeps_consumed_usage_limits() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("undo_usage_owner@example.com");
+        let mut create = symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?;
+        create.attributes.usage_limits = Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(3),
+            usage_limits_total: 3,
+        });
+        let key = kms
+            .create(create, &owner)
+            .await?
+            .unique_identifier
+            .to_string();
+
+        // Encrypt item of an Undo batch whose next item fails: its undo record is reverted
+        let request = Encrypt {
+            unique_identifier: Some(UniqueIdentifier::TextString(key.clone())),
+            data: Some(b"message".to_vec().into()),
+            ..Encrypt::default()
+        };
+        let mut budget = MAX_UNDO_SNAPSHOTS;
+        let pre_state = capture(
+            &kms,
+            &owner,
+            &Operation::Encrypt(Box::new(request.clone())),
+            &mut budget,
+        )
+        .await;
+        let response = Operation::EncryptResponse(kms.encrypt(request, &owner).await?);
+        let record = record(&kms, 0, pre_state, Some(&response))
+            .await
+            .ok_or_else(|| KmsError::InvalidRequest("the item must be undoable".to_owned()))?;
+        assert!(revert(&kms, &owner, &record).await);
+
+        let stored = kms.database.retrieve_object(&key).await?.unwrap();
+        assert_eq!(
+            stored
+                .attributes()
+                .usage_limits
+                .as_ref()
+                .and_then(|l| l.usage_limits_count),
+            Some(2)
+        );
+        Ok(())
+    }
+
+    /// Undo still reverts an attribute edit of the usage limits themselves.
+    #[tokio::test]
+    async fn undo_reverts_a_usage_limits_edit() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("undo_usage_edit_owner@example.com");
+        let key = create_key(&kms, &owner).await?;
+        let limits = |total| UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Object,
+            usage_limits_count: Some(total),
+            usage_limits_total: total,
+        };
+        kms.set_attribute(set(&key, Attribute::UsageLimits(limits(3))), &owner)
+            .await?;
+        let record = run_item(&kms, &owner, set(&key, Attribute::UsageLimits(limits(10)))).await?;
+        assert!(revert(&kms, &owner, &record).await);
+        let stored = kms.database.retrieve_object(&key).await?.unwrap();
+        assert_eq!(stored.attributes().usage_limits, Some(limits(3)));
         Ok(())
     }
 

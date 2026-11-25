@@ -156,7 +156,9 @@ const RESERVED_SERVICE_IDENTITIES: [&str; 3] = [
 
 /// Whether `name` would resolve to the `reserved` identity in the database: `MySQL` / `MariaDB`
 /// compare the `userid` / `owner` columns with their default `_ci` collation (case-insensitive),
-/// and the default `MariaDB` `PAD SPACE` collation also ignores trailing spaces.
+/// and the default `MariaDB` `PAD SPACE` collation also ignores trailing spaces. Only ASCII
+/// case is folded: accent-insensitive collations (for example `utf8mb4_0900_ai_ci`) may also
+/// equate non-ASCII variants such as `admín` with `admin`, which this check does not detect.
 pub(crate) fn names_reserved_identity(name: &str, reserved: &str) -> bool {
     name.trim_end_matches(' ').eq_ignore_ascii_case(reserved)
 }

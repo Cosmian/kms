@@ -22,7 +22,9 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{UserId, user_from_client_certificate, verified_issuers},
+    middlewares::{
+        UserId, names_reserved_identity, user_from_client_certificate, verified_issuers,
+    },
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
@@ -474,6 +476,7 @@ fn handle_client(
             break;
         };
         let username = client_username(&tls_stream)?;
+        reject_default_username_collision(&username, &kms_server.params.default_username)?;
         debug!("socket server: received request ({} bytes)", request.len());
 
         // Process the request
@@ -594,6 +597,17 @@ fn client_username<S>(tls_stream: &SslStream<S>) -> KResult<UserId> {
     )
 }
 
+/// The socket server does not go through `ensure_auth_middleware`: refuse a client certificate
+/// whose CN equals `default_username`, as the HTTP mTLS path does.
+fn reject_default_username_collision(username: &UserId, default_username: &str) -> KResult<()> {
+    if names_reserved_identity(username.as_str(), default_username) {
+        return Err(KmsError::Unauthorized(
+            "socket server: external identity collides with the KMS default_username".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 // Client Certificate Authentication
 // Build an OpenSSL SslAcceptor supporting client cert auth
 pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KResult<SslAcceptor> {
@@ -661,9 +675,12 @@ mod tests {
     use super::{
         DeadlineStream, MAX_SOCKET_INFLIGHT_BYTES, MAX_SOCKET_REQUEST_BODY,
         SOCKET_HANDSHAKE_TIMEOUT, SocketServerParams, accept_tls, client_username,
-        create_openssl_acceptor, read_request,
+        create_openssl_acceptor, read_request, reject_default_username_collision,
     };
-    use crate::routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER};
+    use crate::{
+        middlewares::UserId,
+        routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER},
+    };
 
     type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
@@ -781,6 +798,19 @@ mod tests {
         if user != "alice@example.com" {
             return Err(format!("unexpected username {user}").into());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn client_cn_equal_to_default_username_is_rejected() -> TestResult {
+        let key = PKey::private_key_from_pem(&fs::read(format!(
+            "{CERTS}/user/user.client.acme.com.key"
+        ))?)?;
+        let cn = socket_username("Admin", &key)??;
+        if reject_default_username_collision(&UserId::from(cn.as_str()), "admin").is_ok() {
+            return Err(format!("CN {cn} was accepted as the default username").into());
+        }
+        reject_default_username_collision(&UserId::from("alice@example.com"), "admin")?;
         Ok(())
     }
 

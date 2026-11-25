@@ -27,7 +27,8 @@ use crate::{
             atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
             find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
-            lifecycle_state_contract_test, update_if_version_test, wrapping_key_link_test,
+            key_inventory_test, lifecycle_state_contract_test, update_if_version_test,
+            wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -134,6 +135,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
     find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
+    key_inventory_test(&get_redis_with_findex().await?).await?;
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
     Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
     gcm_invocations_test(&get_redis_with_findex().await?).await?;
@@ -180,6 +182,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
     find_due_for_rotation_test(&get_sqlite(&db_file).await?).await?;
     count_non_destroyed_keys_test(&get_sqlite(&db_file).await?).await?;
+    key_inventory_test(&get_sqlite(&db_file).await?).await?;
     find_with_options_test(&get_sqlite(&db_file).await?).await?;
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
     Box::pin(update_if_version_test(&get_sqlite(&db_file).await?)).await?;
@@ -245,6 +248,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?).await?;
     find_due_for_rotation_test(&get_pgsql().await?).await?;
     count_non_destroyed_keys_test(&get_pgsql().await?).await?;
+    key_inventory_test(&get_pgsql().await?).await?;
     find_with_options_test(&get_pgsql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
     Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
@@ -1160,6 +1164,7 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?).await?;
     find_due_for_rotation_test(&get_mysql().await?).await?;
     count_non_destroyed_keys_test(&get_mysql().await?).await?;
+    key_inventory_test(&get_mysql().await?).await?;
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
     gcm_invocations_test(&get_mysql().await?).await?;

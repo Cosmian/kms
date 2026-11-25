@@ -3,14 +3,16 @@
   Build the OpenSSL FIPS provider (fips.dll) on Windows and stage it for the KMS.
 
 .DESCRIPTION
-  The KMS loads the CMVP-validated OpenSSL FIPS provider (3.1.2) at runtime next to a newer
+  The KMS loads the CMVP-validated OpenSSL FIPS provider at runtime next to a newer
   libcrypto (see crate/crypto/build.rs, which does the same on Linux/macOS). On Windows the
   KMS links the vcpkg OpenSSL, which ships no FIPS module, so this script:
-    1. downloads the pinned openssl-3.1.2 tarball (same URL and SHA-256 as crate/crypto/build.rs),
+    1. downloads the pinned FIPS provider tarball (crate/crypto/openssl_versions.json, as crate/crypto/build.rs),
     2. builds fips.dll with `Configure VC-WIN64A enable-fips no-shared no-asm` + nmake
        (Visual Studio environment located through vswhere / vcvars64.bat),
-    3. runs `nmake install_fips install_ssldirs` (this also runs `openssl fipsinstall`, which
-       writes fipsmodule.cnf with the module self-test MAC),
+    3. runs `nmake install_fips install_ssldirs`, then regenerates fipsmodule.cnf with
+       `openssl fipsinstall -self_test_oninstall` (the defaults, as the Nix release packages):
+       `install_fips` writes the pedantic config of util/mk-fipsmodule-cnf.pl, which refuses
+       inputs the released provider accepts (short HMAC/KDF keys, ...),
     4. patches openssl.cnf so that only the `fips` and `base` providers are activated
        (the `default` provider is NOT activated, as in crate/crypto/build.rs),
     5. writes a dotenv file (-EnvFile) with OPENSSL_CONF and OPENSSL_MODULES. They are NOT
@@ -37,12 +39,6 @@ if ($env:OS -ne "Windows_NT") { throw "prepare_windows_fips_provider.ps1 runs on
 
 . (Join-Path $PSScriptRoot "common.ps1")
 
-# Must stay identical to OPENSSL_FIPS_* in crate/crypto/build.rs.
-$Version = "3.1.2"
-$Tarball = "openssl-$Version.tar.gz"
-$Url = "https://package.cosmian.com/openssl/$Tarball"
-$Sha256 = "a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539"
-
 $scriptDir = (Resolve-Path -LiteralPath $PSScriptRoot).Path
 if ($scriptDir -match '[\\/]\.mise[\\/]scripts[\\/]windows$') {
     $repoRoot = (Resolve-Path -LiteralPath (Join-Path $scriptDir "..\..\..")).Path
@@ -50,6 +46,14 @@ if ($scriptDir -match '[\\/]\.mise[\\/]scripts[\\/]windows$') {
     $repoRoot = (Get-Location).Path
 }
 if (-not $EnvFile) { $EnvFile = Join-Path $repoRoot ".openssl-fips\env" }
+
+# Single source of truth shared with crate/crypto/build.rs, the Nix build and the packaging scripts.
+$pinned = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot "crate\crypto\openssl_versions.json") |
+    ConvertFrom-Json).fips
+$Version = $pinned.version
+$Tarball = "openssl-$Version.tar.gz"
+$Url = "https://package.cosmian.com/openssl/$Tarball"
+$Sha256 = $pinned.sha256
 
 $modulesDir = Join-Path $InstallDir "lib\ossl-modules"
 $sslDir = Join-Path $InstallDir "ssl"
@@ -66,7 +70,8 @@ function Write-Outputs {
 
 if ((Test-Path -LiteralPath $fipsDll) -and (Test-Path -LiteralPath $opensslCnf) -and
     (Test-Path -LiteralPath $fipsModuleCnf) -and
-    (Select-String -LiteralPath $opensslCnf -SimpleMatch -Quiet -Pattern "fips = fips_sect")) {
+    (Select-String -LiteralPath $opensslCnf -SimpleMatch -Quiet -Pattern "fips = fips_sect") -and
+    (Select-String -LiteralPath $fipsModuleCnf -SimpleMatch -Quiet -Pattern "hmac-key-check = 0")) {
     Write-Host "Reusing the FIPS provider installed in $InstallDir"
     Write-Outputs
     return
@@ -127,6 +132,19 @@ if (-not (Test-Path -LiteralPath $fipsDll)) {
     New-Item -ItemType Directory -Force -Path $modulesDir | Out-Null
     Copy-Item -Force -LiteralPath $found.FullName -Destination $fipsDll
 }
+# `install_fips` wrote the pedantic fipsmodule.cnf: regenerate it with the `fipsinstall` defaults.
+# The build-tree openssl.exe is static (no-shared); `install_fips` installs no binary.
+# Ignore an inherited OPENSSL_CONF / OPENSSL_MODULES: they could load another provider or module path.
+$savedConf = $env:OPENSSL_CONF; $savedModules = $env:OPENSSL_MODULES
+Remove-Item Env:OPENSSL_CONF, Env:OPENSSL_MODULES -ErrorAction SilentlyContinue
+try {
+    & (Join-Path $srcRoot "apps\openssl.exe") fipsinstall -self_test_oninstall -module $fipsDll -out $fipsModuleCnf
+    $fipsExit = $LASTEXITCODE
+} finally {
+    if ($null -ne $savedConf) { $env:OPENSSL_CONF = $savedConf }
+    if ($null -ne $savedModules) { $env:OPENSSL_MODULES = $savedModules }
+}
+if ($fipsExit -ne 0) { throw "openssl fipsinstall failed with exit code $fipsExit" }
 if (-not (Test-Path -LiteralPath $fipsModuleCnf)) { throw "$fipsModuleCnf was not produced by 'openssl fipsinstall'" }
 if (-not (Test-Path -LiteralPath $opensslCnf)) { throw "$opensslCnf was not installed" }
 

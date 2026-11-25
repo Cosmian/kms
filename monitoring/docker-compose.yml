@@ -6,6 +6,7 @@ services:
     hostname: cosmian-kms
     environment:
       - OTEL_RESOURCE_ATTRIBUTES=host.name=cosmian-kms # This sets the "host.name" attribute for all telemetry emitted by the KMS, which is useful for filtering in Grafana Explore and dashboards
+      - KMS_INSECURE_ALLOW_UNAUTHENTICATED=true # demo only: no authentication method is configured
     profiles:
       - kms-local
     volumes:

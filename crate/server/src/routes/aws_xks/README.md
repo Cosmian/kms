@@ -40,14 +40,14 @@ AWS never calls back into the XKS proxy to list, rotate, revoke, or destroy key 
 the proxy spec only defines `GetKeyMetadata`/`Encrypt`/`Decrypt`/`GetHealthStatus`. This
 means lifecycle management of `aws-xks`-tagged keys (listing/monitoring, revocation,
 destruction) is entirely an operator responsibility, exercised through the normal
-`ckms`/Web UI surface by whoever authenticates as the real, credentialed `default_username`
-identity (the owner of every XKS key).
+`ckms` API-token authentication as `default_username` (the owner of every XKS key).
+External identities, including TLS certificate CNs and JWT subjects/emails, must differ
+from `default_username` and cannot be used to impersonate this owner.
 
 **A Crypto Officer must be designated for this** (`crypto_officer.users` /
-`privileged_users`, backed by a real TLS certificate CN or OIDC subject). Server startup logs
+`privileged_users`), with the API token configured for owner access. Server startup logs
 a warning when AWS XKS is enabled and no Crypto Officer is configured
-(`validate_aws_xks_reserved_identity_config` in `start_kms_server.rs`), since that combination
-means no one can currently reach these keys this way.
+(`validate_aws_xks_reserved_identity_config` in `start_kms_server.rs`).
 
 **XKS keys cannot be rotated in place.** `ReKey` (manual or via the auto-rotation scheduler)
 always assigns a new internal unique identifier and deactivates the old one — but AWS KMS

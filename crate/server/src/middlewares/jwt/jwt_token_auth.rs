@@ -41,19 +41,19 @@ fn is_spiffe_id(sub: &str) -> bool {
 /// * `token` - The JWT token string
 ///
 /// # Returns
-/// * `Ok((UserClaim, bool))` - Successfully validated user claim, plus the
-///   `accept_spiffe_subject` flag of the configuration that validated it
+/// * `Ok((UserClaim, bool, usize))` - Successfully validated user claim, plus the
+///   `accept_spiffe_subject` flag and index of the configuration that validated it
 /// * `Err(Vec<KmsError>)` - List of errors from failed validation attempts
 fn extract_user_claim(
     configs: &[JwtConfig],
     token: &str,
-) -> Result<(UserClaim, bool), Vec<KmsError>> {
+) -> Result<(UserClaim, bool, usize), Vec<KmsError>> {
     let mut jwt_log_errors = Vec::new();
 
     // Try each JWT configuration until one succeeds
-    for idp_config in configs {
+    for (index, idp_config) in configs.iter().enumerate() {
         match idp_config.decode_bearer_header(token) {
-            Ok(user_claim) => return Ok((user_claim, idp_config.accept_spiffe_subject)),
+            Ok(user_claim) => return Ok((user_claim, idp_config.accept_spiffe_subject, index)),
             Err(error) => {
                 jwt_log_errors.push(error);
             }
@@ -102,7 +102,7 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
 
 /// Resolve an [`AuthenticatedUser`] from a successfully validated JWT claim set.
 ///
-/// `email` takes priority when present (standard OIDC/IdP flow, unchanged behaviour). When
+/// A verified `email` takes priority when present and is namespaced for secondary identity providers. When
 /// `email` is absent, falls back to the `sub` claim **only if** `accept_spiffe_subject` is
 /// `true` (the issuer's config opted in via `--jwt-svid-auth`) **and** `sub` is a SPIFFE ID
 /// (`spiffe://...`), i.e. a SPIFFE JWT-SVID (see [`spiffe_authenticated_user`]). Every other
@@ -110,11 +110,18 @@ fn spiffe_authenticated_user(user_claim: &UserClaim) -> KResult<AuthenticatedUse
 fn resolve_authenticated_user(
     user_claim: &UserClaim,
     accept_spiffe_subject: bool,
+    issuer_namespace: Option<&str>,
 ) -> KResult<AuthenticatedUser> {
     if let Some(email) = user_claim.email.as_deref() {
-        // Authentication successful with valid email
-        debug!("JWT Access granted to {email}!");
-        let username = UserId::from(email);
+        if user_claim.email_verified != Some(true) {
+            return Err(KmsError::Unauthorized(
+                "JWT email is not verified (email_verified must be true)".to_owned(),
+            ));
+        }
+        let username = issuer_namespace.map_or_else(
+            || UserId::from(email),
+            |issuer| UserId::from(format!("{email}#{issuer}")),
+        );
         reject_reserved_service_identity(&username)?;
         return Ok(AuthenticatedUser {
             username,
@@ -226,14 +233,19 @@ pub(super) async fn handle_jwt(
     }
 
     match private_claim {
-        Ok((user_claim, accept_spiffe_subject)) => {
-            resolve_authenticated_user(&user_claim, accept_spiffe_subject).inspect_err(|error| {
-                warn!(
-                    "{:?} {} 401 unauthorized: {error}",
-                    req.method(),
-                    req.path()
-                );
-            })
+        Ok((user_claim, accept_spiffe_subject, config_index)) => {
+            // `config_index` comes from enumerating `configs`, so the lookup always succeeds.
+            let issuer_namespace = configs
+                .get(config_index)
+                .and_then(|config| config.issuer_namespace.as_deref());
+            resolve_authenticated_user(&user_claim, accept_spiffe_subject, issuer_namespace)
+                .inspect_err(|error| {
+                    warn!(
+                        "{:?} {} 401 unauthorized: {error}",
+                        req.method(),
+                        req.path()
+                    );
+                })
         }
         Err(jwt_log_errors) => {
             // JWT validation failed — log at WARN so auth failures appear in production logs
@@ -254,20 +266,25 @@ pub(super) async fn handle_jwt(
 mod tests {
     use std::sync::Arc;
 
+    use actix_web::http::header::AUTHORIZATION;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+    use serde_json::{Value, json};
 
     use super::{
-        AuthMethod, JwtConfig, UserClaim, extract_user_claim, resolve_authenticated_user,
-        validate_jwt_svid,
+        AuthMethod, JwtConfig, UserClaim, extract_user_claim, handle_jwt,
+        resolve_authenticated_user, validate_jwt_svid,
     };
     use crate::middlewares::{UserId, jwt::JwksManager};
 
     const SPIFFE_ID: &str = "spiffe://example.org/ns/foo/sa/bar";
+    /// Issuer of the second (secondary) provider configuration.
+    const ISSUER_1: &str = "https://issuer1.example.com";
 
     fn claim(sub: Option<&str>, email: Option<&str>) -> UserClaim {
         UserClaim {
             email: email.map(str::to_owned),
             iss: None,
+            email_verified: Some(true),
             sub: sub.map(str::to_owned),
             aud: None,
             iat: None,
@@ -294,12 +311,11 @@ mod tests {
         }
     }
 
-    /// Existing OIDC behaviour must be unaffected: `email` present is always accepted,
-    /// regardless of `accept_spiffe_subject`.
+    /// A verified OIDC email takes priority regardless of `accept_spiffe_subject`.
     #[test]
     fn email_claim_is_accepted_and_takes_priority() {
         let user_claim = claim(Some(SPIFFE_ID), Some("a@b.com"));
-        let user = resolve_authenticated_user(&user_claim, true).expect("must be accepted");
+        let user = resolve_authenticated_user(&user_claim, true, None).expect("must be accepted");
         assert_eq!(user.username, UserId::from("a@b.com"));
         assert_eq!(user.auth_method, AuthMethod::OidcJwt);
     }
@@ -308,7 +324,7 @@ mod tests {
     /// `accept_spiffe_subject` is enabled — this is the `--jwt-svid-auth` opt-in flag.
     #[test]
     fn spiffe_subject_accepted_when_flag_enabled() {
-        let user = resolve_authenticated_user(&svid_claim(SPIFFE_ID), true)
+        let user = resolve_authenticated_user(&svid_claim(SPIFFE_ID), true, None)
             .expect("SPIFFE sub must be accepted");
         assert_eq!(user.username, UserId::from(SPIFFE_ID));
         assert_eq!(user.auth_method, AuthMethod::JwtSvid);
@@ -318,7 +334,7 @@ mod tests {
     /// not enabled `--jwt-svid-auth` for this issuer.
     #[test]
     fn spiffe_subject_rejected_when_flag_disabled() {
-        let error = resolve_authenticated_user(&svid_claim(SPIFFE_ID), false)
+        let error = resolve_authenticated_user(&svid_claim(SPIFFE_ID), false, None)
             .expect_err("must be rejected when accept_spiffe_subject is false");
         assert!(error.to_string().contains("No email in JWT"));
     }
@@ -328,7 +344,7 @@ mod tests {
     #[test]
     fn non_spiffe_subject_rejected_even_when_flag_enabled() {
         for sub in ["not-a-spiffe-id", "spiffe://", "spiffe:///no-trust-domain"] {
-            let error = resolve_authenticated_user(&svid_claim(sub), true)
+            let error = resolve_authenticated_user(&svid_claim(sub), true, None)
                 .expect_err("non-spiffe sub must never be accepted as a username");
             assert!(error.to_string().contains("No email in JWT"), "{sub}");
         }
@@ -337,7 +353,7 @@ mod tests {
     /// No `sub` and no `email` must be rejected regardless of the flag.
     #[test]
     fn no_subject_no_email_rejected() {
-        let error = resolve_authenticated_user(&claim(None, None), true)
+        let error = resolve_authenticated_user(&claim(None, None), true, None)
             .expect_err("must be rejected without email or sub");
         assert!(error.to_string().contains("No email in JWT"));
     }
@@ -352,13 +368,165 @@ mod tests {
                 aud,
                 ..claim(Some(SPIFFE_ID), None)
             };
-            let error = resolve_authenticated_user(&user_claim, true)
+            let error = resolve_authenticated_user(&user_claim, true, None)
                 .expect_err("SVID without a usable audience must be rejected");
             assert!(error.to_string().contains("'aud'"), "{error}");
         }
     }
 
-    fn sign_test_jwt(claims: &UserClaim) -> String {
+    /// An OIDC claim set for `a@x` with the given `email_verified` claim.
+    fn email_claim(email_verified: Option<bool>) -> UserClaim {
+        UserClaim {
+            email_verified,
+            ..claim(Some("oidc-subject"), Some("a@x"))
+        }
+    }
+
+    /// F-014: an `email` the `IdP` has not verified (`email_verified` false or absent) must
+    /// never become the KMS identity, whatever the SPIFFE opt-in.
+    #[test]
+    fn unverified_email_claim_is_rejected() {
+        for email_verified in [Some(false), None] {
+            for accept_spiffe_subject in [false, true] {
+                let error = resolve_authenticated_user(
+                    &email_claim(email_verified),
+                    accept_spiffe_subject,
+                    None,
+                )
+                .expect_err("an unverified email must be rejected");
+                assert!(
+                    error.to_string().contains("email_verified"),
+                    "{email_verified:?}: {error}"
+                );
+            }
+        }
+        let user = resolve_authenticated_user(&email_claim(Some(true)), false, None)
+            .expect("a verified email must be accepted");
+        assert_eq!(user.username, UserId::from("a@x"));
+        assert_eq!(user.auth_method, AuthMethod::OidcJwt);
+    }
+
+    /// F-014: `email_verified` is read from the token as a JSON boolean or the strings
+    /// `"true"`/`"false"` (some `IdP`s emit strings); only `true` authenticates, and an absent
+    /// or `null` claim decodes (the token is well-formed) but is rejected.
+    #[tokio::test]
+    async fn email_verified_claim_accepts_bool_or_string_and_requires_true() {
+        let configs = vec![config(false).await];
+        let cases = [
+            (Some(json!(true)), true),
+            (Some(json!("true")), true),
+            (Some(json!(false)), false),
+            (Some(json!("false")), false),
+            (Some(Value::Null), false),
+            (None, false),
+        ];
+        for (email_verified, accepted) in cases {
+            let mut claims =
+                json!({ "sub": "oidc-subject", "email": "a@x", "aud": ["cosmian-kms"] });
+            if let Some(value) = email_verified.clone() {
+                claims["email_verified"] = value;
+            }
+            let (user_claim, accept_spiffe_subject, _) =
+                extract_user_claim(&configs, &format!("Bearer {}", sign_test_jwt(&claims)))
+                    .expect("the token must decode whatever its email_verified claim");
+            let result = resolve_authenticated_user(&user_claim, accept_spiffe_subject, None);
+            assert_eq!(
+                result.is_ok(),
+                accepted,
+                "email_verified={email_verified:?}"
+            );
+        }
+    }
+
+    /// F-014: the same email asserted by the primary provider (config index 0) and by a
+    /// secondary one (index 1) must resolve to two distinct KMS identities, so a secondary
+    /// `IdP` cannot impersonate a primary-`IdP` user. SPIFFE IDs are never namespaced.
+    #[tokio::test]
+    async fn same_email_from_a_secondary_issuer_is_namespaced() {
+        let configs = [
+            config(false).await,
+            JwtConfig {
+                jwt_issuer_uri: ISSUER_1.to_owned(),
+                ..config(false).await
+            },
+        ];
+        let user_claim = email_claim(Some(true));
+
+        let primary = resolve_authenticated_user(&user_claim, false, None).expect("index 0");
+        assert_eq!(primary.username, UserId::from("a@x"));
+
+        let secondary = resolve_authenticated_user(
+            &user_claim,
+            false,
+            Some(configs[1].jwt_issuer_uri.as_str()),
+        )
+        .expect("index 1");
+        assert_eq!(secondary.username.as_str(), format!("a@x#{ISSUER_1}"));
+        assert_eq!(secondary.auth_method, AuthMethod::OidcJwt);
+
+        let svid = resolve_authenticated_user(&svid_claim(SPIFFE_ID), true, Some(ISSUER_1))
+            .expect("SPIFFE subject from a secondary issuer");
+        assert_eq!(svid.username, UserId::from(SPIFFE_ID));
+    }
+
+    /// F-014 through the middleware entry point: a token validated by the first provider
+    /// keeps the bare email, and an unverified email is refused.
+    #[tokio::test]
+    async fn handle_jwt_requires_a_verified_email() {
+        let configs = Arc::new(vec![
+            config(false).await,
+            JwtConfig {
+                jwt_issuer_uri: ISSUER_1.to_owned(),
+                ..config(false).await
+            },
+        ]);
+        let request = |token: String| {
+            actix_web::test::TestRequest::default()
+                .insert_header((AUTHORIZATION, format!("Bearer {token}")))
+                .to_srv_request()
+        };
+
+        let user = handle_jwt(
+            configs.clone(),
+            &request(sign_test_jwt(&email_claim(Some(true)))),
+        )
+        .await
+        .expect("a verified email must be accepted");
+        assert_eq!(user.username, UserId::from("a@x"));
+
+        for email_verified in [Some(false), None] {
+            handle_jwt(
+                configs.clone(),
+                &request(sign_test_jwt(&email_claim(email_verified))),
+            )
+            .await
+            .expect_err("an unverified email must be rejected");
+        }
+    }
+
+    /// Namespace selection belongs to the validating configuration, not its list index.
+    #[tokio::test]
+    async fn handle_jwt_uses_the_configured_issuer_namespace() {
+        for (namespace, expected) in [
+            (None, "a@x".to_owned()),
+            (Some(ISSUER_1.to_owned()), format!("a@x#{ISSUER_1}")),
+        ] {
+            let configs = Arc::new(vec![JwtConfig {
+                issuer_namespace: namespace,
+                ..config(false).await
+            }]);
+            let request = actix_web::test::TestRequest::default()
+                .insert_header((
+                    AUTHORIZATION,
+                    format!("Bearer {}", sign_test_jwt(&email_claim(Some(true)))),
+                ))
+                .to_srv_request();
+            let user = handle_jwt(configs, &request).await.expect("verified email");
+            assert_eq!(user.username.as_str(), expected);
+        }
+    }
+
+    fn sign_test_jwt(claims: &impl serde::Serialize) -> String {
         let mut header = Header::new(Algorithm::HS256);
         header.kid = Some("test-kid".to_owned());
         encode(&header, claims, &EncodingKey::from_secret(b"test-secret"))
@@ -375,6 +543,7 @@ mod tests {
         JwtConfig {
             jwt_issuer_uri: "https://issuer.example.com".to_owned(),
             jwt_audience: Some(vec!["cosmian-kms".to_owned()]),
+            issuer_namespace: None,
             jwks: Arc::new(empty_jwks_manager().await),
             accept_spiffe_subject,
         }
@@ -387,11 +556,12 @@ mod tests {
         let configs = vec![config(true).await];
         let token = sign_test_jwt(&svid_claim(SPIFFE_ID));
 
-        let (user_claim, accept_spiffe_subject) =
+        let (user_claim, accept_spiffe_subject, config_index) =
             extract_user_claim(&configs, &format!("Bearer {token}"))
                 .expect("token must be decoded in test/insecure mode");
 
         assert!(accept_spiffe_subject);
+        assert_eq!(config_index, 0);
         assert_eq!(user_claim.sub.as_deref(), Some(SPIFFE_ID));
     }
 
@@ -511,6 +681,7 @@ mod real_validation {
         JwtConfig {
             jwt_issuer_uri: ISSUER.to_owned(),
             jwt_audience: Some(vec![AUDIENCE.to_owned()]),
+            issuer_namespace: None,
             jwks: Arc::new(jwks),
             accept_spiffe_subject: true,
         }

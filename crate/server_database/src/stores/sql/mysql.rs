@@ -12,7 +12,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
-    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
+    KeyInventoryBucket, ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
@@ -37,12 +37,13 @@ use crate::{
         sql::{
             crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
+            key_inventory_row,
             locate_query::{
                 LocateParam, LocateQuery, MySqlPlaceholder, filter_due_for_rotation,
                 find_by_rotate_name_query, find_due_for_rotation_query, query_all_from_attributes,
                 query_from_attributes,
             },
-            merge_granted_operations,
+            merge_granted_operations, parse_deactivation_dates,
         },
     },
 };
@@ -1123,6 +1124,29 @@ impl ObjectsStore for MySqlPool {
             .await
             .map_err(DbError::from)?;
         Ok(count.unwrap_or(0))
+    }
+
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let rows: Vec<(String, Option<String>, Option<i64>, Option<String>, i64)> = conn
+            .query(get_mysql_query!("key-inventory"))
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows
+            .into_iter()
+            .map(|(object_type, algorithm, key_length, state, count)| {
+                key_inventory_row(object_type, algorithm, key_length, state, count)
+            })
+            .collect())
+    }
+
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let raw: Vec<String> = conn
+            .query(get_mysql_query!("key-deactivation-dates"))
+            .await
+            .map_err(DbError::from)?;
+        Ok(parse_deactivation_dates(raw))
     }
 }
 

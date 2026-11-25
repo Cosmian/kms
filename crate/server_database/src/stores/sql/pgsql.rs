@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
-    ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
+    KeyInventoryBucket, ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -37,11 +37,12 @@ use crate::{
         sql::{
             crl_number_from_sql, crl_number_to_sql,
             database::SqlDatabase,
+            key_inventory_row,
             locate_query::{
                 LocateParam, LocateQuery, PgSqlPlaceholder, filter_due_for_rotation,
                 query_all_from_attributes, query_from_attributes,
             },
-            merge_granted_operations,
+            merge_granted_operations, parse_deactivation_dates,
         },
     },
 };
@@ -1556,6 +1557,42 @@ impl ObjectsStore for PgPool {
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let count: i64 = row.get(0);
             Ok(u64::try_from(count).unwrap_or(0))
+        })
+    }
+
+    async fn key_inventory(&self) -> InterfaceResult<Vec<(KeyInventoryBucket, u64)>> {
+        pg_retry!(self.pool, |client| {
+            let rows = client
+                .query(get_pgsql_query!("key-inventory"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            rows.iter()
+                .map(|row| {
+                    Ok(key_inventory_row(
+                        row.try_get(0)?,
+                        row.try_get(1)?,
+                        row.try_get(2)?,
+                        row.try_get(3)?,
+                        row.try_get(4)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, tokio_postgres::Error>>()
+                .map_err(|e| InterfaceError::from(DbError::from(e)))
+        })
+    }
+
+    async fn key_deactivation_dates(&self) -> InterfaceResult<Vec<time::OffsetDateTime>> {
+        pg_retry!(self.pool, |client| {
+            let rows = client
+                .query(get_pgsql_query!("key-deactivation-dates"), &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let raw = rows
+                .iter()
+                .map(|row| row.try_get::<_, String>(0))
+                .collect::<Result<Vec<_>, tokio_postgres::Error>>()
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(parse_deactivation_dates(raw))
         })
     }
 }

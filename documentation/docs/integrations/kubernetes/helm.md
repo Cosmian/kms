@@ -57,8 +57,13 @@ helm repo update
 ```bash
 helm install my-kms cosmian/cosmian-kms \
   --set kms.database.type=postgresql \
-  --set kms.database.url="postgresql://kms:kms@postgres:5432/kms"
+  --set kms.database.url="postgresql://kms:kms@postgres:5432/kms" \
+  --set kms.insecureAllowUnauthenticated=true   # development only
 ```
+
+The chart binds `0.0.0.0` and the server refuses to start without an authentication method
+unless `kms.insecureAllowUnauthenticated=true`. For production, configure authentication
+instead (see [Authentication](../../configuration/authentication.md)).
 
 ### Choosing the image variant
 

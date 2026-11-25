@@ -672,7 +672,7 @@ mod tests {
         result.unwrap_err();
 
         // Empty data
-        let key = vec![1, 2, 3, 4];
+        let key = vec![1_u8; 16];
         let data = vec![];
         let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
         assert_ne!(hmac.len(), 0);
@@ -684,7 +684,7 @@ mod tests {
         result.unwrap_err();
 
         // Large data (1MB)
-        let key = vec![1, 2, 3, 4];
+        let key = vec![1_u8; 16];
         let data = vec![0_u8; 1024 * 1024];
         let hmac = compute_hmac(&key, &data, HashingAlgorithm::SHA256)?;
         assert_eq!(hmac.len(), 32);

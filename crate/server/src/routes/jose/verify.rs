@@ -7,7 +7,7 @@ use actix_web::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
     kmip_2_1::{
-        kmip_operations::SignatureVerify,
+        kmip_operations::{Operation, SignatureVerify},
         kmip_types::{UniqueIdentifier, ValidityIndicator},
     },
 };
@@ -19,7 +19,10 @@ use super::{
     VerifyResponse as CryptoVerifyResponse, b64_decode, ecdsa_coord_size, ecdsa_p1363_to_der,
     ensure_json_object, jose_to_kmip_params, jws_signing_input,
 };
-use crate::{core::KMS, error::KmsError};
+use crate::{
+    core::{KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request},
+    error::KmsError,
+};
 
 #[derive(Deserialize)]
 struct JwsProtectedHeader<'a> {
@@ -104,6 +107,11 @@ pub(crate) async fn verify(
         ..Default::default()
     };
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::SignatureVerify(verify_req.clone()),
+    )
+    .map_err(CryptoApiError::from)?;
     let valid = match kms.signature_verify(verify_req, &user).await {
         Ok(resp) => matches!(resp.validity_indicator, Some(ValidityIndicator::Valid)),
         // The key cannot verify at all (wrong type or usage mask): a caller error, not a

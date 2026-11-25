@@ -130,6 +130,8 @@ jobs:
               echo "--- Disable info flag in config ---"
               if [ -f /etc/cosmian/kms.toml ]; then
                 sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
+                # The packaged config has no authentication: bind loopback only
+                sed -i 's/^hostname = "0.0.0.0"/hostname = "127.0.0.1"/' /etc/cosmian/kms.toml
               else
                 echo "Config file /etc/cosmian/kms.toml not found; skipping info flag disable."
                 exit 1
@@ -282,6 +284,8 @@ jobs:
           set -ex
           if [ -f /etc/cosmian/kms.toml ]; then
             sudo sed -i 's/info = true/info = false/g' /etc/cosmian/kms.toml
+            # The packaged config has no authentication: bind loopback only
+            sudo sed -i 's/^hostname = "0.0.0.0"/hostname = "127.0.0.1"/' /etc/cosmian/kms.toml
           else
             echo "Config file /etc/cosmian/kms.toml not found; skipping info flag enable."
             exit 1

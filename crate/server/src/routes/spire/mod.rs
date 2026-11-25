@@ -11,3 +11,4 @@ pub(crate) mod auth_proxy;
 pub(crate) mod error;
 pub(crate) mod pki;
 pub(crate) mod transit;
+pub(crate) mod transit_encryption;

@@ -15,11 +15,12 @@ description = "Cosmian Key Management Service - A high-performance, FIPS 140-3 a
 # - Nix builds (production): OpenSSL is configured with --openssldir=/usr/local/cosmian/lib/ssl
 #   This hardcoded path makes binaries portable - they look for FIPS config at runtime in
 #   /usr/local/cosmian/lib/ssl regardless of where they were built.
-# - Local cargo builds: build.rs compiles OpenSSL with --openssldir=target/openssl-fips-{version}-{os}-{arch}/ssl
-#   This allows local development/testing without system-wide installation.
-# - Local cargo builds now place artifacts under target/openssl-<mode>-3.6.5-<os>-<arch>
-#   FIPS mode:   target/openssl-3.6.5-<os>-<arch> with fips provider/configs integrated
-#   Non-FIPS:    target/openssl-non-fips-3.6.5-<os>-<arch> with legacy provider
+# - Local cargo builds: build.rs places OpenSSL under target/openssl-[non-fips-]<main version>-<os>-<arch>
+#   (version: crate/crypto/openssl_versions.json), with the FIPS provider/configs integrated in FIPS mode
+#   and the legacy provider in non-FIPS mode. This allows local development/testing without
+#   system-wide installation.
+# - Packaging assets below use the version-less target/openssl-{fips,non-fips}-linux symlinks
+#   created by .mise/scripts/package/package_common.sh.
 
 [lints]
 workspace = true
@@ -190,7 +191,7 @@ assets = [
     "400",
   ],
   [
-    "target/openssl-non-fips-3.6.5-linux/lib/ossl-modules/legacy.so",
+    "target/openssl-non-fips-linux/lib/ossl-modules/legacy.so",
     "usr/local/cosmian/lib/ossl-modules/legacy.so",
     "500",
   ],
@@ -223,17 +224,17 @@ assets = [
     "400",
   ],
   [
-    "target/openssl-3.6.5-linux/lib/ossl-modules/fips.so",
+    "target/openssl-fips-linux/lib/ossl-modules/fips.so",
     "usr/local/cosmian/lib/ossl-modules/fips.so",
     "500",
   ],
   [
-    "target/openssl-3.6.5-linux/ssl/openssl.cnf",
+    "target/openssl-fips-linux/ssl/openssl.cnf",
     "usr/local/cosmian/lib/ssl/openssl.cnf",
     "644",
   ],
   [
-    "target/openssl-3.6.5-linux/ssl/fipsmodule.cnf",
+    "target/openssl-fips-linux/ssl/fipsmodule.cnf",
     "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
     "644",
   ],
@@ -268,27 +269,27 @@ assets = [
     "400",
   ],
   [
-    "target/openssl-3.6.5-linux/lib/libssl.so.3",
+    "target/openssl-fips-linux/lib/libssl.so.3",
     "usr/local/cosmian/lib/libssl.so.3",
     "500",
   ],
   [
-    "target/openssl-3.6.5-linux/lib/libcrypto.so.3",
+    "target/openssl-fips-linux/lib/libcrypto.so.3",
     "usr/local/cosmian/lib/libcrypto.so.3",
     "500",
   ],
   [
-    "target/openssl-3.6.5-linux/lib/ossl-modules/fips.so",
+    "target/openssl-fips-linux/lib/ossl-modules/fips.so",
     "usr/local/cosmian/lib/ossl-modules/fips.so",
     "500",
   ],
   [
-    "target/openssl-3.6.5-linux/ssl/openssl.cnf",
+    "target/openssl-fips-linux/ssl/openssl.cnf",
     "usr/local/cosmian/lib/ssl/openssl.cnf",
     "644",
   ],
   [
-    "target/openssl-3.6.5-linux/ssl/fipsmodule.cnf",
+    "target/openssl-fips-linux/ssl/fipsmodule.cnf",
     "usr/local/cosmian/lib/ssl/fipsmodule.cnf",
     "644",
   ],
@@ -322,17 +323,17 @@ assets = [
     "400",
   ],
   [
-    "target/openssl-non-fips-3.6.5-linux/lib/libssl.so.3",
+    "target/openssl-non-fips-linux/lib/libssl.so.3",
     "usr/local/cosmian/lib/libssl.so.3",
     "500",
   ],
   [
-    "target/openssl-non-fips-3.6.5-linux/lib/libcrypto.so.3",
+    "target/openssl-non-fips-linux/lib/libcrypto.so.3",
     "usr/local/cosmian/lib/libcrypto.so.3",
     "500",
   ],
   [
-    "target/openssl-non-fips-3.6.5-linux/lib/ossl-modules/legacy.so",
+    "target/openssl-non-fips-linux/lib/ossl-modules/legacy.so",
     "usr/local/cosmian/lib/ossl-modules/legacy.so",
     "500",
   ],
@@ -348,7 +349,7 @@ license = "BUSL-1.1"
 assets = [
   { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-  { source = "target/openssl-non-fips-3.6.5-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
+  { source = "target/openssl-non-fips-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
@@ -363,9 +364,9 @@ assets = [
   # Use FIPS UI assets for the FIPS variant
   { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "644" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-  { source = "target/openssl-3.6.5-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
-  { source = "target/openssl-3.6.5-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
-  { source = "target/openssl-3.6.5-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
+  { source = "target/openssl-fips-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
+  { source = "target/openssl-fips-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-fips-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
@@ -382,11 +383,11 @@ license = "BUSL-1.1"
 assets = [
   { source = "../../ui/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-  { source = "target/openssl-3.6.5-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
-  { source = "target/openssl-3.6.5-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
-  { source = "target/openssl-3.6.5-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
-  { source = "target/openssl-3.6.5-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
-  { source = "target/openssl-3.6.5-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
+  { source = "target/openssl-fips-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
+  { source = "target/openssl-fips-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
+  { source = "target/openssl-fips-linux/lib/ossl-modules/fips.so", dest = "/usr/local/cosmian/lib/ossl-modules/fips.so", mode = "500" },
+  { source = "target/openssl-fips-linux/ssl/openssl.cnf", dest = "/usr/local/cosmian/lib/ssl/openssl.cnf", mode = "644" },
+  { source = "target/openssl-fips-linux/ssl/fipsmodule.cnf", dest = "/usr/local/cosmian/lib/ssl/fipsmodule.cnf", mode = "644" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },
@@ -403,9 +404,9 @@ license = "BUSL-1.1"
 assets = [
   { source = "../../ui_non_fips/dist/**/*", dest = "/usr/local/cosmian/ui/dist/", mode = "500" },
   { source = "target/release/cosmian_kms", dest = "/usr/sbin/cosmian_kms", mode = "500" },
-  { source = "target/openssl-non-fips-3.6.5-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
-  { source = "target/openssl-non-fips-3.6.5-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
-  { source = "target/openssl-non-fips-3.6.5-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
+  { source = "target/openssl-non-fips-linux/lib/libssl.so.3", dest = "/usr/local/cosmian/lib/libssl.so.3", mode = "500" },
+  { source = "target/openssl-non-fips-linux/lib/libcrypto.so.3", dest = "/usr/local/cosmian/lib/libcrypto.so.3", mode = "500" },
+  { source = "target/openssl-non-fips-linux/lib/ossl-modules/legacy.so", dest = "/usr/local/cosmian/lib/ossl-modules/legacy.so", mode = "500" },
   { source = "../../README.md", dest = "/usr/share/doc/cosmian/README.md", mode = "644", doc = true },
   { source = "../../pkg/kms.toml", dest = "/etc/cosmian/kms.toml", mode = "400" },
   { source = "../../pkg/cosmian_kms.service", dest = "/lib/systemd/system/cosmian_kms.service", mode = "644" },

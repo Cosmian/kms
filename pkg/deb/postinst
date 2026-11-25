@@ -16,7 +16,15 @@ fi
 # WSL, chroots).
 if has_systemd; then
   systemctl daemon-reload >/dev/null 2>&1 || true
+  # Restore the state recorded by preinst (the old postrm disabled and stopped the unit).
+  if [ -f /var/lib/cosmian/upgrade-service-enabled ]; then
+    systemctl enable cosmian_kms.service >/dev/null 2>&1 || true
+  fi
+  if [ -f /var/lib/cosmian/upgrade-service-active ]; then
+    systemctl restart cosmian_kms.service >/dev/null 2>&1 || true
+  fi
 fi
+rm -f /var/lib/cosmian/upgrade-service-enabled /var/lib/cosmian/upgrade-service-active
 
 # Restore UI branding overrides (if any)
 UI_DIST="/usr/local/cosmian/ui/dist"

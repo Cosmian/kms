@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:f95a4a5b-fb6c-497a-83e3-552693e1b94c",
+  "serialNumber": "urn:uuid:d880ccf0-d829-441c-b937-92bf02cc11ac",
   "metadata": {
-    "timestamp": "2026-11-24T02:55:08.941960+00:00",
+    "timestamp": "2026-11-25T09:53:40.923487+01:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -19,12 +19,12 @@
       {
         "vendor": "TII",
         "name": "sbomnix",
-        "version": "1.8.0+g30c95eb"
+        "version": "1.8.0"
       }
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/niray1yp6d6w5z02qiz3p9b8cda6lfpk-cosmian-kms-server-dynamic-5.29.0.drv",
+      "bom-ref": "/nix/store/y6maxdkr5yxclm6xpd9d85vlqjrlq9z6-cosmian-kms-server-dynamic-5.29.0.drv",
       "name": "cosmian-kms-server-dynamic",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server-dynamic@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/x1ijfqdpmqqafncafmzgckqddz7vxsbk-cosmian-kms-server-dynamic-5.29.0"
+          "value": "/nix/store/vqs1xxr3wsf69cznbpg6f3y3s8bb69kq-cosmian-kms-server-dynamic-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/niray1yp6d6w5z02qiz3p9b8cda6lfpk-cosmian-kms-server-dynamic-5.29.0.drv"
+          "value": "/nix/store/y6maxdkr5yxclm6xpd9d85vlqjrlq9z6-cosmian-kms-server-dynamic-5.29.0.drv"
         }
       ]
     }
@@ -163,7 +163,7 @@
     },
     {
       "type": "library",
-      "bom-ref": "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv",
+      "bom-ref": "/nix/store/agm5k2anhb4v4px13lac7bcsa7g7kh7a-openssl-3.6.5.drv",
       "name": "openssl",
       "version": "3.6.5",
       "purl": "pkg:nix/openssl@3.6.5",
@@ -175,7 +175,7 @@
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv"
+          "value": "/nix/store/agm5k2anhb4v4px13lac7bcsa7g7kh7a-openssl-3.6.5.drv"
         },
         {
           "name": "cosmian:sbom:cpe_match",
@@ -301,35 +301,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:actix:actix-http:3.21.3:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/actix-identity@0.6.0",
-      "name": "actix-identity",
-      "version": "0.6.0",
-      "purl": "pkg:cargo/actix-identity@0.6.0",
-      "description": "Identity management for Actix Web",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Nikolay Kim, Luca Palmieri"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/actix/actix-extras.git"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:actix-identity:actix-identity:0.6.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -475,35 +446,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:actix:actix-service:2.0.3:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/actix-session@0.8.0",
-      "name": "actix-session",
-      "version": "0.8.0",
-      "purl": "pkg:cargo/actix-session@0.8.0",
-      "description": "Session management for Actix We",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Nikolay Kim, Luca Palmieri"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/actix/actix-extras.git"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:actix-session:actix-session:0.8.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -1829,35 +1771,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:base16ct:base16ct:1.0.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/base64@0.20.0",
-      "name": "base64",
-      "version": "0.20.0",
-      "purl": "pkg:cargo/base64@0.20.0",
-      "description": "encodes and decodes base64 as bytes or utf8",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Alice Maz, Marshall Pierce"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/marshallpierce/rust-base64"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:base64:base64:0.20.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -3567,10 +3480,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/cookie@0.16.2",
+      "bom-ref": "pkg:cargo/cookie@0.18.3",
       "name": "cookie",
-      "version": "0.16.2",
-      "purl": "pkg:cargo/cookie@0.16.2",
+      "version": "0.18.3",
+      "purl": "pkg:cargo/cookie@0.18.3",
       "licenses": [
         {
           "expression": "MIT OR Apache-2.0"
@@ -3591,35 +3504,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:cookie_project:cookie:0.16.2:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/cookie@0.18.1",
-      "name": "cookie",
-      "version": "0.18.1",
-      "purl": "pkg:cargo/cookie@0.18.1",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Sergio Benitez, Alex Crichton"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/SergioBenitez/cookie-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "verified-vendor-product"
-        }
-      ],
-      "cpe": "cpe:2.3:a:cookie_project:cookie:0.18.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:cookie_project:cookie:0.18.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13142,10 +13027,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/quinn-proto@0.11.16",
+      "bom-ref": "pkg:cargo/quinn-proto@0.11.19",
       "name": "quinn-proto",
-      "version": "0.11.16",
-      "purl": "pkg:cargo/quinn-proto@0.11.16",
+      "version": "0.11.19",
+      "purl": "pkg:cargo/quinn-proto@0.11.19",
       "description": "State machine for the QUIC transport protocol",
       "licenses": [
         {
@@ -13164,14 +13049,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:quinn-proto:quinn-proto:0.11.16:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:quinn-proto:quinn-proto:0.11.19:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/quinn-udp@0.5.15",
+      "bom-ref": "pkg:cargo/quinn-udp@0.5.16",
       "name": "quinn-udp",
-      "version": "0.5.15",
-      "purl": "pkg:cargo/quinn-udp@0.5.15",
+      "version": "0.5.16",
+      "purl": "pkg:cargo/quinn-udp@0.5.16",
       "description": "UDP sockets with ECN information for the QUIC transport protocol",
       "licenses": [
         {
@@ -13190,7 +13075,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:quinn-udp:quinn-udp:0.5.15:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:quinn-udp:quinn-udp:0.5.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14374,10 +14259,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustix@1.1.4",
+      "bom-ref": "pkg:cargo/rustix@1.1.6",
       "name": "rustix",
-      "version": "1.1.4",
-      "purl": "pkg:cargo/rustix@1.1.4",
+      "version": "1.1.6",
+      "purl": "pkg:cargo/rustix@1.1.6",
       "description": "Safe Rust bindings to POSIX/Unix/Linux/Winsock-like syscalls",
       "licenses": [
         {
@@ -14399,7 +14284,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:rustix:rustix:1.1.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rustix:rustix:1.1.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -20401,7 +20286,7 @@
       "name": "wyz",
       "version": "0.5.1",
       "purl": "pkg:cargo/wyz@0.5.1",
-      "description": "myrrlyn’s utility collection",
+      "description": "myrrlyn's utility collection",
       "licenses": [
         {
           "expression": "MIT"
@@ -21116,6 +21001,18 @@
       "name": "antd",
       "version": "5.29.3",
       "purl": "pkg:npm/antd@5.29.3",
+      "description": "An enterprise-class UI design language and React components implementation",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/ant-design/ant-design"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21130,6 +21027,18 @@
       "name": "antd",
       "version": "5.29.3(moment@2.31.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
       "purl": "pkg:npm/antd@5.29.3(moment@2.31.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "description": "An enterprise-class UI design language and React components implementation",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/ant-design/ant-design"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21221,6 +21130,20 @@
         }
       ],
       "cpe": "cpe:2.3:a:juliangruber:brace-expansion:5.0.12:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/brace-expansion@5.0.13",
+      "name": "brace-expansion",
+      "version": "5.0.13",
+      "purl": "pkg:npm/brace-expansion@5.0.13",
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-vendor-product"
+        }
+      ],
+      "cpe": "cpe:2.3:a:juliangruber:brace-expansion:5.0.13:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -21438,6 +21361,21 @@
       "name": "dayjs",
       "version": "1.11.23",
       "purl": "pkg:npm/dayjs@1.11.23",
+      "description": "2KB immutable date time library alternative to Moment.js with the same modern API ",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "iamkun"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/iamkun/dayjs.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21620,6 +21558,21 @@
       "name": "eslint",
       "version": "9.39.3",
       "purl": "pkg:npm/eslint@9.39.3",
+      "description": "An AST-based pattern checker for JavaScript.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Nicholas C. Zakas"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "eslint/eslint"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21634,6 +21587,21 @@
       "name": "eslint",
       "version": "9.39.3(jiti@2.7.0)",
       "purl": "pkg:npm/eslint@9.39.3(jiti@2.7.0)",
+      "description": "An AST-based pattern checker for JavaScript.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Nicholas C. Zakas"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "eslint/eslint"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21648,6 +21616,18 @@
       "name": "eslint-plugin-react-hooks",
       "version": "5.2.0",
       "purl": "pkg:npm/eslint-plugin-react-hooks@5.2.0",
+      "description": "ESLint rules for React Hooks",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/facebook/react.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21662,6 +21642,18 @@
       "name": "eslint-plugin-react-hooks",
       "version": "5.2.0(eslint@9.39.3(jiti@2.7.0))",
       "purl": "pkg:npm/eslint-plugin-react-hooks@5.2.0(eslint@9.39.3(jiti@2.7.0))",
+      "description": "ESLint rules for React Hooks",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/facebook/react.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21676,6 +21668,21 @@
       "name": "eslint-plugin-react-refresh",
       "version": "0.5.8",
       "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
+      "description": "Validate that your components can safely be updated with Fast Refresh",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Arnaud Barré (https://github.com/ArnaudBarre)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "github:ArnaudBarre/eslint-plugin-react-refresh"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21690,6 +21697,21 @@
       "name": "eslint-plugin-react-refresh",
       "version": "0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
+      "description": "Validate that your components can safely be updated with Fast Refresh",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Arnaud Barré (https://github.com/ArnaudBarre)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "github:ArnaudBarre/eslint-plugin-react-refresh"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21704,6 +21726,18 @@
       "name": "eslint-scope",
       "version": "8.4.0",
       "purl": "pkg:npm/eslint-scope@8.4.0",
+      "description": "ECMAScript scope analyzer for ESLint",
+      "licenses": [
+        {
+          "expression": "BSD-2-Clause"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/eslint/js.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21718,6 +21752,21 @@
       "name": "eslint-visitor-keys",
       "version": "3.4.3",
       "purl": "pkg:npm/eslint-visitor-keys@3.4.3",
+      "description": "Constants and utilities about visitor keys to traverse AST.",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "supplier": {
+        "name": "Toru Nagashima (https://github.com/mysticatea)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/eslint/js.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21732,6 +21781,21 @@
       "name": "eslint-visitor-keys",
       "version": "4.2.1",
       "purl": "pkg:npm/eslint-visitor-keys@4.2.1",
+      "description": "Constants and utilities about visitor keys to traverse AST.",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "supplier": {
+        "name": "Toru Nagashima (https://github.com/mysticatea)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/eslint/js.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -21746,6 +21810,21 @@
       "name": "eslint-visitor-keys",
       "version": "5.0.1",
       "purl": "pkg:npm/eslint-visitor-keys@5.0.1",
+      "description": "Constants and utilities about visitor keys to traverse AST.",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "supplier": {
+        "name": "Toru Nagashima (https://github.com/mysticatea)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/eslint/js.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22054,6 +22133,21 @@
       "name": "globals",
       "version": "14.0.0",
       "purl": "pkg:npm/globals@14.0.0",
+      "description": "Global identifiers from different JavaScript environments",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Sindre Sorhus"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "sindresorhus/globals"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22068,6 +22162,21 @@
       "name": "globals",
       "version": "16.5.0",
       "purl": "pkg:npm/globals@16.5.0",
+      "description": "Global identifiers from different JavaScript environments",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Sindre Sorhus"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "sindresorhus/globals"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22166,6 +22275,21 @@
       "name": "i18next",
       "version": "26.7.2",
       "purl": "pkg:npm/i18next@26.7.2",
+      "description": "i18next internationalization framework",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Jan Mühlemann (https://github.com/jamuhl)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/i18next/i18next.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22180,6 +22304,21 @@
       "name": "i18next",
       "version": "26.7.2(typescript@5.9.3)",
       "purl": "pkg:npm/i18next@26.7.2(typescript@5.9.3)",
+      "description": "i18next internationalization framework",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Jan Mühlemann (https://github.com/jamuhl)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/i18next/i18next.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22194,6 +22333,21 @@
       "name": "i18next-browser-languagedetector",
       "version": "8.3.0",
       "purl": "pkg:npm/i18next-browser-languagedetector@8.3.0",
+      "description": "language detector used in browser environment for i18next",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Jan Mühlemann (https://github.com/jamuhl)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/i18next/i18next-browser-languageDetector.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22232,17 +22386,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/ignore@7.0.14",
+      "bom-ref": "pkg:npm/ignore@7.0.16",
       "name": "ignore",
-      "version": "7.0.14",
-      "purl": "pkg:npm/ignore@7.0.14",
+      "version": "7.0.16",
+      "purl": "pkg:npm/ignore@7.0.16",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:ignore:ignore:7.0.14:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:ignore:ignore:7.0.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -22404,6 +22558,18 @@
       "name": "jsdom",
       "version": "26.1.0",
       "purl": "pkg:npm/jsdom@26.1.0",
+      "description": "A JavaScript implementation of many web standards",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/jsdom/jsdom.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22488,6 +22654,21 @@
       "name": "knip",
       "version": "6.45.1",
       "purl": "pkg:npm/knip@6.45.1",
+      "description": "Find and fix unused dependencies, exports and files in your TypeScript and JavaScript projects",
+      "licenses": [
+        {
+          "expression": "ISC"
+        }
+      ],
+      "supplier": {
+        "name": "Lars Kappert"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/webpro-nl/knip.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -22778,17 +22959,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/minimatch@11.0.5",
+      "bom-ref": "pkg:npm/minimatch@11.0.9",
       "name": "minimatch",
-      "version": "11.0.5",
-      "purl": "pkg:npm/minimatch@11.0.5",
+      "version": "11.0.9",
+      "purl": "pkg:npm/minimatch@11.0.9",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:minimatch_project:minimatch:11.0.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:minimatch_project:minimatch:11.0.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23104,6 +23285,21 @@
       "name": "prettier",
       "version": "3.10.1",
       "purl": "pkg:npm/prettier@3.10.1",
+      "description": "Prettier is an opinionated code formatter",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "James Long"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "prettier/prettier"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24098,6 +24294,18 @@
       "name": "react",
       "version": "19.3.1",
       "purl": "pkg:npm/react@19.3.1",
+      "description": "React is a JavaScript library for building user interfaces.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/react/react.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24112,6 +24320,18 @@
       "name": "react-dom",
       "version": "19.3.1",
       "purl": "pkg:npm/react-dom@19.3.1",
+      "description": "React package for working with the DOM.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/react/react.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24126,6 +24346,18 @@
       "name": "react-dom",
       "version": "19.3.1(react@19.3.1)",
       "purl": "pkg:npm/react-dom@19.3.1(react@19.3.1)",
+      "description": "React package for working with the DOM.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/react/react.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24140,6 +24372,21 @@
       "name": "react-i18next",
       "version": "17.1.13",
       "purl": "pkg:npm/react-i18next@17.1.13",
+      "description": "Internationalization for react done right. Using the i18next i18n ecosystem.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Jan Mühlemann (https://github.com/jamuhl)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/i18next/react-i18next.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24154,6 +24401,21 @@
       "name": "react-i18next",
       "version": "17.1.13(i18next@26.7.2(typescript@5.9.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.9.3)",
       "purl": "pkg:npm/react-i18next@17.1.13(i18next@26.7.2(typescript@5.9.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.9.3)",
+      "description": "Internationalization for react done right. Using the i18next i18n ecosystem.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Jan Mühlemann (https://github.com/jamuhl)"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/i18next/react-i18next.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24238,6 +24500,21 @@
       "name": "react-router-dom",
       "version": "7.18.5",
       "purl": "pkg:npm/react-router-dom@7.18.5",
+      "description": "Declarative routing for React web applications",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Remix Software"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/remix-run/react-router"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24252,6 +24529,21 @@
       "name": "react-router-dom",
       "version": "7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
       "purl": "pkg:npm/react-router-dom@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "description": "Declarative routing for React web applications",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Remix Software"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/remix-run/react-router"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24602,6 +24894,18 @@
       "name": "tailwindcss",
       "version": "4.3.5",
       "purl": "pkg:npm/tailwindcss@4.3.5",
+      "description": "A utility-first CSS framework for rapidly building custom user interfaces.",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/tailwindlabs/tailwindcss.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24812,6 +25116,21 @@
       "name": "typescript",
       "version": "5.9.3",
       "purl": "pkg:npm/typescript@5.9.3",
+      "description": "TypeScript is a language for application scale JavaScript development",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "supplier": {
+        "name": "Microsoft Corp."
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/TypeScript.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24822,31 +25141,55 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typescript-eslint@8.72.2",
+      "bom-ref": "pkg:npm/typescript-eslint@8.73.0",
       "name": "typescript-eslint",
-      "version": "8.72.2",
-      "purl": "pkg:npm/typescript-eslint@8.72.2",
+      "version": "8.73.0",
+      "purl": "pkg:npm/typescript-eslint@8.73.0",
+      "description": "Tooling which enables you to use TypeScript with ESLint",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/typescript-eslint/typescript-eslint.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.73.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typescript-eslint@8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "bom-ref": "pkg:npm/typescript-eslint@8.73.0(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
       "name": "typescript-eslint",
-      "version": "8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
-      "purl": "pkg:npm/typescript-eslint@8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "version": "8.73.0(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "purl": "pkg:npm/typescript-eslint@8.73.0(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "description": "Tooling which enables you to use TypeScript with ESLint",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/typescript-eslint/typescript-eslint.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.2_eslint_9.39.3_jiti_2.7.0___typescript_5.9.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.73.0_eslint_9.39.3_jiti_2.7.0___typescript_5.9.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24924,6 +25267,21 @@
       "name": "vite",
       "version": "7.3.8",
       "purl": "pkg:npm/vite@7.3.8",
+      "description": "Native-ESM powered web dev build tool",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Evan You"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vitejs/vite.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24938,6 +25296,21 @@
       "name": "vite",
       "version": "7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
       "purl": "pkg:npm/vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1)",
+      "description": "Native-ESM powered web dev build tool",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Evan You"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vitejs/vite.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24952,6 +25325,21 @@
       "name": "vitest",
       "version": "5.1.0",
       "purl": "pkg:npm/vitest@5.1.0",
+      "description": "Next generation testing framework powered by Vite",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Anthony Fu"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vitest-dev/vitest.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -24966,6 +25354,21 @@
       "name": "vitest",
       "version": "5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
       "purl": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "description": "Next generation testing framework powered by Vite",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "supplier": {
+        "name": "Anthony Fu"
+      },
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "git+https://github.com/vitest-dev/vitest.git"
+        }
+      ],
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
@@ -25173,9 +25576,9 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/niray1yp6d6w5z02qiz3p9b8cda6lfpk-cosmian-kms-server-dynamic-5.29.0.drv",
+      "ref": "/nix/store/y6maxdkr5yxclm6xpd9d85vlqjrlq9z6-cosmian-kms-server-dynamic-5.29.0.drv",
       "dependsOn": [
-        "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv"
+        "/nix/store/agm5k2anhb4v4px13lac7bcsa7g7kh7a-openssl-3.6.5.drv"
       ]
     },
     {
@@ -25194,7 +25597,7 @@
       "ref": "/nix/store/f4gxp7xg2w1y7i9cr1844a2jfb8d3yrk-libunistring-1.0.drv"
     },
     {
-      "ref": "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv",
+      "ref": "/nix/store/agm5k2anhb4v4px13lac7bcsa7g7kh7a-openssl-3.6.5.drv",
       "dependsOn": [
         "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv"
       ]

@@ -125,7 +125,7 @@ sqlite_path = "$escapedSqlitePath"
 
 [http]
 port = $KMS_PORT
-hostname = "0.0.0.0"
+hostname = "127.0.0.1"
 "@ | Set-Content -Path $kmsTestConf -Encoding UTF8
 
     $env:RUST_LOG = "cosmian_kms_server=info,cosmian_cng=debug"
