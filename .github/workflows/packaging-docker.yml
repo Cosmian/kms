@@ -204,10 +204,29 @@ jobs:
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
         # Fills a database with every object kind on each release >= 5.9.0 (populate_db.sh),
-        # upgrades it to the candidate image on each backend, then re-verifies it.
+        # upgrades it to the candidate image, then re-verifies it. One gate process per backend,
+        # in parallel (own containers, ports and per-backend reports): sequentially the
+        # ~30 releases x backends would not fit the timeout.
         run: |
-          mise run test:upgrade-db --variant ${{ matrix.features }} --old-version all \
-            --ckms "${CARGO_TARGET_DIR:-$PWD/target}/debug/ckms"
+          ckms="${CARGO_TARGET_DIR:-$PWD/target}/debug/ckms"
+          out="target/db-upgrade-gate/${{ matrix.features }}"
+          mkdir -p "$out"
+          backends=(sqlite postgresql mysql)
+          [ "${{ matrix.features }}" = "non-fips" ] && backends+=(redis)
+          pids=()
+          for b in "${backends[@]}"; do
+            mise run test:upgrade-db --variant ${{ matrix.features }} --backend "$b" \
+              --old-version all --ckms "$ckms" >"$out/gate-$b.log" 2>&1 &
+            pids+=($!)
+          done
+          rc=0
+          for i in "${!pids[@]}"; do
+            wait "${pids[$i]}" || { echo "::error::upgrade gate failed on ${backends[$i]}"; rc=1; }
+          done
+          for b in "${backends[@]}"; do
+            echo "::group::upgrade gate log: $b"; cat "$out/gate-$b.log"; echo "::endgroup::"
+          done
+          exit "$rc"
 
       - name: Upload database upgrade failure artifacts
         if: failure() && matrix.runner == 'ubuntu-24.04'
