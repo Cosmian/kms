@@ -161,6 +161,12 @@ const MYSQL_ALREADY_EXISTS_CODES: [u16; 2] = [1060, 1061];
 /// message is logged once.
 static GET_LOCK_REFUSED: AtomicBool = AtomicBool::new(false);
 
+/// True once the server refused `GET_LOCK` (Galera/PXC) and TTL leases are in use.
+#[cfg(test)]
+pub(crate) fn get_lock_refused() -> bool {
+    GET_LOCK_REFUSED.load(Ordering::Relaxed)
+}
+
 /// Run a schema-changing statement that MySQL cannot make `IF NOT EXISTS`. Several nodes may
 /// bootstrap the same fresh database at once: another node creating the column or index between
 /// our existence check and this statement is a success, not a failure.

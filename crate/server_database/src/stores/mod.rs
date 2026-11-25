@@ -15,6 +15,8 @@ pub(crate) use redis::additional_redis_findex_tests;
 pub use redis::redis_master_key_from_password;
 #[cfg(feature = "non-fips")]
 pub(crate) use redis::{REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex};
+#[cfg(test)]
+pub(crate) use sql::get_lock_refused;
 pub(crate) use sql::{MySqlPool, PgPool, SqlitePool};
 
 const PGSQL_FILE_QUERIES: &str = include_str!("sql/query.sql");

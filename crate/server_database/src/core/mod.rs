@@ -850,8 +850,14 @@ pub(crate) mod tests {
     async fn test_db_mysql_cluster_heartbeat_and_cron_lock() {
         let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
         let params = MainDbParams::Mysql(url.parse().expect("valid MySQL URL"), None);
-        assert_cron_lock_exclusion(&params, &params, true).await;
         let database = instantiate(&params, false).await;
+        // The GET_LOCK refusal is only learnt on the first job; leases survive cancellation.
+        database
+            .with_cron_lock("probe", || async {})
+            .await
+            .expect("probe cron lock");
+        let cancel_frees_lock = !crate::stores::get_lock_refused();
+        assert_cron_lock_exclusion(&params, &params, cancel_frees_lock).await;
         assert_heartbeats(&database).await;
         assert_concurrent_heartbeats_do_not_deadlock(&database).await;
     }
