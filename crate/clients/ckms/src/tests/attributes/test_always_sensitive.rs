@@ -16,6 +16,11 @@ use crate::{
 
 /// Return the `AlwaysSensitive` value reported by `ckms attributes get`.
 fn get_always_sensitive(cli_conf_path: &str, key_id: &str) -> CosmianResult<Option<bool>> {
+    get_bool_attribute(cli_conf_path, key_id, Tag::AlwaysSensitive)
+}
+
+/// Return the boolean attribute `tag` reported by `ckms attributes get`.
+fn get_bool_attribute(cli_conf_path: &str, key_id: &str, tag: Tag) -> CosmianResult<Option<bool>> {
     let output_file = NamedTempFile::new()?;
     let output_path = output_file.path().to_string_lossy().to_string();
 
@@ -26,7 +31,7 @@ fn get_always_sensitive(cli_conf_path: &str, key_id: &str) -> CosmianResult<Opti
         "--id",
         key_id,
         "--attribute",
-        &Tag::AlwaysSensitive.to_string(),
+        &tag.to_string(),
         "--output-file",
         &output_path,
     ]);
@@ -40,7 +45,7 @@ fn get_always_sensitive(cli_conf_path: &str, key_id: &str) -> CosmianResult<Opti
     let contents = std::fs::read_to_string(output_file.path())?;
     let json: serde_json::Value = serde_json::from_str(&contents)?;
     Ok(json
-        .get(Tag::AlwaysSensitive.to_string())
+        .get(tag.to_string())
         .and_then(serde_json::Value::as_bool))
 }
 
@@ -84,6 +89,24 @@ async fn test_always_sensitive_reported_at_creation() -> CosmianResult<()> {
         "non-sensitive key must report AlwaysSensitive = false"
     );
 
+    Ok(())
+}
+
+/// `--sensitive false` sends `Sensitive = false` (explicit opt-out of the server/HSM default),
+/// bare `--sensitive` sends `true`, and omitting the flag sends nothing.
+#[tokio::test]
+async fn test_create_sensitive_flag_values() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let owner_conf = owner_config(ctx);
+
+    let get_sensitive = |args: &[&str]| -> CosmianResult<Option<bool>> {
+        let id = create_symmetric_key(&owner_conf, args)?;
+        get_bool_attribute(&owner_conf, &id, Tag::Sensitive)
+    };
+    assert_eq!(get_sensitive(&["--sensitive", "false"])?, Some(false));
+    assert_eq!(get_sensitive(&["--sensitive", "true"])?, Some(true));
+    assert_eq!(get_sensitive(&["--sensitive"])?, Some(true));
+    assert_ne!(get_sensitive(&[])?, Some(true));
     Ok(())
 }
 
