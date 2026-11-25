@@ -138,19 +138,9 @@ EOF
 gpgconf --kill gpg-agent || true
 gpg-connect-agent 'scd learn --force' /bye
 gpg --card-status >/dev/null
-cat >"${WORK_DIR}/pgp/master.batch" <<'EOF'
-Key-Type: RSA
-Key-Length: 2048
-Key-Usage: cert
-Name-Real: SOPS PKCS#11 CI
-Name-Email: sops-pkcs11-ci@example.com
-Expire-Date: 0
-%no-protection
-%commit
-EOF
-gpg --batch --generate-key "${WORK_DIR}/pgp/master.batch"
+gpg --batch --quick-generate-key \
+  "SOPS PKCS#11 CI <sops-pkcs11-ci@example.com>" card default 0
 PGP_MASTER_FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys sops-pkcs11-ci@example.com | awk -F: '$1 == "fpr" {print $10; exit}')"
-gpg --batch --yes --edit-key "${PGP_MASTER_FINGERPRINT}" addcardkey 5
 gpg --batch --list-secret-keys "${PGP_MASTER_FINGERPRINT}" | grep -q '>'
 cat >"${WORK_DIR}/pgp/.sops.yaml" <<EOF
 creation_rules:
