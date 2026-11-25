@@ -338,8 +338,11 @@ ansi_colors = false
 # The UI distribution folder
 # ui_index_html_folder = "/usr/local/cosmian/ui/dist"
 
-# Secret random salt deriving the UI session cookie key (>= 32 bytes as hex or base64).
-# Must be identical on all instances behind a load balancer.
+# A secret salt used to derive the session cookie encryption key.
+# It must be random: at least 32 bytes encoded as hex or base64
+# (generate one with `openssl rand -hex 32`); passphrases are rejected at startup.
+# This MUST be identical across all KMS instances behind the same load balancer.
+# This should only be provided when `ui_index_html_folder` is explicitly defined.
 # ui_session_salt = "<openssl rand -hex 32>"
 
 # Configuration for the handling of authentication with OIDC from the KMS UI.
