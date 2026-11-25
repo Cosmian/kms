@@ -1667,7 +1667,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 **Impact:** RSA private key recovery or signature forgery via timing analysis.
 
-**Mitigation:** Upgrade to 5.15.0. RSA private-key operations use OpenSSL constant-time implementations. The `rsa` crate is still compiled, through `jsonwebtoken` (JWT `RS*` verification) and, in non-FIPS builds from 5.29.0, `pgp`, but only for public-key operations and key parsing, which the Marvin Attack does not affect; OpenPGP RSA private-key operations (decryption, signing, key generation) also use OpenSSL.
+**Mitigation:** Upgrade to 5.15.0. RSA private-key operations use OpenSSL constant-time implementations. The `rsa` crate is still compiled, through `jsonwebtoken` (JWT `RS*` verification) and, in non-FIPS builds from 5.29.0, `pgp`, but the server only uses it for public-key operations and key parsing, which the Marvin Attack does not affect; every RSA private-key operation of the server (OpenPGP decryption, signing, key generation, and, from 6.0.0, the signature of the Google CSE KACLS migration tokens) uses OpenSSL. The `ckms` client signs Gmail service-account JWTs with `rsa` locally, which exposes no remote timing oracle.
 
 ---
 
