@@ -1,6 +1,7 @@
 #[cfg(feature = "non-fips")]
 use std::path::Path;
 
+use base64::Engine as _;
 use clap::ValueEnum;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
@@ -217,6 +218,39 @@ pub(crate) async fn test_export_key_files_are_owner_only() -> CosmianResult<()> 
         let mode = fs::metadata(tmp_path.join(file))?.permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "{file}");
     }
+    Ok(())
+}
+
+/// Base64 is case sensitive: the exported text must decode back to the key bytes.
+#[tokio::test]
+pub(crate) async fn test_export_sym_base64_round_trip() -> CosmianResult<()> {
+    // Base64 of bytes 0..32; contains upper-case letters
+    const B64: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+    let tmp_dir = TempDir::new()?;
+    let ctx = start_default_test_kms_server().await;
+    let owner_client_conf_path = owner_config(ctx);
+
+    let key_id = create_symmetric_key(&owner_client_conf_path, &["--bytes-b64", B64])?;
+    let key_file = tmp_dir.path().join("output.b64");
+    export_key(ExportKeyParams {
+        cli_conf_path: owner_client_conf_path,
+        sub_command: "sym".to_owned(),
+        key_id,
+        key_file: key_file.to_str().unwrap().to_owned(),
+        key_format: Some(ExportKeyFormat::Base64),
+        unwrap: true,
+        ..Default::default()
+    })?;
+
+    let exported = std::fs::read_to_string(&key_file)?;
+    assert_eq!(exported, B64);
+    let expected: Vec<u8> = (0_u8..32).collect();
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(&exported)
+            .unwrap(),
+        expected
+    );
     Ok(())
 }
 

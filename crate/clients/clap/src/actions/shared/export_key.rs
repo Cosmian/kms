@@ -165,9 +165,8 @@ impl ExportSecretDataOrKeyAction {
             write_kmip_object_to_file(&object, &self.key_file)?;
         } else if self.export_format == ExportKeyFormat::Base64 {
             // export the key bytes in base64
-            let base64_key = base64::engine::general_purpose::STANDARD
-                .encode(get_object_bytes(&object)?)
-                .to_lowercase();
+            let base64_key =
+                base64::engine::general_purpose::STANDARD.encode(get_object_bytes(&object)?);
             write_private_bytes_to_file(base64_key.as_bytes(), &self.key_file)?;
         } else if matches!(
             &self.export_format,

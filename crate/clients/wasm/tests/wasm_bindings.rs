@@ -222,6 +222,41 @@ fn test_parse_export_ttlv_response() {
     assert!(r.is_ok() || r.is_err());
 }
 
+/// Base64 is case sensitive: the exported string must keep the encoder's upper-case letters.
+#[wasm_bindgen_test]
+fn test_parse_export_base64_preserves_case() {
+    use cosmian_kms_client_utils::reexport::cosmian_kmip::{
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_objects::ObjectType,
+            kmip_operations::ExportResponse,
+            kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+            requests::create_symmetric_key_kmip_object,
+        },
+        ttlv::to_ttlv,
+    };
+    // Base64 of bytes 0..32; contains upper-case letters
+    const B64: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+    let object = create_symmetric_key_kmip_object(
+        "cosmian",
+        &(0_u8..32).collect::<Vec<_>>(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let response = ExportResponse {
+        object_type: ObjectType::SymmetricKey,
+        unique_identifier: UniqueIdentifier::TextString("kid".to_owned()),
+        attributes: Attributes::default(),
+        object,
+    };
+    let json = serde_json::to_string(&to_ttlv(&response).unwrap()).unwrap();
+    let r = w::parse_export_ttlv_response(&json, "base64").unwrap();
+    assert_eq!(r.as_string().as_deref(), Some(B64));
+}
+
 #[wasm_bindgen_test]
 fn test_get_key_requests() {
     assert!(

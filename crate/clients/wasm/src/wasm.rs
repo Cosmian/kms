@@ -1764,9 +1764,7 @@ pub fn parse_export_ttlv_response(response: &str, key_format: &str) -> Result<Js
         }
         ExportKeyFormat::Base64 => {
             let kmip_object = response.object;
-            let string = general_purpose::STANDARD
-                .encode(get_object_bytes(&kmip_object)?)
-                .to_lowercase();
+            let string = general_purpose::STANDARD.encode(get_object_bytes(&kmip_object)?);
             JsValue::from(string)
         }
         ExportKeyFormat::PgpSecretBinary | ExportKeyFormat::PgpPublicBinary => {
