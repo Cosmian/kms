@@ -61,6 +61,9 @@ let
       }
     else
       pkgs.rust-bin.stable.latest.default;
+  # The pinned Nixpkgs predates the Rust version required by the authentication
+  # submodule. SOPS tests keep the host toolchain selected by rust-toolchain.toml.
+  rustToolchainInputs = if withSops then [ ] else [ rustToolchain ];
   # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds
   openssl312Fips = import ./nix/openssl.nix {
     inherit (pkgs)
@@ -122,7 +125,9 @@ pkgs.mkShell {
     pkgs.openssl.dev
     pkgs.pkg-config
     pkgs.gcc
-    rustToolchain
+  ]
+  ++ rustToolchainInputs
+  ++ [
     opensslFipsBootstrap
     # zlib is needed on macOS in Nix pure mode (-nodefaultlibs strips system /usr/lib).
     # Including it here puts its path into NIX_LDFLAGS so the Nix cc-wrapper can find -lz.
