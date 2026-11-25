@@ -15,8 +15,8 @@
         "authDisabledDescription": "此 KMS 服务器启动时未配置身份认证方法。",
         "wasmUnavailableTitle": "WebAssembly 不可用。可能被扩展程序阻止、被手动禁用，或受安全策略限制。",
         "wasmUnavailableDescription": "请在浏览器中启用 WASM 并刷新此页面以使用 KMS UI。在 Firefox 中，可通过在 <code>about:config</code> 中设置 <code>javascript.options.wasm</code> = true 来启用。",
-        "healthDb": "数据库健康：{{status}}",
-        "healthDbWithLatency": "数据库健康：{{status}}（{{latency}}ms）",
+        "health": "健康状态：{{status}}",
+        "healthWithLatency": "健康状态：{{status}}（{{latency}}ms）",
         "unavailable": "不可用"
     },
     "notFound": {

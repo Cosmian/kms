@@ -38,7 +38,7 @@ Never expose non-FIPS algorithms in the UI when running in FIPS mode.
 ## User-facing text and storage
 
 - Every user-facing string (labels, toasts, error messages shown to the user, `aria-label`, link text) comes from `useTranslation()`; never hardcoded English, including inside `throw new Error(..)` messages that reach the UI. Conventions and en/zh-CN/fr parity: `i18n.instructions.md`.
-- No `console.log` / `console.debug` in committed code (`console.warn` / `console.error` for real faults only). Never put tokens, keys or secrets in `localStorage`, `sessionStorage` or cookies (today only `darkMode` and `locale` are stored).
+- No `console.log` / `console.debug` in committed code (`console.warn` / `console.error` for real faults only). Never put tokens, keys or secrets in `localStorage`, `sessionStorage` or cookies (today only `darkMode`, `locale` and the Server Health auto-refresh period `serverHealthRefreshSeconds` are stored).
 - External links with `target="_blank"` carry `rel="noopener noreferrer"`.
 
 ## WASM integration

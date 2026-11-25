@@ -11,6 +11,7 @@ import {
     InboxOutlined,
     KeyOutlined,
     LockOutlined,
+    MedicineBoxOutlined,
     SafetyCertificateOutlined,
     SearchOutlined,
     SolutionOutlined,
@@ -336,6 +337,12 @@ const baseMenu: MenuItem[] = [
         label: "HSM Status",
         icon: <UsbOutlined />,
         collapsedlabel: "HSM",
+    },
+    {
+        key: "server-health",
+        label: "Server Health",
+        icon: <MedicineBoxOutlined />,
+        collapsedlabel: "Health",
     },
     {
         key: "kv-secrets",

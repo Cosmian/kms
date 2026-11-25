@@ -100,6 +100,7 @@ test.describe("GET /openapi.yaml — spec structure", () => {
             "/access/privileged",
             "/server-info",
             "/hsm/status",
+            "/cluster/status",
             "/v1/crypto/encrypt",
             "/v1/crypto/decrypt",
             "/v1/crypto/sign",
@@ -325,6 +326,15 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
         expect(response.status()).toBe(200);
         const body = (await response.json()) as unknown[];
         expect(Array.isArray(body)).toBe(true);
+    });
+
+    test("GET /cluster/status → 200 {nodes: array, leader}", async ({ request }) => {
+        const response = await request.get(`${KMS_URL}/cluster/status`);
+        expect(response.status()).toBe(200);
+        const body = (await response.json()) as Record<string, unknown>;
+        expect(Array.isArray(body.nodes)).toBe(true);
+        // `leader` is null for a few seconds after the server starts: only its presence is pinned.
+        expect(body).toHaveProperty("leader");
     });
 
     test("GET /access/owned → 200 JSON array", async ({ request }) => {
