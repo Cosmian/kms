@@ -808,6 +808,16 @@ mod tests {
                 && certificate == json!({"Certificate": {"CertificateValue": [1]}}),
             "An object without key block only gets its attributes synced: {attributes}"
         );
+
+        // A wrapped key's `KeyValue` is the ciphertext byte array: nothing to sync inside it.
+        let mut wrapped = json!({"SymmetricKey": {"KeyBlock": {"KeyValue": [1, 2, 3]}}});
+        let mut attributes = json!({"State": "Active"});
+        db_ensure!(
+            sync_state_json(State::Deactivated, &mut wrapped, &mut attributes)
+                && attributes == json!({"State": "Deactivated"})
+                && wrapped == json!({"SymmetricKey": {"KeyBlock": {"KeyValue": [1, 2, 3]}}}),
+            "A wrapped key keeps its ciphertext untouched: {attributes}, {wrapped}"
+        );
         Ok(())
     }
 

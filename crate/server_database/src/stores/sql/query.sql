@@ -230,7 +230,7 @@ INNER JOIN tags c ON c.id = objects.id AND c.tag = '_cert'
 WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag, 1, 8) = '_serial=');
 
 -- name: select-objects-state-sync
-SELECT id, object, attributes, state FROM objects;
+SELECT id, object, attributes, state FROM objects WHERE state IS NOT NULL AND attributes IS NOT NULL;
 
 -- name: update-object-state-json
 UPDATE objects SET object=$1, attributes=$2 WHERE id=$3;

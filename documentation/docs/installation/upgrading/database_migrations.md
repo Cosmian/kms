@@ -17,7 +17,7 @@ On large databases, the first startup after an upgrade takes longer than a norma
 
 ### Upgrading to 6.0.0: stored state synchronization
 
-Releases before 6.0.0 updated only the lifecycle column when an object changed state (`Deactivated`, `Destroyed`, ...), leaving the `State` inside the stored attributes and key block stale. KMS always reported the column, so clients saw the right state. The 6.0.0 upgrade writes that reported state into the stored attributes (and, except for destroyed objects, the key-block attributes) of every object once. API responses do not change; rows whose stored JSON cannot be parsed are skipped with a warning. Because this step rewrites rows, it adds to the first startup time on large databases.
+The lifecycle column is the source of truth for an object's state; the `State` inside the stored attributes and key block can lag it after a state change. KMS always reports the column, so clients see the right state. The 6.0.0 upgrade writes that reported state into the stored attributes (and, except for destroyed objects, the key-block attributes) of every object once. API responses do not change; rows whose stored JSON cannot be parsed are skipped with a warning. Because this step rewrites rows, it adds to the first startup time on large databases.
 
 ## Before you upgrade
 
